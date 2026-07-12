@@ -13,5 +13,8 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Hello world
-        run: echo "Hello, world! build-test pipeline is running."
+      - name: Install mise
+        uses: jdx/mise-action@v2
+
+      - name: Run CI
+        run: mise run ci
