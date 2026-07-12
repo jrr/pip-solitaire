@@ -1,0 +1,26 @@
+[tools]
+node = "26"
+pnpm = "11"
+
+# Tasks are the set of actions available to developers and agents at the repo
+# root. Run `mise tasks` to list them.
+
+[tasks.install]
+description = "Install workspace dependencies"
+run = "pnpm install"
+
+[tasks.build]
+description = "Build all packages"
+run = "pnpm run build"
+
+[tasks.test]
+description = "Run all test suites"
+run = "pnpm run test"
+
+[tasks.start]
+description = "Run the hello CLI"
+run = "pnpm run start"
+
+[tasks.ci]
+description = "Install, build, and test — what the CI pipeline runs"
+depends = ["install", "build", "test"]

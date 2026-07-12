@@ -1,0 +1,17 @@
+lockfileVersion: '9.0'
+
+settings:
+  autoInstallPeers: true
+  excludeLinksFromLockfile: false
+
+importers:
+
+  .: {}
+
+  packages/hello: {}
+
+  packages/hello-cli:
+    dependencies:
+      hello:
+        specifier: workspace:*
+        version: link:../hello
