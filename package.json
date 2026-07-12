@@ -1,0 +1,9 @@
+{
+  "name": "sleight",
+  "private": true,
+  "scripts": {
+    "build": "pnpm -r --if-present run build",
+    "test": "pnpm -r --if-present run test",
+    "start": "pnpm --filter hello-cli run start"
+  }
+}
