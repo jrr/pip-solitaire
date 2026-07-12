@@ -1,0 +1,10 @@
+{
+  "name": "sleight",
+  "private": true,
+  "version": "0.0.0",
+  "scripts": {
+    "build": "pnpm -r --if-present run build",
+    "start": "pnpm --filter hello-cli run start",
+    "test": "pnpm -r --if-present run test"
+  }
+}
