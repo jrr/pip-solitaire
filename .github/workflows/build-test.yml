@@ -1,0 +1,17 @@
+name: build-test
+
+on:
+  push:
+    branches:
+      - "**"
+  pull_request:
+
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Hello world
+        run: echo "Hello, world! build-test pipeline is running."
