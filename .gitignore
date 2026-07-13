@@ -3,3 +3,6 @@ node_modules/
 # ReScript compiler output (in-source builds emit alongside sources)
 lib/
 *.res.mjs
+
+# Vite bundle output
+dist/

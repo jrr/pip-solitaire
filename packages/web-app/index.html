@@ -6,14 +6,11 @@
     <title>web-app</title>
   </head>
   <body>
-    <!-- The compiled entry imports the bare specifier `core/src/Core.res.mjs`.
-         Browsers can't resolve bare specifiers, so this import map maps `core/`
-         to its path under the served repo root. Serve the repo root (see
-         `mise run serve`) and open /packages/web-app/index.html. A real bundler
-         later makes this map unnecessary. -->
-    <script type="importmap">
-      { "imports": { "core/": "/packages/core/" } }
-    </script>
-    <script type="module" src="./src/Main.res.mjs"></script>
+    <!-- Vite is the entry point: it processes this file, resolves the module
+         graph (including the bare `core/...` specifier, via the workspace
+         symlink in node_modules) and bundles everything into `dist/`. No
+         import map needed. Compiled ReScript output (`.res.mjs`) must exist
+         first — `mise run bundle` runs the ReScript build before Vite. -->
+    <script type="module" src="/src/Main.res.mjs"></script>
   </body>
 </html>

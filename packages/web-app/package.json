@@ -5,12 +5,16 @@
   "type": "module",
   "scripts": {
     "build": "rescript build",
-    "clean": "rescript clean"
+    "clean": "rescript clean",
+    "bundle": "vite build",
+    "dev": "vite",
+    "preview": "vite preview"
   },
   "dependencies": {
     "core": "workspace:*"
   },
   "devDependencies": {
-    "rescript": "^12.0.0"
+    "rescript": "^12.0.0",
+    "vite": "^7.0.0"
   }
 }

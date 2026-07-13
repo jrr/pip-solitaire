@@ -1,10 +1,14 @@
 packages:
   - "packages/*"
 
+# pnpm gates dependency install scripts. Allow the two that must run:
+# - rescript: its postinstall links the compiler binary.
+# - esbuild:  pulled in by Vite; its postinstall installs the native binary
+#             the bundler needs.
 allowBuilds:
+  esbuild: true
   rescript: false
 
-# pnpm 11 gates dependency install scripts; ReScript's postinstall links the
-# compiler binary, so it must be allowed to run.
 onlyBuiltDependencies:
   - rescript
+  - esbuild

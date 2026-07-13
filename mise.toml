@@ -9,6 +9,13 @@ pnpm = "11"
 description = "Install workspace dependencies"
 run = "pnpm install"
 
+# Run after changing any package.json dependency to refresh pnpm-lock.yaml.
+# Plain `install` uses a frozen lockfile under CI, so it can't add new deps;
+# this task does the non-frozen install that updates the lock.
+[tasks.relock]
+description = "Update pnpm-lock.yaml after changing dependencies"
+run = "pnpm install --no-frozen-lockfile"
+
 [tasks.build]
 description = "Build all packages"
 depends = ["install"]
@@ -23,15 +30,27 @@ run = "pnpm run test"
 description = "Run the hello CLI"
 run = "pnpm run start"
 
-# Quick-and-dirty static server for local browser testing, no Python and no new
-# workspace dependency: `serve` is fetched on demand via `pnpm dlx`. Serves the
-# *repo root* so the import map in web-app/index.html (`core/` -> /packages/core/)
-# resolves; `depends = ["build"]` refreshes the compiled .res.mjs first.
-#   mise run serve   # then open http://localhost:8000/packages/web-app/index.html
-[tasks.serve]
-description = "Serve the repo root for local browser testing (open /packages/web-app/index.html)"
+# Vite is the bundler for the web app. ReScript compiles to `.res.mjs`
+# in-source, then Vite consumes that ESM. All three tasks `depends = ["build"]`
+# so the compiled output is fresh before Vite runs.
+#
+#   mise run dev       # Vite dev server (open the printed http://localhost:5173)
+#   mise run bundle    # build the static site into packages/web-app/dist
+#   mise run preview   # serve the built site to sanity-check the bundle
+[tasks.dev]
+description = "Run the Vite dev server for the web app"
 depends = ["build"]
-run = "pnpm dlx serve --listen 8000 ."
+run = "pnpm --filter web-app run dev"
+
+[tasks.bundle]
+description = "Bundle the web app into a static site (packages/web-app/dist)"
+depends = ["build"]
+run = "pnpm --filter web-app run bundle"
+
+[tasks.preview]
+description = "Preview the bundled static site locally"
+depends = ["bundle"]
+run = "pnpm --filter web-app run preview"
 
 # Passthrough to the ReScript CLI in a single package. Everything after `--`
 # is forwarded to `rescript`, so this one task exposes the whole compiler
