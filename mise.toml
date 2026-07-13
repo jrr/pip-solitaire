@@ -11,10 +11,12 @@ run = "pnpm install"
 
 [tasks.build]
 description = "Build all packages"
+depends = ["install"]
 run = "pnpm run build"
 
 [tasks.test]
 description = "Run all test suites"
+depends = ["build"]
 run = "pnpm run test"
 
 [tasks.start]
@@ -34,6 +36,9 @@ run = "pnpm run start"
 description = "Run the ReScript CLI in one package: `mise run rescript -- <package> <args>`"
 run = "pnpm --filter \"{{arg(name='package')}}\" exec rescript"
 
+# `depends` runs in parallel, so listing install/build/test here would race
+# (test importing build output before build finished). Chain them instead:
+# test → build → install, so `ci` just needs `test` and the order is enforced.
 [tasks.ci]
 description = "Install, build, and test — what the CI pipeline runs"
-depends = ["install", "build", "test"]
+depends = ["test"]
