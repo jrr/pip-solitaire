@@ -19,13 +19,29 @@ framework is [ReScript](https://rescript-lang.org).
 
 ```
 mise tasks          # list available tasks
-mise run <task>     # run one (install, build, test, start, format, clean, ci)
+mise run <task>     # run one (install, build, test, start, rescript, ci)
 mise run ci         # install → build → test, exactly what CI runs
 ```
 
 Tasks wrap the underlying tools (`pnpm`, and framework CLIs like `rescript`),
 so running `mise run build` is how you invoke those tools — you don't call them
 directly.
+
+### Passing arguments / passthrough tasks
+
+mise forwards anything after `--` to a task's command, and that whole
+invocation is still covered by the `Bash(mise run:*)` allowlist. So a single
+**passthrough task** can expose a tool's *entire* CLI surface without widening
+the Bash allowlist at all. The `rescript` task does this for the ReScript
+compiler:
+
+```
+mise run rescript -- core build -w     # rescript build -w, in packages/core
+mise run rescript -- core format -all  # rescript format -all, in packages/core
+```
+
+Prefer this over asking for raw `pnpm`/`npx` access: to reach a new subcommand
+of a tool you already have a passthrough for, just pass it after `--`.
 
 ## Permissions (for CI agents)
 
@@ -43,7 +59,8 @@ interface, not the allowlist**:
 
 - **Need a new operation** (format, codegen, scaffold, lint, …)? Add a
   `mise` task for it and call it via `mise run`. Prefer this over requesting
-  raw `pnpm`/`npx`/shell access.
+  raw `pnpm`/`npx`/shell access. To expose a tool's *whole* CLI in one task,
+  make it a passthrough (see “Passing arguments” above).
 - **Need docs from another domain**? Add a specific
   `WebFetch(domain:<host>)` entry to the workflow — not blanket `WebFetch`.
 - **Need something you genuinely can't express as a task or grant yourself?**

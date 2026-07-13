@@ -21,13 +21,18 @@ run = "pnpm run test"
 description = "Run the hello CLI"
 run = "pnpm run start"
 
-[tasks.format]
-description = "Format sources in all packages (e.g. rescript format)"
-run = "pnpm -r --if-present run format"
-
-[tasks.clean]
-description = "Remove build artifacts in all packages (e.g. rescript clean)"
-run = "pnpm -r --if-present run clean"
+# Passthrough to the ReScript CLI in a single package. Everything after `--`
+# is forwarded to `rescript`, so this one task exposes the whole compiler
+# surface (build, build -w, format, clean, …) without granting raw CLI access:
+#
+#   mise run rescript -- core build -w      # rescript build -w, in packages/core
+#   mise run rescript -- core format -all
+#
+# It stays inside the `Bash(mise run:*)` allowlist, so no workflow change is
+# needed to reach a new rescript subcommand.
+[tasks.rescript]
+description = "Run the ReScript CLI in one package: `mise run rescript -- <package> <args>`"
+run = "pnpm --filter \"{{arg(name='package')}}\" exec rescript"
 
 [tasks.ci]
 description = "Install, build, and test — what the CI pipeline runs"
