@@ -70,6 +70,19 @@ interface, not the allowlist**:
 Keep the review workflow (`claude-code-review.yml`) and the implementer
 workflow (`claude.yml`) consistent with this model.
 
+## Pull request lifecycle
+
+When resolving an issue, once the requirements are clearly met and the test
+suite is green (`mise run ci`), **open a pull request** rather than reporting
+back on the issue. Don't wait to be asked a second time.
+
+- Push your branch and open the PR with `gh pr create`, linking the issue it
+  closes.
+- Move any remaining discussion, follow-ups, or review to the PR — the issue
+  thread is done once the PR exists.
+- If the requirements are genuinely ambiguous or CI can't be made green, say so
+  on the issue instead of opening a PR, and explain what's blocking.
+
 ## Conventions
 
 - Prefer a framework's own CLI (invoked through a mise task) over hand-writing
