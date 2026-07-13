@@ -76,5 +76,14 @@ workflow (`claude.yml`) consistent with this model.
   files it would generate.
 - Consult the latest official docs (allowed domains above) rather than relying
   on memory for framework specifics.
+- **Verify versions; don't go on knowledge.** Your training data lags reality,
+  so a version you "remember" as latest or as beta may be neither. Before
+  pinning or recommending a version of any tool, package, or framework, check
+  an authoritative live source (the project's official docs/blog on an allowed
+  domain, or the CLI/registry itself via a mise task) and cite what you found.
+  This especially applies to "is X stable yet?" judgments — e.g. ReScript 12
+  went stable on 2025-11-25, so treat "v12 is still beta" as a memory to
+  double-check, not a fact. If you genuinely can't reach a source to confirm,
+  say so explicitly rather than asserting a version from memory.
 - Leave the `hello` / `hello-cli` example packages in place for now; they exist
   to exercise CI and the agents.
