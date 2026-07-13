@@ -21,23 +21,9 @@
   <body>
     <!-- Vite resolves the bare `core/…` specifier the compiled entry imports
          (via the workspace symlink) and bundles the module graph, so no import
-         map is needed. -->
+         map is needed. The entry also registers the service worker through
+         `virtual:pwa-register` and wires the "Update available" flow — with a
+         *relative* SW URL, so its scope follows the GitHub Pages subpath. -->
     <script type="module" src="./src/Main.res.mjs"></script>
-
-    <!-- Register the service worker ourselves with a *relative* URL. Resolved
-         against the document (served at `/<repo>/` on GitHub Pages), this loads
-         `/<repo>/sw.js`, whose scope then defaults to `/<repo>/` — so the whole
-         PWA scope follows the project subpath without hardcoding the repo name.
-         vite-plugin-pwa emits `sw.js` at the app root for the production build
-         (`mise run bundle` / `mise run preview`). -->
-    <script>
-      if ("serviceWorker" in navigator) {
-        window.addEventListener("load", () => {
-          navigator.serviceWorker.register("./sw.js").catch((err) => {
-            console.error("Service worker registration failed:", err);
-          });
-        });
-      }
-    </script>
   </body>
 </html>
