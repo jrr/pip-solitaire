@@ -2,13 +2,42 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>web-app</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Sleight</title>
+
+    <!-- PWA. vite-plugin-pwa injects the <link rel="manifest"> at build time.
+         The tags below are the bits the manifest can't cover: theme color for
+         the browser/OS chrome, and iOS's own install metadata (iOS ignores much
+         of the manifest and never fires an install prompt). Icon/href paths are
+         relative so they inherit the GitHub Pages project subpath. -->
+    <meta name="theme-color" content="#166534" />
+    <link rel="icon" type="image/png" href="./icon-192.png" />
+    <link rel="apple-touch-icon" href="./apple-touch-icon.png" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Sleight" />
   </head>
   <body>
     <!-- Vite resolves the bare `core/…` specifier the compiled entry imports
          (via the workspace symlink) and bundles the module graph, so no import
          map is needed. -->
     <script type="module" src="./src/Main.res.mjs"></script>
+
+    <!-- Register the service worker ourselves with a *relative* URL. Resolved
+         against the document (served at `/<repo>/` on GitHub Pages), this loads
+         `/<repo>/sw.js`, whose scope then defaults to `/<repo>/` — so the whole
+         PWA scope follows the project subpath without hardcoding the repo name.
+         vite-plugin-pwa emits `sw.js` at the app root for the production build
+         (`mise run bundle` / `mise run preview`). -->
+    <script>
+      if ("serviceWorker" in navigator) {
+        window.addEventListener("load", () => {
+          navigator.serviceWorker.register("./sw.js").catch((err) => {
+            console.error("Service worker registration failed:", err);
+          });
+        });
+      }
+    </script>
   </body>
 </html>

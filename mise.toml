@@ -44,6 +44,12 @@ description = "Preview the built web-app locally"
 depends = ["build"]
 run = "pnpm --filter web-app run preview"
 
+# Regenerate the PWA icons in packages/web-app/public from the emblem generator.
+# Pass `-- --preview` to print an ASCII preview instead of writing PNGs.
+[tasks.icons]
+description = "Generate the web-app PWA icons"
+run = "node packages/web-app/scripts/generate-icons.mjs"
+
 # Refresh the lockfile after changing dependencies (CI installs with a frozen
 # lockfile, so it must be committed in sync with the package.json files).
 [tasks.relock]
