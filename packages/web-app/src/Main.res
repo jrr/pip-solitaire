@@ -35,33 +35,38 @@ external makeOptions: (
 external registerSW: registerSWOptions => (bool => promise<unit>) = "registerSW"
 
 // --- Build the page ---------------------------------------------------------
-let greeting = createElement("div")
+// Layout and colors live in the stylesheet in index.html; here we just build
+// the semantic structure and hang ids off it. A centered <main> holds the
+// greeting heading and a short tagline describing the app.
+let app = createElement("main")
+setAttribute(app, "id", "app")
+
+let greeting = createElement("h1")
+setAttribute(greeting, "id", "greeting")
 setTextContent(greeting, Core.greeting())
-appendChild(body, greeting)->ignore
+appendChild(app, greeting)->ignore
+
+let tagline = createElement("p")
+setAttribute(tagline, "id", "tagline")
+setTextContent(tagline, "An installable, offline-capable FreeCell.")
+appendChild(app, tagline)->ignore
+
+appendChild(body, app)->ignore
 
 // A small fixed corner badge reporting exactly which build is running. Updated
 // to note offline-readiness once the service worker has finished precaching.
 let versionBadge = createElement("div")
 setAttribute(versionBadge, "id", "version-badge")
 setTextContent(versionBadge, `v${appVersion} · ${buildTime}`)
-setAttribute(
-  versionBadge,
-  "style",
-  "position:fixed;bottom:0;right:0;padding:2px 6px;font:11px/1.4 system-ui,sans-serif;color:#94a3b8;background:#0b1220;opacity:0.75;border-top-left-radius:4px;",
-)
 appendChild(body, versionBadge)->ignore
 
 // The "Update available" button. Hidden until the service worker reports a
 // waiting update (onNeedRefresh); clicking it activates the new worker and
 // reloads to the fresh version.
 let updateButton = createElement("button")
+setAttribute(updateButton, "id", "update-button")
 setTextContent(updateButton, "Update available — reload")
 setAttribute(updateButton, "hidden", "")
-setAttribute(
-  updateButton,
-  "style",
-  "position:fixed;top:8px;right:8px;padding:6px 10px;font:13px system-ui,sans-serif;color:#f8fafc;background:#166534;border:none;border-radius:6px;cursor:pointer;",
-)
 appendChild(body, updateButton)->ignore
 
 let updateSW = registerSW(
