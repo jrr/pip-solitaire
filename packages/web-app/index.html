@@ -59,6 +59,13 @@
           calc(env(safe-area-inset-left) + 1.5rem);
       }
 
+      /* The Elm loop's mount root (src/Main.res). `display: contents` removes it
+         from layout so #app stays a direct flex child of <body>, exactly as when
+         the chrome was built imperatively. */
+      #app-root {
+        display: contents;
+      }
+
       #app {
         display: flex;
         flex-direction: column;
