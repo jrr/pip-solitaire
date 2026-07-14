@@ -9,8 +9,10 @@
 //              changing direction needs no JavaScript at all.
 //   outward  — a `card-poked` CustomEvent dispatched on click, with
 //              `bubbles: true, composed: true` so it escapes the shadow root,
-//              its `detail` carrying the card centre `{ x, y }` in viewport
-//              coordinates.
+//              its `detail` carrying the card's current rotation `{ angle }` in
+//              degrees. The rotation is applied by the CSS animation, so there's
+//              nothing to read on the JS side except the *computed* transform —
+//              which is exactly what we sample at click time (see below).
 //
 // It's authored in plain JS on purpose: `class extends HTMLElement` with
 // lifecycle callbacks is the one genuinely class-shaped part of the contract,
@@ -31,12 +33,22 @@ class SleightBoard extends HTMLElement {
   connectedCallback() {
     const root = this.attachShadow({ mode: "open" });
     root.innerHTML = `<style>${css}</style><div class="card">🃏</div>`;
-    root.querySelector(".card").addEventListener("click", () => {
-      const r = this.getBoundingClientRect();
-      // outward: tell whoever's listening where the card is right now.
+    const card = root.querySelector(".card");
+    card.addEventListener("click", () => {
+      // outward: tell whoever's listening which way the card is pointed right
+      // now. The animation lives entirely in CSS, so we sample the *computed*
+      // transform and decode its 2-D matrix — `matrix(a, b, c, d, …)`, where
+      // the rotation is atan2(b, a). `none` (no transform yet) reads as 0°.
+      const t = getComputedStyle(card).transform;
+      const m = t.match(/matrix\(([^)]+)\)/);
+      let angle = 0;
+      if (m) {
+        const [a, b] = m[1].split(",").map(Number);
+        angle = (Math.atan2(b, a) * 180) / Math.PI;
+      }
       this.dispatchEvent(
         new CustomEvent("card-poked", {
-          detail: { x: r.x + r.width / 2, y: r.y + r.height / 2 },
+          detail: { angle },
           bubbles: true,
           composed: true,
         }),

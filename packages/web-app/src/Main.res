@@ -15,7 +15,7 @@ type element
 @send external addEventListener: (element, string, unit => unit) => unit = "addEventListener"
 @set external setTextContent: (element, string) => unit = "textContent"
 
-// A `card-poked` event carries the card centre in its `detail` (see
+// A `card-poked` event carries the card's rotation angle in its `detail` (see
 // sleight-board.js). This overload of `addEventListener` hands the listener the
 // event so the container can read that payload — the "outward" half of the
 // custom-element contract.
@@ -105,10 +105,10 @@ addEventListener(flipButton, "click", () => {
 })
 
 // outward: listen with a plain addEventListener and read the event's detail.
-addEventListenerCE(board, "card-poked", (event: customEvent<{"x": float, "y": float}>) => {
+addEventListenerCE(board, "card-poked", (event: customEvent<{"angle": float}>) => {
   let d = detail(event)
-  let round = f => Math.round(f)->Float.toString
-  setTextContent(readout, `card at (${round(d["x"])}, ${round(d["y"])})`)
+  let angle = Math.round(d["angle"])->Float.toString
+  setTextContent(readout, `card pointed at ${angle}°`)
 })
 
 appendChild(body, app)->ignore
