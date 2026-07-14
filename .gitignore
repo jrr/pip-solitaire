@@ -6,3 +6,6 @@ lib/
 
 # Vite build output
 dist/
+
+# Playwright MCP session output (snapshots, console/network logs)
+.playwright-mcp/

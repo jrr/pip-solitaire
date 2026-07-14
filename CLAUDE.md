@@ -67,6 +67,12 @@ interface, not the allowlist**:
   Chromium (Playwright) over the built site — no `node`/`chromium`/browser tool
   grant needed, because it rides the existing `mise run` allowlist. See the
   `browser-check` skill.
+- **Need to *interact* with the running app, not just smoke-check it?** The
+  Playwright **MCP server** is wired up in `.mcp.json` (`mcp__playwright__browser_*`
+  tools: navigate, snapshot the a11y tree, click/type/drag by ref). Serve the
+  app with `mise run dev` (backgrounded) and drive it turn-by-turn. MCP is a
+  first-class interface, so this adds a scoped tool namespace rather than
+  widening the `mise run` Bash allowlist. See the `browser-check` skill.
 - **Need docs from another domain**? Add a specific
   `WebFetch(domain:<host>)` entry to the workflow — not blanket `WebFetch`.
 - **Need something you genuinely can't express as a task or grant yourself?**
