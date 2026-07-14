@@ -1,0 +1,199 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Sleight</title>
+
+    <!-- PWA. vite-plugin-pwa injects the <link rel="manifest"> at build time.
+         The tags below are the bits the manifest can't cover: theme color for
+         the browser/OS chrome, and iOS's own install metadata (iOS ignores much
+         of the manifest and never fires an install prompt). Icon/href paths are
+         relative so they inherit the GitHub Pages project subpath. -->
+    <meta name="theme-color" content="#166534" />
+    <link rel="icon" type="image/png" href="./icon-192.png" />
+    <link rel="apple-touch-icon" href="./apple-touch-icon.png" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Sleight" />
+
+    <!-- App styling. Kept as one inline stylesheet (no framework, no build step)
+         to match the minimal DOM approach in src/Main.res. The key usability fix
+         is padding the page by the `env(safe-area-inset-*)` values: with the
+         translucent iOS status bar above, content would otherwise render *under*
+         the clock/notch and the home indicator. Colors track the PWA manifest
+         (background #0b1220, accent green #166534) so the web page, the OS chrome
+         and the installed splash all look like one app. -->
+    <style>
+      :root {
+        color-scheme: dark;
+      }
+
+      *,
+      *::before,
+      *::after {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        margin: 0;
+      }
+
+      body {
+        min-height: 100dvh;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        text-align: center;
+        background: radial-gradient(130% 120% at 50% 0%, #13233b 0%, #0b1220 60%);
+        color: #e2e8f0;
+        font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+        -webkit-font-smoothing: antialiased;
+        /* Clear the notch/status bar and home indicator on every edge. */
+        padding: calc(env(safe-area-inset-top) + 2rem)
+          calc(env(safe-area-inset-right) + 1.5rem)
+          calc(env(safe-area-inset-bottom) + 2rem)
+          calc(env(safe-area-inset-left) + 1.5rem);
+      }
+
+      /* The Elm loop's mount root (src/Main.res). `display: contents` removes it
+         from layout so #app stays a direct flex child of <body>, exactly as when
+         the chrome was built imperatively. */
+      #app-root {
+        display: contents;
+      }
+
+      #app {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 0.6rem;
+      }
+
+      #greeting {
+        margin: 0;
+        font-size: clamp(1.7rem, 7vw, 2.6rem);
+        font-weight: 700;
+        line-height: 1.15;
+        letter-spacing: -0.02em;
+        background: linear-gradient(180deg, #f0fdf4 0%, #86efac 100%);
+        -webkit-background-clip: text;
+        background-clip: text;
+        color: transparent;
+      }
+
+      #tagline {
+        margin: 0;
+        max-width: 22rem;
+        font-size: 0.95rem;
+        line-height: 1.5;
+        color: #94a3b8;
+      }
+
+      /* Scene switcher (issue #34): a picker row selecting which demo scene is
+         mounted, above one shared container that hosts the active scene. */
+      #scene-switcher {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 0.75rem;
+        margin-top: 0.5rem;
+      }
+
+      #scene-picker {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: center;
+        gap: 0.4rem;
+      }
+
+      #scene-container {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 0.75rem;
+      }
+
+      /* The picker buttons: styled like #flip-button, but muted until pressed. */
+      .scene-button {
+        padding: 8px 14px;
+        font: 14px system-ui, sans-serif;
+        color: #cbd5e1;
+        background: #1e293b;
+        border: 1px solid #334155;
+        border-radius: 8px;
+        cursor: pointer;
+      }
+
+      .scene-button[aria-pressed="true"] {
+        color: #f8fafc;
+        background: #166534;
+        border-color: #166534;
+      }
+
+      .scene-placeholder {
+        margin: 0;
+        font-size: 0.95rem;
+        color: #94a3b8;
+      }
+
+      #flip-button {
+        padding: 8px 14px;
+        font: 14px system-ui, sans-serif;
+        color: #f8fafc;
+        background: #166534;
+        border: none;
+        border-radius: 8px;
+        cursor: pointer;
+      }
+
+      #board-readout {
+        margin: 0;
+        min-height: 1.4em;
+        font: 13px ui-monospace, "SF Mono", Menlo, monospace;
+        color: #94a3b8;
+      }
+
+      #version-badge {
+        position: fixed;
+        right: 0;
+        bottom: env(safe-area-inset-bottom);
+        padding: 2px 6px;
+        font: 11px/1.4 system-ui, sans-serif;
+        color: #94a3b8;
+        background: #0b1220;
+        opacity: 0.75;
+        border-top-left-radius: 6px;
+      }
+
+      #update-button {
+        position: fixed;
+        top: calc(env(safe-area-inset-top) + 8px);
+        right: calc(env(safe-area-inset-right) + 8px);
+        padding: 8px 12px;
+        font: 13px system-ui, sans-serif;
+        color: #f8fafc;
+        background: #166534;
+        border: none;
+        border-radius: 8px;
+        cursor: pointer;
+        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
+      }
+
+      #update-button[hidden] {
+        display: none;
+      }
+    </style>
+    <script type="module" crossorigin src="./assets/index-Di-Bx3US.js"></script>
+  <link rel="manifest" href="./manifest.webmanifest"></head>
+  <body>
+    <!-- Vite resolves the bare `core/…` specifier the compiled entry imports
+         (via the workspace symlink) and bundles the module graph, so no import
+         map is needed. The entry also registers the service worker through
+         `virtual:pwa-register` and wires the "Update available" flow — with a
+         *relative* SW URL, so its scope follows the GitHub Pages subpath. -->
+  </body>
+</html>
