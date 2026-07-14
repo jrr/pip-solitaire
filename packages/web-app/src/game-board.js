@@ -6,21 +6,30 @@
 // the click listener, the transform decoding — moved into Board.res, which
 // renders the inside as ReScript JSX on the Html runtime (see Board.res).
 //
-// The custom-element contract is unchanged (*attributes in, events out*), but
-// this shell is now fully generic about it: it knows no event names or payload
-// shapes. Board.res defines and fires its own events (see `Html.emit` /
-// `cardPoked`); all we do is hand it the host element to fire them from.
-//   inward   — the observed `spin="cw" | "ccw"` attribute; CSS in Board.res
-//              reacts, so changing direction still needs no JavaScript.
-//   outward  — Board.res emits `card-poked` off the host itself.
+// This shell is fully generic about the boundary in *both* directions — it
+// knows no event names, command shapes, or payloads. Board.res owns all of that
+// (see OutwardEvents / InwardEvents); the shell only moves opaque values across:
+//   inward   — `send(command)` forwards an InwardEvents command straight to the
+//              component's dispatch (the conduit `mount` returns).
+//   outward  — Board.res emits its CustomEvents off the host itself.
 
 import { mount } from "./Board.res.mjs";
 
 class GameBoard extends HTMLElement {
   connectedCallback() {
-    // Hand the ReScript view the shadow root to paint into and the host element
-    // to fire events from. That's the whole boundary — no per-event glue here.
-    mount(this.attachShadow({ mode: "open" }), this);
+    // `mount` paints into the shadow root, fires outward events off the host
+    // (this), and returns the inward conduit: a function that forwards commands
+    // to the component's dispatch. Flush anything queued before we upgraded.
+    this._send = mount(this.attachShadow({ mode: "open" }), this);
+    this._pending?.forEach((command) => this._send(command));
+    this._pending = null;
+  }
+
+  // inward: forward a command untouched. Custom elements can be handed messages
+  // before `connectedCallback` runs, so buffer until the conduit exists.
+  send(command) {
+    if (this._send) this._send(command);
+    else (this._pending ??= []).push(command);
   }
 }
 

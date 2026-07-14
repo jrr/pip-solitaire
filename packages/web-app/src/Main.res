@@ -12,10 +12,13 @@ type element = Html.element
 @val @scope("document") external createElement: string => element = "createElement"
 @send external appendChild: (element, element) => element = "appendChild"
 @send external setAttribute: (element, string, string) => unit = "setAttribute"
-@send external getAttribute: (element, string) => Nullable.t<string> = "getAttribute"
 @send external removeAttribute: (element, string) => unit = "removeAttribute"
 @send external addEventListener: (element, string, unit => unit) => unit = "addEventListener"
 @set external setTextContent: (element, string) => unit = "textContent"
+
+// The <game-board> element's inward conduit: forward an InwardEvents command
+// straight to the board's dispatch. Its counterpart is OutwardEvents (below).
+@send external send: (element, InwardEvents.command) => unit = "send"
 
 // --- Build version ----------------------------------------------------------
 // Injected by Vite `define` at build time (see vite.config.js); "unknown" only
@@ -62,16 +65,16 @@ appendChild(app, tagline)->ignore
 // --- Web Component spike (issue #29) -----------------------------------------
 // A <game-board> with a spinning card, plus a container proving the boundary
 // works in both directions from ReScript:
-//   inward   — the flip button toggles the board's `spin` attribute; CSS reacts.
+//   inward   — the flip button sends a `Flip` command in; the board owns the
+//              spin direction and re-renders.
 //   outward  — clicking the card fires `card-poked`; we read `detail` and show
-//              the reported position in a readout.
+//              the reported angle in a readout.
 registerBoard()
 
 let boardSection = createElement("section")
 setAttribute(boardSection, "id", "board-demo")
 
 let board = createElement("game-board")
-setAttribute(board, "spin", "cw")
 appendChild(boardSection, board)->ignore
 
 let flipButton = createElement("button")
@@ -88,19 +91,12 @@ Console.log(Core.greeting())
 
 appendChild(app, boardSection)->ignore
 
-// inward: the button only toggles the attribute — no imperative call into the
-// element. `getAttribute` is nullable, so a missing/unknown value defaults to cw.
-addEventListener(flipButton, "click", () => {
-  let next = switch getAttribute(board, "spin")->Nullable.toOption {
-  | Some("ccw") => "cw"
-  | _ => "ccw"
-  }
-  setAttribute(board, "spin", next)
-})
+// inward: send a typed command in; the board owns the spin state and flips it.
+addEventListener(flipButton, "click", () => board->send(InwardEvents.Flip))
 
-// outward: listen through the shared Events module — same name and detail type
-// the board emits with, so the two ends stay in lockstep.
-Events.CardPoked.on(board, ({angle}) => {
+// outward: listen through the shared OutwardEvents module — same name and detail
+// type the board emits with, so the two ends stay in lockstep.
+OutwardEvents.CardPoked.on(board, ({angle}) => {
   let deg = Math.round(angle)->Float.toString
   setTextContent(readout, `card pointed at ${deg}°`)
 })

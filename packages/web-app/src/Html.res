@@ -45,8 +45,8 @@ let emit = (host, ~name, ~detail) =>
   )->ignore
 
 // The receive counterpart: listen for a custom event and hand the handler its
-// typed detail. Pairs with `emit`; both are name-agnostic, so a shared Events
-// module can define each event's name and detail type in one place.
+// typed detail. Pairs with `emit`; both are name-agnostic, so the shared
+// OutwardEvents module can define each event's name and detail type in one place.
 @get external eventDetail: customEvent<'detail> => 'detail = "detail"
 @send
 external addCustomListener: (element, string, customEvent<'detail> => unit) => unit =
@@ -117,8 +117,15 @@ let mount = (~root, ~init, ~update, ~view) => {
   let model = ref(init)
   let rec dispatch = msg => {
     let (next, effect) = update(msg, model.contents)
-    model := next
-    render()
+
+    // Re-render only when the model actually changed (physical equality). This
+    // keeps a message that fires an effect without changing state — e.g. a card
+    // click we only report outward — from rebuilding the DOM and restarting a
+    // mid-flight CSS animation.
+    if next !== model.contents {
+      model := next
+      render()
+    }
     effect()
   }
   and render = () => replaceChildren(root, view(model.contents, dispatch))
