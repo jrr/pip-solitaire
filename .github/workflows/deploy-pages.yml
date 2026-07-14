@@ -5,18 +5,20 @@ on:
     branches: [main]
   workflow_dispatch:
 
+# Publishing to the `gh-pages` branch only needs to push commits, so plain
+# `contents: write` replaces the artifact flow's pages/id-token permissions.
 permissions:
-  contents: read
-  pages: write
-  id-token: write
+  contents: write
 
-# Allow one concurrent deployment, don't cancel in-progress runs.
+# Serialize every writer of the `gh-pages` branch (this deploy plus the PR
+# preview deploy/cleanup) so concurrent pushes can't race and clobber each
+# other. Never cancel an in-flight publish.
 concurrency:
-  group: pages
+  group: gh-pages
   cancel-in-progress: false
 
 jobs:
-  build:
+  deploy:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -28,18 +30,12 @@ jobs:
       - name: Bundle the web app
         run: mise run bundle
 
-      - name: Upload Pages artifact
-        uses: actions/upload-pages-artifact@v3
+      - name: Publish to gh-pages root
+        uses: peaceiris/actions-gh-pages@v4
         with:
-          path: packages/web-app/dist
-
-  deploy:
-    needs: build
-    runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    steps:
-      - name: Deploy to GitHub Pages
-        id: deployment
-        uses: actions/deploy-pages@v4
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: packages/web-app/dist
+          # Publish the main site at the branch root, but keep the existing
+          # `pr-preview/` umbrella dir (and anything else already there) so a
+          # `main` deploy never wipes live PR previews.
+          keep_files: true
