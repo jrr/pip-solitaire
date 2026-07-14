@@ -33,6 +33,17 @@ jobs:
       - name: Install mise
         uses: jdx/mise-action@v2
 
+      # Provision the headless Chromium that `mise run browser-check` drives, so
+      # the agent can verify UI changes render in a real browser (see the
+      # browser-check skill). This installs the browser + its system libraries
+      # (`--with-deps` needs the runner's sudo, which it has) up front; the
+      # agent then just runs `mise run browser-check` inside its existing
+      # `Bash(mise run:*)` allowlist — no new tool grant. `browser-check` also
+      # depends on this task, so it self-installs if this step is ever removed;
+      # keeping it explicit surfaces install failures in the log, not mid-run.
+      - name: Provision headless browser
+        run: mise run browser-install
+
       - name: Run Claude Code
         id: claude
         uses: anthropics/claude-code-action@v1

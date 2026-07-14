@@ -22,6 +22,7 @@ mise tasks          # list available tasks
 mise run <task>     # run one (install, build, test, format, start, rescript, ci)
 mise run format     # format all ReScript source in place
 mise run ci         # install → build → test → format-check, exactly what CI runs
+mise run browser-check  # load the built web-app in headless Chromium, fail on errors
 ```
 
 Tasks wrap the underlying tools (`pnpm`, and framework CLIs like `rescript`),
@@ -61,7 +62,11 @@ interface, not the allowlist**:
 - **Need a new operation** (format, codegen, scaffold, lint, …)? Add a
   `mise` task for it and call it via `mise run`. Prefer this over requesting
   raw `pnpm`/`npx`/shell access. To expose a tool's *whole* CLI in one task,
-  make it a passthrough (see “Passing arguments” above).
+  make it a passthrough (see “Passing arguments” above). This is exactly how
+  browser verification was added: `mise run browser-check` drives a headless
+  Chromium (Playwright) over the built site — no `node`/`chromium`/browser tool
+  grant needed, because it rides the existing `mise run` allowlist. See the
+  `browser-check` skill.
 - **Need docs from another domain**? Add a specific
   `WebFetch(domain:<host>)` entry to the workflow — not blanket `WebFetch`.
 - **Need something you genuinely can't express as a task or grant yourself?**

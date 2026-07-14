@@ -44,6 +44,29 @@ description = "Preview the built web-app locally"
 depends = ["build"]
 run = "pnpm --filter web-app run preview"
 
+# Install the headless Chromium that `browser-check` drives. Playwright ships
+# its own pinned browser build; `--with-deps` also pulls the system libraries
+# Chromium needs (uses sudo, which CI runners have). Idempotent — Playwright
+# skips the download when the matching build is already present, so it's cheap
+# to keep as a `depends` of the check below and to re-run in CI.
+[tasks.browser-install]
+description = "Install the headless Chromium used by browser-check"
+depends = ["install"]
+run = "pnpm --filter web-app exec playwright install --with-deps chromium"
+
+# Load the *built* web-app in a real headless browser and fail if it throws,
+# logs a console error, or doesn't render — the automatable version of the
+# manual "renders in Chromium with no console errors" check. `depends` bundles
+# the site and ensures the browser is installed first, so a single
+# `mise run browser-check` does the whole thing from a clean checkout.
+#
+# Pass args through to the script, e.g. save a screenshot:
+#   mise run browser-check -- --screenshot shot.png
+[tasks.browser-check]
+description = "Render the built web-app in headless Chromium and check for errors"
+depends = ["bundle", "browser-install"]
+run = "node packages/web-app/scripts/browser-check.mjs"
+
 # Regenerate the PWA icons in packages/web-app/public from the emblem generator.
 # Pass `-- --preview` to print an ASCII preview instead of writing PNGs.
 [tasks.icons]
