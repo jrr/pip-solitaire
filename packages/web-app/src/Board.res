@@ -42,11 +42,16 @@ let angleOf = el => {
 type model = unit
 type msg = Poked(float)
 
-// Called from sleight-board.js with the shadow root and an outward-notify fn.
-let mount = (root, notify) => {
+// The board's outward events, defined here in ReScript — name and detail shape
+// in one place. The JS shell knows none of this; it only hands us the host.
+let cardPoked = (host, ~angle) => host->Html.emit(~name="card-poked", ~detail={"angle": angle})
+
+// Called from sleight-board.js with the shadow root to paint into and the host
+// element to fire events from.
+let mount = (root, host) => {
   let update = (msg, _model) =>
     switch msg {
-    | Poked(angle) => ((), () => notify(angle)) // outward event, as an Elm effect
+    | Poked(angle) => ((), () => cardPoked(host, ~angle)) // outward event, as an Elm effect
     }
   let view = (_model, dispatch) => <>
     <style> {Html.string(css)} </style>

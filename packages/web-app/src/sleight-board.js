@@ -6,29 +6,21 @@
 // the click listener, the transform decoding — moved into Board.res, which
 // renders the inside as ReScript JSX on the Html runtime (see Board.res).
 //
-// The custom-element contract is unchanged (*attributes in, events out*):
+// The custom-element contract is unchanged (*attributes in, events out*), but
+// this shell is now fully generic about it: it knows no event names or payload
+// shapes. Board.res defines and fires its own events (see `Html.emit` /
+// `cardPoked`); all we do is hand it the host element to fire them from.
 //   inward   — the observed `spin="cw" | "ccw"` attribute; CSS in Board.res
 //              reacts, so changing direction still needs no JavaScript.
-//   outward  — Board.res calls the `notify` callback with the card's current
-//              rotation; we wrap that in the same `card-poked` CustomEvent
-//              (`bubbles`/`composed` so it escapes the shadow root).
+//   outward  — Board.res emits `card-poked` off the host itself.
 
 import { mount } from "./Board.res.mjs";
 
 class SleightBoard extends HTMLElement {
   connectedCallback() {
-    const root = this.attachShadow({ mode: "open" });
-    // Hand the ReScript view the shadow root to paint into, plus the one
-    // capability it needs across the boundary: emit an outward event.
-    mount(root, (angle) => {
-      this.dispatchEvent(
-        new CustomEvent("card-poked", {
-          detail: { angle },
-          bubbles: true,
-          composed: true,
-        }),
-      );
-    });
+    // Hand the ReScript view the shadow root to paint into and the host element
+    // to fire events from. That's the whole boundary — no per-event glue here.
+    mount(this.attachShadow({ mode: "open" }), this);
   }
 }
 

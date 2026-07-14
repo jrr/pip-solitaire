@@ -25,6 +25,25 @@ type domEvent
 @send external setAttribute: (element, string, string) => unit = "setAttribute"
 @send external addEventListener: (element, string, domEvent => unit) => unit = "addEventListener"
 
+// --- Custom events (the generic "outward" seam for web components) -----------
+// A component defines its own events in ReScript — name and detail shape — and
+// fires them from a host element with `emit`. The JS shell that owns the
+// custom-element class never has to know any of that; it just hands us the host.
+// `composed: true` lets the event cross the shadow-DOM boundary.
+type customEvent
+@new
+external makeCustomEvent: (
+  string,
+  {"detail": 'detail, "bubbles": bool, "composed": bool},
+) => customEvent = "CustomEvent"
+@send external dispatchEvent: (element, customEvent) => bool = "dispatchEvent"
+
+let emit = (host, ~name, ~detail) =>
+  dispatchEvent(
+    host,
+    makeCustomEvent(name, {"detail": detail, "bubbles": true, "composed": true}),
+  )->ignore
+
 // Text child helper: write `{Html.string("hi")}` inside JSX.
 let string = textNode
 
