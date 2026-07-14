@@ -54,5 +54,5 @@ jobs:
           # task or a specific WebFetch domain here rather than widening these.
           claude_args: |
             --model claude-opus-4-8
-            --allowedTools "Bash(mise run:*)" "Bash(mise tasks:*)" "Bash(mise install)" "Bash(gh pr create:*)" "WebFetch(domain:rescript-lang.org)" "WebFetch(domain:pnpm.io)" "WebFetch(domain:mise.jdx.dev)"
+            --allowedTools "Bash(mise run:*)" "Bash(mise tasks:*)" "Bash(mise install)" "Bash(gh pr create:*)" "WebFetch(domain:rescript-lang.org)" "WebFetch(domain:pnpm.io)" "WebFetch(domain:mise.jdx.dev)" "WebFetch(domain:jrr.github.io)"
 

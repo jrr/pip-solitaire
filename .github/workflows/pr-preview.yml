@@ -1,0 +1,55 @@
+name: PR Preview
+
+on:
+  # `pull_request` (not `pull_request_target`) runs with a read-only token for
+  # fork PRs, which is why previews are scoped to same-repo PRs below — forks
+  # can't push to `gh-pages`, and using `pull_request_target` to grant them
+  # write access would run trusted workflow code against untrusted PR content.
+  pull_request:
+    types: [opened, reopened, synchronize, closed]
+
+# `contents: write` pushes commits to `gh-pages` to deploy/remove the preview;
+# `pull-requests: write` lets the action post/update the preview-link comment.
+permissions:
+  contents: write
+  pull-requests: write
+
+# Share the `gh-pages` group with the main deploy so all writers of that
+# branch are serialized and can't race.
+concurrency:
+  group: gh-pages
+  cancel-in-progress: false
+
+jobs:
+  preview:
+    runs-on: ubuntu-latest
+    # Skip fork PRs (they lack write access to `gh-pages`). For same-repo PRs
+    # the head repo matches the base repo.
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # The build is only needed for deploy actions, not cleanup. On close the
+      # action just removes the preview dir, so skip the build to save time.
+      - name: Install mise
+        if: github.event.action != 'closed'
+        uses: jdx/mise-action@v2
+
+      - name: Bundle the web app
+        if: github.event.action != 'closed'
+        run: mise run bundle
+        # Ship a self-destroying service worker for previews (see vite.config.js).
+        # Previews are pruned + rebuilt each push, so a precaching SW would pin a
+        # stale shell that 404s and survives reloads; this keeps previews on plain
+        # static hosting and cleans up any SW already installed from an earlier build.
+        env:
+          SLEIGHT_PREVIEW: "1"
+
+      # Deploys the built site to `pr-preview/pr-<N>/` on open/sync and removes
+      # it on close, commenting the preview URL on the PR. `source-dir` is
+      # ignored for the cleanup action.
+      - name: Deploy preview
+        uses: rossjrw/pr-preview-action@v1
+        with:
+          source-dir: packages/web-app/dist
