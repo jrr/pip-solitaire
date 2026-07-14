@@ -10,9 +10,20 @@ type element
 @val @scope("document") external createElement: string => element = "createElement"
 @send external appendChild: (element, element) => element = "appendChild"
 @send external setAttribute: (element, string, string) => unit = "setAttribute"
+@send external getAttribute: (element, string) => Nullable.t<string> = "getAttribute"
 @send external removeAttribute: (element, string) => unit = "removeAttribute"
 @send external addEventListener: (element, string, unit => unit) => unit = "addEventListener"
 @set external setTextContent: (element, string) => unit = "textContent"
+
+// A `card-poked` event carries the card centre in its `detail` (see
+// sleight-board.js). This overload of `addEventListener` hands the listener the
+// event so the container can read that payload — the "outward" half of the
+// custom-element contract.
+type customEvent<'detail>
+@get external detail: customEvent<'detail> => 'detail = "detail"
+@send
+external addEventListenerCE: (element, string, customEvent<'detail> => unit) => unit =
+  "addEventListener"
 
 // --- Build version ----------------------------------------------------------
 // Injected by Vite `define` at build time (see vite.config.js); "unknown" only
@@ -34,6 +45,11 @@ external makeOptions: (
 @module("virtual:pwa-register")
 external registerSW: registerSWOptions => (bool => promise<unit>) = "registerSW"
 
+// --- <sleight-board> custom element ------------------------------------------
+// The element itself is plain JS (class extends HTMLElement); we just import its
+// `register` and call it before creating one. See sleight-board.js.
+@module("./sleight-board.js") external registerBoard: unit => unit = "register"
+
 // --- Build the page ---------------------------------------------------------
 // Layout and colors live in the stylesheet in index.html; here we just build
 // the semantic structure and hang ids off it. A centered <main> holds the
@@ -50,6 +66,50 @@ let tagline = createElement("p")
 setAttribute(tagline, "id", "tagline")
 setTextContent(tagline, "An installable, offline-capable FreeCell.")
 appendChild(app, tagline)->ignore
+
+// --- Web Component spike (issue #29) -----------------------------------------
+// A <sleight-board> with a spinning card, plus a container proving the boundary
+// works in both directions from ReScript:
+//   inward   — the flip button toggles the board's `spin` attribute; CSS reacts.
+//   outward  — clicking the card fires `card-poked`; we read `detail` and show
+//              the reported position in a readout.
+registerBoard()
+
+let boardSection = createElement("section")
+setAttribute(boardSection, "id", "board-demo")
+
+let board = createElement("sleight-board")
+setAttribute(board, "spin", "cw")
+appendChild(boardSection, board)->ignore
+
+let flipButton = createElement("button")
+setAttribute(flipButton, "id", "flip-button")
+setTextContent(flipButton, "Reverse spin")
+appendChild(boardSection, flipButton)->ignore
+
+let readout = createElement("p")
+setAttribute(readout, "id", "board-readout")
+setTextContent(readout, "Poke the card…")
+appendChild(boardSection, readout)->ignore
+
+appendChild(app, boardSection)->ignore
+
+// inward: the button only toggles the attribute — no imperative call into the
+// element. `getAttribute` is nullable, so a missing/unknown value defaults to cw.
+addEventListener(flipButton, "click", () => {
+  let next = switch getAttribute(board, "spin")->Nullable.toOption {
+  | Some("ccw") => "cw"
+  | _ => "ccw"
+  }
+  setAttribute(board, "spin", next)
+})
+
+// outward: listen with a plain addEventListener and read the event's detail.
+addEventListenerCE(board, "card-poked", (event: customEvent<{"x": float, "y": float}>) => {
+  let d = detail(event)
+  let round = f => Math.round(f)->Float.toString
+  setTextContent(readout, `card at (${round(d["x"])}, ${round(d["y"])})`)
+})
 
 appendChild(body, app)->ignore
 
