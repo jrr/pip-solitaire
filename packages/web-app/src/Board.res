@@ -1,10 +1,10 @@
-// The *inside* of <sleight-board>, rendered as ReScript JSX on the Html runtime
+// The *inside* of <game-board>, rendered as ReScript JSX on the Html runtime
 // and mounted into the element's shadow root — no innerHTML, no querySelector,
 // no hand-wired listeners. The custom-element contract is unchanged:
 //   inward  — `spin` stays a pure-CSS concern; the host attribute drives
 //             `animation-direction` (see `:host([spin="ccw"])` below).
-//   outward — clicking the card samples its current rotation and hands it to
-//             `notify`, which the JS shell turns into the `card-poked` event.
+//   outward — clicking the card samples its current rotation and emits it via
+//             Events.CardPoked off the host element.
 
 @val external getComputedStyle: Html.element => {"transform": string} = "getComputedStyle"
 @get external currentTarget: Html.domEvent => Html.element = "currentTarget"
@@ -42,16 +42,13 @@ let angleOf = el => {
 type model = unit
 type msg = Poked(float)
 
-// The board's outward events, defined here in ReScript — name and detail shape
-// in one place. The JS shell knows none of this; it only hands us the host.
-let cardPoked = (host, ~angle) => host->Html.emit(~name="card-poked", ~detail={"angle": angle})
-
-// Called from sleight-board.js with the shadow root to paint into and the host
-// element to fire events from.
+// Called from game-board.js with the shadow root to paint into and the host
+// element to fire events from. Outward events go through Events (one source of
+// truth for name + detail), so this never spells "card-poked" itself.
 let mount = (root, host) => {
   let update = (msg, _model) =>
     switch msg {
-    | Poked(angle) => ((), () => cardPoked(host, ~angle)) // outward event, as an Elm effect
+    | Poked(angle) => ((), () => Events.CardPoked.emit(host, {angle: angle})) // outward, as an Elm effect
     }
   let view = (_model, dispatch) => <>
     <style> {Html.string(css)} </style>

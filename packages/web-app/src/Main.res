@@ -4,7 +4,9 @@
 // available" button that activates the waiting worker and reloads.
 
 // --- Minimal DOM bindings ---------------------------------------------------
-type element
+// Alias Html's node type so the board element created here is accepted by the
+// shared Events helpers (which speak `Html.element`).
+type element = Html.element
 
 @val @scope("document") external body: element = "body"
 @val @scope("document") external createElement: string => element = "createElement"
@@ -14,16 +16,6 @@ type element
 @send external removeAttribute: (element, string) => unit = "removeAttribute"
 @send external addEventListener: (element, string, unit => unit) => unit = "addEventListener"
 @set external setTextContent: (element, string) => unit = "textContent"
-
-// A `card-poked` event carries the card's rotation angle in its `detail` (see
-// sleight-board.js). This overload of `addEventListener` hands the listener the
-// event so the container can read that payload — the "outward" half of the
-// custom-element contract.
-type customEvent<'detail>
-@get external detail: customEvent<'detail> => 'detail = "detail"
-@send
-external addEventListenerCE: (element, string, customEvent<'detail> => unit) => unit =
-  "addEventListener"
 
 // --- Build version ----------------------------------------------------------
 // Injected by Vite `define` at build time (see vite.config.js); "unknown" only
@@ -43,12 +35,12 @@ external makeOptions: (
 ) => registerSWOptions = ""
 
 @module("virtual:pwa-register")
-external registerSW: registerSWOptions => (bool => promise<unit>) = "registerSW"
+external registerSW: registerSWOptions => bool => promise<unit> = "registerSW"
 
-// --- <sleight-board> custom element ------------------------------------------
+// --- <game-board> custom element ---------------------------------------------
 // The element itself is plain JS (class extends HTMLElement); we just import its
-// `register` and call it before creating one. See sleight-board.js.
-@module("./sleight-board.js") external registerBoard: unit => unit = "register"
+// `register` and call it before creating one. See game-board.js.
+@module("./game-board.js") external registerBoard: unit => unit = "register"
 
 // --- Build the page ---------------------------------------------------------
 // Layout and colors live in the stylesheet in index.html; here we just build
@@ -68,7 +60,7 @@ setTextContent(tagline, "Might become a solitaire game someday")
 appendChild(app, tagline)->ignore
 
 // --- Web Component spike (issue #29) -----------------------------------------
-// A <sleight-board> with a spinning card, plus a container proving the boundary
+// A <game-board> with a spinning card, plus a container proving the boundary
 // works in both directions from ReScript:
 //   inward   — the flip button toggles the board's `spin` attribute; CSS reacts.
 //   outward  — clicking the card fires `card-poked`; we read `detail` and show
@@ -78,7 +70,7 @@ registerBoard()
 let boardSection = createElement("section")
 setAttribute(boardSection, "id", "board-demo")
 
-let board = createElement("sleight-board")
+let board = createElement("game-board")
 setAttribute(board, "spin", "cw")
 appendChild(boardSection, board)->ignore
 
@@ -106,11 +98,11 @@ addEventListener(flipButton, "click", () => {
   setAttribute(board, "spin", next)
 })
 
-// outward: listen with a plain addEventListener and read the event's detail.
-addEventListenerCE(board, "card-poked", (event: customEvent<{"angle": float}>) => {
-  let d = detail(event)
-  let angle = Math.round(d["angle"])->Float.toString
-  setTextContent(readout, `card pointed at ${angle}°`)
+// outward: listen through the shared Events module — same name and detail type
+// the board emits with, so the two ends stay in lockstep.
+Events.CardPoked.on(board, ({angle}) => {
+  let deg = Math.round(angle)->Float.toString
+  setTextContent(readout, `card pointed at ${deg}°`)
 })
 
 appendChild(body, app)->ignore

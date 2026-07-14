@@ -30,19 +30,30 @@ type domEvent
 // fires them from a host element with `emit`. The JS shell that owns the
 // custom-element class never has to know any of that; it just hands us the host.
 // `composed: true` lets the event cross the shadow-DOM boundary.
-type customEvent
+type customEvent<'detail>
 @new
 external makeCustomEvent: (
   string,
   {"detail": 'detail, "bubbles": bool, "composed": bool},
-) => customEvent = "CustomEvent"
-@send external dispatchEvent: (element, customEvent) => bool = "dispatchEvent"
+) => customEvent<'detail> = "CustomEvent"
+@send external dispatchEvent: (element, customEvent<'detail>) => bool = "dispatchEvent"
 
 let emit = (host, ~name, ~detail) =>
   dispatchEvent(
     host,
     makeCustomEvent(name, {"detail": detail, "bubbles": true, "composed": true}),
   )->ignore
+
+// The receive counterpart: listen for a custom event and hand the handler its
+// typed detail. Pairs with `emit`; both are name-agnostic, so a shared Events
+// module can define each event's name and detail type in one place.
+@get external eventDetail: customEvent<'detail> => 'detail = "detail"
+@send
+external addCustomListener: (element, string, customEvent<'detail> => unit) => unit =
+  "addEventListener"
+
+let on = (target, ~name, handler) =>
+  addCustomListener(target, name, event => handler(eventDetail(event)))
 
 // Text child helper: write `{Html.string("hi")}` inside JSX.
 let string = textNode

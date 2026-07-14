@@ -1,4 +1,4 @@
-// The <sleight-board> custom element.
+// The <game-board> custom element.
 //
 // This file is now just the *shell*: the `class extends HTMLElement` lifecycle
 // that ReScript can't express (no class syntax) plus registration. Everything
@@ -16,7 +16,7 @@
 
 import { mount } from "./Board.res.mjs";
 
-class SleightBoard extends HTMLElement {
+class GameBoard extends HTMLElement {
   connectedCallback() {
     // Hand the ReScript view the shadow root to paint into and the host element
     // to fire events from. That's the whole boundary — no per-event glue here.
@@ -28,7 +28,7 @@ class SleightBoard extends HTMLElement {
 // effect, so Main can guarantee the element is defined before it creates one.
 // Idempotent: safe if called more than once (e.g. under HMR).
 export function register() {
-  if (!customElements.get("sleight-board")) {
-    customElements.define("sleight-board", SleightBoard);
+  if (!customElements.get("game-board")) {
+    customElements.define("game-board", GameBoard);
   }
 }
