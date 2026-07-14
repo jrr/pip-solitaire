@@ -39,6 +39,12 @@ jobs:
       - name: Bundle the web app
         if: github.event.action != 'closed'
         run: mise run bundle
+        # Ship a self-destroying service worker for previews (see vite.config.js).
+        # Previews are pruned + rebuilt each push, so a precaching SW would pin a
+        # stale shell that 404s and survives reloads; this keeps previews on plain
+        # static hosting and cleans up any SW already installed from an earlier build.
+        env:
+          SLEIGHT_PREVIEW: "1"
 
       # Deploys the built site to `pr-preview/pr-<N>/` on open/sync and removes
       # it on close, commenting the preview URL on the PR. `source-dir` is

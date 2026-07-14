@@ -16,6 +16,17 @@ function gitSha() {
 const buildVersion = gitSha();
 const buildTime = new Date().toISOString();
 
+// PR-preview builds ship a *self-destroying* service worker instead of the real
+// PWA one. Previews are pruned and rebuilt on every push, so a normal precaching
+// SW pins a stale app shell whose now-deleted hashed bundle 404s — and it
+// survives a reload because the SW serves that shell from cache regardless of
+// HTTP freshness (exactly the "bad <script src> until I clear storage" trap).
+// `selfDestroying` emits a worker at the usual SW URL that unregisters itself
+// and clears its caches, so it also cleans up any preview SW already installed
+// on a reviewer's device. Prod builds (no SLEIGHT_PREVIEW) keep the full offline
+// PWA. The pr-preview workflow sets SLEIGHT_PREVIEW=1 for its `mise run bundle`.
+const isPreview = process.env.SLEIGHT_PREVIEW === "1";
+
 // `base: "./"` makes emitted asset URLs relative, so the built site works when
 // GitHub Pages serves it from a project subpath (https://<user>.github.io/<repo>/)
 // rather than a domain root. Vite resolves the bare `core/…` specifier that the
@@ -40,6 +51,10 @@ export default defineConfig({
   },
   plugins: [
     VitePWA({
+      // On preview builds this replaces the whole PWA below with a self-
+      // destroying worker (see `isPreview` above); everything else here is the
+      // prod config. Kept first so it's obvious the PWA is off for previews.
+      selfDestroying: isPreview,
       // "prompt" (not "autoUpdate"): a new deploy leaves the fresh worker in
       // the "waiting" state instead of silently taking over, so the app can
       // surface an explicit "Update available" button (onNeedRefresh) that the
