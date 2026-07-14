@@ -1,35 +1,49 @@
-// A tiny hand-rolled JSX runtime — no React, no virtual DOM, no dependency.
+// A tiny hand-rolled JSX runtime — no React, no framework, no dependency.
 //
-// ReScript's *generic* JSX transform (enabled by `"jsx": {"module": "Html"}`
-// in rescript.json) lowers JSX into calls on THIS module. We make `element` a
-// real DOM node, so `<div/>` builds actual DOM directly. The mapping the
-// compiler emits (discovered from its own output) is:
+// ReScript's *generic* JSX transform ("jsx": {"module": "Html"} in rescript.json)
+// lowers JSX into calls on THIS module. The view is a *description* — a `vnode`
+// tree — and `mount` reconciles it against the real DOM: on each change it diffs
+// the new tree against the previous one and patches in place, reusing DOM nodes
+// wherever the shape matches. That reuse is what lets a state change update an
+// element's class (say, to reverse a spin) without tearing the node down and
+// restarting its CSS animation.
 //
+// The transform's contract (discovered from the compiler's own output):
 //   <div class=..>{x}</div>   →  Elements.jsx("div", {className:.., children:?someElement(x)})
 //   <div>{a}{b}</div>         →  Elements.jsxs("div", {children:?Some(array([a, b]))})
 //   <Comp prop=.. />          →  jsx(Comp.make, {prop:..})
 //   <>{a}{b}</>               →  jsxs(jsxFragment, {children:?Some(array([a, b]))})
-//
-// So all we owe the transform is: element/text builders, `array` to combine
-// siblings, `someElement` to wrap a single child, and jsx/jsxs/jsxFragment.
 
 type element // a real DOM Node
 type domEvent
+type nodeList
 
 @val @scope("document") external body: element = "body"
 @val @scope("document") external make: string => element = "createElement"
 @val @scope("document") external textNode: string => element = "createTextNode"
 @val @scope("document") external fragment: unit => element = "createDocumentFragment"
 @send external appendChild: (element, element) => element = "appendChild"
-@send external replaceChildren: (element, element) => unit = "replaceChildren"
+@send external removeChild: (element, element) => element = "removeChild"
+@send
+external replaceChild: (element, ~newNode: element, ~oldNode: element) => element = "replaceChild"
 @send external setAttribute: (element, string, string) => unit = "setAttribute"
+@send external removeAttribute: (element, string) => unit = "removeAttribute"
+@set external setTextContent: (element, string) => unit = "textContent"
 @send external addEventListener: (element, string, domEvent => unit) => unit = "addEventListener"
+@get external childNodes: element => nodeList = "childNodes"
+@send external nodeAt: (nodeList, int) => element = "item"
+@get external lastChild: element => Nullable.t<element> = "lastChild"
 
-// --- Custom events (the generic "outward" seam for web components) -----------
-// A component defines its own events in ReScript — name and detail shape — and
-// fires them from a host element with `emit`. The JS shell that owns the
-// custom-element class never has to know any of that; it just hands us the host.
-// `composed: true` lets the event cross the shadow-DOM boundary.
+// The current click handler is stashed on the node itself, so one stable
+// listener can forward to it. Patching then swaps the handler by re-stashing —
+// no add/removeEventListener churn, and no dangling closures.
+@set external setClick: (element, option<domEvent => unit>) => unit = "_onClick"
+@get external getClick: element => option<domEvent => unit> = "_onClick"
+
+// --- Custom events (outward DOM CustomEvents) --------------------------------
+// A component defines its own events in ReScript (see OutwardEvents) and fires
+// them from a host element with `emit`; `on` is the listener side. `composed`
+// lets the event cross the shadow-DOM boundary.
 type customEvent<'detail>
 @new
 external makeCustomEvent: (
@@ -44,9 +58,6 @@ let emit = (host, ~name, ~detail) =>
     makeCustomEvent(name, {"detail": detail, "bubbles": true, "composed": true}),
   )->ignore
 
-// The receive counterpart: listen for a custom event and hand the handler its
-// typed detail. Pairs with `emit`; both are name-agnostic, so the shared
-// OutwardEvents module can define each event's name and detail type in one place.
 @get external eventDetail: customEvent<'detail> => 'detail = "detail"
 @send
 external addCustomListener: (element, string, customEvent<'detail> => unit) => unit =
@@ -55,80 +66,165 @@ external addCustomListener: (element, string, customEvent<'detail> => unit) => u
 let on = (target, ~name, handler) =>
   addCustomListener(target, name, event => handler(eventDetail(event)))
 
-// Text child helper: write `{Html.string("hi")}` inside JSX.
-let string = textNode
-
-// Combine sibling children into one node. A DocumentFragment appends flat, so
-// no wrapper element shows up in the DOM.
-let array = (children: array<element>) => {
-  let frag = fragment()
-  children->Array.forEach(c => appendChild(frag, c)->ignore)
-  frag
+// --- Virtual nodes -----------------------------------------------------------
+type rec vnode =
+  | VNode({tag: string, props: elementProps, children: array<vnode>})
+  | VText(string)
+  | VGroup(array<vnode>) // sibling group from `array`; flattened when materialised
+and elementProps = {
+  id?: string,
+  className?: string,
+  hidden?: bool,
+  onClick?: domEvent => unit,
+  children?: vnode,
 }
 
-// Capitalized <Component/> lowers to `jsx(Component.make, props)`; a component
-// is just a function from its props record to an element.
+// Text child: `{Html.string("hi")}` inside JSX.
+let string = s => VText(s)
+// Combine sibling children; flattened out when a node's children are built.
+let array = xs => VGroup(xs)
+
+// Capitalized <Component/> → jsx(Component.make, props); a component is just a
+// function from its props to a vnode.
 let jsx = (component, props) => component(props)
 let jsxs = jsx
 
-// Fragments (<>…</>) are a component whose only prop is its (already-combined)
-// children node.
-type fragmentProps = {children?: element}
-let jsxFragment = (props: fragmentProps) => props.children->Option.getOr(fragment())
+// Fragments (<>…</>): a component whose only prop is its already-combined children.
+type fragmentProps = {children?: vnode}
+let jsxFragment = (props: fragmentProps) => props.children->Option.getOr(VGroup([]))
+
+// Expand VGroups so a node's children are a flat list of VNode/VText, each of
+// which maps to exactly one real DOM node (keeps the positional diff simple).
+let childrenOf = (c: option<vnode>): array<vnode> => {
+  let acc = []
+  let rec go = n =>
+    switch n {
+    | VGroup(xs) => xs->Array.forEach(go)
+    | leaf => acc->Array.push(leaf)
+    }
+  c->Option.forEach(go)
+  acc
+}
 
 module Elements = {
-  // Props for lowercase DOM elements. Every field is optional (an omitted
-  // attribute). Grow this record as the UI needs more (href, type_, value,
-  // aria-*, draggable, …) — it's the one place attribute support is declared.
-  type props = {
-    id?: string,
-    className?: string,
-    hidden?: bool,
-    onClick?: domEvent => unit,
-    children?: element,
-  }
-
+  // Props for lowercase DOM elements. Grow this record as the UI needs more
+  // (href, type_, value, draggable, aria-*, …) — the one place attributes live.
+  type props = elementProps
   // The transform wraps a single child through `someElement`; after `array`
-  // combining, children is always one node, so jsx and jsxs share a builder.
+  // combining, children is one vnode, so jsx and jsxs share a builder.
   let someElement = x => Some(x)
-
-  let jsx = (tag: string, props: props) => {
-    let el = make(tag)
-    props.id->Option.forEach(v => setAttribute(el, "id", v))
-    props.className->Option.forEach(v => setAttribute(el, "class", v))
-    props.hidden->Option.forEach(v => v ? setAttribute(el, "hidden", "") : ())
-    props.onClick->Option.forEach(f => addEventListener(el, "click", f))
-    props.children->Option.forEach(c => appendChild(el, c)->ignore)
-    el
-  }
+  let jsx = (tag: string, props: props) => VNode({tag, props, children: childrenOf(props.children)})
   let jsxs = jsx
 }
 
+// --- Reconciler --------------------------------------------------------------
+// Set/clear the flat attributes an elementProps can carry, idempotently — the
+// same function serves both creation and patching (absent field => removed).
+let applyProps = (el, props: elementProps) => {
+  switch props.id {
+  | Some(v) => setAttribute(el, "id", v)
+  | None => removeAttribute(el, "id")
+  }
+  switch props.className {
+  | Some(v) => setAttribute(el, "class", v)
+  | None => removeAttribute(el, "class")
+  }
+  switch props.hidden {
+  | Some(true) => setAttribute(el, "hidden", "")
+  | _ => removeAttribute(el, "hidden")
+  }
+  setClick(el, props.onClick)
+}
+
+// Build a real DOM node from a vnode (used for first render and for subtrees the
+// diff decides to replace wholesale).
+let rec create = vnode =>
+  switch vnode {
+  | VText(s) => textNode(s)
+  | VGroup(xs) =>
+    let frag = fragment()
+    xs->Array.forEach(x => appendChild(frag, create(x))->ignore)
+    frag
+  | VNode({tag, props, children}) =>
+    let el = make(tag)
+    applyProps(el, props)
+    // One listener, attached once; it forwards to whatever handler is stashed.
+    addEventListener(el, "click", ev =>
+      switch getClick(el) {
+      | Some(h) => h(ev)
+      | None => ()
+      }
+    )
+    children->Array.forEach(c => appendChild(el, create(c))->ignore)
+    el
+  }
+
+// Patch one DOM node to match `newV`, given the `oldV` it currently reflects.
+let rec patch = (parent, dom, oldV, newV) =>
+  switch (oldV, newV) {
+  | (VText(a), VText(b)) =>
+    if a != b {
+      setTextContent(dom, b)
+    }
+  | (VNode({tag: t1, children: oldKids, _}), VNode({tag: t2, props, children: newKids, _}))
+    if t1 == t2 =>
+    // Same tag → reuse this node: just update its attributes and its children.
+    applyProps(dom, props)
+    patchChildren(dom, oldKids, newKids)
+  | (_, _) => replaceChild(parent, ~newNode=create(newV), ~oldNode=dom)->ignore
+  }
+// Positional diff of a parent's children: patch the overlap, then append or
+// trim the tail. No keys yet — fine for fixed structure; add keys when a list
+// can reorder.
+and patchChildren = (parent, oldKids, newKids) => {
+  let oldLen = Array.length(oldKids)
+  let newLen = Array.length(newKids)
+  let shared = oldLen < newLen ? oldLen : newLen
+  for i in 0 to shared - 1 {
+    patch(
+      parent,
+      nodeAt(childNodes(parent), i),
+      oldKids->Array.getUnsafe(i),
+      newKids->Array.getUnsafe(i),
+    )
+  }
+  for i in oldLen to newLen - 1 {
+    appendChild(parent, create(newKids->Array.getUnsafe(i)))->ignore
+  }
+  for _ in 1 to oldLen - newLen {
+    switch lastChild(parent)->Nullable.toOption {
+    | Some(n) => removeChild(parent, n)->ignore
+    | None => ()
+    }
+  }
+}
+
 // --- A minimal Elm-style loop ------------------------------------------------
-// `update` is pure state, and may return a command (a `unit => unit` effect
-// thunk, `noEffect` for none) run after the re-render. On every dispatch we
-// rebuild `view(model)` and swap it in wholesale — no diffing. For a board of a
-// few dozen nodes that's plenty; add keyed reconciliation later if profiling
-// ever asks for it. Returns `dispatch` so effectful setup (event sources,
-// service worker) can feed messages back in.
+// `update` is pure state and may return a command (a `unit => unit` effect,
+// `noEffect` for none) run after the patch. Each dispatch re-derives the view
+// and reconciles it against the previous one, so unchanged nodes stay put.
 let noEffect = () => ()
 
 let mount = (~root, ~init, ~update, ~view) => {
   let model = ref(init)
+  let prev = ref([]) // previous flattened top-level children
   let rec dispatch = msg => {
     let (next, effect) = update(msg, model.contents)
 
-    // Re-render only when the model actually changed (physical equality). This
-    // keeps a message that fires an effect without changing state — e.g. a card
-    // click we only report outward — from rebuilding the DOM and restarting a
-    // mid-flight CSS animation.
+    // Re-render only when the model actually changed (physical equality): a
+    // message that just fires an effect (e.g. a click reported outward) touches
+    // no DOM at all.
     if next !== model.contents {
       model := next
       render()
     }
     effect()
   }
-  and render = () => replaceChildren(root, view(model.contents, dispatch))
+  and render = () => {
+    let nextKids = childrenOf(Some(view(model.contents, dispatch)))
+    patchChildren(root, prev.contents, nextKids)
+    prev := nextKids
+  }
   render()
   dispatch
 }
