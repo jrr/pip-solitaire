@@ -16,10 +16,6 @@ type element = Html.element
 @send external addEventListener: (element, string, unit => unit) => unit = "addEventListener"
 @set external setTextContent: (element, string) => unit = "textContent"
 
-// The <game-board> element's inward conduit: forward an InwardEvents command
-// straight to the board's dispatch. Its counterpart is OutwardEvents (below).
-@send external send: (element, InwardEvents.command) => unit = "send"
-
 // --- Build version ----------------------------------------------------------
 // Injected by Vite `define` at build time (see vite.config.js); "unknown" only
 // if the build ran without git.
@@ -40,11 +36,6 @@ external makeOptions: (
 @module("virtual:pwa-register")
 external registerSW: registerSWOptions => bool => promise<unit> = "registerSW"
 
-// --- <game-board> custom element ---------------------------------------------
-// The element itself is plain JS (class extends HTMLElement); we just import its
-// `register` and call it before creating one. See game-board.js.
-@module("./game-board.js") external registerBoard: unit => unit = "register"
-
 // --- Build the page ---------------------------------------------------------
 // Layout and colors live in the stylesheet in index.html; here we just build
 // the semantic structure and hang ids off it. A centered <main> holds the
@@ -62,44 +53,15 @@ setAttribute(tagline, "id", "tagline")
 setTextContent(tagline, "Might become a solitaire game someday")
 appendChild(app, tagline)->ignore
 
-// --- Web Component spike (issue #29) -----------------------------------------
-// A <game-board> with a spinning card, plus a container proving the boundary
-// works in both directions from ReScript:
-//   inward   — the flip button sends a `Flip` command in; the board owns the
-//              spin direction and re-renders.
-//   outward  — clicking the card fires `card-poked`; we read `detail` and show
-//              the reported angle in a readout.
-registerBoard()
-
-let boardSection = createElement("section")
-setAttribute(boardSection, "id", "board-demo")
-
-let board = createElement("game-board")
-appendChild(boardSection, board)->ignore
-
-let flipButton = createElement("button")
-setAttribute(flipButton, "id", "flip-button")
-setTextContent(flipButton, "Reverse spin")
-appendChild(boardSection, flipButton)->ignore
-
-let readout = createElement("p")
-setAttribute(readout, "id", "board-readout")
-setTextContent(readout, "Tap the card…")
-appendChild(boardSection, readout)->ignore
-
+// --- Scene switcher (issue #34) ----------------------------------------------
+// A picker that mounts one throwaway demo "scene" at a time into a shared
+// container, so demos (the #29 <game-board> spike, and upcoming drag-and-drop
+// #21 / animation #22 / card gallery) share one slot instead of fighting over
+// it. The Spinner scene holds the spike unchanged; a placeholder proves the
+// switching works with more than one entry. See SceneSwitcher / Scene.
 Console.log(Core.greeting())
 
-appendChild(app, boardSection)->ignore
-
-// inward: send a typed command in; the board owns the spin state and flips it.
-addEventListener(flipButton, "click", () => board->send(InwardEvents.Flip))
-
-// outward: listen through the shared OutwardEvents module — same name and detail
-// type the board emits with, so the two ends stay in lockstep.
-OutwardEvents.CardPoked.on(board, ({angle}) => {
-  let deg = Math.round(angle)->Float.toString
-  setTextContent(readout, `card pointed at ${deg}°`)
-})
+appendChild(app, SceneSwitcher.render([SpinnerScene.make(), PlaceholderScene.make()]))->ignore
 
 appendChild(body, app)->ignore
 
