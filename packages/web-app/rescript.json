@@ -11,5 +11,9 @@
     "in-source": true
   },
   "suffix": ".res.mjs",
-  "dependencies": ["core"]
+  "dependencies": ["core"],
+  "jsx": {
+    "version": 4,
+    "module": "Html"
+  }
 }
