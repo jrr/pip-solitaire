@@ -19,7 +19,11 @@ type detail = Full
 // familiar 5:7 playing-card ratio; CSS sizes the rendered card responsively.
 let viewBox = "0 0 120 168"
 
-let svg = (~detail=Full, card: Deck.card) => {
+// The card face *contents* — everything inside the `viewBox`, with no `<svg>`
+// wrapper. Kept separate from `svg` so the same drawing can be nested inside
+// another SVG (e.g. the app icon composes a fan of these), which is what keeps
+// the icon in step with the card design: it reuses this exact body.
+let body = (~detail=Full, card: Deck.card) => {
   // Only one detail level today; naming it keeps the switch exhaustive so adding
   // a second level later is a compile error until it's handled everywhere.
   let Full = detail
@@ -46,10 +50,7 @@ let svg = (~detail=Full, card: Deck.card) => {
     <text attrs> {Html.string(label)} </text>
   }
 
-  <svg
-    className="card-art"
-    attrs={[("viewBox", viewBox), ("role", "img"), ("aria-label", Deck.cardName(card))]}
-  >
+  <>
     <rect
       attrs={[
         ("x", "1"),
@@ -77,5 +78,13 @@ let svg = (~detail=Full, card: Deck.card) => {
       {Html.string(glyph)}
     </text>
     {cornerRank(~rotated=true)}
-  </svg>
+  </>
 }
+
+let svg = (~detail=Full, card: Deck.card) =>
+  <svg
+    className="card-art"
+    attrs={[("viewBox", viewBox), ("role", "img"), ("aria-label", Deck.cardName(card))]}
+  >
+    {body(~detail, card)}
+  </svg>

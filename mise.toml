@@ -36,7 +36,10 @@ run = "pnpm --filter web-app run dev"
 
 [tasks.bundle]
 description = "Build the web-app into a static site (packages/web-app/dist)"
-depends = ["build"]
+# `icons` regenerates the app icons from the current card art (and itself
+# depends on `build`), so a deployed bundle always ships icons that match the
+# cards — the "svg renderer in a build step for deployed builds" from #49.
+depends = ["icons"]
 run = "pnpm --filter web-app run bundle"
 
 [tasks.preview]
@@ -44,10 +47,13 @@ description = "Preview the built web-app locally"
 depends = ["build"]
 run = "pnpm --filter web-app run preview"
 
-# Regenerate the PWA icons in packages/web-app/public from the emblem generator.
-# Pass `-- --preview` to print an ASCII preview instead of writing PNGs.
+# Regenerate the PWA icons in packages/web-app/public. The icon is composed from
+# the real CardArt cards (a fanned 7·8·9), so it depends on `build` to compile
+# the ReScript art first, then rasterizes it with @resvg/resvg-js. Pass
+# `-- --svg` to print the master SVG instead of writing files.
 [tasks.icons]
-description = "Generate the web-app PWA icons"
+description = "Generate the web-app PWA icons from the card art"
+depends = ["build"]
 run = "node packages/web-app/scripts/generate-icons.mjs"
 
 # Refresh the lockfile after changing dependencies (CI installs with a frozen

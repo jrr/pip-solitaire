@@ -67,6 +67,7 @@ export default defineConfig({
       // Static PNGs live in public/ and are copied to the app root; make sure
       // they're precached alongside the built JS/CSS/HTML.
       includeAssets: [
+        "icon.svg",
         "icon-192.png",
         "icon-512.png",
         "icon-maskable-512.png",
@@ -86,6 +87,7 @@ export default defineConfig({
         theme_color: "#166534",
         background_color: "#0b1220",
         icons: [
+          { src: "icon.svg", sizes: "any", type: "image/svg+xml" },
           { src: "icon-192.png", sizes: "192x192", type: "image/png" },
           { src: "icon-512.png", sizes: "512x512", type: "image/png" },
           {

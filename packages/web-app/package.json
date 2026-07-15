@@ -16,6 +16,7 @@
     "core": "workspace:*"
   },
   "devDependencies": {
+    "@resvg/resvg-js": "^2.6.2",
     "jsdom": "^26.0.0",
     "rescript": "^12.0.0",
     "vite": "^7.0.0",
