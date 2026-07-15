@@ -78,7 +78,7 @@ let update = (msg, model) =>
 // two separate real DOM nodes; the view splices each in with `Html.node` and
 // never re-renders them. The controls sit outside the box, up against the
 // header; the box wraps only the scene. See SceneSwitcher / Scene.
-let switcher = SceneSwitcher.render([SpinnerScene.make(), SvgScene.make()])
+let switcher = SceneSwitcher.render([SpinnerScene.make(), SvgScene.make(), GalleryScene.make()])
 
 let view = (model, dispatch) => <>
   <main id="app">
