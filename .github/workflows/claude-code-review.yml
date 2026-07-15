@@ -40,6 +40,13 @@ jobs:
         uses: anthropics/claude-code-action@v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          # Print the full JSON session log to the Actions log, including the
+          # result message's permission_denials details. Without this, denied
+          # tool calls only surface as a "permission_denials_count" and the
+          # actual denied tool/input is discarded when the runner is torn down.
+          # This repo's CI has no private data, so the security caveat (tool
+          # results are publicly visible) is acceptable here.
+          show_full_output: true
           # Allow the @claude implementer's bot-authored PRs to be reviewed.
           # Without this, claude-code-action rejects any non-human actor with
           # "Workflow initiated by non-human actor". Scoped to "claude" rather
