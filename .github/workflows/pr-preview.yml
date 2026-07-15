@@ -34,7 +34,7 @@ jobs:
       # action just removes the preview dir, so skip the build to save time.
       - name: Install mise
         if: github.event.action != 'closed'
-        uses: jdx/mise-action@v2
+        uses: jdx/mise-action@v4
 
       - name: Bundle the web app
         if: github.event.action != 'closed'

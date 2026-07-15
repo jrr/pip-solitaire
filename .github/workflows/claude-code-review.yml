@@ -33,7 +33,7 @@ jobs:
           fetch-depth: 1
 
       - name: Install mise
-        uses: jdx/mise-action@v2
+        uses: jdx/mise-action@v4
 
       - name: Run Claude Code Review
         id: claude-review
