@@ -40,13 +40,6 @@ jobs:
         uses: anthropics/claude-code-action@v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          # Print the full JSON session log to the Actions log, including the
-          # result message's permission_denials details. Without this, denied
-          # tool calls only surface as a "permission_denials_count" and the
-          # actual denied tool/input is discarded when the runner is torn down.
-          # This repo's CI has no private data, so the security caveat (tool
-          # results are publicly visible) is acceptable here.
-          show_full_output: true
           # Allow the @claude implementer's bot-authored PRs to be reviewed.
           # Without this, claude-code-action rejects any non-human actor with
           # "Workflow initiated by non-human actor". Scoped to "claude" rather
@@ -54,11 +47,26 @@ jobs:
           allowed_bots: 'claude'
           plugin_marketplaces: 'https://github.com/anthropics/claude-code.git'
           plugins: 'code-review@claude-code-plugins'
-          prompt: '/code-review:code-review ${{ github.repository }}/pull/${{ github.event.pull_request.number }}'
+          # --comment makes the code-review skill post its findings to the PR.
+          # Without it the skill only prints a terminal summary and posts
+          # nothing (see the "no --comment argument was provided" note it emits).
+          prompt: '/code-review:code-review ${{ github.repository }}/pull/${{ github.event.pull_request.number }} --comment'
           # See https://github.com/anthropics/claude-code-action/blob/main/docs/usage.md
           # or https://code.claude.com/docs/en/cli-reference for available options
           claude_args: |
             --model claude-sonnet-5
             --max-turns 300
             --allowedTools "Bash(mise run:*)" "Bash(mise tasks:*)" "Bash(mise install)"
+
+      # Capture the full JSON session log (all messages, incl. the result
+      # message's permission_denials details) as a downloadable artifact
+      # instead of dumping it into the public Actions log. The execution file
+      # is written regardless of show_full_output; this just retains it.
+      - name: Upload Claude execution log
+        if: always() && steps.claude-review.outputs.execution_file != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: claude-execution-output
+          path: ${{ steps.claude-review.outputs.execution_file }}
+          if-no-files-found: ignore
 
