@@ -227,7 +227,13 @@
 
       /* A draggable card. It's moved by writing style.left/top; the transition
          animates the snap-into-place on drop, and is switched off while dragging
-         (below) so the card tracks the pointer without lag. */
+         (below) so the card tracks the pointer without lag.
+
+         `translateZ(0)` forces the card onto its own compositing layer. Without
+         it, WebKit (Safari) doesn't invalidate the old `drop-shadow` region as
+         the card is repositioned via left/top, so the shadow smears into a trail
+         of ghosts behind the moving card. On its own layer the whole card —
+         shadow included — is repainted each frame, and the trail disappears. */
       .drag-card {
         position: absolute;
         top: 0;
@@ -235,6 +241,7 @@
         width: 80px;
         touch-action: none;
         cursor: grab;
+        transform: translateZ(0);
         transition: left 0.18s ease, top 0.18s ease;
         filter: drop-shadow(0 4px 10px rgba(0, 0, 0, 0.4));
       }
@@ -313,7 +320,7 @@
         display: none;
       }
     </style>
-    <script type="module" crossorigin src="./assets/index-BGoXzqfj.js"></script>
+    <script type="module" crossorigin src="./assets/index-BpKx-IB0.js"></script>
   <link rel="manifest" href="./manifest.webmanifest"></head>
   <body>
     <!-- Vite resolves the bare `core/…` specifier the compiled entry imports
