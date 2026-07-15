@@ -70,6 +70,7 @@ type rec vnode =
   | VNode({tag: string, props: elementProps, children: array<vnode>})
   | VText(string)
   | VGroup(array<vnode>) // sibling group from `array`; flattened when materialised
+  | VRaw(element) // an externally-owned real DOM node, spliced in untouched
 and elementProps = {
   id?: string,
   className?: string,
@@ -82,6 +83,10 @@ and elementProps = {
 let string = s => VText(s)
 // Combine sibling children; flattened out when a node's children are built.
 let array = xs => VGroup(xs)
+// Splice a real DOM node, built elsewhere (imperatively), straight into the
+// view — e.g. `{Html.node(sceneSwitcher)}`. The reconciler leaves it entirely
+// alone across re-renders, so its owner keeps full control of its subtree.
+let node = el => VRaw(el)
 
 // Capitalized <Component/> → jsx(Component.make, props); a component is just a
 // function from its props to a vnode.
@@ -140,6 +145,7 @@ let applyProps = (el, props: elementProps) => {
 let rec create = vnode =>
   switch vnode {
   | VText(s) => textNode(s)
+  | VRaw(el) => el
   | VGroup(xs) =>
     let frag = fragment()
     xs->Array.forEach(x => appendChild(frag, create(x))->ignore)
@@ -170,6 +176,7 @@ let rec patch = (parent, dom, oldV, newV) =>
     // Same tag → reuse this node: just update its attributes and its children.
     applyProps(dom, props)
     patchChildren(dom, oldKids, newKids)
+  | (VRaw(a), VRaw(b)) if a === b => () // same externally-owned node → leave it be
   | (_, _) => replaceChild(parent, ~newNode=create(newV), ~oldNode=dom)->ignore
   }
 // Positional diff of a parent's children: patch the overlap, then append or

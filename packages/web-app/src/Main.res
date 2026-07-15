@@ -1,20 +1,15 @@
-// Web-app entry point. Builds the page with plain DOM bindings (no framework),
-// shows the baked-in build version in a corner "about" badge, and wires the
-// service-worker update lifecycle so a new deploy surfaces an "Update
-// available" button that activates the waiting worker and reloads.
+// Web-app entry point. The whole *chrome* — the greeting, the tagline, the
+// version badge and the "Update available" button that wrap around the scene —
+// is now expressed as ReScript JSX on the hand-rolled `Html` runtime and driven
+// by its Elm-style loop, rather than the imperative createElement/setAttribute
+// dance this file used to be. The only dynamic bits of the chrome (offline-ready
+// and update-available, both reported by the service worker) live in the model;
+// the service-worker callbacks just `dispatch` a message and the view re-renders
+// itself. The scene area underneath — the switcher and its demos — is still the
+// imperative SceneSwitcher; it's spliced into the view untouched with
+// `Html.node`, which is exactly how a JSX chrome wraps a subtree it doesn't own.
 
-// --- Minimal DOM bindings ---------------------------------------------------
-// Alias Html's node type so the board element created here is accepted by the
-// shared Events helpers (which speak `Html.element`).
-type element = Html.element
-
-@val @scope("document") external body: element = "body"
-@val @scope("document") external createElement: string => element = "createElement"
-@send external appendChild: (element, element) => element = "appendChild"
-@send external setAttribute: (element, string, string) => unit = "setAttribute"
-@send external removeAttribute: (element, string) => unit = "removeAttribute"
-@send external addEventListener: (element, string, unit => unit) => unit = "addEventListener"
-@set external setTextContent: (element, string) => unit = "textContent"
+@val @scope("document") external body: Html.element = "body"
 
 // --- Build version ----------------------------------------------------------
 // Injected by Vite `define` at build time (see vite.config.js); "unknown" only
@@ -36,57 +31,103 @@ external makeOptions: (
 @module("virtual:pwa-register")
 external registerSW: registerSWOptions => bool => promise<unit> = "registerSW"
 
-// --- Build the page ---------------------------------------------------------
-// Layout and colors live in the stylesheet in index.html; here we just build
-// the semantic structure and hang ids off it. A centered <main> holds the
-// greeting heading and a short tagline describing the app.
-let app = createElement("main")
-setAttribute(app, "id", "app")
+// --- Chrome components -------------------------------------------------------
+// The two capitalized components used by the view below — `<VersionBadge/>` and
+// `<UpdateButton/>` — live in their own files under `src/components/`. Each is a
+// `props => vnode` function; capitalized JSX lowers `<VersionBadge .../>` to
+// `Html.jsx(VersionBadge.make, props)`, filling the module's `props` record from
+// the attributes. See those files for why the record is spelled out by hand
+// instead of derived by the `@jsx.component` sugar.
 
-let greeting = createElement("h1")
-setAttribute(greeting, "id", "greeting")
-setTextContent(greeting, "Sleight")
-appendChild(app, greeting)->ignore
+// --- The Elm loop ------------------------------------------------------------
+// The chrome is a pure model + update + view. Everything reactive here is
+// service-worker lifecycle: the two booleans flip when their callbacks fire.
+type model = {
+  version: string,
+  buildTime: string,
+  offlineReady: bool,
+  updateAvailable: bool,
+}
 
-let tagline = createElement("p")
-setAttribute(tagline, "id", "tagline")
-setTextContent(tagline, "Might become a solitaire game someday")
-appendChild(app, tagline)->ignore
+type msg =
+  | OfflineReady // precache finished — the app now works offline
+  | UpdateAvailable // a new build is waiting in the wings
+  | Reload // user asked to activate the waiting worker and reload
 
-// --- Scene switcher (issue #34) ----------------------------------------------
-// A picker that mounts one throwaway demo "scene" at a time into a shared
-// container, so demos (the #29 <game-board> spike, and upcoming drag-and-drop
-// #21 / animation #22 / card gallery) share one slot instead of fighting over
-// it. The Spinner scene holds the spike unchanged; a placeholder proves the
-// switching works with more than one entry. See SceneSwitcher / Scene.
+// `updateSW` only exists once registerSW has run, which needs `dispatch`, which
+// needs the loop to be mounted — so the Reload effect reaches it through a ref
+// that's filled in just after mount (see below).
+let updateSW: ref<option<bool => promise<unit>>> = ref(None)
+
+let update = (msg, model) =>
+  switch msg {
+  | OfflineReady => ({...model, offlineReady: true}, Html.noEffect)
+  | UpdateAvailable => ({...model, updateAvailable: true}, Html.noEffect)
+  | Reload => (
+      model, // no state change — just run the effect
+      () =>
+        switch updateSW.contents {
+        | Some(reload) => reload(true)->ignore
+        | None => ()
+        },
+    )
+  }
+
+// The scene area (switcher + demos) is built imperatively and owns its own
+// subtree. `render` hands back the picker controls and the scene container as
+// two separate real DOM nodes; the view splices each in with `Html.node` and
+// never re-renders them. The controls sit outside the box, up against the
+// header; the box wraps only the scene. See SceneSwitcher / Scene.
+let switcher = SceneSwitcher.render([SpinnerScene.make(), PlaceholderScene.make()])
+
+let view = (model, dispatch) => <>
+  <main id="app">
+    <header id="chrome-header">
+      <h1 id="greeting"> {Html.string("Sleight")} </h1>
+      <p id="tagline"> {Html.string("Might become a solitaire game someday")} </p>
+    </header>
+    {Html.node(switcher.controls)}
+    <section id="scene-area">
+      <div id="scene-box"> {Html.node(switcher.scene)} </div>
+    </section>
+  </main>
+  <VersionBadge
+    version={model.version} buildTime={model.buildTime} offlineReady={model.offlineReady}
+  />
+  <UpdateButton visible={model.updateAvailable} onReload={() => dispatch(Reload)} />
+</>
+
+// --- Wire it up --------------------------------------------------------------
 Console.log(Core.greeting())
 
-appendChild(app, SceneSwitcher.render([SpinnerScene.make(), PlaceholderScene.make()]))->ignore
+// A single wrapper is the loop's root so the reconciler owns a clean child list
+// (mounting straight onto <body> would fight the module <script> already there).
+// It's `display: contents` (see index.html) so it vanishes from layout and #app
+// stays a direct flex child of <body>, exactly as before.
+let root = WebDom.createElement("div")
+root->WebDom.setAttribute("id", "app-root")
+body->WebDom.appendChild(root)->ignore
 
-appendChild(body, app)->ignore
-
-// A small fixed corner badge reporting exactly which build is running. Updated
-// to note offline-readiness once the service worker has finished precaching.
-let versionBadge = createElement("div")
-setAttribute(versionBadge, "id", "version-badge")
-setTextContent(versionBadge, `v${appVersion} · ${buildTime}`)
-appendChild(body, versionBadge)->ignore
-
-// The "Update available" button. Hidden until the service worker reports a
-// waiting update (onNeedRefresh); clicking it activates the new worker and
-// reloads to the fresh version.
-let updateButton = createElement("button")
-setAttribute(updateButton, "id", "update-button")
-setTextContent(updateButton, "Update available — reload")
-setAttribute(updateButton, "hidden", "")
-appendChild(body, updateButton)->ignore
-
-let updateSW = registerSW(
-  makeOptions(
-    ~onNeedRefresh=() => removeAttribute(updateButton, "hidden"),
-    ~onOfflineReady=() =>
-      setTextContent(versionBadge, `v${appVersion} · ${buildTime} · offline-ready`),
-  ),
+let dispatch = Html.mount(
+  ~root,
+  ~init={
+    version: appVersion,
+    buildTime,
+    offlineReady: false,
+    updateAvailable: false,
+  },
+  ~update,
+  ~view,
 )
 
-addEventListener(updateButton, "click", () => updateSW(true)->ignore)
+// Now that `dispatch` exists, register the worker and let its callbacks drive
+// the loop. Stash the returned updater so the Reload message can reach it.
+updateSW :=
+  Some(
+    registerSW(
+      makeOptions(
+        ~onNeedRefresh=() => dispatch(UpdateAvailable),
+        ~onOfflineReady=() => dispatch(OfflineReady),
+      ),
+    ),
+  )

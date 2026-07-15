@@ -1,8 +1,12 @@
 // The scene switcher: a picker control (button row, styled like `#flip-button`)
-// *outside* the shared container that selects which scene is mounted. Selecting
-// a scene tears the current one down, clears the container, and mounts the
-// chosen one — exactly one scene is live at a time. The selection is persisted
-// to localStorage so a reload returns to the same scene.
+// that selects which scene is mounted into a separate shared container.
+// Selecting a scene tears the current one down, clears the container, and mounts
+// the chosen one — exactly one scene is live at a time. The selection is
+// persisted to localStorage so a reload returns to the same scene.
+//
+// `render` hands the picker and container back as two separate nodes (see `t`)
+// rather than one wrapper, so the caller can place the controls outside the
+// scene box while the box wraps only the scene itself.
 
 // localStorage can throw (private mode, storage disabled), so every access is
 // wrapped below; these bindings stay thin.
@@ -21,20 +25,23 @@ let persist = id =>
   | _ => ()
   }
 
-// Build the switcher UI and return its root <section>. When `scenes` is empty
-// the container simply stays empty. Otherwise the persisted scene (if it still
-// exists) mounts initially, falling back to the first scene.
-let render = (scenes: array<Scene.t>): WebDom.element => {
-  let root = WebDom.createElement("section")
-  root->WebDom.setAttribute("id", "scene-switcher")
+// The switcher's two pieces, handed back separately so the caller can place
+// them independently — the `controls` row sits outside (and above) the scene
+// box, while the `scene` container is what the box wraps.
+type t = {
+  controls: WebDom.element, // the picker button row
+  scene: WebDom.element, // the shared container hosting the active scene
+}
 
+// Build the switcher UI and return its two pieces. When `scenes` is empty the
+// container simply stays empty. Otherwise the persisted scene (if it still
+// exists) mounts initially, falling back to the first scene.
+let render = (scenes: array<Scene.t>): t => {
   let picker = WebDom.createElement("div")
   picker->WebDom.setAttribute("id", "scene-picker")
-  root->WebDom.appendChild(picker)->ignore
 
   let container = WebDom.createElement("section")
   container->WebDom.setAttribute("id", "scene-container")
-  root->WebDom.appendChild(container)->ignore
 
   // Teardown for the currently mounted scene; a noop until one is mounted.
   let teardown = ref(() => ())
@@ -74,5 +81,5 @@ let render = (scenes: array<Scene.t>): WebDom.element => {
   | None => ()
   }
 
-  root
+  {controls: picker, scene: container}
 }
