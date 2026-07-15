@@ -159,10 +159,21 @@
         border-color: #166534;
       }
 
-      .scene-placeholder {
-        margin: 0;
-        font-size: 0.95rem;
-        color: #94a3b8;
+      /* SVG demo scene (issue #35): the generated card and its control. The
+         card is a real inline <svg> rendered as vnodes by the Html runtime. */
+      .svg-card {
+        display: block;
+        filter: drop-shadow(0 6px 14px rgba(0, 0, 0, 0.35));
+      }
+
+      .svg-demo-button {
+        padding: 8px 14px;
+        font: 14px system-ui, sans-serif;
+        color: #f8fafc;
+        background: #166534;
+        border: none;
+        border-radius: 8px;
+        cursor: pointer;
       }
 
       #flip-button {
@@ -212,7 +223,7 @@
         display: none;
       }
     </style>
-    <script type="module" crossorigin src="./assets/index-D6YdGBP3.js"></script>
+    <script type="module" crossorigin src="./assets/index-Do-6BmQQ.js"></script>
   <link rel="manifest" href="./manifest.webmanifest"></head>
   <body>
     <!-- Vite resolves the bare `core/…` specifier the compiled entry imports
