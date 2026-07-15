@@ -20,16 +20,17 @@ let size = 512.
 // outward from a shared corner like a hand held open.
 let pivotX = 256.
 let pivotY = 470.
-let lift = 150. // how far each card's center sits above the pivot
+let lift = 200. // how far each card's center sits above the pivot
 let cardScale = 1.7 // native card is 120×168; this sizes it into the icon
 
 // The three fanned cards and their splay angles (degrees). 7·8·9, drawn
 // left→right so each overlaps the last, with the suits chosen black·red·black
 // for color balance against the dark background.
+let splay_angle = 18. // 24
 let fan = [
-  ({Deck.suit: Deck.Clubs, rank: Deck.Seven}, -24.),
+  ({Deck.suit: Deck.Clubs, rank: Deck.Nine}, (-1. *. splay_angle)),
   ({Deck.suit: Deck.Hearts, rank: Deck.Eight}, 0.),
-  ({Deck.suit: Deck.Spades, rank: Deck.Nine}, 24.),
+  ({Deck.suit: Deck.Spades, rank: Deck.Seven}, splay_angle),
 ]
 
 // One fanned card: just the real card face, nested and placed. There's no green
