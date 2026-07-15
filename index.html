@@ -46,7 +46,6 @@
         display: flex;
         flex-direction: column;
         align-items: center;
-        justify-content: center;
         text-align: center;
         background: radial-gradient(130% 120% at 50% 0%, #13233b 0%, #0b1220 60%);
         color: #e2e8f0;
@@ -59,11 +58,48 @@
           calc(env(safe-area-inset-left) + 1.5rem);
       }
 
+      /* The Elm loop's mount root (src/Main.res). `display: contents` removes it
+         from layout so #app stays a direct flex child of <body>, exactly as when
+         the chrome was built imperatively. */
+      #app-root {
+        display: contents;
+      }
+
+      /* #app fills the column so the header can sit at the top while the scene
+         stays centered in the space beneath it. Removing body's
+         `justify-content: center` (above) starts this stack at the top; the
+         header then hugs the top the way #version-badge hugs the bottom. */
       #app {
+        flex: 1;
+        width: 100%;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+      }
+
+      /* Greeting + tagline, pinned to the top of the column. */
+      #chrome-header {
         display: flex;
         flex-direction: column;
         align-items: center;
         gap: 0.6rem;
+      }
+
+      /* Grows to fill the space under the header and centers the scene box in it. */
+      #scene-area {
+        flex: 1;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 100%;
+      }
+
+      /* The box drawn around the scene. */
+      #scene-box {
+        padding: 1.5rem;
+        border: 1px solid #22304a;
+        border-radius: 14px;
+        background: rgba(19, 35, 59, 0.35);
       }
 
       #greeting {
@@ -87,20 +123,16 @@
       }
 
       /* Scene switcher (issue #34): a picker row selecting which demo scene is
-         mounted, above one shared container that hosts the active scene. */
-      #scene-switcher {
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        gap: 0.75rem;
-        margin-top: 0.5rem;
-      }
-
+         mounted, and one shared container that hosts the active scene. The two
+         are placed separately by the view — the picker sits outside the scene
+         box, up against the header; the box wraps only the container. */
       #scene-picker {
         display: flex;
         flex-wrap: wrap;
         justify-content: center;
         gap: 0.4rem;
+        /* Sit just below the header rather than centered in the scene area. */
+        margin-top: 1.25rem;
       }
 
       #scene-container {
@@ -180,7 +212,7 @@
         display: none;
       }
     </style>
-    <script type="module" crossorigin src="./assets/index-CiQrHyYN.js"></script>
+    <script type="module" crossorigin src="./assets/index-BWSuoCuG.js"></script>
   <link rel="manifest" href="./manifest.webmanifest"></head>
   <body>
     <!-- Vite resolves the bare `core/…` specifier the compiled entry imports
