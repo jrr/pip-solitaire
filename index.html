@@ -185,6 +185,86 @@
         filter: drop-shadow(0 4px 10px rgba(0, 0, 0, 0.35));
       }
 
+      /* Drag-and-drop tech demo (issue #21): a stage holding a few pointer-
+         draggable cards and a row of drop zones they snap into. `position:
+         relative` makes the stage the origin for the cards' absolute left/top;
+         `touch-action: none` on the cards keeps a drag from also scrolling or
+         firing a browser gesture on touch. */
+      .drag-playfield {
+        position: relative;
+        width: min(86vw, 420px);
+        height: 300px;
+        border-radius: 12px;
+        border: 1px solid #22304a;
+        background: rgba(11, 18, 32, 0.35);
+      }
+
+      /* The drop zones, laid out along the bottom of the stage. */
+      .drop-row {
+        position: absolute;
+        left: 0;
+        right: 0;
+        bottom: 16px;
+        display: flex;
+        justify-content: center;
+        gap: 16px;
+      }
+
+      .drop-zone {
+        width: 88px;
+        height: 124px;
+        border: 2px dashed #334155;
+        border-radius: 10px;
+        transition: border-color 0.12s ease, background 0.12s ease;
+      }
+
+      /* Lit while a card's centre hovers over the zone, so the drop target is
+         legible before release. */
+      .drop-zone--over {
+        border-color: #22c55e;
+        background: rgba(34, 197, 94, 0.12);
+      }
+
+      /* A draggable card. It's moved by writing style.left/top; the transition
+         animates the snap-into-place on drop, and is switched off while dragging
+         (below) so the card tracks the pointer without lag.
+
+         `translateZ(0)` forces the card onto its own compositing layer. Without
+         it, WebKit (Safari) doesn't invalidate the old `drop-shadow` region as
+         the card is repositioned via left/top, so the shadow smears into a trail
+         of ghosts behind the moving card. On its own layer the whole card —
+         shadow included — is repainted each frame, and the trail disappears. */
+      .drag-card {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 80px;
+        touch-action: none;
+        -webkit-user-select: none;
+        user-select: none;
+        cursor: grab;
+        transform: translateZ(0);
+        transition: left 0.18s ease, top 0.18s ease;
+        filter: drop-shadow(0 4px 10px rgba(0, 0, 0, 0.4));
+      }
+
+      .drag-card .card-art {
+        width: 100%;
+      }
+
+      .drag-card.dragging {
+        cursor: grabbing;
+        z-index: 10;
+        transition: none;
+        filter: drop-shadow(0 12px 22px rgba(0, 0, 0, 0.5));
+      }
+
+      .drag-caption {
+        margin: 0;
+        font: 13px system-ui, sans-serif;
+        color: #94a3b8;
+      }
+
       .svg-demo-button {
         padding: 8px 14px;
         font: 14px system-ui, sans-serif;
@@ -242,7 +322,7 @@
         display: none;
       }
     </style>
-    <script type="module" crossorigin src="./assets/index-CTbx5pM1.js"></script>
+    <script type="module" crossorigin src="./assets/index-DFzMA0-m.js"></script>
   <link rel="manifest" href="./manifest.webmanifest"></head>
   <body>
     <!-- Vite resolves the bare `core/…` specifier the compiled entry imports
