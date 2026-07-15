@@ -166,6 +166,25 @@
         filter: drop-shadow(0 6px 14px rgba(0, 0, 0, 0.35));
       }
 
+      /* Card gallery scene (issue #36): the full 52-card deck, each a generated
+         inline <svg> from CardArt, laid out in a responsive grid. Cards size
+         themselves to the column via `width: 100%` and keep their 5:7 ratio from
+         the viewBox, so the grid stays legible as it reflows. */
+      .card-gallery {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(68px, 1fr));
+        gap: 0.6rem;
+        width: min(86vw, 620px);
+      }
+
+      .card-art {
+        display: block;
+        width: 100%;
+        height: auto;
+        border-radius: 8px;
+        filter: drop-shadow(0 4px 10px rgba(0, 0, 0, 0.35));
+      }
+
       .svg-demo-button {
         padding: 8px 14px;
         font: 14px system-ui, sans-serif;
