@@ -32,34 +32,12 @@ external makeOptions: (
 external registerSW: registerSWOptions => bool => promise<unit> = "registerSW"
 
 // --- Chrome components -------------------------------------------------------
-// Capitalized `<VersionBadge .../>` lowers to `Html.jsx(VersionBadge.make,
-// props)`: a component is just a `props => vnode` function, so each one declares
-// the record the transform fills from its JSX attributes. (The `@jsx.component`
-// sugar that auto-derives this record isn't usable here — it types `make` as the
-// runtime's `element`, i.e. a real DOM node, but on the diffing runtime a view
-// is a `vnode` description — so we spell the props record out, which is all that
-// sugar expands to anyway.) Layout and colors for these ids live in the
-// stylesheet in index.html; here we build only structure and state-dependent text.
-
-module VersionBadge = {
-  type props = {version: string, buildTime: string, offlineReady: bool}
-  let make = ({version, buildTime, offlineReady}) => {
-    let label = offlineReady
-      ? `v${version} · ${buildTime} · offline-ready`
-      : `v${version} · ${buildTime}`
-    <div id="version-badge"> {Html.string(label)} </div>
-  }
-}
-
-module UpdateButton = {
-  type props = {visible: bool, onReload: unit => unit}
-  // Hidden until the service worker reports a waiting update; clicking it
-  // activates the new worker and reloads to the fresh version.
-  let make = ({visible, onReload}) =>
-    <button id="update-button" hidden={!visible} onClick={_ => onReload()}>
-      {Html.string("Update available — reload")}
-    </button>
-}
+// The two capitalized components used by the view below — `<VersionBadge/>` and
+// `<UpdateButton/>` — live in their own files under `src/components/`. Each is a
+// `props => vnode` function; capitalized JSX lowers `<VersionBadge .../>` to
+// `Html.jsx(VersionBadge.make, props)`, filling the module's `props` record from
+// the attributes. See those files for why the record is spelled out by hand
+// instead of derived by the `@jsx.component` sugar.
 
 // --- The Elm loop ------------------------------------------------------------
 // The chrome is a pure model + update + view. Everything reactive here is
