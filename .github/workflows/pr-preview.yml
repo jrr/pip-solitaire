@@ -28,7 +28,7 @@ jobs:
     if: github.event.pull_request.head.repo.full_name == github.repository
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       # The build is only needed for deploy actions, not cleanup. On close the
       # action just removes the preview dir, so skip the build to save time.
