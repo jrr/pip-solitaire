@@ -60,6 +60,10 @@ type style
 @set external setTop: (style, string) => unit = "top"
 @set external setZIndex: (style, string) => unit = "zIndex"
 @set external setHeight: (style, string) => unit = "height"
+// Card/zone footprints scale to the stage (see `scale` below); the factor is
+// published to the CSS as custom properties so `.stacking-card`/`.drop-zone`
+// resize in step with the JS geometry.
+@send external setProperty: (style, string, string) => unit = "setProperty"
 
 // Toggling the drag/hover/buried marker classes goes through classList rather
 // than rewriting the whole `class` attribute each move.
@@ -95,22 +99,35 @@ and card = {
   draggable: ref<bool>,
 }
 
+// The design footprints, at scale 1. Everything the layout measures in pixels —
+// the fan step, the card box, the empty zone box — is one of these multiplied by
+// the stage's live `scale` (see `make`), so cards, zones and fans all shrink
+// together to fit however many piles a game declares onto a narrow screen.
+
 // How far each Fanned card steps off the one beneath it. The zones sit at the
 // top of the stage and the pile grows downward, so the fan steps *down*, the
 // newest card landing lowest and fully exposed.
 let fanStep = 26.
 
-// Card footprint in playfield pixels (width from CSS; height from the 5:7
-// viewBox). Used by the initial deal, which places cards before they're laid
-// out and so can't read their rects yet.
+// Card footprint in playfield pixels (width matches `.stacking-card` in the CSS;
+// height from the 5:7 viewBox). Used by the initial deal, which places cards
+// before they're laid out and so can't read their rects yet.
 let cardW = 80.
 let cardH = 112.
 
-// The empty drop zone's height (matches `.drop-zone` in the CSS). A pile's
-// cards centre vertically within this base box, and a fanned zone grows *below*
-// it so its outline and highlight wrap the whole pile rather than just the top
-// card's footprint (see reflow).
+// The empty drop zone's footprint (matches `.drop-zone` in the CSS). A pile's
+// cards centre vertically within the base-height box, and a fanned zone grows
+// *below* it so its outline and highlight wrap the whole pile rather than just
+// the top card's footprint (see reflow). The width tracks the card with a little
+// breathing room, so a squared pile sits framed inside its zone.
+let zoneWidth = 88.
 let zoneBaseHeight = 124.
+
+// Card widths are capped at the design size (`cardW`) and floored here, so a
+// game with many piles on a narrow phone still deals cards you can read and grab
+// rather than shrinking them away. Between the two, cards fill `0.8 × width` of
+// the stage split across the piles.
+let minScale = 0.5
 
 // Build a scene that plays `game`: its id/label name the scene in the picker,
 // and its piles and opening deal drive everything below.
@@ -142,6 +159,28 @@ let make = (game: Game.t): Scene.t => {
       dropRow->WebDom.appendChild(el)->ignore
       {el, stacking: pile.stacking, pile: ref([])}
     })
+
+    // How much the design footprints are shrunk to fit the stage. Cards fill
+    // `0.8 × width` split across the piles (`0.8 · width / n`), capped at the
+    // design size so a wide screen doesn't blow the cards up, and floored so a
+    // crowded, narrow one keeps them legible. Held in a ref because the geometry
+    // (reflow, the deal) reads it, and recomputed from the stage's live width the
+    // moment before the deal — the one point at which the stage is known laid out.
+    let numPiles = Array.length(game.piles)
+    let scale = ref(1.)
+    let applyScale = () => {
+      let width = boundingRect(playfield).width
+      if width > 0. && numPiles > 0 {
+        let target = 0.8 *. width /. Int.toFloat(numPiles) /. cardW
+        scale := Math.max(minScale, Math.min(1., target))
+      }
+      // Publish the factor to the CSS so `.stacking-card`/`.drop-zone` resize in
+      // step with the JS geometry below.
+      let s = style(playfield)
+      s->setProperty("--card-w", Float.toString(cardW *. scale.contents) ++ "px")
+      s->setProperty("--zone-w", Float.toString(zoneWidth *. scale.contents) ++ "px")
+      s->setProperty("--zone-h", Float.toString(zoneBaseHeight *. scale.contents) ++ "px")
+    }
 
     // The zone whose rect contains point (px, py), if any — the shared primitive
     // for both the live hover highlight and the snap-on-drop decision.
@@ -187,12 +226,12 @@ let make = (game: Game.t): Scene.t => {
       zone.pile.contents->Array.forEachWithIndex((c, i) => {
         let cr = boundingRect(c.wrapper)
         let baseX = zr.left +. zr.width /. 2. -. cr.width /. 2. -. pr.left
-        let baseY = zr.top +. zoneBaseHeight /. 2. -. cr.height /. 2. -. pr.top
+        let baseY = zr.top +. zoneBaseHeight *. scale.contents /. 2. -. cr.height /. 2. -. pr.top
         c.x := baseX
         c.y :=
           switch zone.stacking {
           | Game.Squared => baseY
-          | Game.Fanned => baseY +. Int.toFloat(i) *. fanStep
+          | Game.Fanned => baseY +. Int.toFloat(i) *. fanStep *. scale.contents
           }
         place(c)
         c.draggable := i == top
@@ -205,10 +244,12 @@ let make = (game: Game.t): Scene.t => {
       // base height. `zoneAt` hit-tests this same box, so the whole fanned pile
       // becomes the drop target too, not just the foundation.
       let fanExtent = switch zone.stacking {
-      | Game.Fanned if count > 1 => Int.toFloat(count - 1) *. fanStep
+      | Game.Fanned if count > 1 => Int.toFloat(count - 1) *. fanStep *. scale.contents
       | _ => 0.
       }
-      style(zone.el)->setHeight(Float.toString(zoneBaseHeight +. fanExtent) ++ "px")
+      style(zone.el)->setHeight(
+        Float.toString(zoneBaseHeight *. scale.contents +. fanExtent) ++ "px",
+      )
     }
 
     // Pop a card off its home pile (it's always the top card, so the survivors
@@ -368,8 +409,10 @@ let make = (game: Game.t): Scene.t => {
     let dealFree = () => {
       let pr = boundingRect(playfield)
       let n = Array.length(freeCards)
+      let cw = cardW *. scale.contents
+      let ch = cardH *. scale.contents
       // Nominal horizontal step, squeezed so a wide cluster still fits the stage.
-      let avail = pr.width -. cardW -. 32.
+      let avail = pr.width -. cw -. 32.
       let nominal = Int.toFloat(n - 1) *. 44.
       let spread = nominal < avail ? nominal : avail > 0. ? avail : 0.
       let stepX = n > 1 ? spread /. Int.toFloat(n - 1) : 0.
@@ -381,8 +424,8 @@ let make = (game: Game.t): Scene.t => {
         let jitterX = Int.toFloat(Int.mod(i * 37, 21)) -. 10.
         let jitterY = Int.toFloat(Int.mod(i * 53, 17)) -. 8.
         let stagger = Int.mod(i, 2) == 0 ? 16. : -16.
-        c.x := pr.width /. 2. -. spread /. 2. +. Int.toFloat(i) *. stepX -. cardW /. 2. +. jitterX
-        c.y := centerY -. cardH /. 2. +. stagger +. jitterY
+        c.x := pr.width /. 2. -. spread /. 2. +. Int.toFloat(i) *. stepX -. cw /. 2. +. jitterX
+        c.y := centerY -. ch /. 2. +. stagger +. jitterY
         place(c)
       })
     }
@@ -392,6 +435,9 @@ let make = (game: Game.t): Scene.t => {
     let dealPiles = () => pileCards->Array.forEach(((c, zone)) => joinZone(c, zone))
 
     let deal = () => {
+      // Size the cards to the now-laid-out stage first, so both deals below place
+      // and reflow cards at their final footprint.
+      applyScale()
       dealPiles()
       dealFree()
     }

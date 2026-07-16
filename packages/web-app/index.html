@@ -221,9 +221,15 @@
         justify-content: space-between;
       }
 
+      /* Card and zone footprints are driven by custom properties set on the
+         playfield (see TableScene.res): the scene measures its live width and
+         the game's pile count and shrinks the cards to fit, so however many
+         piles a game declares still spread across the row without spilling off
+         a narrow screen. The values here are the unscaled design defaults, used
+         until the scene sizes itself. */
       .drop-zone {
-        width: 88px;
-        height: 124px;
+        width: var(--zone-w, 88px);
+        height: var(--zone-h, 124px);
         border: 2px dashed #334155;
         border-radius: 10px;
         transition: border-color 0.12s ease, background 0.12s ease;
@@ -253,7 +259,7 @@
         position: absolute;
         top: 0;
         left: 0;
-        width: 80px;
+        width: var(--card-w, 80px);
         touch-action: none;
         -webkit-user-select: none;
         user-select: none;
