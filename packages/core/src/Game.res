@@ -14,6 +14,8 @@
 //   - `loose` — the opening deal: specific cards resting free on the table.
 //     A pile can also open holding cards (`pile.cards`), so a non-free game can
 //     start with everything already stacked.
+//   - `caption` — optional prose the view shows beneath the board, describing
+//     how this particular game plays. `None` means no caption.
 //
 // The view (`TableScene`) reads all of this and lays the board out on its own
 // terms — "piles hang from the top of the stage and grow downward".
@@ -38,6 +40,7 @@ type t = {
   piles: array<pile>,
   free: bool,
   loose: array<card>,
+  caption: option<string>, // prose shown beneath the board; `None` for none
 }
 
 // The card-stacking demo, now as data: two empty piles (one squared, one
@@ -48,6 +51,7 @@ let stacking = {
   piles: [{stacking: Squared, cards: []}, {stacking: Fanned, cards: []}],
   free: true,
   loose: [{suit: Spades, rank: Ace}, {suit: Hearts, rank: King}, {suit: Diamonds, rank: Seven}],
+  caption: Some("Drag the cards onto a slot to pile them up, or drop them loose on the table."),
 }
 
 // A second game with different rules, proving the view interprets the model
@@ -65,6 +69,7 @@ let fourFans = {
   ],
   free: false,
   loose: [],
+  caption: Some("Drag the cards between the slots — they can only rest in a pile."),
 }
 
 // Every supported game, in picker order.

@@ -379,14 +379,16 @@ let make = (game: Game.t): Scene.t => {
     // the loose cards need the stage's live rects, so both wait on this.
     boundingRect(playfield).width > 0. ? deal() : requestAnimationFrame(deal)->ignore
 
-    let caption = WebDom.createElement("p")
-    caption->WebDom.setAttribute("class", "stacking-caption")
-    caption->WebDom.setTextContent(
-      game.free
-        ? "Drag the cards onto a slot to pile them up, or drop them loose on the table."
-        : "Drag the cards between the slots — they can only rest in a pile.",
-    )
-    container->WebDom.appendChild(caption)->ignore
+    // The caption is the game's own prose (`Game.caption`); a game without one
+    // simply shows no caption.
+    switch game.caption {
+    | Some(text) =>
+      let caption = WebDom.createElement("p")
+      caption->WebDom.setAttribute("class", "stacking-caption")
+      caption->WebDom.setTextContent(text)
+      container->WebDom.appendChild(caption)->ignore
+    | None => ()
+    }
 
     // The switcher clears the container on scene change, dropping the playfield
     // and every listener with it — nothing extra to tear down.
