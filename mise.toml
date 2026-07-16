@@ -24,6 +24,17 @@ description = "Build and run the CLI"
 depends = ["build"]
 run = "pnpm run start"
 
+# Run the CLI with arguments. Everything after `--` is forwarded to the built
+# script, so this exposes the CLI's whole surface through the task interface
+# without granting raw `node` access:
+#
+#   mise run cli -- list            # list the available games
+#   mise run cli -- show stacking   # draw a game's opening layout
+[tasks.cli]
+description = "Run the CLI with args: `mise run cli -- show <game>`"
+depends = ["build"]
+run = "node packages/cli/dist/cli.js"
+
 # Vite dev/build/preview for the web-app. Each `depends = ["build"]` so ReScript
 # compiles the .res.mjs sources first, then Vite operates on them.
 #   mise run dev      # Vite dev server with HMR
