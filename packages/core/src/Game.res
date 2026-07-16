@@ -9,9 +9,11 @@
 //     card lands on the first). The model says how many there are and how each
 //     stacks; where they sit on screen is the view's business.
 //   - `free`  — may a card be dropped loose on the table, outside any pile?
-//     Only `true` is supported for now (#62 doesn't ask for `false` yet), but
-//     it's modelled so the rule lives with the game, not in the view.
+//     When `false`, a card released off a pile snaps back to where it came from,
+//     so cards only ever rest in piles (#63).
 //   - `loose` — the opening deal: specific cards resting free on the table.
+//     A pile can also open holding cards (`pile.cards`), so a non-free game can
+//     start with everything already stacked.
 //
 // The view (`TableScene`) reads all of this and lays the board out on its own
 // terms — "piles hang from the top of the stage and grow downward".
@@ -25,9 +27,10 @@ type stacking =
   | Squared
   | Fanned
 
-// One drop zone. Today a pile is just its stacking behaviour; capacity and
-// ordering rules can join it later without touching the view.
-type pile = {stacking: stacking}
+// One drop zone: its stacking behaviour plus the cards it opens holding
+// (bottom-first, so the last is the top of the pile). Capacity and ordering
+// rules can join it later without touching the view.
+type pile = {stacking: stacking, cards: array<card>}
 
 type t = {
   id: string, // stable scene id (also the picker / localStorage key)
@@ -37,31 +40,31 @@ type t = {
   loose: array<card>,
 }
 
-// The card-stacking demo, now as data: two piles (one squared, one fanned),
-// free drops allowed, opening with three loose cards.
+// The card-stacking demo, now as data: two empty piles (one squared, one
+// fanned), free drops allowed, opening with three loose cards.
 let stacking = {
   id: "stacking",
   name: "Stacking",
-  piles: [{stacking: Squared}, {stacking: Fanned}],
+  piles: [{stacking: Squared, cards: []}, {stacking: Fanned, cards: []}],
   free: true,
   loose: [{suit: Spades, rank: Ace}, {suit: Hearts, rank: King}, {suit: Diamonds, rank: Seven}],
 }
 
 // A second game with different rules, proving the view interprets the model
-// rather than baking in the demo: four fanned piles, free drops allowed, opening
-// with a larger loose spread.
+// rather than baking in the demo: four fanned piles, drops confined to the piles
+// (`free: false`, #63), opening with a couple of cards already dealt into each
+// pile and nothing loose on the table.
 let fourFans = {
   id: "four-fans",
   name: "Four Fans",
-  piles: [{stacking: Fanned}, {stacking: Fanned}, {stacking: Fanned}, {stacking: Fanned}],
-  free: true,
-  loose: [
-    {suit: Clubs, rank: Two},
-    {suit: Diamonds, rank: Five},
-    {suit: Hearts, rank: Nine},
-    {suit: Spades, rank: Jack},
-    {suit: Clubs, rank: Queen},
+  piles: [
+    {stacking: Fanned, cards: [{suit: Clubs, rank: Two}, {suit: Diamonds, rank: Five}]},
+    {stacking: Fanned, cards: [{suit: Hearts, rank: Nine}, {suit: Spades, rank: Jack}]},
+    {stacking: Fanned, cards: [{suit: Clubs, rank: Queen}, {suit: Hearts, rank: Three}]},
+    {stacking: Fanned, cards: [{suit: Spades, rank: Seven}, {suit: Diamonds, rank: Ten}]},
   ],
+  free: false,
+  loose: [],
 }
 
 // Every supported game, in picker order.

@@ -17,14 +17,17 @@ describe("Game", () => {
     ])
   })
 
-  test("four-fans is four fanned piles, all free", () => {
+  test("four-fans is four fanned piles, not free, opening with cards in each pile", () => {
     expect(Game.fourFans.piles->Array.map(p => p.stacking))->toEqual([
       Game.Fanned,
       Game.Fanned,
       Game.Fanned,
       Game.Fanned,
     ])
-    expect(Game.fourFans.free)->toBe(true)
+    expect(Game.fourFans.free)->toBe(false)
+    // Every pile opens holding a few cards, and nothing is dealt loose.
+    expect(Game.fourFans.piles->Array.every(p => Array.length(p.cards) > 0))->toBe(true)
+    expect(Game.fourFans.loose)->toEqual([])
   })
 
   test("every game is listed with a stable id and a non-empty name", () => {

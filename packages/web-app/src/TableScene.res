@@ -294,13 +294,17 @@ let make = (game: Game.t): Scene.t => {
           grab := None
           classList(wrapper)->removeClass("dragging")
           // Snap onto the zone the card's centre was released over, if any.
-          // A miss leaves the card loose where it was dropped — free placement,
-          // which every game so far allows (`game.free` is `true`; `false` isn't
-          // supported yet, #62).
+          // On a miss the game's `free` rule decides: a free game leaves the card
+          // loose where it was dropped, while a non-free game (#63) snaps it back
+          // to the pile it came from so cards only ever rest in piles.
           let cr = boundingRect(wrapper)
           switch zoneAt(cr.left +. cr.width /. 2., cr.top +. cr.height /. 2.) {
           | Some(zone) => joinZone(self, zone)
-          | None => leaveHome(self)
+          | None =>
+            switch (game.free, self.home.contents) {
+            | (false, Some(zone)) => reflow(zone)
+            | _ => leaveHome(self)
+            }
           }
           clearHover()
         | None => ()
@@ -313,6 +317,20 @@ let make = (game: Game.t): Scene.t => {
 
       self
     }
+
+    // The cards a pile opens holding (#63), built now so they exist as DOM
+    // before the deal and paired with their target zone (model order matches
+    // `zones`); they're settled into that zone once the stage is laid out
+    // (below). Created before the loose cards so a later loose card layers on top.
+    let pileCards =
+      game.piles
+      ->Array.mapWithIndex((pile: Game.pile, i) =>
+        switch zones->Array.get(i) {
+        | Some(zone) => pile.cards->Array.map(card => (makeCard(card), zone))
+        | None => []
+        }
+      )
+      ->Array.flat
 
     let freeCards = game.loose->Array.map(makeCard)
 
@@ -346,15 +364,27 @@ let make = (game: Game.t): Scene.t => {
       })
     }
 
+    // Settle each opening pile card into its zone: `joinZone` stacks and reflows
+    // it, so the pile ends laid out exactly as an interactively built one would.
+    let dealPiles = () => pileCards->Array.forEach(((c, zone)) => joinZone(c, zone))
+
+    let deal = () => {
+      dealPiles()
+      dealFree()
+    }
+
     // Deal now if the stage is already laid out (a later scene switch); otherwise
     // on the next frame, before the first paint, once the detached-at-mount stage
-    // has been inserted and sized (the first page load).
-    boundingRect(playfield).width > 0. ? dealFree() : requestAnimationFrame(dealFree)->ignore
+    // has been inserted and sized (the first page load). Both the pile cards and
+    // the loose cards need the stage's live rects, so both wait on this.
+    boundingRect(playfield).width > 0. ? deal() : requestAnimationFrame(deal)->ignore
 
     let caption = WebDom.createElement("p")
     caption->WebDom.setAttribute("class", "stacking-caption")
     caption->WebDom.setTextContent(
-      "Drag the cards onto a slot to pile them up, or drop them loose on the table.",
+      game.free
+        ? "Drag the cards onto a slot to pile them up, or drop them loose on the table."
+        : "Drag the cards between the slots — they can only rest in a pile.",
     )
     container->WebDom.appendChild(caption)->ignore
 
