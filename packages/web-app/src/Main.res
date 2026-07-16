@@ -85,7 +85,7 @@ let switcher = SceneSwitcher.render([
   SpinnerScene.make(),
   SvgScene.make(),
   GalleryScene.make(),
-  DragScene.make(),
+  StackingScene.make(),
 ])
 
 let view = (model, dispatch) => <>

@@ -151,7 +151,7 @@
       }
 
       /* Fills the scene band (`flex: 1`) and centers its scene within it, so a
-         scene that wants to grow — the drag playfield — can stretch into the
+         scene that wants to grow — the stacking playfield — can stretch into the
          whole area rather than shrink-wrapping to a fixed box. Scenes that don't
          grow stay centered as before. */
       #scene-container {
@@ -190,17 +190,18 @@
         filter: drop-shadow(0 4px 10px rgba(0, 0, 0, 0.35));
       }
 
-      /* Drag-and-drop tech demo (issue #21): a stage holding a few pointer-
-         draggable cards and a row of drop zones they snap into. `position:
-         relative` makes the stage the origin for the cards' absolute left/top;
-         `touch-action: none` on the cards keeps a drag from also scrolling or
-         firing a browser gesture on touch.
+      /* Card-stacking tech demo (grown out of the drag-and-drop spike, issue
+         #21): a stage holding a few pointer-draggable cards and a row of drop
+         zones they snap into and pile up in. `position: relative` makes the
+         stage the origin for the cards' absolute left/top; `touch-action: none`
+         on the cards keeps a drag from also scrolling or firing a browser
+         gesture on touch.
 
          No box of its own — it grows to fill the scene band (`flex: 1`, full
          width) rather than sitting in a fixed, bordered rectangle, so the cards
          and zones have the whole area to move in. A minimum height keeps it
          playable when the viewport is short. */
-      .drag-playfield {
+      .stacking-playfield {
         position: relative;
         flex: 1;
         width: 100%;
@@ -244,10 +245,10 @@
          of ghosts behind the moving card. On its own layer the whole card —
          shadow included — is repainted each frame, and the trail disappears.
 
-         The stacking order (`z-index`) is set imperatively in DragScene.res: a
-         monotonic counter bumped on create/grab/drop, so the most-recently
+         The stacking order (`z-index`) is set imperatively in StackingScene.res:
+         a monotonic counter bumped on create/grab/drop, so the most-recently
          touched card layers on top of everything beneath it. */
-      .drag-card {
+      .stacking-card {
         position: absolute;
         top: 0;
         left: 0;
@@ -261,11 +262,11 @@
         filter: drop-shadow(0 4px 10px rgba(0, 0, 0, 0.4));
       }
 
-      .drag-card .card-art {
+      .stacking-card .card-art {
         width: 100%;
       }
 
-      .drag-card.dragging {
+      .stacking-card.dragging {
         cursor: grabbing;
         transition: none;
         filter: drop-shadow(0 12px 22px rgba(0, 0, 0, 0.5));
@@ -273,11 +274,11 @@
 
       /* A buried card (any pile card but the top one) can't be picked up yet, so
          it doesn't offer the grab affordance. */
-      .drag-card--buried {
+      .stacking-card--buried {
         cursor: default;
       }
 
-      .drag-caption {
+      .stacking-caption {
         margin: 0;
         font: 13px system-ui, sans-serif;
         color: #94a3b8;
