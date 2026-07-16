@@ -10,6 +10,7 @@
     "test": "node dist/cli.js"
   },
   "dependencies": {
+    "@rescript/runtime": "^12.0.0",
     "core": "workspace:*"
   },
   "devDependencies": {
