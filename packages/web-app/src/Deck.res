@@ -1,15 +1,18 @@
-// A small, throwaway card vocabulary local to the web-app demo. This is *not*
-// the roadmap's real card model — that one is shared, unit-tested, and lives in
-// `core` as its own game-track item. This exists only to feed the rudimentary
-// gallery (#36): enough of a deck to render every rank/suit combination once.
+// The presentation-side card vocabulary for the web-app demo: the *identity* of
+// a card (suit, rank, their pairing) plus the display helpers — colour, pip
+// glyph, labels — that turn it into something on screen.
 //
-// Deliberately minimal: four suits, thirteen ranks, the 52-card product, and a
-// handful of display helpers (color, symbol glyph, label). No game rules, no
-// ordering semantics beyond the enumeration order used to lay the gallery out.
+// The identity types are not owned here: they're re-exported from `Card` in
+// `core`, so the board model (`Game`) and the view agree on what a card is
+// without duplicating the enums. The `= Card.x = | ...` form keeps the
+// constructors (`Spades`, `Ace`, …) in scope here while making these the *same*
+// types as core's — a `Card.card` is a `Deck.card`. What stays local is only
+// presentation: the 52-card product below and the display helpers, none of
+// which core needs.
 
-type suit = Spades | Hearts | Diamonds | Clubs
+type suit = Card.suit = Spades | Hearts | Diamonds | Clubs
 
-type rank =
+type rank = Card.rank =
   | Ace
   | Two
   | Three
@@ -24,7 +27,7 @@ type rank =
   | Queen
   | King
 
-type card = {suit: suit, rank: rank}
+type card = Card.card = {suit: suit, rank: rank}
 
 // Enumeration order: suits grouped, ranks ascending within each. `allCards`
 // below is the Cartesian product in this order, which is also the order the

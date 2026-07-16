@@ -80,13 +80,15 @@ let update = (msg, model) =>
 // two separate real DOM nodes; the view splices each in with `Html.node` and
 // never re-renders them. The drop-down sits above the scene band; the band wraps
 // only the scene. See SceneSwitcher / Scene.
-let switcher = SceneSwitcher.render([
-  HomeScene.make(),
-  SpinnerScene.make(),
-  SvgScene.make(),
-  GalleryScene.make(),
-  StackingScene.make(),
-])
+// The scene list ends with one scene per *modelled game* (#62): `Game.all` is
+// the source of truth, and `TableScene.make` interprets each game's rules, so a
+// new game is a new value in core — no new scene code, no edit here.
+let switcher = SceneSwitcher.render(
+  Array.concat(
+    [HomeScene.make(), SpinnerScene.make(), SvgScene.make(), GalleryScene.make()],
+    Game.all->Array.map(TableScene.make),
+  ),
+)
 
 let view = (model, dispatch) => <>
   <main id="app">

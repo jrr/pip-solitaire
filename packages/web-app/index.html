@@ -208,9 +208,10 @@
         min-height: 300px;
       }
 
-      /* The two drop zones, pinned to the top of the stage and hugging its left
-         and right edges (`space-between`): the left squares cards up, the right
-         fans them out. Piles grow downward from here. */
+      /* The drop zones, pinned to the top of the stage and spread across it
+         (`space-between`): two hug the left and right edges, four spread evenly —
+         however many the game declares (see TableScene). Piles grow downward
+         from here. */
       .drop-row {
         position: absolute;
         left: 16px;
@@ -245,7 +246,7 @@
          of ghosts behind the moving card. On its own layer the whole card —
          shadow included — is repainted each frame, and the trail disappears.
 
-         The stacking order (`z-index`) is set imperatively in StackingScene.res:
+         The stacking order (`z-index`) is set imperatively in TableScene.res:
          a monotonic counter bumped on create/grab/drop, so the most-recently
          touched card layers on top of everything beneath it. */
       .stacking-card {

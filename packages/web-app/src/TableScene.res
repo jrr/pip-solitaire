@@ -1,8 +1,13 @@
-// The card-stacking tech demo (grown out of the drag-and-drop spike #21): a
-// handful of free cards you can drag with a pointer, and two zones they snap into
-// and pile up in — one *squaring* the pile up, one *fanning* it out (#56). It's a
-// throwaway demo to exercise pointer-based dragging and pile layout in isolation —
-// no game logic, no card model beyond the local `Deck` the gallery already uses.
+// A card table that *interprets a modelled game* (`Game.t` from core) rather
+// than hard-coding one board. Grown out of the drag-and-drop spike (#21) and the
+// stacking demo (#56), and now driven by data (#62): the piles, their stacking
+// behaviours and the opening deal all come from the game, so a new game is a new
+// value in `Game`, not new code here.
+//
+// The view holds its own presentation assumptions — the piles hang from the top
+// of the stage as a row and grow downward; the loose cards are dealt as a sloppy
+// cluster below them — and applies them to whatever the model describes, be it
+// two piles or four.
 //
 // Dragging is transient *view* state (where a finger is right now), so unlike
 // the other scenes this one is built with plain imperative DOM bindings rather
@@ -61,26 +66,6 @@ type tokenList
 @send external addClass: (tokenList, string) => unit = "add"
 @send external removeClass: (tokenList, string) => unit = "remove"
 
-// The three cards on the table. Any `Deck.card` would do; a mixed handful just
-// reads better than three of a kind.
-let demoCards: array<Deck.card> = [
-  {suit: Deck.Spades, rank: Deck.Ace},
-  {suit: Deck.Hearts, rank: Deck.King},
-  {suit: Deck.Diamonds, rank: Deck.Seven},
-]
-
-// --- Stacking behaviours (#56) -----------------------------------------------
-// What happens when you drop a second card onto a zone that already holds one?
-// The demo names and contrasts the two piling behaviours you see in a real
-// card game:
-//   - Squared: the newcomer lands squarely on top of the last, covering it.
-//     The pile keeps a single card's footprint — a squared-up draw/waste pile.
-//   - Fanned: each card steps off the one beneath so every card keeps a visible
-//     edge, the staggered look of an in-progress solitaire tableau.
-type stacking =
-  | Squared
-  | Fanned
-
 // A zone and a card reference each other — the zone owns the ordered pile of
 // cards resting in it, and each card knows which zone is its `home` — so the
 // two types are mutually recursive.
@@ -90,10 +75,11 @@ type stacking =
 // top card is draggable (below), a pile behaves like a stack — cards are only
 // ever pushed onto or popped off the top — so the slots of the survivors stay
 // contiguous and the Fanned offsets reflow (and reset) instead of a raw count
-// that only ever grew.
+// that only ever grew. The `stacking` behaviour comes straight from the game's
+// pile (`Game.stacking`).
 type rec dropZone = {
   el: WebDom.element,
-  stacking: stacking,
+  stacking: Game.stacking,
   pile: ref<array<card>>,
 }
 // A draggable card: its element, its live playfield-local position, the zone it
@@ -118,9 +104,11 @@ let fanStep = 26.
 let cardW = 80.
 let cardH = 112.
 
-let make = (): Scene.t => {
-  id: "stacking",
-  label: "Stacking",
+// Build a scene that plays `game`: its id/label name the scene in the picker,
+// and its piles and opening deal drive everything below.
+let make = (game: Game.t): Scene.t => {
+  id: game.id,
+  label: game.name,
   mount: container => {
     // The stage everything is positioned within; `position: relative` (in CSS)
     // makes it the origin for the cards' absolute left/top.
@@ -131,19 +119,20 @@ let make = (): Scene.t => {
     // A row of drop zones pinned to the top of the stage. They lay themselves
     // out with flexbox, so their live rects (read at drop time) reflect wherever
     // the browser actually placed them — no positions cached up front to go
-    // stale on resize.
+    // stale on resize. The row spaces however many zones the game declares.
     let dropRow = WebDom.createElement("div")
     dropRow->WebDom.setAttribute("class", "drop-row")
     playfield->WebDom.appendChild(dropRow)->ignore
 
-    // Two zones hugging the left and right edges of the stage (the `.drop-row`
-    // flexbox pins them there with `space-between`). The left one squares its
-    // cards up; the right one fans them out.
-    let zones = [Squared, Fanned]->Array.map(stacking => {
+    // One zone per pile in the game, in model order, each carrying its declared
+    // stacking behaviour. The `.drop-row` flexbox (`space-between`) spreads them
+    // across the top of the stage, so two piles hug the edges and four spread
+    // evenly — the view never counts them.
+    let zones = game.piles->Array.map((pile: Game.pile) => {
       let el = WebDom.createElement("div")
       el->WebDom.setAttribute("class", "drop-zone")
       dropRow->WebDom.appendChild(el)->ignore
-      {el, stacking, pile: ref([])}
+      {el, stacking: pile.stacking, pile: ref([])}
     })
 
     // The zone whose rect contains point (px, py), if any — the shared primitive
@@ -188,8 +177,8 @@ let make = (): Scene.t => {
         c.x := baseX
         c.y :=
           switch zone.stacking {
-          | Squared => baseY
-          | Fanned => baseY +. Int.toFloat(i) *. fanStep
+          | Game.Squared => baseY
+          | Game.Fanned => baseY +. Int.toFloat(i) *. fanStep
           }
         place(c)
         c.draggable := i == top
@@ -304,9 +293,10 @@ let make = (): Scene.t => {
           wrapper->releasePointerCapture(pointerId(ev))
           grab := None
           classList(wrapper)->removeClass("dragging")
-          // Snap onto the zone the card's centre was released over, if any;
-          // otherwise it leaves any pile and stays where it was dropped (free
-          // placement).
+          // Snap onto the zone the card's centre was released over, if any.
+          // A miss leaves the card loose where it was dropped — free placement,
+          // which every game so far allows (`game.free` is `true`; `false` isn't
+          // supported yet, #62).
           let cr = boundingRect(wrapper)
           switch zoneAt(cr.left +. cr.width /. 2., cr.top +. cr.height /. 2.) {
           | Some(zone) => joinZone(self, zone)
@@ -324,7 +314,7 @@ let make = (): Scene.t => {
       self
     }
 
-    let freeCards = demoCards->Array.map(makeCard)
+    let freeCards = game.loose->Array.map(makeCard)
 
     // Deal the free cards as a loose, staggered cluster in the lower-middle of
     // the stage — below the zones, so they're dragged *up* into the piles.
@@ -364,7 +354,7 @@ let make = (): Scene.t => {
     let caption = WebDom.createElement("p")
     caption->WebDom.setAttribute("class", "stacking-caption")
     caption->WebDom.setTextContent(
-      "Drag the cards. Drop them on the left slot to square them up, or the right to fan them out.",
+      "Drag the cards onto a slot to pile them up, or drop them loose on the table.",
     )
     container->WebDom.appendChild(caption)->ignore
 
