@@ -1,0 +1,333 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Sleight</title>
+
+    <!-- PWA. vite-plugin-pwa injects the <link rel="manifest"> at build time.
+         The tags below are the bits the manifest can't cover: theme color for
+         the browser/OS chrome, and iOS's own install metadata (iOS ignores much
+         of the manifest and never fires an install prompt). Icon/href paths are
+         relative so they inherit the GitHub Pages project subpath. -->
+    <meta name="theme-color" content="#166534" />
+    <!-- Prefer the scalable SVG (generated from the real card art); the PNG is
+         the fallback for browsers that don't take an SVG favicon. -->
+    <link rel="icon" type="image/svg+xml" href="./icon.svg" />
+    <link rel="icon" type="image/png" href="./icon-192.png" />
+    <link rel="apple-touch-icon" href="./apple-touch-icon.png" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Sleight" />
+
+    <!-- App styling. Kept as one inline stylesheet (no framework, no build step)
+         to match the minimal DOM approach in src/Main.res. The key usability fix
+         is padding the page by the `env(safe-area-inset-*)` values: with the
+         translucent iOS status bar above, content would otherwise render *under*
+         the clock/notch and the home indicator. Colors track the PWA manifest
+         (background #0b1220, accent green #166534) so the web page, the OS chrome
+         and the installed splash all look like one app. -->
+    <style>
+      :root {
+        color-scheme: dark;
+      }
+
+      *,
+      *::before,
+      *::after {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        margin: 0;
+      }
+
+      body {
+        min-height: 100dvh;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        text-align: center;
+        background: radial-gradient(130% 120% at 50% 0%, #13233b 0%, #0b1220 60%);
+        color: #e2e8f0;
+        font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+        -webkit-font-smoothing: antialiased;
+        /* Clear the notch/status bar and home indicator on every edge. */
+        padding: calc(env(safe-area-inset-top) + 2rem)
+          calc(env(safe-area-inset-right) + 1.5rem)
+          calc(env(safe-area-inset-bottom) + 2rem)
+          calc(env(safe-area-inset-left) + 1.5rem);
+      }
+
+      /* The Elm loop's mount root (src/Main.res). `display: contents` removes it
+         from layout so #app stays a direct flex child of <body>, exactly as when
+         the chrome was built imperatively. */
+      #app-root {
+        display: contents;
+      }
+
+      /* #app fills the column so the header can sit at the top while the scene
+         stays centered in the space beneath it. Removing body's
+         `justify-content: center` (above) starts this stack at the top; the
+         header then hugs the top the way #version-badge hugs the bottom. */
+      #app {
+        flex: 1;
+        width: 100%;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+      }
+
+      /* Grows to fill the space under the picker and centers the scene band in
+         it. Full-bleed: negative horizontal margins cancel the body's horizontal
+         padding (safe-area inset + 1.5rem) so the shaded band spans the page edge
+         to edge, rather than floating in a padded column (issue #59). */
+      #scene-area {
+        flex: 1;
+        align-self: stretch;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin-inline: calc(-1 * (env(safe-area-inset-left) + 1.5rem)) calc(
+            -1 * (env(safe-area-inset-right) + 1.5rem)
+          );
+      }
+
+      /* The shaded band behind the scene. A conventional full-width section:
+         edge-to-edge shading, horizontal rules top and bottom (no left/right
+         borders), and no corner radius (issue #59). */
+      #scene-box {
+        width: 100%;
+        padding: 1.5rem;
+        border-top: 1px solid #22304a;
+        border-bottom: 1px solid #22304a;
+        background: rgba(19, 35, 59, 0.35);
+      }
+
+      #greeting {
+        margin: 0;
+        font-size: clamp(1.7rem, 7vw, 2.6rem);
+        font-weight: 700;
+        line-height: 1.15;
+        letter-spacing: -0.02em;
+        background: linear-gradient(180deg, #f0fdf4 0%, #86efac 100%);
+        -webkit-background-clip: text;
+        background-clip: text;
+        color: transparent;
+      }
+
+      #tagline {
+        margin: 0;
+        max-width: 22rem;
+        font-size: 0.95rem;
+        line-height: 1.5;
+        color: #94a3b8;
+      }
+
+      /* Scene switcher (issue #34): a drop-down selecting which scene is mounted,
+         and one shared container that hosts the active scene. The two are placed
+         separately by the view — the drop-down sits above the scene band; the
+         band wraps only the container. */
+      #scene-picker {
+        margin-top: 1.25rem;
+        padding: 8px 14px;
+        font: 14px system-ui, sans-serif;
+        color: #f8fafc;
+        background: #1e293b;
+        border: 1px solid #334155;
+        border-radius: 8px;
+        cursor: pointer;
+      }
+
+      #scene-container {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 0.75rem;
+      }
+
+      /* SVG demo scene (issue #35): the generated card and its control. The
+         card is a real inline <svg> rendered as vnodes by the Html runtime. */
+      .svg-card {
+        display: block;
+        filter: drop-shadow(0 6px 14px rgba(0, 0, 0, 0.35));
+      }
+
+      /* Card gallery scene (issue #36): the full 52-card deck, each a generated
+         inline <svg> from CardArt, laid out in a responsive grid. Cards size
+         themselves to the column via `width: 100%` and keep their 5:7 ratio from
+         the viewBox, so the grid stays legible as it reflows. */
+      .card-gallery {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(68px, 1fr));
+        gap: 0.6rem;
+        width: min(86vw, 620px);
+      }
+
+      .card-art {
+        display: block;
+        width: 100%;
+        height: auto;
+        border-radius: 8px;
+        filter: drop-shadow(0 4px 10px rgba(0, 0, 0, 0.35));
+      }
+
+      /* Drag-and-drop tech demo (issue #21): a stage holding a few pointer-
+         draggable cards and a row of drop zones they snap into. `position:
+         relative` makes the stage the origin for the cards' absolute left/top;
+         `touch-action: none` on the cards keeps a drag from also scrolling or
+         firing a browser gesture on touch. */
+      .drag-playfield {
+        position: relative;
+        width: min(86vw, 420px);
+        height: 300px;
+        border-radius: 12px;
+        border: 1px solid #22304a;
+        background: rgba(11, 18, 32, 0.35);
+      }
+
+      /* The two drop zones, pinned to the top of the stage and hugging its left
+         and right edges (`space-between`): the left squares cards up, the right
+         fans them out. Piles grow downward from here. */
+      .drop-row {
+        position: absolute;
+        left: 16px;
+        right: 16px;
+        top: 16px;
+        display: flex;
+        justify-content: space-between;
+      }
+
+      .drop-zone {
+        width: 88px;
+        height: 124px;
+        border: 2px dashed #334155;
+        border-radius: 10px;
+        transition: border-color 0.12s ease, background 0.12s ease;
+      }
+
+      /* Lit while a card's centre hovers over the zone, so the drop target is
+         legible before release. */
+      .drop-zone--over {
+        border-color: #22c55e;
+        background: rgba(34, 197, 94, 0.12);
+      }
+
+      /* A draggable card. It's moved by writing style.left/top; the transition
+         animates the snap-into-place on drop, and is switched off while dragging
+         (below) so the card tracks the pointer without lag.
+
+         `translateZ(0)` forces the card onto its own compositing layer. Without
+         it, WebKit (Safari) doesn't invalidate the old `drop-shadow` region as
+         the card is repositioned via left/top, so the shadow smears into a trail
+         of ghosts behind the moving card. On its own layer the whole card —
+         shadow included — is repainted each frame, and the trail disappears.
+
+         The stacking order (`z-index`) is set imperatively in DragScene.res: a
+         monotonic counter bumped on create/grab/drop, so the most-recently
+         touched card layers on top of everything beneath it. */
+      .drag-card {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 80px;
+        touch-action: none;
+        -webkit-user-select: none;
+        user-select: none;
+        cursor: grab;
+        transform: translateZ(0);
+        transition: left 0.18s ease, top 0.18s ease;
+        filter: drop-shadow(0 4px 10px rgba(0, 0, 0, 0.4));
+      }
+
+      .drag-card .card-art {
+        width: 100%;
+      }
+
+      .drag-card.dragging {
+        cursor: grabbing;
+        transition: none;
+        filter: drop-shadow(0 12px 22px rgba(0, 0, 0, 0.5));
+      }
+
+      /* A buried card (any pile card but the top one) can't be picked up yet, so
+         it doesn't offer the grab affordance. */
+      .drag-card--buried {
+        cursor: default;
+      }
+
+      .drag-caption {
+        margin: 0;
+        font: 13px system-ui, sans-serif;
+        color: #94a3b8;
+      }
+
+      .svg-demo-button {
+        padding: 8px 14px;
+        font: 14px system-ui, sans-serif;
+        color: #f8fafc;
+        background: #166534;
+        border: none;
+        border-radius: 8px;
+        cursor: pointer;
+      }
+
+      #flip-button {
+        padding: 8px 14px;
+        font: 14px system-ui, sans-serif;
+        color: #f8fafc;
+        background: #166534;
+        border: none;
+        border-radius: 8px;
+        cursor: pointer;
+      }
+
+      #board-readout {
+        margin: 0;
+        min-height: 1.4em;
+        font: 13px ui-monospace, "SF Mono", Menlo, monospace;
+        color: #94a3b8;
+      }
+
+      #version-badge {
+        position: fixed;
+        right: 0;
+        bottom: env(safe-area-inset-bottom);
+        padding: 2px 6px;
+        font: 11px/1.4 system-ui, sans-serif;
+        color: #94a3b8;
+        background: #0b1220;
+        opacity: 0.75;
+        border-top-left-radius: 6px;
+      }
+
+      #update-button {
+        position: fixed;
+        top: calc(env(safe-area-inset-top) + 8px);
+        right: calc(env(safe-area-inset-right) + 8px);
+        padding: 8px 12px;
+        font: 13px system-ui, sans-serif;
+        color: #f8fafc;
+        background: #166534;
+        border: none;
+        border-radius: 8px;
+        cursor: pointer;
+        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
+      }
+
+      #update-button[hidden] {
+        display: none;
+      }
+    </style>
+    <script type="module" crossorigin src="./assets/index-BYaqLYz_.js"></script>
+  <link rel="manifest" href="./manifest.webmanifest"></head>
+  <body>
+    <!-- Vite resolves the bare `core/…` specifier the compiled entry imports
+         (via the workspace symlink) and bundles the module graph, so no import
+         map is needed. The entry also registers the service worker through
+         `virtual:pwa-register` and wires the "Update available" flow — with a
+         *relative* SW URL, so its scope follows the GitHub Pages subpath. -->
+  </body>
+</html>
