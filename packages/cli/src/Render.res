@@ -52,17 +52,18 @@ let rankLabel = rank =>
   | King => "K"
   }
 
-let stackingLabel = (stacking: Game.stacking) =>
-  switch stacking {
-  | Game.Squared => "squared"
-  | Game.Fanned => "fanned"
-  }
-
 // ANSI colour: wrap `s` in a SGR colour code and a reset. The escape byte is
 // built from its char code so the source needs no literal control character.
 let esc = String.fromCharCode(27)
 let colorize = (s, code) => `${esc}[${code}m${s}${esc}[0m`
 let red = "31"
+
+// The visible width of a line: its length once the zero-width ANSI colour codes
+// are stripped, so coloured and plain cards measure the same and columns align.
+// The escape byte is removed first (matched by value, so no literal control
+// character in the source), then the `[..m` SGR remnant it introduced.
+let ansi = /\[[0-9;]*m/g
+let visibleWidth = s => s->String.replaceAll(esc, "")->String.replaceRegExp(ansi, "")->String.length
 
 // A box-drawing frame: the six characters that draw a card's border. Swapping
 // the style is how a card's state (free / placed / empty) changes its outline.
@@ -155,37 +156,80 @@ let pileColumn = (pile: Game.pile) =>
   | Game.Squared => squaredColumn(pile.cards)
   }
 
-// Lay a set of equal-height card blocks side by side, gap between them, and
-// return the result as one multi-line string.
-let joinHorizontally = blocks =>
+// A column of card lines is `colWidth` visible columns wide (a cell plus its two
+// borders); the gap that separates neighbouring piles / loose cards.
+let colWidth = cellWidth + 2
+let gap = 3
+
+// The tallest of a set of card blocks — piles hold different numbers of cards,
+// so a row of them has to be squared off to the deepest.
+let maxHeight = blocks =>
+  blocks->Array.reduce(0, (m, b) => Array.length(b) > m ? Array.length(b) : m)
+
+// Pad a column with blank rows at its foot so every pile in a row shares a
+// height and the shorter ones don't drag the cards beside them upward.
+let padColumn = (col, height) =>
+  col->Array.concat(Array.make(~length=height - Array.length(col), repeat(" ", colWidth)))
+
+// The natural width of a row of `n` equal columns separated by `gap`.
+let rowWidth = n => n <= 0 ? 0 : n * colWidth + (n - 1) * gap
+
+// Indent each line of a block so it sits centred within `width` (the loose
+// cards, dealt centred beneath the piles as they are on the web table).
+let center = (block, width) =>
+  block->Array.map(line => {
+    let pad = (width - visibleWidth(line)) / 2
+    pad > 0 ? repeat(" ", pad) ++ line : line
+  })
+
+// Lay equal-height card blocks side by side with a fixed gap (the loose cards).
+let joinBlocks = blocks =>
   switch blocks[0] {
-  | None => ""
-  | Some(first) =>
-    first
-    ->Array.mapWithIndex((_, row) =>
-      blocks->Array.map(block => block->Array.getUnsafe(row))->Array.join("  ")
-    )
-    ->Array.join("\n")
-  }
-
-// The whole opening layout for a game: a title, the optional caption, each pile
-// (labelled with its stacking behaviour) and any cards dealt loose on the table.
-let board = (game: Game.t) => {
-  let title = [`Game: ${game.name}`]
-  let caption = switch game.caption {
-  | Some(c) => [c]
   | None => []
-  }
-  let piles =
-    game.piles->Array.mapWithIndex((pile: Game.pile, i) =>
-      `Pile ${Int.toString(i + 1)} · ${stackingLabel(pile.stacking)}\n${pileColumn(
-          pile,
-        )->Array.join("\n")}`
+  | Some(first) =>
+    first->Array.mapWithIndex((_, row) =>
+      blocks->Array.map(b => b->Array.getUnsafe(row))->Array.join(repeat(" ", gap))
     )
-  let loose =
-    Array.length(game.loose) == 0
-      ? []
-      : [`Loose on the table\n${joinHorizontally(game.loose->Array.map(c => fullCard(free, c)))}`]
+  }
 
-  [title, caption, piles, loose]->Array.flat->Array.join("\n\n")
+// The pile row: the columns spread across `width` like the web table's flexbox
+// `space-between` — the first pile hugs the left edge, the last the right, and
+// the rest are evenly spaced between (any leftover column padding falls in the
+// leftmost gaps). A lone pile is simply centred.
+let spaceBetween = (columns, width) => {
+  let n = Array.length(columns)
+  let height = maxHeight(columns)
+  let cols = columns->Array.map(c => padColumn(c, height))
+  switch cols[0] {
+  | None => []
+  | Some(_) if n == 1 => center(cols->Array.getUnsafe(0), width)
+  | Some(first) =>
+    let slack = width - n * colWidth
+    let base = slack / (n - 1)
+    let extra = Int.mod(slack, n - 1)
+    first->Array.mapWithIndex((_, row) =>
+      cols
+      ->Array.mapWithIndex((col, i) => {
+        let cell = col->Array.getUnsafe(row)
+        i < n - 1 ? cell ++ repeat(" ", base + (i < extra ? 1 : 0)) : cell
+      })
+      ->Array.join("")
+    )
+  }
+}
+
+// The whole opening layout for a game, laid out like the web table: a row of
+// piles along the top and the loose cards centred beneath them. The board is as
+// wide as its widest row, so whichever row is narrower is centred within it.
+let board = (game: Game.t) => {
+  let columns = game.piles->Array.map(pileColumn)
+  let freeCards = game.loose->Array.map(c => fullCard(free, c))
+  let width = Math.Int.max(rowWidth(Array.length(columns)), rowWidth(Array.length(freeCards)))
+
+  let top = spaceBetween(columns, width)
+  let bottom = Array.length(freeCards) == 0 ? [] : center(joinBlocks(freeCards), width)
+
+  let rows = Array.length(bottom) == 0 ? [top] : [top, bottom]
+  let sections = Array.concat([[game.name]], rows)
+  sections->Array.map(lines => lines->Array.join("\n"))->Array.join("\n\n")
 }
