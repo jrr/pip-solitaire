@@ -1,7 +1,8 @@
-// The drag-and-drop tech demo (#21): a few cards you can drag freely with a
-// pointer, and a row of drop zones they snap into when released over one. It's a
-// throwaway spike to learn pointer-based dragging in isolation — no game logic,
-// no card model beyond the local `Deck` the gallery already uses.
+// The card-stacking tech demo (grown out of the drag-and-drop spike #21): a
+// handful of free cards you can drag with a pointer, and two zones they snap into
+// and pile up in — one *squaring* the pile up, one *fanning* it out (#56). It's a
+// throwaway demo to exercise pointer-based dragging and pile layout in isolation —
+// no game logic, no card model beyond the local `Deck` the gallery already uses.
 //
 // Dragging is transient *view* state (where a finger is right now), so unlike
 // the other scenes this one is built with plain imperative DOM bindings rather
@@ -19,6 +20,7 @@
 //     or trigger a browser gesture on touch.
 //   - Hit-testing the card's centre against each zone's rect to pick a drop
 //     target, and snapping the card to that zone's centre on release.
+//   - Squared vs fanned pile layout, reflowed live from the zones' rects.
 
 // --- Pointer / geometry bindings ---------------------------------------------
 // WebDom's `addEventListener` is event-less; dragging needs the PointerEvent
@@ -32,6 +34,12 @@ type pointerEvent
 @send external releasePointerCapture: (WebDom.element, int) => unit = "releasePointerCapture"
 @send
 external onPointer: (WebDom.element, string, pointerEvent => unit) => unit = "addEventListener"
+
+// The initial deal is centred on the stage's live size, which isn't known until
+// the stage is in the document and laid out. On first load the scene mounts while
+// still detached (see SceneSwitcher), so the deal is deferred to the next frame,
+// before the first paint — hence this binding.
+@val external requestAnimationFrame: (unit => unit) => int = "requestAnimationFrame"
 
 // getBoundingClientRect gives viewport coordinates; that's what hit-testing and
 // the snap maths use, converting to playfield-local left/top only at the end.
@@ -104,14 +112,20 @@ and card = {
 // newest card landing lowest and fully exposed.
 let fanStep = 26.
 
+// Card footprint in playfield pixels (width from CSS; height from the 5:7
+// viewBox). Used by the initial deal, which places cards before they're laid
+// out and so can't read their rects yet.
+let cardW = 80.
+let cardH = 112.
+
 let make = (): Scene.t => {
-  id: "drag",
-  label: "Drag",
+  id: "stacking",
+  label: "Stacking",
   mount: container => {
     // The stage everything is positioned within; `position: relative` (in CSS)
     // makes it the origin for the cards' absolute left/top.
     let playfield = WebDom.createElement("div")
-    playfield->WebDom.setAttribute("class", "drag-playfield")
+    playfield->WebDom.setAttribute("class", "stacking-playfield")
     container->WebDom.appendChild(playfield)->ignore
 
     // A row of drop zones pinned to the top of the stage. They lay themselves
@@ -180,8 +194,8 @@ let make = (): Scene.t => {
         place(c)
         c.draggable := i == top
         i == top
-          ? classList(c.wrapper)->removeClass("drag-card--buried")
-          : classList(c.wrapper)->addClass("drag-card--buried")
+          ? classList(c.wrapper)->removeClass("stacking-card--buried")
+          : classList(c.wrapper)->addClass("stacking-card--buried")
       })
     }
 
@@ -210,11 +224,12 @@ let make = (): Scene.t => {
         reflow(zone)
       }
 
-    // Build one draggable card and wire its pointer loop. `initX`/`initY` are its
-    // starting position in playfield-local pixels.
-    let makeCard = (cardData: Deck.card, ~initX, ~initY) => {
+    // Build one draggable card and wire its pointer loop. It starts at 0,0 and is
+    // positioned by the initial deal (below); returning `self` lets the caller
+    // collect the free cards and lay them out together.
+    let makeCard = (cardData: Deck.card) => {
       let wrapper = WebDom.createElement("div")
-      wrapper->WebDom.setAttribute("class", "drag-card")
+      wrapper->WebDom.setAttribute("class", "stacking-card")
       wrapper->WebDom.appendChild(Html.create(CardArt.svg(cardData)))->ignore
 
       // The card's mutable state: position (kept here rather than parsed back
@@ -222,8 +237,8 @@ let make = (): Scene.t => {
       // so pickable. Cards start free and draggable.
       let self = {
         wrapper,
-        x: ref(initX),
-        y: ref(initY),
+        x: ref(0.),
+        y: ref(0.),
         home: ref(None),
         draggable: ref(true),
       }
@@ -305,16 +320,49 @@ let make = (): Scene.t => {
       // A cancelled pointer (e.g. the OS stealing the gesture) must tear the drag
       // down too, or the card would stay stuck to a pointer that's gone.
       wrapper->onPointer("pointercancel", endDrag)
+
+      self
     }
 
-    // Deal the cards along the bottom of the stage, below the zones, so they're
-    // dragged *up* into the piles.
-    demoCards->Array.forEachWithIndex((card, i) =>
-      makeCard(card, ~initX=16. +. Int.toFloat(i) *. 92., ~initY=160.)
-    )
+    let freeCards = demoCards->Array.map(makeCard)
+
+    // Deal the free cards as a loose, staggered cluster in the lower-middle of
+    // the stage — below the zones, so they're dragged *up* into the piles.
+    // Everything is derived from the stage's live size, so the cluster stays
+    // centred and works for any number of cards: the cards spread out from the
+    // centre with a step that's squeezed to fit the width, and a deterministic
+    // per-card jitter plus an alternating vertical stagger keep it sloppy rather
+    // than a rigid line. The step and stagger together guarantee neighbouring
+    // cards each keep a visible edge, so none is completely occluded.
+    let dealFree = () => {
+      let pr = boundingRect(playfield)
+      let n = Array.length(freeCards)
+      // Nominal horizontal step, squeezed so a wide cluster still fits the stage.
+      let avail = pr.width -. cardW -. 32.
+      let nominal = Int.toFloat(n - 1) *. 44.
+      let spread = nominal < avail ? nominal : avail > 0. ? avail : 0.
+      let stepX = n > 1 ? spread /. Int.toFloat(n - 1) : 0.
+      // Sit the cluster around 60% down the stage (but clear of the top zones),
+      // scaling with the stage yet never riding up over the piles on a short one.
+      let frac = pr.height *. 0.6
+      let centerY = frac > 205. ? frac : 205.
+      freeCards->Array.forEachWithIndex((c, i) => {
+        let jitterX = Int.toFloat(Int.mod(i * 37, 21)) -. 10.
+        let jitterY = Int.toFloat(Int.mod(i * 53, 17)) -. 8.
+        let stagger = Int.mod(i, 2) == 0 ? 16. : -16.
+        c.x := pr.width /. 2. -. spread /. 2. +. Int.toFloat(i) *. stepX -. cardW /. 2. +. jitterX
+        c.y := centerY -. cardH /. 2. +. stagger +. jitterY
+        place(c)
+      })
+    }
+
+    // Deal now if the stage is already laid out (a later scene switch); otherwise
+    // on the next frame, before the first paint, once the detached-at-mount stage
+    // has been inserted and sized (the first page load).
+    boundingRect(playfield).width > 0. ? dealFree() : requestAnimationFrame(dealFree)->ignore
 
     let caption = WebDom.createElement("p")
-    caption->WebDom.setAttribute("class", "drag-caption")
+    caption->WebDom.setAttribute("class", "stacking-caption")
     caption->WebDom.setTextContent(
       "Drag the cards. Drop them on the left slot to square them up, or the right to fan them out.",
     )
