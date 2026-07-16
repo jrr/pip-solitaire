@@ -236,10 +236,30 @@
       }
 
       /* Lit while a card's centre hovers over the zone, so the drop target is
-         legible before release. */
+         legible before release: green when the stacking rule accepts the drop. */
       .drop-zone--over {
         border-color: #22c55e;
         background: rgba(34, 197, 94, 0.12);
+      }
+
+      /* Flashed red instead while the hovered drop would be illegal (wrong colour
+         or not the next rank up), so a rejected move reads before release. */
+      .drop-zone--invalid {
+        border-color: #ef4444;
+        background: rgba(239, 68, 68, 0.12);
+        animation: drop-zone-reject 0.5s ease-in-out infinite;
+      }
+
+      @keyframes drop-zone-reject {
+        0%,
+        100% {
+          border-color: #ef4444;
+          background: rgba(239, 68, 68, 0.12);
+        }
+        50% {
+          border-color: #7f1d1d;
+          background: rgba(239, 68, 68, 0.04);
+        }
       }
 
       /* A draggable card. It's moved by writing style.left/top; the transition
@@ -361,7 +381,7 @@
         display: none;
       }
     </style>
-    <script type="module" crossorigin src="./assets/index-DIAr8kt9.js"></script>
+    <script type="module" crossorigin src="./assets/index-BznNZqoE.js"></script>
   <link rel="manifest" href="./manifest.webmanifest"></head>
   <body>
     <!-- Vite resolves the bare `core/…` specifier the compiled entry imports
