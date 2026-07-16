@@ -54,10 +54,13 @@
         color: #e2e8f0;
         font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
         -webkit-font-smoothing: antialiased;
-        /* Clear the notch/status bar and home indicator on every edge. */
-        padding: calc(env(safe-area-inset-top) + 2rem)
+        /* Clear the notch/status bar and home indicator on every edge. The
+           vertical padding is kept tight — just enough to sit the picker below
+           the status bar and leave the version badge room at the bottom — so
+           the scene band can grow to fill nearly the whole viewport. */
+        padding: calc(env(safe-area-inset-top) + 0.75rem)
           calc(env(safe-area-inset-right) + 1.5rem)
-          calc(env(safe-area-inset-bottom) + 2rem)
+          calc(env(safe-area-inset-bottom) + 1.5rem)
           calc(env(safe-area-inset-left) + 1.5rem);
       }
 
@@ -80,16 +83,16 @@
         align-items: center;
       }
 
-      /* Grows to fill the space under the picker and centers the scene band in
-         it. Full-bleed: negative horizontal margins cancel the body's horizontal
+      /* Grows to fill the space under the picker; the shaded band stretches to
+         fill it (`align-items: stretch`) rather than shrink-wrapping its content.
+         Full-bleed: negative horizontal margins cancel the body's horizontal
          padding (safe-area inset + 1.5rem) so the shaded band spans the page edge
          to edge, rather than floating in a padded column (issue #59). */
       #scene-area {
         flex: 1;
         align-self: stretch;
         display: flex;
-        align-items: center;
-        justify-content: center;
+        align-items: stretch;
         margin-inline: calc(-1 * (env(safe-area-inset-left) + 1.5rem)) calc(
             -1 * (env(safe-area-inset-right) + 1.5rem)
           );
@@ -97,13 +100,18 @@
 
       /* The shaded band behind the scene. A conventional full-width section:
          edge-to-edge shading, horizontal rules top and bottom (no left/right
-         borders), and no corner radius (issue #59). */
+         borders), and no corner radius (issue #59). It fills the whole scene
+         area and centers the active scene within it. */
       #scene-box {
         width: 100%;
         padding: 1.5rem;
         border-top: 1px solid #22304a;
         border-bottom: 1px solid #22304a;
         background: rgba(19, 35, 59, 0.35);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
       }
 
       #greeting {
@@ -131,7 +139,8 @@
          separately by the view — the drop-down sits above the scene band; the
          band wraps only the container. */
       #scene-picker {
-        margin-top: 1.25rem;
+        align-self: flex-start;
+        margin: 0 0 0.75rem;
         padding: 8px 14px;
         font: 14px system-ui, sans-serif;
         color: #f8fafc;
@@ -321,7 +330,7 @@
         display: none;
       }
     </style>
-    <script type="module" crossorigin src="./assets/index-BYaqLYz_.js"></script>
+    <script type="module" crossorigin src="./assets/index-B8UoRpz0.js"></script>
   <link rel="manifest" href="./manifest.webmanifest"></head>
   <body>
     <!-- Vite resolves the bare `core/…` specifier the compiled entry imports
