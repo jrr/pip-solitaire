@@ -109,6 +109,82 @@ describe("Game", () => {
   })
 })
 
+// The immutable game-state snapshot (#77): where each card rests, derived from a
+// board definition and read back through pure queries — no view, no behaviour.
+describe("GameState", () => {
+  test("initial places each pile's dealt cards and the loose deal", () => {
+    // four-fans opens with cards already dealt into every pile and nothing loose.
+    let state = GameState.initial(Game.fourFans)
+    expect(GameState.cardsInPile(state, 0))->toEqual([
+      {suit: Clubs, rank: Two},
+      {suit: Diamonds, rank: Five},
+    ])
+    expect(state.loose)->toEqual([])
+    // the stacking demo opens with empty piles and the whole run dealt loose.
+    let stacking = GameState.initial(Game.stacking)
+    expect(GameState.cardsInPile(stacking, 0))->toEqual([])
+    expect(GameState.cardsInPile(stacking, 1))->toEqual([])
+    expect(Array.length(stacking.loose))->toBe(13)
+  })
+
+  test("cardsInPile preserves the dealt order, bottom-first", () => {
+    let state = GameState.initial(Game.fourFans)
+    expect(GameState.cardsInPile(state, 2))->toEqual([
+      {suit: Clubs, rank: Queen},
+      {suit: Hearts, rank: Three},
+    ])
+  })
+
+  test("cardsInPile returns a copy, so mutating it can't corrupt the snapshot", () => {
+    let state = GameState.initial(Game.fourFans)
+    let cards = GameState.cardsInPile(state, 0)
+    cards->Array.push({suit: Spades, rank: King})
+    // the snapshot is unchanged by the caller's mutation.
+    expect(Array.length(GameState.cardsInPile(state, 0)))->toBe(2)
+  })
+
+  test("topOf is the last card of a pile, None when empty or out of range", () => {
+    let state = GameState.initial(Game.fourFans)
+    expect(GameState.topOf(state, 0))->toEqual(Some({suit: Diamonds, rank: Five}))
+    let stacking = GameState.initial(Game.stacking)
+    expect(GameState.topOf(stacking, 0))->toEqual(None) // an empty pile has no top
+    expect(GameState.topOf(state, 99))->toEqual(None) // out-of-range index
+  })
+
+  test("locationOf round-trips a card to its pile and slot", () => {
+    let state = GameState.initial(Game.fourFans)
+    // pile 1 opens holding Hearts Nine (bottom) then Spades Jack (top).
+    expect(GameState.locationOf(state, {suit: Hearts, rank: Nine}))->toEqual(
+      Some(GameState.InPile(1, 0)),
+    )
+    expect(GameState.locationOf(state, {suit: Spades, rank: Jack}))->toEqual(
+      Some(GameState.InPile(1, 1)),
+    )
+  })
+
+  test("locationOf reports a loose card as Loose and an absent card as None", () => {
+    let stacking = GameState.initial(Game.stacking)
+    expect(GameState.locationOf(stacking, {suit: Spades, rank: Ace}))->toEqual(
+      Some(GameState.Loose),
+    )
+    // Diamonds King is dealt nowhere in the stacking demo.
+    expect(GameState.locationOf(stacking, {suit: Diamonds, rank: King}))->toEqual(None)
+  })
+
+  test("every dealt card round-trips: locationOf then back through cardsInPile", () => {
+    let state = GameState.initial(Game.fourFans)
+    state.piles->Array.forEachWithIndex(
+      (cards, i) =>
+        cards->Array.forEachWithIndex(
+          (card, slot) => {
+            expect(GameState.locationOf(state, card))->toEqual(Some(GameState.InPile(i, slot)))
+            expect(GameState.cardsInPile(state, i)->Array.getUnsafe(slot))->toEqual(card)
+          },
+        ),
+    )
+  })
+})
+
 // The stackability rules (#76): pure predicates over `rule` data, tested without
 // any view.
 describe("Rules", () => {
