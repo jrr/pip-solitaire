@@ -336,15 +336,22 @@
         border-top-left-radius: 6px;
       }
 
+      /* Pinned to the top-right of the chrome and lined up with the scene picker
+         opposite it: the same 0.75rem inset the body pads its content by puts the
+         button's top edge level with the picker's, and matching box metrics
+         (8px/14px padding, 14px font, a 1px border — transparent here, the 1px the
+         picker spends on its outline) give it the picker's exact height, so the
+         two controls read as a single row. `right` mirrors the picker's left
+         content edge. */
       #update-button {
         position: fixed;
-        top: calc(env(safe-area-inset-top) + 8px);
-        right: calc(env(safe-area-inset-right) + 8px);
-        padding: 8px 12px;
-        font: 13px system-ui, sans-serif;
+        top: calc(env(safe-area-inset-top) + 0.75rem);
+        right: calc(env(safe-area-inset-right) + 1.5rem);
+        padding: 8px 14px;
+        font: 14px system-ui, sans-serif;
         color: #f8fafc;
         background: #166534;
-        border: none;
+        border: 1px solid transparent;
         border-radius: 8px;
         cursor: pointer;
         box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
@@ -354,7 +361,7 @@
         display: none;
       }
     </style>
-    <script type="module" crossorigin src="./assets/index-D--EMrYM.js"></script>
+    <script type="module" crossorigin src="./assets/index-DIAr8kt9.js"></script>
   <link rel="manifest" href="./manifest.webmanifest"></head>
   <body>
     <!-- Vite resolves the bare `core/…` specifier the compiled entry imports
