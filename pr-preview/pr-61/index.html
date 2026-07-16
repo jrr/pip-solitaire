@@ -150,10 +150,17 @@
         cursor: pointer;
       }
 
+      /* Fills the scene band (`flex: 1`) and centers its scene within it, so a
+         scene that wants to grow — the drag playfield — can stretch into the
+         whole area rather than shrink-wrapping to a fixed box. Scenes that don't
+         grow stay centered as before. */
       #scene-container {
+        flex: 1;
+        width: 100%;
         display: flex;
         flex-direction: column;
         align-items: center;
+        justify-content: center;
         gap: 0.75rem;
       }
 
@@ -187,14 +194,17 @@
          draggable cards and a row of drop zones they snap into. `position:
          relative` makes the stage the origin for the cards' absolute left/top;
          `touch-action: none` on the cards keeps a drag from also scrolling or
-         firing a browser gesture on touch. */
+         firing a browser gesture on touch.
+
+         No box of its own — it grows to fill the scene band (`flex: 1`, full
+         width) rather than sitting in a fixed, bordered rectangle, so the cards
+         and zones have the whole area to move in. A minimum height keeps it
+         playable when the viewport is short. */
       .drag-playfield {
         position: relative;
-        width: min(86vw, 420px);
-        height: 300px;
-        border-radius: 12px;
-        border: 1px solid #22304a;
-        background: rgba(11, 18, 32, 0.35);
+        flex: 1;
+        width: 100%;
+        min-height: 300px;
       }
 
       /* The two drop zones, pinned to the top of the stage and hugging its left
@@ -300,10 +310,16 @@
         color: #94a3b8;
       }
 
+      /* The build badge sits at the very bottom of the page flow (it's the last
+         flex child of <body>, after #app). Keeping it in flow — rather than
+         `position: fixed` — means it stays pinned to the end of the document
+         instead of floating over a long, scrolling scene like the gallery. It
+         hugs the right edge via a negative margin that cancels the body's
+         right padding, preserving the tucked-into-the-corner look. */
       #version-badge {
-        position: fixed;
-        right: 0;
-        bottom: env(safe-area-inset-bottom);
+        align-self: flex-end;
+        margin-top: 0.75rem;
+        margin-right: calc(-1 * (env(safe-area-inset-right) + 1.5rem));
         padding: 2px 6px;
         font: 11px/1.4 system-ui, sans-serif;
         color: #94a3b8;
@@ -330,7 +346,7 @@
         display: none;
       }
     </style>
-    <script type="module" crossorigin src="./assets/index-B8UoRpz0.js"></script>
+    <script type="module" crossorigin src="./assets/index-CKlQtpjG.js"></script>
   <link rel="manifest" href="./manifest.webmanifest"></head>
   <body>
     <!-- Vite resolves the bare `core/…` specifier the compiled entry imports
