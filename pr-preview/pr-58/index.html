@@ -202,14 +202,14 @@
         background: rgba(11, 18, 32, 0.35);
       }
 
-      /* The two drop zones, pinned to the bottom of the stage and hugging its
-         left and right edges (`space-between`): the left squares cards up, the
-         right fans them out. */
+      /* The two drop zones, pinned to the top of the stage and hugging its left
+         and right edges (`space-between`): the left squares cards up, the right
+         fans them out. Piles grow downward from here. */
       .drop-row {
         position: absolute;
         left: 16px;
         right: 16px;
-        bottom: 16px;
+        top: 16px;
         display: flex;
         justify-content: space-between;
       }
@@ -237,7 +237,11 @@
          it, WebKit (Safari) doesn't invalidate the old `drop-shadow` region as
          the card is repositioned via left/top, so the shadow smears into a trail
          of ghosts behind the moving card. On its own layer the whole card —
-         shadow included — is repainted each frame, and the trail disappears. */
+         shadow included — is repainted each frame, and the trail disappears.
+
+         The stacking order (`z-index`) is set imperatively in DragScene.res: a
+         monotonic counter bumped on create/grab/drop, so the most-recently
+         touched card layers on top of everything beneath it. */
       .drag-card {
         position: absolute;
         top: 0;
@@ -258,9 +262,14 @@
 
       .drag-card.dragging {
         cursor: grabbing;
-        z-index: 10;
         transition: none;
         filter: drop-shadow(0 12px 22px rgba(0, 0, 0, 0.5));
+      }
+
+      /* A buried card (any pile card but the top one) can't be picked up yet, so
+         it doesn't offer the grab affordance. */
+      .drag-card--buried {
+        cursor: default;
       }
 
       .drag-caption {
@@ -326,7 +335,7 @@
         display: none;
       }
     </style>
-    <script type="module" crossorigin src="./assets/index-CSXaItna.js"></script>
+    <script type="module" crossorigin src="./assets/index-D60y7TC8.js"></script>
   <link rel="manifest" href="./manifest.webmanifest"></head>
   <body>
     <!-- Vite resolves the bare `core/…` specifier the compiled entry imports
