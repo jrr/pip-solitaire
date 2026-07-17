@@ -272,8 +272,42 @@ let mixedRoles = {
   ),
 }
 
+// The cascade demo (#95), proving `Rules.Down`: two piles enforcing
+// `Rules.cascade` — build *down* in alternating colour, the mirror of the
+// `stacking` scene (which builds *up*). It opens holding a loose
+// descending-alternating run (K♠, Q♥, J♠, …, Ace) — colours already alternating
+// *down* the ranks — so the whole run can be assembled onto a cascade one card
+// at a time. A same-colour or wrong-rank drop flashes red.
+let cascade = {
+  id: "cascade",
+  name: "Cascade",
+  piles: [
+    {role: Cascade, stacking: Squared, rule: Rules.cascade, capacity: None, cards: []},
+    {role: Cascade, stacking: Fanned, rule: Rules.cascade, capacity: None, cards: []},
+  ],
+  free: true,
+  loose: [
+    {suit: Spades, rank: King}, // black
+    {suit: Hearts, rank: Queen}, // red
+    {suit: Spades, rank: Jack}, // black
+    {suit: Hearts, rank: Ten}, // red
+    {suit: Spades, rank: Nine}, // black
+    {suit: Hearts, rank: Eight}, // red
+    {suit: Spades, rank: Seven}, // black
+    {suit: Hearts, rank: Six}, // red
+    {suit: Spades, rank: Five}, // black
+    {suit: Hearts, rank: Four}, // red
+    {suit: Spades, rank: Three}, // black
+    {suit: Hearts, rank: Two}, // red
+    {suit: Spades, rank: Ace}, // black
+  ],
+  caption: Some(
+    "Build a cascade King down to Ace: each card must be the next rank down and the opposite colour — the reverse of Stacking.",
+  ),
+}
+
 // Every supported game, in picker order.
-let all = [stacking, foundations, fourFans, freeCells, mixedRoles]
+let all = [stacking, foundations, fourFans, freeCells, mixedRoles, cascade]
 
 // --- Addressing piles by role (#94) ------------------------------------------
 // Later steps target a *group* of piles by role — the deal fills only the
