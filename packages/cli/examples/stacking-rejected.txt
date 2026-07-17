@@ -1,0 +1,15 @@
+# Stacking: what a *rejected* move looks like.
+#
+# The tableau rule only accepts the next rank up in the opposite colour. Here we
+# lay A♠ then 2♥ (legal: ascending, black then red), then try to drop the Q♦ —
+# wrong rank, so the reducer returns a typed rejection and the board is unchanged.
+# The point: illegal moves are refused *with a reason*, not silently dropped.
+#
+# Run it with:  mise run cli -- play < packages/cli/examples/stacking-rejected.txt
+
+deal stacking
+move AS 0
+move 2H 0
+# This one is refused — Q♦ can't follow 2♥:
+move QD 0
+print

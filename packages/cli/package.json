@@ -7,7 +7,7 @@
     "build": "rescript build && vite build",
     "clean": "rescript clean",
     "start": "node dist/cli.js",
-    "test": "node dist/cli.js"
+    "test": "vitest run"
   },
   "dependencies": {
     "@rescript/runtime": "^12.0.0",
@@ -15,6 +15,7 @@
   },
   "devDependencies": {
     "rescript": "^12.0.0",
-    "vite": "^7.0.0"
+    "vite": "^7.0.0",
+    "vitest": "^3.2.0"
   }
 }

@@ -1,0 +1,24 @@
+# Stacking: build a full Ace-to-King run on pile 1.
+#
+# The "stacking" game deals a whole Ace->King run loose on the table, colours
+# already alternating (black, red, black, ...). Pile 1 is a *fanned* tableau
+# accepting the next rank up in the opposite colour, so the loose run stacks onto
+# it one card at a time — watch the fan grow.
+#
+# Run it with:  mise run cli -- play < packages/cli/examples/stacking-run.txt
+
+deal stacking
+move AS 1
+move 2H 1
+move 3C 1
+move 4D 1
+move 5S 1
+move 6H 1
+move 7C 1
+move 8D 1
+move 9S 1
+move 10H 1
+move JC 1
+move QD 1
+move KS 1
+print

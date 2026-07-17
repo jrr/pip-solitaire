@@ -1,0 +1,14 @@
+# Four Fans: a game that confines cards to piles (no loose drops).
+#
+# Four fanned piles open already holding cards, nothing loose, and `free: false`.
+# The piles accept anything, so we move the 5♦ from pile 0 onto pile 1 — then try
+# to drop it loose on the table, which this game refuses (cards may only rest in a
+# pile). Another typed rejection, for a different reason than the stacking rule.
+#
+# Run it with:  mise run cli -- play < packages/cli/examples/four-fans.txt
+
+deal four-fans
+move 5D 1
+# Refused — this game keeps every card in a pile:
+move 5D table
+print

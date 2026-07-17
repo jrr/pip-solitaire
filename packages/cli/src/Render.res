@@ -150,11 +150,17 @@ let squaredColumn = (cards: array<card>) =>
   | None => emptySlot()
   }
 
-let pileColumn = (pile: Game.pile) =>
-  switch pile.stacking {
-  | Game.Fanned => fannedColumn(pile.cards)
-  | Game.Squared => squaredColumn(pile.cards)
+// A pile's column from its stacking behaviour and the cards resting in it. The
+// cards come from wherever the caller has them — the board's opening deal
+// (`board`) or a live snapshot (`stateBoard`) — so the two renderers share one
+// notion of how a pile looks.
+let columnFor = (stacking: Game.stacking, cards: array<card>) =>
+  switch stacking {
+  | Game.Fanned => fannedColumn(cards)
+  | Game.Squared => squaredColumn(cards)
   }
+
+let pileColumn = (pile: Game.pile) => columnFor(pile.stacking, pile.cards)
 
 // A column of card lines is `colWidth` visible columns wide (a cell plus its two
 // borders); the gap that separates neighbouring piles / loose cards.
@@ -218,18 +224,43 @@ let spaceBetween = (columns, width) => {
   }
 }
 
-// The whole opening layout for a game, laid out like the web table: a row of
-// piles along the top and the loose cards centred beneath them. The board is as
+// Lay a board out like the web table: a titled row of pile columns along the
+// top and the loose cards (already framed) centred beneath them. The board is as
 // wide as its widest row, so whichever row is narrower is centred within it.
-let board = (game: Game.t) => {
-  let columns = game.piles->Array.map(pileColumn)
-  let freeCards = game.loose->Array.map(c => fullCard(free, c))
+// Both the static-`Game` and live-`GameState` renderers assemble their columns
+// and loose cards then hand them here, so the layout lives in one place.
+let assemble = (
+  ~title: string,
+  ~columns: array<array<string>>,
+  ~freeCards: array<array<string>>,
+) => {
   let width = Math.Int.max(rowWidth(Array.length(columns)), rowWidth(Array.length(freeCards)))
 
   let top = spaceBetween(columns, width)
   let bottom = Array.length(freeCards) == 0 ? [] : center(joinBlocks(freeCards), width)
 
   let rows = Array.length(bottom) == 0 ? [top] : [top, bottom]
-  let sections = Array.concat([[game.name]], rows)
+  let sections = Array.concat([[title]], rows)
   sections->Array.map(lines => lines->Array.join("\n"))->Array.join("\n\n")
 }
+
+// The whole opening layout for a game, straight from its board definition.
+let board = (game: Game.t) =>
+  assemble(
+    ~title=game.name,
+    ~columns=game.piles->Array.map(pileColumn),
+    ~freeCards=game.loose->Array.map(c => fullCard(free, c)),
+  )
+
+// The same layout over a *live* `GameState.t` — so the renderer shows any state
+// the reducer produces, not just the opening deal. The stacking behaviour still
+// comes from the board definition (`GameState` carries only where cards rest),
+// while every card comes from the snapshot.
+let stateBoard = (~game: Game.t, state: GameState.t) =>
+  assemble(
+    ~title=game.name,
+    ~columns=game.piles->Array.mapWithIndex((pile, i) =>
+      columnFor(pile.stacking, GameState.cardsInPile(state, i))
+    ),
+    ~freeCards=state.loose->Array.map(c => fullCard(free, c)),
+  )

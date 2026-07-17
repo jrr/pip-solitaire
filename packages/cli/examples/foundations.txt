@@ -1,0 +1,19 @@
+# Foundations: two different pile rules on one board.
+#
+# Pile 0 is a same-suit *foundation* that builds up from the Ace; pile 1 is an
+# alternating-colour *tableau*. The deal serves both: a full Hearts run and a
+# short black/red run. We carry a few hearts onto the foundation and a few cards
+# onto the tableau, so one board shows both rules accepting different cards.
+#
+# Run it with:  mise run cli -- play < packages/cli/examples/foundations.txt
+
+deal foundations
+# Foundation (pile 0): Hearts, up from the Ace.
+move AH 0
+move 2H 0
+move 3H 0
+# Tableau (pile 1): alternating colours, ascending.
+move AS 1
+move 2D 1
+move 3C 1
+print
