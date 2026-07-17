@@ -36,10 +36,31 @@ type stacking =
   | Squared
   | Fanned
 
-// One drop zone: its stacking behaviour (layout — how a second card lands
-// visually), the `rule` it enforces (what it will accept — #76), an optional
-// `capacity` (how many cards it may hold — #93), and the cards it opens holding
-// (bottom-first, so the last is the top of the pile).
+// A pile's *role* on the board (#94) — its classification within a game, toward
+// FreeCell (M2). The three FreeCell roles: a **cascade** (the columns cards are
+// dealt into and built down), a **free cell** (a single-card holding slot), and
+// a **foundation** (built up by suit to the King). The role is the
+// *classification*, not the mechanic: rules and capacity stay independent (a
+// `FreeCell` role typically pairs with `capacity: Some(1)` and `rule: Free`, but
+// nothing here enforces that). Later steps *target a group by role* — the deal
+// fills only the cascades, auto-to-foundation and win detection look only at the
+// foundations, the layout groups free cells + foundations across the top with
+// cascades below — via `pilesOf`/`pileIndices` (below).
+type role =
+  | Cascade
+  | FreeCell
+  | Foundation
+
+// One drop zone: its `role` (its classification on the board — #94), its
+// stacking behaviour (layout — how a second card lands visually), the `rule` it
+// enforces (what it will accept — #76), an optional `capacity` (how many cards
+// it may hold — #93), and the cards it opens holding (bottom-first, so the last
+// is the top of the pile).
+//
+// `role`, `rule` and `capacity` are independent: a FreeCell **free cell** is
+// `role: FreeCell` *and* `rule: Free` *and* `capacity: Some(1)`, but the role is
+// only the classification — it's what lets later steps address a group of piles
+// (`pilesOf`/`pileIndices`), not what governs a drop.
 //
 // `capacity` is `None` for the unbounded piles (cascades, foundations) and
 // `Some(n)` for a capped one — a FreeCell **free cell** is `Rules.Free` with
@@ -47,7 +68,13 @@ type stacking =
 // the pile's *current count*, which `Rules.accepts` deliberately never sees, so
 // it's enforced one layer up in `Reducer.canDrop`/`reduce` — `Rules.accepts`
 // stays purely about ordering/colour/rank.
-type pile = {stacking: stacking, rule: Rules.rule, capacity: option<int>, cards: array<card>}
+type pile = {
+  role: role,
+  stacking: stacking,
+  rule: Rules.rule,
+  capacity: option<int>,
+  cards: array<card>,
+}
 
 type t = {
   id: string, // stable scene id (also the picker / localStorage key)
@@ -66,8 +93,8 @@ let stacking = {
   id: "stacking",
   name: "Stacking",
   piles: [
-    {stacking: Squared, rule: Rules.tableau, capacity: None, cards: []},
-    {stacking: Fanned, rule: Rules.tableau, capacity: None, cards: []},
+    {role: Cascade, stacking: Squared, rule: Rules.tableau, capacity: None, cards: []},
+    {role: Cascade, stacking: Fanned, rule: Rules.tableau, capacity: None, cards: []},
   ],
   free: true,
   loose: [
@@ -99,24 +126,28 @@ let fourFans = {
   name: "Four Fans",
   piles: [
     {
+      role: Cascade,
       stacking: Fanned,
       rule: Rules.Free,
       capacity: None,
       cards: [{suit: Clubs, rank: Two}, {suit: Diamonds, rank: Five}],
     },
     {
+      role: Cascade,
       stacking: Fanned,
       rule: Rules.Free,
       capacity: None,
       cards: [{suit: Hearts, rank: Nine}, {suit: Spades, rank: Jack}],
     },
     {
+      role: Cascade,
       stacking: Fanned,
       rule: Rules.Free,
       capacity: None,
       cards: [{suit: Clubs, rank: Queen}, {suit: Hearts, rank: Three}],
     },
     {
+      role: Cascade,
       stacking: Fanned,
       rule: Rules.Free,
       capacity: None,
@@ -139,8 +170,8 @@ let foundations = {
   id: "foundations",
   name: "Foundations",
   piles: [
-    {stacking: Squared, rule: Rules.foundation, capacity: None, cards: []},
-    {stacking: Fanned, rule: Rules.tableau, capacity: None, cards: []},
+    {role: Foundation, stacking: Squared, rule: Rules.foundation, capacity: None, cards: []},
+    {role: Cascade, stacking: Fanned, rule: Rules.tableau, capacity: None, cards: []},
   ],
   free: true,
   loose: [
@@ -180,10 +211,10 @@ let freeCells = {
   id: "free-cells",
   name: "Free Cells",
   piles: [
-    {stacking: Squared, rule: Rules.Free, capacity: Some(1), cards: []},
-    {stacking: Squared, rule: Rules.Free, capacity: Some(1), cards: []},
-    {stacking: Squared, rule: Rules.Free, capacity: Some(1), cards: []},
-    {stacking: Squared, rule: Rules.Free, capacity: Some(1), cards: []},
+    {role: FreeCell, stacking: Squared, rule: Rules.Free, capacity: Some(1), cards: []},
+    {role: FreeCell, stacking: Squared, rule: Rules.Free, capacity: Some(1), cards: []},
+    {role: FreeCell, stacking: Squared, rule: Rules.Free, capacity: Some(1), cards: []},
+    {role: FreeCell, stacking: Squared, rule: Rules.Free, capacity: Some(1), cards: []},
   ],
   free: true,
   loose: [
@@ -197,5 +228,71 @@ let freeCells = {
   ),
 }
 
+// The pile-roles demo (#94), a proto-FreeCell board: the three FreeCell roles
+// coexisting on one board so the classification is visible before anything
+// consumes it. One `Foundation` (built up by suit from the Ace) and two
+// single-card `FreeCell` cells share the top; one `Cascade` sits below. Rules
+// and capacity follow each role's usual pairing — the foundation is a same-suit
+// ascending pile, the cells are capacity-1 `Free` slots, the cascade an
+// alternating tableau — but it's the `role` field that groups them
+// (`pilesOf`/`pileIndices`), and the visible group-targeted payoff arrives with
+// FreeCell later. A Hearts Ace→King run is dealt loose to carry the foundation,
+// plus a couple of stray cards to park in the cells.
+let mixedRoles = {
+  id: "mixed-roles",
+  name: "Mixed Roles",
+  piles: [
+    {role: Foundation, stacking: Squared, rule: Rules.foundation, capacity: None, cards: []},
+    {role: FreeCell, stacking: Squared, rule: Rules.Free, capacity: Some(1), cards: []},
+    {role: FreeCell, stacking: Squared, rule: Rules.Free, capacity: Some(1), cards: []},
+    {role: Cascade, stacking: Fanned, rule: Rules.tableau, capacity: None, cards: []},
+  ],
+  free: true,
+  loose: [
+    // The foundation's suit: Hearts Ace→King, to carry it to completion.
+    {suit: Hearts, rank: Ace},
+    {suit: Hearts, rank: Two},
+    {suit: Hearts, rank: Three},
+    {suit: Hearts, rank: Four},
+    {suit: Hearts, rank: Five},
+    {suit: Hearts, rank: Six},
+    {suit: Hearts, rank: Seven},
+    {suit: Hearts, rank: Eight},
+    {suit: Hearts, rank: Nine},
+    {suit: Hearts, rank: Ten},
+    {suit: Hearts, rank: Jack},
+    {suit: Hearts, rank: Queen},
+    {suit: Hearts, rank: King},
+    // A couple of stray cards to park in the free cells.
+    {suit: Spades, rank: King},
+    {suit: Clubs, rank: Seven},
+  ],
+  caption: Some(
+    "Three roles on one board: a foundation and two free cells across the top, a cascade below — a proto-FreeCell layout.",
+  ),
+}
+
 // Every supported game, in picker order.
-let all = [stacking, foundations, fourFans, freeCells]
+let all = [stacking, foundations, fourFans, freeCells, mixedRoles]
+
+// --- Addressing piles by role (#94) ------------------------------------------
+// Later steps target a *group* of piles by role — the deal fills only the
+// cascades, auto-to-foundation and win detection look only at the foundations,
+// the layout groups free cells + foundations. These two helpers are how they
+// address a group: `pileIndices` yields the positions (the index is a pile's
+// identity in `GameState`, so callers that transition state want these), and
+// `pilesOf` yields the pile records themselves (for callers that only read).
+
+// The indices of every pile with the given role, in board order.
+let pileIndices = (game: t, role: role): array<int> => {
+  let indices = []
+  for i in 0 to Array.length(game.piles) - 1 {
+    if (game.piles->Array.getUnsafe(i)).role == role {
+      indices->Array.push(i)
+    }
+  }
+  indices
+}
+
+// Every pile with the given role, in board order.
+let pilesOf = (game: t, role: role): array<pile> => game.piles->Array.filter(p => p.role == role)

@@ -109,6 +109,7 @@ describe("Game", () => {
       "foundations",
       "four-fans",
       "free-cells",
+      "mixed-roles",
     ])
     expect(Game.all->Array.every(g => g.name != ""))->toBe(true)
   })
@@ -132,6 +133,76 @@ describe("Game", () => {
     expect(Game.freeCells.free)->toBe(true)
     expect(Game.freeCells.piles->Array.every(p => Array.length(p.cards) == 0))->toBe(true)
     expect(Array.length(Game.freeCells.loose) > 0)->toBe(true)
+  })
+
+  // Pile roles (#94): each pile declares its FreeCell role, and `Game` addresses
+  // a group by role. Existing scenes are tagged (no behaviour change), and the
+  // mixed-roles scene shows the three roles on one board.
+  describe("roles", () => {
+    test(
+      "existing scenes tag their piles by role",
+      () => {
+        // The stacking demo is two cascades.
+        expect(Game.stacking.piles->Array.map(p => p.role))->toEqual([Game.Cascade, Game.Cascade])
+        // Foundations pairs a Foundation with a Cascade.
+        expect(Game.foundations.piles->Array.map(p => p.role))->toEqual([
+          Game.Foundation,
+          Game.Cascade,
+        ])
+        // Four-fans is four free-arrangement cascades.
+        expect(Game.fourFans.piles->Array.map(p => p.role))->toEqual([
+          Game.Cascade,
+          Game.Cascade,
+          Game.Cascade,
+          Game.Cascade,
+        ])
+        // Free-cells is four FreeCell cells.
+        expect(Game.freeCells.piles->Array.map(p => p.role))->toEqual([
+          Game.FreeCell,
+          Game.FreeCell,
+          Game.FreeCell,
+          Game.FreeCell,
+        ])
+      },
+    )
+
+    test(
+      "mixed-roles shows Cascade / FreeCell / Foundation on one board",
+      () => {
+        // A Foundation and two FreeCell cells across the top, a Cascade below.
+        expect(Game.mixedRoles.piles->Array.map(p => p.role))->toEqual([
+          Game.Foundation,
+          Game.FreeCell,
+          Game.FreeCell,
+          Game.Cascade,
+        ])
+        expect(Game.mixedRoles.free)->toBe(true)
+      },
+    )
+
+    test(
+      "pileIndices returns the positions of every pile with a role, in board order",
+      () => {
+        expect(Game.pileIndices(Game.mixedRoles, Game.Foundation))->toEqual([0])
+        expect(Game.pileIndices(Game.mixedRoles, Game.FreeCell))->toEqual([1, 2])
+        expect(Game.pileIndices(Game.mixedRoles, Game.Cascade))->toEqual([3])
+        // A role absent from a board yields no indices.
+        expect(Game.pileIndices(Game.stacking, Game.Foundation))->toEqual([])
+      },
+    )
+
+    test(
+      "pilesOf returns the piles with a role, in board order",
+      () => {
+        let cells = Game.pilesOf(Game.mixedRoles, Game.FreeCell)
+        expect(cells->Array.length)->toBe(2)
+        // Every returned pile is a FreeCell, and they are the capacity-1 cells.
+        expect(cells->Array.every(p => p.role == Game.FreeCell))->toBe(true)
+        expect(cells->Array.map(p => p.capacity))->toEqual([Some(1), Some(1)])
+        // A role absent from a board yields no piles.
+        expect(Game.pilesOf(Game.stacking, Game.Foundation))->toEqual([])
+      },
+    )
   })
 })
 
@@ -358,8 +429,8 @@ describe("Reducer", () => {
     id: "test",
     name: "Test",
     piles: [
-      {stacking: Squared, rule: Rules.foundation, capacity: None, cards: []},
-      {stacking: Fanned, rule: Rules.tableau, capacity: None, cards: []},
+      {role: Foundation, stacking: Squared, rule: Rules.foundation, capacity: None, cards: []},
+      {role: Cascade, stacking: Fanned, rule: Rules.tableau, capacity: None, cards: []},
     ],
     free: true,
     // Everything the moves below reach for is dealt loose, so a rejection is the
@@ -567,8 +638,8 @@ describe("Reducer", () => {
       id: "cap",
       name: "Cap",
       piles: [
-        {stacking: Squared, rule: Rules.Free, capacity: Some(1), cards: []},
-        {stacking: Squared, rule: Rules.Free, capacity: None, cards: []},
+        {role: FreeCell, stacking: Squared, rule: Rules.Free, capacity: Some(1), cards: []},
+        {role: Cascade, stacking: Squared, rule: Rules.Free, capacity: None, cards: []},
       ],
       free: true,
       loose: [{suit: Spades, rank: Ace}, {suit: Hearts, rank: King}],
