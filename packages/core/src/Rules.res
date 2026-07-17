@@ -89,6 +89,12 @@ let tableau = Ordered({direction: Up, color: Alternating, empty: AnyCard})
 // time, and only an Ace may open the empty pile.
 let foundation = Ordered({direction: Up, color: SameSuit, empty: AceOnly})
 
+// A FreeCell cascade (M2): build *down* in alternating colour — a black Six
+// lands on a red Seven — with any card founding an empty column. The mirror
+// image of the ascending `tableau`, and the first (and only) user of the `Down`
+// direction.
+let cascade = Ordered({direction: Down, color: Alternating, empty: AnyCard})
+
 // May `candidate` be stacked on a pile governed by `rule` whose current top card
 // is `onto` (`None` for an empty pile)? The one predicate every pile is weighed
 // by: an empty pile consults its `empty` rule, and a non-empty one must satisfy

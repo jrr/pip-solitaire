@@ -110,6 +110,7 @@ describe("Game", () => {
       "four-fans",
       "free-cells",
       "mixed-roles",
+      "cascade",
     ])
     expect(Game.all->Array.every(g => g.name != ""))->toBe(true)
   })
@@ -133,6 +134,43 @@ describe("Game", () => {
     expect(Game.freeCells.free)->toBe(true)
     expect(Game.freeCells.piles->Array.every(p => Array.length(p.cards) == 0))->toBe(true)
     expect(Array.length(Game.freeCells.loose) > 0)->toBe(true)
+  })
+
+  test("the cascade demo confines drops to a legal King→Ace descending run", () => {
+    // Both piles enforce the cascade rule (build *down*); take the first and
+    // stack the dealt run end-to-end onto it: each card lands on the one below it
+    // (an empty pile founds the run).
+    let rule = (Game.cascade.piles->Array.getUnsafe(0)).rule
+    let run = Game.cascade.loose
+    // The run descends King→Ace in alternating colours, so every step down is a
+    // legal drop.
+    expect(run->Array.map(c => c.rank))->toEqual([
+      King,
+      Queen,
+      Jack,
+      Ten,
+      Nine,
+      Eight,
+      Seven,
+      Six,
+      Five,
+      Four,
+      Three,
+      Two,
+      Ace,
+    ])
+    let legal =
+      run->Array.mapWithIndex(
+        (c, i) => Rules.accepts(rule, c, i == 0 ? None : Some(run->Array.getUnsafe(i - 1))),
+      )
+    expect(legal->Array.every(x => x))->toBe(true)
+    // A same-colour or non-descending drop is rejected.
+    expect(Rules.accepts(rule, {suit: Spades, rank: Jack}, Some({suit: Clubs, rank: Queen})))->toBe(
+      false,
+    )
+    expect(Rules.accepts(rule, {suit: Hearts, rank: Ten}, Some({suit: Clubs, rank: Queen})))->toBe(
+      false,
+    )
   })
 
   // Pile roles (#94): each pile declares its FreeCell role, and `Game` addresses
@@ -375,6 +413,51 @@ describe("Rules", () => {
       () => {
         expect(accepts({suit: Hearts, rank: Three}, Some({suit: Hearts, rank: Ace})))->toBe(false)
         expect(accepts({suit: Hearts, rank: Ace}, Some({suit: Hearts, rank: Two})))->toBe(false)
+      },
+    )
+  })
+
+  // A FreeCell cascade (`Rules.cascade`): build *down* in alternating colour.
+  // The first exercise of the `Down` direction (#95).
+  describe("cascade (alternating colour, descending)", () => {
+    let accepts = (c, onto) => Rules.accepts(Rules.cascade, c, onto)
+
+    test(
+      "any card founds an empty pile",
+      () => {
+        expect(accepts({suit: Spades, rank: King}, None))->toBe(true)
+        expect(accepts({suit: Hearts, rank: Ace}, None))->toBe(true)
+      },
+    )
+
+    test(
+      "the opposite colour, one rank lower, stacks",
+      () => {
+        // red Seven ← black Six, black Six ← red Five.
+        expect(accepts({suit: Spades, rank: Six}, Some({suit: Hearts, rank: Seven})))->toBe(true)
+        expect(accepts({suit: Hearts, rank: Five}, Some({suit: Spades, rank: Six})))->toBe(true)
+      },
+    )
+
+    test(
+      "same colour is rejected even when the rank descends",
+      () => {
+        expect(accepts({suit: Clubs, rank: Six}, Some({suit: Spades, rank: Seven})))->toBe(false)
+      },
+    )
+
+    test(
+      "a non-consecutive rank is rejected even when the colour alternates",
+      () => {
+        expect(accepts({suit: Hearts, rank: Five}, Some({suit: Spades, rank: Seven})))->toBe(false)
+      },
+    )
+
+    test(
+      "an ascending or equal rank is rejected",
+      () => {
+        expect(accepts({suit: Hearts, rank: Eight}, Some({suit: Spades, rank: Seven})))->toBe(false)
+        expect(accepts({suit: Hearts, rank: Seven}, Some({suit: Spades, rank: Seven})))->toBe(false)
       },
     )
   })
