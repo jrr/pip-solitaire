@@ -36,6 +36,54 @@ jobs:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: packages/web-app/dist
           # Publish the main site at the branch root, but keep the existing
-          # `pr-preview/` umbrella dir (and anything else already there) so a
-          # `main` deploy never wipes live PR previews.
+          # `screenshots/` and `pr-preview/` dirs (and anything else already
+          # there) so a `main` deploy never wipes them.
+          keep_files: true
+
+  # Render the device-resolution screenshot report and publish it to Pages under a
+  # stamped, retained history at `screenshots/branch/main/<date>_<sha>/`, browsable
+  # via a regenerated listing. A separate job (not extra steps on `deploy`) so the
+  # report's heavier build — a browser download and a headless render — is isolated
+  # from the site deploy and its status reads on its own. `needs: deploy` serializes
+  # the two gh-pages writers within the run; the whole job is `continue-on-error` so
+  # a render hiccup never marks the deploy run failed.
+  screenshots:
+    needs: deploy
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Install mise
+        uses: jdx/mise-action@v4
+
+      - name: Install headless Chromium
+        run: mise run playwright-install
+
+      - name: Render screenshot report
+        run: mise run screenshots
+
+      # Build the publish payload: this snapshot under its stamp, plus a listing
+      # regenerated from the stamps already on gh-pages (read with one `gh api`
+      # contents call — no checkout). peaceiris then commits it with `keep_files`.
+      - name: Stage report + history listing
+        id: stage
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          stamp="$(date -u +%Y.%m.%d)_${GITHUB_SHA::7}"
+          existing="$(gh api "repos/$GITHUB_REPOSITORY/contents/screenshots/branch/main?ref=gh-pages" \
+            --jq '[.[] | select(.type == "dir") | .name]' 2>/dev/null || echo '[]')"
+          node packages/web-app/scripts/stage-screenshots.mjs staging "$stamp" --existing "$existing"
+          [ -f staging/index.html ] && echo "staged=true" >> "$GITHUB_OUTPUT" || echo "staged=false" >> "$GITHUB_OUTPUT"
+
+      - name: Publish report to Pages
+        if: steps.stage.outputs.staged == 'true'
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: staging
+          destination_dir: screenshots/branch/main
           keep_files: true

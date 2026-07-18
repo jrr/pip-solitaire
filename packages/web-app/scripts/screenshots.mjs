@@ -1,10 +1,13 @@
 // Render the game at a spread of device resolutions into a self-contained
-// screenshot report — the artifact CI publishes (see .github/workflows/
-// screenshots.yml). It shoots mid-game FreeCell at a handful of phone/tablet
-// sizes in both portrait and landscape, each at the device's *physical* pixel
-// resolution (its real devicePixelRatio), so a change that breaks the board on
-// some screen — or type that's too small to read — is visible at a glance in
-// the PR's artifacts.
+// screenshot report. CI publishes it to GitHub Pages via the deploy workflows: on
+// `main` a stamped, retained history (deploy-pages.yml stages it with
+// scripts/stage-screenshots.mjs and pushes via peaceiris), and on a PR a
+// latest-only preview cleaned up on close (pr-preview.yml deploys this output
+// directly via pr-preview-action). It shoots mid-game FreeCell at a handful of
+// phone/tablet sizes in both portrait and landscape, each at the device's
+// *physical* pixel resolution (its real devicePixelRatio), so a change that breaks
+// the board on some screen — or type that's too small to read — is visible at a
+// glance in the PR's report.
 //
 // How it works, end to end:
 //   1. Serve the already-built web app (packages/web-app/dist) with Vite's own
