@@ -1,27 +1,25 @@
-// Stage a rendered screenshot report (packages/web-app/screenshots) into a
-// checked-out gh-pages working tree, under a timestamped directory, and
-// regenerate the directory listing GitHub Pages doesn't provide on its own. This
-// is the filesystem half of publishing the report to Pages — the workflow that
-// calls it does the git commit/push. Splitting it this way keeps the git plumbing
-// in the workflow and the HTML/copy work here, where it's easy to read and test.
+// Build the payload that publishes the retained `main` screenshot history to
+// GitHub Pages: the freshly rendered report under a stamped directory, plus a
+// regenerated listing page (GitHub Pages has no directory autoindex, so the
+// accumulated snapshots would otherwise be reachable only by guessing URLs).
 //
-// Reports are published under stamped, non-colliding directories so they
-// accumulate as a browsable history rather than overwriting each other:
-//   screenshots/branch/main/<YYYY.MM.DD>_<sha>/   (retained across main deploys)
-//   screenshots/pr/<N>/<YYYY.MM.DD>_<sha>/        (removed when the PR closes)
+// This is only the *filesystem* half — it writes a local staging directory that
+// `peaceiris/actions-gh-pages` then commits to gh-pages with `keep_files: true`,
+// so the action owns all the git/branch mechanics and this script owns none. The
+// PR side doesn't use this at all: there, `rossjrw/pr-preview-action` deploys the
+// report directly (latest-only, auto-removed on close).
 //
 // Usage:
-//   node stage-screenshots.mjs <ghPagesDir> <destSubpath> [--index <listingSubpath>]
+//   node stage-screenshots.mjs <stagingDir> <stamp> [--existing <jsonArray>] [--title <t>]
 //
-//   <ghPagesDir>     path to a checked-out gh-pages working tree
-//   <destSubpath>    directory under it to copy the report into
-//   --index <dir>    also (re)generate <dir>/index.html, a listing of its snapshot
-//                    subdirs (newest first) — this is what keeps the retained
-//                    history browsable, since Pages 404s a directory with no
-//                    index.html.
+//   <stagingDir>   local dir to build (published as-is into screenshots/branch/main)
+//   <stamp>        this snapshot's dir name, e.g. 2026.07.28_abc1234
+//   --existing     JSON array of the stamps already on gh-pages (from a `gh api`
+//                  contents read); merged with <stamp> to build the listing
+//   --title        heading/subtitle for the listing page (default "main")
 //
-// If the report has no PNGs (e.g. an upstream render failed), it exits 0 without
-// touching anything, so a flaky render can never publish an empty report.
+// If the render produced no PNGs (an upstream failure), it exits 0 and writes
+// nothing, so the workflow can detect the empty staging dir and skip publishing.
 
 import fs from "node:fs";
 import path from "node:path";
@@ -30,15 +28,18 @@ import { fileURLToPath } from "node:url";
 const here = path.dirname(fileURLToPath(import.meta.url));
 const srcDir = path.resolve(here, "..", "screenshots");
 
-const positional = process.argv.slice(2).filter((a) => !a.startsWith("--"));
-const [ghPagesDir, destSubpath] = positional;
-const indexFlag = process.argv.indexOf("--index");
-const listingSubpath = indexFlag !== -1 ? process.argv[indexFlag + 1] : null;
+const argv = process.argv.slice(2);
+const positional = argv.filter((a, i) => !a.startsWith("--") && !argv[i - 1]?.startsWith("--"));
+const [stagingDir, stamp] = positional;
+const opt = (name) => {
+  const i = argv.indexOf(`--${name}`);
+  return i !== -1 ? argv[i + 1] : undefined;
+};
+const title = opt("title") ?? "main";
+const existing = JSON.parse(opt("existing") ?? "[]");
 
-if (!ghPagesDir || !destSubpath) {
-  console.error(
-    "usage: stage-screenshots.mjs <ghPagesDir> <destSubpath> [--index <listingSubpath>]",
-  );
+if (!stagingDir || !stamp) {
+  console.error("usage: stage-screenshots.mjs <stagingDir> <stamp> [--existing <json>] [--title <t>]");
   process.exit(1);
 }
 
@@ -50,27 +51,19 @@ if (pngs.length === 0) {
   process.exit(0);
 }
 
-const dest = path.join(ghPagesDir, destSubpath);
-fs.mkdirSync(dest, { recursive: true });
-fs.cpSync(srcDir, dest, { recursive: true });
-console.log(`Staged ${pngs.length} shots + report → ${destSubpath}`);
+// The snapshot itself.
+const snapshotDir = path.join(stagingDir, stamp);
+fs.mkdirSync(snapshotDir, { recursive: true });
+fs.cpSync(srcDir, snapshotDir, { recursive: true });
 
-if (listingSubpath) {
-  const listingDir = path.join(ghPagesDir, listingSubpath);
-  const snapshots = fs
-    .readdirSync(listingDir, { withFileTypes: true })
-    .filter((e) => e.isDirectory())
-    .map((e) => e.name)
-    .sort()
-    .reverse(); // newest first — the `YYYY.MM.DD_sha` stamp sorts chronologically
-  fs.writeFileSync(path.join(listingDir, "index.html"), listingHtml(listingSubpath, snapshots));
-  console.log(`Regenerated ${listingSubpath}/index.html (${snapshots.length} snapshots)`);
-}
+// The listing: this snapshot plus everything already published, newest first.
+// (`keep_files: true` preserves the old snapshot dirs; this page re-lists them.)
+const stamps = [...new Set([stamp, ...existing])].sort().reverse();
+fs.writeFileSync(path.join(stagingDir, "index.html"), listingHtml(title, stamps));
+console.log(`Staged ${pngs.length} shots under ${stamp}; listing has ${stamps.length} snapshot(s).`);
 
-function listingHtml(title, snapshots) {
-  const items =
-    snapshots.map((name) => `      <li><a href="./${name}/">${name}</a></li>`).join("\n") ||
-    "      <li>(none yet)</li>";
+function listingHtml(title, stamps) {
+  const items = stamps.map((name) => `      <li><a href="./${name}/">${name}</a></li>`).join("\n");
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -97,8 +90,8 @@ function listingHtml(title, snapshots) {
 </head>
 <body>
   <main>
-    <h1>Screenshot reports</h1>
-    <p><code>${title}</code> — newest first. Each is mid-game FreeCell across device sizes, portrait and landscape.</p>
+    <h1>Screenshot reports — <code>${title}</code></h1>
+    <p>Mid-game FreeCell across device sizes, portrait and landscape. Newest first.</p>
     <ul>
 ${items}
     </ul>
