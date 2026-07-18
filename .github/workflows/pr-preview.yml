@@ -99,9 +99,14 @@ jobs:
           script: |
             const { owner, repo } = context.repo;
             const n = context.payload.pull_request.number;
-            const url = `https://${owner}.github.io/${repo}/screenshots/pr/pr-${n}/`;
+            const base = `https://${owner}.github.io/${repo}/screenshots`;
+            const prUrl = `${base}/pr/pr-${n}/`;
+            // The `main` history listing is newest-first, so its top entry is the
+            // latest `main` snapshot — link it for side-by-side comparison. The hub
+            // (`${base}/`) browses every branch/PR report.
+            const mainUrl = `${base}/branch/main/`;
             const marker = "<!-- screenshot-report -->";
-            const body = `${marker}\n📸 **Screenshot report:** ${url}\n\nMid-game FreeCell across device sizes (portrait + landscape), refreshed each push.`;
+            const body = `${marker}\n📸 **Screenshot report:** ${prUrl}\n🔍 **Compare with \`main\`:** ${mainUrl} _(newest snapshot first)_\n🗂️ **All reports:** ${base}/\n\nMid-game FreeCell across device sizes (portrait + landscape), refreshed each push.`;
             const comments = await github.paginate(github.rest.issues.listComments, {
               owner, repo, issue_number: n, per_page: 100,
             });
