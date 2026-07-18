@@ -5,9 +5,11 @@
 // value in `Game`, not new code here.
 //
 // The view holds its own presentation assumptions — the piles hang from the top
-// of the stage as a row and grow downward; the loose cards are dealt as a sloppy
-// cluster below them — and applies them to whatever the model describes, be it
-// two piles or four.
+// of the stage and grow downward; the loose cards are dealt as a sloppy cluster
+// below them — and applies them to whatever the model describes, be it two piles
+// or sixteen. The piles are grouped into rows by role (#94/#97): free cells and
+// foundations across the top, cascades below, so a full FreeCell board is
+// playable; a single-role board (every other demo) is just one row, as before.
 //
 // Dragging is transient *view* state (where a finger is right now), so unlike
 // the other scenes this one is built with plain imperative DOM bindings rather
@@ -152,24 +154,56 @@ let make = (game: Game.t): Scene.t => {
     playfield->WebDom.setAttribute("class", "stacking-playfield")
     container->WebDom.appendChild(playfield)->ignore
 
-    // A row of drop zones pinned to the top of the stage. They lay themselves
-    // out with flexbox, so their live rects (read at drop time) reflect wherever
-    // the browser actually placed them — no positions cached up front to go
-    // stale on resize. The row spaces however many zones the game declares.
-    let dropRow = WebDom.createElement("div")
-    dropRow->WebDom.setAttribute("class", "drop-row")
-    playfield->WebDom.appendChild(dropRow)->ignore
+    // The drop zones, laid out in role-grouped rows (#94) so a sixteen-pile
+    // FreeCell board is playable: free cells and foundations across the top,
+    // cascades below. The rows stack in a flex *column* (`.drop-rows`), so the
+    // cascade row is pushed clear of the top row automatically and its fans grow
+    // into the space beneath. A board that carries only one of the two groups —
+    // every existing card-table demo — collapses to a single row, laid out
+    // exactly as before. Each row lays itself out with flexbox, so a zone's live
+    // rect (read at drop time) reflects wherever the browser placed it — nothing
+    // cached up front to go stale on resize.
+    let rows = WebDom.createElement("div")
+    rows->WebDom.setAttribute("class", "drop-rows")
+    playfield->WebDom.appendChild(rows)->ignore
+
+    let makeRow = () => {
+      let row = WebDom.createElement("div")
+      row->WebDom.setAttribute("class", "drop-row")
+      rows->WebDom.appendChild(row)->ignore
+      row
+    }
+
+    // A cascade lands on the bottom row, a free cell or foundation on the top —
+    // but only when the board actually mixes the two groups. With just one group
+    // present, everything shares a single row (`bottomRow` aliases `topRow`).
+    let hasTop = game.piles->Array.some((p: Game.pile) => p.role != Game.Cascade)
+    let hasBottom = game.piles->Array.some((p: Game.pile) => p.role == Game.Cascade)
+    let twoRows = hasTop && hasBottom
+    let topRow = makeRow()
+    let bottomRow = twoRows ? makeRow() : topRow
+    let rowFor = (pile: Game.pile) => twoRows && pile.role == Game.Cascade ? bottomRow : topRow
 
     // One zone per pile in the game, in model order, each carrying its declared
-    // stacking behaviour. The `.drop-row` flexbox (`space-between`) spreads them
-    // across the top of the stage, so two piles hug the edges and four spread
-    // evenly — the view never counts them.
+    // stacking behaviour and dropped into its role's row. The `.drop-row`
+    // flexbox (`space-evenly`) spreads a row's zones across the stage, so the
+    // view never counts them.
     let zones = game.piles->Array.mapWithIndex((pile: Game.pile, index) => {
       let el = WebDom.createElement("div")
       el->WebDom.setAttribute("class", "drop-zone")
-      dropRow->WebDom.appendChild(el)->ignore
+      rowFor(pile)->WebDom.appendChild(el)->ignore
       {el, index, stacking: pile.stacking}
     })
+
+    // The widest row's pile count drives the card scale below: with the piles
+    // split across two rows, cards need only shrink to fit the busier row, not
+    // the whole board. A single-row board's widest row is all its piles.
+    let widestRow = if twoRows {
+      let cascades = game.piles->Array.filter((p: Game.pile) => p.role == Game.Cascade)
+      Math.Int.max(Array.length(cascades), Array.length(game.piles) - Array.length(cascades))
+    } else {
+      Array.length(game.piles)
+    }
 
     // The single source of truth for *where every card rests* (#77/#82): the view
     // holds one immutable `GameState`, seeded from the board's opening deal, and
@@ -185,17 +219,17 @@ let make = (game: Game.t): Scene.t => {
     let nodeFor = (data: Deck.card) => nodes->Array.find(n => GameState.sameCard(n.data, data))
 
     // How much the design footprints are shrunk to fit the stage. Cards fill
-    // `fillFraction × width` split across the piles (`fillFraction · width / n`),
-    // capped at the design size so a wide screen doesn't blow the cards up, and
-    // floored so a crowded, narrow one keeps them legible. Held in a ref because the geometry
-    // (reflow, the deal) reads it, and recomputed from the stage's live width the
-    // moment before the deal — the one point at which the stage is known laid out.
-    let numPiles = Array.length(game.piles)
+    // `fillFraction × width` split across the busiest row (`fillFraction · width
+    // / widestRow`), capped at the design size so a wide screen doesn't blow the
+    // cards up, and floored so a crowded, narrow one keeps them legible. Held in
+    // a ref because the geometry (reflow, the deal) reads it, and recomputed from
+    // the stage's live width the moment before the deal — the one point at which
+    // the stage is known laid out.
     let scale = ref(1.)
     let applyScale = () => {
       let width = boundingRect(playfield).width
-      if width > 0. && numPiles > 0 {
-        let target = fillFraction *. width /. Int.toFloat(numPiles) /. cardW
+      if width > 0. && widestRow > 0 {
+        let target = fillFraction *. width /. Int.toFloat(widestRow) /. cardW
         scale := Math.max(minScale, Math.min(1., target))
       }
       // Publish the factor to the CSS so `.stacking-card`/`.drop-zone` resize in

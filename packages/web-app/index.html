@@ -208,16 +208,28 @@
         min-height: 300px;
       }
 
-      /* The drop zones, pinned to the top of the stage and spread across its
-         full width. `space-evenly` opens equal gaps *everywhere* — before the
-         first zone, between each pair, and after the last — so the outer margin
-         matches the space between columns however many the game declares (see
-         TableScene). Piles grow downward from here. */
-      .drop-row {
+      /* The role-grouped rows of drop zones (#94/#97), pinned to the top of the
+         stage: free cells + foundations across the top, cascades below. Stacked
+         in a flex column so the cascade row is pushed clear of the top row and
+         its fans grow into the space beneath. A single-group board (every
+         card-table demo but FreeCell) has just one row here, laid out exactly as
+         the old single row was. */
+      .drop-rows {
         position: absolute;
         left: 0;
         right: 0;
         top: 16px;
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+      }
+
+      /* One row of zones, spread across the stage's full width. `space-evenly`
+         opens equal gaps *everywhere* — before the first zone, between each pair,
+         and after the last — so the outer margin matches the space between
+         columns however many the row holds (see TableScene). Piles grow downward
+         from here. */
+      .drop-row {
         display: flex;
         justify-content: space-evenly;
       }

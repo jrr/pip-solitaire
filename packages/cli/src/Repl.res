@@ -48,6 +48,7 @@ let parseTarget = (token: string): option<Reducer.target> =>
 let describeError = (err: Reducer.moveError, card: card): string =>
   switch err {
   | Reducer.Rejected => `Rejected: ${CardText.format(card)} can't stack there.`
+  | Reducer.PileFull => `Rejected: that pile is full.`
   | Reducer.LooseNotAllowed => `Rejected: this game keeps cards in piles — no loose drops.`
   | Reducer.NoSuchPile => `Rejected: no such pile.`
   | Reducer.CardNotFound => `Rejected: ${CardText.format(card)} isn't in play.`

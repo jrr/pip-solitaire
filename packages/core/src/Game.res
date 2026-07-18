@@ -339,8 +339,81 @@ let shuffledDeal = {
   ),
 }
 
+// The assembled FreeCell board (#97), where the four enablers converge: pile
+// capacity (#93), roles (#94), the cascade rule (#95) and the seeded deck (#96)
+// make a real FreeCell just a `Game.t` value — no new reducer code. The standard
+// board is sixteen piles:
+//   - **8 cascades** — `Cascade`, `Rules.cascade` (build *down* in alternating
+//     colour), unbounded, `Fanned`; the columns the deck is dealt into.
+//   - **4 free cells** — `FreeCell`, `Rules.Free`, `capacity: Some(1)`, `Squared`;
+//     a single-card holding slot apiece (the #93 cells, verbatim).
+//   - **4 foundations** — `Foundation`, `Rules.foundation` (build *up* by suit
+//     from the Ace), `Squared`; where a completed suit is assembled.
+// The opening deal is the classic FreeCell layout: the whole 52-card deck,
+// shuffled from `seed`, dealt round-robin across the eight cascades
+// (7/7/7/7/6/6/6/6) — reusing #96's `Cards.deal` — with the free cells and
+// foundations opening empty. It's `free: false`: a card only ever rests in a
+// pile, so a drop that lands nowhere bounces back (there's no loose table in
+// FreeCell). Everything else is the existing machinery — `Reducer.reduce` /
+// `canDrop` handle single-card moves with no changes, each pile enforcing its own
+// rule and capacity. Supermoves, auto-to-foundation and win detection are the
+// next wave, riding on this board.
+let freecellSeed = 1 // deal #1; deal-number entry is a later step
+
+// Build a FreeCell board for deal `seed`. The cascades hold the dealt deck; the
+// free cells and foundations open empty.
+let freecellDeal = (~seed: int): t => {
+  // The 52 shuffled and dealt round-robin across the eight cascades — the
+  // standard opening. Each column becomes an unbounded, alternating-colour
+  // *descending* cascade (`Rules.cascade`).
+  let cascades =
+    Cards.shuffle(~seed)
+    ->Cards.deal(~piles=8, _)
+    ->Array.map(column => {
+      role: Cascade,
+      stacking: Fanned,
+      rule: Rules.cascade,
+      capacity: None,
+      cards: column,
+    })
+  // Four capacity-1 `Free` cells and four same-suit foundations, all opening
+  // empty. Built by mapping over an index array so each pile gets its own fresh
+  // `cards` array rather than sharing one.
+  let cells = [0, 1, 2, 3]->Array.map(_ => {
+    role: FreeCell,
+    stacking: Squared,
+    rule: Rules.Free,
+    capacity: Some(1),
+    cards: [],
+  })
+  let foundations = [0, 1, 2, 3]->Array.map(_ => {
+    role: Foundation,
+    stacking: Squared,
+    rule: Rules.foundation,
+    capacity: None,
+    cards: [],
+  })
+  {
+    id: "freecell",
+    name: "FreeCell",
+    // Free cells and foundations first (the view groups them across the top by
+    // role, #94), the eight dealt cascades below.
+    piles: cells->Array.concat(foundations)->Array.concat(cascades),
+    free: false, // cards only ever rest in piles — no loose table in FreeCell
+    loose: [],
+    caption: Some(
+      `FreeCell, dealt from seed ${Int.toString(
+          seed,
+        )}: build the cascades down in alternating colour, park single cards in the four free cells, and build the foundations up by suit from the Ace.`,
+    ),
+  }
+}
+
+// The default board: deal #1.
+let freecell = freecellDeal(~seed=freecellSeed)
+
 // Every supported game, in picker order.
-let all = [stacking, foundations, fourFans, freeCells, mixedRoles, cascade, shuffledDeal]
+let all = [stacking, foundations, fourFans, freeCells, mixedRoles, cascade, shuffledDeal, freecell]
 
 // --- Addressing piles by role (#94) ------------------------------------------
 // Later steps target a *group* of piles by role — the deal fills only the

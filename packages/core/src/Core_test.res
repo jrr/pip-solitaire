@@ -112,6 +112,7 @@ describe("Game", () => {
       "mixed-roles",
       "cascade",
       "shuffled-deal",
+      "freecell",
     ])
     expect(Game.all->Array.every(g => g.name != ""))->toBe(true)
   })
@@ -208,6 +209,236 @@ describe("Game", () => {
       6,
       6,
     ])
+  })
+
+  // The assembled FreeCell board (#97): the four enablers (#93 capacity, #94
+  // roles, #95 the cascade rule, #96 the seeded deck) converge into one 16-pile
+  // `Game.t`, dealt from a seed and playable through the existing reducer.
+  describe("freecell", () => {
+    test(
+      "is sixteen piles: 4 free cells, 4 foundations, then 8 cascades",
+      () => {
+        let board = Game.freecell
+        expect(Array.length(board.piles))->toBe(16)
+        // The roles, in board order: four cells and four foundations across the
+        // top, eight cascades below.
+        expect(board.piles->Array.map(p => p.role))->toEqual([
+          Game.FreeCell,
+          Game.FreeCell,
+          Game.FreeCell,
+          Game.FreeCell,
+          Game.Foundation,
+          Game.Foundation,
+          Game.Foundation,
+          Game.Foundation,
+          Game.Cascade,
+          Game.Cascade,
+          Game.Cascade,
+          Game.Cascade,
+          Game.Cascade,
+          Game.Cascade,
+          Game.Cascade,
+          Game.Cascade,
+        ])
+        // `pileIndices` addresses each group by role (#94).
+        expect(Game.pileIndices(board, Game.FreeCell))->toEqual([0, 1, 2, 3])
+        expect(Game.pileIndices(board, Game.Foundation))->toEqual([4, 5, 6, 7])
+        expect(Game.pileIndices(board, Game.Cascade))->toEqual([8, 9, 10, 11, 12, 13, 14, 15])
+      },
+    )
+
+    test(
+      "each role carries its FreeCell rule and capacity",
+      () => {
+        let board = Game.freecell
+        // Free cells: capacity-1 `Free` slots.
+        Game.pilesOf(board, Game.FreeCell)->Array.forEach(
+          p => {
+            expect(p.rule)->toEqual(Rules.Free)
+            expect(p.capacity)->toEqual(Some(1))
+          },
+        )
+        // Foundations: same-suit ascending, unbounded.
+        Game.pilesOf(board, Game.Foundation)->Array.forEach(
+          p => {
+            expect(p.rule)->toEqual(Rules.foundation)
+            expect(p.capacity)->toEqual(None)
+          },
+        )
+        // Cascades: build down in alternating colour, unbounded, fanned.
+        Game.pilesOf(board, Game.Cascade)->Array.forEach(
+          p => {
+            expect(p.rule)->toEqual(Rules.cascade)
+            expect(p.capacity)->toEqual(None)
+            expect(p.stacking)->toEqual(Game.Fanned)
+          },
+        )
+        // Cards only ever rest in piles — no loose table.
+        expect(board.free)->toBe(false)
+      },
+    )
+
+    test(
+      "deals the whole 52-card deck across the cascades, 7/7/7/7/6/6/6/6, cells and foundations empty",
+      () => {
+        let board = Game.freecell
+        let cascades = Game.pilesOf(board, Game.Cascade)
+        // The classic FreeCell split: the first four columns hold seven, the rest
+        // six.
+        expect(cascades->Array.map(p => Array.length(p.cards)))->toEqual([7, 7, 7, 7, 6, 6, 6, 6])
+        // The pooled cascade cards are the full 52-card deck — every card exactly
+        // once, none dropped or duplicated.
+        let dealt = cascades->Array.flatMap(p => p.cards)
+        expect(Array.length(dealt))->toBe(52)
+        expect(
+          Cards.all->Array.every(card => dealt->Array.some(c => GameState.sameCard(c, card))),
+        )->toBe(true)
+        // The free cells and foundations open empty.
+        expect(
+          Game.pilesOf(board, Game.FreeCell)->Array.every(p => Array.length(p.cards) == 0),
+        )->toBe(true)
+        expect(
+          Game.pilesOf(board, Game.Foundation)->Array.every(p => Array.length(p.cards) == 0),
+        )->toBe(true)
+        expect(board.loose)->toEqual([])
+      },
+    )
+
+    test(
+      "the deal is reproducible: the same seed lays out the same cascades",
+      () => {
+        // The default board is deal #1, and rebuilding that seed reproduces it
+        // exactly (the basis for shareable deal numbers, #96).
+        let byDefault = Game.freecell.piles->Array.map(p => p.cards)
+        let rebuilt = Game.freecellDeal(~seed=1).piles->Array.map(p => p.cards)
+        expect(rebuilt)->toEqual(byDefault)
+        // A different seed deals a different board.
+        let other = Game.freecellDeal(~seed=2)
+        let differs =
+          Game.pileIndices(other, Game.Cascade)->Array.some(
+            i =>
+              GameState.cardsInPile(GameState.initial(other), i) !=
+                GameState.cardsInPile(GameState.initial(Game.freecell), i),
+          )
+        expect(differs)->toBe(true)
+      },
+    )
+
+    test(
+      "plays a scripted sequence of legal and illegal single-card moves through the reducer",
+      () => {
+        let board = Game.freecell
+        let cell = Game.pileIndices(board, Game.FreeCell)->Array.getUnsafe(0)
+        let foundation = Game.pileIndices(board, Game.Foundation)->Array.getUnsafe(0)
+        let state = GameState.initial(board)
+
+        // Park a card in an empty free cell — a `Free`, capacity-1 slot takes any
+        // single card. (The reducer reaches a card wherever it rests, so the
+        // script is robust to the shuffle.)
+        let afterPark = switch Reducer.reduce(
+          ~game=board,
+          state,
+          Move({card: {suit: Spades, rank: King}, to: ToPile(cell)}),
+        ) {
+        | Ok(s) =>
+          expect(GameState.topOf(s, cell))->toEqual(Some({suit: Spades, rank: King}))
+          s
+        | Error(_) =>
+          expect(true)->toBe(false) // parking in an empty free cell should succeed
+          state
+        }
+
+        // A second card onto the full cell bounces with `PileFull` (#93).
+        expect(
+          Reducer.reduce(
+            ~game=board,
+            afterPark,
+            Move({card: {suit: Hearts, rank: King}, to: ToPile(cell)}),
+          ),
+        )->toEqual(Error(Reducer.PileFull))
+
+        // Only an Ace founds a foundation: a non-Ace is `Rejected` (#95/#76).
+        expect(
+          Reducer.reduce(
+            ~game=board,
+            afterPark,
+            Move({card: {suit: Hearts, rank: Two}, to: ToPile(foundation)}),
+          ),
+        )->toEqual(Error(Reducer.Rejected))
+
+        // The Ace of Spades founds the foundation, then the Two of Spades builds
+        // up by suit…
+        let afterAce = switch Reducer.reduce(
+          ~game=board,
+          afterPark,
+          Move({card: {suit: Spades, rank: Ace}, to: ToPile(foundation)}),
+        ) {
+        | Ok(s) => s
+        | Error(_) =>
+          expect(true)->toBe(false) // an Ace should found an empty foundation
+          afterPark
+        }
+        let afterTwo = switch Reducer.reduce(
+          ~game=board,
+          afterAce,
+          Move({card: {suit: Spades, rank: Two}, to: ToPile(foundation)}),
+        ) {
+        | Ok(s) =>
+          expect(GameState.topOf(s, foundation))->toEqual(Some({suit: Spades, rank: Two}))
+          s
+        | Error(_) =>
+          expect(true)->toBe(false) // the same-suit next rank should build the foundation up
+          afterAce
+        }
+        // …but an off-suit card of the right rank is refused.
+        expect(
+          Reducer.reduce(
+            ~game=board,
+            afterTwo,
+            Move({card: {suit: Hearts, rank: Three}, to: ToPile(foundation)}),
+          ),
+        )->toEqual(Error(Reducer.Rejected))
+
+        // A loose drop is refused outright — FreeCell isn't `free`.
+        expect(
+          Reducer.reduce(
+            ~game=board,
+            afterPark,
+            Move({card: {suit: Clubs, rank: Five}, to: ToTable}),
+          ),
+        )->toEqual(Error(Reducer.LooseNotAllowed))
+
+        // The cascade rule builds *down* in alternating colour: derive a legal
+        // follow-up (and an illegal same-colour one) from a cascade's own top
+        // card, so the check holds for whatever the shuffle dealt.
+        let cascade = Game.pileIndices(board, Game.Cascade)->Array.getUnsafe(0)
+        switch GameState.topOf(state, cascade) {
+        | Some(top) if Rules.rankValue(top.rank) > 1 =>
+          // One rank lower, opposite colour — a legal descending step.
+          let lowerRank = Cards.ranks->Array.getUnsafe(Rules.rankValue(top.rank) - 2)
+          let oppositeSuit = Rules.color(top.suit) == Rules.Red ? Spades : Hearts
+          expect(
+            Reducer.canDrop(
+              ~game=board,
+              state,
+              {suit: oppositeSuit, rank: lowerRank},
+              ~onto=cascade,
+            ),
+          )->toBe(true)
+          // The same colour, same rank — rejected (wrong colour).
+          let sameColourSuit = Rules.color(top.suit) == Rules.Red ? Hearts : Spades
+          expect(
+            Reducer.canDrop(
+              ~game=board,
+              state,
+              {suit: sameColourSuit, rank: lowerRank},
+              ~onto=cascade,
+            ),
+          )->toBe(false)
+        | _ => () // an Ace-topped (or empty) cascade has no lower step to test
+        }
+      },
+    )
   })
 
   // Pile roles (#94): each pile declares its FreeCell role, and `Game` addresses
