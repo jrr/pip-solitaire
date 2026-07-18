@@ -92,3 +92,24 @@ jobs:
           publish_dir: staging
           destination_dir: screenshots/branch/main
           keep_files: true
+
+      # The `screenshots/` hub is the browsable entry point that lists the per-branch
+      # and per-PR reports below it (GitHub Pages has no directory autoindex, so
+      # `/screenshots/` would otherwise 404). It's static — it lists those reports
+      # *live* via the GitHub contents API at view time — so it never needs
+      # per-PR regeneration; republishing it on each `main` deploy just ships any
+      # edits to the page itself. Independent of the render above (`if: !cancelled`),
+      # so the hub still updates even if a screenshot render hiccups; `keep_files`
+      # preserves the `branch/` and `pr/` report subtrees it links to.
+      - name: Stage screenshots hub
+        if: ${{ !cancelled() }}
+        run: node packages/web-app/scripts/landing-page.mjs staging-hub
+
+      - name: Publish screenshots hub
+        if: ${{ !cancelled() }}
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: staging-hub
+          destination_dir: screenshots
+          keep_files: true
