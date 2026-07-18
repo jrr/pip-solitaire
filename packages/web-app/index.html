@@ -2,6 +2,10 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
+    <!-- No `maximum-scale`/`user-scalable=no` here on purpose: pinch-to-zoom
+         stays available for accessibility (and because it's wanted). Double-tap
+         zoom and the tap delay are handled with `touch-action` in CSS instead,
+         which disables the double-tap gesture without also killing pinch. -->
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <title>Sleight</title>
 
@@ -42,6 +46,20 @@
       html,
       body {
         margin: 0;
+        /* PWA gesture hygiene (iOS especially):
+           - `touch-action: manipulation` drops the legacy 300ms tap delay and,
+             crucially, disables double-tap-to-zoom across the whole app. iOS
+             intersects touch-action down the ancestor chain, so setting it here
+             covers every descendant. `manipulation` still permits pinch-zoom, so
+             the page can be zoomed for accessibility even though double-tap can't.
+           - `overscroll-behavior: none` kills the rubber-band bounce / scroll
+             chaining, the other way a drag ends up "scrolling the page". Normal
+             in-bounds scrolling (e.g. the tall card gallery) is unaffected.
+           - the transparent tap-highlight removes iOS's grey flash on tapped
+             controls, which reads as a bug in an installed app. */
+        touch-action: manipulation;
+        overscroll-behavior: none;
+        -webkit-tap-highlight-color: transparent;
       }
 
       body {
@@ -233,6 +251,21 @@
         flex: 1;
         width: 100%;
         min-height: 300px;
+        /* Gameplay-area gesture lock. The cards already carry these; hoisting
+           them to the whole stage covers the gaps *between* cards — the drop
+           zones, the captions and the bare background — so a drag that starts
+           (or strays) off a card can't scroll the page or start a text
+           selection either. `touch-action: none` makes the whole stage a
+           drag surface rather than a scroll surface; `user-select: none`
+           stops the stray selections seen mid-drag; `-webkit-touch-callout:
+           none` suppresses iOS's long-press "Copy / Save Image" menu on the
+           SVG cards. This is scoped to the playfield on purpose: the rest of
+           the UI (version badge, taglines) stays selectable, so you can still
+           copy the build version. */
+        touch-action: none;
+        -webkit-user-select: none;
+        user-select: none;
+        -webkit-touch-callout: none;
       }
 
       /* The role-grouped rows of drop zones (#94/#97), pinned to the top of the
@@ -351,6 +384,11 @@
         touch-action: none;
         -webkit-user-select: none;
         user-select: none;
+        /* Suppress the browser's own drag-and-drop of the card <svg> (the
+           translucent "ghost" image and its callout), which otherwise fights
+           the pointer-driven drag on desktop and long-press on iOS. */
+        -webkit-user-drag: none;
+        -webkit-touch-callout: none;
         cursor: grab;
         transform: translateZ(0);
         transition: left 0.18s ease, top 0.18s ease;
