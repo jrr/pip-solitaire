@@ -2,6 +2,12 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
+    <!-- Deliberately no `maximum-scale=1` / `user-scalable=no`: pinch-to-zoom is
+         kept, both for accessibility and because it's wanted (#113). Double-tap
+         zoom is instead disabled app-wide via `touch-action: manipulation` on
+         `html, body` (below), which suppresses double-tap-to-zoom while still
+         permitting pinch. Flipping pinch off later would be a one-line change
+         here. -->
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <title>Sleight</title>
 
@@ -42,6 +48,18 @@
       html,
       body {
         margin: 0;
+        /* Native-app touch behaviour (#113). `manipulation` kills double-tap-to-
+           zoom (and the legacy 300ms tap delay) app-wide — iOS intersects
+           `touch-action` down the ancestor chain, so a root value covers every
+           descendant — while still permitting pinch-zoom. `overscroll-behavior:
+           none` stops the rubber-band bounce / scroll-chaining that reads as
+           "the drag scrolled the page" (in-bounds scrolling, e.g. the tall card
+           gallery, is unaffected; the tradeoff is Android-in-a-tab pull-to-
+           refresh, acceptable for a standalone-first app — see #112). The
+           transparent tap highlight removes iOS's grey tap flash on controls. */
+        touch-action: manipulation;
+        overscroll-behavior: none;
+        -webkit-tap-highlight-color: transparent;
       }
 
       body {
@@ -321,9 +339,14 @@
       /* Card-stacking tech demo (grown out of the drag-and-drop spike, issue
          #21): a stage holding a few pointer-draggable cards and a row of drop
          zones they snap into and pile up in. `position: relative` makes the
-         stage the origin for the cards' absolute left/top; `touch-action: none`
-         on the cards keeps a drag from also scrolling or firing a browser
-         gesture on touch.
+         stage the origin for the cards' absolute left/top. The gesture locks
+         cover the *whole* stage, not just the cards (#113): `touch-action: none`
+         so a drag that starts or strays onto the bare background, a drop zone or
+         a caption still moves cards without scrolling the page or firing a
+         browser gesture; `user-select: none` so those same strays can't select
+         text mid-drag (scoped here on purpose — the version badge and taglines
+         stay selectable); `-webkit-touch-callout: none` to suppress iOS's
+         long-press "Copy / Save Image" callout on the SVG cards.
 
          No box of its own — it grows to fill the scene band (`flex: 1`, full
          width) rather than sitting in a fixed, bordered rectangle, so the cards
@@ -334,6 +357,10 @@
         flex: 1;
         width: 100%;
         min-height: 300px;
+        touch-action: none;
+        -webkit-user-select: none;
+        user-select: none;
+        -webkit-touch-callout: none;
       }
 
       /* The role-grouped rows of drop zones (#94/#97), pinned to the top of the
@@ -449,9 +476,13 @@
         top: 0;
         left: 0;
         width: var(--card-w, 80px);
-        touch-action: none;
-        -webkit-user-select: none;
-        user-select: none;
+        /* The drag/select locks now live on `.stacking-playfield` (#113), which
+           covers the whole stage — cards inherit `user-select: none` and are
+           already under the stage's `touch-action: none`. `-webkit-user-drag`
+           still belongs here: it suppresses the browser's native drag-image
+           "ghost", which fought the pointer drag on desktop and the long-press
+           on iOS. */
+        -webkit-user-drag: none;
         cursor: grab;
         transform: translateZ(0);
         transition: left 0.18s ease, top 0.18s ease;
