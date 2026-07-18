@@ -90,8 +90,26 @@ let update = (msg, model) =>
 // none, and the named scene is forced open below. That's the whole entry point the
 // screenshot report drives (`?scene=freecell&state=midgame`).
 let url = AppUrl.parse()
-let gameScene = game =>
-  TableScene.make(~initial=?url.state->Option.flatMap(name => Scenario.forName(game, name)), game)
+
+// A fresh seed for each New Game (#108). The seed is the future "deal number"
+// (#98): random for now, so every re-deal lays out a different FreeCell board;
+// a deal-number entry point can later supply a chosen seed to this same
+// `freecellDeal`. `Math.random` is fine here — this is the impure view layer,
+// not `core`'s deterministic deal path.
+let randomSeed = () => (Math.random() *. 1_000_000.)->Float.toInt
+
+// Only FreeCell is re-dealable: it's built from a seeded shuffle, so a new seed
+// gives a genuinely new board. The fixed-layout demos have no seed to vary, so
+// they get no New Game control.
+let gameScene = (game: Game.t) => {
+  let newDeal =
+    game.id == Game.freecell.id ? Some(() => Game.freecellDeal(~seed=randomSeed())) : None
+  TableScene.make(
+    ~initial=?url.state->Option.flatMap(name => Scenario.forName(game, name)),
+    ~newDeal?,
+    game,
+  )
+}
 let switcher = SceneSwitcher.render(
   ~forced=?url.scene,
   Array.concat(
