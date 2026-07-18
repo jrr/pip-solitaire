@@ -71,6 +71,16 @@ description = "Render device-resolution screenshots of the game into a report"
 depends = ["bundle"]
 run = "node packages/web-app/scripts/screenshots.mjs"
 
+# Drive the built web app through the win flow (issue #121): load the near-won
+# FreeCell position (`?state=almost-won`), play the single winning move, and assert
+# the win overlay appears and New Game tears it down. A manual end-to-end check of
+# the browser win behaviour the unit tests can't cover; uses the same headless
+# Chromium as `screenshots` and so `depends = ["bundle"]` to shoot the real site.
+[tasks.verify-win]
+description = "Verify the web win overlay end-to-end in a headless browser"
+depends = ["bundle"]
+run = "node packages/web-app/scripts/verify-win.mjs"
+
 # Install the headless Chromium that `screenshots` drives. Split out from the task
 # itself so a machine that already has a browser (this repo's dev containers) skips
 # the download; CI runs this once before `screenshots`. `--with-deps` also pulls the

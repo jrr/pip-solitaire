@@ -80,9 +80,99 @@ describe("Scenario", () => {
     )
   })
 
+  describe("freecell almost-won", () => {
+    let game = Game.freecell
+    let state: GameState.t = Scenario.forName(game, "almost-won")->Option.getOrThrow
+
+    test(
+      "holds a full 52-card deck, every card exactly once",
+      () => {
+        let all = state.piles->Array.flatMap(cards => cards)
+        expect(Array.length(all))->toBe(52)
+        expect(
+          Cards.all->Array.every(card => all->Array.some(c => GameState.sameCard(c, card))),
+        )->toBe(true)
+        expect(
+          Cards.all->Array.every(
+            card => all->Array.filter(c => GameState.sameCard(c, card))->Array.length == 1,
+          ),
+        )->toBe(true)
+      },
+    )
+
+    test(
+      "is one legal move short of a win: three suits done, one Queen-high, its King in a cell",
+      () => {
+        let foundations =
+          Game.pileIndices(game, Game.Foundation)->Array.map(i => state.piles->Array.getUnsafe(i))
+        // Three foundations are complete Ace→King runs; the fourth stops at the Queen.
+        let complete = foundations->Array.filter(Rules.isCompleteRun)
+        expect(Array.length(complete))->toBe(3)
+        // Exactly one card sits in the free cells — the pending King — and it's a King.
+        let cellCards =
+          Game.pileIndices(game, Game.FreeCell)
+          ->Array.map(i => state.piles->Array.getUnsafe(i))
+          ->Array.flat
+        expect(Array.length(cellCards))->toBe(1)
+        expect((cellCards->Array.getUnsafe(0)).rank)->toEqual(King)
+        // Not yet a win — the last foundation still wants its King.
+        expect(GameState.hasWon(game, state))->toBe(false)
+      },
+    )
+  })
+
   test("an unknown scenario, or one that doesn't fit the board, is None", () => {
     expect(Scenario.forName(Game.freecell, "no-such-scenario"))->toEqual(None)
     // "midgame" is a FreeCell position; it doesn't apply to the stacking demo.
     expect(Scenario.forName(Game.stacking, "midgame"))->toEqual(None)
+    // "almost-won" is likewise a FreeCell position only.
+    expect(Scenario.forName(Game.stacking, "almost-won"))->toEqual(None)
+  })
+})
+
+// Win detection (#121): every foundation complete is a win. Exercised through the
+// scenarios above so the states are real positions, not hand-built shapes.
+describe("hasWon", () => {
+  let game = Game.freecell
+
+  test("the opening deal is not won", () => {
+    expect(GameState.hasWon(game, GameState.initial(game)))->toBe(false)
+  })
+
+  test("a mid-game position is not won", () => {
+    let state = Scenario.forName(game, "midgame")->Option.getOrThrow
+    expect(GameState.hasWon(game, state))->toBe(false)
+  })
+
+  test("completing the final foundation wins the game", () => {
+    // From the near-won position, move the one pending King onto its (same-suit,
+    // Queen-topped) foundation: that completes the fourth suit, so `hasWon` flips.
+    let state = Scenario.forName(game, "almost-won")->Option.getOrThrow
+    let cell =
+      Game.pileIndices(game, Game.FreeCell)
+      ->Array.find(i => Array.length(GameState.cardsInPile(state, i)) > 0)
+      ->Option.getOrThrow
+    let king = GameState.cardsInPile(state, cell)->Array.getUnsafe(0)
+    let foundation =
+      Game.pileIndices(game, Game.Foundation)
+      ->Array.find(
+        i =>
+          switch GameState.topOf(state, i) {
+          | Some(top) => top.suit == king.suit
+          | None => false
+          },
+      )
+      ->Option.getOrThrow
+    let won = switch Reducer.reduce(~game, state, Move({card: king, to: ToPile(foundation)})) {
+    | Ok(next) => next
+    | Error(_) => state
+    }
+    expect(GameState.hasWon(game, won))->toBe(true)
+  })
+
+  test("a board with no foundations is never won", () => {
+    // The stacking demo has no foundation piles, so completing its piles can't win —
+    // guarding against a vacuous `every`-over-nothing win.
+    expect(GameState.hasWon(Game.stacking, GameState.initial(Game.stacking)))->toBe(false)
   })
 })

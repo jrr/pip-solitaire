@@ -184,7 +184,7 @@ let make = (
     // `state`, `topZ`, `scale`). `~initial` forces a starting `GameState` (the
     // `?state=` scenario) and applies only to the opening mount; a re-deal always
     // opens from its game's own fresh deal.
-    let buildBoard = (~initial: option<GameState.t>=?, game: Game.t) => {
+    let rec buildBoard = (~initial: option<GameState.t>=?, game: Game.t) => {
       WebDom.clear(boardHost)
       // The stage everything is positioned within; `position: relative` (in CSS)
       // makes it the origin for the cards' absolute left/top.
@@ -378,6 +378,43 @@ let make = (
       // it joined) without the view tracking which those were.
       let reflowAll = () => zones->Array.forEach(reflow)
 
+      // The win overlay (#121): a dimmed panel over the board announcing the win,
+      // with a New Game button to play on. Shown when a move completes every
+      // foundation (`GameState.hasWon`); the button re-deals a fresh FreeCell
+      // (`newDeal`) or, for a fixed-layout board, replays the same deal — either way
+      // `buildBoard` clears `boardHost` first, so the overlay is torn down with the
+      // rest of the board and can't linger. Only one is ever raised at a time.
+      let winShown = ref(false)
+      let showWin = () =>
+        if !winShown.contents {
+          winShown := true
+          let overlay = WebDom.createElement("div")
+          overlay->WebDom.setAttribute("class", "win-overlay")
+
+          let panel = WebDom.createElement("div")
+          panel->WebDom.setAttribute("class", "win-panel")
+
+          let title = WebDom.createElement("p")
+          title->WebDom.setAttribute("class", "win-panel__title")
+          title->WebDom.setTextContent("You win!")
+
+          let button = WebDom.createElement("button")
+          button->WebDom.setAttribute("type", "button")
+          button->WebDom.setAttribute("class", "win-panel__button")
+          button->WebDom.setTextContent("New Game")
+          button->WebDom.addEventListener("click", () =>
+            switch newDeal {
+            | Some(freshDeal) => buildBoard(freshDeal())
+            | None => buildBoard(game)
+            }
+          )
+
+          panel->WebDom.appendChild(title)->ignore
+          panel->WebDom.appendChild(button)->ignore
+          overlay->WebDom.appendChild(panel)->ignore
+          boardHost->WebDom.appendChild(overlay)->ignore
+        }
+
       // Build one draggable card and wire its pointer loop. It starts at 0,0 and is
       // positioned by the initial deal (below); returning `self` lets the caller
       // collect the free cards and lay them out together.
@@ -503,6 +540,12 @@ let make = (
             | Ok(next) =>
               state := next
               reflowAll()
+
+              // A move that completes every foundation ends the game (#121): raise
+              // the win overlay following the accepted `reduce`.
+              if GameState.hasWon(game, state.contents) {
+                showWin()
+              }
             // Illegal move: bounce the card back where it came from. A card that
             // rests in a pile returns to its slot when that pile reflows; a loose
             // card (a rejected drop in a `free` game) returns to where the drag began.

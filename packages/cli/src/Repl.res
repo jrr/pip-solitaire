@@ -93,7 +93,13 @@ let move = (s: session, cardTok: string, targetTok: string): (option<session>, s
     switch Reducer.reduce(~game=s.game, s.state, Move({card, to: target})) {
     | Ok(next) =>
       let s' = {...s, state: next}
-      (Some(s'), renderBoard(s'))
+      let board = renderBoard(s')
+      // A move that completes every foundation ends the game (#121): print the win
+      // line beneath the board that shows the final card in place.
+      let text = GameState.hasWon(s'.game, s'.state)
+        ? `${board}\n\n🎉 You win! Every foundation is complete. \`deal\` to play again.`
+        : board
+      (Some(s'), text)
     | Error(err) => (Some(s), describeError(err, card))
     }
   }

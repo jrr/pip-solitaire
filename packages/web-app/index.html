@@ -367,11 +367,70 @@
          the board still stretches exactly as when the playfield was a direct child
          of the container. */
       .table-board {
+        position: relative;
         flex: 1;
         width: 100%;
         display: flex;
         flex-direction: column;
         align-items: stretch;
+      }
+
+      /* The win overlay (issue #121): shown over the board when every foundation
+         is complete. A dimmed scrim covering the whole board (`.table-board` is
+         the positioning context) with a centred panel announcing the win and a
+         New Game button to play on. Built imperatively in TableScene.res and torn
+         down with the board on the next deal. */
+      .win-overlay {
+        position: absolute;
+        inset: 0;
+        z-index: 1000;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: rgba(11, 18, 32, 0.7);
+        animation: win-overlay-in 0.2s ease-out;
+      }
+
+      @keyframes win-overlay-in {
+        from {
+          opacity: 0;
+        }
+        to {
+          opacity: 1;
+        }
+      }
+
+      .win-panel {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 16px;
+        padding: 28px 36px;
+        background: #0f172a;
+        border: 2px solid #eab308;
+        border-radius: 14px;
+        box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+        text-align: center;
+      }
+
+      .win-panel__title {
+        margin: 0;
+        font: 600 26px "Libre Franklin", sans-serif;
+        color: #eab308;
+      }
+
+      .win-panel__button {
+        padding: 10px 22px;
+        font: 600 16px "Libre Franklin", sans-serif;
+        color: #f8fafc;
+        background: #166534;
+        border: none;
+        border-radius: 8px;
+        cursor: pointer;
+      }
+
+      .win-panel__button:hover {
+        background: #15803d;
       }
 
       /* Card-stacking tech demo (grown out of the drag-and-drop spike, issue

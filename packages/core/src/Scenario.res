@@ -71,11 +71,59 @@ let freecellMidgame = (game: Game.t, ~seed: int): GameState.t => {
   {GameState.piles, loose: []}
 }
 
+// A **near-won FreeCell**: three suits fully assembled on their foundations and
+// the fourth built to the Queen, with that suit's King parked alone in a free
+// cell — a single legal move (the King onto its foundation) short of a win (#121).
+// Like `freecellMidgame`, it's built straight from the deck so the 52-card
+// invariant holds by construction; the one pending King makes the *winning* move —
+// and the win state it flips on (the overlay, the CLI line) — easy to exercise,
+// including in the browser via `?state=almost-won`.
+//
+// Distributed by *role* over whatever board it's handed, so it lines up with
+// however that board orders its piles (FreeCell puts cells and foundations before
+// the cascades — see `Game.freecellDeal`).
+let freecellAlmostWon = (game: Game.t): GameState.t => {
+  // Each suit's foundation as an ascending Ace→King run — except the last suit,
+  // held one short at the Queen so its King is the winning move still to play.
+  // Suit order follows `Cards.suits`.
+  let lastSuit = Array.length(Cards.suits) - 1
+  let foundationPiles = Cards.suits->Array.mapWithIndex((suit, i) => {
+    let height = i == lastSuit ? Array.length(Cards.ranks) - 1 : Array.length(Cards.ranks)
+    Cards.ranks->Array.slice(~start=0, ~end=height)->Array.map(rank => {suit, rank})
+  })
+  // The one card still to play: the last suit's King, parked alone in a free cell,
+  // ready to drop onto its Queen-topped foundation.
+  let pendingKing = {
+    suit: Cards.suits->Array.getUnsafe(lastSuit),
+    rank: Cards.ranks->Array.getUnsafe(Array.length(Cards.ranks) - 1),
+  }
+
+  // Walk the board's piles in order, filling each foundation from its run and
+  // dropping the pending King into the first free cell; everything else is empty.
+  let foundationIdx = ref(0)
+  let kingPlaced = ref(false)
+  let piles = game.piles->Array.map((pile: Game.pile) =>
+    switch pile.role {
+    | Game.Foundation =>
+      let run = foundationPiles->Array.get(foundationIdx.contents)->Option.getOr([])
+      foundationIdx := foundationIdx.contents + 1
+      run
+    | Game.FreeCell if !kingPlaced.contents =>
+      kingPlaced := true
+      [pendingKing]
+    | _ => []
+    }
+  )
+  {GameState.piles, loose: []}
+}
+
 // Resolve a scenario *name* to an initial state for `game`, or `None` when the
 // name doesn't apply to this board. This is the whole vocabulary the URL exposes:
-// today just FreeCell's "midgame"; new scenarios slot in as new arms.
+// FreeCell's "midgame" and its near-won "almost-won"; new scenarios slot in as
+// new arms.
 let forName = (game: Game.t, name: string): option<GameState.t> =>
   switch (game.id, name) {
   | ("freecell", "midgame") => Some(freecellMidgame(game, ~seed=Game.freecellSeed))
+  | ("freecell", "almost-won") => Some(freecellAlmostWon(game))
   | _ => None
   }

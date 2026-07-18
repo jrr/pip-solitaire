@@ -74,6 +74,23 @@ describe("Repl.run", () => {
     expect(has(transcript, "no loose drops"))->toBe(true)
   })
 
+  test("announces a win once every foundation is complete", () => {
+    // The foundations demo deals a whole Hearts Ace→King run loose beside a single
+    // foundation; stacking it end-to-end onto pile 0 completes the only foundation
+    // and wins (#121).
+    let heartsRun =
+      ["AH", "2H", "3H", "4H", "5H", "6H", "7H", "8H", "9H", "TH", "JH", "QH", "KH"]->Array.map(
+        c => `move ${c} 0`,
+      )
+    let transcript = Repl.run(Array.concat(["deal foundations"], heartsRun))
+    expect(has(transcript, "You win"))->toBe(true)
+    // …and the win isn't declared before the run is finished.
+    let almost = Repl.run(
+      Array.concat(["deal foundations"], heartsRun->Array.slice(~start=0, ~end=12)),
+    )
+    expect(has(almost, "You win"))->toBe(false)
+  })
+
   test("guides the user before a game is dealt and on unknown input", () => {
     expect(has(Repl.run(["move AS 0"]), "Deal a game first"))->toBe(true)
     expect(has(Repl.run(["frobnicate"]), "Unknown command"))->toBe(true)
