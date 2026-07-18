@@ -92,3 +92,19 @@ let locationOf = (state: t, card: card): option<location> => {
   | None => state.loose->Array.some(c => sameCard(c, card)) ? Some(Loose) : None
   }
 }
+
+// Has the game been won (#121)? True when every foundation on the board holds a
+// complete Ace→King run — the natural end of a FreeCell game, and the "done"
+// marker of M2 (#98). Win detection just *observes* the foundations: it targets
+// the foundation group by role (`Game.pileIndices`, #94) and asks the per-pile
+// check whether each is finished (`Rules.isCompleteRun`, #76), so how the cards
+// got there — a drag, a later auto-to-foundation — is beside the point.
+//
+// A board with *no* foundations (the card-table demos) is never won: `Array.every`
+// over an empty group is vacuously true, so the explicit non-empty guard keeps a
+// foundation-less board from reading as an instant win.
+let hasWon = (game: Game.t, state: t): bool => {
+  let foundations = Game.pileIndices(game, Game.Foundation)
+  Array.length(foundations) > 0 &&
+    foundations->Array.every(i => Rules.isCompleteRun(cardsInPile(state, i)))
+}
