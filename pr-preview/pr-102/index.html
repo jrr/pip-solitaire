@@ -208,17 +208,18 @@
         min-height: 300px;
       }
 
-      /* The drop zones, pinned to the top of the stage and spread across it
-         (`space-between`): two hug the left and right edges, four spread evenly —
-         however many the game declares (see TableScene). Piles grow downward
-         from here. */
+      /* The drop zones, pinned to the top of the stage and spread across its
+         full width. `space-evenly` opens equal gaps *everywhere* — before the
+         first zone, between each pair, and after the last — so the outer margin
+         matches the space between columns however many the game declares (see
+         TableScene). Piles grow downward from here. */
       .drop-row {
         position: absolute;
-        left: 4px;
-        right: 4px;
+        left: 0;
+        right: 0;
         top: 16px;
         display: flex;
-        justify-content: space-between;
+        justify-content: space-evenly;
       }
 
       /* Card and zone footprints are driven by custom properties set on the
@@ -409,7 +410,7 @@
         display: none;
       }
     </style>
-    <script type="module" crossorigin src="./assets/index-CWlgsZAE.js"></script>
+    <script type="module" crossorigin src="./assets/index-rqP7kA8g.js"></script>
   <link rel="manifest" href="./manifest.webmanifest"></head>
   <body>
     <!-- Vite resolves the bare `core/…` specifier the compiled entry imports
