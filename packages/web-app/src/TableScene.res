@@ -126,9 +126,19 @@ let zoneBaseHeight = 124.
 
 // Card widths are capped at the design size (`cardW`) and floored here, so a
 // game with many piles on a narrow phone still deals cards you can read and grab
-// rather than shrinking them away. Between the two, cards fill `0.8 × width` of
-// the stage split across the piles.
-let minScale = 0.5
+// rather than shrinking them away. Between the two, cards fill `fillFraction ×
+// width` of the stage split across the piles. The floor is set low enough that
+// eight cascades still fit *with room to spare* on a phone — otherwise the
+// columns hit the floor, overflow the row and butt together with no gap to
+// distribute (the `space-evenly` below has nothing to spread).
+let minScale = 0.4
+
+// The share of the stage width the row of cards fills; the rest is the gaps
+// `space-evenly` opens around and between the columns. Kept well below 1 so the
+// columns breathe — a squared pile's zone stays framed, and the leftover width
+// is real space for `space-evenly` to spread as equal outer/inter-card gaps
+// rather than the columns butting card-to-card.
+let fillFraction = 0.66
 
 // Build a scene that plays `game`: its id/label name the scene in the picker,
 // and its piles and opening deal drive everything below.
@@ -175,9 +185,9 @@ let make = (game: Game.t): Scene.t => {
     let nodeFor = (data: Deck.card) => nodes->Array.find(n => GameState.sameCard(n.data, data))
 
     // How much the design footprints are shrunk to fit the stage. Cards fill
-    // `0.8 × width` split across the piles (`0.8 · width / n`), capped at the
-    // design size so a wide screen doesn't blow the cards up, and floored so a
-    // crowded, narrow one keeps them legible. Held in a ref because the geometry
+    // `fillFraction × width` split across the piles (`fillFraction · width / n`),
+    // capped at the design size so a wide screen doesn't blow the cards up, and
+    // floored so a crowded, narrow one keeps them legible. Held in a ref because the geometry
     // (reflow, the deal) reads it, and recomputed from the stage's live width the
     // moment before the deal — the one point at which the stage is known laid out.
     let numPiles = Array.length(game.piles)
@@ -185,7 +195,7 @@ let make = (game: Game.t): Scene.t => {
     let applyScale = () => {
       let width = boundingRect(playfield).width
       if width > 0. && numPiles > 0 {
-        let target = 0.8 *. width /. Int.toFloat(numPiles) /. cardW
+        let target = fillFraction *. width /. Int.toFloat(numPiles) /. cardW
         scale := Math.max(minScale, Math.min(1., target))
       }
       // Publish the factor to the CSS so `.stacking-card`/`.drop-zone` resize in

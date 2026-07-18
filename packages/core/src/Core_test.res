@@ -111,6 +111,7 @@ describe("Game", () => {
       "free-cells",
       "mixed-roles",
       "cascade",
+      "shuffled-deal",
     ])
     expect(Game.all->Array.every(g => g.name != ""))->toBe(true)
   })
@@ -171,6 +172,42 @@ describe("Game", () => {
     expect(Rules.accepts(rule, {suit: Hearts, rank: Ten}, Some({suit: Clubs, rank: Queen})))->toBe(
       false,
     )
+  })
+
+  test("the shuffled-deal demo lays a whole reproducible deck across eight piles", () => {
+    // Eight permissive cascades, free, nothing loose — every card is dealt into a
+    // pile.
+    expect(Game.shuffledDeal.piles->Array.length)->toBe(8)
+    expect(Game.shuffledDeal.piles->Array.map(p => p.rule))->toEqual([
+      Rules.Free,
+      Rules.Free,
+      Rules.Free,
+      Rules.Free,
+      Rules.Free,
+      Rules.Free,
+      Rules.Free,
+      Rules.Free,
+    ])
+    expect(Game.shuffledDeal.free)->toBe(true)
+    expect(Game.shuffledDeal.loose)->toEqual([])
+    // The whole 52-card deck is dealt out, none lost or duplicated: the pooled
+    // pile cards are a permutation of `Cards.all`.
+    let dealt = Game.shuffledDeal.piles->Array.flatMap(p => p.cards)
+    expect(dealt->Array.length)->toBe(52)
+    expect(
+      Cards.all->Array.every(card => dealt->Array.some(c => GameState.sameCard(c, card))),
+    )->toBe(true)
+    // Round-robin across eight piles spreads 52 as 7,7,7,7,6,6,6,6.
+    expect(Game.shuffledDeal.piles->Array.map(p => Array.length(p.cards)))->toEqual([
+      7,
+      7,
+      7,
+      7,
+      6,
+      6,
+      6,
+      6,
+    ])
   })
 
   // Pile roles (#94): each pile declares its FreeCell role, and `Game` addresses
@@ -824,6 +861,96 @@ describe("Reducer", () => {
         | Ok(next) => expect(Array.length(GameState.cardsInPile(next, 1)))->toBe(2)
         | Error(_) => expect(true)->toBe(false)
         }
+      },
+    )
+  })
+})
+
+// The deck as data (#96): the 52-card pack, a deterministic seeded shuffle, and
+// the round-robin deal — the reproducible basis for numbered deals, all pure and
+// tested without any view.
+describe("Cards", () => {
+  // Two cards are the same card when suit and rank match (deck-scoped identity,
+  // the same notion `GameState` keys off).
+  let same = (a: card, b: card) => a.suit == b.suit && a.rank == b.rank
+
+  // Is `deck` a permutation of `Cards.all` — every card exactly once, none
+  // dropped or duplicated? Same length as the full deck and every one of the 52
+  // present is enough, since 52 distinct cards can't fit in 52 slots with a gap.
+  let isFullDeck = (deck: array<card>) =>
+    Array.length(deck) == 52 && Cards.all->Array.every(card => deck->Array.some(c => same(c, card)))
+
+  test("all is the 52-card deck, every card distinct", () => {
+    expect(Array.length(Cards.all))->toBe(52)
+    // No card appears twice: each is found exactly once in the deck.
+    let noDupes =
+      Cards.all->Array.every(card => Cards.all->Array.filter(c => same(c, card))->Array.length == 1)
+    expect(noDupes)->toBe(true)
+  })
+
+  test("shuffle is a permutation of the deck — nothing dropped or duplicated", () => {
+    let shuffled = Cards.shuffle(~seed=42)
+    expect(isFullDeck(shuffled))->toBe(true)
+  })
+
+  test("shuffle is deterministic: the same seed reproduces the same order", () => {
+    expect(Cards.shuffle(~seed=7))->toEqual(Cards.shuffle(~seed=7))
+    expect(Cards.shuffle(~seed=12345))->toEqual(Cards.shuffle(~seed=12345))
+  })
+
+  test("different seeds give different orders", () => {
+    let a = Cards.shuffle(~seed=1)
+    let b = Cards.shuffle(~seed=2)
+    // Both are full decks…
+    expect(isFullDeck(a))->toBe(true)
+    expect(isFullDeck(b))->toBe(true)
+    // …but not in the same order: at least one position differs.
+    let differs =
+      a->Array.mapWithIndex((card, i) => !same(card, b->Array.getUnsafe(i)))->Array.some(x => x)
+    expect(differs)->toBe(true)
+  })
+
+  test("shuffle doesn't disturb the deck order it draws from", () => {
+    let before = Cards.all->Array.map(c => c)
+    Cards.shuffle(~seed=99)->ignore
+    // `Cards.all` is untouched by a shuffle (it works over a copy).
+    expect(Cards.all)->toEqual(before)
+  })
+
+  describe("deal", () => {
+    test(
+      "deals round-robin, dropping card i into pile i mod n",
+      () => {
+        // A tiny hand-made deck so the round-robin is legible: seven cards across
+        // three piles → [0,3,6], [1,4], [2,5].
+        let seven =
+          [Ace, Two, Three, Four, Five, Six, Seven]->Array.map(rank => {suit: Spades, rank})
+        let columns = Cards.deal(~piles=3, seven)
+        expect(columns->Array.map(col => col->Array.map(c => c.rank)))->toEqual([
+          [Ace, Four, Seven],
+          [Two, Five],
+          [Three, Six],
+        ])
+      },
+    )
+
+    test(
+      "dealing the whole deck loses no cards and spreads them evenly",
+      () => {
+        let columns = Cards.deal(~piles=8, Cards.shuffle(~seed=1))
+        expect(columns->Array.length)->toBe(8)
+        // 52 across 8 piles: the first four hold seven, the rest six.
+        expect(columns->Array.map(Array.length))->toEqual([7, 7, 7, 7, 6, 6, 6, 6])
+        // Pooling the piles back together is still a full deck.
+        let pooled = columns->Array.flatMap(col => col)
+        expect(isFullDeck(pooled))->toBe(true)
+      },
+    )
+
+    test(
+      "no piles yields no columns",
+      () => {
+        expect(Cards.deal(~piles=0, Cards.all))->toEqual([])
       },
     )
   })

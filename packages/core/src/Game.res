@@ -306,8 +306,41 @@ let cascade = {
   ),
 }
 
+// The seeded-shuffle demo (#96): a full 52-card deck shuffled from a *fixed
+// seed* and dealt round-robin across eight piles. It shows the reproducible deal
+// the FreeCell board (M2) will be built from — `core` now owns the deck and a
+// deterministic `Cards.shuffle`, so the same seed reproduces this exact board
+// every load (the basis for shareable "deal numbers"). No stacking rules are
+// needed to demonstrate the *deal*, so the piles are permissive `Rules.Free`
+// cascades; the FreeCell-specific board and its rules are the later assembly step.
+let shuffledDealSeed = 1
+
+let shuffledDeal = {
+  id: "shuffled-deal",
+  name: "Shuffled Deal",
+  // Build the piles straight from the deal: shuffle the deck for the seed, deal
+  // it across eight columns, and wrap each column as a `Free` cascade opening
+  // holding those cards.
+  piles: Cards.shuffle(~seed=shuffledDealSeed)
+  ->Cards.deal(~piles=8, _)
+  ->Array.map(column => {
+    role: Cascade,
+    stacking: Fanned,
+    rule: Rules.Free,
+    capacity: None,
+    cards: column,
+  }),
+  free: true,
+  loose: [],
+  caption: Some(
+    `A full 52-card deck, shuffled from a fixed seed (${Int.toString(
+        shuffledDealSeed,
+      )}) and dealt across eight piles. The shuffle is deterministic, so the same seed always lays out this exact board — the seed is the future "deal number".`,
+  ),
+}
+
 // Every supported game, in picker order.
-let all = [stacking, foundations, fourFans, freeCells, mixedRoles, cascade]
+let all = [stacking, foundations, fourFans, freeCells, mixedRoles, cascade, shuffledDeal]
 
 // --- Addressing piles by role (#94) ------------------------------------------
 // Later steps target a *group* of piles by role — the deal fills only the

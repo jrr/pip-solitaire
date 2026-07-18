@@ -29,22 +29,21 @@ type rank = Card.rank =
 
 type card = Card.card = {suit: suit, rank: rank}
 
-// Enumeration order: suits grouped, ranks ascending within each. `allCards`
-// below is the Cartesian product in this order, which is also the order the
-// gallery renders them in.
-let suits = [Spades, Hearts, Diamonds, Clubs]
-let ranks = [Ace, Two, Three, Four, Five, Six, Seven, Eight, Nine, Ten, Jack, Queen, King]
-
-// The full 52-card deck: every rank in every suit, exactly once.
-let allCards = suits->Array.flatMap(suit => ranks->Array.map(rank => {suit, rank}))
+// The full 52-card deck is owned by `core` now (`Cards.all`), so a shuffled deal
+// and the gallery draw from the *same* deck. Re-exported here so the presentation
+// layer still reaches it as `Deck.allCards`, in `core`'s enumeration order (suits
+// grouped, ranks ascending) — which is the order the gallery renders them in.
+let allCards = Cards.all
 
 // --- Display helpers ---------------------------------------------------------
 
 // The two card colors. Hearts and diamonds are red; spades and clubs black —
-// here a near-black that stays legible on the card's light face.
+// here a near-black that stays legible on the card's light face. The red is a
+// deep, dark red (Tailwind red-800) rather than a brighter primary, so the pips
+// read as a rich card red against the light face.
 let suitColor = suit =>
   switch suit {
-  | Hearts | Diamonds => "#dc2626"
+  | Hearts | Diamonds => "#991b1b"
   | Spades | Clubs => "#0f172a"
   }
 

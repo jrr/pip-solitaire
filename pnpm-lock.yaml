@@ -28,6 +28,10 @@ importers:
         version: 3.2.7(jsdom@26.1.0)(terser@5.49.0)
 
   packages/core:
+    dependencies:
+      '@rescript/runtime':
+        specifier: ^12.0.0
+        version: 12.3.0
     devDependencies:
       rescript:
         specifier: ^12.0.0
