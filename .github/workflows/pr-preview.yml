@@ -53,3 +53,103 @@ jobs:
         uses: rossjrw/pr-preview-action@v1
         with:
           source-dir: packages/web-app/dist
+
+      # --- Screenshot report ---------------------------------------------------
+      # Render the device-resolution report and publish it to Pages under this
+      # PR's umbrella, `screenshots/pr/<N>/<date>_<sha>/`, accumulating one stamped
+      # snapshot per push (browsable via a generated listing) and cleaned up wholesale
+      # when the PR closes. The umbrella is separate from the app preview's
+      # `pr-preview/` dir, so the two never clobber each other. Every screenshot step
+      # is `continue-on-error` so a flaky render can't fail the app preview.
+      - name: Install headless Chromium
+        if: github.event.action != 'closed'
+        continue-on-error: true
+        run: mise run playwright-install
+
+      - name: Render screenshot report
+        if: github.event.action != 'closed'
+        continue-on-error: true
+        run: mise run screenshots
+
+      - name: Check out gh-pages
+        if: github.event.action != 'closed'
+        continue-on-error: true
+        uses: actions/checkout@v7
+        with:
+          ref: gh-pages
+          path: gh-pages
+
+      - name: Publish screenshot report to Pages
+        if: github.event.action != 'closed'
+        continue-on-error: true
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          stamp="$(date -u +%Y.%m.%d)_${HEAD_SHA:0:7}"
+          node packages/web-app/scripts/stage-screenshots.mjs \
+            gh-pages "screenshots/pr/$PR_NUMBER/$stamp" --index "screenshots/pr/$PR_NUMBER"
+          cd gh-pages
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --cached --quiet && { echo "no report to publish"; exit 0; }
+          git commit -m "screenshots: PR #$PR_NUMBER $stamp"
+          for i in 1 2 3 4; do
+            git push origin gh-pages && break
+            git pull --rebase origin gh-pages || true
+            sleep "$((2 ** i))"
+          done
+
+      # Post (or update) a single sticky comment linking the PR's report listing.
+      - name: Comment screenshot report link
+        if: github.event.action != 'closed'
+        continue-on-error: true
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const n = context.payload.pull_request.number;
+            const url = `https://${owner}.github.io/${repo}/screenshots/pr/${n}/`;
+            const marker = "<!-- screenshot-report -->";
+            const body = `${marker}\n📸 **Screenshot report:** ${url}\n\nMid-game FreeCell across device sizes (portrait + landscape), a new snapshot per push — newest first.`;
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner, repo, issue_number: n, per_page: 100,
+            });
+            const existing = comments.find((c) => c.body?.includes(marker));
+            if (existing) {
+              await github.rest.issues.updateComment({ owner, repo, comment_id: existing.id, body });
+            } else {
+              await github.rest.issues.createComment({ owner, repo, issue_number: n, body });
+            }
+
+      # On close, remove this PR's whole screenshot umbrella from gh-pages (the app
+      # preview's own cleanup is handled by the action above).
+      - name: Check out gh-pages (cleanup)
+        if: github.event.action == 'closed'
+        continue-on-error: true
+        uses: actions/checkout@v7
+        with:
+          ref: gh-pages
+          path: gh-pages
+
+      - name: Remove PR screenshot reports
+        if: github.event.action == 'closed'
+        continue-on-error: true
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          cd gh-pages
+          dir="screenshots/pr/$PR_NUMBER"
+          [ -d "$dir" ] || { echo "no reports for PR #$PR_NUMBER"; exit 0; }
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm -r "$dir"
+          git commit -m "screenshots: remove PR #$PR_NUMBER reports"
+          for i in 1 2 3 4; do
+            git push origin gh-pages && break
+            git pull --rebase origin gh-pages || true
+            sleep "$((2 ** i))"
+          done

@@ -39,3 +39,45 @@ jobs:
           # `pr-preview/` umbrella dir (and anything else already there) so a
           # `main` deploy never wipes live PR previews.
           keep_files: true
+
+      # --- Screenshot report ---------------------------------------------------
+      # After the app is live, render the device-resolution report and publish it
+      # to Pages under a stamped, retained history at
+      # `screenshots/branch/main/<date>_<sha>/`, browsable via a generated listing.
+      # Every screenshot step is `continue-on-error` so a flaky headless render can
+      # never fail the (already-completed) site deploy.
+      - name: Install headless Chromium
+        continue-on-error: true
+        run: mise run playwright-install
+
+      - name: Render screenshot report
+        continue-on-error: true
+        run: mise run screenshots
+
+      # Fresh checkout of gh-pages (includes the app publish above) to stage the
+      # report into and push.
+      - name: Check out gh-pages
+        continue-on-error: true
+        uses: actions/checkout@v7
+        with:
+          ref: gh-pages
+          path: gh-pages
+
+      - name: Publish screenshot report to Pages
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          stamp="$(date -u +%Y.%m.%d)_${GITHUB_SHA::7}"
+          node packages/web-app/scripts/stage-screenshots.mjs \
+            gh-pages "screenshots/branch/main/$stamp" --index screenshots/branch/main
+          cd gh-pages
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --cached --quiet && { echo "no report to publish"; exit 0; }
+          git commit -m "screenshots: main $stamp"
+          for i in 1 2 3 4; do
+            git push origin gh-pages && break
+            git pull --rebase origin gh-pages || true
+            sleep "$((2 ** i))"
+          done
