@@ -140,8 +140,7 @@ let minScale = 0.4
 // columns breathe — a squared pile's zone stays framed, and the leftover width
 // is real space for `space-evenly` to spread as equal outer/inter-card gaps
 // rather than the columns butting card-to-card.
-let fillFraction = 0.66
-
+let fillFraction = 0.9
 // Build a scene that plays `game`: its id/label name the scene in the picker,
 // and its piles and opening deal drive everything below.
 //

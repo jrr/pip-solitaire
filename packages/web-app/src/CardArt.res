@@ -39,9 +39,9 @@ let body = (~detail=Full, card: Deck.card) => {
     // Only the bottom-right corner carries a transform; the top-left one omits
     // the attribute entirely (SVG 1.1's `transform` grammar has no "none").
     let base = [
-      ("x", "15"),
-      ("y", "36"),
-      ("font-size", "32"),
+      ("x", "5"),
+      ("y", "38"),
+      ("font-size", "40"),
       ("font-weight", "700"),
       ("font-family", "system-ui, sans-serif"),
       ("fill", color),
