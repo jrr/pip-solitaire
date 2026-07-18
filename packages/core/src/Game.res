@@ -401,11 +401,10 @@ let freecellDeal = (~seed: int): t => {
     piles: cells->Array.concat(foundations)->Array.concat(cascades),
     free: false, // cards only ever rest in piles — no loose table in FreeCell
     loose: [],
-    caption: Some(
-      `FreeCell, dealt from seed ${Int.toString(
-          seed,
-        )}: build the cascades down in alternating colour, park single cards in the four free cells, and build the foundations up by suit from the Ace.`,
-    ),
+    // No caption: FreeCell is the app's *primary game* (#109), not a demo, so it
+    // shows a bare board — the seed-mentioning "dealt from seed N…" prose reads as
+    // demo-explainer text and is dropped. The debug tables above keep their captions.
+    caption: None,
   }
 }
 

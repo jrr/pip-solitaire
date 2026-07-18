@@ -1,15 +1,19 @@
-// Web-app entry point. The *chrome* — the version badge and the "Update
-// available" button that frame the scene, plus the scene picker itself — is
-// expressed as ReScript JSX on the hand-rolled `Html` runtime and driven by its
-// Elm-style loop, rather than the imperative createElement/setAttribute dance
-// this file used to be. (The greeting and tagline are no longer permanent chrome
-// at all: they've moved into their own HomeScene, shown only when "Home" is the
-// selected scene — see issue #59.) The only dynamic bits of the chrome (offline-ready
-// and update-available, both reported by the service worker) live in the model;
-// the service-worker callbacks just `dispatch` a message and the view re-renders
-// itself. The scene area underneath — the switcher and its demos — is still the
-// imperative SceneSwitcher; it's spliced into the view untouched with
-// `Html.node`, which is exactly how a JSX chrome wraps a subtree it doesn't own.
+// Web-app entry point. The app *opens as a game*: on startup it mounts the
+// FreeCell board straight away (#109), and all the chrome — a single top bar plus
+// a slide-over menu — is expressed as ReScript JSX on the hand-rolled `Html`
+// runtime and driven by its Elm-style loop. The bottom of the screen is left
+// clear for dragging cards; every control lives up top.
+//
+// The chrome is two components over the scene:
+//   - `<TopBar>` — Menu · New Game · Undo-stub · conditional Update. Always
+//     visible across the top.
+//   - `<Menu>` — the slide-over holding the title ("Sleight", moved out of the
+//     retired Home scene), the debug/demo scene list as tappable rows, and the
+//     build/version info.
+// The scene area underneath is still the imperative `SceneSwitcher`; its scene
+// container and its row controls are spliced into the view untouched with
+// `Html.node` (the container into the scene band, the rows into the menu), which
+// is exactly how a JSX chrome wraps a subtree it doesn't own.
 
 @val @scope("document") external body: Html.element = "body"
 
@@ -34,37 +38,56 @@ external makeOptions: (
 external registerSW: registerSWOptions => bool => promise<unit> = "registerSW"
 
 // --- Chrome components -------------------------------------------------------
-// The two capitalized components used by the view below — `<VersionBadge/>` and
-// `<UpdateButton/>` — live in their own files under `src/components/`. Each is a
-// `props => vnode` function; capitalized JSX lowers `<VersionBadge .../>` to
-// `Html.jsx(VersionBadge.make, props)`, filling the module's `props` record from
-// the attributes. See those files for why the record is spelled out by hand
-// instead of derived by the `@jsx.component` sugar.
+// The capitalized components used by the view below — `<TopBar/>`, `<Menu/>`,
+// and (nested inside them) `<UpdateButton/>` / `<VersionBadge/>` — live under
+// `src/components/`. Each is a `props => vnode` function; capitalized JSX lowers
+// `<TopBar .../>` to `Html.jsx(TopBar.make, props)`, filling the module's `props`
+// record from the attributes. See those files for why the record is spelled out
+// by hand instead of derived by the `@jsx.component` sugar.
 
 // --- The Elm loop ------------------------------------------------------------
-// The chrome is a pure model + update + view. Everything reactive here is
-// service-worker lifecycle: the two booleans flip when their callbacks fire.
+// The chrome is a pure model + update + view. The reactive bits: service-worker
+// lifecycle (two booleans flip when their callbacks fire) and whether the menu is
+// open.
 type model = {
   version: string,
   buildTime: string,
   offlineReady: bool,
   updateAvailable: bool,
+  menuOpen: bool,
 }
 
 type msg =
   | OfflineReady // precache finished — the app now works offline
   | UpdateAvailable // a new build is waiting in the wings
   | Reload // user asked to activate the waiting worker and reload
+  | ToggleMenu // the top bar's Menu button
+  | CloseMenu // backdrop / close button / a scene row was tapped
 
 // `updateSW` only exists once registerSW has run, which needs `dispatch`, which
 // needs the loop to be mounted — so the Reload effect reaches it through a ref
 // that's filled in just after mount (see below).
 let updateSW: ref<option<bool => promise<unit>>> = ref(None)
 
+// The active scene's "New Game" action, if it has one. The mounted scene
+// publishes its re-deal here (see `gameScene` / `TableScene`), the switcher's
+// `onActivate` clears it before each scene change, and the top bar's New Game
+// button runs whatever is current. Only FreeCell publishes one today, so on a
+// debug scene the button is a harmless no-op.
+let newGameHook: ref<option<unit => unit>> = ref(None)
+
+// Closing the menu means dispatching into the loop, but a scene row is an
+// imperative listener built before `dispatch` exists (like `updateSW`). It
+// reaches the loop through this ref, filled in just after mount.
+let closeMenu: ref<unit => unit> = ref(() => ())
+
 let update = (msg, model) =>
   switch msg {
   | OfflineReady => ({...model, offlineReady: true}, Html.noEffect)
   | UpdateAvailable => ({...model, updateAvailable: true}, Html.noEffect)
+  | ToggleMenu => ({...model, menuOpen: !model.menuOpen}, Html.noEffect)
+  | CloseMenu =>
+    model.menuOpen ? ({...model, menuOpen: false}, Html.noEffect) : (model, Html.noEffect)
   | Reload => (
       model, // no state change — just run the effect
       () =>
@@ -76,19 +99,16 @@ let update = (msg, model) =>
   }
 
 // The scene area (switcher + demos) is built imperatively and owns its own
-// subtree. `render` hands back the picker drop-down and the scene container as
-// two separate real DOM nodes; the view splices each in with `Html.node` and
-// never re-renders them. The drop-down sits above the scene band; the band wraps
-// only the scene. See SceneSwitcher / Scene.
-// The scene list ends with one scene per *modelled game* (#62): `Game.all` is
-// the source of truth, and `TableScene.make` interprets each game's rules, so a
-// new game is a new value in core — no new scene code, no edit here.
+// subtree. `render` hands back the row controls (placed in the menu) and the
+// scene container (wrapped by the scene band) as two separate real DOM nodes; the
+// view splices each in with `Html.node` and never re-renders them.
 //
-// The URL can steer both which scene opens (`?scene=`) and which starting
-// position it opens in (`?state=`): each game scene is built with the scenario the
-// URL names for it (via `Scenario.forName`), or its ordinary deal when there's
-// none, and the named scene is forced open below. That's the whole entry point the
-// screenshot report drives (`?scene=freecell&state=midgame`).
+// The app always opens on the FreeCell board: `~default="freecell"` is the launch
+// scene, replacing the old "resume the last scene" behaviour — the game is always
+// home. An explicit `?scene=` still wins (`~forced`), and `?state=` still forces a
+// scenario, so the screenshot report's `?scene=freecell&state=midgame` lands
+// exactly where it says. `Game.all` is the source of truth for the game scenes;
+// only FreeCell (a seeded shuffle) is re-dealable.
 let url = AppUrl.parse()
 
 // A fresh seed for each New Game (#108). The seed is the future "deal number"
@@ -100,35 +120,57 @@ let randomSeed = () => (Math.random() *. 1_000_000.)->Float.toInt
 
 // Only FreeCell is re-dealable: it's built from a seeded shuffle, so a new seed
 // gives a genuinely new board. The fixed-layout demos have no seed to vary, so
-// they get no New Game control.
+// they publish no New Game action. `~publishNewGame` hands the scene's re-deal to
+// the top bar (see `newGameHook`).
 let gameScene = (game: Game.t) => {
   let newDeal =
     game.id == Game.freecell.id ? Some(() => Game.freecellDeal(~seed=randomSeed())) : None
   TableScene.make(
     ~initial=?url.state->Option.flatMap(name => Scenario.forName(game, name)),
     ~newDeal?,
+    ~publishNewGame=hook => newGameHook := Some(hook),
     game,
   )
 }
 let switcher = SceneSwitcher.render(
+  ~default="freecell",
   ~forced=?url.scene,
+  // Reset the top bar's New Game action before each scene mounts (the mounting
+  // scene republishes it if re-dealable) and close the menu after a row tap.
+  ~onActivate=_scene => {
+    newGameHook := None
+    closeMenu.contents()
+  },
   Array.concat(
-    [HomeScene.make(), SpinnerScene.make(), SvgScene.make(), GalleryScene.make()],
+    [SpinnerScene.make(), SvgScene.make(), GalleryScene.make()],
     Game.all->Array.map(gameScene),
   ),
 )
 
 let view = (model, dispatch) => <>
   <main id="app">
-    {Html.node(switcher.controls)}
+    <TopBar
+      onMenu={() => dispatch(ToggleMenu)}
+      onNewGame={() =>
+        switch newGameHook.contents {
+        | Some(newGame) => newGame()
+        | None => ()
+        }}
+      updateVisible={model.updateAvailable}
+      onReload={() => dispatch(Reload)}
+    />
     <section id="scene-area">
       <div id="scene-box"> {Html.node(switcher.scene)} </div>
     </section>
   </main>
-  <VersionBadge
-    version={model.version} buildTime={model.buildTime} offlineReady={model.offlineReady}
+  <Menu
+    open_={model.menuOpen}
+    onClose={() => dispatch(CloseMenu)}
+    scenes={switcher.controls}
+    version={model.version}
+    buildTime={model.buildTime}
+    offlineReady={model.offlineReady}
   />
-  <UpdateButton visible={model.updateAvailable} onReload={() => dispatch(Reload)} />
 </>
 
 // --- Wire it up --------------------------------------------------------------
@@ -149,10 +191,14 @@ let dispatch = Html.mount(
     buildTime,
     offlineReady: false,
     updateAvailable: false,
+    menuOpen: false,
   },
   ~update,
   ~view,
 )
+
+// Now that `dispatch` exists, let a scene row close the menu through it.
+closeMenu := (() => dispatch(CloseMenu))
 
 // Now that `dispatch` exists, register the worker and let its callbacks drive
 // the loop. Stash the returned updater so the Reload message can reach it.

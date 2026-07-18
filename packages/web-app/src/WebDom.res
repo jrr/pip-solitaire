@@ -14,10 +14,6 @@ type element = Html.element
 @set external setTextContent: (element, string) => unit = "textContent"
 @get external firstChild: element => Nullable.t<element> = "firstChild"
 
-// The value of a form control (used to read/set the scene-picker <select>).
-@get external value: element => string = "value"
-@set external setValue: (element, string) => unit = "value"
-
 // Remove every child of an element — used to reset the shared scene container
 // between scenes so the outgoing scene's nodes (and any animation they drive)
 // are gone before the next one mounts.

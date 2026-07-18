@@ -55,9 +55,9 @@
         font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
         -webkit-font-smoothing: antialiased;
         /* Clear the notch/status bar and home indicator on every edge. The
-           vertical padding is kept tight — just enough to sit the picker below
-           the status bar and leave the version badge room at the bottom — so
-           the scene band can grow to fill nearly the whole viewport. */
+           vertical padding is kept tight — just enough to sit the top bar below
+           the status bar — so the scene band can grow to fill nearly the whole
+           viewport. */
         padding: calc(env(safe-area-inset-top) + 0.75rem)
           calc(env(safe-area-inset-right) + 1.5rem)
           calc(env(safe-area-inset-bottom) + 1.5rem)
@@ -114,9 +114,11 @@
         justify-content: center;
       }
 
-      #greeting {
+      /* The app's title, moved out of the retired Home scene into the menu header
+         (#109). Keeps the gradient wordmark it had as the greeting. */
+      .menu-title {
         margin: 0;
-        font-size: clamp(1.7rem, 7vw, 2.6rem);
+        font-size: 1.6rem;
         font-weight: 700;
         line-height: 1.15;
         letter-spacing: -0.02em;
@@ -126,21 +128,22 @@
         color: transparent;
       }
 
-      #tagline {
-        margin: 0;
-        max-width: 22rem;
-        font-size: 0.95rem;
-        line-height: 1.5;
-        color: #94a3b8;
+      /* The single top bar (#109): all chrome across the top, so the thumb arc at
+         the bottom stays clear for dragging cards. A full-width flex row of
+         controls; the Update button is pushed to the far right (below). Sits above
+         the scene band as the first child of #app. */
+      #top-bar {
+        align-self: stretch;
+        width: 100%;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        margin: 0 0 0.75rem;
       }
 
-      /* Scene switcher (issue #34): a drop-down selecting which scene is mounted,
-         and one shared container that hosts the active scene. The two are placed
-         separately by the view — the drop-down sits above the scene band; the
-         band wraps only the container. */
-      #scene-picker {
-        align-self: flex-start;
-        margin: 0 0 0.75rem;
+      /* The bar's buttons share the scene controls' look. `--reserved` (the Undo
+         stub, #85) is dimmed and non-interactive until its behaviour lands. */
+      .top-bar__button {
         padding: 8px 14px;
         font: 14px system-ui, sans-serif;
         color: #f8fafc;
@@ -148,6 +151,117 @@
         border: 1px solid #334155;
         border-radius: 8px;
         cursor: pointer;
+      }
+
+      .top-bar__button--reserved,
+      .top-bar__button:disabled {
+        opacity: 0.45;
+        cursor: default;
+      }
+
+      /* The slide-over menu (#109): the title, the debug/demo scene rows, and the
+         version info. A full-screen overlay so it floats above the game; `hidden`
+         (set by the chrome model) collapses it entirely when closed. */
+      #menu-overlay {
+        position: fixed;
+        inset: 0;
+        z-index: 20;
+        display: flex;
+      }
+
+      #menu-overlay[hidden] {
+        display: none;
+      }
+
+      /* A dim backdrop behind the panel; clicking it closes the menu. */
+      .menu-overlay__backdrop {
+        position: absolute;
+        inset: 0;
+        background: rgba(2, 6, 16, 0.6);
+      }
+
+      /* The panel itself: a column that slides in from the left, tall enough to
+         scroll if the scene list grows. Clears the notch/safe areas at the top and
+         left the same way the body does. */
+      .menu-panel {
+        position: relative;
+        display: flex;
+        flex-direction: column;
+        gap: 1rem;
+        width: min(20rem, 82vw);
+        height: 100%;
+        padding: calc(env(safe-area-inset-top) + 1rem) 1.25rem
+          calc(env(safe-area-inset-bottom) + 1rem)
+          calc(env(safe-area-inset-left) + 1.25rem);
+        background: #0f1a2e;
+        border-right: 1px solid #22304a;
+        box-shadow: 2px 0 24px rgba(0, 0, 0, 0.45);
+        overflow-y: auto;
+        text-align: left;
+      }
+
+      .menu-panel__header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.75rem;
+      }
+
+      .menu-close {
+        padding: 4px 10px;
+        font: 16px system-ui, sans-serif;
+        color: #cbd5e1;
+        background: transparent;
+        border: 1px solid #334155;
+        border-radius: 8px;
+        cursor: pointer;
+      }
+
+      .menu-section {
+        display: flex;
+        flex-direction: column;
+        gap: 0.4rem;
+      }
+
+      .menu-section__label {
+        margin: 0 0 0.15rem;
+        font: 600 0.72rem/1 system-ui, sans-serif;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: #64748b;
+      }
+
+      /* The scene list: SceneSwitcher's row controls (#109), replacing the old
+         <select> picker. Each scene is a tappable row; the active scene is
+         highlighted so the menu shows where you are. */
+      #scene-menu {
+        display: flex;
+        flex-direction: column;
+        gap: 0.3rem;
+      }
+
+      .scene-menu__row {
+        width: 100%;
+        text-align: left;
+        padding: 10px 12px;
+        font: 14px system-ui, sans-serif;
+        color: #e2e8f0;
+        background: #16233b;
+        border: 1px solid #22304a;
+        border-radius: 8px;
+        cursor: pointer;
+      }
+
+      .scene-menu__row--active {
+        color: #f0fdf4;
+        background: #166534;
+        border-color: #22c55e;
+      }
+
+      /* The version info sits at the bottom of the menu, pushed there so it always
+         hugs the panel's foot however short the scene list is. */
+      .menu-footer {
+        margin-top: auto;
       }
 
       /* Fills the scene band (`flex: 1`) and centers its scene within it, so a
@@ -191,30 +305,17 @@
       }
 
       /* The board host (TableScene.res): wraps the playfield (and caption) so a
-         New Game re-deal can rebuild just the board while the New Game control
-         above it stays put. It fills the scene band and lets the playfield's
-         `flex: 1` grow into it, so the board still stretches exactly as when the
-         playfield was a direct child of the container. */
+         New Game re-deal can rebuild just the board in place — the re-deal is now
+         driven from the top bar (#109), which stays put across the rebuild. It
+         fills the scene band and lets the playfield's `flex: 1` grow into it, so
+         the board still stretches exactly as when the playfield was a direct child
+         of the container. */
       .table-board {
         flex: 1;
         width: 100%;
         display: flex;
         flex-direction: column;
         align-items: stretch;
-      }
-
-      /* New Game button (issue #108): re-deals a fresh FreeCell board in place.
-         Shares the green control look of the other scene buttons; sits above the
-         board within the scene container until #109's top bar gives it a home. */
-      .new-game-button {
-        align-self: center;
-        padding: 8px 14px;
-        font: 14px system-ui, sans-serif;
-        color: #f8fafc;
-        background: #166534;
-        border: none;
-        border-radius: 8px;
-        cursor: pointer;
       }
 
       /* Card-stacking tech demo (grown out of the drag-and-drop spike, issue
@@ -406,35 +507,22 @@
         color: #94a3b8;
       }
 
-      /* The build badge sits at the very bottom of the page flow (it's the last
-         flex child of <body>, after #app). Keeping it in flow — rather than
-         `position: fixed` — means it stays pinned to the end of the document
-         instead of floating over a long, scrolling scene like the gallery. It
-         hugs the right edge via a negative margin that cancels the body's
-         right padding, preserving the tucked-into-the-corner look. */
+      /* The build/version info, folded out of its old bottom-right corner into the
+         foot of the menu (#109). Now a plain muted line within the panel — the
+         menu's `.menu-footer` handles placement. */
       #version-badge {
-        align-self: flex-end;
-        margin-top: 0.75rem;
-        margin-right: calc(-1 * (env(safe-area-inset-right) + 1.5rem));
-        padding: 2px 6px;
+        padding: 2px 0;
         font: 11px/1.4 system-ui, sans-serif;
-        color: #94a3b8;
-        background: #0b1220;
-        opacity: 0.75;
-        border-top-left-radius: 6px;
+        color: #64748b;
       }
 
-      /* Pinned to the top-right of the chrome and lined up with the scene picker
-         opposite it: the same 0.75rem inset the body pads its content by puts the
-         button's top edge level with the picker's, and matching box metrics
-         (8px/14px padding, 14px font, a 1px border — transparent here, the 1px the
-         picker spends on its outline) give it the picker's exact height, so the
-         two controls read as a single row. `right` mirrors the picker's left
-         content edge. */
+      /* The conditional "update available" control, folded into the top bar (#109)
+         from its old fixed top-right corner. It's pushed to the far right of the
+         bar (`margin-left: auto`) and shares the bar's button metrics, but keeps
+         the accent-green fill that marks it as the one call-to-action. Hidden
+         until the service worker reports a waiting update. */
       #update-button {
-        position: fixed;
-        top: calc(env(safe-area-inset-top) + 0.75rem);
-        right: calc(env(safe-area-inset-right) + 1.5rem);
+        margin-left: auto;
         padding: 8px 14px;
         font: 14px system-ui, sans-serif;
         color: #f8fafc;
@@ -442,7 +530,6 @@
         border: 1px solid transparent;
         border-radius: 8px;
         cursor: pointer;
-        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
       }
 
       #update-button[hidden] {

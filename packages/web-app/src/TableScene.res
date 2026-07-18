@@ -151,13 +151,19 @@ let fillFraction = 0.9
 //
 // `~newDeal` makes the board *re-dealable* (#108): a thunk that yields a fresh
 // game to open — a new seed each call, decided by the caller (the web-app deals
-// FreeCell a random seed; #98's deal-number entry can supply a chosen one). When
-// present, the scene shows a **New Game** button wired to it; the future top-bar
-// button (#109) will call the same hook. Omitted, the board isn't re-dealable
-// (the fixed-layout demos).
+// FreeCell a random seed; #98's deal-number entry can supply a chosen one).
+// Omitted, the board isn't re-dealable (the fixed-layout demos).
+//
+// `~publishNewGame` is how the chrome's top bar (#109) reaches the re-deal: when
+// the board is re-dealable, the scene hands its `buildBoard(freshDeal())` thunk
+// to `publishNewGame` on mount, and the top bar's New Game button calls it. (The
+// New Game control lives in the top bar now, not on the board.) The chrome resets
+// its hook on every scene switch, so a non-re-dealable scene simply leaves it
+// unset — it never calls `publishNewGame`.
 let make = (
   ~initial: option<GameState.t>=?,
   ~newDeal: option<unit => Game.t>=?,
+  ~publishNewGame: option<(unit => unit) => unit>=?,
   game: Game.t,
 ): Scene.t => {
   id: game.id,
@@ -594,20 +600,15 @@ let make = (
       }
     }
 
-    // A New Game control, shown only when the game is re-dealable (`~newDeal` —
-    // FreeCell today). Pressing it asks for a fresh deal (a new seed each press,
-    // decided by whoever built `newDeal`) and rebuilds the board in place from it,
-    // tearing the previous deal down. It sits above the board host so a re-deal —
-    // which rebuilds only the host — leaves it untouched; #109's top-bar button
-    // will call the same `buildBoard(newDeal())` hook.
-    switch newDeal {
-    | Some(freshDeal) =>
-      let button = WebDom.createElement("button")
-      button->WebDom.setAttribute("class", "new-game-button")
-      button->WebDom.setTextContent("New Game")
-      button->WebDom.addEventListener("click", () => buildBoard(freshDeal()))
-      container->WebDom.appendChild(button)->ignore
-    | None => ()
+    // Publish the re-deal to the chrome (#109). When the game is re-dealable
+    // (`~newDeal` — FreeCell today), hand the top bar a thunk that asks for a fresh
+    // deal (a new seed each press, decided by whoever built `newDeal`) and rebuilds
+    // the board in place from it, tearing the previous deal down. The board host
+    // stays put across a re-deal — `buildBoard` rebuilds only its contents — so the
+    // top bar's New Game button can drive this hook without touching the chrome.
+    switch (newDeal, publishNewGame) {
+    | (Some(freshDeal), Some(publish)) => publish(() => buildBoard(freshDeal()))
+    | _ => ()
     }
     container->WebDom.appendChild(boardHost)->ignore
 
