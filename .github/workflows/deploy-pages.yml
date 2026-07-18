@@ -74,8 +74,13 @@ jobs:
         run: |
           set -euo pipefail
           stamp="$(date -u +%Y.%m.%d)_${GITHUB_SHA::7}"
+          # On the first `main` deploy the dir doesn't exist yet, so `gh api`
+          # 404s: it writes the error body to *stdout* and exits non-zero. Keep
+          # the `[]` fallback outside the command substitution so that failure
+          # discards gh's stdout instead of concatenating it (which would hand
+          # `{"message":"Not Found",...}[]` to --existing and break JSON.parse).
           existing="$(gh api "repos/$GITHUB_REPOSITORY/contents/screenshots/branch/main?ref=gh-pages" \
-            --jq '[.[] | select(.type == "dir") | .name]' 2>/dev/null || echo '[]')"
+            --jq '[.[] | select(.type == "dir") | .name]' 2>/dev/null)" || existing='[]'
           node packages/web-app/scripts/stage-screenshots.mjs staging "$stamp" --existing "$existing"
           [ -f staging/index.html ] && echo "staged=true" >> "$GITHUB_OUTPUT" || echo "staged=false" >> "$GITHUB_OUTPUT"
 
