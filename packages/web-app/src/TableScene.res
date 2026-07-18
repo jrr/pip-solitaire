@@ -148,424 +148,476 @@ let fillFraction = 0.9
 // deal — the hook the URL's `?state=` scenario uses to drop straight into a
 // mid-game position (see `AppUrl` / `Scenario`). Omitted, the scene opens from the
 // game's own deal exactly as before.
-let make = (~initial: option<GameState.t>=?, game: Game.t): Scene.t => {
+//
+// `~newDeal` makes the board *re-dealable* (#108): a thunk that yields a fresh
+// game to open — a new seed each call, decided by the caller (the web-app deals
+// FreeCell a random seed; #98's deal-number entry can supply a chosen one). When
+// present, the scene shows a **New Game** button wired to it; the future top-bar
+// button (#109) will call the same hook. Omitted, the board isn't re-dealable
+// (the fixed-layout demos).
+let make = (
+  ~initial: option<GameState.t>=?,
+  ~newDeal: option<unit => Game.t>=?,
+  game: Game.t,
+): Scene.t => {
   id: game.id,
   label: game.name,
   mount: container => {
-    // The stage everything is positioned within; `position: relative` (in CSS)
-    // makes it the origin for the cards' absolute left/top.
-    let playfield = WebDom.createElement("div")
-    playfield->WebDom.setAttribute("class", "stacking-playfield")
-    container->WebDom.appendChild(playfield)->ignore
+    // The board lives in its own host so a New Game re-deal can tear the whole
+    // board down and rebuild it — fresh zones and card nodes, no stale leftovers
+    // from the previous deal — while leaving the New Game control (below) in
+    // place. Everything from the playfield down is (re)built into this host by
+    // `buildBoard`.
+    let boardHost = WebDom.createElement("div")
+    boardHost->WebDom.setAttribute("class", "table-board")
 
-    // The drop zones, laid out in role-grouped rows (#94) so a sixteen-pile
-    // FreeCell board is playable: free cells and foundations across the top,
-    // cascades below. The rows stack in a flex *column* (`.drop-rows`), so the
-    // cascade row is pushed clear of the top row automatically and its fans grow
-    // into the space beneath. A board that carries only one of the two groups —
-    // every existing card-table demo — collapses to a single row, laid out
-    // exactly as before. Each row lays itself out with flexbox, so a zone's live
-    // rect (read at drop time) reflects wherever the browser placed it — nothing
-    // cached up front to go stale on resize.
-    let rows = WebDom.createElement("div")
-    rows->WebDom.setAttribute("class", "drop-rows")
-    playfield->WebDom.appendChild(rows)->ignore
+    // Build (or rebuild) the whole board for `game` into `boardHost`. Every call
+    // clears the host first, so a re-deal starts empty — none of the previous
+    // deal's card nodes or drop zones survive (the tear-down New Game needs) —
+    // and re-runs the same mount-time build with fresh local state (`nodes`,
+    // `state`, `topZ`, `scale`). `~initial` forces a starting `GameState` (the
+    // `?state=` scenario) and applies only to the opening mount; a re-deal always
+    // opens from its game's own fresh deal.
+    let buildBoard = (~initial: option<GameState.t>=?, game: Game.t) => {
+      WebDom.clear(boardHost)
+      // The stage everything is positioned within; `position: relative` (in CSS)
+      // makes it the origin for the cards' absolute left/top.
+      let playfield = WebDom.createElement("div")
+      playfield->WebDom.setAttribute("class", "stacking-playfield")
+      boardHost->WebDom.appendChild(playfield)->ignore
 
-    let makeRow = () => {
-      let row = WebDom.createElement("div")
-      row->WebDom.setAttribute("class", "drop-row")
-      rows->WebDom.appendChild(row)->ignore
-      row
-    }
+      // The drop zones, laid out in role-grouped rows (#94) so a sixteen-pile
+      // FreeCell board is playable: free cells and foundations across the top,
+      // cascades below. The rows stack in a flex *column* (`.drop-rows`), so the
+      // cascade row is pushed clear of the top row automatically and its fans grow
+      // into the space beneath. A board that carries only one of the two groups —
+      // every existing card-table demo — collapses to a single row, laid out
+      // exactly as before. Each row lays itself out with flexbox, so a zone's live
+      // rect (read at drop time) reflects wherever the browser placed it — nothing
+      // cached up front to go stale on resize.
+      let rows = WebDom.createElement("div")
+      rows->WebDom.setAttribute("class", "drop-rows")
+      playfield->WebDom.appendChild(rows)->ignore
 
-    // A cascade lands on the bottom row, a free cell or foundation on the top —
-    // but only when the board actually mixes the two groups. With just one group
-    // present, everything shares a single row (`bottomRow` aliases `topRow`).
-    let hasTop = game.piles->Array.some((p: Game.pile) => p.role != Game.Cascade)
-    let hasBottom = game.piles->Array.some((p: Game.pile) => p.role == Game.Cascade)
-    let twoRows = hasTop && hasBottom
-    let topRow = makeRow()
-    let bottomRow = twoRows ? makeRow() : topRow
-    let rowFor = (pile: Game.pile) => twoRows && pile.role == Game.Cascade ? bottomRow : topRow
-
-    // One zone per pile in the game, in model order, each carrying its declared
-    // stacking behaviour and dropped into its role's row. The `.drop-row`
-    // flexbox (`space-evenly`) spreads a row's zones across the stage, so the
-    // view never counts them.
-    let zones = game.piles->Array.mapWithIndex((pile: Game.pile, index) => {
-      let el = WebDom.createElement("div")
-      el->WebDom.setAttribute("class", "drop-zone")
-      rowFor(pile)->WebDom.appendChild(el)->ignore
-      {el, index, stacking: pile.stacking}
-    })
-
-    // The widest row's pile count drives the card scale below: with the piles
-    // split across two rows, cards need only shrink to fit the busier row, not
-    // the whole board. A single-row board's widest row is all its piles.
-    let widestRow = if twoRows {
-      let cascades = game.piles->Array.filter((p: Game.pile) => p.role == Game.Cascade)
-      Math.Int.max(Array.length(cascades), Array.length(game.piles) - Array.length(cascades))
-    } else {
-      Array.length(game.piles)
-    }
-
-    // The single source of truth for *where every card rests* (#77/#82): the view
-    // holds one immutable `GameState`, seeded from the board's opening deal (or the
-    // forced `~initial` scenario, when one is given), and re-derives every pile's
-    // layout from it. Drops dispatch reducer actions and adopt the returned state;
-    // the view keeps only transient geometry (below).
-    let state = ref(initial->Option.getOr(GameState.initial(game)))
-
-    // The DOM node for each model card, so a pile derived from `state` (structural
-    // `{suit, rank}` cards) lays out onto the *same* elements every reflow — the
-    // identity bridge (#45) from model card to node. Every `makeCard` registers
-    // itself here; lookup is the deck-scoped `GameState.sameCard`.
-    let nodes: array<card> = []
-    let nodeFor = (data: Deck.card) => nodes->Array.find(n => GameState.sameCard(n.data, data))
-
-    // How much the design footprints are shrunk to fit the stage. Cards fill
-    // `fillFraction × width` split across the busiest row (`fillFraction · width
-    // / widestRow`), capped at the design size so a wide screen doesn't blow the
-    // cards up, and floored so a crowded, narrow one keeps them legible. Held in
-    // a ref because the geometry (reflow, the deal) reads it, and recomputed from
-    // the stage's live width the moment before the deal — the one point at which
-    // the stage is known laid out.
-    let scale = ref(1.)
-    let applyScale = () => {
-      let width = boundingRect(playfield).width
-      if width > 0. && widestRow > 0 {
-        let target = fillFraction *. width /. Int.toFloat(widestRow) /. cardW
-        scale := Math.max(minScale, Math.min(1., target))
+      let makeRow = () => {
+        let row = WebDom.createElement("div")
+        row->WebDom.setAttribute("class", "drop-row")
+        rows->WebDom.appendChild(row)->ignore
+        row
       }
-      // Publish the factor to the CSS so `.stacking-card`/`.drop-zone` resize in
-      // step with the JS geometry below.
-      let s = style(playfield)
-      s->setProperty("--card-w", Float.toString(cardW *. scale.contents) ++ "px")
-      s->setProperty("--zone-w", Float.toString(zoneWidth *. scale.contents) ++ "px")
-      s->setProperty("--zone-h", Float.toString(zoneBaseHeight *. scale.contents) ++ "px")
-    }
 
-    // The zone whose rect contains point (px, py), if any — the shared primitive
-    // for both the live hover highlight and the snap-on-drop decision.
-    let zoneAt = (px, py) =>
-      zones->Array.find(({el}) => {
-        let r = boundingRect(el)
-        px >= r.left && px <= r.left +. r.width && py >= r.top && py <= r.top +. r.height
+      // A cascade lands on the bottom row, a free cell or foundation on the top —
+      // but only when the board actually mixes the two groups. With just one group
+      // present, everything shares a single row (`bottomRow` aliases `topRow`).
+      let hasTop = game.piles->Array.some((p: Game.pile) => p.role != Game.Cascade)
+      let hasBottom = game.piles->Array.some((p: Game.pile) => p.role == Game.Cascade)
+      let twoRows = hasTop && hasBottom
+      let topRow = makeRow()
+      let bottomRow = twoRows ? makeRow() : topRow
+      let rowFor = (pile: Game.pile) => twoRows && pile.role == Game.Cascade ? bottomRow : topRow
+
+      // One zone per pile in the game, in model order, each carrying its declared
+      // stacking behaviour and dropped into its role's row. The `.drop-row`
+      // flexbox (`space-evenly`) spreads a row's zones across the stage, so the
+      // view never counts them.
+      let zones = game.piles->Array.mapWithIndex((pile: Game.pile, index) => {
+        let el = WebDom.createElement("div")
+        el->WebDom.setAttribute("class", "drop-zone")
+        rowFor(pile)->WebDom.appendChild(el)->ignore
+        {el, index, stacking: pile.stacking}
       })
 
-    // Write a card's live x/y into its style.
-    let place = c => {
-      let s = style(c.wrapper)
-      s->setLeft(Float.toString(c.x.contents) ++ "px")
-      s->setTop(Float.toString(c.y.contents) ++ "px")
-    }
-
-    // Z-order is a single monotonic counter: whatever was touched most recently
-    // (created, grabbed, or dropped) sits on top. Because cards join a pile at
-    // grab time — and only the top card can be grabbed — a pile's slot order
-    // and its z-order always agree, so stacked cards, free cards and the card
-    // in hand all layer coherently without any per-slot bookkeeping.
-    let topZ = ref(0)
-    let bringToFront = el => {
-      topZ := topZ.contents + 1
-      style(el)->setZIndex(Int.toString(topZ.contents))
-    }
-
-    // Re-lay a zone's pile from scratch: every card squares up on the zone
-    // centre, then Fanned cards step *down* by their slot so the newest lands
-    // lowest and fully exposed. Only the top (last) card stays draggable; the
-    // rest are marked buried. Reading the rects live keeps the maths correct
-    // wherever flexbox placed the zone.
-    //
-    // Cards centre within the base box (`zoneBaseHeight`), *not* the zone's live
-    // height — a fanned zone is then grown *downward* to enclose its whole fan
-    // (below), and using the base height here keeps that growth from feeding back
-    // and shifting the cards on the next reflow.
-    let reflow = zone => {
-      let pr = boundingRect(playfield)
-      let zr = boundingRect(zone.el)
-      // The pile's cards come straight from the model now, bottom-first, and are
-      // mapped back onto their nodes by identity — the card's slot is its index.
-      let cards = GameState.cardsInPile(state.contents, zone.index)
-      let count = Array.length(cards)
-      let top = count - 1
-      cards->Array.forEachWithIndex((data, i) =>
-        switch nodeFor(data) {
-        | Some(c) =>
-          let cr = boundingRect(c.wrapper)
-          let baseX = zr.left +. zr.width /. 2. -. cr.width /. 2. -. pr.left
-          let baseY = zr.top +. zoneBaseHeight *. scale.contents /. 2. -. cr.height /. 2. -. pr.top
-          c.x := baseX
-          c.y :=
-            switch zone.stacking {
-            | Game.Squared => baseY
-            | Game.Fanned => baseY +. Int.toFloat(i) *. fanStep *. scale.contents
-            }
-          place(c)
-          // Layer by slot so the pile stacks bottom-to-top regardless of the order
-          // the nodes were created in. During normal play slot order already
-          // matches creation order, but a forced state (a `?state=` scenario) moves
-          // cards into piles they weren't dealt into, so without this a Squared
-          // pile would show whichever card happened to be created last, not its
-          // real top card. `bringToFront` still lifts a card above these while it's
-          // dragged; the next reflow settles the pile back to slot order.
-          style(c.wrapper)->setZIndex(Int.toString(i))
-          c.draggable := i == top
-          i == top
-            ? classList(c.wrapper)->removeClass("stacking-card--buried")
-            : classList(c.wrapper)->addClass("stacking-card--buried")
-        | None => ()
-        }
-      )
-      // Grow a fanned zone so its outline (and the drop highlight) covers the
-      // fan that spills below the base box; a squared or empty zone keeps the
-      // base height. `zoneAt` hit-tests this same box, so the whole fanned pile
-      // becomes the drop target too, not just the foundation.
-      let fanExtent = switch zone.stacking {
-      | Game.Fanned if count > 1 => Int.toFloat(count - 1) *. fanStep *. scale.contents
-      | _ => 0.
+      // The widest row's pile count drives the card scale below: with the piles
+      // split across two rows, cards need only shrink to fit the busier row, not
+      // the whole board. A single-row board's widest row is all its piles.
+      let widestRow = if twoRows {
+        let cascades = game.piles->Array.filter((p: Game.pile) => p.role == Game.Cascade)
+        Math.Int.max(Array.length(cascades), Array.length(game.piles) - Array.length(cascades))
+      } else {
+        Array.length(game.piles)
       }
-      style(zone.el)->setHeight(
-        Float.toString(zoneBaseHeight *. scale.contents +. fanExtent) ++ "px",
-      )
-      // Light the "done" marker once this pile holds a full Ace→King run (#76) —
-      // the satisfying completion a foundation builds toward. Driven off the same
-      // pure `core` predicate, so a foundation and an assembled tableau alike
-      // signal completion; full win detection is later.
-      let complete = Rules.isCompleteRun(cards)
-      complete
-        ? classList(zone.el)->addClass("drop-zone--complete")
-        : classList(zone.el)->removeClass("drop-zone--complete")
-    }
 
-    // Re-derive every pile from the current `state`. Cheap for a handful of zones,
-    // and it always reflows both ends of a move (the pile a card left and the one
-    // it joined) without the view tracking which those were.
-    let reflowAll = () => zones->Array.forEach(reflow)
+      // The single source of truth for *where every card rests* (#77/#82): the view
+      // holds one immutable `GameState`, seeded from the board's opening deal (or the
+      // forced `~initial` scenario, when one is given), and re-derives every pile's
+      // layout from it. Drops dispatch reducer actions and adopt the returned state;
+      // the view keeps only transient geometry (below).
+      let state = ref(initial->Option.getOr(GameState.initial(game)))
 
-    // Build one draggable card and wire its pointer loop. It starts at 0,0 and is
-    // positioned by the initial deal (below); returning `self` lets the caller
-    // collect the free cards and lay them out together.
-    let makeCard = (cardData: Deck.card) => {
-      let wrapper = WebDom.createElement("div")
-      wrapper->WebDom.setAttribute("class", "stacking-card")
-      wrapper->WebDom.appendChild(Html.create(CardArt.svg(cardData)))->ignore
+      // The DOM node for each model card, so a pile derived from `state` (structural
+      // `{suit, rank}` cards) lays out onto the *same* elements every reflow — the
+      // identity bridge (#45) from model card to node. Every `makeCard` registers
+      // itself here; lookup is the deck-scoped `GameState.sameCard`.
+      let nodes: array<card> = []
+      let nodeFor = (data: Deck.card) => nodes->Array.find(n => GameState.sameCard(n.data, data))
 
-      // The card's transient view state: position (kept here rather than parsed
-      // back out of the style each move) and whether it's on top and so pickable.
-      // Cards start draggable; reflow corrects buried ones. Where the card *rests*
-      // is not stored — that's `GameState`.
-      let self = {
-        data: cardData,
-        wrapper,
-        x: ref(0.),
-        y: ref(0.),
-        draggable: ref(true),
-      }
-      // Register the node so a pile derived from `state` can be laid out onto it.
-      nodes->Array.push(self)
-
-      // Position and layer before insertion so the card appears in place instead
-      // of sliding in from the corner (the CSS `transition` would otherwise
-      // animate 0,0 → here on mount).
-      place(self)
-      bringToFront(wrapper)
-      playfield->WebDom.appendChild(wrapper)->ignore
-
-      // The pointer offset at grab time, plus the card's position then; a move is
-      // "start position + how far the pointer has travelled since". `None` when
-      // not dragging.
-      let grab = ref(None)
-
-      // May this card land on `zone`? The hover highlight and the drop below both
-      // funnel through `core`'s shared `canDrop` (#82) so the green "valid"
-      // outline can never disagree with the accepted drop. The one thing `canDrop`
-      // can't see is that re-dropping a card onto the pile it already tops is a
-      // lawful no-op — during a drag the card still rests in `state`, so `canDrop`
-      // would weigh it against itself — so mirror the reducer's identity case
-      // here, keeping hover exactly in step with `reduce`.
-      let accepts = zone =>
-        switch GameState.locationOf(state.contents, cardData) {
-        | Some(GameState.InPile(i, _)) if i == zone.index => true
-        | _ => Reducer.canDrop(~game, state.contents, cardData, ~onto=zone.index)
+      // How much the design footprints are shrunk to fit the stage. Cards fill
+      // `fillFraction × width` split across the busiest row (`fillFraction · width
+      // / widestRow`), capped at the design size so a wide screen doesn't blow the
+      // cards up, and floored so a crowded, narrow one keeps them legible. Held in
+      // a ref because the geometry (reflow, the deal) reads it, and recomputed from
+      // the stage's live width the moment before the deal — the one point at which
+      // the stage is known laid out.
+      let scale = ref(1.)
+      let applyScale = () => {
+        let width = boundingRect(playfield).width
+        if width > 0. && widestRow > 0 {
+          let target = fillFraction *. width /. Int.toFloat(widestRow) /. cardW
+          scale := Math.max(minScale, Math.min(1., target))
         }
+        // Publish the factor to the CSS so `.stacking-card`/`.drop-zone` resize in
+        // step with the JS geometry below.
+        let s = style(playfield)
+        s->setProperty("--card-w", Float.toString(cardW *. scale.contents) ++ "px")
+        s->setProperty("--zone-w", Float.toString(zoneWidth *. scale.contents) ++ "px")
+        s->setProperty("--zone-h", Float.toString(zoneBaseHeight *. scale.contents) ++ "px")
+      }
 
-      let clearHover = () =>
-        zones->Array.forEach(zone => {
-          classList(zone.el)->removeClass("drop-zone--over")
-          classList(zone.el)->removeClass("drop-zone--invalid")
+      // The zone whose rect contains point (px, py), if any — the shared primitive
+      // for both the live hover highlight and the snap-on-drop decision.
+      let zoneAt = (px, py) =>
+        zones->Array.find(({el}) => {
+          let r = boundingRect(el)
+          px >= r.left && px <= r.left +. r.width && py >= r.top && py <= r.top +. r.height
         })
 
-      // Outline the zone the card's centre is currently over (and only that one)
-      // so the drop is legible before release: green when the rule accepts the
-      // drop, red when it rejects it.
-      let highlightHover = () => {
-        let r = boundingRect(wrapper)
-        let over = zoneAt(r.left +. r.width /. 2., r.top +. r.height /. 2.)
-        zones->Array.forEach(zone => {
-          let cls = classList(zone.el)
-          switch over {
-          | Some(z) if z === zone && accepts(zone) =>
-            cls->addClass("drop-zone--over")
-            cls->removeClass("drop-zone--invalid")
-          | Some(z) if z === zone =>
-            cls->addClass("drop-zone--invalid")
-            cls->removeClass("drop-zone--over")
-          | _ =>
-            cls->removeClass("drop-zone--over")
-            cls->removeClass("drop-zone--invalid")
-          }
-        })
+      // Write a card's live x/y into its style.
+      let place = c => {
+        let s = style(c.wrapper)
+        s->setLeft(Float.toString(c.x.contents) ++ "px")
+        s->setTop(Float.toString(c.y.contents) ++ "px")
       }
 
-      wrapper->onPointer("pointerdown", ev =>
-        // Buried cards ignore the pointer entirely — for now only the top card
-        // of a pile (or a free card) can be picked up.
-        if self.draggable.contents {
-          // Capture so the card keeps getting moves/up even if the pointer leaves
-          // its bounds; raise it above every other card for the drag.
-          wrapper->setPointerCapture(pointerId(ev))
-          grab := Some((clientX(ev), clientY(ev), self.x.contents, self.y.contents))
-          classList(wrapper)->addClass("dragging")
-          bringToFront(wrapper)
-        }
-      )
+      // Z-order is a single monotonic counter: whatever was touched most recently
+      // (created, grabbed, or dropped) sits on top. Because cards join a pile at
+      // grab time — and only the top card can be grabbed — a pile's slot order
+      // and its z-order always agree, so stacked cards, free cards and the card
+      // in hand all layer coherently without any per-slot bookkeeping.
+      let topZ = ref(0)
+      let bringToFront = el => {
+        topZ := topZ.contents + 1
+        style(el)->setZIndex(Int.toString(topZ.contents))
+      }
 
-      wrapper->onPointer("pointermove", ev =>
-        switch grab.contents {
-        | Some((startPX, startPY, startX, startY)) =>
-          self.x := startX +. (clientX(ev) -. startPX)
-          self.y := startY +. (clientY(ev) -. startPY)
-          place(self)
-          highlightHover()
-        | None => ()
-        }
-      )
-
-      let endDrag = ev =>
-        switch grab.contents {
-        | Some((_, _, startX, startY)) =>
-          wrapper->releasePointerCapture(pointerId(ev))
-          grab := None
-          classList(wrapper)->removeClass("dragging")
-          // Where the card's centre was released decides the *action*: onto a zone
-          // is a `Move` to that pile; a miss is a `Move` to the loose table. The
-          // reducer — not the view — then rules on it against the game's rules and
-          // its `free` flag, so `core` owns every rest position (#83).
-          let cr = boundingRect(wrapper)
-          let target = switch zoneAt(cr.left +. cr.width /. 2., cr.top +. cr.height /. 2.) {
-          | Some(zone) => Reducer.ToPile(zone.index)
-          | None => Reducer.ToTable
+      // Re-lay a zone's pile from scratch: every card squares up on the zone
+      // centre, then Fanned cards step *down* by their slot so the newest lands
+      // lowest and fully exposed. Only the top (last) card stays draggable; the
+      // rest are marked buried. Reading the rects live keeps the maths correct
+      // wherever flexbox placed the zone.
+      //
+      // Cards centre within the base box (`zoneBaseHeight`), *not* the zone's live
+      // height — a fanned zone is then grown *downward* to enclose its whole fan
+      // (below), and using the base height here keeps that growth from feeding back
+      // and shifting the cards on the next reflow.
+      let reflow = zone => {
+        let pr = boundingRect(playfield)
+        let zr = boundingRect(zone.el)
+        // The pile's cards come straight from the model now, bottom-first, and are
+        // mapped back onto their nodes by identity — the card's slot is its index.
+        let cards = GameState.cardsInPile(state.contents, zone.index)
+        let count = Array.length(cards)
+        let top = count - 1
+        cards->Array.forEachWithIndex((data, i) =>
+          switch nodeFor(data) {
+          | Some(c) =>
+            let cr = boundingRect(c.wrapper)
+            let baseX = zr.left +. zr.width /. 2. -. cr.width /. 2. -. pr.left
+            let baseY =
+              zr.top +. zoneBaseHeight *. scale.contents /. 2. -. cr.height /. 2. -. pr.top
+            c.x := baseX
+            c.y :=
+              switch zone.stacking {
+              | Game.Squared => baseY
+              | Game.Fanned => baseY +. Int.toFloat(i) *. fanStep *. scale.contents
+              }
+            place(c)
+            // Layer by slot so the pile stacks bottom-to-top regardless of the order
+            // the nodes were created in. During normal play slot order already
+            // matches creation order, but a forced state (a `?state=` scenario) moves
+            // cards into piles they weren't dealt into, so without this a Squared
+            // pile would show whichever card happened to be created last, not its
+            // real top card. `bringToFront` still lifts a card above these while it's
+            // dragged; the next reflow settles the pile back to slot order.
+            style(c.wrapper)->setZIndex(Int.toString(i))
+            c.draggable := i == top
+            i == top
+              ? classList(c.wrapper)->removeClass("stacking-card--buried")
+              : classList(c.wrapper)->addClass("stacking-card--buried")
+          | None => ()
           }
-          switch Reducer.reduce(
-            ~game,
-            state.contents,
-            Reducer.Move({card: self.data, to: target}),
-          ) {
-          // Lawful move (including the identity re-drop): adopt the new state and
-          // reflow every pile from it. A card that joined a pile snaps to its slot;
-          // a card left loose stays at the pixel it was dropped (no pile claims it).
-          | Ok(next) =>
-            state := next
-            reflowAll()
-          // Illegal move: bounce the card back where it came from. A card that
-          // rests in a pile returns to its slot when that pile reflows; a loose
-          // card (a rejected drop in a `free` game) returns to where the drag began.
-          | Error(_) =>
-            switch GameState.locationOf(state.contents, self.data) {
-            | Some(GameState.InPile(_, _)) => reflowAll()
+        )
+        // Grow a fanned zone so its outline (and the drop highlight) covers the
+        // fan that spills below the base box; a squared or empty zone keeps the
+        // base height. `zoneAt` hit-tests this same box, so the whole fanned pile
+        // becomes the drop target too, not just the foundation.
+        let fanExtent = switch zone.stacking {
+        | Game.Fanned if count > 1 => Int.toFloat(count - 1) *. fanStep *. scale.contents
+        | _ => 0.
+        }
+        style(zone.el)->setHeight(
+          Float.toString(zoneBaseHeight *. scale.contents +. fanExtent) ++ "px",
+        )
+        // Light the "done" marker once this pile holds a full Ace→King run (#76) —
+        // the satisfying completion a foundation builds toward. Driven off the same
+        // pure `core` predicate, so a foundation and an assembled tableau alike
+        // signal completion; full win detection is later.
+        let complete = Rules.isCompleteRun(cards)
+        complete
+          ? classList(zone.el)->addClass("drop-zone--complete")
+          : classList(zone.el)->removeClass("drop-zone--complete")
+      }
+
+      // Re-derive every pile from the current `state`. Cheap for a handful of zones,
+      // and it always reflows both ends of a move (the pile a card left and the one
+      // it joined) without the view tracking which those were.
+      let reflowAll = () => zones->Array.forEach(reflow)
+
+      // Build one draggable card and wire its pointer loop. It starts at 0,0 and is
+      // positioned by the initial deal (below); returning `self` lets the caller
+      // collect the free cards and lay them out together.
+      let makeCard = (cardData: Deck.card) => {
+        let wrapper = WebDom.createElement("div")
+        wrapper->WebDom.setAttribute("class", "stacking-card")
+        wrapper->WebDom.appendChild(Html.create(CardArt.svg(cardData)))->ignore
+
+        // The card's transient view state: position (kept here rather than parsed
+        // back out of the style each move) and whether it's on top and so pickable.
+        // Cards start draggable; reflow corrects buried ones. Where the card *rests*
+        // is not stored — that's `GameState`.
+        let self = {
+          data: cardData,
+          wrapper,
+          x: ref(0.),
+          y: ref(0.),
+          draggable: ref(true),
+        }
+        // Register the node so a pile derived from `state` can be laid out onto it.
+        nodes->Array.push(self)
+
+        // Position and layer before insertion so the card appears in place instead
+        // of sliding in from the corner (the CSS `transition` would otherwise
+        // animate 0,0 → here on mount).
+        place(self)
+        bringToFront(wrapper)
+        playfield->WebDom.appendChild(wrapper)->ignore
+
+        // The pointer offset at grab time, plus the card's position then; a move is
+        // "start position + how far the pointer has travelled since". `None` when
+        // not dragging.
+        let grab = ref(None)
+
+        // May this card land on `zone`? The hover highlight and the drop below both
+        // funnel through `core`'s shared `canDrop` (#82) so the green "valid"
+        // outline can never disagree with the accepted drop. The one thing `canDrop`
+        // can't see is that re-dropping a card onto the pile it already tops is a
+        // lawful no-op — during a drag the card still rests in `state`, so `canDrop`
+        // would weigh it against itself — so mirror the reducer's identity case
+        // here, keeping hover exactly in step with `reduce`.
+        let accepts = zone =>
+          switch GameState.locationOf(state.contents, cardData) {
+          | Some(GameState.InPile(i, _)) if i == zone.index => true
+          | _ => Reducer.canDrop(~game, state.contents, cardData, ~onto=zone.index)
+          }
+
+        let clearHover = () =>
+          zones->Array.forEach(zone => {
+            classList(zone.el)->removeClass("drop-zone--over")
+            classList(zone.el)->removeClass("drop-zone--invalid")
+          })
+
+        // Outline the zone the card's centre is currently over (and only that one)
+        // so the drop is legible before release: green when the rule accepts the
+        // drop, red when it rejects it.
+        let highlightHover = () => {
+          let r = boundingRect(wrapper)
+          let over = zoneAt(r.left +. r.width /. 2., r.top +. r.height /. 2.)
+          zones->Array.forEach(zone => {
+            let cls = classList(zone.el)
+            switch over {
+            | Some(z) if z === zone && accepts(zone) =>
+              cls->addClass("drop-zone--over")
+              cls->removeClass("drop-zone--invalid")
+            | Some(z) if z === zone =>
+              cls->addClass("drop-zone--invalid")
+              cls->removeClass("drop-zone--over")
             | _ =>
-              self.x := startX
-              self.y := startY
-              place(self)
+              cls->removeClass("drop-zone--over")
+              cls->removeClass("drop-zone--invalid")
             }
-          }
-          clearHover()
-        | None => ()
+          })
         }
 
-      wrapper->onPointer("pointerup", endDrag)
-      // A cancelled pointer (e.g. the OS stealing the gesture) must tear the drag
-      // down too, or the card would stay stuck to a pointer that's gone.
-      wrapper->onPointer("pointercancel", endDrag)
+        wrapper->onPointer("pointerdown", ev =>
+          // Buried cards ignore the pointer entirely — for now only the top card
+          // of a pile (or a free card) can be picked up.
+          if self.draggable.contents {
+            // Capture so the card keeps getting moves/up even if the pointer leaves
+            // its bounds; raise it above every other card for the drag.
+            wrapper->setPointerCapture(pointerId(ev))
+            grab := Some((clientX(ev), clientY(ev), self.x.contents, self.y.contents))
+            classList(wrapper)->addClass("dragging")
+            bringToFront(wrapper)
+          }
+        )
 
-      self
+        wrapper->onPointer("pointermove", ev =>
+          switch grab.contents {
+          | Some((startPX, startPY, startX, startY)) =>
+            self.x := startX +. (clientX(ev) -. startPX)
+            self.y := startY +. (clientY(ev) -. startPY)
+            place(self)
+            highlightHover()
+          | None => ()
+          }
+        )
+
+        let endDrag = ev =>
+          switch grab.contents {
+          | Some((_, _, startX, startY)) =>
+            wrapper->releasePointerCapture(pointerId(ev))
+            grab := None
+            classList(wrapper)->removeClass("dragging")
+            // Where the card's centre was released decides the *action*: onto a zone
+            // is a `Move` to that pile; a miss is a `Move` to the loose table. The
+            // reducer — not the view — then rules on it against the game's rules and
+            // its `free` flag, so `core` owns every rest position (#83).
+            let cr = boundingRect(wrapper)
+            let target = switch zoneAt(cr.left +. cr.width /. 2., cr.top +. cr.height /. 2.) {
+            | Some(zone) => Reducer.ToPile(zone.index)
+            | None => Reducer.ToTable
+            }
+            switch Reducer.reduce(
+              ~game,
+              state.contents,
+              Reducer.Move({card: self.data, to: target}),
+            ) {
+            // Lawful move (including the identity re-drop): adopt the new state and
+            // reflow every pile from it. A card that joined a pile snaps to its slot;
+            // a card left loose stays at the pixel it was dropped (no pile claims it).
+            | Ok(next) =>
+              state := next
+              reflowAll()
+            // Illegal move: bounce the card back where it came from. A card that
+            // rests in a pile returns to its slot when that pile reflows; a loose
+            // card (a rejected drop in a `free` game) returns to where the drag began.
+            | Error(_) =>
+              switch GameState.locationOf(state.contents, self.data) {
+              | Some(GameState.InPile(_, _)) => reflowAll()
+              | _ =>
+                self.x := startX
+                self.y := startY
+                place(self)
+              }
+            }
+            clearHover()
+          | None => ()
+          }
+
+        wrapper->onPointer("pointerup", endDrag)
+        // A cancelled pointer (e.g. the OS stealing the gesture) must tear the drag
+        // down too, or the card would stay stuck to a pointer that's gone.
+        wrapper->onPointer("pointercancel", endDrag)
+
+        self
+      }
+
+      // A DOM node for every card a pile opens holding (#63) — where each rests is
+      // already recorded in `state`, so no zone pairing is needed here, just the
+      // nodes (which register themselves in `nodes`). Created before the loose cards
+      // so a later loose card layers on top.
+      game.piles->Array.forEach((pile: Game.pile) =>
+        pile.cards->Array.forEach(card => makeCard(card)->ignore)
+      )
+
+      let freeCards = game.loose->Array.map(makeCard)
+
+      // Deal the free cards as a loose, staggered cluster in the lower-middle of
+      // the stage — below the zones, so they're dragged *up* into the piles.
+      // Everything is derived from the stage's live size, so the cluster stays
+      // centred and works for any number of cards: the cards spread out from the
+      // centre with a step that's squeezed to fit the width, and a deterministic
+      // per-card jitter plus an alternating vertical stagger keep it sloppy rather
+      // than a rigid line. The step and stagger together guarantee neighbouring
+      // cards each keep a visible edge, so none is completely occluded.
+      let dealFree = () => {
+        let pr = boundingRect(playfield)
+        let n = Array.length(freeCards)
+        let cw = cardW *. scale.contents
+        let ch = cardH *. scale.contents
+        // Nominal horizontal step, squeezed so a wide cluster still fits the stage.
+        let avail = pr.width -. cw -. 32.
+        let nominal = Int.toFloat(n - 1) *. 44.
+        let spread = nominal < avail ? nominal : avail > 0. ? avail : 0.
+        let stepX = n > 1 ? spread /. Int.toFloat(n - 1) : 0.
+        // Sit the cluster around 60% down the stage (but clear of the top zones),
+        // scaling with the stage yet never riding up over the piles on a short one.
+        let frac = pr.height *. 0.6
+        let centerY = frac > 205. ? frac : 205.
+        freeCards->Array.forEachWithIndex((c, i) => {
+          let jitterX = Int.toFloat(Int.mod(i * 37, 21)) -. 10.
+          let jitterY = Int.toFloat(Int.mod(i * 53, 17)) -. 8.
+          let stagger = Int.mod(i, 2) == 0 ? 16. : -16.
+          c.x := pr.width /. 2. -. spread /. 2. +. Int.toFloat(i) *. stepX -. cw /. 2. +. jitterX
+          c.y := centerY -. ch /. 2. +. stagger +. jitterY
+          place(c)
+        })
+      }
+
+      // Lay out each opening pile from `state`: reflow reads the cards the model
+      // deals that pile and positions their nodes, so the pile ends laid out exactly
+      // as an interactively built one would.
+      let dealPiles = () => reflowAll()
+
+      let deal = () => {
+        // Size the cards to the now-laid-out stage first, so both deals below place
+        // and reflow cards at their final footprint.
+        applyScale()
+        dealPiles()
+        dealFree()
+      }
+
+      // Deal now if the stage is already laid out (a later scene switch); otherwise
+      // on the next frame, before the first paint, once the detached-at-mount stage
+      // has been inserted and sized (the first page load). Both the pile cards and
+      // the loose cards need the stage's live rects, so both wait on this.
+      boundingRect(playfield).width > 0. ? deal() : requestAnimationFrame(deal)->ignore
+
+      // The caption is the game's own prose (`Game.caption`); a game without one
+      // simply shows no caption.
+      switch game.caption {
+      | Some(text) =>
+        let caption = WebDom.createElement("p")
+        caption->WebDom.setAttribute("class", "stacking-caption")
+        caption->WebDom.setTextContent(text)
+        boardHost->WebDom.appendChild(caption)->ignore
+      | None => ()
+      }
     }
 
-    // A DOM node for every card a pile opens holding (#63) — where each rests is
-    // already recorded in `state`, so no zone pairing is needed here, just the
-    // nodes (which register themselves in `nodes`). Created before the loose cards
-    // so a later loose card layers on top.
-    game.piles->Array.forEach((pile: Game.pile) =>
-      pile.cards->Array.forEach(card => makeCard(card)->ignore)
-    )
-
-    let freeCards = game.loose->Array.map(makeCard)
-
-    // Deal the free cards as a loose, staggered cluster in the lower-middle of
-    // the stage — below the zones, so they're dragged *up* into the piles.
-    // Everything is derived from the stage's live size, so the cluster stays
-    // centred and works for any number of cards: the cards spread out from the
-    // centre with a step that's squeezed to fit the width, and a deterministic
-    // per-card jitter plus an alternating vertical stagger keep it sloppy rather
-    // than a rigid line. The step and stagger together guarantee neighbouring
-    // cards each keep a visible edge, so none is completely occluded.
-    let dealFree = () => {
-      let pr = boundingRect(playfield)
-      let n = Array.length(freeCards)
-      let cw = cardW *. scale.contents
-      let ch = cardH *. scale.contents
-      // Nominal horizontal step, squeezed so a wide cluster still fits the stage.
-      let avail = pr.width -. cw -. 32.
-      let nominal = Int.toFloat(n - 1) *. 44.
-      let spread = nominal < avail ? nominal : avail > 0. ? avail : 0.
-      let stepX = n > 1 ? spread /. Int.toFloat(n - 1) : 0.
-      // Sit the cluster around 60% down the stage (but clear of the top zones),
-      // scaling with the stage yet never riding up over the piles on a short one.
-      let frac = pr.height *. 0.6
-      let centerY = frac > 205. ? frac : 205.
-      freeCards->Array.forEachWithIndex((c, i) => {
-        let jitterX = Int.toFloat(Int.mod(i * 37, 21)) -. 10.
-        let jitterY = Int.toFloat(Int.mod(i * 53, 17)) -. 8.
-        let stagger = Int.mod(i, 2) == 0 ? 16. : -16.
-        c.x := pr.width /. 2. -. spread /. 2. +. Int.toFloat(i) *. stepX -. cw /. 2. +. jitterX
-        c.y := centerY -. ch /. 2. +. stagger +. jitterY
-        place(c)
-      })
-    }
-
-    // Lay out each opening pile from `state`: reflow reads the cards the model
-    // deals that pile and positions their nodes, so the pile ends laid out exactly
-    // as an interactively built one would.
-    let dealPiles = () => reflowAll()
-
-    let deal = () => {
-      // Size the cards to the now-laid-out stage first, so both deals below place
-      // and reflow cards at their final footprint.
-      applyScale()
-      dealPiles()
-      dealFree()
-    }
-
-    // Deal now if the stage is already laid out (a later scene switch); otherwise
-    // on the next frame, before the first paint, once the detached-at-mount stage
-    // has been inserted and sized (the first page load). Both the pile cards and
-    // the loose cards need the stage's live rects, so both wait on this.
-    boundingRect(playfield).width > 0. ? deal() : requestAnimationFrame(deal)->ignore
-
-    // The caption is the game's own prose (`Game.caption`); a game without one
-    // simply shows no caption.
-    switch game.caption {
-    | Some(text) =>
-      let caption = WebDom.createElement("p")
-      caption->WebDom.setAttribute("class", "stacking-caption")
-      caption->WebDom.setTextContent(text)
-      container->WebDom.appendChild(caption)->ignore
+    // A New Game control, shown only when the game is re-dealable (`~newDeal` —
+    // FreeCell today). Pressing it asks for a fresh deal (a new seed each press,
+    // decided by whoever built `newDeal`) and rebuilds the board in place from it,
+    // tearing the previous deal down. It sits above the board host so a re-deal —
+    // which rebuilds only the host — leaves it untouched; #109's top-bar button
+    // will call the same `buildBoard(newDeal())` hook.
+    switch newDeal {
+    | Some(freshDeal) =>
+      let button = WebDom.createElement("button")
+      button->WebDom.setAttribute("class", "new-game-button")
+      button->WebDom.setTextContent("New Game")
+      button->WebDom.addEventListener("click", () => buildBoard(freshDeal()))
+      container->WebDom.appendChild(button)->ignore
     | None => ()
     }
+    container->WebDom.appendChild(boardHost)->ignore
 
-    // The switcher clears the container on scene change, dropping the playfield
-    // and every listener with it — nothing extra to tear down.
+    // Open the board from the game's deal, or the forced `~initial` scenario when
+    // the URL named one.
+    buildBoard(~initial?, game)
+
+    // The switcher clears the container on scene change, dropping the board host,
+    // the New Game control and every listener with them — nothing extra to tear
+    // down.
     () => ()
   },
 }
