@@ -190,6 +190,33 @@
         /* filter: drop-shadow(0 4px 10px rgba(0, 0, 0, 0.35)); */
       }
 
+      /* The board host (TableScene.res): wraps the playfield (and caption) so a
+         New Game re-deal can rebuild just the board while the New Game control
+         above it stays put. It fills the scene band and lets the playfield's
+         `flex: 1` grow into it, so the board still stretches exactly as when the
+         playfield was a direct child of the container. */
+      .table-board {
+        flex: 1;
+        width: 100%;
+        display: flex;
+        flex-direction: column;
+        align-items: stretch;
+      }
+
+      /* New Game button (issue #108): re-deals a fresh FreeCell board in place.
+         Shares the green control look of the other scene buttons; sits above the
+         board within the scene container until #109's top bar gives it a home. */
+      .new-game-button {
+        align-self: center;
+        padding: 8px 14px;
+        font: 14px system-ui, sans-serif;
+        color: #f8fafc;
+        background: #166534;
+        border: none;
+        border-radius: 8px;
+        cursor: pointer;
+      }
+
       /* Card-stacking tech demo (grown out of the drag-and-drop spike, issue
          #21): a stage holding a few pointer-draggable cards and a row of drop
          zones they snap into and pile up in. `position: relative` makes the
@@ -422,7 +449,7 @@
         display: none;
       }
     </style>
-    <script type="module" crossorigin src="./assets/index-C2xNwxt-.js"></script>
+    <script type="module" crossorigin src="./assets/index-DEXXzFUD.js"></script>
   <link rel="manifest" href="./manifest.webmanifest"></head>
   <body>
     <!-- Vite resolves the bare `core/…` specifier the compiled entry imports
