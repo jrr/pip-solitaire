@@ -80,6 +80,17 @@ description = "Install the headless Chromium Playwright uses for screenshots"
 depends = ["install"]
 run = "pnpm --filter web-app exec playwright install --with-deps chromium"
 
+# Regenerate the self-hosted fonts in packages/web-app (issue #114). Rebuilds
+# the vendored woff2/ttf from their upstream @fontsource sources — Libre Franklin
+# (chrome + card ranks) and a merged four-glyph "Sleight Suits" subset of IBM
+# Plex Sans JP (card pips) — so the faces are reproducible, not opaque binaries.
+# Analogous to `icons`; the outputs are committed, so this only needs re-running
+# when the source faces or the subset change.
+[tasks.fonts]
+description = "Regenerate the web-app self-hosted fonts from their sources"
+depends = ["install"]
+run = "node packages/web-app/scripts/generate-fonts.mjs"
+
 # Regenerate the PWA icons in packages/web-app/public. The icon is composed from
 # the real CardArt cards (a fanned 7·8·9), so it depends on `build` to compile
 # the ReScript art first, then rasterizes it with @resvg/resvg-js. Pass

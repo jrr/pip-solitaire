@@ -64,7 +64,7 @@ let view = (model, dispatch) => {
           ("y", "156"),
           ("text-anchor", "middle"),
           ("font-size", "12"),
-          ("font-family", "system-ui, sans-serif"),
+          ("font-family", "Libre Franklin, sans-serif"),
           ("fill", "#94a3b8"),
         ]}
       >

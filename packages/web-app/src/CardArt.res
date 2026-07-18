@@ -42,8 +42,8 @@ let body = (~detail=Full, card: Deck.card) => {
       ("x", "5"),
       ("y", "38"),
       ("font-size", "40"),
-      ("font-weight", "700"),
-      ("font-family", "system-ui, sans-serif"),
+      ("font-weight", "600"),
+      ("font-family", "Libre Franklin, sans-serif"),
       ("fill", color),
     ]
     let attrs = rotated ? base->Array.concat([("transform", "rotate(180 60 84)")]) : base
@@ -72,6 +72,7 @@ let body = (~detail=Full, card: Deck.card) => {
         ("text-anchor", "middle"),
         ("dominant-baseline", "central"),
         ("font-size", "68"),
+        ("font-family", "Sleight Suits"),
         ("fill", color),
       ]}
     >

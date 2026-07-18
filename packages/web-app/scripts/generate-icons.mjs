@@ -28,16 +28,26 @@ import { dirname, join } from "node:path";
 // `.res.mjs` siblings exist by the time this runs.
 import { standardSvg, maskableSvg, fullBleedSvg } from "../src/IconArt.res.mjs";
 
-const OUT_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "public");
+const HERE = dirname(fileURLToPath(import.meta.url));
+const OUT_DIR = join(HERE, "..", "public");
+
+// The exact fonts the app ships, vendored by `mise run fonts` (issue #114): the
+// card ranks are Libre Franklin 600 and the suits are the merged "Sleight Suits"
+// subset. resvg reads sfnt (TrueType/OpenType), not the woff2 the browser gets,
+// so we point it at the TTFs in src/fonts. Rasterizing from these — with system
+// fonts turned *off* — makes the icons deterministic and pixel-for-pixel the
+// faces the app renders, instead of whatever sans-serif the build machine has.
+const FONT_FILES = [
+  join(HERE, "..", "src", "fonts", "libre-franklin-600.ttf"),
+  join(HERE, "..", "src", "fonts", "sleight-suits.ttf"),
+];
 
 // Rasterize an SVG string to a PNG buffer at the given pixel width (icons are
-// square, so height follows). `loadSystemFonts` lets resvg resolve the card's
-// `system-ui, sans-serif` down to an installed sans-serif for the rank and
-// suit glyphs.
+// square, so height follows).
 function raster(svg, size) {
   const resvg = new Resvg(svg, {
     fitTo: { mode: "width", value: size },
-    font: { loadSystemFonts: true, defaultFontFamily: "sans-serif" },
+    font: { fontFiles: FONT_FILES, loadSystemFonts: false, defaultFontFamily: "Libre Franklin" },
   });
   return resvg.render().asPng();
 }

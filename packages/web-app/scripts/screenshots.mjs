@@ -100,7 +100,7 @@ function reportHtml(shots) {
     :root { color-scheme: dark; }
     body {
       margin: 0; padding: 2rem;
-      font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      font-family: "Libre Franklin", sans-serif;
       background: radial-gradient(130% 120% at 50% 0%, #13233b 0%, #0b1220 60%);
       color: #e2e8f0;
     }

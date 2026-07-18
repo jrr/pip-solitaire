@@ -99,8 +99,12 @@ export default defineConfig({
         ],
       },
       workbox: {
-        // Precache the app shell: the built HTML/JS/CSS plus the icons.
-        globPatterns: ["**/*.{js,css,html,png,svg,webmanifest}"],
+        // Precache the app shell: the built HTML/JS/CSS, the icons, and the
+        // self-hosted fonts (issue #114). The `woff2` glob is what makes the
+        // vendored Libre Franklin + Sleight Suits faces available on a first
+        // offline launch — without it the fonts aren't in the precache manifest
+        // and the app would fall back to an OS font offline.
+        globPatterns: ["**/*.{js,css,html,png,svg,woff2,webmanifest}"],
         // SPA-style navigation fallback so a launch of the standalone app (or
         // an offline reload) always resolves to the shell.
         navigateFallback: "index.html",
