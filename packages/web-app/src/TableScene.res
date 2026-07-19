@@ -361,7 +361,12 @@ let make = (
         // mapped back onto their nodes by identity — the card's slot is its index.
         let cards = GameState.cardsInPile(state.contents, zone.index)
         let count = Array.length(cards)
-        let top = count - 1
+        // The pile's stacking rule (#76), consulted to decide which cards head a
+        // legal run and so may be lifted as a supermove span (#123).
+        let rule = switch game.piles->Array.get(zone.index) {
+        | Some(p) => p.rule
+        | None => Rules.Free
+        }
         cards->Array.forEachWithIndex((data, i) =>
           switch nodeFor(data) {
           | Some(c) =>
@@ -384,8 +389,14 @@ let make = (
             // real top card. `bringToFront` still lifts a card above these while it's
             // dragged; the next reflow settles the pile back to slot order.
             style(c.wrapper)->setZIndex(Int.toString(i))
-            c.draggable := i == top
-            i == top
+            // A card is grabbable when it *heads a legal run* (#123): the tail from
+            // its slot to the top of the pile must itself be a run under the pile's
+            // rule. The top card is the length-1 case (a run of one), so single-card
+            // play is unchanged; a deeper run-head lifts its whole span as a
+            // supermove. Every other buried card stays pinned.
+            let headsRun = Rules.isRun(rule, cards->Array.slice(~start=i, ~end=count))
+            c.draggable := headsRun
+            headsRun
               ? classList(c.wrapper)->removeClass("stacking-card--buried")
               : classList(c.wrapper)->addClass("stacking-card--buried")
           | None => ()
@@ -483,22 +494,29 @@ let make = (
         bringToFront(wrapper)
         playfield->WebDom.appendChild(wrapper)->ignore
 
-        // The pointer offset at grab time, plus the card's position then; a move is
-        // "start position + how far the pointer has travelled since". `None` when
-        // not dragging.
+        // The drag in progress: the pointer's position at grab time, and the whole
+        // *span* being carried — the run this card heads, bottom-first (`self` at
+        // index 0), each node paired with its position at grab time. A move is
+        // "each start position + how far the pointer has travelled since". `None`
+        // when not dragging. A single card (a loose card, or a lone top card) is
+        // just a span of one, so the old single-card drag is the length-1 case here.
         let grab = ref(None)
 
-        // May this card land on `zone`? The hover highlight and the drop below both
-        // funnel through `core`'s shared `canDrop` (#82) so the green "valid"
-        // outline can never disagree with the accepted drop. The one thing `canDrop`
-        // can't see is that re-dropping a card onto the pile it already tops is a
-        // lawful no-op — during a drag the card still rests in `state`, so `canDrop`
-        // would weigh it against itself — so mirror the reducer's identity case
-        // here, keeping hover exactly in step with `reduce`.
-        let accepts = zone =>
+        // May the span `spanCards` (bottom-first) land on `zone`? The hover
+        // highlight and the drop below both funnel through `core`'s shared
+        // legality (`canDrop` for one card, `canMoveRun` for a run — #82/#123) so
+        // the green "valid" outline can never disagree with the accepted drop. The
+        // one thing those can't see is that re-dropping onto the pile the span
+        // already sits on is a lawful no-op — during a drag the cards still rest in
+        // `state`, so the query would weigh them against themselves — so mirror the
+        // reducer's identity case here, keeping hover in step with `reduce`.
+        let accepts = (spanCards, zone) =>
           switch GameState.locationOf(state.contents, cardData) {
           | Some(GameState.InPile(i, _)) if i == zone.index => true
-          | _ => Reducer.canDrop(~game, state.contents, cardData, ~onto=zone.index)
+          | _ =>
+            Array.length(spanCards) <= 1
+              ? Reducer.canDrop(~game, state.contents, cardData, ~onto=zone.index)
+              : Reducer.canMoveRun(~game, state.contents, spanCards, ~onto=zone.index)
           }
 
         let clearHover = () =>
@@ -507,16 +525,16 @@ let make = (
             classList(zone.el)->removeClass("drop-zone--invalid")
           })
 
-        // Outline the zone the card's centre is currently over (and only that one)
-        // so the drop is legible before release: green when the rule accepts the
-        // drop, red when it rejects it.
-        let highlightHover = () => {
+        // Outline the zone the grabbed card's centre is currently over (and only
+        // that one) so the drop is legible before release: green when the rule
+        // accepts the span, red when it rejects it.
+        let highlightHover = spanCards => {
           let r = boundingRect(wrapper)
           let over = zoneAt(r.left +. r.width /. 2., r.top +. r.height /. 2.)
           zones->Array.forEach(zone => {
             let cls = classList(zone.el)
             switch over {
-            | Some(z) if z === zone && accepts(zone) =>
+            | Some(z) if z === zone && accepts(spanCards, zone) =>
               cls->addClass("drop-zone--over")
               cls->removeClass("drop-zone--invalid")
             | Some(z) if z === zone =>
@@ -530,52 +548,76 @@ let make = (
         }
 
         wrapper->onPointer("pointerdown", ev =>
-          // Buried cards ignore the pointer entirely — for now only the top card
-          // of a pile (or a free card) can be picked up.
+          // Only a card that heads a legal run can be picked up; every other buried
+          // card ignores the pointer (its `draggable` is false, set each reflow).
           if self.draggable.contents {
-            // Capture so the card keeps getting moves/up even if the pointer leaves
-            // its bounds; raise it above every other card for the drag.
+            // Capture so the cards keep getting moves/up even if the pointer leaves
+            // their bounds.
             wrapper->setPointerCapture(pointerId(ev))
-            grab := Some((clientX(ev), clientY(ev), self.x.contents, self.y.contents))
-            classList(wrapper)->addClass("dragging")
-            bringToFront(wrapper)
+            // Gather the span this card heads: itself and every card resting above
+            // it in its pile, bottom-first. A loose or lone card is a span of one.
+            let span = switch GameState.locationOf(state.contents, self.data) {
+            | Some(GameState.InPile(pileIdx, slot)) =>
+              let pile = GameState.cardsInPile(state.contents, pileIdx)
+              pile->Array.slice(~start=slot, ~end=Array.length(pile))->Array.filterMap(nodeFor)
+            | _ => nodeFor(self.data)->Option.mapOr([], c => [c])
+            }
+            grab :=
+              Some((
+                clientX(ev),
+                clientY(ev),
+                span->Array.map(c => (c, c.x.contents, c.y.contents)),
+              ))
+            // Raise the whole span above the rest of the board, keeping bottom-first
+            // order so the run stays coherently stacked while it's carried.
+            span->Array.forEach(c => {
+              classList(c.wrapper)->addClass("dragging")
+              bringToFront(c.wrapper)
+            })
           }
         )
 
         wrapper->onPointer("pointermove", ev =>
           switch grab.contents {
-          | Some((startPX, startPY, startX, startY)) =>
-            self.x := startX +. (clientX(ev) -. startPX)
-            self.y := startY +. (clientY(ev) -. startPY)
-            place(self)
-            highlightHover()
+          | Some((startPX, startPY, spanStarts)) =>
+            let dx = clientX(ev) -. startPX
+            let dy = clientY(ev) -. startPY
+            spanStarts->Array.forEach(((c, sx, sy)) => {
+              c.x := sx +. dx
+              c.y := sy +. dy
+              place(c)
+            })
+            highlightHover(spanStarts->Array.map(((c, _, _)) => c.data))
           | None => ()
           }
         )
 
         let endDrag = ev =>
           switch grab.contents {
-          | Some((_, _, startX, startY)) =>
+          | Some((_, _, spanStarts)) =>
             wrapper->releasePointerCapture(pointerId(ev))
             grab := None
-            classList(wrapper)->removeClass("dragging")
-            // Where the card's centre was released decides the *action*: onto a zone
-            // is a `Move` to that pile; a miss is a `Move` to the loose table. The
-            // reducer — not the view — then rules on it against the game's rules and
-            // its `free` flag, so `core` owns every rest position (#83).
+            spanStarts->Array.forEach(((c, _, _)) => classList(c.wrapper)->removeClass("dragging"))
+            let spanCards = spanStarts->Array.map(((c, _, _)) => c.data)
+            // Where the grabbed card's centre was released decides the *action*:
+            // onto a zone is a `Move`/`MoveRun` to that pile; a miss is a move to
+            // the loose table. The reducer — not the view — rules on it against the
+            // game's rules and `free` flag, so `core` owns every rest position (#83).
             let cr = boundingRect(wrapper)
             let target = switch zoneAt(cr.left +. cr.width /. 2., cr.top +. cr.height /. 2.) {
             | Some(zone) => Reducer.ToPile(zone.index)
             | None => Reducer.ToTable
             }
-            switch Reducer.reduce(
-              ~game,
-              state.contents,
-              Reducer.Move({card: self.data, to: target}),
-            ) {
+            // One card dispatches the unchanged single-card `Move`; a span of two or
+            // more dispatches the supermove `MoveRun` (#123).
+            let action =
+              Array.length(spanCards) <= 1
+                ? Reducer.Move({card: self.data, to: target})
+                : Reducer.MoveRun({cards: spanCards, to: target})
+            switch Reducer.reduce(~game, state.contents, action) {
             // Lawful move (including the identity re-drop): adopt the new state and
-            // reflow every pile from it. A card that joined a pile snaps to its slot;
-            // a card left loose stays at the pixel it was dropped (no pile claims it).
+            // reflow every pile from it. Cards that joined a pile snap to their
+            // slots; a card left loose stays at the pixel it was dropped.
             | Ok(next) =>
               state := next
               reflowAll()
@@ -585,16 +627,20 @@ let make = (
               if GameState.hasWon(game, state.contents) {
                 showWin()
               }
-            // Illegal move: bounce the card back where it came from. A card that
-            // rests in a pile returns to its slot when that pile reflows; a loose
-            // card (a rejected drop in a `free` game) returns to where the drag began.
+            // Illegal move: bounce the span back where it came from. Cards that rest
+            // in a pile return to their slots when that pile reflows; a loose card (a
+            // rejected drop in a `free` game) returns to where the drag began.
             | Error(_) =>
               switch GameState.locationOf(state.contents, self.data) {
               | Some(GameState.InPile(_, _)) => reflowAll()
               | _ =>
-                self.x := startX
-                self.y := startY
-                place(self)
+                switch spanStarts->Array.get(0) {
+                | Some((c, sx, sy)) =>
+                  c.x := sx
+                  c.y := sy
+                  place(c)
+                | None => ()
+                }
               }
             }
             clearHover()
@@ -603,7 +649,7 @@ let make = (
 
         wrapper->onPointer("pointerup", endDrag)
         // A cancelled pointer (e.g. the OS stealing the gesture) must tear the drag
-        // down too, or the card would stay stuck to a pointer that's gone.
+        // down too, or the cards would stay stuck to a pointer that's gone.
         wrapper->onPointer("pointercancel", endDrag)
 
         self

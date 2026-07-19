@@ -117,6 +117,52 @@ let freecellAlmostWon = (game: Game.t): GameState.t => {
   {GameState.piles, loose: []}
 }
 
+// A **supermove FreeCell** (#123): a ready-to-lift ordered run sitting atop the
+// first cascade, with all four free cells empty and one empty column, so the
+// free-cell/empty-column limit is plainly visible. In full it reads
+// `(1 + 4) × 2 ^ 1 = 10`; but moving the run *onto* the empty column can't count
+// that column as a spare, so there the cap is `(1 + 4) × 2 ^ 0 = 5` — exactly the
+// run's length. The whole five-card run lands on the empty column as one gesture,
+// and a sixth card would be one over — making both the formula and the
+// "destination column doesn't count toward its own exponent" subtlety concrete in
+// the CLI (`deal freecell supermove`) and in a `?state=supermove` screenshot.
+//
+// Built straight from the deck, like the other scenarios, so the 52-card invariant
+// holds by construction: the run is carved out and the rest dealt across the
+// middle cascades, leaving the first cascade to the run and the last one empty.
+let freecellSupermove = (game: Game.t): GameState.t => {
+  // A descending-alternating run — black/red/black/red/black — the maximal tail a
+  // cascade can offer to a supermove.
+  let run = [
+    {suit: Spades, rank: Nine}, // black
+    {suit: Hearts, rank: Eight}, // red
+    {suit: Spades, rank: Seven}, // black
+    {suit: Hearts, rank: Six}, // red
+    {suit: Spades, rank: Five}, // black
+  ]
+  let inRun = card => run->Array.some(c => GameState.sameCard(c, card))
+  // Everything else, dealt across the *middle* cascades so the free cells and
+  // foundations stay empty (keeping the limit's free-cell term at its maximum) and
+  // the last cascade stays the empty column the run can move onto.
+  let rest = Cards.all->Array.filter(card => !inRun(card))
+  let cascadeCount = Game.pileIndices(game, Game.Cascade)->Array.length
+  // First cascade: the run. Middle cascades: the rest of the deck. Last: empty.
+  let cascadePiles =
+    [run]->Array.concat(rest->Cards.deal(~piles=cascadeCount - 2))->Array.concat([[]])
+
+  let cascadeIdx = ref(0)
+  let piles = game.piles->Array.map((pile: Game.pile) =>
+    switch pile.role {
+    | Game.Cascade =>
+      let value = cascadePiles->Array.get(cascadeIdx.contents)->Option.getOr([])
+      cascadeIdx := cascadeIdx.contents + 1
+      value
+    | Game.FreeCell | Game.Foundation => []
+    }
+  )
+  {GameState.piles, loose: []}
+}
+
 // Resolve a scenario *name* to an initial state for `game`, or `None` when the
 // name doesn't apply to this board. This is the whole vocabulary the URL exposes:
 // FreeCell's "midgame" and its near-won "almost-won"; new scenarios slot in as
@@ -125,5 +171,6 @@ let forName = (game: Game.t, name: string): option<GameState.t> =>
   switch (game.id, name) {
   | ("freecell", "midgame") => Some(freecellMidgame(game, ~seed=Game.freecellSeed))
   | ("freecell", "almost-won") => Some(freecellAlmostWon(game))
+  | ("freecell", "supermove") => Some(freecellSupermove(game))
   | _ => None
   }

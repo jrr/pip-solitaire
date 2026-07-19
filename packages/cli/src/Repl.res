@@ -52,15 +52,18 @@ let describeError = (err: Reducer.moveError, card: card): string =>
   | Reducer.LooseNotAllowed => `Rejected: this game keeps cards in piles — no loose drops.`
   | Reducer.NoSuchPile => `Rejected: no such pile.`
   | Reducer.CardNotFound => `Rejected: ${CardText.format(card)} isn't in play.`
+  | Reducer.NotARun => `Rejected: those cards aren't an ordered run.`
+  | Reducer.RunTooLong => `Rejected: that run is longer than the free cells and empty columns allow.`
   }
 
 let gamesList = () => Game.all->Array.map(g => `  ${g.id}  —  ${g.name}`)->Array.join("\n")
 
 let help = () =>
   `Commands:
-  deal <game>          start (or restart) a game
+  deal <game> [scenario]  start (or restart) a game, optionally at a named position
   move <card> <pile>   move a card onto pile <index> (e.g. move AS 0)
   move <card> table    move a card loose onto the table (free games only)
+  moverun <card>… <pile>  supermove an ordered run, cards bottom-first (e.g. moverun 8H 7S 6H 5)
   print                re-print the current board
   games                list the available games
   help                 show this help
@@ -73,12 +76,26 @@ ${gamesList()}`
 // The board for a live session — the shared renderer over its snapshot.
 let renderBoard = (s: session): string => Render.stateBoard(~game=s.game, s.state)
 
-// Start (or restart) a game by id: a fresh `GameState.initial`, printed.
-let deal = (id: string): (option<session>, string) =>
+// Start (or restart) a game by id, printed. With an optional scenario name, open
+// that named starting position (`Scenario.forName`) instead of the fresh deal —
+// the same vocabulary the web app's `?state=` exposes, so a mid-game position (a
+// movable run, a near-won board) is reachable from the CLI too (#123). An unknown
+// scenario for the game is reported rather than silently ignored.
+let deal = (id: string, scenario: option<string>): (option<session>, string) =>
   switch Game.all->Array.find(g => g.id == id) {
   | Some(game) =>
-    let s = {game, state: GameState.initial(game)}
-    (Some(s), renderBoard(s))
+    switch scenario {
+    | None =>
+      let s = {game, state: GameState.initial(game)}
+      (Some(s), renderBoard(s))
+    | Some(name) =>
+      switch Scenario.forName(game, name) {
+      | Some(state) =>
+        let s = {game, state}
+        (Some(s), renderBoard(s))
+      | None => (None, `Unknown scenario "${name}" for ${id}.`)
+      }
+    }
   | None => (None, `Unknown game: ${id}\n\n${help()}`)
   }
 
@@ -104,6 +121,35 @@ let move = (s: session, cardTok: string, targetTok: string): (option<session>, s
     }
   }
 
+// Dispatch one `moverun card… target` against the current session: an ordered run
+// (the cards named bottom-first, deepest first) supermoved onto pile `target`. The
+// reducer alone rules on whether the run is legal and within the free-cell/empty-
+// column limit (#123) — this only parses the tokens into a `MoveRun` and renders
+// the outcome, exactly as `move` does for a single card.
+let moveRun = (s: session, cardToks: array<string>, targetTok: string): (
+  option<session>,
+  string,
+) => {
+  let parsed = cardToks->Array.map(CardText.parse)
+  switch (parsed->Array.some(Option.isNone), parseTarget(targetTok)) {
+  | (true, _) => (Some(s), `Not all of those are cards (try AS, TH, KD).`)
+  | (_, None) => (Some(s), `Not a pile: "${targetTok}" (an index, or "table").`)
+  | (false, Some(target)) =>
+    let cards = parsed->Array.filterMap(c => c)
+    switch Reducer.reduce(~game=s.game, s.state, MoveRun({cards, to: target})) {
+    | Ok(next) =>
+      let s' = {...s, state: next}
+      let board = renderBoard(s')
+      let text = GameState.hasWon(s'.game, s'.state)
+        ? `${board}\n\n🎉 You win! Every foundation is complete. \`deal\` to play again.`
+        : board
+      (Some(s'), text)
+    // The bottom card names the run in any card-specific error prose.
+    | Error(err) => (Some(s), describeError(err, cards->Array.getUnsafe(0)))
+    }
+  }
+}
+
 // Interpret one command line against the current session, returning the updated
 // session and the text to show. Pure: no I/O — `Cli.res` prints the text and
 // carries the session forward. Unknown or malformed lines answer with guidance
@@ -117,8 +163,8 @@ let step = (session: option<session>, line: string): (option<session>, string) =
   | (Some("games"), _) | (Some("list"), _) => (session, gamesList())
   | (Some("deal"), _) | (Some("new"), _) =>
     switch toks->Array.get(1) {
-    | Some(id) => deal(id)
-    | None => (session, "Usage: deal <game>\n\n" ++ gamesList())
+    | Some(id) => deal(id, toks->Array.get(2))
+    | None => (session, "Usage: deal <game> [scenario]\n\n" ++ gamesList())
     }
   // `undo` isn't implemented yet (next issue); recognise it so the verb is
   // reserved and users get a clear answer rather than "unknown command".
@@ -136,6 +182,17 @@ let step = (session: option<session>, line: string): (option<session>, string) =
     switch (toks->Array.get(1), toks->Array.get(2)) {
     | (Some(cardTok), Some(targetTok)) => move(s, cardTok, targetTok)
     | _ => (session, "Usage: move <card> <pile>   (e.g. move AS 0, or move AS table)")
+    }
+  | (Some("moverun"), None) => (session, "Deal a game first (try `deal freecell`).")
+  | (Some("moverun"), Some(s)) =>
+    // Everything after the verb is the run's cards, bottom-first, then the target.
+    let rest = toks->Array.slice(~start=1, ~end=Array.length(toks))
+    if Array.length(rest) >= 2 {
+      let targetTok = rest->Array.getUnsafe(Array.length(rest) - 1)
+      let cardToks = rest->Array.slice(~start=0, ~end=Array.length(rest) - 1)
+      moveRun(s, cardToks, targetTok)
+    } else {
+      (session, "Usage: moverun <card>… <pile>   (e.g. moverun 8H 7S 6H 5)")
     }
   | (Some(other), _) => (session, `Unknown command: ${other}. Type "help" for the commands.`)
   }
