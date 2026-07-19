@@ -121,12 +121,87 @@ describe("Scenario", () => {
     )
   })
 
+  describe("freecell supermove", () => {
+    let game = Game.freecell
+    let state: GameState.t = Scenario.forName(game, "supermove")->Option.getOrThrow
+
+    test(
+      "holds a full 52-card deck, every card exactly once",
+      () => {
+        let all = state.piles->Array.flatMap(cards => cards)
+        expect(Array.length(all))->toBe(52)
+        expect(
+          Cards.all->Array.every(card => all->Array.some(c => GameState.sameCard(c, card))),
+        )->toBe(true)
+        expect(
+          Cards.all->Array.every(
+            card => all->Array.filter(c => GameState.sameCard(c, card))->Array.length == 1,
+          ),
+        )->toBe(true)
+      },
+    )
+
+    test(
+      "sits a five-card movable run atop the first cascade, cells and foundations empty, one empty column",
+      () => {
+        let cascades = Game.pileIndices(game, Game.Cascade)
+        // Free cells and foundations open empty (the free-cell term at its max), and
+        // exactly one cascade is empty: the limit is (1 + 4) × 2^1 = 10.
+        expect(
+          Game.pileIndices(game, Game.FreeCell)->Array.every(
+            i => Array.length(GameState.cardsInPile(state, i)) == 0,
+          ),
+        )->toBe(true)
+        expect(
+          Game.pileIndices(game, Game.Foundation)->Array.every(
+            i => Array.length(GameState.cardsInPile(state, i)) == 0,
+          ),
+        )->toBe(true)
+        expect(
+          cascades
+          ->Array.filter(i => Array.length(GameState.cardsInPile(state, i)) == 0)
+          ->Array.length,
+        )->toBe(1)
+        expect(Reducer.maxSupermove(~game, state))->toBe(10)
+
+        // The first cascade holds a legal five-card descending-alternating run.
+        let firstCascade = cascades->Array.getUnsafe(0)
+        let run = GameState.cardsInPile(state, firstCascade)
+        expect(Array.length(run))->toBe(5)
+        expect(Rules.isRun(Rules.cascade, run))->toBe(true)
+      },
+    )
+
+    test(
+      "the whole run supermoves onto the empty column — its own emptiness excluded, the cap is exactly 5",
+      () => {
+        let cascades = Game.pileIndices(game, Game.Cascade)
+        let firstCascade = cascades->Array.getUnsafe(0)
+        let run = GameState.cardsInPile(state, firstCascade)
+        let emptyColumn =
+          cascades
+          ->Array.find(i => Array.length(GameState.cardsInPile(state, i)) == 0)
+          ->Option.getOrThrow
+        // Onto the empty column the cap is (1 + 4) × 2^0 = 5 — exactly the run.
+        expect(Reducer.maxSupermove(~game, state, ~ignoring=emptyColumn))->toBe(5)
+        switch Reducer.reduce(~game, state, MoveRun({cards: run, to: ToPile(emptyColumn)})) {
+        | Ok(next) =>
+          expect(GameState.cardsInPile(next, emptyColumn))->toEqual(run)
+          expect(GameState.cardsInPile(next, firstCascade))->toEqual([]) // lifted off
+        | Error(_) => expect(true)->toBe(false)
+        }
+      },
+    )
+  })
+
   test("an unknown scenario, or one that doesn't fit the board, is None", () => {
     expect(Scenario.forName(Game.freecell, "no-such-scenario"))->toEqual(None)
     // "midgame" is a FreeCell position; it doesn't apply to the stacking demo.
     expect(Scenario.forName(Game.stacking, "midgame"))->toEqual(None)
     // "almost-won" is likewise a FreeCell position only.
     expect(Scenario.forName(Game.stacking, "almost-won"))->toEqual(None)
+    // "supermove" too — a FreeCell position, not applicable to the stacking demo.
+    expect(Scenario.forName(Game.stacking, "supermove"))->toEqual(None)
   })
 })
 

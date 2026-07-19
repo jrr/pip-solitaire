@@ -123,6 +123,23 @@ let accepts = (rule: rule, candidate: card, onto: option<card>): bool =>
     }
   }
 
+// Do `cards` (bottom-first, as a pile holds them) form a legal run under `rule` —
+// each card lawfully stacked on the one below it? This is the pairwise reading of
+// `accepts` that the supermove (#123) lifts a span by: the maximal *tail* of a
+// cascade that is a run is the most that may move at once. A run of zero or one
+// card is trivially a run (nothing to disagree), and the bottom card founds the
+// run so it's unconstrained here — `isRun` judges only the internal ordering, not
+// where the run would land (that's `accepts` against the destination's top).
+let isRun = (rule: rule, cards: array<card>): bool =>
+  cards
+  ->Array.mapWithIndex((card, i) =>
+    switch cards->Array.get(i - 1) {
+    | Some(below) => accepts(rule, card, Some(below))
+    | None => true // the bottom card founds the run
+    }
+  )
+  ->Array.every(x => x)
+
 // Has a pile completed a full run? True when it holds all thirteen ranks
 // Ace→King, i.e. thirteen cards ending on the King — the "done" moment a
 // foundation builds toward (#76). This only *signals* a finished pile; full win

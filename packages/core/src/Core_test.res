@@ -737,6 +737,59 @@ describe("Rules", () => {
     expect(Rules.accepts(Rules.Free, {suit: Spades, rank: Two}, None))->toBe(true)
   })
 
+  // A legal ordered run (#123): the maximal tail a supermove may lift, decided
+  // pairwise by `accepts`. Exercised against the cascade rule (build down in
+  // alternating colour), the rule a FreeCell run is built on.
+  describe("isRun (cascade)", () => {
+    let isRun = cards => Rules.isRun(Rules.cascade, cards)
+
+    test(
+      "a descending-alternating run is a run",
+      () => {
+        // 8♥ 7♠ 6♥ 5♠ — red/black/red/black, each one rank lower.
+        expect(
+          isRun([
+            {suit: Hearts, rank: Eight},
+            {suit: Spades, rank: Seven},
+            {suit: Hearts, rank: Six},
+            {suit: Spades, rank: Five},
+          ]),
+        )->toBe(true)
+      },
+    )
+
+    test(
+      "an empty run and a single card are trivially runs",
+      () => {
+        expect(isRun([]))->toBe(true)
+        expect(isRun([{suit: Hearts, rank: Eight}]))->toBe(true)
+      },
+    )
+
+    test(
+      "a same-colour neighbour breaks the run",
+      () => {
+        // 8♥ 7♥ — right rank step, but both red.
+        expect(isRun([{suit: Hearts, rank: Eight}, {suit: Hearts, rank: Seven}]))->toBe(false)
+      },
+    )
+
+    test(
+      "a rank gap breaks the run",
+      () => {
+        // 8♥ 6♠ — opposite colour, but skips the Seven.
+        expect(isRun([{suit: Hearts, rank: Eight}, {suit: Spades, rank: Six}]))->toBe(false)
+      },
+    )
+
+    test(
+      "an ascending order is not a (descending) run",
+      () => {
+        expect(isRun([{suit: Spades, rank: Five}, {suit: Hearts, rank: Six}]))->toBe(false)
+      },
+    )
+  })
+
   describe("isCompleteRun", () => {
     // A full Ace→King run in one suit, built low-to-high.
     let fullRun =
@@ -1092,6 +1145,205 @@ describe("Reducer", () => {
         | Ok(next) => expect(Array.length(GameState.cardsInPile(next, 1)))->toBe(2)
         | Error(_) => expect(true)->toBe(false)
         }
+      },
+    )
+  })
+
+  // The supermove (#123): a multi-card `MoveRun` and its `(1 + free cells) × 2 ^
+  // (empty columns)` limit. A little FreeCell-shaped board — two capacity-1 free
+  // cells then four `Rules.cascade` columns, cards confined to piles — lets the
+  // tests pose exact free-cell/empty-column combinations by hand.
+  describe("supermove", () => {
+    let smGame: Game.t = {
+      id: "sm",
+      name: "SM",
+      piles: [
+        {role: FreeCell, stacking: Squared, rule: Rules.Free, capacity: Some(1), cards: []},
+        {role: FreeCell, stacking: Squared, rule: Rules.Free, capacity: Some(1), cards: []},
+        {role: Cascade, stacking: Fanned, rule: Rules.cascade, capacity: None, cards: []},
+        {role: Cascade, stacking: Fanned, rule: Rules.cascade, capacity: None, cards: []},
+        {role: Cascade, stacking: Fanned, rule: Rules.cascade, capacity: None, cards: []},
+        {role: Cascade, stacking: Fanned, rule: Rules.cascade, capacity: None, cards: []},
+      ],
+      free: false,
+      loose: [],
+      caption: None,
+    }
+    // A distinct single-card filler, so "occupied" piles hold real, unique cards.
+    let f = i => [Cards.all->Array.getUnsafe(i)]
+    // A hand-built snapshot from the six piles' contents (cells 0–1, cascades 2–5).
+    let stateOf = (piles): GameState.t => {GameState.piles, loose: []}
+
+    // A legal descending-alternating run, bottom-first — the tail a supermove lifts.
+    let run4 = [
+      {suit: Hearts, rank: Eight}, // red
+      {suit: Spades, rank: Seven}, // black
+      {suit: Hearts, rank: Six}, // red
+      {suit: Spades, rank: Five}, // black
+    ]
+
+    describe(
+      "maxSupermove",
+      () => {
+        test(
+          "no empties: only the single card in hand moves — (1 + 0) × 2^0 = 1",
+          () => {
+            let state = stateOf([f(0), f(1), f(2), f(3), f(4), f(5)])
+            expect(Reducer.maxSupermove(~game=smGame, state))->toBe(1)
+          },
+        )
+
+        test(
+          "one empty free cell doubles nothing but adds to the base — (1 + 1) × 2^0 = 2",
+          () => {
+            let state = stateOf([[], f(1), f(2), f(3), f(4), f(5)])
+            expect(Reducer.maxSupermove(~game=smGame, state))->toBe(2)
+          },
+        )
+
+        test(
+          "two empty cells and one empty column — (1 + 2) × 2^1 = 6",
+          () => {
+            let state = stateOf([[], [], [], f(3), f(4), f(5)])
+            expect(Reducer.maxSupermove(~game=smGame, state))->toBe(6)
+          },
+        )
+
+        test(
+          "two empty cells and two empty columns — (1 + 2) × 2^2 = 12",
+          () => {
+            let state = stateOf([[], [], [], [], f(4), f(5)])
+            expect(Reducer.maxSupermove(~game=smGame, state))->toBe(12)
+          },
+        )
+
+        test(
+          "~ignoring drops the destination's own emptiness from the exponent",
+          () => {
+            // Two empty cells and one empty column → 6, but a run *onto* that empty
+            // column can't also use it as a spare: (1 + 2) × 2^0 = 3.
+            let state = stateOf([[], [], [], f(3), f(4), f(5)])
+            expect(Reducer.maxSupermove(~game=smGame, state))->toBe(6)
+            expect(Reducer.maxSupermove(~game=smGame, state, ~ignoring=2))->toBe(3)
+          },
+        )
+      },
+    )
+
+    describe(
+      "MoveRun",
+      () => {
+        test(
+          "a legal run within the limit moves as one, keeping its order atop the pile",
+          () => {
+            // Cascade 2 holds the run; cascade 3 is topped by 9♠, which takes the
+            // run's red 8♥ bottom; both cells and cascades 4–5 empty → capacity 12.
+            let state = stateOf([[], [], run4, [{suit: Spades, rank: Nine}], [], []])
+            switch Reducer.reduce(~game=smGame, state, MoveRun({cards: run4, to: ToPile(3)})) {
+            | Ok(next) =>
+              expect(GameState.cardsInPile(next, 3))->toEqual(
+                Array.concat([{suit: Spades, rank: Nine}], run4),
+              )
+              expect(GameState.cardsInPile(next, 2))->toEqual([]) // lifted off the source
+            | Error(_) => expect(true)->toBe(false)
+            }
+          },
+        )
+
+        test(
+          "cards that aren't an ordered run are rejected with NotARun",
+          () => {
+            // 8♥ then 7♥ — right rank step, same colour, so not a run.
+            let notRun = [{suit: Hearts, rank: Eight}, {suit: Hearts, rank: Seven}]
+            let state = stateOf([[], [], notRun, [{suit: Spades, rank: Nine}], [], []])
+            expect(
+              Reducer.reduce(~game=smGame, state, MoveRun({cards: notRun, to: ToPile(3)})),
+            )->toEqual(Error(Reducer.NotARun))
+          },
+        )
+
+        test(
+          "a run the destination won't take is rejected by the rule",
+          () => {
+            // The run is legal, but its red 8♥ bottom can't land on a red 9♥ top.
+            let state = stateOf([[], [], run4, [{suit: Hearts, rank: Nine}], [], []])
+            expect(
+              Reducer.reduce(~game=smGame, state, MoveRun({cards: run4, to: ToPile(3)})),
+            )->toEqual(Error(Reducer.Rejected))
+          },
+        )
+
+        test(
+          "a run longer than the limit is rejected with RunTooLong",
+          () => {
+            // Both cells filled and no empty column → capacity 1; a two-card run is
+            // one over. The run is legal and the destination accepts it, so the limit
+            // is the sole reason it bounces.
+            let twoRun = [{suit: Hearts, rank: Eight}, {suit: Spades, rank: Seven}]
+            let state = stateOf([f(0), f(1), twoRun, [{suit: Spades, rank: Nine}], f(2), f(3)])
+            expect(Reducer.maxSupermove(~game=smGame, state))->toBe(1)
+            expect(
+              Reducer.reduce(~game=smGame, state, MoveRun({cards: twoRun, to: ToPile(3)})),
+            )->toEqual(Error(Reducer.RunTooLong))
+          },
+        )
+
+        test(
+          "moving onto an empty column can't count that column toward its own limit",
+          () => {
+            // Cells filled, cascades 4–5 empty, cascade 3 topped by 9♠. A three-card
+            // run moves onto the non-empty cascade 3 (capacity 4), but the *same* run
+            // onto empty cascade 4 is RunTooLong — its own emptiness is excluded, so
+            // only cascade 5 remains a spare: (1 + 0) × 2^1 = 2 < 3.
+            let run3 = [
+              {suit: Hearts, rank: Eight},
+              {suit: Spades, rank: Seven},
+              {suit: Hearts, rank: Six},
+            ]
+            let state = stateOf([f(0), f(1), run3, [{suit: Spades, rank: Nine}], [], []])
+            switch Reducer.reduce(~game=smGame, state, MoveRun({cards: run3, to: ToPile(3)})) {
+            | Ok(next) =>
+              expect(GameState.cardsInPile(next, 3))->toEqual(
+                Array.concat([{suit: Spades, rank: Nine}], run3),
+              )
+            | Error(_) => expect(true)->toBe(false)
+            }
+            expect(
+              Reducer.reduce(~game=smGame, state, MoveRun({cards: run3, to: ToPile(4)})),
+            )->toEqual(Error(Reducer.RunTooLong))
+          },
+        )
+
+        test(
+          "a run whose cards aren't in play fails with CardNotFound",
+          () => {
+            let ghost = [{suit: Diamonds, rank: King}, {suit: Clubs, rank: Queen}]
+            let empty = stateOf([[], [], [], [], [], []])
+            expect(
+              Reducer.reduce(~game=smGame, empty, MoveRun({cards: ghost, to: ToPile(2)})),
+            )->toEqual(Error(Reducer.CardNotFound))
+          },
+        )
+
+        test(
+          "a run onto an out-of-range pile fails with NoSuchPile",
+          () => {
+            let state = stateOf([[], [], run4, [], [], []])
+            expect(
+              Reducer.reduce(~game=smGame, state, MoveRun({cards: run4, to: ToPile(99)})),
+            )->toEqual(Error(Reducer.NoSuchPile))
+          },
+        )
+
+        test(
+          "a run has nowhere loose to go — MoveRun to the table is refused",
+          () => {
+            let state = stateOf([[], [], run4, [], [], []])
+            expect(
+              Reducer.reduce(~game=smGame, state, MoveRun({cards: run4, to: ToTable})),
+            )->toEqual(Error(Reducer.LooseNotAllowed))
+          },
+        )
       },
     )
   })
