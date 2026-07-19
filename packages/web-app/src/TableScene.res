@@ -172,17 +172,20 @@ let fillFraction = 0.9
 // count `n`:
 //   - `dealMaxInFlight` (C) — how many cards may be moving at once, a cap kept
 //     modest so a full deck stays cheap to composite.
-//   - `dealTotalMs` (T) — how long the whole deck takes, first card to last.
-// From those, with C clamped to at most `n`:
+//   - `dealPerCardMs` (P) — how long the deal spends *per card*, so the total
+//     scales with the count: T = P·n, first card to last. Pacing by time-per-card
+//     (rather than a fixed total) keeps small demos snappy — a handful of cards no
+//     longer stretches across a whole deck's worth of time.
+// From those, with C clamped to at most `n` and T = P·n:
 //   - start interval between successive cards:  Δ = T / (n − 1 + C)
 //   - per-card flight time (distance is fixed, so this *is* the speed):  t = C·Δ
 //   - card i's start delay:  i·Δ
 // which makes both constraints exact: at steady state exactly C cards are
 // mid-flight, and the last card (start (n−1)·Δ, flight C·Δ) lands at
 // (n−1+C)·Δ = T. Raising C deals each card faster but with more simultaneous
-// motion; scaling T stretches or tightens the whole deal.
+// motion; scaling P stretches or tightens the whole deal.
 let dealMaxInFlight = 5
-let dealTotalMs = 3500.
+let dealPerCardMs = 67.
 
 // The send-home gesture (#122) is a *double-tap* — two taps on the same card,
 // each staying under `doubleTapMoveTol` pixels of travel (so it reads as a tap,
@@ -840,7 +843,7 @@ let make = (
       // animates to `translate 0` (its left/top already hold the final spot). The
       // per-card start offset therefore differs on *both* axes, since each card
       // travels from that one origin to a different landing spot. The timing is
-      // entirely the `dealMaxInFlight`/`dealTotalMs` math above. With the OS
+      // entirely the `dealMaxInFlight`/`dealPerCardMs` math above. With the OS
       // asking for reduced motion, the cards simply stay where they were placed —
       // no fly-in.
       let animateDeal = () => {
@@ -859,8 +862,11 @@ let make = (
           // C, never more than the cards we have (else the last card's flight is
           // padded past what the deck needs).
           let c = Int.toFloat(dealMaxInFlight < n ? dealMaxInFlight : n)
+          // T scales with the count: the deal spends `dealPerCardMs` per card, so
+          // fewer cards ⇒ a proportionally shorter deal.
+          let total = dealPerCardMs *. Int.toFloat(n)
           // Δ; with a single card there are no gaps, so it just flies for the whole T.
-          let delta = n > 1 ? dealTotalMs /. (Int.toFloat(n - 1) +. c) : dealTotalMs /. c
+          let delta = n > 1 ? total /. (Int.toFloat(n - 1) +. c) : total /. c
           let flight = c *. delta
           cards->Array.forEachWithIndex((card, i) => {
             let dx = originX -. card.x.contents
