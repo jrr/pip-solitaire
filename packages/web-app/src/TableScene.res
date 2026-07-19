@@ -37,6 +37,10 @@ type pointerEvent
 @get external clientX: pointerEvent => float = "clientX"
 @get external clientY: pointerEvent => float = "clientY"
 @get external pointerId: pointerEvent => int = "pointerId"
+// The event's timestamp (ms since page load); the send-home double-tap is timed
+// off this rather than a `dblclick`, which mobile Safari never fires for a
+// double-tap (see the pointer loop below).
+@get external timeStamp: pointerEvent => float = "timeStamp"
 @send external setPointerCapture: (WebDom.element, int) => unit = "setPointerCapture"
 @send external releasePointerCapture: (WebDom.element, int) => unit = "releasePointerCapture"
 @send
@@ -179,6 +183,15 @@ let fillFraction = 0.9
 // motion; scaling T stretches or tightens the whole deal.
 let dealMaxInFlight = 5
 let dealTotalMs = 3500.
+
+// The send-home gesture (#122) is a *double-tap* — two taps on the same card,
+// each staying under `doubleTapMoveTol` pixels of travel (so it reads as a tap,
+// not the start of a drag), within `doubleTapMs` of one another. This is timed
+// off the pointer stream by hand because mobile Safari doesn't fire `dblclick`
+// for a double-tap (it's the tap-to-zoom gesture); the same code path then also
+// covers the desktop double-click, so one loop serves phone and desktop.
+let doubleTapMs = 300.
+let doubleTapMoveTol = 12.
 
 // Build a scene that plays `game`: its id/label name the scene in the picker,
 // and its piles and opening deal drive everything below.
@@ -502,6 +515,15 @@ let make = (
         // just a span of one, so the old single-card drag is the length-1 case here.
         let grab = ref(None)
 
+        // Send-home double-tap bookkeeping (#122). `movedFar` records whether the
+        // pointer travelled far enough during the current press to count as a drag
+        // rather than a tap; `lastTapAt` is the timestamp of the previous tap on
+        // *this* card (each card has its own closure, so a double-tap must land on
+        // one card, never split across two). Seeded well in the past so the first
+        // tap after load can never read as the second half of a double-tap.
+        let movedFar = ref(false)
+        let lastTapAt = ref(-1000.)
+
         // May the span `spanCards` (bottom-first) land on `zone`? The hover
         // highlight and the drop below both funnel through `core`'s shared
         // legality (`canDrop` for one card, `canMoveRun` for a run — #82/#123) so
@@ -551,6 +573,9 @@ let make = (
           // Only a card that heads a legal run can be picked up; every other buried
           // card ignores the pointer (its `draggable` is false, set each reflow).
           if self.draggable.contents {
+            // A fresh press: assume a tap until the pointer travels far enough
+            // (below) to be a drag, which is what tells the double-tap apart.
+            movedFar := false
             // Capture so the cards keep getting moves/up even if the pointer leaves
             // their bounds.
             wrapper->setPointerCapture(pointerId(ev))
@@ -582,6 +607,12 @@ let make = (
           | Some((startPX, startPY, spanStarts)) =>
             let dx = clientX(ev) -. startPX
             let dy = clientY(ev) -. startPY
+
+            // Once the pointer has travelled past the tap tolerance this press is a
+            // drag, not a tap, and so can't be half of a double-tap.
+            if Math.abs(dx) +. Math.abs(dy) > doubleTapMoveTol {
+              movedFar := true
+            }
             spanStarts->Array.forEach(((c, sx, sy)) => {
               c.x := sx +. dx
               c.y := sy +. dy
@@ -591,6 +622,42 @@ let make = (
           | None => ()
           }
         )
+
+        // Send this card home (#122): a top-of-pile or loose card whose foundation
+        // will take it flies straight to that foundation — the FreeCell shortcut for
+        // the tedium of dragging every card home one at a time. Eligibility and
+        // legality are the same shared `core` queries a hand-drag consults
+        // (`foundationTarget` over the same `canDrop`), so the shortcut and a dragged
+        // drop can never disagree; a buried card, or one no foundation wants, is
+        // simply ignored. The move dispatched is the very `Move` a drag would, so a
+        // completing card still raises the win overlay.
+        let sendHome = () => {
+          let eligible = switch GameState.locationOf(state.contents, self.data) {
+          | Some(GameState.Loose) => true
+          | Some(GameState.InPile(i, slot)) =>
+            slot == Array.length(GameState.cardsInPile(state.contents, i)) - 1
+          | None => false
+          }
+          if eligible {
+            switch Reducer.foundationTarget(~game, state.contents, self.data) {
+            | Some(i) =>
+              switch Reducer.reduce(
+                ~game,
+                state.contents,
+                Reducer.Move({card: self.data, to: Reducer.ToPile(i)}),
+              ) {
+              | Ok(next) =>
+                state := next
+                reflowAll()
+                if GameState.hasWon(game, state.contents) {
+                  showWin()
+                }
+              | Error(_) => ()
+              }
+            | None => ()
+            }
+          }
+        }
 
         let endDrag = ev =>
           switch grab.contents {
@@ -644,6 +711,24 @@ let make = (
               }
             }
             clearHover()
+
+            // With the drop settled, decide whether this press completed a
+            // double-tap send-home (#122). Only a press that stayed a tap (never
+            // moved far enough to be a drag) counts; a real drag breaks the chain by
+            // pushing `lastTapAt` into the past. Two qualifying taps within
+            // `doubleTapMs` fire `sendHome` and reset, so a third tap starts fresh
+            // rather than chaining off the second.
+            if movedFar.contents {
+              lastTapAt := -1000.
+            } else {
+              let now = timeStamp(ev)
+              if now -. lastTapAt.contents <= doubleTapMs {
+                lastTapAt := -1000.
+                sendHome()
+              } else {
+                lastTapAt := now
+              }
+            }
           | None => ()
           }
 
@@ -651,42 +736,6 @@ let make = (
         // A cancelled pointer (e.g. the OS stealing the gesture) must tear the drag
         // down too, or the cards would stay stuck to a pointer that's gone.
         wrapper->onPointer("pointercancel", endDrag)
-
-        // Double-click / double-tap sends a card home (#122): the FreeCell shortcut
-        // for the tedium of dragging every card to its foundation one at a time.
-        // Only a card that's the top of its pile or resting loose is eligible (a
-        // buried card can't move), and only when a foundation will take it
-        // (`Reducer.foundationTarget`, the same shared legality a drag consults).
-        // When one does, dispatch the very `Move` a drag would and adopt the result
-        // — reflowing both ends and raising the win overlay if it finished the board;
-        // when none does, the gesture is simply ignored.
-        wrapper->WebDom.addEventListener("dblclick", () => {
-          let eligible = switch GameState.locationOf(state.contents, self.data) {
-          | Some(GameState.Loose) => true
-          | Some(GameState.InPile(i, slot)) =>
-            slot == Array.length(GameState.cardsInPile(state.contents, i)) - 1
-          | None => false
-          }
-          if eligible {
-            switch Reducer.foundationTarget(~game, state.contents, self.data) {
-            | Some(i) =>
-              switch Reducer.reduce(
-                ~game,
-                state.contents,
-                Reducer.Move({card: self.data, to: Reducer.ToPile(i)}),
-              ) {
-              | Ok(next) =>
-                state := next
-                reflowAll()
-                if GameState.hasWon(game, state.contents) {
-                  showWin()
-                }
-              | Error(_) => ()
-              }
-            | None => ()
-            }
-          }
-        })
 
         self
       }
