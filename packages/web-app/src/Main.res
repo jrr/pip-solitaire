@@ -96,6 +96,13 @@ let redoHook: ref<option<unit => unit>> = ref(None)
 // callback the board holds, filled in with a `dispatch` just after mount.
 let historyChanged: ref<(bool, bool) => unit> = ref((_, _) => ())
 
+// The active card-table scene's "load state" action: a `GameState.t => unit` that
+// rebuilds the board into a forced position. Every `TableScene` publishes one on
+// mount (see `gameScene`), the switcher's `onActivate` clears it before each scene
+// change, and the debug-states menu (below) calls it after surfacing FreeCell to
+// drop the board into a named `Scenario` position.
+let loadStateHook: ref<option<GameState.t => unit>> = ref(None)
+
 // Closing the menu means dispatching into the loop, but a scene row is an
 // imperative listener built before `dispatch` exists (like `updateSW`). It
 // reaches the loop through this ref, filled in just after mount.
@@ -171,6 +178,7 @@ let gameScene = (game: Game.t) => {
     ~publishUndo=hook => undoHook := Some(hook),
     ~publishRedo=hook => redoHook := Some(hook),
     ~onHistoryChange=(canUndo, canRedo) => historyChanged.contents(canUndo, canRedo),
+    ~publishLoadState=hook => loadStateHook := Some(hook),
     ~options,
     game,
   )
@@ -178,8 +186,8 @@ let gameScene = (game: Game.t) => {
 let switcher = SceneSwitcher.render(
   ~default="freecell",
   ~forced=?url.scene,
-  // Reset the top bar's New Game action before each scene mounts (the mounting
-  // scene republishes it if re-dealable) and close the menu after a row tap.
+  // Reset the per-scene hooks before each scene mounts (the mounting scene
+  // republishes whichever apply) and close the menu after a row tap.
   ~onActivate=_scene => {
     newGameHook := None
     // A demo scene publishes no undo/redo, so clear the hooks and grey the buttons
@@ -187,12 +195,31 @@ let switcher = SceneSwitcher.render(
     undoHook := None
     redoHook := None
     historyChanged.contents(false, false)
+    loadStateHook := None
     closeMenu.contents()
   },
   Array.concat(
     [SpinnerScene.make(), SvgScene.make(), GalleryScene.make()],
     Game.all->Array.map(gameScene),
   ),
+)
+
+// The debug "states" menu (sibling to the switcher's "Debug scenes"): one row per
+// named FreeCell position (`Scenario.scenariosFor`). Tapping a row surfaces FreeCell
+// — mounting it if a demo scene is showing — then forces that position onto the
+// board through the mounted scene's `loadStateHook`, the live in-app twin of the
+// URL's `?state=`. `ensureActive` runs first so the hook is FreeCell's, and closing
+// the menu is explicit (a no-op if `ensureActive` already closed it on a scene
+// change).
+let debugStates = DebugStates.render(
+  Scenario.scenariosFor(Game.freecell)->Array.map((scenario: Scenario.named): DebugStates.entry => {
+    label: scenario.label,
+    onSelect: () => {
+      switcher.ensureActive("freecell")
+      loadStateHook.contents->Option.forEach(load => load(scenario.build(Game.freecell)))
+      closeMenu.contents()
+    },
+  }),
 )
 
 let view = (model, dispatch) => <>
@@ -227,6 +254,7 @@ let view = (model, dispatch) => <>
     open_={model.menuOpen}
     onClose={() => dispatch(CloseMenu)}
     scenes={switcher.controls}
+    debugStates={debugStates}
     autoCollect={model.autoCollect}
     onToggleAutoCollect={() => dispatch(ToggleAutoCollect)}
     version={model.version}

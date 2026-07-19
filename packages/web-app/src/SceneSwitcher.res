@@ -7,8 +7,8 @@
 //
 // The rows aren't a flat list: the primary game (the launch `~default`, FreeCell)
 // sits as a single row at the top, and the debug/demo scenes are buried inside a
-// collapsible "Debug" disclosure below it (#135), so the menu leads with the game
-// and keeps the demos out of the way.
+// collapsible "Debug scenes" disclosure below it (#135), so the menu leads with the
+// game and keeps the demos out of the way.
 //
 // The app always *launches* into its `~default` scene (FreeCell — the game is
 // home), or the `~forced` scene the URL names (`?scene=`); there is no longer any
@@ -22,12 +22,15 @@
 let idleClass = "scene-menu__row"
 let activeClass = "scene-menu__row scene-menu__row--active"
 
-// The switcher's two pieces, handed back separately so the caller can place them
+// The switcher's pieces, handed back separately so the caller can place them
 // independently — the `controls` rows live inside the menu overlay, while the
-// `scene` container is what the scene band wraps.
+// `scene` container is what the scene band wraps. `ensureActive` lets the chrome
+// bring a scene forward by id (the debug "states" menu uses it to surface FreeCell
+// before forcing a named position onto it).
 type t = {
   controls: WebDom.element, // the tappable scene rows (placed in the menu)
   scene: WebDom.element, // the shared container hosting the active scene
+  ensureActive: string => unit, // mount the scene with this id, unless it's already current
 }
 
 // Build the switcher UI and return its two pieces. When `scenes` is empty the
@@ -69,11 +72,16 @@ let render = (
     (scene, row)
   })
 
+  // The id of the scene currently mounted, so `ensureActive` can skip a redundant
+  // re-mount when the wanted scene is already showing.
+  let activeId = ref(None)
+
   let activate = (scene: Scene.t) => {
     onActivate->Option.forEach(f => f(scene))
     teardown.contents()
     WebDom.clear(container)
     teardown := scene.mount(container)
+    activeId := Some(scene.id)
     // Mark the active row so the menu shows which scene is current.
     rows->Array.forEach(((s, row)) =>
       row->WebDom.setAttribute("class", s.id == scene.id ? activeClass : idleClass)
@@ -100,9 +108,11 @@ let render = (
   let primaryId =
     default->Option.flatMap(byId)->Option.orElse(scenes[0])->Option.map(scene => scene.id)
 
-  // The Debug group: a native <details> disclosure holding the debug/demo rows, so
-  // the show/hide costs no JS and stays keyboard-accessible. Its body collects the
-  // rows; the group itself is only spliced into the menu if any debug scene exists.
+  // The "Debug scenes" group: a native <details> disclosure holding the debug/demo
+  // rows, so the show/hide costs no JS and stays keyboard-accessible. Its body
+  // collects the rows; the group itself is only spliced into the menu if any debug
+  // scene exists. (A sibling "Debug states" group — the named starting positions —
+  // is built separately by the chrome; see `DebugStates`.)
   let debugBody = WebDom.createElement("div")
   debugBody->WebDom.setAttribute("class", "scene-menu__group-body")
 
@@ -110,7 +120,7 @@ let render = (
   debugGroup->WebDom.setAttribute("class", "scene-menu__group")
   let debugSummary = WebDom.createElement("summary")
   debugSummary->WebDom.setAttribute("class", "scene-menu__group-label")
-  debugSummary->WebDom.setTextContent("Debug")
+  debugSummary->WebDom.setTextContent("Debug scenes")
   debugGroup->WebDom.appendChild(debugSummary)->ignore
   debugGroup->WebDom.appendChild(debugBody)->ignore
 
@@ -143,5 +153,13 @@ let render = (
   | None => ()
   }
 
-  {controls: nav, scene: container}
+  // Bring the scene with `id` forward — a no-op when it's already current, so a
+  // caller can surface a scene without re-dealing one that's already showing. An
+  // unknown id does nothing.
+  let ensureActive = id =>
+    if activeId.contents != Some(id) {
+      byId(id)->Option.forEach(activate)
+    }
+
+  {controls: nav, scene: container, ensureActive}
 }

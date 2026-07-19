@@ -211,15 +211,110 @@ let freecellSendHome = (game: Game.t): GameState.t => {
   {GameState.piles, loose: []}
 }
 
-// Resolve a scenario *name* to an initial state for `game`, or `None` when the
-// name doesn't apply to this board. This is the whole vocabulary the URL exposes:
-// FreeCell's "midgame" and its near-won "almost-won"; new scenarios slot in as
-// new arms.
-let forName = (game: Game.t, name: string): option<GameState.t> =>
-  switch (game.id, name) {
-  | ("freecell", "midgame") => Some(freecellMidgame(game, ~seed=Game.freecellSeed))
-  | ("freecell", "almost-won") => Some(freecellAlmostWon(game))
-  | ("freecell", "supermove") => Some(freecellSupermove(game))
-  | ("freecell", "sendhome") => Some(freecellSendHome(game))
-  | _ => None
+// A **finishable FreeCell** (#132): the trapped-tail endgame safe auto-collect
+// (#125) stalls on, but the "Finish" sweep completes in one gesture. Foundations
+// stand at ♠5 / ♣5 / ♥2 / ♦2, and the first cascade holds ♠6 sitting on ♥3 — the
+// crux: ♠6 is *accepted* by its foundation but not *safe* (the reds are only at
+// the Two), so #125 refuses it, and the wanted ♥3 is trapped beneath. The board is
+// nonetheless drainable by foundation moves alone — playing any accepted card
+// (♠6 home, then ♥3, …) finishes it — so `canFinish` holds and the button appears.
+// Every other suit's remaining cards sit as a descending run in its own cascade,
+// each already in foundation-drain order, so the whole board sweeps home.
+//
+// Built straight from the deck, like the other scenarios, so the 52-card invariant
+// holds by construction. Reached in the browser via `?state=finish` and from the
+// CLI (`deal freecell finish`).
+let freecellFinish = (game: Game.t): GameState.t => {
+  // Each suit's foundation as an Ace→(named rank) run. Suit order follows
+  // `Cards.suits` (Spades, Hearts, Diamonds, Clubs), matching how the board orders
+  // its foundation piles.
+  let runTo = (suit, rank) =>
+    Cards.ranks
+    ->Array.filter(r => Rules.rankValue(r) <= Rules.rankValue(rank))
+    ->Array.map(r => {suit, rank: r})
+  let foundationRuns = [
+    runTo(Spades, Five),
+    runTo(Hearts, Two),
+    runTo(Diamonds, Two),
+    runTo(Clubs, Five),
+  ]
+
+  // The trapped tail: ♥3 on the bottom with ♠6 on top, so ♠6 must move before the
+  // wanted ♥3 can — exactly what stalls #125's safe rule.
+  let trapped = [{suit: Hearts, rank: Three}, {suit: Spades, rank: Six}]
+
+  // A suit's remaining cards as a descending cascade (King at the bottom, the
+  // lowest remaining rank on top), so its top is always the next card the drain
+  // wants. `lowRank` is the lowest rank not already on the foundation or in the
+  // trapped tail.
+  let descFrom = (suit, lowRank) =>
+    Cards.ranks
+    ->Array.filter(r => Rules.rankValue(r) >= Rules.rankValue(lowRank))
+    ->Array.toReversed
+    ->Array.map(r => {suit, rank: r})
+  let cascadePiles = [
+    trapped,
+    descFrom(Spades, Seven), // ♠6 is in the trapped tail, so this starts at the Seven
+    descFrom(Clubs, Six),
+    descFrom(Hearts, Four), // ♥3 is in the trapped tail
+    descFrom(Diamonds, Three),
+  ]
+
+  // Walk the board's piles in order, filling foundations and cascades from their
+  // queues and leaving the free cells empty.
+  let foundationIdx = ref(0)
+  let cascadeIdx = ref(0)
+  let next = (queue, cursor) => {
+    let value = queue->Array.get(cursor.contents)->Option.getOr([])
+    cursor := cursor.contents + 1
+    value
   }
+  let piles = game.piles->Array.map((pile: Game.pile) =>
+    switch pile.role {
+    | Game.Foundation => next(foundationRuns, foundationIdx)
+    | Game.Cascade => next(cascadePiles, cascadeIdx)
+    | Game.FreeCell => []
+    }
+  )
+  {GameState.piles, loose: []}
+}
+
+// A named scenario as *data*: the `name` the URL/CLI address it by, a human
+// `label` for a picker (the web-app's debug "states" menu), and the pure `build`
+// that produces its `GameState` for a board. Collecting the set here — rather
+// than burying it in `forName`'s switch — gives a single source of truth a UI can
+// enumerate (`scenariosFor`) and a resolver can look up (`forName`) alike.
+type named = {
+  name: string,
+  label: string,
+  build: Game.t => GameState.t,
+}
+
+// FreeCell's scenarios, in menu order — the whole vocabulary `?state=` and the
+// CLI's `deal freecell <scenario>` expose. A new scenario slots in as a new
+// entry and is instantly reachable from both the URL and the debug menu.
+let freecellScenarios: array<named> = [
+  {
+    name: "midgame",
+    label: "Mid-game",
+    build: game => freecellMidgame(game, ~seed=Game.freecellSeed),
+  },
+  {name: "almost-won", label: "Almost won", build: freecellAlmostWon},
+  {name: "supermove", label: "Supermove", build: freecellSupermove},
+  {name: "sendhome", label: "Send home", build: freecellSendHome},
+  {name: "finish", label: "Finishable", build: freecellFinish},
+]
+
+// The named scenarios that apply to `game`, in menu order — empty for a board
+// with none (every demo but FreeCell today). This is what a picker enumerates.
+let scenariosFor = (game: Game.t): array<named> =>
+  switch game.id {
+  | "freecell" => freecellScenarios
+  | _ => []
+  }
+
+// Resolve a scenario *name* to an initial state for `game`, or `None` when the
+// name doesn't apply to this board. Derived from `scenariosFor`, so the URL/CLI
+// vocabulary and the debug menu's list can never drift apart.
+let forName = (game: Game.t, name: string): option<GameState.t> =>
+  scenariosFor(game)->Array.find(s => s.name == name)->Option.map(s => s.build(game))

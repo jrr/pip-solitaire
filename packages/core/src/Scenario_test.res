@@ -203,6 +203,42 @@ describe("Scenario", () => {
     // "supermove" too — a FreeCell position, not applicable to the stacking demo.
     expect(Scenario.forName(Game.stacking, "supermove"))->toEqual(None)
   })
+
+  // The enumerable registry (`scenariosFor`) is what a picker lists — the web-app's
+  // debug "states" menu — and `forName` resolves. These lock that the two agree, so
+  // the menu can never offer a name the resolver rejects, or a label with no build.
+  describe("scenariosFor registry", () => {
+    test(
+      "lists FreeCell's named states, each with a non-empty name and label",
+      () => {
+        let named = Scenario.scenariosFor(Game.freecell)
+        expect(Array.length(named) > 0)->toBe(true)
+        expect(named->Array.every(s => s.name != "" && s.label != ""))->toBe(true)
+      },
+    )
+
+    test(
+      "every listed name resolves through forName to the same well-formed position",
+      () => {
+        Scenario.scenariosFor(Game.freecell)->Array.forEach(
+          s => {
+            // The registry's `build` and the string-addressed `forName` are one source.
+            let viaName = Scenario.forName(Game.freecell, s.name)->Option.getOrThrow
+            expect(viaName)->toEqual(s.build(Game.freecell))
+            // …and every position it yields is a full 52-card deck.
+            expect(Array.length(viaName.piles->Array.flat))->toBe(52)
+          },
+        )
+      },
+    )
+
+    test(
+      "a board with no scenarios lists none",
+      () => {
+        expect(Scenario.scenariosFor(Game.stacking))->toEqual([])
+      },
+    )
+  })
 })
 
 // Win detection (#121): every foundation complete is a win. Exercised through the

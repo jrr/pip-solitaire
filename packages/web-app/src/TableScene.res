@@ -227,6 +227,12 @@ let doubleTapMoveTol = 12.
 // (re)build so it targets the current board. `~onHistoryChange` reports
 // `(canUndo, canRedo)` after every move, undo, redo and fresh deal, so the chrome
 // can enable or disable those controls to match the history.
+//
+// `~publishLoadState` is the debug "states" hook (sibling to `~publishNewGame`):
+// on mount the scene hands the chrome a `GameState.t => unit` that rebuilds the
+// board into any forced position — the same `~initial` path a `?state=` scenario
+// takes, but reachable live from the menu instead of only at load. The debug-states
+// menu (see `DebugStates` / `Main`) calls it with a `Scenario` snapshot.
 let make = (
   ~initial: option<GameState.t>=?,
   ~newDeal: option<unit => Game.t>=?,
@@ -234,6 +240,7 @@ let make = (
   ~publishUndo: option<(unit => unit) => unit>=?,
   ~publishRedo: option<(unit => unit) => unit>=?,
   ~onHistoryChange: option<(bool, bool) => unit>=?,
+  ~publishLoadState: option<(GameState.t => unit) => unit>=?,
   ~options: ref<Options.t>=ref(Options.default),
   game: Game.t,
 ): Scene.t => {
@@ -478,8 +485,12 @@ let make = (
       // so `autoCollect: false` leaves the reducer's result untouched — an exact
       // no-op path. Runs *before* the win check, since a collection often plays the
       // final cards and so is what trips `hasWon`.
+      // Once the board is finishable (#132), auto-collect steps aside so the
+      // "Finish" button owns the end-game sweep — otherwise safe auto-collect
+      // would often cascade to the win on its own and rob the player of the
+      // trigger.
       let autoCollectIfEnabled = () =>
-        if options.contents.autoCollect {
+        if options.contents.autoCollect && !Reducer.canFinish(~game, state.contents) {
           let (collected, _moved) = Reducer.autoCollect(~game, state.contents)
           state := collected
         }
@@ -545,6 +556,48 @@ let make = (
           panel->WebDom.appendChild(button)->ignore
           overlay->WebDom.appendChild(panel)->ignore
           boardHost->WebDom.appendChild(overlay)->ignore
+        }
+
+      // The end-game "Finish" button (#132): a conditional control — the same
+      // show-when-relevant shape as the win overlay above — that appears exactly
+      // when the board can be drained to a win by foundation moves alone
+      // (`Reducer.canFinish`), i.e. victory is one tap away, and is hidden the rest
+      // of the time. Tapping it plays the finishing sweep (`Reducer.finishSequence`)
+      // home to the detected win. It never gates manual play: you can still drag or
+      // double-tap cards home one at a time — this is only the shortcut. Held in a
+      // ref so `updateFinishButton` can add or remove it as `canFinish` flips after
+      // each move; `winShown` hides it once the win overlay has taken over.
+      let finishButton = ref(None)
+      let removeFinishButton = () =>
+        switch finishButton.contents {
+        | Some(btn) =>
+          WebDom.remove(btn)
+          finishButton := None
+        | None => ()
+        }
+      let updateFinishButton = () =>
+        if winShown.contents || !Reducer.canFinish(~game, state.contents) {
+          removeFinishButton()
+        } else {
+          switch finishButton.contents {
+          | Some(_) => () // already shown
+          | None =>
+            let btn = WebDom.createElement("button")
+            btn->WebDom.setAttribute("type", "button")
+            btn->WebDom.setAttribute("class", "finish-button")
+            btn->WebDom.setTextContent("Finish")
+            btn->WebDom.addEventListener("click", () => {
+              let (settled, _moved) = Reducer.finishSequence(~game, state.contents)
+              state := settled
+              removeFinishButton()
+              reflowAll()
+              if GameState.hasWon(game, state.contents) {
+                showWin()
+              }
+            })
+            boardHost->WebDom.appendChild(btn)->ignore
+            finishButton := Some(btn)
+          }
         }
 
       // Build one draggable card and wire its pointer loop. It starts at 0,0 and is
@@ -723,6 +776,7 @@ let make = (
                 if GameState.hasWon(game, state.contents) {
                   showWin()
                 }
+                updateFinishButton()
               | Error(_) => ()
               }
             | None => ()
@@ -772,6 +826,9 @@ let make = (
               if GameState.hasWon(game, state.contents) {
                 showWin()
               }
+              // Recompute the "Finish" button (#132): a move can make the board
+              // drainable (show it) or, via auto-collect, no longer so (hide it).
+              updateFinishButton()
             // Illegal move: bounce the span back where it came from. Cards that rest
             // in a pile return to their slots when that pile reflows; a loose card (a
             // rejected drop in a `free` game) returns to where the drag began.
@@ -966,6 +1023,11 @@ let make = (
       // the loose cards need the stage's live rects, so both wait on this.
       boundingRect(playfield).width > 0. ? deal() : requestAnimationFrame(deal)->ignore
 
+      // Show the "Finish" button (#132) straight away when the opening position is
+      // already drainable — a `?state=` scenario can drop the board into one.
+      // Layout-independent, so it needn't wait on the deal's frame.
+      updateFinishButton()
+
       // The caption is the game's own prose (`Game.caption`); a game without one
       // simply shows no caption.
       switch game.caption {
@@ -1000,6 +1062,16 @@ let make = (
     switch (newDeal, publishNewGame) {
     | (Some(freshDeal), Some(publish)) => publish(() => buildBoard(freshDeal()))
     | _ => ()
+    }
+
+    // Publish the debug "states" loader: hand the chrome a thunk that rebuilds
+    // the board into a forced `GameState` — the debug-states menu drops the board
+    // straight into a named `Scenario` position through this, exactly as `~initial`
+    // does at load. Like a re-deal, `buildBoard` clears the host first, so the
+    // forced position replaces the current board cleanly.
+    switch publishLoadState {
+    | Some(publish) => publish(state => buildBoard(~initial=state, game))
+    | None => ()
     }
     container->WebDom.appendChild(boardHost)->ignore
 

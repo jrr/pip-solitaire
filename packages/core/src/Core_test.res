@@ -1408,6 +1408,114 @@ describe("Reducer", () => {
     )
   })
 
+  // The end-game finish sweep (#132): `canFinish` (drainable to a win by
+  // foundation moves alone?) and `finishSequence` (the ordered drain that
+  // completes it). Exercised on a little FreeCell-shaped board — four same-suit
+  // foundations then eight `Rules.cascade` columns, cards confined to piles — so a
+  // test can pose exact endgame tails by hand.
+  describe("canFinish / finishSequence", () => {
+    let finGame: Game.t = {
+      id: "fin",
+      name: "FIN",
+      piles: [0, 1, 2, 3]
+      ->Array.map(
+        (_): Game.pile => {
+          role: Foundation,
+          stacking: Squared,
+          rule: Rules.foundation,
+          capacity: None,
+          cards: [],
+        },
+      )
+      ->Array.concat(
+        [0, 1, 2, 3, 4, 5, 6, 7]->Array.map(
+          (_): Game.pile => {
+            role: Cascade,
+            stacking: Fanned,
+            rule: Rules.cascade,
+            capacity: None,
+            cards: [],
+          },
+        ),
+      ),
+      free: false,
+      loose: [],
+      caption: None,
+    }
+    // A snapshot from four foundation runs then the cascade contents, padded to the
+    // board's eight cascades so the pile count always lines up.
+    let stateOf = (foundations, cascades): GameState.t => {
+      let cs = cascades->Array.copy
+      while Array.length(cs) < 8 {
+        cs->Array.push([])
+      }
+      {GameState.piles: foundations->Array.concat(cs), loose: []}
+    }
+    // A whole suit as a descending cascade King→Ace (bottom-first), so its top is
+    // the Ace — a column that drains completely by foundation moves alone.
+    let fullSuit = suit => Cards.ranks->Array.toReversed->Array.map(rank => {suit, rank})
+
+    test(
+      "true on a trivially drainable board; finishSequence sweeps every card home",
+      () => {
+        // Four empty foundations and one full descending suit per cascade — every
+        // top is the next card its foundation wants, so the whole board drains.
+        let state = stateOf([[], [], [], []], Cards.suits->Array.map(fullSuit))
+        expect(Reducer.canFinish(~game=finGame, state))->toBe(true)
+        let (settled, moved) = Reducer.finishSequence(~game=finGame, state)
+        expect(GameState.hasWon(finGame, settled))->toBe(true)
+        expect(Array.length(moved))->toBe(52)
+      },
+    )
+
+    test(
+      "true on the trapped ♠6-over-♥3 tail that safe auto-collect (#125) stalls on",
+      () => {
+        // The scenario the issue calls out: foundations ♠5/♣5/♥2/♦2 with ♠6 sitting
+        // on ♥3. Built over the real FreeCell board, so it's a genuine 52-card tail.
+        let state = Scenario.freecellFinish(Game.freecell)
+        // The finish rule sees it's home free and drains it to a win…
+        expect(Reducer.canFinish(~game=Game.freecell, state))->toBe(true)
+        let (settled, _moved) = Reducer.finishSequence(~game=Game.freecell, state)
+        expect(GameState.hasWon(Game.freecell, settled))->toBe(true)
+        // …but #125's conservative safe rule jams: ♠6 is accepted yet not safe (reds
+        // at the Two), trapping ♥3, so auto-collect alone can never complete it.
+        let (acSettled, _acMoved) = Reducer.autoCollect(~game=Game.freecell, state)
+        expect(GameState.hasWon(Game.freecell, acSettled))->toBe(false)
+      },
+    )
+
+    test(
+      "false when a card genuinely needs a tableau move first",
+      () => {
+        // Three suits drain, but spades buries its Ace under its Two (…,3,A,2 — the
+        // Two on top), so no foundation move can reach the Ace: the board can't be
+        // finished by foundation moves alone until a tableau move frees it.
+        let spadesStuck =
+          [King, Queen, Jack, Ten, Nine, Eight, Seven, Six, Five, Four, Three, Ace, Two]->Array.map(
+            rank => {suit: Spades, rank},
+          )
+        let state = stateOf(
+          [[], [], [], []],
+          [spadesStuck, fullSuit(Hearts), fullSuit(Diamonds), fullSuit(Clubs)],
+        )
+        expect(Reducer.canFinish(~game=finGame, state))->toBe(false)
+        // The drain still plays what it can (the three free suits) but stops short of
+        // the win rather than looping forever.
+        let (settled, _moved) = Reducer.finishSequence(~game=finGame, state)
+        expect(GameState.hasWon(finGame, settled))->toBe(false)
+      },
+    )
+
+    test(
+      "a board with no foundations is never finishable",
+      () => {
+        let state = GameState.initial(Game.stacking)
+        expect(Reducer.canFinish(~game=Game.stacking, state))->toBe(false)
+      },
+    )
+  })
+
   // The supermove (#123): a multi-card `MoveRun` and its `(1 + free cells) × 2 ^
   // (empty columns)` limit. A little FreeCell-shaped board — two capacity-1 free
   // cells then four `Rules.cascade` columns, cards confined to piles — lets the
