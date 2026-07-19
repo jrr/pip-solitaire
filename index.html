@@ -211,6 +211,9 @@
       /* The bar's buttons share the scene controls' look. `--reserved` (the Undo
          stub, #85) is dimmed and non-interactive until its behaviour lands. */
       .top-bar__button {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
         padding: 8px 14px;
         font: 14px "Libre Franklin", sans-serif;
         color: #f8fafc;
@@ -218,6 +221,16 @@
         border: 1px solid #334155;
         border-radius: 8px;
         cursor: pointer;
+        white-space: nowrap;
+      }
+
+      /* Icon-only top-bar controls (Undo) draw their glyph as an inline SVG
+         rather than a font character, so it renders identically on every
+         platform. `currentColor` ties the fill to the button's text colour. */
+      .top-bar__icon {
+        width: 1.25em;
+        height: 1.25em;
+        display: block;
       }
 
       .top-bar__button--reserved,
@@ -614,7 +627,7 @@
         position: relative;
         width: var(--zone-w, 88px);
         height: var(--zone-h, 124px);
-        border: 2px dashed #334155;
+        border: 1px dashed #334155;
         border-radius: 10px;
         transition: border-color 0.12s ease, background 0.12s ease;
       }
@@ -798,7 +811,7 @@
         display: none;
       }
     </style>
-    <script type="module" crossorigin src="./assets/index-D9sRx7t8.js"></script>
+    <script type="module" crossorigin src="./assets/index-DUN9dfQ-.js"></script>
   <link rel="manifest" href="./manifest.webmanifest"></head>
   <body>
     <!-- Vite resolves the bare `core/…` specifier the compiled entry imports
