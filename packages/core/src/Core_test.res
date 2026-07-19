@@ -1241,6 +1241,173 @@ describe("Reducer", () => {
     )
   })
 
+  // Safe auto-collect (#125): `isSafeToCollect` (accepted *and* safe) and the
+  // `autoCollect` fixpoint that sends every safe card home. Exercised on a little
+  // four-foundation board — one foundation per suit, plus a Free cascade and a free
+  // cell to hold candidate cards — so the opposite-colour safe rule is testable by
+  // hand-setting the foundations.
+  describe("autoCollect", () => {
+    let acGame: Game.t = {
+      id: "ac",
+      name: "AC",
+      piles: [
+        {role: Foundation, stacking: Squared, rule: Rules.foundation, capacity: None, cards: []},
+        {role: Foundation, stacking: Squared, rule: Rules.foundation, capacity: None, cards: []},
+        {role: Foundation, stacking: Squared, rule: Rules.foundation, capacity: None, cards: []},
+        {role: Foundation, stacking: Squared, rule: Rules.foundation, capacity: None, cards: []},
+        {role: Cascade, stacking: Fanned, rule: Rules.Free, capacity: None, cards: []},
+        {role: Cascade, stacking: Fanned, rule: Rules.Free, capacity: None, cards: []},
+      ],
+      free: false,
+      loose: [],
+      caption: None,
+    }
+    // A hand-built snapshot from the six piles' contents (foundations 0–3, then two
+    // Free cascades 4–5), so a test can pose any foundation heights it likes.
+    let stateOf = (piles): GameState.t => {GameState.piles, loose: []}
+
+    describe(
+      "isSafeToCollect",
+      () => {
+        test(
+          "an Ace is always safe (and homes to an empty foundation)",
+          () => {
+            let state = stateOf([[], [], [], [], [{suit: Spades, rank: Ace}], []])
+            expect(Reducer.isSafeToCollect(~game=acGame, state, {suit: Spades, rank: Ace}))->toBe(
+              true,
+            )
+          },
+        )
+
+        test(
+          "a Two is always safe, even with the opposite-colour foundations empty",
+          () => {
+            // Spades foundation at the Ace so the Two is accepted; hearts/diamonds
+            // (the opposite colour) untouched — a Two is safe regardless.
+            let state = stateOf([
+              [{suit: Spades, rank: Ace}],
+              [],
+              [],
+              [],
+              [{suit: Spades, rank: Two}],
+              [],
+            ])
+            expect(Reducer.isSafeToCollect(~game=acGame, state, {suit: Spades, rank: Two}))->toBe(
+              true,
+            )
+          },
+        )
+
+        test(
+          "a higher card is safe only once both opposite-colour foundations reach rank − 1",
+          () => {
+            // 3♠ (black) is accepted onto a 2♠-topped foundation. It's safe only when
+            // both red foundations (hearts, diamonds) are at least the Two.
+            let safe = stateOf([
+              [{suit: Spades, rank: Ace}, {suit: Spades, rank: Two}],
+              [{suit: Hearts, rank: Ace}, {suit: Hearts, rank: Two}],
+              [{suit: Diamonds, rank: Ace}, {suit: Diamonds, rank: Two}],
+              [],
+              [{suit: Spades, rank: Three}],
+              [],
+            ])
+            expect(Reducer.isSafeToCollect(~game=acGame, safe, {suit: Spades, rank: Three}))->toBe(
+              true,
+            )
+            // Drop diamonds back to just the Ace: now a cascade could still want the
+            // 3♠, so it's *not* safe — even though a foundation would still accept it.
+            let unsafe = stateOf([
+              [{suit: Spades, rank: Ace}, {suit: Spades, rank: Two}],
+              [{suit: Hearts, rank: Ace}, {suit: Hearts, rank: Two}],
+              [{suit: Diamonds, rank: Ace}],
+              [],
+              [{suit: Spades, rank: Three}],
+              [],
+            ])
+            expect(
+              Reducer.isSafeToCollect(~game=acGame, unsafe, {suit: Spades, rank: Three}),
+            )->toBe(false)
+            // …but the foundation *would* accept it — safe is strictly stronger.
+            expect(
+              Reducer.foundationTarget(~game=acGame, unsafe, {suit: Spades, rank: Three}),
+            )->toEqual(Some(0))
+          },
+        )
+
+        test(
+          "a card no foundation will take is never safe",
+          () => {
+            // No spades foundation started, so a 3♠ can't be homed at all.
+            let state = stateOf([[], [], [], [], [{suit: Spades, rank: Three}], []])
+            expect(Reducer.isSafeToCollect(~game=acGame, state, {suit: Spades, rank: Three}))->toBe(
+              false,
+            )
+          },
+        )
+      },
+    )
+
+    test(
+      "the fixpoint collects a whole chain, exposing and enabling cards in turn",
+      () => {
+        // Two Free cascades each hold a suit's Ace atop its Two (bottom-first
+        // [Two, Ace]). Collecting the Ace exposes the Two and makes it safe, so a
+        // single pass sweeps all four cards home to their foundations.
+        let state = stateOf([
+          [],
+          [],
+          [],
+          [],
+          [{suit: Spades, rank: Two}, {suit: Spades, rank: Ace}],
+          [{suit: Hearts, rank: Two}, {suit: Hearts, rank: Ace}],
+        ])
+        let (settled, moved) = Reducer.autoCollect(~game=acGame, state)
+        // All four cards moved home; the cascades are emptied.
+        expect(Array.length(moved))->toBe(4)
+        expect(GameState.cardsInPile(settled, 4))->toEqual([])
+        expect(GameState.cardsInPile(settled, 5))->toEqual([])
+        // Each suit's foundation is built to the Two.
+        expect(GameState.topOf(settled, 0))->toEqual(Some({suit: Spades, rank: Two}))
+        expect(GameState.topOf(settled, 1))->toEqual(Some({suit: Hearts, rank: Two}))
+        // The Aces were collected before their Twos (a card can't precede its own
+        // base). `findIndex` with structural identity, since `indexOf` on records is
+        // reference equality.
+        let orderOf = card => moved->Array.findIndex(c => GameState.sameCard(c, card))
+        expect(orderOf({suit: Spades, rank: Ace}) < orderOf({suit: Spades, rank: Two}))->toBe(true)
+      },
+    )
+
+    test(
+      "unsafe cards are left where they rest",
+      () => {
+        // Foundations built high enough to *accept* a 3♠ but not to make it safe
+        // (diamonds only at the Ace). Auto-collect changes nothing and moves nothing.
+        let state = stateOf([
+          [{suit: Spades, rank: Ace}, {suit: Spades, rank: Two}],
+          [{suit: Hearts, rank: Ace}, {suit: Hearts, rank: Two}],
+          [{suit: Diamonds, rank: Ace}],
+          [],
+          [{suit: Spades, rank: Three}],
+          [],
+        ])
+        let (settled, moved) = Reducer.autoCollect(~game=acGame, state)
+        expect(moved)->toEqual([])
+        expect(GameState.topOf(settled, 4))->toEqual(Some({suit: Spades, rank: Three}))
+      },
+    )
+
+    test(
+      "a board with no foundations is left untouched",
+      () => {
+        // The stacking demo is all cascades — nothing is ever safe to collect.
+        let state = GameState.initial(Game.stacking)
+        let (settled, moved) = Reducer.autoCollect(~game=Game.stacking, state)
+        expect(moved)->toEqual([])
+        expect(settled)->toEqual(state)
+      },
+    )
+  })
+
   // The supermove (#123): a multi-card `MoveRun` and its `(1 + free cells) × 2 ^
   // (empty columns)` limit. A little FreeCell-shaped board — two capacity-1 free
   // cells then four `Rules.cascade` columns, cards confined to piles — lets the
@@ -1528,5 +1695,13 @@ describe("Cards", () => {
         expect(Cards.deal(~piles=0, Cards.all))->toEqual([])
       },
     )
+  })
+})
+
+// Driver options (#125): the preference record threaded into the post-move step.
+// Today it carries a single flag; a settings toggle (#112) will flip it later.
+describe("Options", () => {
+  test("defaults auto-collect on", () => {
+    expect(Options.default.autoCollect)->toBe(true)
   })
 })

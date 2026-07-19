@@ -77,6 +77,19 @@ ${gamesList()}`
 // The board for a live session — the shared renderer over its snapshot.
 let renderBoard = (s: session): string => Render.stateBoard(~game=s.game, s.state)
 
+// After an accepted move, run safe auto-collect (#125) when the option is on,
+// adopting the settled state; `autoCollect: false` leaves the state exactly as the
+// reducer returned it — the exact no-op path. Shared by `move` and `moveRun`, and
+// applied *before* the win check so a collection that plays the final cards still
+// trips the win line (#121).
+let afterMove = (~options: Options.t, s: session): session =>
+  if options.autoCollect {
+    let (collected, _moved) = Reducer.autoCollect(~game=s.game, s.state)
+    {...s, state: collected}
+  } else {
+    s
+  }
+
 // Start (or restart) a game by id, printed. With an optional scenario name, open
 // that named starting position (`Scenario.forName`) instead of the fresh deal —
 // the same vocabulary the web app's `?state=` exposes, so a mid-game position (a
@@ -103,14 +116,17 @@ let deal = (id: string, scenario: option<string>): (option<session>, string) =>
 // Dispatch one `move card target` against the current session, printing the new
 // board on `Ok` or the reason on `Error`. The reducer is the sole judge of
 // legality — this only translates text to an `action` and back.
-let move = (s: session, cardTok: string, targetTok: string): (option<session>, string) =>
+let move = (~options: Options.t, s: session, cardTok: string, targetTok: string): (
+  option<session>,
+  string,
+) =>
   switch (CardText.parse(cardTok), parseTarget(targetTok)) {
   | (None, _) => (Some(s), `Not a card: "${cardTok}" (try AS, TH, KD).`)
   | (_, None) => (Some(s), `Not a pile: "${targetTok}" (an index, or "table").`)
   | (Some(card), Some(target)) =>
     switch Reducer.reduce(~game=s.game, s.state, Move({card, to: target})) {
     | Ok(next) =>
-      let s' = {...s, state: next}
+      let s' = afterMove(~options, {...s, state: next})
       let board = renderBoard(s')
       // A move that completes every foundation ends the game (#121): print the win
       // line beneath the board that shows the final card in place.
@@ -127,7 +143,7 @@ let move = (s: session, cardTok: string, targetTok: string): (option<session>, s
 // reducer alone rules on whether the run is legal and within the free-cell/empty-
 // column limit (#123) — this only parses the tokens into a `MoveRun` and renders
 // the outcome, exactly as `move` does for a single card.
-let moveRun = (s: session, cardToks: array<string>, targetTok: string): (
+let moveRun = (~options: Options.t, s: session, cardToks: array<string>, targetTok: string): (
   option<session>,
   string,
 ) => {
@@ -139,7 +155,7 @@ let moveRun = (s: session, cardToks: array<string>, targetTok: string): (
     let cards = parsed->Array.filterMap(c => c)
     switch Reducer.reduce(~game=s.game, s.state, MoveRun({cards, to: target})) {
     | Ok(next) =>
-      let s' = {...s, state: next}
+      let s' = afterMove(~options, {...s, state: next})
       let board = renderBoard(s')
       let text = GameState.hasWon(s'.game, s'.state)
         ? `${board}\n\n🎉 You win! Every foundation is complete. \`deal\` to play again.`
@@ -158,12 +174,12 @@ let moveRun = (s: session, cardToks: array<string>, targetTok: string): (
 // `Move` onto that pile: a card that completes the board still wins exactly as a
 // dragged one would, and a named card that isn't in play still reports so. A card
 // no foundation is ready for is reported rather than moved.
-let home = (s: session, cardTok: string): (option<session>, string) =>
+let home = (~options: Options.t, s: session, cardTok: string): (option<session>, string) =>
   switch CardText.parse(cardTok) {
   | None => (Some(s), `Not a card: "${cardTok}" (try AS, TH, KD).`)
   | Some(card) =>
     switch Reducer.foundationTarget(~game=s.game, s.state, card) {
-    | Some(i) => move(s, cardTok, Int.toString(i))
+    | Some(i) => move(~options, s, cardTok, Int.toString(i))
     | None => (Some(s), `No foundation is ready for ${CardText.format(card)}.`)
     }
   }
@@ -172,7 +188,10 @@ let home = (s: session, cardTok: string): (option<session>, string) =>
 // session and the text to show. Pure: no I/O — `Cli.res` prints the text and
 // carries the session forward. Unknown or malformed lines answer with guidance
 // rather than failing, so a scrolling session never dead-ends.
-let step = (session: option<session>, line: string): (option<session>, string) => {
+let step = (~options: Options.t, session: option<session>, line: string): (
+  option<session>,
+  string,
+) => {
   let toks = tokenize(line)
   let verb = toks->Array.get(0)->Option.map(String.toLowerCase)
   switch (verb, session) {
@@ -198,13 +217,13 @@ let step = (session: option<session>, line: string): (option<session>, string) =
   | (Some("move"), None) => (session, "Deal a game first (try `deal stacking`).")
   | (Some("move"), Some(s)) =>
     switch (toks->Array.get(1), toks->Array.get(2)) {
-    | (Some(cardTok), Some(targetTok)) => move(s, cardTok, targetTok)
+    | (Some(cardTok), Some(targetTok)) => move(~options, s, cardTok, targetTok)
     | _ => (session, "Usage: move <card> <pile>   (e.g. move AS 0, or move AS table)")
     }
   | (Some("home"), None) => (session, "Deal a game first (try `deal freecell`).")
   | (Some("home"), Some(s)) =>
     switch toks->Array.get(1) {
-    | Some(cardTok) => home(s, cardTok)
+    | Some(cardTok) => home(~options, s, cardTok)
     | None => (session, "Usage: home <card>   (e.g. home AS)")
     }
   | (Some("moverun"), None) => (session, "Deal a game first (try `deal freecell`).")
@@ -214,7 +233,7 @@ let step = (session: option<session>, line: string): (option<session>, string) =
     if Array.length(rest) >= 2 {
       let targetTok = rest->Array.getUnsafe(Array.length(rest) - 1)
       let cardToks = rest->Array.slice(~start=0, ~end=Array.length(rest) - 1)
-      moveRun(s, cardToks, targetTok)
+      moveRun(~options, s, cardToks, targetTok)
     } else {
       (session, "Usage: moverun <card>… <pile>   (e.g. moverun 8H 7S 6H 5)")
     }
@@ -227,13 +246,13 @@ let step = (session: option<session>, line: string): (option<session>, string) =
 // what tests assert against — the reducer loop exercised end-to-end with no
 // terminal. Blank lines and `#` comments are skipped so a piped example script
 // can annotate itself without cluttering the transcript.
-let run = (lines: array<string>): string => {
+let run = (~options: Options.t=Options.default, lines: array<string>): string => {
   let session = ref(None)
   let out = []
   lines->Array.forEach(line => {
     let trimmed = String.trim(line)
     if trimmed != "" && !String.startsWith(trimmed, "#") {
-      let (next, text) = step(session.contents, line)
+      let (next, text) = step(~options, session.contents, line)
       session := next
       out->Array.push(`sleight> ${trimmed}`)
       if text != "" {

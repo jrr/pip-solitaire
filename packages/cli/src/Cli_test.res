@@ -122,6 +122,47 @@ describe("Repl.run", () => {
     expect(has(Repl.run(["home AS"]), "Deal a game first"))->toBe(true)
   })
 
+  // Safe auto-collect (#125): after an accepted move the driver sweeps every *safe*
+  // card home when the option is on (its default), and does exactly nothing when
+  // it's off — the flag-gated no-op path.
+  describe("auto-collect", () => {
+    test(
+      "on by default: playing the Ace home sweeps the safe Two after it",
+      () => {
+        // The foundations demo deals a Hearts Ace→King run loose beside one
+        // foundation. Playing the Ace by hand leaves the Two safe (a Two is always
+        // safe), so auto-collect sends it home too — without a second command.
+        let (dealt, _) = Repl.step(~options=Options.default, None, "deal foundations")
+        let (afterMove, _) = Repl.step(~options=Options.default, dealt, "move AH 0")
+        switch afterMove {
+        | Some(s) =>
+          // The foundation now shows the Two, though only the Ace was played by hand.
+          expect(GameState.topOf(s.state, 0))->toEqual(Some({suit: Hearts, rank: Two}))
+        | None => expect(true)->toBe(false)
+        }
+      },
+    )
+
+    test(
+      "off: the same move collects nothing extra",
+      () => {
+        // With the flag off the reducer's result stands untouched: the Ace is home,
+        // the Two still resting loose — an exact no-op path.
+        let off = {Options.autoCollect: false}
+        let (dealt, _) = Repl.step(~options=off, None, "deal foundations")
+        let (afterMove, _) = Repl.step(~options=off, dealt, "move AH 0")
+        switch afterMove {
+        | Some(s) =>
+          expect(GameState.topOf(s.state, 0))->toEqual(Some({suit: Hearts, rank: Ace}))
+          expect(GameState.locationOf(s.state, {suit: Hearts, rank: Two}))->toEqual(
+            Some(GameState.Loose),
+          )
+        | None => expect(true)->toBe(false)
+        }
+      },
+    )
+  })
+
   test("guides the user before a game is dealt and on unknown input", () => {
     expect(has(Repl.run(["move AS 0"]), "Deal a game first"))->toBe(true)
     expect(has(Repl.run(["frobnicate"]), "Unknown command"))->toBe(true)

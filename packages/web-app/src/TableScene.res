@@ -212,10 +212,15 @@ let doubleTapMoveTol = 12.
 // New Game control lives in the top bar now, not on the board.) The chrome resets
 // its hook on every scene switch, so a non-re-dealable scene simply leaves it
 // unset — it never calls `publishNewGame`.
+// `~options` is the driver preference record (#125), read at each post-move step.
+// Its `autoCollect` flag (on by its `default`) sends every *safe* card home after
+// an accepted move; a future settings toggle (#112) will set it, but no UI control
+// is exposed yet — the scene simply reads the default.
 let make = (
   ~initial: option<GameState.t>=?,
   ~newDeal: option<unit => Game.t>=?,
   ~publishNewGame: option<(unit => unit) => unit>=?,
+  ~options: Options.t=Options.default,
   game: Game.t,
 ): Scene.t => {
   id: game.id,
@@ -441,6 +446,18 @@ let make = (
       // it joined) without the view tracking which those were.
       let reflowAll = () => zones->Array.forEach(reflow)
 
+      // After an accepted move, auto-collect the safe cards to the foundations
+      // (#125) when the option is on (its default), adopting the settled state so
+      // the following reflow lays out the swept board. Gated entirely by the flag,
+      // so `autoCollect: false` leaves the reducer's result untouched — an exact
+      // no-op path. Runs *before* the win check, since a collection often plays the
+      // final cards and so is what trips `hasWon`.
+      let autoCollectIfEnabled = () =>
+        if options.autoCollect {
+          let (collected, _moved) = Reducer.autoCollect(~game, state.contents)
+          state := collected
+        }
+
       // The win overlay (#121): a dimmed panel over the board announcing the win,
       // with a New Game button to play on. Shown when a move completes every
       // foundation (`GameState.hasWon`); the button re-deals a fresh FreeCell
@@ -648,6 +665,7 @@ let make = (
               ) {
               | Ok(next) =>
                 state := next
+                autoCollectIfEnabled()
                 reflowAll()
                 if GameState.hasWon(game, state.contents) {
                   showWin()
@@ -687,10 +705,14 @@ let make = (
             // slots; a card left loose stays at the pixel it was dropped.
             | Ok(next) =>
               state := next
+              // Auto-collect any now-safe cards (#125) before the reflow, so the
+              // whole cascade settles in one pass; gated by the option.
+              autoCollectIfEnabled()
               reflowAll()
 
               // A move that completes every foundation ends the game (#121): raise
-              // the win overlay following the accepted `reduce`.
+              // the win overlay following the accepted `reduce` (and any auto-collect
+              // that played the final cards).
               if GameState.hasWon(game, state.contents) {
                 showWin()
               }

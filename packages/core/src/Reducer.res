@@ -224,3 +224,94 @@ let reduce = (~game: Game.t, state: GameState.t, action: action): result<GameSta
       }
     }
   }
+
+// --- Safe auto-collect (#125) ------------------------------------------------
+// Auto-collect sends *safe* cards home after each move, so a player never has to
+// play the obvious ones by hand. It's driver behaviour gated by an `Options` flag
+// (the seam a future menu toggle flips), but the decision — *which* cards are safe
+// and the fixpoint that collects them — is pure `core` logic, built on the same
+// `foundationTarget` the manual send-home (#122) uses.
+
+// The rank a foundation has climbed to in `suit` — the `rankValue` of that suit's
+// top foundation card, or 0 when the suit hasn't been founded yet (no Ace home).
+// A foundation is built in a single suit, so at most one foundation pile is topped
+// by `suit`; that top card is the suit's progress. The safe rule below reads two
+// of these — the opposite-colour foundations — to decide whether a card is safe.
+let foundationRank = (~game: Game.t, state: GameState.t, suit: suit): int =>
+  Game.pileIndices(game, Game.Foundation)
+  ->Array.filterMap(i => GameState.topOf(state, i))
+  ->Array.find(c => c.suit == suit)
+  ->Option.mapOr(0, c => Rules.rankValue(c.rank))
+
+// Is `card` *safe* to auto-collect home (#125)? Two things must hold, and it's
+// deliberately stricter than `foundationTarget` alone: a foundation must currently
+// *accept* the card, *and* sending it home can never strand a card that still
+// needs it on a cascade — the conservative standard rule. A card of rank r is safe
+// once **both** opposite-colour foundations have reached at least rank r − 1 (so no
+// in-play card could still want to stack on it in a descending cascade), with Aces
+// and Twos always safe — nothing is ever built down onto them. This is the
+// predicate the `autoCollect` fixpoint sends cards home by.
+let isSafeToCollect = (~game: Game.t, state: GameState.t, card: card): bool =>
+  switch foundationTarget(~game, state, card) {
+  | None => false // no foundation will take it — not collectable at all
+  | Some(_) =>
+    let r = Rules.rankValue(card.rank)
+    // Aces and Twos are always safe; a higher card only once both opposite-colour
+    // foundations are within one rank of it.
+    r <= 2 ||
+      switch Rules.color(card.suit) {
+      | Rules.Red => [Spades, Clubs]
+      | Rules.Black => [Hearts, Diamonds]
+      }->Array.every(s => foundationRank(~game, state, s) >= r - 1)
+  }
+
+// Auto-collect (#125): repeatedly send every *safe* card home until none remain —
+// a fixpoint, since collecting one card can make the next one safe (its own
+// follow-up, or a card of the other colour once this colour advances). Returns the
+// settled state and, in the order they were collected, the cards it moved; the
+// moved list lets a view animate the cascade later (#22) and lets undo (#85) group
+// a move and the collection it triggered as one unit. When nothing is safe — and
+// in particular on a board with no foundations — it returns the state unchanged
+// and an empty list, so a driver can adopt the result unconditionally.
+let autoCollect = (~game: Game.t, state: GameState.t): (GameState.t, array<card>) => {
+  let moved = []
+  let current = ref(state)
+  let progressed = ref(true)
+  while progressed.contents {
+    progressed := false
+    let cur: GameState.t = current.contents
+    // The cards that can currently move: the top card of every non-foundation pile
+    // (a foundation's own top is already home) plus any loose card.
+    let candidates = []
+    game.piles->Array.forEachWithIndex((pile: Game.pile, i) =>
+      switch pile.role {
+      | Game.Foundation => ()
+      | _ =>
+        switch GameState.topOf(cur, i) {
+        | Some(c) => candidates->Array.push(c)
+        | None => ()
+        }
+      }
+    )
+    cur.loose->Array.forEach(c => candidates->Array.push(c))
+    // Send the first safe card home, then loop to re-scan against the new state so a
+    // newly-safe card gets its turn. One collection per pass keeps the scan simple;
+    // the outer loop is the fixpoint.
+    switch candidates->Array.find(c => isSafeToCollect(~game, cur, c)) {
+    | Some(card) =>
+      switch foundationTarget(~game, cur, card) {
+      | Some(target) =>
+        switch reduce(~game, cur, Move({card, to: ToPile(target)})) {
+        | Ok(next) =>
+          current := next
+          moved->Array.push(card)
+          progressed := true
+        | Error(_) => () // unreachable: foundationTarget already vetted this move
+        }
+      | None => ()
+      }
+    | None => ()
+    }
+  }
+  (current.contents, moved)
+}
