@@ -55,6 +55,7 @@ type model = {
   offlineReady: bool,
   updateAvailable: bool,
   menuOpen: bool,
+  autoCollect: bool,
 }
 
 type msg =
@@ -63,6 +64,7 @@ type msg =
   | Reload // user asked to activate the waiting worker and reload
   | ToggleMenu // the top bar's Menu button
   | CloseMenu // backdrop / close button / a scene row was tapped
+  | ToggleAutoCollect // the menu's Auto-collect switch (#139)
 
 // `updateSW` only exists once registerSW has run, which needs `dispatch`, which
 // needs the loop to be mounted — so the Reload effect reaches it through a ref
@@ -81,6 +83,13 @@ let newGameHook: ref<option<unit => unit>> = ref(None)
 // reaches the loop through this ref, filled in just after mount.
 let closeMenu: ref<unit => unit> = ref(() => ())
 
+// The live driver preferences (#139), seeded from the persisted settings (#134's
+// auto-collect defaults on). This is the same ref the board reads at each
+// post-move step (see `gameScene` → `TableScene`), so the menu's Auto-collect
+// switch flipping a field here changes the board's behaviour on the very next move
+// — no rebuild — while the model's mirror of the flag keeps the switch in sync.
+let options: ref<Options.t> = ref(Preferences.load())
+
 let update = (msg, model) =>
   switch msg {
   | OfflineReady => ({...model, offlineReady: true}, Html.noEffect)
@@ -88,6 +97,17 @@ let update = (msg, model) =>
   | ToggleMenu => ({...model, menuOpen: !model.menuOpen}, Html.noEffect)
   | CloseMenu =>
     model.menuOpen ? ({...model, menuOpen: false}, Html.noEffect) : (model, Html.noEffect)
+  | ToggleAutoCollect =>
+    let autoCollect = !model.autoCollect
+    (
+      {...model, autoCollect},
+      // Push the flip into the shared preference ref the board reads, and persist
+      // it so the choice survives a reload. Both run as the post-update effect.
+      () => {
+        options := {autoCollect: autoCollect}
+        Preferences.save(options.contents)
+      },
+    )
   | Reload => (
       model, // no state change — just run the effect
       () =>
@@ -129,6 +149,7 @@ let gameScene = (game: Game.t) => {
     ~initial=?url.state->Option.flatMap(name => Scenario.forName(game, name)),
     ~newDeal?,
     ~publishNewGame=hook => newGameHook := Some(hook),
+    ~options,
     game,
   )
 }
@@ -167,6 +188,8 @@ let view = (model, dispatch) => <>
     open_={model.menuOpen}
     onClose={() => dispatch(CloseMenu)}
     scenes={switcher.controls}
+    autoCollect={model.autoCollect}
+    onToggleAutoCollect={() => dispatch(ToggleAutoCollect)}
     version={model.version}
     buildTime={model.buildTime}
     offlineReady={model.offlineReady}
@@ -192,6 +215,9 @@ let dispatch = Html.mount(
     offlineReady: false,
     updateAvailable: false,
     menuOpen: false,
+    // Mirror the persisted preference so the menu's switch opens in the right
+    // position (the board reads the `options` ref directly).
+    autoCollect: options.contents.autoCollect,
   },
   ~update,
   ~view,

@@ -5,6 +5,9 @@
 //     `scenes` node. It leads with FreeCell (the game) as a top-level row and
 //     buries the debug/demo scenes inside a collapsible "Debug" group (#135), so
 //     the menu opens on the game with the demos tucked away but one tap out;
+//   - a **Settings** section (#139): the driver-preference toggles, starting with
+//     **Auto-collect** — a switch the player can flip mid-game, its state passed
+//     in as `autoCollect` and a click reported out through `onToggleAutoCollect`;
 //   - (a spot is left here for a future rules reference — not built yet);
 //   - the **version info** (`<VersionBadge>`, folded in from the old bottom-right
 //     badge).
@@ -19,12 +22,23 @@ type props = {
   open_: bool,
   onClose: unit => unit,
   scenes: Html.element,
+  autoCollect: bool,
+  onToggleAutoCollect: unit => unit,
   version: string,
   buildTime: string,
   offlineReady: bool,
 }
 
-let make = ({open_, onClose, scenes, version, buildTime, offlineReady}) =>
+let make = ({
+  open_,
+  onClose,
+  scenes,
+  autoCollect,
+  onToggleAutoCollect,
+  version,
+  buildTime,
+  offlineReady,
+}) =>
   <div id="menu-overlay" hidden={!open_}>
     <div className="menu-overlay__backdrop" onClick={_ => onClose()} />
     <aside className="menu-panel" attrs={[("aria-label", "Menu")]}>
@@ -39,6 +53,21 @@ let make = ({open_, onClose, scenes, version, buildTime, offlineReady}) =>
         </button>
       </div>
       <nav className="menu-section" attrs={[("aria-label", "Scenes")]}> {Html.node(scenes)} </nav>
+      <div className="menu-section" attrs={[("aria-label", "Settings")]}>
+        <h2 className="menu-section__heading"> {Html.string("Settings")} </h2>
+        <button
+          className={autoCollect ? "menu-toggle menu-toggle--on" : "menu-toggle"}
+          onClick={_ => onToggleAutoCollect()}
+          attrs={[
+            ("type", "button"),
+            ("role", "switch"),
+            ("aria-checked", autoCollect ? "true" : "false"),
+          ]}
+        >
+          <span className="menu-toggle__label"> {Html.string("Auto-collect")} </span>
+          <span className="menu-toggle__switch" />
+        </button>
+      </div>
       <div className="menu-footer">
         <VersionBadge version={version} buildTime={buildTime} offlineReady={offlineReady} />
       </div>

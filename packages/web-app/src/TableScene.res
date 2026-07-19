@@ -215,15 +215,16 @@ let doubleTapMoveTol = 12.
 // New Game control lives in the top bar now, not on the board.) The chrome resets
 // its hook on every scene switch, so a non-re-dealable scene simply leaves it
 // unset — it never calls `publishNewGame`.
-// `~options` is the driver preference record (#125), read at each post-move step.
-// Its `autoCollect` flag (on by its `default`) sends every *safe* card home after
-// an accepted move; a future settings toggle (#112) will set it, but no UI control
-// is exposed yet — the scene simply reads the default.
+// `~options` is a *ref* to the driver preference record (#125), read *live* at
+// each post-move step so a menu toggle (#139) that flips a field takes effect on
+// the very next move without rebuilding the board. Its `autoCollect` flag (on by
+// its `default`) sends every *safe* card home after an accepted move; the app's
+// menu owns this ref and rewrites it when the player flips the setting.
 let make = (
   ~initial: option<GameState.t>=?,
   ~newDeal: option<unit => Game.t>=?,
   ~publishNewGame: option<(unit => unit) => unit>=?,
-  ~options: Options.t=Options.default,
+  ~options: ref<Options.t>=ref(Options.default),
   game: Game.t,
 ): Scene.t => {
   id: game.id,
@@ -456,7 +457,7 @@ let make = (
       // no-op path. Runs *before* the win check, since a collection often plays the
       // final cards and so is what trips `hasWon`.
       let autoCollectIfEnabled = () =>
-        if options.autoCollect {
+        if options.contents.autoCollect {
           let (collected, _moved) = Reducer.autoCollect(~game, state.contents)
           state := collected
         }

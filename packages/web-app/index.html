@@ -290,6 +290,70 @@
         gap: 0.4rem;
       }
 
+      /* A small muted heading for a menu section (the Settings group, #139), set
+         apart from the tappable rows below it. */
+      .menu-section__heading {
+        margin: 0 0 0.1rem;
+        font: 600 12px "Libre Franklin", sans-serif;
+        letter-spacing: 0.05em;
+        text-transform: uppercase;
+        color: #64748b;
+      }
+
+      /* A settings toggle row (#139): a full-width control styled like the scene
+         rows, with its label on the left and a switch track on the right. It's a
+         <button role="switch"> — the Html runtime only wires clicks, so the switch
+         is a plain button, not a checkbox — and toggling `--on` slides the knob and
+         greens the track, animated by the transitions below so a mid-game flip
+         reads. */
+      .menu-toggle {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.75rem;
+        width: 100%;
+        padding: 10px 12px;
+        font: 14px "Libre Franklin", sans-serif;
+        color: #e2e8f0;
+        background: #16233b;
+        border: 1px solid #22304a;
+        border-radius: 8px;
+        cursor: pointer;
+      }
+
+      /* The switch track; the knob is its ::after, parked left when off. */
+      .menu-toggle__switch {
+        position: relative;
+        flex: 0 0 auto;
+        width: 40px;
+        height: 22px;
+        background: #334155;
+        border-radius: 999px;
+        transition: background 0.15s ease;
+      }
+
+      .menu-toggle__switch::after {
+        content: "";
+        position: absolute;
+        top: 2px;
+        left: 2px;
+        width: 18px;
+        height: 18px;
+        background: #e2e8f0;
+        border-radius: 50%;
+        transition: transform 0.15s ease;
+      }
+
+      /* On: the accent-green track and the knob slid to the right. */
+      .menu-toggle--on .menu-toggle__switch {
+        background: #166534;
+      }
+
+      .menu-toggle--on .menu-toggle__switch::after {
+        transform: translateX(18px);
+        background: #f0fdf4;
+      }
+
       /* The scene list: SceneSwitcher's row controls (#109), replacing the old
          <select> picker. Each scene is a tappable row; the active scene is
          highlighted so the menu shows where you are. */
