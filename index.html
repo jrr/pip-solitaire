@@ -590,6 +590,15 @@
         width: 100%;
       }
 
+      /* During the opening deal (#115) each card is positioned instantly — the
+         left/top snap transition is switched off so the card doesn't slide in
+         from the corner — and flown up into place by a transform animation
+         instead (see `animateDeal` in TableScene.res). The class is dropped a
+         frame later, restoring the in-game drop snap. */
+      .stacking-playfield.dealing .stacking-card {
+        transition: none;
+      }
+
       .stacking-card.dragging {
         cursor: grabbing;
         transition: none;
@@ -664,7 +673,7 @@
         display: none;
       }
     </style>
-    <script type="module" crossorigin src="./assets/index-CIhxS1ht.js"></script>
+    <script type="module" crossorigin src="./assets/index-AmqokiCJ.js"></script>
   <link rel="manifest" href="./manifest.webmanifest"></head>
   <body>
     <!-- Vite resolves the bare `core/…` specifier the compiled entry imports
