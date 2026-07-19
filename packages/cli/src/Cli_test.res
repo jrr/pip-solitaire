@@ -125,19 +125,28 @@ describe("Repl.run", () => {
   // Safe auto-collect (#125): after an accepted move the driver sweeps every *safe*
   // card home when the option is on (its default), and does exactly nothing when
   // it's off — the flag-gated no-op path.
+  // The send-home scenario sits every foundation at the Two with each suit's Three
+  // parked in a free cell — the foundations are 4,5,6,7 (Spades, Hearts, Diamonds,
+  // Clubs). Its scrambled cascades keep it far from drainable, so the finish
+  // suppression (#132) doesn't apply here and auto-collect's own behaviour shows
+  // cleanly. (The suppression itself is covered by the `finish` tests below.)
   describe("auto-collect", () => {
     test(
-      "on by default: playing the Ace home sweeps the safe Two after it",
+      "on by default: playing one Three home sweeps the other safe Threes after it",
       () => {
-        // The foundations demo deals a Hearts Ace→King run loose beside one
-        // foundation. Playing the Ace by hand leaves the Two safe (a Two is always
-        // safe), so auto-collect sends it home too — without a second command.
-        let (dealt, _) = Repl.step(~options=Options.default, None, "deal foundations")
-        let (afterMove, _) = Repl.step(~options=Options.default, dealt, "move AH 0")
+        // Playing 3S home leaves the other Threes safe (both opposite-colour
+        // foundations are at the Two), so auto-collect sends them home too — the
+        // whole row of Threes homes off a single command.
+        let (dealt, _) = Repl.step(~options=Options.default, None, "deal freecell sendhome")
+        let (afterMove, _) = Repl.step(~options=Options.default, dealt, "home 3S")
         switch afterMove {
         | Some(s) =>
-          // The foundation now shows the Two, though only the Ace was played by hand.
-          expect(GameState.topOf(s.state, 0))->toEqual(Some({suit: Hearts, rank: Two}))
+          // 3H was never commanded, yet it's off the free cell and home on the
+          // hearts foundation (pile 5) — wherever the sweep settles above it.
+          switch GameState.locationOf(s.state, {suit: Hearts, rank: Three}) {
+          | Some(GameState.InPile(5, _)) => expect(true)->toBe(true)
+          | _ => expect(true)->toBe(false)
+          }
         | None => expect(true)->toBe(false)
         }
       },
@@ -146,19 +155,82 @@ describe("Repl.run", () => {
     test(
       "off: the same move collects nothing extra",
       () => {
-        // With the flag off the reducer's result stands untouched: the Ace is home,
-        // the Two still resting loose — an exact no-op path.
+        // With the flag off the reducer's result stands untouched: 3S is home, the
+        // other Threes still resting in their cells — an exact no-op path.
         let off = {Options.autoCollect: false}
-        let (dealt, _) = Repl.step(~options=off, None, "deal foundations")
-        let (afterMove, _) = Repl.step(~options=off, dealt, "move AH 0")
+        let (dealt, _) = Repl.step(~options=off, None, "deal freecell sendhome")
+        let (afterMove, _) = Repl.step(~options=off, dealt, "home 3S")
         switch afterMove {
         | Some(s) =>
-          expect(GameState.topOf(s.state, 0))->toEqual(Some({suit: Hearts, rank: Ace}))
-          expect(GameState.locationOf(s.state, {suit: Hearts, rank: Two}))->toEqual(
-            Some(GameState.Loose),
-          )
+          // The hearts foundation still stands at its dealt Two; 3H is still parked
+          // in a free cell (piles 0–3), untouched.
+          expect(GameState.topOf(s.state, 5))->toEqual(Some({suit: Hearts, rank: Two}))
+          switch GameState.locationOf(s.state, {suit: Hearts, rank: Three}) {
+          | Some(GameState.InPile(i, _)) => expect(i >= 0 && i <= 3)->toBe(true) // a free cell
+          | _ => expect(true)->toBe(false)
+          }
         | None => expect(true)->toBe(false)
         }
+      },
+    )
+  })
+
+  // The end-game finish sweep (#132): the `finish` verb sweeps a drainable board
+  // home to a win, reports when the board isn't yet drainable, and — the scope
+  // decision — safe auto-collect steps aside once the board is finishable so the
+  // sweep owns the end-game.
+  describe("finish", () => {
+    test(
+      "sweeps a drainable board home to a win",
+      () => {
+        // The finish scenario is the trapped ♠6-over-♥3 tail: drainable by
+        // foundation moves alone, so `finish` completes it in one gesture.
+        let transcript = Repl.run(["deal freecell finish", "finish"])
+        expect(has(transcript, "You win!"))->toBe(true)
+      },
+    )
+
+    test(
+      "reports when the board isn't drainable yet",
+      () => {
+        // A fresh FreeCell deal needs plenty of tableau play first — nothing to
+        // finish.
+        let transcript = Repl.run(["deal freecell", "finish"])
+        expect(has(transcript, "Not finishable yet"))->toBe(true)
+        expect(has(transcript, "You win!"))->toBe(false)
+      },
+    )
+
+    test(
+      "guides the user before a game is dealt",
+      () => {
+        expect(has(Repl.run(["finish"]), "Deal a game first"))->toBe(true)
+      },
+    )
+
+    test(
+      "safe auto-collect steps aside once the board is finishable (#125 scope)",
+      () => {
+        // On the finishable tail, `afterMove` must not auto-collect — even with the
+        // option on (its default) — leaving the board for the `finish` sweep.
+        let game = Game.freecell
+        let state = Scenario.freecellFinish(game)
+        let s: Repl.session = {game, state}
+        let after = Repl.afterMove(~options=Options.default, s)
+        expect(after.state)->toEqual(state)
+
+        // Contrast: on a *non*-finishable board with a safe card, `afterMove` still
+        // collects it — showing the finish guard, not a disabled option, is what
+        // held the sweep back above. A lone Ace atop the first cascade, foundations
+        // empty, is safe and homeable but nowhere near a win.
+        let lone = {
+          GameState.piles: game.piles->Array.mapWithIndex(
+            (_, i) => i == 8 ? [{suit: Spades, rank: Ace}] : [],
+          ),
+          loose: [],
+        }
+        let collected = Repl.afterMove(~options=Options.default, {game, state: lone})
+        expect(collected.state == lone)->toBe(false)
       },
     )
   })

@@ -13,10 +13,11 @@
 //   1. Serve the already-built web app (packages/web-app/dist) with Vite's own
 //      preview server, so the report captures exactly what ships — the bundled,
 //      based, service-worker'd site — not a dev build.
-//   2. Drive a headless Chromium (Playwright) to `?scene=freecell&state=midgame`,
-//      the URL contract that forces the board straight into a fixed mid-game
-//      position with no interaction (see src/AppUrl.res / core's Scenario.res).
-//   3. For each device size, shoot portrait and landscape, then write an
+//   2. Drive a headless Chromium (Playwright) to each captured scene's URL — e.g.
+//      `?scene=freecell&state=midgame` — the URL contract that forces the board
+//      straight into a fixed position with no interaction (see src/AppUrl.res /
+//      core's Scenario.res).
+//   3. For each scene × device size, shoot portrait and landscape, then write an
 //      index.html contact sheet next to the PNGs.
 //
 // Run it with `mise run screenshots` (which builds the app first). Browser
@@ -35,20 +36,24 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const webAppRoot = path.resolve(here, "..");
 const outDir = path.join(webAppRoot, "screenshots");
 
-// The board and position the report captures. Kept in one place so it's obvious
-// what's being shot, and easy to point at another scene/scenario later.
-const targetQuery = "?scene=freecell&state=midgame";
+// The scenes (board positions) the report captures, each via the app's URL
+// contract so the shots are deterministic and need no interaction. Kept in one
+// place so it's obvious what's being shot, and easy to add another scenario later.
+//   - Mid-game — a representative in-progress FreeCell layout.
+//   - Finish — the finishable endgame (#132), shot to show the "Finish" button.
+const scenes = [
+  { name: "Mid-game", query: "?scene=freecell&state=midgame" },
+  { name: "Finish", query: "?scene=freecell&state=finish" },
+];
 
-// A representative spread of devices: CSS size (portrait W×H) plus each one's real
+// A representative pair of devices: CSS size (portrait W×H) plus each one's real
 // devicePixelRatio, so the shots rasterize at the device's *physical* pixel
-// resolution (W·dpr × H·dpr) and you can judge legibility, not just layout. A
-// handful of widths from a small phone up to a tablet, each shot both ways up.
-// (iPhone mini and iPhone SE share the same 375-wide CSS size, so the mini stands
-// in for the SE here — same width, taller, and a 3× display.)
+// resolution (W·dpr × H·dpr) and you can judge legibility, not just layout. One
+// small phone and one tablet, each shot both ways up. (iPhone mini and iPhone SE
+// share the same 375-wide CSS size, so the mini stands in for the SE here — same
+// width, taller, and a 3× display.)
 const devices = [
   { name: "iPhone 13 mini", width: 375, height: 812, dpr: 3 },
-  { name: "Pixel 7", width: 412, height: 915, dpr: 2.625 },
-  { name: "iPhone 15 Pro Max", width: 430, height: 932, dpr: 3 },
   { name: "iPad mini", width: 768, height: 1024, dpr: 2 },
 ];
 
@@ -67,27 +72,41 @@ function resolveExecutablePath() {
 }
 
 function reportHtml(shots) {
-  const cards = devices
-    .map((device) => {
-      const cells = ["portrait", "landscape"]
-        .map((orientation) => {
-          const shot = shots.find(
-            (s) => s.device === device.name && s.orientation === orientation,
-          );
-          if (!shot) return "";
-          return `
-          <figure>
-            <figcaption>${orientation} · ${shot.width}×${shot.height} CSS · ${shot.pxWidth}×${shot.pxHeight}px</figcaption>
-            <a href="${shot.file}"><img src="${shot.file}" alt="${device.name} ${orientation}" loading="lazy" /></a>
-          </figure>`;
-        })
-        .join("");
-      return `
-      <section class="device">
-        <h2>${device.name} <span>${device.width}×${device.height} · @${device.dpr}×</span></h2>
-        <div class="shots">${cells}</div>
-      </section>`;
-    })
+  const deviceCards = (scene) =>
+    devices
+      .map((device) => {
+        const cells = ["portrait", "landscape"]
+          .map((orientation) => {
+            const shot = shots.find(
+              (s) =>
+                s.scene === scene.name &&
+                s.device === device.name &&
+                s.orientation === orientation,
+            );
+            if (!shot) return "";
+            return `
+            <figure>
+              <figcaption>${orientation} · ${shot.width}×${shot.height} CSS · ${shot.pxWidth}×${shot.pxHeight}px</figcaption>
+              <a href="${shot.file}"><img src="${shot.file}" alt="${scene.name} — ${device.name} ${orientation}" loading="lazy" /></a>
+            </figure>`;
+          })
+          .join("");
+        return `
+        <section class="device">
+          <h3>${device.name} <span>${device.width}×${device.height} · @${device.dpr}×</span></h3>
+          <div class="shots">${cells}</div>
+        </section>`;
+      })
+      .join("");
+
+  const scenesHtml = scenes
+    .map(
+      (scene) => `
+      <section class="scene">
+        <h2>${scene.name} <span><code>${scene.query}</code></span></h2>
+        ${deviceCards(scene)}
+      </section>`,
+    )
     .join("");
 
   return `<!doctype html>
@@ -108,12 +127,19 @@ function reportHtml(shots) {
     h1 { margin: 0 0 0.25rem; font-size: 1.6rem; }
     header p { margin: 0; color: #94a3b8; font-size: 0.95rem; }
     header code { color: #86efac; }
-    .device { max-width: 70rem; margin: 0 auto 2.5rem; }
-    .device h2 {
-      font-size: 1.1rem; margin: 0 0 0.75rem;
+    .scene { max-width: 70rem; margin: 0 auto 3.5rem; }
+    .scene > h2 {
+      font-size: 1.35rem; margin: 0 0 1rem;
+      border-bottom: 1px solid #2d4066; padding-bottom: 0.5rem;
+    }
+    .scene > h2 span { color: #94a3b8; font-weight: 400; font-size: 0.9rem; }
+    .scene > h2 code { color: #86efac; }
+    .device { margin: 0 0 2rem; }
+    .device h3 {
+      font-size: 1.05rem; margin: 0 0 0.75rem;
       border-bottom: 1px solid #22304a; padding-bottom: 0.4rem;
     }
-    .device h2 span { color: #94a3b8; font-weight: 400; font-size: 0.85rem; }
+    .device h3 span { color: #94a3b8; font-weight: 400; font-size: 0.85rem; }
     .shots { display: flex; flex-wrap: wrap; gap: 1.5rem; align-items: flex-start; }
     figure { margin: 0; }
     figcaption { color: #94a3b8; font-size: 0.8rem; margin-bottom: 0.4rem; }
@@ -128,9 +154,9 @@ function reportHtml(shots) {
 <body>
   <header>
     <h1>Sleight — screenshot report</h1>
-    <p>Mid-game FreeCell (<code>${targetQuery}</code>) across device sizes, portrait and landscape.</p>
+    <p>FreeCell scenes across device sizes, portrait and landscape.</p>
   </header>
-  ${cards}
+  ${scenesHtml}
 </body>
 </html>
 `;
@@ -152,40 +178,51 @@ async function main() {
     logLevel: "warn",
   });
   const base = server.resolvedUrls.local[0].replace(/\/$/, "");
-  const target = `${base}/${targetQuery}`;
 
   const browser = await chromium.launch({ executablePath: resolveExecutablePath() });
   const shots = [];
   try {
-    for (const device of devices) {
-      for (const orientation of ["portrait", "landscape"]) {
-        const [width, height] =
-          orientation === "portrait"
-            ? [device.width, device.height]
-            : [device.height, device.width];
+    for (const scene of scenes) {
+      const target = `${base}/${scene.query}`;
+      for (const device of devices) {
+        for (const orientation of ["portrait", "landscape"]) {
+          const [width, height] =
+            orientation === "portrait"
+              ? [device.width, device.height]
+              : [device.height, device.width];
 
-        const context = await browser.newContext({
-          viewport: { width, height },
-          deviceScaleFactor: device.dpr,
-        });
-        const page = await context.newPage();
-        await page.goto(target, { waitUntil: "load" });
-        // The board deals its cards on the first animation frame and settles with
-        // a short CSS transition; wait for a card to exist, then a beat for the
-        // fan to land, so the shot captures the resting layout.
-        await page.waitForSelector(".stacking-card", { state: "visible", timeout: 15000 });
-        await page.waitForTimeout(600);
+          const context = await browser.newContext({
+            viewport: { width, height },
+            deviceScaleFactor: device.dpr,
+          });
+          const page = await context.newPage();
+          await page.goto(target, { waitUntil: "load" });
+          // The board deals its cards on the first animation frame and settles with
+          // a short CSS transition; wait for a card to exist, then a beat for the
+          // fan to land, so the shot captures the resting layout.
+          await page.waitForSelector(".stacking-card", { state: "visible", timeout: 15000 });
+          await page.waitForTimeout(600);
 
-        // The PNG comes out at the device's physical resolution (CSS size × dpr).
-        const pxWidth = Math.round(width * device.dpr);
-        const pxHeight = Math.round(height * device.dpr);
-        const file = `${slug(device.name)}-${orientation}.png`;
-        await page.screenshot({ path: path.join(outDir, file) });
-        shots.push({ device: device.name, orientation, width, height, pxWidth, pxHeight, file });
-        console.log(
-          `  shot ${device.name} ${orientation} (${width}×${height} CSS → ${pxWidth}×${pxHeight}px)`,
-        );
-        await context.close();
+          // The PNG comes out at the device's physical resolution (CSS size × dpr).
+          const pxWidth = Math.round(width * device.dpr);
+          const pxHeight = Math.round(height * device.dpr);
+          const file = `${slug(scene.name)}-${slug(device.name)}-${orientation}.png`;
+          await page.screenshot({ path: path.join(outDir, file) });
+          shots.push({
+            scene: scene.name,
+            device: device.name,
+            orientation,
+            width,
+            height,
+            pxWidth,
+            pxHeight,
+            file,
+          });
+          console.log(
+            `  shot ${scene.name} · ${device.name} ${orientation} (${width}×${height} CSS → ${pxWidth}×${pxHeight}px)`,
+          );
+          await context.close();
+        }
       }
     }
   } finally {
