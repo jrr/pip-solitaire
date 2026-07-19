@@ -279,16 +279,42 @@ let freecellFinish = (game: Game.t): GameState.t => {
   {GameState.piles, loose: []}
 }
 
-// Resolve a scenario *name* to an initial state for `game`, or `None` when the
-// name doesn't apply to this board. This is the whole vocabulary the URL exposes:
-// FreeCell's "midgame" and its near-won "almost-won"; new scenarios slot in as
-// new arms.
-let forName = (game: Game.t, name: string): option<GameState.t> =>
-  switch (game.id, name) {
-  | ("freecell", "midgame") => Some(freecellMidgame(game, ~seed=Game.freecellSeed))
-  | ("freecell", "almost-won") => Some(freecellAlmostWon(game))
-  | ("freecell", "supermove") => Some(freecellSupermove(game))
-  | ("freecell", "sendhome") => Some(freecellSendHome(game))
-  | ("freecell", "finish") => Some(freecellFinish(game))
-  | _ => None
+// A named scenario as *data*: the `name` the URL/CLI address it by, a human
+// `label` for a picker (the web-app's debug "states" menu), and the pure `build`
+// that produces its `GameState` for a board. Collecting the set here — rather
+// than burying it in `forName`'s switch — gives a single source of truth a UI can
+// enumerate (`scenariosFor`) and a resolver can look up (`forName`) alike.
+type named = {
+  name: string,
+  label: string,
+  build: Game.t => GameState.t,
+}
+
+// FreeCell's scenarios, in menu order — the whole vocabulary `?state=` and the
+// CLI's `deal freecell <scenario>` expose. A new scenario slots in as a new
+// entry and is instantly reachable from both the URL and the debug menu.
+let freecellScenarios: array<named> = [
+  {
+    name: "midgame",
+    label: "Mid-game",
+    build: game => freecellMidgame(game, ~seed=Game.freecellSeed),
+  },
+  {name: "almost-won", label: "Almost won", build: freecellAlmostWon},
+  {name: "supermove", label: "Supermove", build: freecellSupermove},
+  {name: "sendhome", label: "Send home", build: freecellSendHome},
+  {name: "finish", label: "Finishable", build: freecellFinish},
+]
+
+// The named scenarios that apply to `game`, in menu order — empty for a board
+// with none (every demo but FreeCell today). This is what a picker enumerates.
+let scenariosFor = (game: Game.t): array<named> =>
+  switch game.id {
+  | "freecell" => freecellScenarios
+  | _ => []
   }
+
+// Resolve a scenario *name* to an initial state for `game`, or `None` when the
+// name doesn't apply to this board. Derived from `scenariosFor`, so the URL/CLI
+// vocabulary and the debug menu's list can never drift apart.
+let forName = (game: Game.t, name: string): option<GameState.t> =>
+  scenariosFor(game)->Array.find(s => s.name == name)->Option.map(s => s.build(game))

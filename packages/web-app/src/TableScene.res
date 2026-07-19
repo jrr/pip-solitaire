@@ -220,10 +220,17 @@ let doubleTapMoveTol = 12.
 // the very next move without rebuilding the board. Its `autoCollect` flag (on by
 // its `default`) sends every *safe* card home after an accepted move; the app's
 // menu owns this ref and rewrites it when the player flips the setting.
+//
+// `~publishLoadState` is the debug "states" hook (sibling to `~publishNewGame`):
+// on mount the scene hands the chrome a `GameState.t => unit` that rebuilds the
+// board into any forced position — the same `~initial` path a `?state=` scenario
+// takes, but reachable live from the menu instead of only at load. The debug-states
+// menu (see `DebugStates` / `Main`) calls it with a `Scenario` snapshot.
 let make = (
   ~initial: option<GameState.t>=?,
   ~newDeal: option<unit => Game.t>=?,
   ~publishNewGame: option<(unit => unit) => unit>=?,
+  ~publishLoadState: option<(GameState.t => unit) => unit>=?,
   ~options: ref<Options.t>=ref(Options.default),
   game: Game.t,
 ): Scene.t => {
@@ -990,6 +997,16 @@ let make = (
     switch (newDeal, publishNewGame) {
     | (Some(freshDeal), Some(publish)) => publish(() => buildBoard(freshDeal()))
     | _ => ()
+    }
+
+    // Publish the debug "states" loader: hand the chrome a thunk that rebuilds
+    // the board into a forced `GameState` — the debug-states menu drops the board
+    // straight into a named `Scenario` position through this, exactly as `~initial`
+    // does at load. Like a re-deal, `buildBoard` clears the host first, so the
+    // forced position replaces the current board cleanly.
+    switch publishLoadState {
+    | Some(publish) => publish(state => buildBoard(~initial=state, game))
+    | None => ()
     }
     container->WebDom.appendChild(boardHost)->ignore
 

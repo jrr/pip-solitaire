@@ -3,8 +3,11 @@
 //   - the **title** ("Sleight"), moved here from the retired Home scene;
 //   - the **scene list** — SceneSwitcher's row controls, spliced in as the
 //     `scenes` node. It leads with FreeCell (the game) as a top-level row and
-//     buries the debug/demo scenes inside a collapsible "Debug" group (#135), so
-//     the menu opens on the game with the demos tucked away but one tap out;
+//     buries the debug/demo scenes inside a collapsible "Debug scenes" group (#135),
+//     so the menu opens on the game with the demos tucked away but one tap out;
+//   - the **debug states** — a sibling collapsible group (`DebugStates`, spliced in
+//     as the `debugStates` node) listing the named starting positions a tap drops
+//     the board into (`Scenario`), the menu twin of the URL's `?state=`;
 //   - a **Settings** section (#139): the driver-preference toggles, starting with
 //     **Auto-collect** — a switch the player can flip mid-game, its state passed
 //     in as `autoCollect` and a click reported out through `onToggleAutoCollect`;
@@ -22,6 +25,7 @@ type props = {
   open_: bool,
   onClose: unit => unit,
   scenes: Html.element,
+  debugStates: Html.element,
   autoCollect: bool,
   onToggleAutoCollect: unit => unit,
   version: string,
@@ -33,6 +37,7 @@ let make = ({
   open_,
   onClose,
   scenes,
+  debugStates,
   autoCollect,
   onToggleAutoCollect,
   version,
@@ -53,6 +58,9 @@ let make = ({
         </button>
       </div>
       <nav className="menu-section" attrs={[("aria-label", "Scenes")]}> {Html.node(scenes)} </nav>
+      <nav className="menu-section" attrs={[("aria-label", "Debug states")]}>
+        {Html.node(debugStates)}
+      </nav>
       <div className="menu-section" attrs={[("aria-label", "Settings")]}>
         <h2 className="menu-section__heading"> {Html.string("Settings")} </h2>
         <button
