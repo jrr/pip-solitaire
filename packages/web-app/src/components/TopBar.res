@@ -23,9 +23,9 @@ let make = ({onMenu, onNewGame, updateVisible, onReload}) =>
     <button
       className="top-bar__button"
       onClick={_ => onMenu()}
-      attrs={[("type", "button"), ("aria-label", "Open menu")]}
+      attrs={[("type", "button"), ("aria-label", "Open menu"), ("title", "Menu")]}
     >
-      {Html.string("☰ Menu")}
+      {Html.string("☰")}
     </button>
     <button className="top-bar__button" onClick={_ => onNewGame()} attrs={[("type", "button")]}>
       {Html.string("New Game")}
@@ -40,7 +40,7 @@ let make = ({onMenu, onNewGame, updateVisible, onReload}) =>
         ("aria-label", "Undo — coming soon"),
       ]}
     >
-      {Html.string("↶ Undo")}
+      {Html.string("↶")}
     </button>
     <UpdateButton visible={updateVisible} onReload={onReload} />
   </header>
