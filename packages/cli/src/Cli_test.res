@@ -137,7 +137,7 @@ describe("Repl.run", () => {
         switch afterMove {
         | Some(s) =>
           // The foundation now shows the Two, though only the Ace was played by hand.
-          expect(GameState.topOf(s.state, 0))->toEqual(Some({suit: Hearts, rank: Two}))
+          expect(GameState.topOf(Repl.stateOf(s), 0))->toEqual(Some({suit: Hearts, rank: Two}))
         | None => expect(true)->toBe(false)
         }
       },
@@ -153,8 +153,8 @@ describe("Repl.run", () => {
         let (afterMove, _) = Repl.step(~options=off, dealt, "move AH 0")
         switch afterMove {
         | Some(s) =>
-          expect(GameState.topOf(s.state, 0))->toEqual(Some({suit: Hearts, rank: Ace}))
-          expect(GameState.locationOf(s.state, {suit: Hearts, rank: Two}))->toEqual(
+          expect(GameState.topOf(Repl.stateOf(s), 0))->toEqual(Some({suit: Hearts, rank: Ace}))
+          expect(GameState.locationOf(Repl.stateOf(s), {suit: Hearts, rank: Two}))->toEqual(
             Some(GameState.Loose),
           )
         | None => expect(true)->toBe(false)
@@ -173,6 +173,60 @@ describe("Repl.run", () => {
     expect(has(Repl.run(["deal stacking", "move AS 99"]), "no such pile"))->toBe(true)
     // The King of Diamonds isn't dealt anywhere in the stacking demo.
     expect(has(Repl.run(["deal stacking", "move KD 0"]), "isn't in play"))->toBe(true)
+  })
+
+  // Undo/redo (#85): a move can be stepped back and replayed. Driven through the
+  // same scripted loop, checking the board's present state after each step.
+  describe("undo / redo", () => {
+    // Play the Ace of Spades onto pile 0, undo it, and confirm the pile is empty
+    // again and the Ace is back loose — the prior state restored exactly.
+    test(
+      "undo restores the board before the last move",
+      () => {
+        let (dealt, _) = Repl.step(~options=Options.default, None, "deal stacking")
+        let (moved, _) = Repl.step(~options=Options.default, dealt, "move AS 0")
+        switch moved {
+        | Some(s) =>
+          expect(GameState.topOf(Repl.stateOf(s), 0))->toEqual(Some({suit: Spades, rank: Ace}))
+        | None => expect(true)->toBe(false)
+        }
+        let (undone, _) = Repl.step(~options=Options.default, moved, "undo")
+        switch undone {
+        | Some(s) =>
+          expect(GameState.topOf(Repl.stateOf(s), 0))->toEqual(None)
+          expect(GameState.locationOf(Repl.stateOf(s), {suit: Spades, rank: Ace}))->toEqual(
+            Some(GameState.Loose),
+          )
+        | None => expect(true)->toBe(false)
+        }
+        // Redo replays the very move that was undone.
+        let (redone, _) = Repl.step(~options=Options.default, undone, "redo")
+        switch redone {
+        | Some(s) =>
+          expect(GameState.topOf(Repl.stateOf(s), 0))->toEqual(Some({suit: Spades, rank: Ace}))
+        | None => expect(true)->toBe(false)
+        }
+      },
+    )
+
+    test(
+      "undo/redo at the ends of the history are reported no-ops",
+      () => {
+        // Nothing played yet: there's nothing to undo or redo.
+        expect(has(Repl.run(["deal stacking", "undo"]), "Nothing to undo"))->toBe(true)
+        expect(has(Repl.run(["deal stacking", "redo"]), "Nothing to redo"))->toBe(true)
+      },
+    )
+
+    test(
+      "a fresh move after an undo clears the redo branch",
+      () => {
+        // Play the Ace, undo it, then play it elsewhere: the undone move can no longer
+        // be redone.
+        let script = ["deal stacking", "move AS 0", "undo", "move AS 1", "redo"]
+        expect(has(Repl.run(script), "Nothing to redo"))->toBe(true)
+      },
+    )
   })
 
   // `#` comments let the piped example scripts (packages/cli/examples/) document

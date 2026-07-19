@@ -220,10 +220,20 @@ let doubleTapMoveTol = 12.
 // the very next move without rebuilding the board. Its `autoCollect` flag (on by
 // its `default`) sends every *safe* card home after an accepted move; the app's
 // menu owns this ref and rewrites it when the player flips the setting.
+//
+// `~publishUndo` / `~publishRedo` hand the top bar (#109) the board's undo/redo
+// actions (#85), exactly as `~publishNewGame` does the re-deal: each is a thunk
+// that pops (or replays) the board's `History` and reflows, republished on every
+// (re)build so it targets the current board. `~onHistoryChange` reports
+// `(canUndo, canRedo)` after every move, undo, redo and fresh deal, so the chrome
+// can enable or disable those controls to match the history.
 let make = (
   ~initial: option<GameState.t>=?,
   ~newDeal: option<unit => Game.t>=?,
   ~publishNewGame: option<(unit => unit) => unit>=?,
+  ~publishUndo: option<(unit => unit) => unit>=?,
+  ~publishRedo: option<(unit => unit) => unit>=?,
+  ~onHistoryChange: option<(bool, bool) => unit>=?,
   ~options: ref<Options.t>=ref(Options.default),
   game: Game.t,
 ): Scene.t => {
@@ -310,6 +320,18 @@ let make = (
       // layout from it. Drops dispatch reducer actions and adopt the returned state;
       // the view keeps only transient geometry (below).
       let state = ref(initial->Option.getOr(GameState.initial(game)))
+
+      // The undo/redo history over that state (#85): `state` is always the
+      // history's present, and every accepted move records the settled board here so
+      // it can be stepped back to. A fresh build starts a clean history — a re-deal
+      // has nothing to undo. `notifyHistory` reports whether undo/redo are available
+      // so the top bar can enable its controls (below).
+      let history = ref(History.make(state.contents))
+      let notifyHistory = () =>
+        switch onHistoryChange {
+        | Some(f) => f(History.canUndo(history.contents), History.canRedo(history.contents))
+        | None => ()
+        }
 
       // The DOM node for each model card, so a pile derived from `state` (structural
       // `{suit, rank}` cards) lays out onto the *same* elements every reflow — the
@@ -461,6 +483,32 @@ let make = (
           let (collected, _moved) = Reducer.autoCollect(~game, state.contents)
           state := collected
         }
+
+      // Record the current (settled) board onto the undo history (#85), then report
+      // the new undo/redo availability. Called once per accepted move, *after*
+      // auto-collect, so a move and the safe cards it swept home undo together as one
+      // unit. A rejected move never reaches here, so only real changes are undoable.
+      let recordHistory = () => {
+        history := History.record(history.contents, state.contents)
+        notifyHistory()
+      }
+
+      // Step the board back (undo) or forward (redo) through the history and reflow
+      // every pile from the restored state. Both are no-ops at the ends of the
+      // history (`History.undo`/`redo` return it unchanged), so the top bar can leave
+      // its buttons enabled without a guard here; `notifyHistory` keeps them in step.
+      let doUndo = () => {
+        history := History.undo(history.contents)
+        state := History.present(history.contents)
+        reflowAll()
+        notifyHistory()
+      }
+      let doRedo = () => {
+        history := History.redo(history.contents)
+        state := History.present(history.contents)
+        reflowAll()
+        notifyHistory()
+      }
 
       // The win overlay (#121): a dimmed panel over the board announcing the win,
       // with a New Game button to play on. Shown when a move completes every
@@ -670,6 +718,7 @@ let make = (
               | Ok(next) =>
                 state := next
                 autoCollectIfEnabled()
+                recordHistory()
                 reflowAll()
                 if GameState.hasWon(game, state.contents) {
                   showWin()
@@ -712,6 +761,9 @@ let make = (
               // Auto-collect any now-safe cards (#125) before the reflow, so the
               // whole cascade settles in one pass; gated by the option.
               autoCollectIfEnabled()
+              // Record the settled board onto the undo history (#85) — the move and
+              // any collection it triggered together, as one undoable step.
+              recordHistory()
               reflowAll()
 
               // A move that completes every foundation ends the game (#121): raise
@@ -924,6 +976,19 @@ let make = (
         boardHost->WebDom.appendChild(caption)->ignore
       | None => ()
       }
+
+      // Hand the top bar this board's undo/redo actions (#85). Republished on every
+      // (re)build so the thunks target the *current* board's history/state, and a
+      // `notifyHistory` resets the controls to "nothing to undo" for the fresh deal.
+      switch publishUndo {
+      | Some(publish) => publish(doUndo)
+      | None => ()
+      }
+      switch publishRedo {
+      | Some(publish) => publish(doRedo)
+      | None => ()
+      }
+      notifyHistory()
     }
 
     // Publish the re-deal to the chrome (#109). When the game is re-dealable

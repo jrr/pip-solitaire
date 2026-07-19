@@ -1731,3 +1731,81 @@ describe("Options", () => {
     expect(Options.default.autoCollect)->toBe(true)
   })
 })
+
+// Undo/redo history (#85): a stack of prior `GameState` values, with undo a pop.
+// Exercised over a tiny hand-built board — an Ace-only foundation then an
+// alternating tableau, free drops allowed — so the moves under test are legible.
+describe("History", () => {
+  let game: Game.t = {
+    id: "hist",
+    name: "Hist",
+    piles: [
+      {role: Foundation, stacking: Squared, rule: Rules.foundation, capacity: None, cards: []},
+      {role: Cascade, stacking: Fanned, rule: Rules.tableau, capacity: None, cards: []},
+    ],
+    free: true,
+    loose: [{suit: Hearts, rank: Ace}, {suit: Hearts, rank: Two}],
+    caption: None,
+  }
+  // A fresh opening state per assertion, so an undo's "prior state exactly" can be
+  // compared against a clean rebuild of the deal.
+  let start = () => GameState.initial(game)
+  // Apply an action, keeping the history unchanged on a rejected move.
+  let apply = (h, action) =>
+    switch History.apply(~game, h, action) {
+    | Ok(h') => h'
+    | Error(_) => h
+    }
+
+  test("a fresh history has nothing to undo or redo", () => {
+    let h = History.make(start())
+    expect(History.canUndo(h))->toBe(false)
+    expect(History.canRedo(h))->toBe(false)
+    expect(History.present(h))->toEqual(start())
+  })
+
+  test("apply records an accepted move, and undo returns the prior state exactly", () => {
+    let h0 = History.make(start())
+    let h1 = apply(h0, Move({card: {suit: Hearts, rank: Ace}, to: ToPile(0)}))
+    // The move landed and is now undoable.
+    expect(History.present(h1)->GameState.topOf(0))->toEqual(Some({suit: Hearts, rank: Ace}))
+    expect(History.canUndo(h1))->toBe(true)
+    // Undo restores the opening state exactly — the Ace back loose, the pile empty.
+    let h2 = History.undo(h1)
+    expect(History.present(h2))->toEqual(start())
+    expect(History.canUndo(h2))->toBe(false)
+    // …and the undone move can be replayed forward.
+    expect(History.canRedo(h2))->toBe(true)
+    expect(History.present(History.redo(h2)))->toEqual(History.present(h1))
+  })
+
+  test("a rejected action records nothing", () => {
+    let h0 = History.make(start())
+    // Hearts Two can't open the empty foundation — rejected, so history is unchanged.
+    switch History.apply(~game, h0, Move({card: {suit: Hearts, rank: Two}, to: ToPile(0)})) {
+    | Ok(_) => expect(true)->toBe(false)
+    | Error(err) => expect(err)->toEqual(Reducer.Rejected)
+    }
+    expect(History.canUndo(h0))->toBe(false)
+  })
+
+  test("undo or redo past the ends of the history is a no-op", () => {
+    let h = History.make(start())
+    expect(History.present(History.undo(h)))->toEqual(start())
+    expect(History.present(History.redo(h)))->toEqual(start())
+    expect(History.canUndo(History.undo(h)))->toBe(false)
+  })
+
+  test("a new action after an undo clears the redo future", () => {
+    let h0 = History.make(start())
+    // Play the Ace home, then undo — the Ace move is now redoable.
+    let h1 = apply(h0, Move({card: {suit: Hearts, rank: Ace}, to: ToPile(0)}))
+    let h2 = History.undo(h1)
+    expect(History.canRedo(h2))->toBe(true)
+    // A fresh move from there abandons the redo branch: play the Ace onto the
+    // tableau instead, and now there's nothing to redo.
+    let h3 = apply(h2, Move({card: {suit: Hearts, rank: Ace}, to: ToPile(1)}))
+    expect(History.canRedo(h3))->toBe(false)
+    expect(History.present(h3)->GameState.topOf(1))->toEqual(Some({suit: Hearts, rank: Ace}))
+  })
+})

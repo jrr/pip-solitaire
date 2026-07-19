@@ -56,6 +56,8 @@ type model = {
   updateAvailable: bool,
   menuOpen: bool,
   autoCollect: bool,
+  canUndo: bool,
+  canRedo: bool,
 }
 
 type msg =
@@ -65,6 +67,7 @@ type msg =
   | ToggleMenu // the top bar's Menu button
   | CloseMenu // backdrop / close button / a scene row was tapped
   | ToggleAutoCollect // the menu's Auto-collect switch (#139)
+  | HistoryChanged(bool, bool) // the board's (canUndo, canRedo) after a move/undo/redo (#85)
 
 // `updateSW` only exists once registerSW has run, which needs `dispatch`, which
 // needs the loop to be mounted — so the Reload effect reaches it through a ref
@@ -77,6 +80,21 @@ let updateSW: ref<option<bool => promise<unit>>> = ref(None)
 // button runs whatever is current. Only FreeCell publishes one today, so on a
 // debug scene the button is a harmless no-op.
 let newGameHook: ref<option<unit => unit>> = ref(None)
+
+// The active scene's Undo / Redo actions (#85), published by the mounted board the
+// same way as its New Game action: the scene fills these on mount (and each
+// re-deal), the switcher's `onActivate` clears them before a scene change, and the
+// top bar's Undo/Redo buttons run whatever is current. Only the game boards
+// publish them; on a demo scene the buttons are harmless no-ops (and disabled —
+// see `historyChanged`).
+let undoHook: ref<option<unit => unit>> = ref(None)
+let redoHook: ref<option<unit => unit>> = ref(None)
+
+// The board reports its undo/redo availability through this after every move, undo,
+// redo and fresh deal (see `gameScene` → `TableScene`), so the top bar can enable or
+// disable its Undo/Redo buttons to match. Like `closeMenu`, it's an imperative
+// callback the board holds, filled in with a `dispatch` just after mount.
+let historyChanged: ref<(bool, bool) => unit> = ref((_, _) => ())
 
 // Closing the menu means dispatching into the loop, but a scene row is an
 // imperative listener built before `dispatch` exists (like `updateSW`). It
@@ -95,6 +113,7 @@ let update = (msg, model) =>
   | OfflineReady => ({...model, offlineReady: true}, Html.noEffect)
   | UpdateAvailable => ({...model, updateAvailable: true}, Html.noEffect)
   | ToggleMenu => ({...model, menuOpen: !model.menuOpen}, Html.noEffect)
+  | HistoryChanged(canUndo, canRedo) => ({...model, canUndo, canRedo}, Html.noEffect)
   | CloseMenu =>
     model.menuOpen ? ({...model, menuOpen: false}, Html.noEffect) : (model, Html.noEffect)
   | ToggleAutoCollect =>
@@ -149,6 +168,9 @@ let gameScene = (game: Game.t) => {
     ~initial=?url.state->Option.flatMap(name => Scenario.forName(game, name)),
     ~newDeal?,
     ~publishNewGame=hook => newGameHook := Some(hook),
+    ~publishUndo=hook => undoHook := Some(hook),
+    ~publishRedo=hook => redoHook := Some(hook),
+    ~onHistoryChange=(canUndo, canRedo) => historyChanged.contents(canUndo, canRedo),
     ~options,
     game,
   )
@@ -160,6 +182,11 @@ let switcher = SceneSwitcher.render(
   // scene republishes it if re-dealable) and close the menu after a row tap.
   ~onActivate=_scene => {
     newGameHook := None
+    // A demo scene publishes no undo/redo, so clear the hooks and grey the buttons
+    // out; a game scene republishes them (and its history state) as it mounts.
+    undoHook := None
+    redoHook := None
+    historyChanged.contents(false, false)
     closeMenu.contents()
   },
   Array.concat(
@@ -177,6 +204,18 @@ let view = (model, dispatch) => <>
         | Some(newGame) => newGame()
         | None => ()
         }}
+      onUndo={() =>
+        switch undoHook.contents {
+        | Some(undo) => undo()
+        | None => ()
+        }}
+      onRedo={() =>
+        switch redoHook.contents {
+        | Some(redo) => redo()
+        | None => ()
+        }}
+      canUndo={model.canUndo}
+      canRedo={model.canRedo}
       updateVisible={model.updateAvailable}
       onReload={() => dispatch(Reload)}
     />
@@ -218,6 +257,10 @@ let dispatch = Html.mount(
     // Mirror the persisted preference so the menu's switch opens in the right
     // position (the board reads the `options` ref directly).
     autoCollect: options.contents.autoCollect,
+    // A freshly-dealt board has nothing to undo or redo; the mounted board updates
+    // these through `historyChanged` after every move.
+    canUndo: false,
+    canRedo: false,
   },
   ~update,
   ~view,
@@ -225,6 +268,10 @@ let dispatch = Html.mount(
 
 // Now that `dispatch` exists, let a scene row close the menu through it.
 closeMenu := (() => dispatch(CloseMenu))
+
+// Now that `dispatch` exists, let the board's history updates drive the top bar's
+// Undo/Redo enabled state (#85).
+historyChanged := ((canUndo, canRedo) => dispatch(HistoryChanged(canUndo, canRedo)))
 
 // Now that `dispatch` exists, register the worker and let its callbacks drive
 // the loop. Stash the returned updater so the Reload message can reach it.

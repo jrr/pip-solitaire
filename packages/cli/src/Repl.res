@@ -5,10 +5,11 @@
 // keeps the whole loop headless and scriptable: `Cli.res` wires it to a terminal
 // (see there), while tests drive `run` over a canned script and assert the echo.
 //
-// The command surface, deliberately small and leaving room for `undo` (#-next):
+// The command surface, deliberately small:
 //   deal <game>          start (or restart) a game — GameState.initial
 //   move <card> <pile>   dispatch a Move onto pile <index>, printing the result
 //   move <card> table    dispatch a Move loose onto the table (free games only)
+//   undo / redo          step back / forward through the accepted-move history (#85)
 //   print                re-print the current board
 //   games                list the available games
 //   help                 show this command surface
@@ -22,9 +23,14 @@
 
 open Card
 
-// What the driver is doing right now: which game is in play and where every card
-// rests. `None` before the first `deal`.
-type session = {game: Game.t, state: GameState.t}
+// What the driver is doing right now: which game is in play and the *history* of
+// where every card rests (#85). The live board is `History.present(history)`; the
+// prior states behind it are what `undo` steps back through. `None` before the
+// first `deal`.
+type session = {game: Game.t, history: History.t<GameState.t>}
+
+// The live board of a session — the present state its history holds.
+let stateOf = (s: session): GameState.t => History.present(s.history)
 
 // Split a command line into whitespace-separated tokens, dropping the empties
 // that repeated or trailing spaces would leave.
@@ -65,6 +71,8 @@ let help = () =>
   move <card> table    move a card loose onto the table (free games only)
   moverun <card>… <pile>  supermove an ordered run, cards bottom-first (e.g. moverun 8H 7S 6H 5)
   home <card>          send a card to its foundation, if one will take it (e.g. home AS)
+  undo                 step back to the board before the last move
+  redo                 replay a move you undid
   print                re-print the current board
   games                list the available games
   help                 show this help
@@ -74,20 +82,21 @@ Cards are named by identity (AS, TH, KD); piles by index.
 Games:
 ${gamesList()}`
 
-// The board for a live session — the shared renderer over its snapshot.
-let renderBoard = (s: session): string => Render.stateBoard(~game=s.game, s.state)
+// The board for a live session — the shared renderer over its present snapshot.
+let renderBoard = (s: session): string => Render.stateBoard(~game=s.game, stateOf(s))
 
 // After an accepted move, run safe auto-collect (#125) when the option is on,
-// adopting the settled state; `autoCollect: false` leaves the state exactly as the
-// reducer returned it — the exact no-op path. Shared by `move` and `moveRun`, and
+// returning the settled state to record; `autoCollect: false` returns the reducer's
+// result untouched — the exact no-op path. Shared by `move` and `moveRun`, and
 // applied *before* the win check so a collection that plays the final cards still
-// trips the win line (#121).
-let afterMove = (~options: Options.t, s: session): session =>
+// trips the win line (#121). The settled state is what the caller records into
+// history, so a move and the collection it triggered undo together as one unit.
+let settle = (~options: Options.t, ~game: Game.t, state: GameState.t): GameState.t =>
   if options.autoCollect {
-    let (collected, _moved) = Reducer.autoCollect(~game=s.game, s.state)
-    {...s, state: collected}
+    let (collected, _moved) = Reducer.autoCollect(~game, state)
+    collected
   } else {
-    s
+    state
   }
 
 // Start (or restart) a game by id, printed. With an optional scenario name, open
@@ -100,12 +109,12 @@ let deal = (id: string, scenario: option<string>): (option<session>, string) =>
   | Some(game) =>
     switch scenario {
     | None =>
-      let s = {game, state: GameState.initial(game)}
+      let s = {game, history: History.make(GameState.initial(game))}
       (Some(s), renderBoard(s))
     | Some(name) =>
       switch Scenario.forName(game, name) {
       | Some(state) =>
-        let s = {game, state}
+        let s = {game, history: History.make(state)}
         (Some(s), renderBoard(s))
       | None => (None, `Unknown scenario "${name}" for ${id}.`)
       }
@@ -124,13 +133,14 @@ let move = (~options: Options.t, s: session, cardTok: string, targetTok: string)
   | (None, _) => (Some(s), `Not a card: "${cardTok}" (try AS, TH, KD).`)
   | (_, None) => (Some(s), `Not a pile: "${targetTok}" (an index, or "table").`)
   | (Some(card), Some(target)) =>
-    switch Reducer.reduce(~game=s.game, s.state, Move({card, to: target})) {
+    switch Reducer.reduce(~game=s.game, stateOf(s), Move({card, to: target})) {
     | Ok(next) =>
-      let s' = afterMove(~options, {...s, state: next})
+      let settled = settle(~options, ~game=s.game, next)
+      let s' = {...s, history: History.record(s.history, settled)}
       let board = renderBoard(s')
       // A move that completes every foundation ends the game (#121): print the win
       // line beneath the board that shows the final card in place.
-      let text = GameState.hasWon(s'.game, s'.state)
+      let text = GameState.hasWon(s'.game, stateOf(s'))
         ? `${board}\n\n🎉 You win! Every foundation is complete. \`deal\` to play again.`
         : board
       (Some(s'), text)
@@ -153,11 +163,12 @@ let moveRun = (~options: Options.t, s: session, cardToks: array<string>, targetT
   | (_, None) => (Some(s), `Not a pile: "${targetTok}" (an index, or "table").`)
   | (false, Some(target)) =>
     let cards = parsed->Array.filterMap(c => c)
-    switch Reducer.reduce(~game=s.game, s.state, MoveRun({cards, to: target})) {
+    switch Reducer.reduce(~game=s.game, stateOf(s), MoveRun({cards, to: target})) {
     | Ok(next) =>
-      let s' = afterMove(~options, {...s, state: next})
+      let settled = settle(~options, ~game=s.game, next)
+      let s' = {...s, history: History.record(s.history, settled)}
       let board = renderBoard(s')
-      let text = GameState.hasWon(s'.game, s'.state)
+      let text = GameState.hasWon(s'.game, stateOf(s'))
         ? `${board}\n\n🎉 You win! Every foundation is complete. \`deal\` to play again.`
         : board
       (Some(s'), text)
@@ -178,7 +189,7 @@ let home = (~options: Options.t, s: session, cardTok: string): (option<session>,
   switch CardText.parse(cardTok) {
   | None => (Some(s), `Not a card: "${cardTok}" (try AS, TH, KD).`)
   | Some(card) =>
-    switch Reducer.foundationTarget(~game=s.game, s.state, card) {
+    switch Reducer.foundationTarget(~game=s.game, stateOf(s), card) {
     | Some(i) => move(~options, s, cardTok, Int.toString(i))
     | None => (Some(s), `No foundation is ready for ${CardText.format(card)}.`)
     }
@@ -203,9 +214,25 @@ let step = (~options: Options.t, session: option<session>, line: string): (
     | Some(id) => deal(id, toks->Array.get(2))
     | None => (session, "Usage: deal <game> [scenario]\n\n" ++ gamesList())
     }
-  // `undo` isn't implemented yet (next issue); recognise it so the verb is
-  // reserved and users get a clear answer rather than "unknown command".
-  | (Some("undo"), _) => (session, "Undo isn't available yet.")
+  // Step back (or forward) through the history of accepted moves (#85). Undo pops
+  // the prior state and re-prints it; redo replays a move undo stepped out of. Both
+  // are no-ops at the ends of the history, reported rather than silently ignored.
+  | (Some("undo"), Some(s)) =>
+    if History.canUndo(s.history) {
+      let s' = {...s, history: History.undo(s.history)}
+      (Some(s'), renderBoard(s'))
+    } else {
+      (Some(s), "Nothing to undo.")
+    }
+  | (Some("undo"), None) => (session, "Deal a game first (try `deal freecell`).")
+  | (Some("redo"), Some(s)) =>
+    if History.canRedo(s.history) {
+      let s' = {...s, history: History.redo(s.history)}
+      (Some(s'), renderBoard(s'))
+    } else {
+      (Some(s), "Nothing to redo.")
+    }
+  | (Some("redo"), None) => (session, "Deal a game first (try `deal freecell`).")
   | (Some("print"), Some(s)) | (Some("board"), Some(s)) | (Some("show"), Some(s)) => (
       session,
       renderBoard(s),
