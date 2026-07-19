@@ -1,9 +1,10 @@
 // The menu (#109): a slide-over overlay opened from the top bar's Menu button,
 // holding everything that isn't day-to-day play. Top to bottom:
 //   - the **title** ("Sleight"), moved here from the retired Home scene;
-//   - the **scene list** — the debug/demo scenes as tappable rows, spliced in as
-//     the `scenes` node (SceneSwitcher's row controls); FreeCell is a row too, so
-//     you can return to the game after visiting a debug scene;
+//   - the **scene list** — SceneSwitcher's row controls, spliced in as the
+//     `scenes` node. It leads with FreeCell (the game) as a top-level row and
+//     buries the debug/demo scenes inside a collapsible "Debug" group (#135), so
+//     the menu opens on the game with the demos tucked away but one tap out;
 //   - (a spot is left here for a future rules reference — not built yet);
 //   - the **version info** (`<VersionBadge>`, folded in from the old bottom-right
 //     badge).
@@ -37,10 +38,7 @@ let make = ({open_, onClose, scenes, version, buildTime, offlineReady}) =>
           {Html.string("✕")}
         </button>
       </div>
-      <nav className="menu-section" attrs={[("aria-label", "Scenes")]}>
-        <h2 className="menu-section__label"> {Html.string("Scenes")} </h2>
-        {Html.node(scenes)}
-      </nav>
+      <nav className="menu-section" attrs={[("aria-label", "Scenes")]}> {Html.node(scenes)} </nav>
       <div className="menu-footer">
         <VersionBadge version={version} buildTime={buildTime} offlineReady={offlineReady} />
       </div>
