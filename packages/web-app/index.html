@@ -93,10 +93,21 @@
            "the drag scrolled the page" (in-bounds scrolling, e.g. the tall card
            gallery, is unaffected; the tradeoff is Android-in-a-tab pull-to-
            refresh, acceptable for a standalone-first app — see #112). The
-           transparent tap highlight removes iOS's grey tap flash on controls. */
+           transparent tap highlight removes iOS's grey tap flash on controls.
+
+           The selection locks are app-wide, not scoped to the playfield: a fast
+           card drag strays off the stage and onto the chrome (the Undo button in
+           #113's follow-up), where iOS would otherwise latch onto the button text
+           and pop the "Copy / Look Up" callout mid-drag. `user-select: none`
+           blocks the text grab and `-webkit-touch-callout: none` suppresses the
+           long-press menu everywhere; the one place that genuinely wants
+           selection (the build string, #version-badge) opts back in below. */
         touch-action: manipulation;
         overscroll-behavior: none;
         -webkit-tap-highlight-color: transparent;
+        -webkit-user-select: none;
+        user-select: none;
+        -webkit-touch-callout: none;
       }
 
       body {
@@ -440,10 +451,9 @@
          cover the *whole* stage, not just the cards (#113): `touch-action: none`
          so a drag that starts or strays onto the bare background, a drop zone or
          a caption still moves cards without scrolling the page or firing a
-         browser gesture; `user-select: none` so those same strays can't select
-         text mid-drag (scoped here on purpose — the version badge and taglines
-         stay selectable); `-webkit-touch-callout: none` to suppress iOS's
-         long-press "Copy / Save Image" callout on the SVG cards.
+         browser gesture. This one must stay scoped — a page-wide `touch-action:
+         none` would kill scrolling in the menu and card gallery — whereas the
+         selection/callout locks are now app-wide on <body> (see there).
 
          No box of its own — it grows to fill the scene band (`flex: 1`, full
          width) rather than sitting in a fixed, bordered rectangle, so the cards
@@ -455,9 +465,6 @@
         width: 100%;
         min-height: 300px;
         touch-action: none;
-        -webkit-user-select: none;
-        user-select: none;
-        -webkit-touch-callout: none;
       }
 
       /* The role-grouped rows of drop zones (#94/#97), pinned to the top of the
@@ -651,6 +658,13 @@
         padding: 2px 0;
         font: 11px/1.4 "Libre Franklin", sans-serif;
         color: #64748b;
+        /* The lone opt-out of the app-wide selection lock (see <body>): the build
+           string stays selectable so it can be copied. It lives inside the menu
+           overlay, out of any drag's reach, so re-enabling selection here can't
+           be caught by a stray card drag. */
+        -webkit-user-select: text;
+        user-select: text;
+        -webkit-touch-callout: default;
       }
 
       /* The conditional "update available" control, folded into the top bar (#109)
