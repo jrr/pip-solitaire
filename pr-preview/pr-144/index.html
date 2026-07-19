@@ -1,0 +1,835 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <!-- Deliberately no `maximum-scale=1` / `user-scalable=no`: pinch-to-zoom is
+         kept, both for accessibility and because it's wanted (#113). Double-tap
+         zoom is instead disabled app-wide via `touch-action: manipulation` on
+         `html, body` (below), which suppresses double-tap-to-zoom while still
+         permitting pinch. Flipping pinch off later would be a one-line change
+         here. -->
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Sleight</title>
+
+    <!-- PWA. vite-plugin-pwa injects the <link rel="manifest"> at build time.
+         The tags below are the bits the manifest can't cover: theme color for
+         the browser/OS chrome, and iOS's own install metadata (iOS ignores much
+         of the manifest and never fires an install prompt). Icon/href paths are
+         relative so they inherit the GitHub Pages project subpath. -->
+    <meta name="theme-color" content="#166534" />
+    <!-- Prefer the scalable SVG (generated from the real card art); the PNG is
+         the fallback for browsers that don't take an SVG favicon. -->
+    <link rel="icon" type="image/svg+xml" href="./icon.svg" />
+    <link rel="icon" type="image/png" href="./icon-192.png" />
+    <link rel="apple-touch-icon" href="./apple-touch-icon.png" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Sleight" />
+
+    <!-- App styling. Kept as one inline stylesheet (no framework, no build step)
+         to match the minimal DOM approach in src/Main.res. The key usability fix
+         is padding the page by the `env(safe-area-inset-*)` values: with the
+         translucent iOS status bar above, content would otherwise render *under*
+         the clock/notch and the home indicator. Colors track the PWA manifest
+         (background #0b1220, accent green #166534) so the web page, the OS chrome
+         and the installed splash all look like one app. -->
+    <style>
+      /* Self-hosted, precached webfonts (issue #114): the app's type no longer
+         depends on the platform's installed fonts. Both faces are OFL and shipped
+         same-origin from ./fonts (vendored by `mise run fonts`, precached by the
+         PWA — see vite.config.js), so they render identically everywhere and on a
+         first offline launch, with no cross-origin CDN fetch.
+
+           Libre Franklin — chrome (400) and the card rank labels (600).
+           Sleight Suits  — the four card pips ♠ ♣ ♥ ♦, a merged subset of IBM
+                            Plex Sans JP scoped to those code points.
+
+         `font-display: swap` renders text immediately in the fallback and swaps
+         the webface in when it loads (moot once precached, but correct on the
+         very first, still-online visit). */
+      @font-face {
+        font-family: "Libre Franklin";
+        font-style: normal;
+        font-weight: 400;
+        font-display: swap;
+        src: url("./fonts/libre-franklin-400.woff2") format("woff2");
+      }
+      @font-face {
+        font-family: "Libre Franklin";
+        font-style: normal;
+        font-weight: 600;
+        font-display: swap;
+        src: url("./fonts/libre-franklin-600.woff2") format("woff2");
+      }
+      @font-face {
+        font-family: "Sleight Suits";
+        font-style: normal;
+        font-weight: 400;
+        font-display: swap;
+        src: url("./fonts/sleight-suits.woff2") format("woff2");
+        /* ♠ U+2660 · ♣ U+2663 · ♥ U+2665 · ♦ U+2666 — the only glyphs it carries. */
+        unicode-range: U+2660, U+2663, U+2665, U+2666;
+      }
+
+      :root {
+        color-scheme: dark;
+      }
+
+      *,
+      *::before,
+      *::after {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        margin: 0;
+        /* Native-app touch behaviour (#113). `manipulation` kills double-tap-to-
+           zoom (and the legacy 300ms tap delay) app-wide — iOS intersects
+           `touch-action` down the ancestor chain, so a root value covers every
+           descendant — while still permitting pinch-zoom. `overscroll-behavior:
+           none` stops the rubber-band bounce / scroll-chaining that reads as
+           "the drag scrolled the page" (in-bounds scrolling, e.g. the tall card
+           gallery, is unaffected; the tradeoff is Android-in-a-tab pull-to-
+           refresh, acceptable for a standalone-first app — see #112). The
+           transparent tap highlight removes iOS's grey tap flash on controls.
+
+           The selection locks are app-wide, not scoped to the playfield: a fast
+           card drag strays off the stage and onto the chrome (the Undo button in
+           #113's follow-up), where iOS would otherwise latch onto the button text
+           and pop the "Copy / Look Up" callout mid-drag. `user-select: none`
+           blocks the text grab and `-webkit-touch-callout: none` suppresses the
+           long-press menu everywhere; the one place that genuinely wants
+           selection (the build string, #version-badge) opts back in below. */
+        touch-action: manipulation;
+        overscroll-behavior: none;
+        -webkit-tap-highlight-color: transparent;
+        -webkit-user-select: none;
+        user-select: none;
+        -webkit-touch-callout: none;
+      }
+
+      body {
+        min-height: 100dvh;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        text-align: center;
+        background: radial-gradient(130% 120% at 50% 0%, #13233b 0%, #0b1220 60%);
+        color: #e2e8f0;
+        font-family: "Libre Franklin", sans-serif;
+        font-weight: 400;
+        -webkit-font-smoothing: antialiased;
+        /* Clear the notch/status bar and home indicator on every edge. The
+           vertical padding is kept tight — just enough to sit the top bar below
+           the status bar — so the scene band can grow to fill nearly the whole
+           viewport. */
+        padding: calc(env(safe-area-inset-top) + 0.75rem)
+          calc(env(safe-area-inset-right) + 1.5rem)
+          calc(env(safe-area-inset-bottom) + 1.5rem)
+          calc(env(safe-area-inset-left) + 1.5rem);
+      }
+
+      /* The Elm loop's mount root (src/Main.res). `display: contents` removes it
+         from layout so #app stays a direct flex child of <body>, exactly as when
+         the chrome was built imperatively. */
+      #app-root {
+        display: contents;
+      }
+
+      /* #app fills the column so the header can sit at the top while the scene
+         stays centered in the space beneath it. Removing body's
+         `justify-content: center` (above) starts this stack at the top; the
+         header then hugs the top the way #version-badge hugs the bottom. */
+      #app {
+        flex: 1;
+        width: 100%;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+      }
+
+      /* Grows to fill the space under the picker; the shaded band stretches to
+         fill it (`align-items: stretch`) rather than shrink-wrapping its content.
+         Full-bleed: negative horizontal margins cancel the body's horizontal
+         padding (safe-area inset + 1.5rem) so the shaded band spans the page edge
+         to edge, rather than floating in a padded column (issue #59). */
+      #scene-area {
+        flex: 1;
+        align-self: stretch;
+        display: flex;
+        align-items: stretch;
+        margin-inline: calc(-1 * (env(safe-area-inset-left) + 1.5rem)) calc(
+            -1 * (env(safe-area-inset-right) + 1.5rem)
+          );
+      }
+
+      /* The shaded band behind the scene. A conventional full-width section:
+         edge-to-edge shading, horizontal rules top and bottom (no left/right
+         borders), and no corner radius (issue #59). It fills the whole scene
+         area and centers the active scene within it. */
+      #scene-box {
+        width: 100%;
+        /* padding: 1.5rem; */
+        border-top: 1px solid #22304a;
+        border-bottom: 1px solid #22304a;
+        background: rgba(19, 35, 59, 0.35);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+      }
+
+      /* The app's title, moved out of the retired Home scene into the menu header
+         (#109). Keeps the gradient wordmark it had as the greeting. */
+      .menu-title {
+        margin: 0;
+        font-size: 1.6rem;
+        font-weight: 700;
+        line-height: 1.15;
+        letter-spacing: -0.02em;
+        background: linear-gradient(180deg, #f0fdf4 0%, #86efac 100%);
+        -webkit-background-clip: text;
+        background-clip: text;
+        color: transparent;
+      }
+
+      /* The single top bar (#109): all chrome across the top, so the thumb arc at
+         the bottom stays clear for dragging cards. A full-width flex row of
+         controls; the Update button is pushed to the far right (below). Sits above
+         the scene band as the first child of #app. */
+      #top-bar {
+        align-self: stretch;
+        width: 100%;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        margin: 0 0 0.75rem;
+      }
+
+      /* The bar's buttons share the scene controls' look. `--reserved` (the Undo
+         stub, #85) is dimmed and non-interactive until its behaviour lands. */
+      .top-bar__button {
+        padding: 8px 14px;
+        font: 14px "Libre Franklin", sans-serif;
+        color: #f8fafc;
+        background: #1e293b;
+        border: 1px solid #334155;
+        border-radius: 8px;
+        cursor: pointer;
+      }
+
+      .top-bar__button--reserved,
+      .top-bar__button:disabled {
+        opacity: 0.45;
+        cursor: default;
+      }
+
+      /* The slide-over menu (#109): the title, the debug/demo scene rows, and the
+         version info. A full-screen overlay so it floats above the game; `hidden`
+         (set by the chrome model) collapses it entirely when closed. */
+      #menu-overlay {
+        position: fixed;
+        inset: 0;
+        z-index: 20;
+        display: flex;
+      }
+
+      #menu-overlay[hidden] {
+        display: none;
+      }
+
+      /* A dim backdrop behind the panel; clicking it closes the menu. */
+      .menu-overlay__backdrop {
+        position: absolute;
+        inset: 0;
+        background: rgba(2, 6, 16, 0.6);
+      }
+
+      /* The panel itself: a column that slides in from the left, tall enough to
+         scroll if the scene list grows. Clears the notch/safe areas at the top and
+         left the same way the body does. */
+      .menu-panel {
+        position: relative;
+        display: flex;
+        flex-direction: column;
+        gap: 1rem;
+        width: min(20rem, 82vw);
+        height: 100%;
+        padding: calc(env(safe-area-inset-top) + 1rem) 1.25rem
+          calc(env(safe-area-inset-bottom) + 1rem)
+          calc(env(safe-area-inset-left) + 1.25rem);
+        background: #0f1a2e;
+        border-right: 1px solid #22304a;
+        box-shadow: 2px 0 24px rgba(0, 0, 0, 0.45);
+        overflow-y: auto;
+        text-align: left;
+      }
+
+      .menu-panel__header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.75rem;
+      }
+
+      .menu-close {
+        padding: 4px 10px;
+        font: 16px "Libre Franklin", sans-serif;
+        color: #cbd5e1;
+        background: transparent;
+        border: 1px solid #334155;
+        border-radius: 8px;
+        cursor: pointer;
+      }
+
+      .menu-section {
+        display: flex;
+        flex-direction: column;
+        gap: 0.4rem;
+      }
+
+      /* A small muted heading for a menu section (the Settings group, #139), set
+         apart from the tappable rows below it. */
+      .menu-section__heading {
+        margin: 0 0 0.1rem;
+        font: 600 12px "Libre Franklin", sans-serif;
+        letter-spacing: 0.05em;
+        text-transform: uppercase;
+        color: #64748b;
+      }
+
+      /* A settings toggle row (#139): a full-width control styled like the scene
+         rows, with its label on the left and a switch track on the right. It's a
+         <button role="switch"> — the Html runtime only wires clicks, so the switch
+         is a plain button, not a checkbox — and toggling `--on` slides the knob and
+         greens the track, animated by the transitions below so a mid-game flip
+         reads. */
+      .menu-toggle {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.75rem;
+        width: 100%;
+        padding: 10px 12px;
+        font: 14px "Libre Franklin", sans-serif;
+        color: #e2e8f0;
+        background: #16233b;
+        border: 1px solid #22304a;
+        border-radius: 8px;
+        cursor: pointer;
+      }
+
+      /* The switch track; the knob is its ::after, parked left when off. */
+      .menu-toggle__switch {
+        position: relative;
+        flex: 0 0 auto;
+        width: 40px;
+        height: 22px;
+        background: #334155;
+        border-radius: 999px;
+        transition: background 0.15s ease;
+      }
+
+      .menu-toggle__switch::after {
+        content: "";
+        position: absolute;
+        top: 2px;
+        left: 2px;
+        width: 18px;
+        height: 18px;
+        background: #e2e8f0;
+        border-radius: 50%;
+        transition: transform 0.15s ease;
+      }
+
+      /* On: the accent-green track and the knob slid to the right. */
+      .menu-toggle--on .menu-toggle__switch {
+        background: #166534;
+      }
+
+      .menu-toggle--on .menu-toggle__switch::after {
+        transform: translateX(18px);
+        background: #f0fdf4;
+      }
+
+      /* The scene list: SceneSwitcher's row controls (#109), replacing the old
+         <select> picker. Each scene is a tappable row; the active scene is
+         highlighted so the menu shows where you are. */
+      #scene-menu {
+        display: flex;
+        flex-direction: column;
+        gap: 0.3rem;
+      }
+
+      .scene-menu__row {
+        width: 100%;
+        text-align: left;
+        padding: 10px 12px;
+        font: 14px "Libre Franklin", sans-serif;
+        color: #e2e8f0;
+        background: #16233b;
+        border: 1px solid #22304a;
+        border-radius: 8px;
+        cursor: pointer;
+      }
+
+      .scene-menu__row--active {
+        color: #f0fdf4;
+        background: #166534;
+        border-color: #22c55e;
+      }
+
+      /* The debug/demo scenes are tucked inside a collapsible "Debug" group (#135)
+         so the menu leads with the game (the FreeCell row above) instead of a long
+         list of demos. A native <details>, so the show/hide costs no JS and stays
+         keyboard-accessible. Sits in the row flow with the same gap as the rows. */
+      .scene-menu__group {
+        display: flex;
+        flex-direction: column;
+        gap: 0.3rem;
+      }
+
+      /* The "Debug" disclosure header, styled as a muted row like the ones it
+         hides, with a caret (below) as its open/closed affordance. */
+      .scene-menu__group-label {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 10px 12px;
+        font: 14px "Libre Franklin", sans-serif;
+        color: #94a3b8;
+        background: #16233b;
+        border: 1px solid #22304a;
+        border-radius: 8px;
+        cursor: pointer;
+        /* Drop the platform's default disclosure triangle in favour of our own
+           caret below: `list-style` covers Firefox's `::marker`, the WebKit
+           pseudo-element covers Safari/Chrome, so the marker looks the same
+           everywhere. */
+        list-style: none;
+      }
+
+      .scene-menu__group-label::-webkit-details-marker {
+        display: none;
+      }
+
+      /* Our own caret, rotating from ▸ (closed) to ▾ (open). */
+      .scene-menu__group-label::before {
+        content: "▸";
+        font-size: 0.8em;
+        color: #64748b;
+        transition: transform 0.15s ease;
+      }
+
+      .scene-menu__group[open] > .scene-menu__group-label::before {
+        transform: rotate(90deg);
+      }
+
+      /* The revealed debug rows, stacked with the same gap as the top-level list
+         and set off from the header by a small inset. */
+      .scene-menu__group-body {
+        display: flex;
+        flex-direction: column;
+        gap: 0.3rem;
+        padding-top: 0.3rem;
+      }
+
+      /* The version info sits at the bottom of the menu, pushed there so it always
+         hugs the panel's foot however short the scene list is. */
+      .menu-footer {
+        margin-top: auto;
+      }
+
+      /* Fills the scene band (`flex: 1`) and centers its scene within it, so a
+         scene that wants to grow — the stacking playfield — can stretch into the
+         whole area rather than shrink-wrapping to a fixed box. Scenes that don't
+         grow stay centered as before. */
+      #scene-container {
+        flex: 1;
+        width: 100%;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 0.75rem;
+      }
+
+      /* SVG demo scene (issue #35): the generated card and its control. The
+         card is a real inline <svg> rendered as vnodes by the Html runtime. */
+      .svg-card {
+        display: block;
+        /* filter: drop-shadow(0 6px 14px rgba(0, 0, 0, 0.35)); */
+      }
+
+      /* Card gallery scene (issue #36): the full 52-card deck, each a generated
+         inline <svg> from CardArt, laid out in a responsive grid. Cards size
+         themselves to the column via `width: 100%` and keep their 5:7 ratio from
+         the viewBox, so the grid stays legible as it reflows. */
+      .card-gallery {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(68px, 1fr));
+        gap: 0.6rem;
+        width: min(86vw, 620px);
+      }
+
+      .card-art {
+        display: block;
+        width: 100%;
+        height: auto;
+        /* border-radius: 8px; */
+        /* filter: drop-shadow(0 4px 10px rgba(0, 0, 0, 0.35)); */
+      }
+
+      /* The board host (TableScene.res): wraps the playfield (and caption) so a
+         New Game re-deal can rebuild just the board in place — the re-deal is now
+         driven from the top bar (#109), which stays put across the rebuild. It
+         fills the scene band and lets the playfield's `flex: 1` grow into it, so
+         the board still stretches exactly as when the playfield was a direct child
+         of the container. */
+      .table-board {
+        position: relative;
+        flex: 1;
+        width: 100%;
+        display: flex;
+        flex-direction: column;
+        align-items: stretch;
+      }
+
+      /* The win overlay (issue #121): shown over the board when every foundation
+         is complete. A dimmed scrim covering the whole board (`.table-board` is
+         the positioning context) with a centred panel announcing the win and a
+         New Game button to play on. Built imperatively in TableScene.res and torn
+         down with the board on the next deal. */
+      .win-overlay {
+        position: absolute;
+        inset: 0;
+        z-index: 1000;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: rgba(11, 18, 32, 0.7);
+        animation: win-overlay-in 0.2s ease-out;
+      }
+
+      @keyframes win-overlay-in {
+        from {
+          opacity: 0;
+        }
+        to {
+          opacity: 1;
+        }
+      }
+
+      .win-panel {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 16px;
+        padding: 28px 36px;
+        background: #0f172a;
+        border: 2px solid #eab308;
+        border-radius: 14px;
+        box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+        text-align: center;
+      }
+
+      .win-panel__title {
+        margin: 0;
+        font: 600 26px "Libre Franklin", sans-serif;
+        color: #eab308;
+      }
+
+      .win-panel__button {
+        padding: 10px 22px;
+        font: 600 16px "Libre Franklin", sans-serif;
+        color: #f8fafc;
+        background: #166534;
+        border: none;
+        border-radius: 8px;
+        cursor: pointer;
+      }
+
+      .win-panel__button:hover {
+        background: #15803d;
+      }
+
+      /* The end-game "Finish" button (#132): a floating control that appears
+         (this element is only in the DOM while the board is drainable) low on the
+         stage, offering the one-tap win sweep. Styled off the win panel's button
+         so the two read as one family; centred along the bottom edge, clear of the
+         cards, and lifted above the playfield so it's always tappable. */
+      .finish-button {
+        position: absolute;
+        left: 50%;
+        bottom: 18px;
+        transform: translateX(-50%);
+        z-index: 900;
+        padding: 12px 30px;
+        font: 600 17px "Libre Franklin", sans-serif;
+        color: #f8fafc;
+        background: #166534;
+        border: 2px solid #eab308;
+        border-radius: 9px;
+        box-shadow: 0 6px 22px rgba(0, 0, 0, 0.45);
+        cursor: pointer;
+      }
+
+      .finish-button:hover {
+        background: #15803d;
+      }
+
+      /* Card-stacking tech demo (grown out of the drag-and-drop spike, issue
+         #21): a stage holding a few pointer-draggable cards and a row of drop
+         zones they snap into and pile up in. `position: relative` makes the
+         stage the origin for the cards' absolute left/top. The gesture locks
+         cover the *whole* stage, not just the cards (#113): `touch-action: none`
+         so a drag that starts or strays onto the bare background, a drop zone or
+         a caption still moves cards without scrolling the page or firing a
+         browser gesture. This one must stay scoped — a page-wide `touch-action:
+         none` would kill scrolling in the menu and card gallery — whereas the
+         selection/callout locks are now app-wide on <body> (see there).
+
+         No box of its own — it grows to fill the scene band (`flex: 1`, full
+         width) rather than sitting in a fixed, bordered rectangle, so the cards
+         and zones have the whole area to move in. A minimum height keeps it
+         playable when the viewport is short. */
+      .stacking-playfield {
+        position: relative;
+        flex: 1;
+        width: 100%;
+        min-height: 300px;
+        touch-action: none;
+      }
+
+      /* The role-grouped rows of drop zones (#94/#97), pinned to the top of the
+         stage: free cells + foundations across the top, cascades below. Stacked
+         in a flex column so the cascade row is pushed clear of the top row and
+         its fans grow into the space beneath. A single-group board (every
+         card-table demo but FreeCell) has just one row here, laid out exactly as
+         the old single row was. */
+      .drop-rows {
+        position: absolute;
+        left: 0;
+        right: 0;
+        top: 16px;
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+      }
+
+      /* One row of zones, spread across the stage's full width. `space-evenly`
+         opens equal gaps *everywhere* — before the first zone, between each pair,
+         and after the last — so the outer margin matches the space between
+         columns however many the row holds (see TableScene). Piles grow downward
+         from here. */
+      .drop-row {
+        display: flex;
+        justify-content: space-evenly;
+      }
+
+      /* Card and zone footprints are driven by custom properties set on the
+         playfield (see TableScene.res): the scene measures its live width and
+         the game's pile count and shrinks the cards to fit, so however many
+         piles a game declares still spread across the row without spilling off
+         a narrow screen. The values here are the unscaled design defaults, used
+         until the scene sizes itself. */
+      .drop-zone {
+        position: relative;
+        width: var(--zone-w, 88px);
+        height: var(--zone-h, 124px);
+        border: 2px dashed #334155;
+        border-radius: 10px;
+        transition: border-color 0.12s ease, background 0.12s ease;
+      }
+
+      /* Lit while a card's centre hovers over the zone, so the drop target is
+         legible before release: green when the stacking rule accepts the drop. */
+      .drop-zone--over {
+        border-color: #22c55e;
+        background: rgba(34, 197, 94, 0.12);
+      }
+
+      /* Flashed red instead while the hovered drop would be illegal (wrong colour
+         or not the next rank up), so a rejected move reads before release. */
+      .drop-zone--invalid {
+        border-color: #ef4444;
+        background: rgba(239, 68, 68, 0.12);
+        animation: drop-zone-reject 0.5s ease-in-out infinite;
+      }
+
+      /* Lit for good once the pile holds a full Ace→King run (see #76): a solid
+         gold frame and a ✓ badge mark the foundation "done". Sits above the
+         hover states in the source so completion wins over any lingering
+         highlight. */
+      .drop-zone--complete {
+        border-style: solid;
+        border-color: #eab308;
+        background: rgba(234, 179, 8, 0.14);
+      }
+
+      .drop-zone--complete::after {
+        content: "✓";
+        position: absolute;
+        top: -10px;
+        right: -10px;
+        width: 22px;
+        height: 22px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font: 14px "Libre Franklin", sans-serif;
+        color: #1a2e05;
+        background: #eab308;
+        border-radius: 50%;
+        box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
+      }
+
+      @keyframes drop-zone-reject {
+        0%,
+        100% {
+          border-color: #ef4444;
+          background: rgba(239, 68, 68, 0.12);
+        }
+        50% {
+          border-color: #7f1d1d;
+          background: rgba(239, 68, 68, 0.04);
+        }
+      }
+
+      /* A draggable card. It's moved by writing style.left/top; the transition
+         animates the snap-into-place on drop, and is switched off while dragging
+         (below) so the card tracks the pointer without lag.
+
+         `translateZ(0)` forces the card onto its own compositing layer. Without
+         it, WebKit (Safari) doesn't invalidate the old `drop-shadow` region as
+         the card is repositioned via left/top, so the shadow smears into a trail
+         of ghosts behind the moving card. On its own layer the whole card —
+         shadow included — is repainted each frame, and the trail disappears.
+
+         The stacking order (`z-index`) is set imperatively in TableScene.res:
+         a monotonic counter bumped on create/grab/drop, so the most-recently
+         touched card layers on top of everything beneath it. */
+      .stacking-card {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: var(--card-w, 80px);
+        /* The drag/select locks now live on `.stacking-playfield` (#113), which
+           covers the whole stage — cards inherit `user-select: none` and are
+           already under the stage's `touch-action: none`. `-webkit-user-drag`
+           still belongs here: it suppresses the browser's native drag-image
+           "ghost", which fought the pointer drag on desktop and the long-press
+           on iOS. */
+        -webkit-user-drag: none;
+        cursor: grab;
+        transform: translateZ(0);
+        transition: left 0.18s ease, top 0.18s ease;
+        /* filter: drop-shadow(0 4px 10px rgba(0, 0, 0, 0.4)); */
+      }
+
+      .stacking-card .card-art {
+        width: 100%;
+      }
+
+      /* During the opening deal (#115) each card is positioned instantly — the
+         left/top snap transition is switched off so the card doesn't slide in
+         from the corner — and flown up into place by a transform animation
+         instead (see `animateDeal` in TableScene.res). The class is dropped a
+         frame later, restoring the in-game drop snap. */
+      .stacking-playfield.dealing .stacking-card {
+        transition: none;
+      }
+
+      .stacking-card.dragging {
+        cursor: grabbing;
+        transition: none;
+        filter: drop-shadow(0 12px 22px rgba(0, 0, 0, 0.5));
+      }
+
+      /* A buried card (any pile card but the top one) can't be picked up yet, so
+         it doesn't offer the grab affordance. */
+      .stacking-card--buried {
+        cursor: default;
+      }
+
+      .stacking-caption {
+        margin: 0;
+        font: 13px "Libre Franklin", sans-serif;
+        color: #94a3b8;
+      }
+
+      .svg-demo-button {
+        padding: 8px 14px;
+        font: 14px "Libre Franklin", sans-serif;
+        color: #f8fafc;
+        background: #166534;
+        border: none;
+        border-radius: 8px;
+        cursor: pointer;
+      }
+
+      #flip-button {
+        padding: 8px 14px;
+        font: 14px "Libre Franklin", sans-serif;
+        color: #f8fafc;
+        background: #166534;
+        border: none;
+        border-radius: 8px;
+        cursor: pointer;
+      }
+
+      #board-readout {
+        margin: 0;
+        min-height: 1.4em;
+        font: 13px ui-monospace, "SF Mono", Menlo, monospace;
+        color: #94a3b8;
+      }
+
+      /* The build/version info, folded out of its old bottom-right corner into the
+         foot of the menu (#109). Now a plain muted line within the panel — the
+         menu's `.menu-footer` handles placement. */
+      #version-badge {
+        padding: 2px 0;
+        font: 11px/1.4 "Libre Franklin", sans-serif;
+        color: #64748b;
+        /* The lone opt-out of the app-wide selection lock (see <body>): the build
+           string stays selectable so it can be copied. It lives inside the menu
+           overlay, out of any drag's reach, so re-enabling selection here can't
+           be caught by a stray card drag. */
+        -webkit-user-select: text;
+        user-select: text;
+        -webkit-touch-callout: default;
+      }
+
+      /* The conditional "update available" control, folded into the top bar (#109)
+         from its old fixed top-right corner. It's pushed to the far right of the
+         bar (`margin-left: auto`) and shares the bar's button metrics, but keeps
+         the accent-green fill that marks it as the one call-to-action. Hidden
+         until the service worker reports a waiting update. */
+      #update-button {
+        margin-left: auto;
+        padding: 8px 14px;
+        font: 14px "Libre Franklin", sans-serif;
+        color: #f8fafc;
+        background: #166534;
+        border: 1px solid transparent;
+        border-radius: 8px;
+        cursor: pointer;
+      }
+
+      #update-button[hidden] {
+        display: none;
+      }
+    </style>
+    <script type="module" crossorigin src="./assets/index-SyiVQ6GU.js"></script>
+  <link rel="manifest" href="./manifest.webmanifest"></head>
+  <body>
+    <!-- Vite resolves the bare `core/…` specifier the compiled entry imports
+         (via the workspace symlink) and bundles the module graph, so no import
+         map is needed. The entry also registers the service worker through
+         `virtual:pwa-register` and wires the "Update available" flow — with a
+         *relative* SW URL, so its scope follows the GitHub Pages subpath. -->
+  </body>
+</html>
