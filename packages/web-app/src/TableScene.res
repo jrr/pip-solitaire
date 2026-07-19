@@ -456,8 +456,12 @@ let make = (
       // so `autoCollect: false` leaves the reducer's result untouched — an exact
       // no-op path. Runs *before* the win check, since a collection often plays the
       // final cards and so is what trips `hasWon`.
+      // Once the board is finishable (#132), auto-collect steps aside so the
+      // "Finish" button owns the end-game sweep — otherwise safe auto-collect
+      // would often cascade to the win on its own and rob the player of the
+      // trigger.
       let autoCollectIfEnabled = () =>
-        if options.contents.autoCollect {
+        if options.contents.autoCollect && !Reducer.canFinish(~game, state.contents) {
           let (collected, _moved) = Reducer.autoCollect(~game, state.contents)
           state := collected
         }
@@ -497,6 +501,48 @@ let make = (
           panel->WebDom.appendChild(button)->ignore
           overlay->WebDom.appendChild(panel)->ignore
           boardHost->WebDom.appendChild(overlay)->ignore
+        }
+
+      // The end-game "Finish" button (#132): a conditional control — the same
+      // show-when-relevant shape as the win overlay above — that appears exactly
+      // when the board can be drained to a win by foundation moves alone
+      // (`Reducer.canFinish`), i.e. victory is one tap away, and is hidden the rest
+      // of the time. Tapping it plays the finishing sweep (`Reducer.finishSequence`)
+      // home to the detected win. It never gates manual play: you can still drag or
+      // double-tap cards home one at a time — this is only the shortcut. Held in a
+      // ref so `updateFinishButton` can add or remove it as `canFinish` flips after
+      // each move; `winShown` hides it once the win overlay has taken over.
+      let finishButton = ref(None)
+      let removeFinishButton = () =>
+        switch finishButton.contents {
+        | Some(btn) =>
+          WebDom.remove(btn)
+          finishButton := None
+        | None => ()
+        }
+      let updateFinishButton = () =>
+        if winShown.contents || !Reducer.canFinish(~game, state.contents) {
+          removeFinishButton()
+        } else {
+          switch finishButton.contents {
+          | Some(_) => () // already shown
+          | None =>
+            let btn = WebDom.createElement("button")
+            btn->WebDom.setAttribute("type", "button")
+            btn->WebDom.setAttribute("class", "finish-button")
+            btn->WebDom.setTextContent("Finish")
+            btn->WebDom.addEventListener("click", () => {
+              let (settled, _moved) = Reducer.finishSequence(~game, state.contents)
+              state := settled
+              removeFinishButton()
+              reflowAll()
+              if GameState.hasWon(game, state.contents) {
+                showWin()
+              }
+            })
+            boardHost->WebDom.appendChild(btn)->ignore
+            finishButton := Some(btn)
+          }
         }
 
       // Build one draggable card and wire its pointer loop. It starts at 0,0 and is
@@ -674,6 +720,7 @@ let make = (
                 if GameState.hasWon(game, state.contents) {
                   showWin()
                 }
+                updateFinishButton()
               | Error(_) => ()
               }
             | None => ()
@@ -720,6 +767,9 @@ let make = (
               if GameState.hasWon(game, state.contents) {
                 showWin()
               }
+              // Recompute the "Finish" button (#132): a move can make the board
+              // drainable (show it) or, via auto-collect, no longer so (hide it).
+              updateFinishButton()
             // Illegal move: bounce the span back where it came from. Cards that rest
             // in a pile return to their slots when that pile reflows; a loose card (a
             // rejected drop in a `free` game) returns to where the drag began.
@@ -913,6 +963,11 @@ let make = (
       // has been inserted and sized (the first page load). Both the pile cards and
       // the loose cards need the stage's live rects, so both wait on this.
       boundingRect(playfield).width > 0. ? deal() : requestAnimationFrame(deal)->ignore
+
+      // Show the "Finish" button (#132) straight away when the opening position is
+      // already drainable — a `?state=` scenario can drop the board into one.
+      // Layout-independent, so it needn't wait on the deal's frame.
+      updateFinishButton()
 
       // The caption is the game's own prose (`Game.caption`); a game without one
       // simply shows no caption.

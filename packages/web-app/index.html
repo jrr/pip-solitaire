@@ -555,6 +555,31 @@
         background: #15803d;
       }
 
+      /* The end-game "Finish" button (#132): a floating control that appears
+         (this element is only in the DOM while the board is drainable) low on the
+         stage, offering the one-tap win sweep. Styled off the win panel's button
+         so the two read as one family; centred along the bottom edge, clear of the
+         cards, and lifted above the playfield so it's always tappable. */
+      .finish-button {
+        position: absolute;
+        left: 50%;
+        bottom: 18px;
+        transform: translateX(-50%);
+        z-index: 900;
+        padding: 12px 30px;
+        font: 600 17px "Libre Franklin", sans-serif;
+        color: #f8fafc;
+        background: #166534;
+        border: 2px solid #eab308;
+        border-radius: 9px;
+        box-shadow: 0 6px 22px rgba(0, 0, 0, 0.45);
+        cursor: pointer;
+      }
+
+      .finish-button:hover {
+        background: #15803d;
+      }
+
       /* Card-stacking tech demo (grown out of the drag-and-drop spike, issue
          #21): a stage holding a few pointer-draggable cards and a row of drop
          zones they snap into and pile up in. `position: relative` makes the

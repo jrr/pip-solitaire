@@ -8,6 +8,7 @@ type element = Html.element
 @val @scope("document") external createElement: string => element = "createElement"
 @send external appendChild: (element, element) => element = "appendChild"
 @send external removeChild: (element, element) => element = "removeChild"
+@send external remove: element => unit = "remove"
 @send external setAttribute: (element, string, string) => unit = "setAttribute"
 @send external removeAttribute: (element, string) => unit = "removeAttribute"
 @send external addEventListener: (element, string, unit => unit) => unit = "addEventListener"

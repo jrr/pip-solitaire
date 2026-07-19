@@ -65,6 +65,7 @@ let help = () =>
   move <card> table    move a card loose onto the table (free games only)
   moverun <card>… <pile>  supermove an ordered run, cards bottom-first (e.g. moverun 8H 7S 6H 5)
   home <card>          send a card to its foundation, if one will take it (e.g. home AS)
+  finish               sweep every card home to win, when the board is drainable (#132)
   print                re-print the current board
   games                list the available games
   help                 show this help
@@ -82,8 +83,11 @@ let renderBoard = (s: session): string => Render.stateBoard(~game=s.game, s.stat
 // reducer returned it — the exact no-op path. Shared by `move` and `moveRun`, and
 // applied *before* the win check so a collection that plays the final cards still
 // trips the win line (#121).
+// Once the board is finishable (#132) safe auto-collect steps aside — the
+// `finish` verb owns the end-game sweep, so auto-collect doesn't race it to the
+// win and rob the player of the trigger.
 let afterMove = (~options: Options.t, s: session): session =>
-  if options.autoCollect {
+  if options.autoCollect && !Reducer.canFinish(~game=s.game, s.state) {
     let (collected, _moved) = Reducer.autoCollect(~game=s.game, s.state)
     {...s, state: collected}
   } else {
@@ -184,6 +188,26 @@ let home = (~options: Options.t, s: session, cardTok: string): (option<session>,
     }
   }
 
+// Dispatch `finish` against the current session (#132): when the board can be
+// drained to a win by foundation moves alone (`Reducer.canFinish`), play the
+// finishing sweep home and print the won board; otherwise report it's not yet
+// finishable. The sweep is the very drain `canFinish` proves, so a `finish`
+// that's offered always completes — and, like a hand-played final card, trips the
+// win line (#121). It never blocks manual play: `home`/`move` still work
+// card-by-card, this is only the shortcut.
+let finish = (s: session): (option<session>, string) =>
+  if Reducer.canFinish(~game=s.game, s.state) {
+    let (settled, _moved) = Reducer.finishSequence(~game=s.game, s.state)
+    let s' = {...s, state: settled}
+    let board = renderBoard(s')
+    let text = GameState.hasWon(s'.game, s'.state)
+      ? `${board}\n\n🎉 You win! Every foundation is complete. \`deal\` to play again.`
+      : board
+    (Some(s'), text)
+  } else {
+    (Some(s), "Not finishable yet — some cards still need a tableau move first.")
+  }
+
 // Interpret one command line against the current session, returning the updated
 // session and the text to show. Pure: no I/O — `Cli.res` prints the text and
 // carries the session forward. Unknown or malformed lines answer with guidance
@@ -226,6 +250,8 @@ let step = (~options: Options.t, session: option<session>, line: string): (
     | Some(cardTok) => home(~options, s, cardTok)
     | None => (session, "Usage: home <card>   (e.g. home AS)")
     }
+  | (Some("finish"), None) => (session, "Deal a game first (try `deal freecell`).")
+  | (Some("finish"), Some(s)) => finish(s)
   | (Some("moverun"), None) => (session, "Deal a game first (try `deal freecell`).")
   | (Some("moverun"), Some(s)) =>
     // Everything after the verb is the run's cards, bottom-first, then the target.

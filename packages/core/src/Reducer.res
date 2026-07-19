@@ -336,3 +336,82 @@ let autoCollect = (~game: Game.t, state: GameState.t): (GameState.t, array<card>
   }
   (current.contents, moved)
 }
+
+// --- End-game finish sweep (#132) --------------------------------------------
+// The user-triggered finish: no automatic end-game sweep, but a "Finish" button
+// (the web) / `finish` verb (the CLI) that appears exactly when the board can be
+// completed **by foundation moves alone** from here — no card ever returning to a
+// cascade or free cell. That's a genuinely *looser* rule than #125's safe
+// auto-collect: it plays any card a foundation will *accept*, safe or not, so it
+// finishes the trapped tails auto-collect stalls on (a ♠6 sitting on ♥3 with the
+// reds still low — the ♠6 is accepted but not safe, trapping the wanted ♥3).
+//
+// The drain is a greedy simulation, and greedy is *exact* here: when only
+// foundation moves are allowed, order doesn't matter. Playing an eligible card
+// only exposes the card beneath and bumps a counter — it never makes another card
+// ineligible, so the eligible set only grows. If any finishing order exists,
+// greedy finds one; no search, no backtracking. (Contrast full FreeCell
+// *solvability*, which is hard — this only ever asks the easy "finish from here
+// with foundation moves only?" question.)
+
+// Run the greedy foundation-only drain from `state`, returning the settled state
+// and, in play order, the cards it sent home — the same `(state, movedCards)`
+// shape `autoCollect` returns, so a view can animate the sweep (#22) and undo can
+// group it (#85). When the board is drainable the sequence completes it (the
+// settled state is a win); when a card genuinely needs a tableau move first the
+// drain jams and returns early with whatever it could play. `canFinish` reads the
+// same routine and asks only whether the settled state won. Cost is negligible —
+// ≤52 placements over the ≤12 accessible tops — so a driver runs it once per move.
+let finishSequence = (~game: Game.t, state: GameState.t): (GameState.t, array<card>) => {
+  let moved = []
+  let current = ref(state)
+  let progressed = ref(true)
+  while progressed.contents {
+    progressed := false
+    let cur: GameState.t = current.contents
+    // Every currently accessible card: the top of each non-foundation pile plus
+    // any loose card. (A foundation's own top is already home.)
+    let candidates = []
+    game.piles->Array.forEachWithIndex((pile: Game.pile, i) =>
+      switch pile.role {
+      | Game.Foundation => ()
+      | _ =>
+        switch GameState.topOf(cur, i) {
+        | Some(c) => candidates->Array.push(c)
+        | None => ()
+        }
+      }
+    )
+    cur.loose->Array.forEach(c => candidates->Array.push(c))
+    // Send the first card *any* foundation will accept home — the whole difference
+    // from `autoCollect`, which additionally demands the card be *safe* — then loop
+    // to re-scan the new state, since playing it may expose a newly-eligible card.
+    switch candidates->Array.find(c => foundationTarget(~game, cur, c)->Option.isSome) {
+    | Some(card) =>
+      switch foundationTarget(~game, cur, card) {
+      | Some(target) =>
+        switch reduce(~game, cur, Move({card, to: ToPile(target)})) {
+        | Ok(next) =>
+          current := next
+          moved->Array.push(card)
+          progressed := true
+        | Error(_) => () // unreachable: foundationTarget already vetted this move
+        }
+      | None => ()
+      }
+    | None => ()
+    }
+  }
+  (current.contents, moved)
+}
+
+// Can the board be drained to a win by foundation moves alone from here (#132)?
+// True exactly when the greedy drain reaches a completed board — the trigger the
+// "Finish" button appears on, and the guard the drivers suppress safe
+// auto-collect behind (once the finish is available, the button owns it). A board
+// with no foundations is never finishable: the drain wins nothing and `hasWon`'s
+// non-empty guard keeps it false.
+let canFinish = (~game: Game.t, state: GameState.t): bool => {
+  let (settled, _moved) = finishSequence(~game, state)
+  GameState.hasWon(game, settled)
+}
