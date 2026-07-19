@@ -60,6 +60,19 @@ let isFull = (~game: Game.t, state: GameState.t, ~onto: int): bool =>
   | _ => false
   }
 
+// Would landing `adding` more cards on pile `onto` fit within its `capacity`
+// (#93)? The count-aware companion `isFull` can't express for a *supermove*
+// (#123): `isFull` asks "is there room for one more?", but a run lands several at
+// once, so a two-card run onto a capacity-1 free cell must be refused even though
+// the empty cell isn't full. Room means the current count plus the newcomers
+// stays within `cap`; a `capacity: None` pile is unbounded and always has room.
+// This is what stops a run from being dropped onto a free cell — the bug in #133.
+let hasRoomFor = (~game: Game.t, state: GameState.t, ~onto: int, ~adding: int): bool =>
+  switch game.piles->Array.get(onto) {
+  | Some({capacity: Some(cap)}) => Array.length(GameState.cardsInPile(state, onto)) + adding <= cap
+  | _ => true
+  }
+
 // The shared legality query (#82): may `card` be dropped onto pile `onto` given
 // the current state? Folds the view's current ad-hoc check into one entry point,
 // so the reducer and (later) the view's hover highlight both call *this* — "valid
@@ -115,8 +128,10 @@ let maxSupermove = (~game: Game.t, state: GameState.t, ~ignoring: option<int>=?)
 // `MoveRun` and the view's span hover both consult — so the "valid" outline and
 // the accepted drop can never disagree, the same property `canDrop` gives
 // single-card moves. A run moves only when it's a genuine run under the pile's
-// rule, its bottom card `accepts` onto the pile's current top, and it's within the
-// supermove limit (the destination excluded from the empty tally).
+// rule, its bottom card `accepts` onto the pile's current top, the pile has room
+// for the whole run under its `capacity` (#93 — so a run can't land on a free
+// cell, #133), and it's within the supermove limit (the destination excluded from
+// the empty tally).
 let canMoveRun = (~game: Game.t, state: GameState.t, cards: array<card>, ~onto: int): bool =>
   switch game.piles->Array.get(onto) {
   | None => false
@@ -124,6 +139,7 @@ let canMoveRun = (~game: Game.t, state: GameState.t, cards: array<card>, ~onto: 
     Array.length(cards) > 0 &&
     Rules.isRun(pile.rule, cards) &&
     Rules.accepts(pile.rule, cards->Array.getUnsafe(0), GameState.topOf(state, onto)) &&
+    hasRoomFor(~game, state, ~onto, ~adding=Array.length(cards)) &&
     Array.length(cards) <= maxSupermove(~game, state, ~ignoring=onto)
   }
 
@@ -217,6 +233,11 @@ let reduce = (~game: Game.t, state: GameState.t, action: action): result<GameSta
         Error(NotARun)
       } else if !Rules.accepts(pile.rule, cards->Array.getUnsafe(0), GameState.topOf(state, i)) {
         Error(Rejected)
+      } else if !hasRoomFor(~game, state, ~onto=i, ~adding=Array.length(cards)) {
+        // A capped pile (a free cell, #93) has no room for a multi-card run — the
+        // #133 bug: without this a run landed on a one-card cell. `PileFull` is the
+        // same "no room" refusal a second single card gets on a full cell.
+        Error(PileFull)
       } else if Array.length(cards) > maxSupermove(~game, state, ~ignoring=i) {
         Error(RunTooLong)
       } else {

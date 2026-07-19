@@ -1574,6 +1574,32 @@ describe("Reducer", () => {
         )
 
         test(
+          "a multi-card run onto a free cell is refused — a cell holds one card (#133)",
+          () => {
+            // The run is legal and well within the supermove limit, but a free cell
+            // (capacity 1) can't hold two cards. The drop bounces with PileFull — the
+            // count-aware refusal (#93), not RunTooLong — for an empty cell and an
+            // occupied one alike, and the shared `canMoveRun` query agrees so the
+            // view's drop highlight refuses too (the #133 bug: it used to accept).
+            let twoRun = [{suit: Hearts, rank: Eight}, {suit: Spades, rank: Seven}]
+            // Cell 0 the empty target, cell 1 empty, cascade 2 holds the run, 3–5
+            // empty → a generous limit, so capacity is the sole reason it's refused.
+            let onEmpty = stateOf([[], [], twoRun, [], [], []])
+            expect(Reducer.maxSupermove(~game=smGame, onEmpty, ~ignoring=0) >= 2)->toBe(true)
+            expect(
+              Reducer.reduce(~game=smGame, onEmpty, MoveRun({cards: twoRun, to: ToPile(0)})),
+            )->toEqual(Error(Reducer.PileFull))
+            expect(Reducer.canMoveRun(~game=smGame, onEmpty, twoRun, ~onto=0))->toBe(false)
+            // An *occupied* cell is refused just the same.
+            let onOccupied = stateOf([f(0), [], twoRun, [], [], []])
+            expect(
+              Reducer.reduce(~game=smGame, onOccupied, MoveRun({cards: twoRun, to: ToPile(0)})),
+            )->toEqual(Error(Reducer.PileFull))
+            expect(Reducer.canMoveRun(~game=smGame, onOccupied, twoRun, ~onto=0))->toBe(false)
+          },
+        )
+
+        test(
           "a run whose cards aren't in play fails with CardNotFound",
           () => {
             let ghost = [{suit: Diamonds, rank: King}, {suit: Clubs, rank: Queen}]
