@@ -59,7 +59,7 @@ let body = (~detail=Full, card: Deck.card) => {
         ("height", "166"),
         ("rx", "12"),
         ("ry", "12"),
-        ("fill", "#f8fafc"),
+        ("fill", "#f7f7f7"),
         ("stroke", "#cbd5e1"),
         ("stroke-width", "2"),
       ]}

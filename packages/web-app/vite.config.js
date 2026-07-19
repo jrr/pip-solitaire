@@ -110,14 +110,16 @@ export default defineConfig({
         navigateFallback: "index.html",
         // The prod SW is served from the Pages project root, so its scope
         // (`/<repo>/`) is an *ancestor* of every PR preview at
-        // `/<repo>/pr-preview/pr-N/`. Without this, the SW answers a preview
-        // navigation with the *prod* app shell from precache, whose relative
-        // `<script src>` then resolves under the preview dir and 404s — the
-        // prod build bleeding into a preview URL. Excluding preview paths lets
-        // those navigations fall through to the network and load the correct
-        // preview shell. (Preview *assets* already pass through: they aren't in
-        // the prod precache manifest. Only the navigation fallback needed this.)
-        navigateFallbackDenylist: [/\/pr-preview\//],
+        // `/<repo>/pr-preview/pr-N/` and every screenshot report under
+        // `/<repo>/screenshots/`. Without this, the SW answers those
+        // navigations with the *prod* app shell from precache instead of the
+        // real page: a preview shell's relative `<script src>` then 404s, and a
+        // screenshot report just shows the blank app background (the "blank blue
+        // page until a hard reload" — a reload bypasses the SW). Excluding these
+        // paths lets the navigations fall through to the network and load the
+        // correct page. (Their *assets* already pass through: they aren't in the
+        // prod precache manifest. Only the navigation fallback needed this.)
+        navigateFallbackDenylist: [/\/pr-preview\//, /\/screenshots\//],
       },
     }),
   ],
