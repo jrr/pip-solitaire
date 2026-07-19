@@ -823,7 +823,7 @@ describe("Rules", () => {
 })
 
 // The action variant + pure reducer (#82): transitions `GameState` and enforces
-// the rules, tested without any view. The load-bearing roadmap principle —
+// the rules, tested without any view. The central roadmap principle —
 // immutable state + action + pure reducer, illegal actions rejected — as tests.
 describe("Reducer", () => {
   // A tiny hand-built board so the tests own their setup: a foundation (Ace-only,

@@ -235,7 +235,7 @@ let freeCells = {
 // and capacity follow each role's usual pairing — the foundation is a same-suit
 // ascending pile, the cells are capacity-1 `Free` slots, the cascade an
 // alternating tableau — but it's the `role` field that groups them
-// (`pilesOf`/`pileIndices`), and the visible group-targeted payoff arrives with
+// (`pilesOf`/`pileIndices`), and the visible group-targeted benefit arrives with
 // FreeCell later. A Hearts Ace→King run is dealt loose to carry the foundation,
 // plus a couple of stray cards to park in the cells.
 let mixedRoles = {

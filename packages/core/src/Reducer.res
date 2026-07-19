@@ -1,6 +1,6 @@
 // The missing middle of the reduxey loop (#82): an `action` variant and a pure
 // `reduce` that transitions the immutable `GameState.t` (#77) and enforces the
-// stacking rules (#76). This is the ROADMAP's load-bearing principle made real —
+// stacking rules (#76). This is the ROADMAP's central principle made real —
 // "immutable state + action variant + pure reducer, illegal actions rejected."
 //
 // Deliberately still *no view changes*: nothing dispatches yet. This is the

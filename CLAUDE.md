@@ -104,3 +104,6 @@ Developers get format-on-save automatically via the workspace settings in
   on memory for framework specifics.
 - Leave the `hello` / `hello-cli` example packages in place for now; they exist
   to exercise CI and the agents.
+- Avoid the words "load-bearing" and "payoff" in code, comments, docs, and
+  commit messages. Reach for plainer phrasing instead (e.g. "central",
+  "essential", "benefit", "result").

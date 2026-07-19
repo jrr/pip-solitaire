@@ -4,7 +4,7 @@ Working toward an installable, offline-capable Progressive Web App that plays
 FreeCell, with drag-and-drop and animation, built on the existing pnpm +
 ReScript + Vite monorepo.
 
-## The load-bearing principle
+## The central principle
 
 **All game state and rules live in `core` as immutable data plus pure
 transition functions. The CLI and the web app are both just drivers/renderers

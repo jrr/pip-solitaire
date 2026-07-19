@@ -1,7 +1,7 @@
 // An immutable snapshot of *where every card currently rests* — the in-progress
 // gameplay state — kept deliberately separate from the board *definition*
 // (`Game.t`, the empty board plus its rules). This is the first migration step
-// toward M1 (#77): the load-bearing roadmap principle is that all game state
+// toward M1 (#77): the central roadmap principle is that all game state
 // lives in `core` as immutable data plus pure transition functions, with the UI
 // holding only transient view state. Today the live "where is each card" lives
 // as mutable refs in the view (`TableScene`); this type is where it will move.

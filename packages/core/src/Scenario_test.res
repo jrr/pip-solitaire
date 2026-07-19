@@ -1,5 +1,5 @@
 // Tests for the named starting scenarios (Scenario.res). The scenarios feed the
-// screenshot report a fixed mid-game position, so the load-bearing guarantee is
+// screenshot report a fixed mid-game position, so the essential guarantee is
 // that the position is *well-formed* — it holds a full deck (no card invented,
 // dropped or duplicated) and lays out onto the board's roles the way the report
 // expects (part-built foundations, a couple of occupied cells, the rest in the
