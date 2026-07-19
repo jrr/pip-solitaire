@@ -5,6 +5,11 @@
 // engine kept from the old `<select>` picker; only its control surface changed
 // from a drop-down to menu rows.
 //
+// The rows aren't a flat list: the primary game (the launch `~default`, FreeCell)
+// sits as a single row at the top, and the debug/demo scenes are buried inside a
+// collapsible "Debug" disclosure below it (#135), so the menu leads with the game
+// and keeps the demos out of the way.
+//
 // The app always *launches* into its `~default` scene (FreeCell — the game is
 // home), or the `~forced` scene the URL names (`?scene=`); there is no longer any
 // "resume the last scene on reload" behaviour, so nothing is persisted.
@@ -53,13 +58,14 @@ let render = (
   let teardown = ref(() => ())
 
   // One row button per scene, remembered alongside its scene so the active row
-  // can be highlighted and a tap can look its scene back up.
+  // can be highlighted and a tap can look its scene back up. The buttons are only
+  // built here; where each is placed (the primary row up top, the rest under
+  // Debug) is decided once the initial/primary scene is known, below.
   let rows = scenes->Array.map(scene => {
     let row = WebDom.createElement("button")
     row->WebDom.setAttribute("type", "button")
     row->WebDom.setAttribute("class", idleClass)
     row->WebDom.setTextContent(scene.label)
-    nav->WebDom.appendChild(row)->ignore
     (scene, row)
   })
 
@@ -87,6 +93,51 @@ let render = (
     ->Option.flatMap(byId)
     ->Option.orElse(default->Option.flatMap(byId))
     ->Option.orElse(scenes[0])
+
+  // The one scene surfaced at the top of the menu: the launch default (FreeCell —
+  // the game is home, #135) if it names a scene, else the first scene. Every other
+  // scene is a debug/demo table and goes into the Debug group below.
+  let primaryId =
+    default->Option.flatMap(byId)->Option.orElse(scenes[0])->Option.map(scene => scene.id)
+
+  // The Debug group: a native <details> disclosure holding the debug/demo rows, so
+  // the show/hide costs no JS and stays keyboard-accessible. Its body collects the
+  // rows; the group itself is only spliced into the menu if any debug scene exists.
+  let debugBody = WebDom.createElement("div")
+  debugBody->WebDom.setAttribute("class", "scene-menu__group-body")
+
+  let debugGroup = WebDom.createElement("details")
+  debugGroup->WebDom.setAttribute("class", "scene-menu__group")
+  let debugSummary = WebDom.createElement("summary")
+  debugSummary->WebDom.setAttribute("class", "scene-menu__group-label")
+  debugSummary->WebDom.setTextContent("Debug")
+  debugGroup->WebDom.appendChild(debugSummary)->ignore
+  debugGroup->WebDom.appendChild(debugBody)->ignore
+
+  // Place each row: the primary game as a plain row at the top of the menu, every
+  // other scene inside the Debug group.
+  let hasDebug = ref(false)
+  rows->Array.forEach(((scene, row)) =>
+    if primaryId == Some(scene.id) {
+      nav->WebDom.appendChild(row)->ignore
+    } else {
+      hasDebug := true
+      debugBody->WebDom.appendChild(row)->ignore
+    }
+  )
+
+  // Only mount the Debug group when it has something to hold. Open it from the
+  // start when the initial scene lives inside it (e.g. a `?scene=spinner` deep
+  // link), so its highlighted row is visible rather than hidden behind the
+  // collapsed disclosure.
+  if hasDebug.contents {
+    switch initial {
+    | Some(scene) if primaryId != Some(scene.id) => debugGroup->WebDom.setAttribute("open", "")
+    | _ => ()
+    }
+    nav->WebDom.appendChild(debugGroup)->ignore
+  }
+
   switch initial {
   | Some(scene) => activate(scene)
   | None => ()

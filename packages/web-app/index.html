@@ -290,14 +290,6 @@
         gap: 0.4rem;
       }
 
-      .menu-section__label {
-        margin: 0 0 0.15rem;
-        font: 600 0.72rem/1 "Libre Franklin", sans-serif;
-        letter-spacing: 0.08em;
-        text-transform: uppercase;
-        color: #64748b;
-      }
-
       /* The scene list: SceneSwitcher's row controls (#109), replacing the old
          <select> picker. Each scene is a tappable row; the active scene is
          highlighted so the menu shows where you are. */
@@ -323,6 +315,61 @@
         color: #f0fdf4;
         background: #166534;
         border-color: #22c55e;
+      }
+
+      /* The debug/demo scenes are tucked inside a collapsible "Debug" group (#135)
+         so the menu leads with the game (the FreeCell row above) instead of a long
+         list of demos. A native <details>, so the show/hide costs no JS and stays
+         keyboard-accessible. Sits in the row flow with the same gap as the rows. */
+      .scene-menu__group {
+        display: flex;
+        flex-direction: column;
+        gap: 0.3rem;
+      }
+
+      /* The "Debug" disclosure header, styled as a muted row like the ones it
+         hides, with a caret (below) as its open/closed affordance. */
+      .scene-menu__group-label {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 10px 12px;
+        font: 14px "Libre Franklin", sans-serif;
+        color: #94a3b8;
+        background: #16233b;
+        border: 1px solid #22304a;
+        border-radius: 8px;
+        cursor: pointer;
+        /* Drop the platform's default disclosure triangle in favour of our own
+           caret below: `list-style` covers Firefox's `::marker`, the WebKit
+           pseudo-element covers Safari/Chrome, so the marker looks the same
+           everywhere. */
+        list-style: none;
+      }
+
+      .scene-menu__group-label::-webkit-details-marker {
+        display: none;
+      }
+
+      /* Our own caret, rotating from ▸ (closed) to ▾ (open). */
+      .scene-menu__group-label::before {
+        content: "▸";
+        font-size: 0.8em;
+        color: #64748b;
+        transition: transform 0.15s ease;
+      }
+
+      .scene-menu__group[open] > .scene-menu__group-label::before {
+        transform: rotate(90deg);
+      }
+
+      /* The revealed debug rows, stacked with the same gap as the top-level list
+         and set off from the header by a small inset. */
+      .scene-menu__group-body {
+        display: flex;
+        flex-direction: column;
+        gap: 0.3rem;
+        padding-top: 0.3rem;
       }
 
       /* The version info sits at the bottom of the menu, pushed there so it always
