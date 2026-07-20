@@ -1,6 +1,11 @@
 [tools]
 node = "26"
-pnpm = "11"
+# pnpm via the npm-registry backend rather than mise's default aqua backend,
+# which fetches the binary from GitHub release assets. Locked-down egress
+# policies (e.g. sandboxed CI/web sessions) block api.github.com with a 403,
+# which makes the aqua backend — and therefore every task — fail. The npm
+# registry is allowlisted in those environments, so `npm:pnpm` installs cleanly.
+"npm:pnpm" = "11"
 
 # Tasks are the set of actions available to developers and agents at the repo
 # root. Run `mise tasks` to list them.
