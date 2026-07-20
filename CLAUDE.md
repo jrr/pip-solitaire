@@ -44,6 +44,43 @@ mise run rescript -- core format -all  # rescript format -all, in packages/core
 Prefer this over asking for raw `pnpm`/`npx` access: to reach a new subcommand
 of a tool you already have a passthrough for, just pass it after `--`.
 
+### When `mise` isn't installed (sandboxed agents)
+
+Every task runs through `mise`, so a sandbox where `mise` isn't on `PATH`
+leaves you unable to run *anything* — `mise tasks`, `mise run ci`, and the rest
+all fail with `command not found`. The standard installer
+(`curl https://mise.run | sh`) needs outbound access to `mise.run`, and a
+locked-down egress policy may deny that host (the proxy returns `403`). Don't
+try to route around a policy denial — reach for a source that's already
+allowed.
+
+**Install the prebuilt binary from npm instead** — the npm registry is
+allowlisted in most sandboxes (Node is already present since this is a pnpm
+repo):
+
+```
+npm install -g mise      # pulls a prebuilt @jdxcode/mise-<platform>-<arch>
+                         # binary straight from the npm registry — no compile,
+                         # no GitHub-release download
+mise trust               # mise refuses to read an untrusted mise.toml; this
+                         # trusts the repo config so tasks become visible
+mise tasks               # confirm it worked
+```
+
+Notes:
+
+- `mise` pings `mise.jdx.dev` for update checks; if that host isn't allowed
+  you'll see retry warnings. They're harmless — silence them with
+  `export MISE_CHECK_VERSION=0`.
+- Avoid `cargo install mise` (slow from-source build) and `cargo binstall`
+  (fetches from GitHub release assets, which a restricted proxy often blocks).
+  The npm route is prebuilt and stays inside the common allowlist.
+- This only fixes the *current* session; a fresh sandbox starts without `mise`
+  again. For a durable fix, `mise` belongs in the environment's setup
+  (a setup script that runs `npm install -g mise && mise trust`, or a network
+  policy that permits `mise.run`) — that's a human decision, so flag it in your
+  PR/comment rather than assuming it.
+
 ## Permissions (for CI agents)
 
 The `@claude` GitHub agent runs under a deliberately **tight** allowlist (see
