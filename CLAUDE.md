@@ -46,45 +46,18 @@ of a tool you already have a passthrough for, just pass it after `--`.
 
 ### When `mise` isn't installed (sandboxed agents)
 
-Every task runs through `mise`, so a sandbox where `mise` isn't on `PATH`
-leaves you unable to run *anything* — `mise tasks`, `mise run ci`, and the rest
-all fail with `command not found`.
-
-**Bootstrap the toolchain in one step by sourcing the setup script from the
-repo root:**
+This project uses mise as a command runner, but if you're in a claude cloud
+sandbox you probably can't install it the normal way. Instead, source
+`claude-cloud-dev-env.sh` from the repo root:
 
 ```
 source claude-cloud-dev-env.sh
 ```
 
-It installs `mise`, trusts this repo's `mise.toml`, installs the pinned tools,
-and activates them for the current shell. `source` it rather than executing it,
-so the environment it sets up lands in your shell and every later `mise run …`
-inherits it. After it finishes, `mise tasks` / `mise run ci` work as normal.
-
-Why the script does what it does (all to stay inside a restricted egress
-policy — see the file's comments for detail):
-
-- It installs `mise` from the **npm registry** (`npm install -g mise`), not the
-  `curl https://mise.run | sh` installer. `mise.run` is often denied (proxy
-  `403`); the npm registry is allowlisted, and Node is already present since
-  this is a pnpm repo. Don't route around a policy denial — use the source
-  that's already allowed. (Also avoid `cargo install mise` — slow from-source
-  build — and `cargo binstall`, which pulls from GitHub release assets a
-  restricted proxy often blocks.)
-- It exports `MISE_USE_VERSIONS_HOST=false` so mise resolves tool versions from
-  each backend's own host (nodejs.org, the npm registry) instead of its
-  aggregator at `mise-versions.jdx.dev`, which a locked-down policy blocks —
-  otherwise every tool resolution emits noisy retry warnings. Note this is
-  **not** `MISE_CHECK_VERSION`: mise reads `MISE_<TOOL>_VERSION` as a per-tool
-  version pin, so `MISE_CHECK_VERSION=0` invents a phantom tool called "check"
-  and errors with "check not found in mise tool registry" — don't use it.
-
-Sourcing only fixes the *current* session; a fresh sandbox starts without
-`mise` again. For a durable fix, wire `source claude-cloud-dev-env.sh` into the
-environment's setup script (or grant a network policy that permits `mise.run`)
-— that's a human decision, so flag it in your PR/comment rather than assuming
-it.
+It installs `mise`, trusts the repo, installs the pinned tools, and activates
+them for the current shell — after which `mise tasks` / `mise run ci` work as
+normal. This only fixes the current session; wiring it into the environment's
+setup script is a human decision, so flag it rather than assuming it.
 
 ## Permissions (for CI agents)
 
