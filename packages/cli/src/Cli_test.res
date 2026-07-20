@@ -143,7 +143,7 @@ describe("Repl.run", () => {
         | Some(s) =>
           // 3H was never commanded, yet it's off the free cell and home on the
           // hearts foundation (pile 5) — wherever the sweep settles above it.
-          switch GameState.locationOf(s.state, {suit: Hearts, rank: Three}) {
+          switch GameState.locationOf(Repl.present(s), {suit: Hearts, rank: Three}) {
           | Some(GameState.InPile(5, _)) => expect(true)->toBe(true)
           | _ => expect(true)->toBe(false)
           }
@@ -164,8 +164,8 @@ describe("Repl.run", () => {
         | Some(s) =>
           // The hearts foundation still stands at its dealt Two; 3H is still parked
           // in a free cell (piles 0–3), untouched.
-          expect(GameState.topOf(s.state, 5))->toEqual(Some({suit: Hearts, rank: Two}))
-          switch GameState.locationOf(s.state, {suit: Hearts, rank: Three}) {
+          expect(GameState.topOf(Repl.present(s), 5))->toEqual(Some({suit: Hearts, rank: Two}))
+          switch GameState.locationOf(Repl.present(s), {suit: Hearts, rank: Three}) {
           | Some(GameState.InPile(i, _)) => expect(i >= 0 && i <= 3)->toBe(true) // a free cell
           | _ => expect(true)->toBe(false)
           }
@@ -215,9 +215,8 @@ describe("Repl.run", () => {
         // option on (its default) — leaving the board for the `finish` sweep.
         let game = Game.freecell
         let state = Scenario.freecellFinish(game)
-        let s: Repl.session = {game, state}
-        let after = Repl.afterMove(~options=Options.default, s)
-        expect(after.state)->toEqual(state)
+        let after = Repl.afterMove(~game, ~options=Options.default, state)
+        expect(after)->toEqual(state)
 
         // Contrast: on a *non*-finishable board with a safe card, `afterMove` still
         // collects it — showing the finish guard, not a disabled option, is what
@@ -229,8 +228,8 @@ describe("Repl.run", () => {
           ),
           loose: [],
         }
-        let collected = Repl.afterMove(~options=Options.default, {game, state: lone})
-        expect(collected.state == lone)->toBe(false)
+        let collected = Repl.afterMove(~game, ~options=Options.default, lone)
+        expect(collected == lone)->toBe(false)
       },
     )
   })
@@ -257,5 +256,74 @@ describe("Repl.run", () => {
     // …while the real commands still run and echo.
     expect(has(transcript, "sleight> deal stacking"))->toBe(true)
     expect(has(transcript, "sleight> print"))->toBe(true)
+  })
+})
+
+// Undo/redo over the GameState history (#85): the CLI loop steps back and forth
+// over the states an accepted move records. Folds a command script through
+// `Repl.step`, inspecting the session's `present` state rather than the ASCII art
+// so the assertions pin the actual card positions.
+describe("Repl undo/redo", () => {
+  // Fold a script of commands into the resulting session (the state assertions
+  // read positions off `Repl.present`).
+  let runToSession = (cmds: array<string>): option<Repl.session> =>
+    cmds->Array.reduce(None, (acc, cmd) => {
+      let (next, _) = Repl.step(~options=Options.default, acc, cmd)
+      next
+    })
+
+  let locationOf = (s: option<Repl.session>, card) =>
+    s->Option.flatMap(s => GameState.locationOf(Repl.present(s), card))
+
+  test("apply → undo returns the prior state exactly, and redo replays it", () => {
+    let as_ = {suit: Spades, rank: Ace}
+    // Deal stacking (the run is dealt loose) and found pile 0 with the Ace.
+    let afterMove = runToSession(["deal stacking", "move AS 0"])
+    expect(locationOf(afterMove, as_))->toEqual(Some(GameState.InPile(0, 0)))
+    // Undo puts the Ace back exactly where it rested before the move — loose.
+    let (undone, _) = Repl.step(~options=Options.default, afterMove, "undo")
+    expect(locationOf(undone, as_))->toEqual(Some(GameState.Loose))
+    // Redo replays the move, landing the Ace back on pile 0.
+    let (redone, _) = Repl.step(~options=Options.default, undone, "redo")
+    expect(locationOf(redone, as_))->toEqual(Some(GameState.InPile(0, 0)))
+  })
+
+  test("undo past the start of a game is a no-op", () => {
+    let dealt = runToSession(["deal stacking"])
+    let (undone, text) = Repl.step(~options=Options.default, dealt, "undo")
+    expect(has(text, "Nothing to undo"))->toBe(true)
+    // The opening deal is unchanged — the Ace is still loose.
+    expect(locationOf(undone, {suit: Spades, rank: Ace}))->toEqual(Some(GameState.Loose))
+  })
+
+  test("a fresh move after an undo clears the redo future", () => {
+    // Move the Ace onto pile 0, undo it, then make a *different* move (onto pile 1).
+    let branched = runToSession(["deal stacking", "move AS 0", "undo", "move AS 1"])
+    expect(locationOf(branched, {suit: Spades, rank: Ace}))->toEqual(Some(GameState.InPile(1, 0)))
+    // The undone move is gone — there's nothing to redo onto the abandoned branch.
+    let (_, text) = Repl.step(~options=Options.default, branched, "redo")
+    expect(has(text, "Nothing to redo"))->toBe(true)
+  })
+
+  test("undo steps back out of a win (works even from victory)", () => {
+    // Win the foundations demo by stacking the whole Hearts run home, exactly as
+    // the win test above does.
+    let heartsRun =
+      ["AH", "2H", "3H", "4H", "5H", "6H", "7H", "8H", "9H", "TH", "JH", "QH", "KH"]->Array.map(
+        c => `move ${c} 0`,
+      )
+    let won = runToSession(Array.concat(["deal foundations"], heartsRun))
+    switch won {
+    | Some(s) => expect(GameState.hasWon(s.game, Repl.present(s)))->toBe(true)
+    | None => expect(true)->toBe(false)
+    }
+    // Undo from the won position: the game is no longer won, and the win line is
+    // gone from the restored board — the victory is just another undoable state.
+    let (undone, text) = Repl.step(~options=Options.default, won, "undo")
+    expect(has(text, "You win"))->toBe(false)
+    switch undone {
+    | Some(s) => expect(GameState.hasWon(s.game, Repl.present(s)))->toBe(false)
+    | None => expect(true)->toBe(false)
+    }
   })
 })

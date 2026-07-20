@@ -226,11 +226,22 @@ let doubleTapMoveTol = 12.
 // board into any forced position — the same `~initial` path a `?state=` scenario
 // takes, but reachable live from the menu instead of only at load. The debug-states
 // menu (see `DebugStates` / `Main`) calls it with a `Scenario` snapshot.
+//
+// `~publishUndo` / `~publishRedo` are the undo/redo hooks (#85), siblings of
+// `~publishNewGame`: on every build the board hands the top bar a thunk that steps
+// its `GameState` history back / forward and re-derives the layout. `~onHistory`
+// is the reverse channel — after every state change the board calls it with the
+// current `(canUndo, canRedo)` so the top bar can enable or disable each button.
+// Undo works even from a won board: a victory is just another recorded state, so
+// stepping back tears the win overlay down and returns to the prior position.
 let make = (
   ~initial: option<GameState.t>=?,
   ~newDeal: option<unit => Game.t>=?,
   ~publishNewGame: option<(unit => unit) => unit>=?,
   ~publishLoadState: option<(GameState.t => unit) => unit>=?,
+  ~publishUndo: option<(unit => unit) => unit>=?,
+  ~publishRedo: option<(unit => unit) => unit>=?,
+  ~onHistory: option<(bool, bool) => unit>=?,
   ~options: ref<Options.t>=ref(Options.default),
   game: Game.t,
 ): Scene.t => {
@@ -317,6 +328,14 @@ let make = (
       // layout from it. Drops dispatch reducer actions and adopt the returned state;
       // the view keeps only transient geometry (below).
       let state = ref(initial->Option.getOr(GameState.initial(game)))
+
+      // Undo/redo history over the board's `GameState` (#85): the states the board
+      // has passed through, so a step back is a pop. `state` stays the live snapshot
+      // the layout reads; `history` records each *settled* move as one undoable step
+      // and is stepped by `undo`/`redo` (defined below, once the reflow/win helpers
+      // they drive exist). A fresh build (a re-deal, or the opening mount) starts a
+      // clean history from the opening position.
+      let history = ref(History.make(state.contents))
 
       // The DOM node for each model card, so a pile derived from `state` (structural
       // `{suit, rank}` cards) lays out onto the *same* elements every reflow — the
@@ -480,6 +499,10 @@ let make = (
       // `buildBoard` clears `boardHost` first, so the overlay is torn down with the
       // rest of the board and can't linger. Only one is ever raised at a time.
       let winShown = ref(false)
+      // The live overlay element, kept so undo can tear it down when stepping back
+      // out of a win (#85) — undoing a victory removes the panel and returns the
+      // board to the prior, still-playable position.
+      let winOverlay = ref(None)
       let showWin = () =>
         if !winShown.contents {
           winShown := true
@@ -508,7 +531,36 @@ let make = (
           panel->WebDom.appendChild(button)->ignore
           overlay->WebDom.appendChild(panel)->ignore
           boardHost->WebDom.appendChild(overlay)->ignore
+          winOverlay := Some(overlay)
         }
+
+      // Tear the win overlay down (#85) — undo out of a victory removes the panel
+      // and clears the flag so a later win can raise it again. A no-op when no
+      // overlay is up.
+      let removeWinOverlay = () =>
+        switch winOverlay.contents {
+        | Some(overlay) =>
+          WebDom.remove(overlay)
+          winOverlay := None
+          winShown := false
+        | None => ()
+        }
+
+      // Report the current undo/redo availability to the chrome (#85) so the top
+      // bar can enable or disable its buttons. Called after every state change.
+      let reportHistory = () =>
+        switch onHistory {
+        | Some(f) => f(History.canUndo(history.contents), History.canRedo(history.contents))
+        | None => ()
+        }
+
+      // Record the current (settled) `state` as one undoable step, then report the
+      // updated availability. Called after each accepted move, once auto-collect has
+      // settled — so a move and the collection it triggered undo as a unit.
+      let recordHistory = () => {
+        history := History.record(history.contents, state.contents)
+        reportHistory()
+      }
 
       // The end-game "Finish" button (#132): a conditional control — the same
       // show-when-relevant shape as the win overlay above — that appears exactly
@@ -541,6 +593,9 @@ let make = (
             btn->WebDom.addEventListener("click", () => {
               let (settled, _moved) = Reducer.finishSequence(~game, state.contents)
               state := settled
+              // The whole sweep is one undoable step (#85): undo after a finish
+              // steps back to the position it started from.
+              recordHistory()
               removeFinishButton()
               reflowAll()
               if GameState.hasWon(game, state.contents) {
@@ -550,6 +605,32 @@ let make = (
             boardHost->WebDom.appendChild(btn)->ignore
             finishButton := Some(btn)
           }
+        }
+
+      // Step the board's history back / forward (#85), re-deriving the layout from
+      // the restored state. Neither re-runs auto-collect — undo restores the prior
+      // *settled* state exactly. Undo tears down the win overlay first, so it steps
+      // cleanly back out of a victory; redo re-raises the win if the state it
+      // replays to is itself a won board.
+      let undo = () =>
+        if History.canUndo(history.contents) {
+          history := History.undo(history.contents)
+          state := History.present(history.contents)
+          removeWinOverlay()
+          reflowAll()
+          updateFinishButton()
+          reportHistory()
+        }
+      let redo = () =>
+        if History.canRedo(history.contents) {
+          history := History.redo(history.contents)
+          state := History.present(history.contents)
+          reflowAll()
+          if GameState.hasWon(game, state.contents) {
+            showWin()
+          }
+          updateFinishButton()
+          reportHistory()
         }
 
       // Build one draggable card and wire its pointer loop. It starts at 0,0 and is
@@ -723,6 +804,8 @@ let make = (
               | Ok(next) =>
                 state := next
                 autoCollectIfEnabled()
+                // Record the settled position as one undoable step (#85).
+                recordHistory()
                 reflowAll()
                 if GameState.hasWon(game, state.contents) {
                   showWin()
@@ -766,6 +849,9 @@ let make = (
               // Auto-collect any now-safe cards (#125) before the reflow, so the
               // whole cascade settles in one pass; gated by the option.
               autoCollectIfEnabled()
+              // Record the settled position as one undoable step (#85), so a move
+              // and the auto-collection it triggered undo together.
+              recordHistory()
               reflowAll()
 
               // A move that completes every foundation ends the game (#121): raise
@@ -975,6 +1061,20 @@ let make = (
       // already drainable — a `?state=` scenario can drop the board into one.
       // Layout-independent, so it needn't wait on the deal's frame.
       updateFinishButton()
+
+      // Publish this build's undo/redo actions to the chrome and report the opening
+      // history (nothing to undo or redo yet), so the top bar's buttons start
+      // disabled (#85). Re-published every build, so after a re-deal the top bar
+      // drives the fresh board's history, not the torn-down one's.
+      switch publishUndo {
+      | Some(publish) => publish(undo)
+      | None => ()
+      }
+      switch publishRedo {
+      | Some(publish) => publish(redo)
+      | None => ()
+      }
+      reportHistory()
 
       // The caption is the game's own prose (`Game.caption`); a game without one
       // simply shows no caption.

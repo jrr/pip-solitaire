@@ -208,8 +208,9 @@
         margin: 0 0 0.75rem;
       }
 
-      /* The bar's buttons share the scene controls' look. `--reserved` (the Undo
-         stub, #85) is dimmed and non-interactive until its behaviour lands. */
+      /* The bar's buttons share the scene controls' look. A disabled button (Undo
+         with nothing to undo, Redo with nothing to redo — #85) is dimmed and
+         non-interactive. */
       .top-bar__button {
         display: inline-flex;
         align-items: center;
@@ -233,7 +234,6 @@
         display: block;
       }
 
-      .top-bar__button--reserved,
       .top-bar__button:disabled {
         opacity: 0.45;
         cursor: default;
