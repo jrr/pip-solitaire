@@ -240,6 +240,27 @@ let staggerTiming = (~maxInFlight, ~perCardMs, ~n) => {
   (delta, flight)
 }
 
+// The easing every staggered flight shares — a soft, overshoot-free ease-out.
+let flightEasing = "cubic-bezier(0.22, 1, 0.36, 1)"
+
+// One card's staggered flight, shared by the opening deal (#115) and the finish
+// sweep (#160): animate a compositor-friendly `transform` from an offset `(dx, dy)`
+// back to zero, so the card reads as travelling from `(its committed spot) + (dx,
+// dy)` home to that spot (its left/top already hold it). `fill: "backwards"` holds
+// the card at the offset through its `delay`, so a batch launched in one loop each
+// waits its staggered turn. The deal flies every card from one shared off-stage
+// origin; the sweep flies each from its own resting spot — only `(dx, dy)` differs.
+// Returns the animation so a caller can track it (`outstandingAnimations`) or hang
+// the sweep's completion off it.
+let flyHome = (~wrapper, ~dx, ~dy, ~flight, ~delay) =>
+  wrapper->animate(
+    [
+      {"transform": `translate3d(${Float.toString(dx)}px, ${Float.toString(dy)}px, 0)`},
+      {"transform": "translate3d(0, 0, 0)"},
+    ],
+    {"duration": flight, "delay": delay, "easing": flightEasing, "fill": "backwards"},
+  )
+
 // The send-home gesture (#122) is a *double-tap* — two taps on the same card,
 // each staying under `doubleTapMoveTol` pixels of travel (so it reads as a tap,
 // not the start of a drag), within `doubleTapMs` of one another. This is timed
@@ -545,6 +566,20 @@ let make = (
       // it joined) without the view tracking which those were.
       let reflowAll = () => zones->Array.forEach(reflow)
 
+      // Run `body` with the cards' left/top snap transition switched off (the
+      // `.stacking-playfield.dealing` rule), restoring it a frame later — once the
+      // new left/top are committed without animating. Both flight paths reposition
+      // cards and then fly them there on a `transform`: the snap transition must be
+      // off for that window or it animates left/top start → end at the same time and
+      // fights the flight (a card overshoots to `2·start − end` and slides back). The
+      // transform animations run on independently of the class. Used by the opening
+      // deal (#115) and the finish sweep (#160).
+      let withSnapSuppressed = body => {
+        classList(playfield)->addClass("dealing")
+        body()
+        requestAnimationFrame(() => classList(playfield)->removeClass("dealing"))->ignore
+      }
+
       // After an accepted move, auto-collect the safe cards to the foundations
       // (#125) when the option is on (its default), adopting the settled state so
       // the following reflow lays out the swept board. Gated entirely by the flag,
@@ -649,87 +684,73 @@ let make = (
           reflowAll()
           onDone()
         } else {
-          // Suppress the cards' left/top snap transition (`.stacking-card`) for the
-          // duration of the reflow below, the same way the opening deal does. The
+          // Reflow-and-launch with the left/top snap transition suppressed: the
           // inverse-offset trick needs `reflowAll` to move each node onto its
-          // foundation *instantly*: the transform then flies it back from (start −
-          // end). Left the transition on, it would animate left/top start → end at
-          // the same time, and the two would stack — a card starting at `2·start −
-          // end` (overshot off-stage, so it vanishes), sliding to `start`, then
-          // flying up. Dropped a frame later, once the final left/top are committed,
-          // so in-game drop snaps still animate.
-          classList(playfield)->addClass("dealing")
-          // Each card's resting spot *and resting layer* before the sweep, captured
-          // before `reflowAll` moves its node onto its foundation and relayers every
-          // pile by foundation slot. The z-index matters as much as the position: a
-          // card holds at its start (via `fill: "backwards"`) until its staggered
-          // turn, so a still-resting source fan must keep its own slot order until
-          // then — restoring `sz` below stops the foundation-slot relayer from
-          // inverting those fans the instant the sweep starts.
-          let starts =
-            cards->Array.map(c => (c, c.x.contents, c.y.contents, style(c.wrapper)->zIndex))
-          // Snap every node to its foundation slot; the flights below are a visual
-          // catch-up over nodes that already "belong" there.
-          reflowAll()
-          let (delta, flight) = staggerTiming(
-            ~maxInFlight=finishMaxInFlight,
-            ~perCardMs=finishPerCardMs,
-            ~n,
-          )
-          starts->Array.forEachWithIndex(((c, sx, sy, sz), i) => {
-            // Hold this node at its *resting* layer for now: `reflowAll` above
-            // relayered it by its foundation slot, which would scramble the source
-            // fan it hasn't left yet. It waits at `sz` (via the z animation's absent
-            // before-phase) until its staggered turn, then that animation lifts it
-            // above the board for the flight and landing (see `animateZ`).
-            style(c.wrapper)->setZIndex(sz)
-            let delay = Int.toFloat(i) *. delta
-            let dx = sx -. c.x.contents
-            let dy = sy -. c.y.contents
-            let anim = c.wrapper->animate(
-              [
-                {
-                  "transform": `translate3d(${Float.toString(dx)}px, ${Float.toString(dy)}px, 0)`,
-                },
-                {"transform": "translate3d(0, 0, 0)"},
-              ],
-              {
-                "duration": flight,
-                "delay": delay,
-                "easing": "cubic-bezier(0.22, 1, 0.36, 1)",
-                "fill": "backwards",
-              },
+          // foundation *instantly*, or the snap transition fights the flight (see
+          // `withSnapSuppressed`). The transform flights run on past that window.
+          withSnapSuppressed(() => {
+            // Each card's resting spot *and resting layer* before the sweep, captured
+            // before `reflowAll` moves its node onto its foundation and relayers every
+            // pile by foundation slot. The z-index matters as much as the position: a
+            // card holds at its start (via `fill: "backwards"`) until its staggered
+            // turn, so a still-resting source fan must keep its own slot order until
+            // then — restoring `sz` below stops the foundation-slot relayer from
+            // inverting those fans the instant the sweep starts.
+            let starts =
+              cards->Array.map(c => (c, c.x.contents, c.y.contents, style(c.wrapper)->zIndex))
+            // Snap every node to its foundation slot; the flights below are a visual
+            // catch-up over nodes that already "belong" there.
+            reflowAll()
+            let (delta, flight) = staggerTiming(
+              ~maxInFlight=finishMaxInFlight,
+              ~perCardMs=finishPerCardMs,
+              ~n,
             )
-            outstandingAnimations.contents->Array.push(anim)
-            // Lift the card above the board the moment it launches, and land it on
-            // top of whatever is already home: an ascending `+ i` so cards in flight
-            // together (and the piles they land on) stack in arrival order — King
-            // last. `fill: "forwards"` keeps this out of the pre-launch wait, so the
-            // resting `sz` above shows until this card's turn.
-            let flightZ = Int.toString(finishFlightZBase + i)
-            let zAnim =
-              c.wrapper->animateZ(
-                [{"zIndex": flightZ}, {"zIndex": flightZ}],
-                {"duration": flight, "delay": delay, "fill": "forwards"},
+            starts->Array.forEachWithIndex(((c, sx, sy, sz), i) => {
+              // Hold this node at its *resting* layer for now: `reflowAll` above
+              // relayered it by its foundation slot, which would scramble the source
+              // fan it hasn't left yet. It waits at `sz` (via the z animation's absent
+              // before-phase) until its staggered turn, then that animation lifts it
+              // above the board for the flight and landing (see `animateZ`).
+              style(c.wrapper)->setZIndex(sz)
+              let delay = Int.toFloat(i) *. delta
+              let anim = flyHome(
+                ~wrapper=c.wrapper,
+                ~dx=sx -. c.x.contents,
+                ~dy=sy -. c.y.contents,
+                ~flight,
+                ~delay,
               )
-            outstandingAnimations.contents->Array.push(zAnim)
+              outstandingAnimations.contents->Array.push(anim)
+              // Lift the card above the board the moment it launches, and land it on
+              // top of whatever is already home: an ascending `+ i` so cards in flight
+              // together (and the piles they land on) stack in arrival order — King
+              // last. `fill: "forwards"` keeps this out of the pre-launch wait, so the
+              // resting `sz` above shows until this card's turn.
+              let flightZ = Int.toString(finishFlightZBase + i)
+              let zAnim =
+                c.wrapper->animateZ(
+                  [{"zIndex": flightZ}, {"zIndex": flightZ}],
+                  {"duration": flight, "delay": delay, "fill": "forwards"},
+                )
+              outstandingAnimations.contents->Array.push(zAnim)
 
-            // The last card to launch is the last to land (every flight is the same
-            // length), so its finish is the whole sweep's finish. Drop the raised
-            // flight layers (cancelling reverts each node to its inline z) and settle
-            // every foundation to slot order (King on top), then hand to the win
-            // overlay.
-            if i == n - 1 {
-              anim->setOnFinish(() => {
-                cancelOutstanding()
-                reflowAll()
-                onDone()
-              })
-            }
+              // The last card to launch is the last to land (every flight is the same
+              // length), so its finish is the whole sweep's finish. Drop the raised
+              // flight layers (cancelling reverts each node to its inline z) and settle
+              // every foundation to slot order (King on top), then hand to the win
+              // overlay.
+              if i == n - 1 {
+                anim->setOnFinish(
+                  () => {
+                    cancelOutstanding()
+                    reflowAll()
+                    onDone()
+                  },
+                )
+              }
+            })
           })
-          // Restore the drop snap now that every node's foundation left/top is
-          // committed; the transform flights run on independently of the class.
-          requestAnimationFrame(() => classList(playfield)->removeClass("dealing"))->ignore
         }
       }
 
@@ -1191,24 +1212,13 @@ let make = (
             ~n,
           )
           cards->Array.forEachWithIndex((card, i) => {
-            let dx = originX -. card.x.contents
-            let dy = originY -. card.y.contents
-            card.wrapper
-            ->animate(
-              [
-                {
-                  "transform": `translate3d(${Float.toString(dx)}px, ${Float.toString(dy)}px, 0)`,
-                },
-                {"transform": "translate3d(0, 0, 0)"},
-              ],
-              {
-                "duration": flight,
-                "delay": Int.toFloat(i) *. delta,
-                "easing": "cubic-bezier(0.22, 1, 0.36, 1)",
-                "fill": "backwards",
-              },
-            )
-            ->ignore
+            flyHome(
+              ~wrapper=card.wrapper,
+              ~dx=originX -. card.x.contents,
+              ~dy=originY -. card.y.contents,
+              ~flight,
+              ~delay=Int.toFloat(i) *. delta,
+            )->ignore
           })
         }
       }
@@ -1217,16 +1227,14 @@ let make = (
         // Size the cards to the now-laid-out stage first, so both deals below place
         // and reflow cards at their final footprint.
         applyScale()
-        // Suppress the left/top snap transition for the opening placement so the
-        // cards don't *also* slide in from the corner (0,0) while the fly-up plays
-        // (see `.stacking-playfield.dealing` in the CSS). Restored on the next
-        // frame, once the final left/top are committed without animating — the
-        // transform fly-up runs on independently.
-        classList(playfield)->addClass("dealing")
-        dealPiles()
-        dealFree()
-        animateDeal()
-        requestAnimationFrame(() => classList(playfield)->removeClass("dealing"))->ignore
+        // Place and fly the cards in with the left/top snap transition suppressed, so
+        // they don't *also* slide in from the corner (0,0) while the fly-up plays (see
+        // `withSnapSuppressed`); the transform fly-up runs on past that window.
+        withSnapSuppressed(() => {
+          dealPiles()
+          dealFree()
+          animateDeal()
+        })
       }
 
       // Deal now if the stage is already laid out (a later scene switch); otherwise
