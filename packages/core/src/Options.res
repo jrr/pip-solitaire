@@ -12,9 +12,17 @@
 // player never has to click the obvious ones — the behaviour most FreeCell apps
 // have on by default. Gated entirely by this flag: `autoCollect: false` is an
 // exact no-op, the board left exactly as the reducer returned it.
-type t = {autoCollect: bool}
+//
+// `allowColumnReorder` (#159): a **house rule** for our variant — may the player
+// pull a cascade column out and drop it into the gap between two others, the rest
+// sliding over (a `Reducer.MoveColumn`)? Strict FreeCell doesn't sanction moving
+// whole columns around, so it's opt-in, defaulting *on* for our game with no UI
+// toggle surfaced yet. Gated exactly like `autoCollect`: when off, a driver never
+// dispatches the reorder, so it's an exact no-op.
+type t = {autoCollect: bool, allowColumnReorder: bool}
 
-// The shipped default: auto-collect on. Both drivers read this today; no UI
-// control is exposed yet, so this is the only value in play until a settings
-// toggle (#112) is wired to set the field.
-let default = {autoCollect: true}
+// The shipped default: auto-collect on and column reordering allowed (our
+// variant's house rule). Both drivers read this today; no UI control is exposed
+// yet, so this is the only value in play until a settings toggle (#112) is wired
+// to set the fields.
+let default = {autoCollect: true, allowColumnReorder: true}

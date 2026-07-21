@@ -35,6 +35,16 @@ type target =
 type action =
   | Move({card: card, to: target})
   | MoveRun({cards: array<card>, to: target})
+  // Reorder the cascade columns (#159): pull the column at pile index `from` out
+  // and reinsert it at `to`, the intervening columns sliding over to accommodate —
+  // insert-and-shift, *not* a swap. A house-rule organizational move (our variant's
+  // `Options.allowColumnReorder`), so a player can arrange the board how they like.
+  // Both indices address *absolute* pile positions (consistent with `Move`'s
+  // `ToPile(int)`), and both must be `Cascade` piles — foundations and free cells
+  // aren't reorderable. Since the eight cascades are structurally identical pile
+  // defs, this only permutes `GameState.piles`; the board `Game.piles` is untouched,
+  // so it's a pure state transition recording as one clean undo step (#85).
+  | MoveColumn({from: int, to: int})
 
 // Why a move was rejected. Distinguishing these lets a driver react precisely —
 // a rule refusal flashes red, a not-`free` loose drop snaps the card home — and
@@ -48,6 +58,7 @@ type moveError =
   | CardNotFound // the card isn't anywhere in this state
   | NotARun // a `MoveRun`'s cards aren't a legal ordered run (#123)
   | RunTooLong // a `MoveRun`'s run exceeds the supermove limit (#123)
+  | NotAColumn // a `MoveColumn` addressed a pile that isn't a `Cascade` (#159)
 
 // Is pile `onto` already full — holding as many cards as its `capacity` allows
 // (#93)? A pile with `capacity: None` is unbounded and never full; a `Some(cap)`
@@ -170,6 +181,31 @@ let placeOnPile = (state: GameState.t, card: card, i: int): GameState.t => {
 let placeRun = (state: GameState.t, cards: array<card>, i: int): GameState.t =>
   cards->Array.reduce(state, (s, card) => placeOnPile(s, card, i))
 
+// `state` with the pile at index `from` pulled out and reinserted at index `to`,
+// the intervening piles sliding over — insert-and-shift, the reorder behind
+// `MoveColumn` (#159). A fresh `piles` array is built (copy-on-write like the
+// primitives above), so the input snapshot is never mutated. `from == to` rebuilds
+// the same order — an exact no-op. Callers guarantee both indices are in range and
+// address `Cascade` piles, so only cascade columns are ever permuted; every other
+// pile keeps its position and contents.
+let reorderPile = (state: GameState.t, ~from: int, ~to: int): GameState.t => {
+  let moved = state.piles->Array.getUnsafe(from)
+  let without = state.piles->Array.filterWithIndex((_, i) => i != from)
+  let reordered = []
+  without->Array.forEachWithIndex((cards, i) => {
+    if i == to {
+      reordered->Array.push(moved)
+    }
+    reordered->Array.push(cards)
+  })
+
+  // `to` at or past the shortened array's end drops the column on the far end.
+  if to >= Array.length(without) {
+    reordered->Array.push(moved)
+  }
+  {...state, piles: reordered}
+}
+
 // The pure transition. Closes over the board (`~game`) for each pile's `rule`
 // and the `free` flag, since `GameState.t` carries no rules. Returns a fresh
 // `Ok(state)` on a lawful move — including the identity re-drop of a card onto
@@ -242,6 +278,26 @@ let reduce = (~game: Game.t, state: GameState.t, action: action): result<GameSta
         Error(RunTooLong)
       } else {
         Ok(placeRun(state, cards, i))
+      }
+    }
+  // Reorder two cascade columns (#159): pull the column at `from` out and reinsert
+  // it at `to`, the rest sliding over. Both indices must be in range *and* address
+  // `Cascade` piles — reordering a free cell or foundation is out of scope — else a
+  // typed rejection (`NoSuchPile` / `NotAColumn`) so a driver can say precisely why.
+  // On success only `GameState.piles` is permuted (foundations, free cells and the
+  // loose table untouched), so the reorder is purely organizational: win-state,
+  // `canFinish` and auto-collect eligibility are all invariant under it. This is a
+  // *board rule* — the `allowColumnReorder` house-rule gate (#159) lives in the
+  // driver, which withholds the action entirely when the option is off, mirroring
+  // how `autoCollect` is applied driver-side rather than inside the pure reducer.
+  | MoveColumn({from, to}) =>
+    switch (game.piles->Array.get(from), game.piles->Array.get(to)) {
+    | (None, _) | (_, None) => Error(NoSuchPile)
+    | (Some(fromPile), Some(toPile)) =>
+      if fromPile.role != Game.Cascade || toPile.role != Game.Cascade {
+        Error(NotAColumn)
+      } else {
+        Ok(reorderPile(state, ~from, ~to))
       }
     }
   }

@@ -157,7 +157,7 @@ describe("Repl.run", () => {
       () => {
         // With the flag off the reducer's result stands untouched: 3S is home, the
         // other Threes still resting in their cells — an exact no-op path.
-        let off = {Options.autoCollect: false}
+        let off = {...Options.default, Options.autoCollect: false}
         let (dealt, _) = Repl.step(~options=off, None, "deal freecell sendhome")
         let (afterMove, _) = Repl.step(~options=off, dealt, "home 3S")
         switch afterMove {
@@ -230,6 +230,83 @@ describe("Repl.run", () => {
         }
         let collected = Repl.afterMove(~game, ~options=Options.default, lone)
         expect(collected == lone)->toBe(false)
+      },
+    )
+  })
+
+  // Column reorder (#159): the `movecol` verb reorders two cascades in one undoable
+  // step when the house-rule option is on, does nothing when it's off, and rejects a
+  // non-cascade or out-of-range target — mirroring the `finish`/`home` verb style.
+  describe("movecol", () => {
+    // FreeCell's cascades are pile indices 8–15; the cells/foundations sit at 0–7.
+    let dealt = () => {
+      let (s, _) = Repl.step(~options=Options.default, None, "deal freecell")
+      s
+    }
+
+    test(
+      "reorders two cascades (insert-and-shift), recorded as one undo step",
+      () => {
+        let start = dealt()
+        // Capture the two columns the reorder will touch before moving them.
+        let (col8, col9) = switch start {
+        | Some(s) => (
+            GameState.cardsInPile(Repl.present(s), 8),
+            GameState.cardsInPile(Repl.present(s), 9),
+          )
+        | None => ([], [])
+        }
+        let (moved, _) = Repl.step(~options=Options.default, start, "movecol 8 15")
+        switch moved {
+        | Some(s) =>
+          // Cascade 8 slid to 15; the one that followed it (9) slid into 8.
+          expect(GameState.cardsInPile(Repl.present(s), 15))->toEqual(col8)
+          expect(GameState.cardsInPile(Repl.present(s), 8))->toEqual(col9)
+          // One clean undo step: undo restores the original order exactly.
+          let (undone, _) = Repl.step(~options=Options.default, moved, "undo")
+          switch undone {
+          | Some(u) => expect(GameState.cardsInPile(Repl.present(u), 8))->toEqual(col8)
+          | None => expect(true)->toBe(false)
+          }
+        | None => expect(true)->toBe(false)
+        }
+      },
+    )
+
+    test(
+      "is an exact no-op when the option is off",
+      () => {
+        let off = {...Options.default, Options.allowColumnReorder: false}
+        let (start, _) = Repl.step(~options=off, None, "deal freecell")
+        let col8 = switch start {
+        | Some(s) => GameState.cardsInPile(Repl.present(s), 8)
+        | None => []
+        }
+        let (after, text) = Repl.step(~options=off, start, "movecol 8 15")
+        // The board is untouched and the driver says the rule is off — nothing moved.
+        expect(has(text, "off"))->toBe(true)
+        switch after {
+        | Some(s) => expect(GameState.cardsInPile(Repl.present(s), 8))->toEqual(col8)
+        | None => expect(true)->toBe(false)
+        }
+      },
+    )
+
+    test(
+      "rejects a non-cascade target and an out-of-range index",
+      () => {
+        // Pile 4 is a foundation (cells 0–3, foundations 4–7), so it isn't a column.
+        let notColumn = Repl.run(["deal freecell", "movecol 8 4"])
+        expect(has(notColumn, "isn't a cascade column"))->toBe(true)
+        let outOfRange = Repl.run(["deal freecell", "movecol 8 99"])
+        expect(has(outOfRange, "no such pile"))->toBe(true)
+      },
+    )
+
+    test(
+      "guides the user before a game is dealt",
+      () => {
+        expect(has(Repl.run(["movecol 8 15"]), "Deal a game first"))->toBe(true)
       },
     )
   })

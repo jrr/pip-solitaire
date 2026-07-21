@@ -133,7 +133,7 @@ let update = (msg, model) =>
       // Push the flip into the shared preference ref the board reads, and persist
       // it so the choice survives a reload. Both run as the post-update effect.
       () => {
-        options := {autoCollect: autoCollect}
+        options := {...options.contents, autoCollect}
         Preferences.save(options.contents)
       },
     )
