@@ -91,6 +91,10 @@ type style
 @set external setLeft: (style, string) => unit = "left"
 @set external setTop: (style, string) => unit = "top"
 @set external setZIndex: (style, string) => unit = "zIndex"
+// Read a card's current layer back, so the finish sweep (#160) can hold each
+// card at its *resting* z while it flies and only relayer to foundation order
+// once it lands (see `animateFinish`).
+@get external zIndex: style => string = "zIndex"
 @set external setHeight: (style, string) => unit = "height"
 // Card/zone footprints scale to the stage (see `scale` below); the factor is
 // published to the CSS as custom properties so `.stacking-card`/`.drop-zone`
@@ -624,9 +628,15 @@ let make = (
           reflowAll()
           onDone()
         } else {
-          // Each card's resting spot *before* the sweep, captured before `reflowAll`
-          // moves its node onto its foundation.
-          let starts = cards->Array.map(c => (c, c.x.contents, c.y.contents))
+          // Each card's resting spot *and resting layer* before the sweep, captured
+          // before `reflowAll` moves its node onto its foundation and relayers every
+          // pile by foundation slot. The z-index matters as much as the position: a
+          // card holds at its start (via `fill: "backwards"`) until its staggered
+          // turn, so a still-resting source fan must keep its own slot order until
+          // then — restoring `sz` below stops the foundation-slot relayer from
+          // inverting those fans the instant the sweep starts.
+          let starts =
+            cards->Array.map(c => (c, c.x.contents, c.y.contents, style(c.wrapper)->zIndex))
           // Snap every node to its foundation slot; the flights below are a visual
           // catch-up over nodes that already "belong" there.
           reflowAll()
@@ -635,7 +645,12 @@ let make = (
             ~perCardMs=finishPerCardMs,
             ~n,
           )
-          starts->Array.forEachWithIndex(((c, sx, sy), i) => {
+          starts->Array.forEachWithIndex(((c, sx, sy, sz), i) => {
+            // Fly from the resting spot, layered as it rested: `reflowAll` above
+            // relayered this node by its foundation slot, which would scramble the
+            // source fan it hasn't left yet, so restore its resting z for the flight.
+            // The final settle (below) puts every foundation back in slot order.
+            style(c.wrapper)->setZIndex(sz)
             let dx = sx -. c.x.contents
             let dy = sy -. c.y.contents
             let anim = c.wrapper->animate(
@@ -655,9 +670,14 @@ let make = (
             outstandingAnimations.contents->Array.push(anim)
 
             // The last card to launch is the last to land (every flight is the same
-            // length), so its finish is the whole sweep's finish.
+            // length), so its finish is the whole sweep's finish. Settle every
+            // foundation back to slot order (King on top) now that the resting-layer
+            // flights are done, then hand off to the win overlay.
             if i == n - 1 {
-              anim->setOnFinish(onDone)
+              anim->setOnFinish(() => {
+                reflowAll()
+                onDone()
+              })
             }
           })
         }
