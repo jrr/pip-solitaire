@@ -628,6 +628,16 @@ let make = (
           reflowAll()
           onDone()
         } else {
+          // Suppress the cards' left/top snap transition (`.stacking-card`) for the
+          // duration of the reflow below, the same way the opening deal does. The
+          // inverse-offset trick needs `reflowAll` to move each node onto its
+          // foundation *instantly*: the transform then flies it back from (start −
+          // end). Left the transition on, it would animate left/top start → end at
+          // the same time, and the two would stack — a card starting at `2·start −
+          // end` (overshot off-stage, so it vanishes), sliding to `start`, then
+          // flying up. Dropped a frame later, once the final left/top are committed,
+          // so in-game drop snaps still animate.
+          classList(playfield)->addClass("dealing")
           // Each card's resting spot *and resting layer* before the sweep, captured
           // before `reflowAll` moves its node onto its foundation and relayers every
           // pile by foundation slot. The z-index matters as much as the position: a
@@ -680,6 +690,9 @@ let make = (
               })
             }
           })
+          // Restore the drop snap now that every node's foundation left/top is
+          // committed; the transform flights run on independently of the class.
+          requestAnimationFrame(() => classList(playfield)->removeClass("dealing"))->ignore
         }
       }
 
