@@ -72,6 +72,25 @@ external animate: (
   array<{"transform": string}>,
   {"duration": float, "delay": float, "easing": string, "fill": string},
 ) => animation = "animate"
+// Cancelling an animation (on teardown / undo) reverts its element and — unlike a
+// natural finish — does *not* fire `onfinish`, so a cancelled finish sweep can't
+// raise a stale win overlay. `onfinish` is how the sweep knows its last card has
+// landed (see `animateFinish`).
+@send external cancel: animation => unit = "cancel"
+@set external setOnFinish: (animation, unit => unit) => unit = "onfinish"
+// The finish sweep (#160) also animates z: a card holds its resting layer while it
+// waits its turn (so the source fan it hasn't left stays correctly stacked), then
+// jumps above the board for its flight and landing. `fill: "forwards"` is the whole
+// point — the effect is *absent* during the launch delay (so the resting inline z
+// shows through) and only takes hold from the flight onward, holding the raised z
+// until the final settle cancels it. Two constant keyframes keep the raise instant
+// (z-index steps discretely, so a single keyframe would only flip mid-flight).
+@send
+external animateZ: (
+  WebDom.element,
+  array<{"zIndex": string}>,
+  {"duration": float, "delay": float, "fill": string},
+) => animation = "animate"
 
 // Honour the OS "reduce motion" preference by collapsing the fly-up to an
 // instant placement.
@@ -85,6 +104,11 @@ type style
 @set external setLeft: (style, string) => unit = "left"
 @set external setTop: (style, string) => unit = "top"
 @set external setZIndex: (style, string) => unit = "zIndex"
+// Read a card's current layer back, so the finish sweep (#160) can hold each
+// card at its *resting* z while it waits its turn — keeping the source fan it
+// hasn't left correctly stacked — before lifting it above the board for the
+// flight (see `animateFinish`).
+@get external zIndex: style => string = "zIndex"
 @set external setHeight: (style, string) => unit = "height"
 // Card/zone footprints scale to the stage (see `scale` below); the factor is
 // published to the CSS as custom properties so `.stacking-card`/`.drop-zone`
@@ -187,6 +211,56 @@ let fillFraction = 0.9
 let dealMaxInFlight = 5
 let dealPerCardMs = 67.
 
+// The end-game "Finish" sweep animation (#160) reuses the deal's staggered-flight
+// model — cards flying home one at a time — but from a different source order and
+// trajectory (each card from where it *rests* to its foundation, rather than one
+// shared off-stage origin). It carries its own knobs so the sweep can be tuned to
+// a different feel than the deal without disturbing it; the C/P → Δ/flight
+// derivation is identical (see the deal knobs above).
+let finishMaxInFlight = 5
+let finishPerCardMs = 90.
+
+// A flying card is lifted onto this z base — well above any resting slot layer —
+// so it rides over the source fan it's leaving and lands on top of the foundation
+// cards already home. A per-card `+ i` (its launch index) preserves arrival-order
+// stacking — later ranks on top, King last — while several cards are in flight at
+// once; the final `reflowAll` then settles every foundation to its own slot order.
+let finishFlightZBase = 100000
+
+// The staggered-flight timing shared by the deal (#115) and the finish sweep
+// (#160): from the max-in-flight cap C, the per-card budget P and the card count
+// n, derive the start interval Δ between successive cards and each card's flight
+// time t = C·Δ (see the deal knobs above for the full derivation). C is clamped to
+// at most n so the last card's flight isn't padded past what the sequence needs.
+let staggerTiming = (~maxInFlight, ~perCardMs, ~n) => {
+  let c = Int.toFloat(maxInFlight < n ? maxInFlight : n)
+  let total = perCardMs *. Int.toFloat(n)
+  let delta = n > 1 ? total /. (Int.toFloat(n - 1) +. c) : total /. c
+  let flight = c *. delta
+  (delta, flight)
+}
+
+// The easing every staggered flight shares — a soft, overshoot-free ease-out.
+let flightEasing = "cubic-bezier(0.22, 1, 0.36, 1)"
+
+// One card's staggered flight, shared by the opening deal (#115) and the finish
+// sweep (#160): animate a compositor-friendly `transform` from an offset `(dx, dy)`
+// back to zero, so the card reads as travelling from `(its committed spot) + (dx,
+// dy)` home to that spot (its left/top already hold it). `fill: "backwards"` holds
+// the card at the offset through its `delay`, so a batch launched in one loop each
+// waits its staggered turn. The deal flies every card from one shared off-stage
+// origin; the sweep flies each from its own resting spot — only `(dx, dy)` differs.
+// Returns the animation so a caller can track it (`outstandingAnimations`) or hang
+// the sweep's completion off it.
+let flyHome = (~wrapper, ~dx, ~dy, ~flight, ~delay) =>
+  wrapper->animate(
+    [
+      {"transform": `translate3d(${Float.toString(dx)}px, ${Float.toString(dy)}px, 0)`},
+      {"transform": "translate3d(0, 0, 0)"},
+    ],
+    {"duration": flight, "delay": delay, "easing": flightEasing, "fill": "backwards"},
+  )
+
 // The send-home gesture (#122) is a *double-tap* — two taps on the same card,
 // each staying under `doubleTapMoveTol` pixels of travel (so it reads as a tap,
 // not the start of a drag), within `doubleTapMs` of one another. This is timed
@@ -256,6 +330,18 @@ let make = (
     let boardHost = WebDom.createElement("div")
     boardHost->WebDom.setAttribute("class", "table-board")
 
+    // Any finish-sweep flights (#160) still in the air, held at mount scope — above
+    // `buildBoard` — so they survive across a re-deal's rebuild and can be cancelled
+    // when the board is torn down or an undo steps back out from under them. A
+    // cancelled animation doesn't fire its `onfinish`, so an interrupted sweep never
+    // raises a stale win overlay; the model is already committed, so state is safe
+    // regardless.
+    let outstandingAnimations: ref<array<animation>> = ref([])
+    let cancelOutstanding = () => {
+      outstandingAnimations.contents->Array.forEach(cancel)
+      outstandingAnimations := []
+    }
+
     // Build (or rebuild) the whole board for `game` into `boardHost`. Every call
     // clears the host first, so a re-deal starts empty — none of the previous
     // deal's card nodes or drop zones survive (the tear-down New Game needs) —
@@ -264,6 +350,10 @@ let make = (
     // `?state=` scenario) and applies only to the opening mount; a re-deal always
     // opens from its game's own fresh deal.
     let rec buildBoard = (~initial: option<GameState.t>=?, game: Game.t) => {
+      // Cancel any finish sweep still in flight from the board being torn down, so
+      // its cards stop animating and its last-card `onfinish` can't raise a win over
+      // the fresh board.
+      cancelOutstanding()
       WebDom.clear(boardHost)
       // The stage everything is positioned within; `position: relative` (in CSS)
       // makes it the origin for the cards' absolute left/top.
@@ -476,6 +566,20 @@ let make = (
       // it joined) without the view tracking which those were.
       let reflowAll = () => zones->Array.forEach(reflow)
 
+      // Run `body` with the cards' left/top snap transition switched off (the
+      // `.stacking-playfield.dealing` rule), restoring it a frame later — once the
+      // new left/top are committed without animating. Both flight paths reposition
+      // cards and then fly them there on a `transform`: the snap transition must be
+      // off for that window or it animates left/top start → end at the same time and
+      // fights the flight (a card overshoots to `2·start − end` and slides back). The
+      // transform animations run on independently of the class. Used by the opening
+      // deal (#115) and the finish sweep (#160).
+      let withSnapSuppressed = body => {
+        classList(playfield)->addClass("dealing")
+        body()
+        requestAnimationFrame(() => classList(playfield)->removeClass("dealing"))->ignore
+      }
+
       // After an accepted move, auto-collect the safe cards to the foundations
       // (#125) when the option is on (its default), adopting the settled state so
       // the following reflow lays out the swept board. Gated entirely by the flag,
@@ -562,6 +666,94 @@ let make = (
         reportHistory()
       }
 
+      // Fly the finishing sweep home (#160): with the final `settled` state already
+      // committed (so the model and undo are correct and robust to interruption),
+      // play a pure *visual* catch-up over `movedCards` — each card flying from where
+      // it was resting to its foundation slot, staggered by the finish knobs. Same
+      // inverse-offset trick as `animateDeal`: capture each card's current spot, let
+      // `reflowAll` snap every node onto its foundation, then animate the transform
+      // back from (start − end) to zero. `onDone` fires once the last card lands (it
+      // raises the win overlay), so the victory reads as the payoff of the sweep. With
+      // the OS asking for reduced motion — or nothing to move — the sweep collapses to
+      // today's instant `reflowAll`, `onDone` firing immediately.
+      let animateFinish = (movedCards: array<Deck.card>, ~onDone) => {
+        let reduceMotion = matchMedia("(prefers-reduced-motion: reduce)")["matches"]
+        let cards = movedCards->Array.filterMap(nodeFor)
+        let n = Array.length(cards)
+        if reduceMotion || n == 0 {
+          reflowAll()
+          onDone()
+        } else {
+          // Reflow-and-launch with the left/top snap transition suppressed: the
+          // inverse-offset trick needs `reflowAll` to move each node onto its
+          // foundation *instantly*, or the snap transition fights the flight (see
+          // `withSnapSuppressed`). The transform flights run on past that window.
+          withSnapSuppressed(() => {
+            // Each card's resting spot *and resting layer* before the sweep, captured
+            // before `reflowAll` moves its node onto its foundation and relayers every
+            // pile by foundation slot. The z-index matters as much as the position: a
+            // card holds at its start (via `fill: "backwards"`) until its staggered
+            // turn, so a still-resting source fan must keep its own slot order until
+            // then — restoring `sz` below stops the foundation-slot relayer from
+            // inverting those fans the instant the sweep starts.
+            let starts =
+              cards->Array.map(c => (c, c.x.contents, c.y.contents, style(c.wrapper)->zIndex))
+            // Snap every node to its foundation slot; the flights below are a visual
+            // catch-up over nodes that already "belong" there.
+            reflowAll()
+            let (delta, flight) = staggerTiming(
+              ~maxInFlight=finishMaxInFlight,
+              ~perCardMs=finishPerCardMs,
+              ~n,
+            )
+            starts->Array.forEachWithIndex(((c, sx, sy, sz), i) => {
+              // Hold this node at its *resting* layer for now: `reflowAll` above
+              // relayered it by its foundation slot, which would scramble the source
+              // fan it hasn't left yet. It waits at `sz` (via the z animation's absent
+              // before-phase) until its staggered turn, then that animation lifts it
+              // above the board for the flight and landing (see `animateZ`).
+              style(c.wrapper)->setZIndex(sz)
+              let delay = Int.toFloat(i) *. delta
+              let anim = flyHome(
+                ~wrapper=c.wrapper,
+                ~dx=sx -. c.x.contents,
+                ~dy=sy -. c.y.contents,
+                ~flight,
+                ~delay,
+              )
+              outstandingAnimations.contents->Array.push(anim)
+              // Lift the card above the board the moment it launches, and land it on
+              // top of whatever is already home: an ascending `+ i` so cards in flight
+              // together (and the piles they land on) stack in arrival order — King
+              // last. `fill: "forwards"` keeps this out of the pre-launch wait, so the
+              // resting `sz` above shows until this card's turn.
+              let flightZ = Int.toString(finishFlightZBase + i)
+              let zAnim =
+                c.wrapper->animateZ(
+                  [{"zIndex": flightZ}, {"zIndex": flightZ}],
+                  {"duration": flight, "delay": delay, "fill": "forwards"},
+                )
+              outstandingAnimations.contents->Array.push(zAnim)
+
+              // The last card to launch is the last to land (every flight is the same
+              // length), so its finish is the whole sweep's finish. Drop the raised
+              // flight layers (cancelling reverts each node to its inline z) and settle
+              // every foundation to slot order (King on top), then hand to the win
+              // overlay.
+              if i == n - 1 {
+                anim->setOnFinish(
+                  () => {
+                    cancelOutstanding()
+                    reflowAll()
+                    onDone()
+                  },
+                )
+              }
+            })
+          })
+        }
+      }
+
       // The end-game "Finish" button (#132): a conditional control — the same
       // show-when-relevant shape as the win overlay above — that appears exactly
       // when the board can be drained to a win by foundation moves alone
@@ -591,16 +783,20 @@ let make = (
             btn->WebDom.setAttribute("class", "finish-button")
             btn->WebDom.setTextContent("Finish")
             btn->WebDom.addEventListener("click", () => {
-              let (settled, _moved) = Reducer.finishSequence(~game, state.contents)
+              let (settled, moved) = Reducer.finishSequence(~game, state.contents)
               state := settled
-              // The whole sweep is one undoable step (#85): undo after a finish
-              // steps back to the position it started from.
+              // The whole sweep is one undoable step (#85): the model transition and
+              // its single `recordHistory` commit immediately, so undo after a finish
+              // steps back to the position it started from regardless of the animation.
               recordHistory()
               removeFinishButton()
-              reflowAll()
-              if GameState.hasWon(game, state.contents) {
-                showWin()
-              }
+              // Deliver the sweep as a staggered flight (#160) rather than an instant
+              // jump; the win overlay lands only once the last card has arrived.
+              animateFinish(moved, ~onDone=() =>
+                if GameState.hasWon(game, state.contents) {
+                  showWin()
+                }
+              )
             })
             boardHost->WebDom.appendChild(btn)->ignore
             finishButton := Some(btn)
@@ -614,6 +810,10 @@ let make = (
       // replays to is itself a won board.
       let undo = () =>
         if History.canUndo(history.contents) {
+          // Stop any finish sweep still in flight before laying out the restored
+          // position, so its cards don't keep flying toward foundations the undo has
+          // just emptied (the state is already committed, so nothing corrupts).
+          cancelOutstanding()
           history := History.undo(history.contents)
           state := History.present(history.contents)
           removeWinOverlay()
@@ -623,6 +823,7 @@ let make = (
         }
       let redo = () =>
         if History.canRedo(history.contents) {
+          cancelOutstanding()
           history := History.redo(history.contents)
           state := History.present(history.contents)
           reflowAll()
@@ -1003,34 +1204,21 @@ let make = (
           // in playfield-local coords (matching the cards' left/top).
           let originX = pr.width /. 2. -. cw /. 2.
           let originY = pr.height +. ch
-          // C, never more than the cards we have (else the last card's flight is
-          // padded past what the deck needs).
-          let c = Int.toFloat(dealMaxInFlight < n ? dealMaxInFlight : n)
-          // T scales with the count: the deal spends `dealPerCardMs` per card, so
-          // fewer cards ⇒ a proportionally shorter deal.
-          let total = dealPerCardMs *. Int.toFloat(n)
-          // Δ; with a single card there are no gaps, so it just flies for the whole T.
-          let delta = n > 1 ? total /. (Int.toFloat(n - 1) +. c) : total /. c
-          let flight = c *. delta
+          // The stagger (Δ) and per-card flight time, from the deal's knobs and the
+          // card count — the same derivation the finish sweep reuses.
+          let (delta, flight) = staggerTiming(
+            ~maxInFlight=dealMaxInFlight,
+            ~perCardMs=dealPerCardMs,
+            ~n,
+          )
           cards->Array.forEachWithIndex((card, i) => {
-            let dx = originX -. card.x.contents
-            let dy = originY -. card.y.contents
-            card.wrapper
-            ->animate(
-              [
-                {
-                  "transform": `translate3d(${Float.toString(dx)}px, ${Float.toString(dy)}px, 0)`,
-                },
-                {"transform": "translate3d(0, 0, 0)"},
-              ],
-              {
-                "duration": flight,
-                "delay": Int.toFloat(i) *. delta,
-                "easing": "cubic-bezier(0.22, 1, 0.36, 1)",
-                "fill": "backwards",
-              },
-            )
-            ->ignore
+            flyHome(
+              ~wrapper=card.wrapper,
+              ~dx=originX -. card.x.contents,
+              ~dy=originY -. card.y.contents,
+              ~flight,
+              ~delay=Int.toFloat(i) *. delta,
+            )->ignore
           })
         }
       }
@@ -1039,16 +1227,14 @@ let make = (
         // Size the cards to the now-laid-out stage first, so both deals below place
         // and reflow cards at their final footprint.
         applyScale()
-        // Suppress the left/top snap transition for the opening placement so the
-        // cards don't *also* slide in from the corner (0,0) while the fly-up plays
-        // (see `.stacking-playfield.dealing` in the CSS). Restored on the next
-        // frame, once the final left/top are committed without animating — the
-        // transform fly-up runs on independently.
-        classList(playfield)->addClass("dealing")
-        dealPiles()
-        dealFree()
-        animateDeal()
-        requestAnimationFrame(() => classList(playfield)->removeClass("dealing"))->ignore
+        // Place and fly the cards in with the left/top snap transition suppressed, so
+        // they don't *also* slide in from the corner (0,0) while the fly-up plays (see
+        // `withSnapSuppressed`); the transform fly-up runs on past that window.
+        withSnapSuppressed(() => {
+          dealPiles()
+          dealFree()
+          animateDeal()
+        })
       }
 
       // Deal now if the stage is already laid out (a later scene switch); otherwise
