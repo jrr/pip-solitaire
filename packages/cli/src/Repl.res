@@ -9,6 +9,7 @@
 //   deal <game>          start (or restart) a game — GameState.initial
 //   move <card> <pile>   dispatch a Move onto pile <index>, printing the result
 //   move <card> table    dispatch a Move loose onto the table (free games only)
+//   movecol <from> <to>  reorder the cascade columns — insert-and-shift (#159)
 //   undo / redo          step back and forth over the history of accepted moves (#85)
 //   print                re-print the current board
 //   games                list the available games
@@ -61,6 +62,7 @@ let describeError = (err: Reducer.moveError, card: card): string =>
   | Reducer.CardNotFound => `Rejected: ${CardText.format(card)} isn't in play.`
   | Reducer.NotARun => `Rejected: those cards aren't an ordered run.`
   | Reducer.RunTooLong => `Rejected: that run is longer than the free cells and empty columns allow.`
+  | Reducer.NotAColumn => `Rejected: that pile isn't a cascade column.`
   }
 
 let gamesList = () => Game.all->Array.map(g => `  ${g.id}  —  ${g.name}`)->Array.join("\n")
@@ -72,6 +74,7 @@ let help = () =>
   move <card> table    move a card loose onto the table (free games only)
   moverun <card>… <pile>  supermove an ordered run, cards bottom-first (e.g. moverun 8H 7S 6H 5)
   home <card>          send a card to its foundation, if one will take it (e.g. home AS)
+  movecol <from> <to>  reorder cascade columns: pull column <from> and drop it at <to> (e.g. movecol 8 15)
   finish               sweep every card home to win, when the board is drainable (#132)
   undo                 step back one move (works even from a win)
   redo                 replay a move you undid
@@ -231,6 +234,37 @@ let finish = (s: session): (option<session>, string) =>
     (Some(s), "Not finishable yet — some cards still need a tableau move first.")
   }
 
+// Dispatch one `movecol from to` against the current session (#159): reorder the
+// cascade columns by pulling the column at pile index `from` out and dropping it at
+// `to`, the rest sliding over — one clean undoable step. The house-rule gate lives
+// here (`options.allowColumnReorder`, the seam the driver already threads): when
+// it's off the driver never dispatches, so the command is an exact no-op that only
+// reports the rule is disabled — no `MoveColumn` reaches the reducer, no history
+// step recorded. When on, the reducer alone rules on legality (both indices in
+// range and addressing cascades), and its typed rejection is rendered like any
+// other. A reorder is purely organizational, so there's no auto-collect to settle.
+let moveColumn = (~options: Options.t, s: session, fromTok: string, toTok: string): (
+  option<session>,
+  string,
+) =>
+  if !options.allowColumnReorder {
+    (Some(s), "Column reordering is off for this game.")
+  } else {
+    switch (Int.fromString(fromTok), Int.fromString(toTok)) {
+    | (Some(from), Some(to)) =>
+      switch Reducer.reduce(~game=s.game, present(s), MoveColumn({from, to})) {
+      | Ok(next) =>
+        let s' = commit(s, next)
+        (Some(s'), boardText(s'))
+      // A `MoveColumn` carries no card, so render its typed rejection directly
+      // rather than through the card-centric `describeError`.
+      | Error(Reducer.NotAColumn) => (Some(s), "Rejected: that pile isn't a cascade column.")
+      | Error(_) => (Some(s), "Rejected: no such pile.")
+      }
+    | _ => (Some(s), `Not a pile index (try two indices, e.g. movecol 8 15).`)
+    }
+  }
+
 // Step back one move (#85): pop the history to the prior state and re-print the
 // restored board, or report there's nothing to undo. Undo is available even from a
 // won position — a victory is just another recorded state — so a player can step
@@ -301,6 +335,12 @@ let step = (~options: Options.t, session: option<session>, line: string): (
     }
   | (Some("finish"), None) => (session, "Deal a game first (try `deal freecell`).")
   | (Some("finish"), Some(s)) => finish(s)
+  | (Some("movecol"), None) => (session, "Deal a game first (try `deal freecell`).")
+  | (Some("movecol"), Some(s)) =>
+    switch (toks->Array.get(1), toks->Array.get(2)) {
+    | (Some(fromTok), Some(toTok)) => moveColumn(~options, s, fromTok, toTok)
+    | _ => (session, "Usage: movecol <from> <to>   (pile indices, e.g. movecol 8 15)")
+    }
   | (Some("moverun"), None) => (session, "Deal a game first (try `deal freecell`).")
   | (Some("moverun"), Some(s)) =>
     // Everything after the verb is the run's cards, bottom-first, then the target.

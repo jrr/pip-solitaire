@@ -29,7 +29,10 @@ let load = (): Options.t => {
   | Some("false") => false
   | _ => Options.default.autoCollect
   }
-  {autoCollect: autoCollect}
+  // `allowColumnReorder` (#159) has no UI toggle yet, so it isn't persisted — it
+  // always takes the shipped default (our variant's house rule, on). When a
+  // settings control is wired later it can start saving its own key here.
+  {autoCollect, allowColumnReorder: Options.default.allowColumnReorder}
 }
 
 // Persist the current preferences. A write failure (storage disabled or full) is

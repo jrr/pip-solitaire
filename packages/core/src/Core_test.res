@@ -1740,6 +1740,160 @@ describe("Reducer", () => {
       },
     )
   })
+
+  // Column reorder (#159): `MoveColumn` pulls the cascade at `from` out and
+  // reinserts it at `to`, the rest sliding over (insert-and-shift, not a swap). A
+  // little board — two free cells then two foundations then four cascades, each
+  // cascade opening with one distinct marker card so a permutation is legible —
+  // lets the reorder be checked column by column.
+  describe("MoveColumn", () => {
+    let ks = {suit: Spades, rank: King}
+    let qh = {suit: Hearts, rank: Queen}
+    let js = {suit: Spades, rank: Jack}
+    let th = {suit: Hearts, rank: Ten}
+    let mcGame: Game.t = {
+      id: "mc",
+      name: "MC",
+      piles: [0, 1]
+      ->Array.map(
+        (_): Game.pile => {
+          role: FreeCell,
+          stacking: Squared,
+          rule: Rules.Free,
+          capacity: Some(1),
+          cards: [],
+        },
+      )
+      ->Array.concat(
+        [0, 1]->Array.map(
+          (_): Game.pile => {
+            role: Foundation,
+            stacking: Squared,
+            rule: Rules.foundation,
+            capacity: None,
+            cards: [],
+          },
+        ),
+      )
+      // Cascades 4–7, each holding one distinct card so a reorder is legible.
+      ->Array.concat(
+        [[ks], [qh], [js], [th]]->Array.map(
+          (cards): Game.pile => {
+            role: Cascade,
+            stacking: Fanned,
+            rule: Rules.cascade,
+            capacity: None,
+            cards,
+          },
+        ),
+      ),
+      free: false,
+      loose: [],
+      caption: None,
+    }
+    let fresh = () => GameState.initial(mcGame)
+
+    test(
+      "pulls a column out and reinserts it, the rest sliding over",
+      () => {
+        // movecol 4 7: K♠ (cascade 4) drops on the far end; the columns after it slide
+        // down one — so cascade 4 becomes Q♥, 5 becomes J♠, 6 becomes T♥, 7 becomes K♠.
+        switch Reducer.reduce(~game=mcGame, fresh(), MoveColumn({from: 4, to: 7})) {
+        | Ok(next) =>
+          expect(GameState.cardsInPile(next, 4))->toEqual([qh])
+          expect(GameState.cardsInPile(next, 5))->toEqual([js])
+          expect(GameState.cardsInPile(next, 6))->toEqual([th])
+          expect(GameState.cardsInPile(next, 7))->toEqual([ks])
+          // The free cells and foundations (0–3) are untouched — a reorder only
+          // permutes the cascades.
+          [0, 1, 2, 3]->Array.forEach(i => expect(GameState.cardsInPile(next, i))->toEqual([]))
+        | Error(_) => expect(true)->toBe(false)
+        }
+      },
+    )
+
+    test(
+      "reordering back the other way shifts the columns up",
+      () => {
+        // movecol 7 4: T♠… the reverse — T♥ (cascade 7) slots in at 4, pushing the rest
+        // up one, so cascade 4 becomes T♥, 5 becomes K♠, 6 becomes Q♥, 7 becomes J♠.
+        switch Reducer.reduce(~game=mcGame, fresh(), MoveColumn({from: 7, to: 4})) {
+        | Ok(next) =>
+          expect(GameState.cardsInPile(next, 4))->toEqual([th])
+          expect(GameState.cardsInPile(next, 5))->toEqual([ks])
+          expect(GameState.cardsInPile(next, 6))->toEqual([qh])
+          expect(GameState.cardsInPile(next, 7))->toEqual([js])
+        | Error(_) => expect(true)->toBe(false)
+        }
+      },
+    )
+
+    test(
+      "from == to is an exact no-op",
+      () => {
+        let state = fresh()
+        expect(Reducer.reduce(~game=mcGame, state, MoveColumn({from: 5, to: 5})))->toEqual(
+          Ok(state),
+        )
+      },
+    )
+
+    test(
+      "rejects a non-cascade target with NotAColumn",
+      () => {
+        // The `to` addresses a foundation (pile 2) — not reorderable.
+        expect(Reducer.reduce(~game=mcGame, fresh(), MoveColumn({from: 4, to: 2})))->toEqual(
+          Error(Reducer.NotAColumn),
+        )
+        // …and the `from` addressing a free cell (pile 0) is refused just the same.
+        expect(Reducer.reduce(~game=mcGame, fresh(), MoveColumn({from: 0, to: 5})))->toEqual(
+          Error(Reducer.NotAColumn),
+        )
+      },
+    )
+
+    test(
+      "rejects an out-of-range index with NoSuchPile",
+      () => {
+        expect(Reducer.reduce(~game=mcGame, fresh(), MoveColumn({from: 4, to: 99})))->toEqual(
+          Error(Reducer.NoSuchPile),
+        )
+        expect(Reducer.reduce(~game=mcGame, fresh(), MoveColumn({from: 99, to: 4})))->toEqual(
+          Error(Reducer.NoSuchPile),
+        )
+      },
+    )
+
+    test(
+      "the reducer never mutates its input snapshot",
+      () => {
+        let state = fresh()
+        let _ = Reducer.reduce(~game=mcGame, state, MoveColumn({from: 4, to: 7}))
+        // The source is untouched: cascade 4 still holds K♠ where it was dealt.
+        expect(GameState.cardsInPile(state, 4))->toEqual([ks])
+        expect(GameState.cardsInPile(state, 7))->toEqual([th])
+      },
+    )
+
+    // The invariant the issue calls out: a reorder is purely organizational, so
+    // win-state and `canFinish` are unchanged under it. Checked over the real
+    // FreeCell board on the drainable ♠6-over-♥3 tail (`canFinish` true, not yet
+    // won): reordering two of its eight cascades preserves both.
+    test(
+      "preserves win-state and canFinish (purely organizational)",
+      () => {
+        let state = Scenario.freecellFinish(Game.freecell)
+        expect(GameState.hasWon(Game.freecell, state))->toBe(false)
+        expect(Reducer.canFinish(~game=Game.freecell, state))->toBe(true)
+        switch Reducer.reduce(~game=Game.freecell, state, MoveColumn({from: 8, to: 15})) {
+        | Ok(reordered) =>
+          expect(GameState.hasWon(Game.freecell, reordered))->toBe(false)
+          expect(Reducer.canFinish(~game=Game.freecell, reordered))->toBe(true)
+        | Error(_) => expect(true)->toBe(false)
+        }
+      },
+    )
+  })
 })
 
 // The deck as data (#96): the 52-card pack, a deterministic seeded shuffle, and
@@ -1837,5 +1991,9 @@ describe("Cards", () => {
 describe("Options", () => {
   test("defaults auto-collect on", () => {
     expect(Options.default.autoCollect)->toBe(true)
+  })
+
+  test("defaults column reorder on (our variant's house rule, #159)", () => {
+    expect(Options.default.allowColumnReorder)->toBe(true)
   })
 })
