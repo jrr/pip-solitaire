@@ -275,6 +275,66 @@ let flyHome = (~wrapper, ~dx, ~dy, ~flight, ~delay) =>
 let doubleTapMs = 300.
 let doubleTapMoveTol = 12.
 
+// A resting card gets a slight, hand-placed tilt (#65) so the tableau reads as
+// dealt by a person rather than stamped down by a machine. The angle is
+// *deterministic* — a cheap hash of the card's identity and where it now rests —
+// which buys three things at once: it's stable across reflows and resizes (a card
+// doesn't twitch to a new angle every time a neighbour moves), it *does* change
+// when the card is placed somewhere new (so a drop re-tilts it, as a fresh
+// placement would), and it needs no `Math.random`, keeping every render — the
+// screenshots included — reproducible, in the same spirit as the loose deal's
+// deterministic jitter above. Kept small so cards still read and stack cleanly.
+let maxCardTilt = 2.5
+let suitOrdinal = (suit: Deck.suit) =>
+  switch suit {
+  | Spades => 0
+  | Hearts => 1
+  | Diamonds => 2
+  | Clubs => 3
+  }
+let rankOrdinal = (rank: Deck.rank) =>
+  switch rank {
+  | Ace => 0
+  | Two => 1
+  | Three => 2
+  | Four => 3
+  | Five => 4
+  | Six => 5
+  | Seven => 6
+  | Eight => 7
+  | Nine => 8
+  | Ten => 9
+  | Jack => 10
+  | Queen => 11
+  | King => 12
+  }
+// The tilt in degrees for `card` resting at (`pile`, `slot`). `pile`/`slot` are
+// the resting place (a non-negative pile index and slot, or the loose-cluster
+// sentinels below), so the primes below fold the identity and place into a value
+// spread across `[-maxCardTilt, maxCardTilt)` without neighbouring cards or slots
+// sharing an angle. All inputs are non-negative, so the `mod` stays positive.
+let cardTilt = (~card: Deck.card, ~pile, ~slot) => {
+  let h = suitOrdinal(card.suit) * 17 + rankOrdinal(card.rank) * 5 + pile * 23 + slot * 11
+  let unit = Int.toFloat(Int.mod(h, 100)) /. 100.
+  (unit *. 2. -. 1.) *. maxCardTilt
+}
+// Set (or clear) a card wrapper's tilt, published as the `--card-rot` custom
+// property the `.card-art` child rotates by (see the CSS). Kept on the child, not
+// the wrapper, so it never fights the wrapper's drag/flight `transform`.
+let applyTilt = (wrapper, ~degrees) =>
+  style(wrapper)->setProperty("--card-rot", Float.toString(degrees) ++ "deg")
+
+// The tilt to publish for `card` resting at (`pile`, `slot`), gated on whether the
+// player wants the hand-placed look at all (#65). When they've turned it off the
+// angle is a dead-square 0°, so `--card-rot` snaps every card back to true — the
+// `.card-art` transition easing it there — without any other layout change.
+let tiltFor = (~enabled, ~card, ~pile, ~slot) => enabled ? cardTilt(~card, ~pile, ~slot) : 0.
+
+// The loose cluster isn't a pile, so its cards tilt off this sentinel "pile"
+// (a large constant that can't collide with a real pile index) plus their
+// cluster index as the slot.
+let looseTiltPile = 1000
+
 // Build a scene that plays `game`: its id/label name the scene in the picker,
 // and its piles and opening deal drive everything below.
 //
@@ -314,6 +374,14 @@ let doubleTapMoveTol = 12.
 // takes, but reachable live from the menu instead of only at load. The debug-states
 // menu (see `DebugStates` / `Main`) calls it with a `Scenario` snapshot.
 //
+// `~tiltEnabled` is a *ref* to the hand-placed-tilt preference (#65), read *live*
+// wherever a card is laid out so a menu toggle takes hold on the next relayout
+// without rebuilding the board — the same live-ref trick as `~options`. When it's
+// off, cards rest dead-square. `~publishRelayout` is its companion hook (sibling of
+// `~publishNewGame`): on every build the board hands the chrome a thunk that
+// re-lays every resting card, so flipping the tilt switch re-tilts (or un-tilts)
+// the board in place, immediately, rather than only on the next move.
+//
 // `~publishUndo` / `~publishRedo` are the undo/redo hooks (#85), siblings of
 // `~publishNewGame`: on every build the board hands the top bar a thunk that steps
 // its `GameState` history back / forward and re-derives the layout. `~onHistory`
@@ -329,8 +397,10 @@ let make = (
   ~publishLoadState: option<(GameState.t => unit) => unit>=?,
   ~publishUndo: option<(unit => unit) => unit>=?,
   ~publishRedo: option<(unit => unit) => unit>=?,
+  ~publishRelayout: option<(unit => unit) => unit>=?,
   ~onHistory: option<(bool, bool) => unit>=?,
   ~options: ref<Options.t>=ref(Options.default),
+  ~tiltEnabled: ref<bool>=ref(true),
   game: Game.t,
 ): Scene.t => {
   id: game.id,
@@ -551,6 +621,18 @@ let make = (
               | Game.Fanned => baseY +. Int.toFloat(i) *. fanStep *. scale.contents
               }
             place(c)
+            // Re-tilt the card for where it now rests (#65): stable while the pile
+            // sits still, freshly angled when a drop lands it in a new slot, and
+            // dead-square if the player has turned the hand-placed look off.
+            applyTilt(
+              c.wrapper,
+              ~degrees=tiltFor(
+                ~enabled=tiltEnabled.contents,
+                ~card=data,
+                ~pile=zone.index,
+                ~slot=i,
+              ),
+            )
             // Layer by slot so the pile stacks bottom-to-top regardless of the order
             // the nodes were created in. During normal play slot order already
             // matches creation order, but a forced state (a `?state=` scenario) moves
@@ -1181,6 +1263,18 @@ let make = (
           c.x := pr.width /. 2. -. spread /. 2. +. Int.toFloat(i) *. stepX -. cw /. 2. +. jitterX
           c.y := centerY -. ch /. 2. +. stagger +. jitterY
           place(c)
+          // Tilt the loose cards too (#65), off the loose sentinel "pile" so the
+          // scattered cluster reads as hand-strewn rather than machine-aligned —
+          // unless the player has turned the hand-placed look off.
+          applyTilt(
+            c.wrapper,
+            ~degrees=tiltFor(
+              ~enabled=tiltEnabled.contents,
+              ~card=c.data,
+              ~pile=looseTiltPile,
+              ~slot=i,
+            ),
+          )
         })
       }
 
@@ -1290,6 +1384,19 @@ let make = (
       }
       switch publishRedo {
       | Some(publish) => publish(redo)
+      | None => ()
+      }
+      // Publish the relayout hook (#65): re-lay every resting card — the piles
+      // (`reflowAll`) and the loose cluster (`dealFree`) — reading `tiltEnabled`
+      // live, so the menu's tilt switch re-tilts or squares the whole board in
+      // place the instant it's flipped. Both re-lay onto the same spots (the
+      // geometry is deterministic), so this only re-publishes the tilt.
+      switch publishRelayout {
+      | Some(publish) =>
+        publish(() => {
+          reflowAll()
+          dealFree()
+        })
       | None => ()
       }
       reportHistory()
