@@ -13,9 +13,11 @@
 //   - the **debug states** — a sibling collapsible group (`DebugStates`, spliced in
 //     as the `debugStates` node) listing the named starting positions a tap drops
 //     the board into (`Scenario`), the menu twin of the URL's `?state=`;
-//   - a **Settings** section (#139): the driver-preference toggles, starting with
-//     **Auto-collect** — a switch the player can flip mid-game, its state passed
-//     in as `autoCollect` and a click reported out through `onToggleAutoCollect`;
+//   - a **Settings** section (#139): the preference toggles a player can flip
+//     mid-game. **Auto-collect** — its state passed in as `autoCollect`, a click
+//     reported out through `onToggleAutoCollect`; and **Hand-placed tilt** (#65) —
+//     the slight resting-card tilt, passed as `cardTilt` and toggled through
+//     `onToggleCardTilt`, for players who'd rather see cards stacked dead-square;
 //   - (a spot is left here for a future rules reference — not built yet);
 //   - the **About** footer — the build/version line (`<VersionBadge>`, folded in
 //     from the old bottom-right badge) and, when a service-worker update is
@@ -39,6 +41,8 @@ type props = {
   debugStates: Html.element,
   autoCollect: bool,
   onToggleAutoCollect: unit => unit,
+  cardTilt: bool,
+  onToggleCardTilt: unit => unit,
   version: string,
   buildTime: string,
   offlineReady: bool,
@@ -55,6 +59,8 @@ let make = ({
   debugStates,
   autoCollect,
   onToggleAutoCollect,
+  cardTilt,
+  onToggleCardTilt,
   version,
   buildTime,
   offlineReady,
@@ -100,6 +106,18 @@ let make = ({
           ]}
         >
           <span className="menu-toggle__label"> {Html.string("Auto-collect")} </span>
+          <span className="menu-toggle__switch" />
+        </button>
+        <button
+          className={cardTilt ? "menu-toggle menu-toggle--on" : "menu-toggle"}
+          onClick={_ => onToggleCardTilt()}
+          attrs={[
+            ("type", "button"),
+            ("role", "switch"),
+            ("aria-checked", cardTilt ? "true" : "false"),
+          ]}
+        >
+          <span className="menu-toggle__label"> {Html.string("Hand-placed tilt")} </span>
           <span className="menu-toggle__switch" />
         </button>
       </div>

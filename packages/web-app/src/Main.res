@@ -57,6 +57,7 @@ type model = {
   updateAvailable: bool,
   menuOpen: bool,
   autoCollect: bool,
+  cardTilt: bool,
   canUndo: bool,
   canRedo: bool,
 }
@@ -68,6 +69,7 @@ type msg =
   | ToggleMenu // the top bar's Menu button
   | CloseMenu // backdrop / close button / a scene row was tapped
   | ToggleAutoCollect // the menu's Auto-collect switch (#139)
+  | ToggleCardTilt // the menu's hand-placed-tilt switch (#65)
   | HistoryChanged(bool, bool) // the board's (canUndo, canRedo) after a move (#85)
 
 // `updateSW` only exists once registerSW has run, which needs `dispatch`, which
@@ -123,6 +125,19 @@ let closeMenu: ref<unit => unit> = ref(() => ())
 // — no rebuild — while the model's mirror of the flag keeps the switch in sync.
 let options: ref<Options.t> = ref(Preferences.load())
 
+// The live hand-placed-tilt preference (#65), seeded from storage (defaults on).
+// A presentation-only flag the CLI has no notion of, so it rides beside `options`
+// rather than inside the shared `Options.t`. The board reads this ref wherever it
+// lays a card out, so the menu's tilt switch flipping it here re-tilts the board on
+// its next relayout, and the model's mirror keeps the switch in sync.
+let tiltEnabled: ref<bool> = ref(Preferences.loadCardTilt())
+
+// The active board's "relayout" action (#65), sibling of `undoHook`: the mounted
+// `TableScene` publishes a thunk that re-lays every resting card, so a tilt toggle
+// can re-tilt the board in place at once. Cleared on each scene change and a no-op
+// until the next board republishes.
+let relayoutHook: ref<option<unit => unit>> = ref(None)
+
 let update = (msg, model) =>
   switch msg {
   | OfflineReady => ({...model, offlineReady: true}, Html.noEffect)
@@ -143,6 +158,19 @@ let update = (msg, model) =>
       () => {
         options := {...options.contents, autoCollect}
         Preferences.save(options.contents)
+      },
+    )
+  | ToggleCardTilt =>
+    let cardTilt = !model.cardTilt
+    (
+      {...model, cardTilt},
+      // Flip the shared preference ref the board reads, persist it, and ask the
+      // board to relayout so the tilt appears (or clears) immediately, not just on
+      // the next move. All three run as the post-update effect.
+      () => {
+        tiltEnabled := cardTilt
+        Preferences.saveCardTilt(cardTilt)
+        relayoutHook.contents->Option.forEach(relayout => relayout())
       },
     )
   | Reload => (
@@ -190,8 +218,10 @@ let gameScene = (game: Game.t) => {
     ~publishLoadState=hook => loadStateHook := Some(hook),
     ~publishUndo=hook => undoHook := Some(hook),
     ~publishRedo=hook => redoHook := Some(hook),
+    ~publishRelayout=hook => relayoutHook := Some(hook),
     ~onHistory=(canUndo, canRedo) => reportHistory.contents(canUndo, canRedo),
     ~options,
+    ~tiltEnabled,
     game,
   )
 }
@@ -204,6 +234,7 @@ let switcher = SceneSwitcher.render(
     newGameHook := None
     restartHook := None
     loadStateHook := None
+    relayoutHook := None
     // Drop the outgoing board's undo/redo and reset the top bar's buttons to
     // disabled; the mounting scene republishes and reports its own history (#85).
     undoHook := None
@@ -272,6 +303,8 @@ let view = (model, dispatch) => <>
     debugStates={debugStates}
     autoCollect={model.autoCollect}
     onToggleAutoCollect={() => dispatch(ToggleAutoCollect)}
+    cardTilt={model.cardTilt}
+    onToggleCardTilt={() => dispatch(ToggleCardTilt)}
     version={model.version}
     buildTime={model.buildTime}
     offlineReady={model.offlineReady}
@@ -299,9 +332,10 @@ let dispatch = Html.mount(
     offlineReady: false,
     updateAvailable: false,
     menuOpen: false,
-    // Mirror the persisted preference so the menu's switch opens in the right
-    // position (the board reads the `options` ref directly).
+    // Mirror the persisted preferences so the menu's switches open in the right
+    // position (the board reads the `options` and `tiltEnabled` refs directly).
     autoCollect: options.contents.autoCollect,
+    cardTilt: tiltEnabled.contents,
     // Undo/redo start disabled; the mounted board reports its history (#85).
     canUndo: false,
     canRedo: false,
