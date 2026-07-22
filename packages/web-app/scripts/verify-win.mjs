@@ -36,9 +36,6 @@ async function main() {
     await page.waitForSelector(".stacking-card", { state: "visible", timeout: 15000 });
     await page.waitForTimeout(600);
 
-    // Three foundations should already read "complete" (the ✓ frame).
-    const completeBefore = await page.locator(".drop-zone--complete").count();
-
     // The pending King rests alone in the first free cell (drop zone 0); its
     // foundation is the last drop zone (4 cells, then 4 foundations, Clubs last —
     // zone 7). The King is centred in its cell, so grabbing from the cell's centre
@@ -62,22 +59,16 @@ async function main() {
 
     const overlay = await page.locator(".win-overlay").count();
     const title = await page.locator(".win-panel__title").textContent().catch(() => null);
-    const completeAfter = await page.locator(".drop-zone--complete").count();
 
-    console.log("complete foundations before move:", completeBefore, "(expect 3)");
-    console.log("complete foundations after move: ", completeAfter, "(expect 4)");
     console.log("win overlay present:", overlay === 1, `(title: ${JSON.stringify(title)})`);
 
     // Now click New Game and confirm the overlay is torn down and a fresh board deals.
     await page.locator(".win-panel__button").click();
     await page.waitForTimeout(400);
     const overlayAfterNewGame = await page.locator(".win-overlay").count();
-    const completeAfterNewGame = await page.locator(".drop-zone--complete").count();
     console.log("win overlay after New Game:", overlayAfterNewGame, "(expect 0)");
-    console.log("complete foundations after New Game:", completeAfterNewGame, "(expect 0)");
 
-    const ok =
-      completeBefore === 3 && completeAfter === 4 && overlay === 1 && overlayAfterNewGame === 0;
+    const ok = overlay === 1 && overlayAfterNewGame === 0;
     console.log(ok ? "\nVERIFY: PASS" : "\nVERIFY: FAIL");
     if (!ok) process.exitCode = 1;
   } finally {

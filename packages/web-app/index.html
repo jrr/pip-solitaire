@@ -761,33 +761,6 @@
         animation: drop-zone-reject 0.5s ease-in-out infinite;
       }
 
-      /* Lit for good once the pile holds a full Ace→King run (see #76): a solid
-         gold frame and a ✓ badge mark the foundation "done". Sits above the
-         hover states in the source so completion wins over any lingering
-         highlight. */
-      .drop-zone--complete {
-        border-style: solid;
-        border-color: #eab308;
-        background: rgba(234, 179, 8, 0.14);
-      }
-
-      .drop-zone--complete::after {
-        content: "✓";
-        position: absolute;
-        top: -10px;
-        right: -10px;
-        width: 22px;
-        height: 22px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font: 14px "Libre Franklin", sans-serif;
-        color: #1a2e05;
-        background: #eab308;
-        border-radius: 50%;
-        box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
-      }
-
       @keyframes drop-zone-reject {
         0%,
         100% {

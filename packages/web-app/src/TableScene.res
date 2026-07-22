@@ -699,14 +699,6 @@ let make = (
         style(zone.el)->setHeight(
           Float.toString(zoneBaseHeight *. scale.contents +. fanExtent) ++ "px",
         )
-        // Light the "done" marker once this pile holds a full Ace→King run (#76) —
-        // the satisfying completion a foundation builds toward. Driven off the same
-        // pure `core` predicate, so a foundation and an assembled tableau alike
-        // signal completion; full win detection is later.
-        let complete = Rules.isCompleteRun(cards)
-        complete
-          ? classList(zone.el)->addClass("drop-zone--complete")
-          : classList(zone.el)->removeClass("drop-zone--complete")
       }
 
       // Re-derive every pile from the current `state`. Cheap for a handful of zones,
