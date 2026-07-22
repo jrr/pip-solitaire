@@ -275,6 +275,60 @@ let flyHome = (~wrapper, ~dx, ~dy, ~flight, ~delay) =>
 let doubleTapMs = 300.
 let doubleTapMoveTol = 12.
 
+// A resting card gets a slight, hand-placed tilt (#65) so the tableau reads as
+// dealt by a person rather than stamped down by a machine. The angle is
+// *deterministic* — a cheap hash of the card's identity and where it now rests —
+// which buys three things at once: it's stable across reflows and resizes (a card
+// doesn't twitch to a new angle every time a neighbour moves), it *does* change
+// when the card is placed somewhere new (so a drop re-tilts it, as a fresh
+// placement would), and it needs no `Math.random`, keeping every render — the
+// screenshots included — reproducible, in the same spirit as the loose deal's
+// deterministic jitter above. Kept small so cards still read and stack cleanly.
+let maxCardTilt = 2.5
+let suitOrdinal = (suit: Deck.suit) =>
+  switch suit {
+  | Spades => 0
+  | Hearts => 1
+  | Diamonds => 2
+  | Clubs => 3
+  }
+let rankOrdinal = (rank: Deck.rank) =>
+  switch rank {
+  | Ace => 0
+  | Two => 1
+  | Three => 2
+  | Four => 3
+  | Five => 4
+  | Six => 5
+  | Seven => 6
+  | Eight => 7
+  | Nine => 8
+  | Ten => 9
+  | Jack => 10
+  | Queen => 11
+  | King => 12
+  }
+// The tilt in degrees for `card` resting at (`pile`, `slot`). `pile`/`slot` are
+// the resting place (a non-negative pile index and slot, or the loose-cluster
+// sentinels below), so the primes below fold the identity and place into a value
+// spread across `[-maxCardTilt, maxCardTilt)` without neighbouring cards or slots
+// sharing an angle. All inputs are non-negative, so the `mod` stays positive.
+let cardTilt = (~card: Deck.card, ~pile, ~slot) => {
+  let h = suitOrdinal(card.suit) * 17 + rankOrdinal(card.rank) * 5 + pile * 23 + slot * 11
+  let unit = Int.toFloat(Int.mod(h, 100)) /. 100.
+  (unit *. 2. -. 1.) *. maxCardTilt
+}
+// Set (or clear) a card wrapper's tilt, published as the `--card-rot` custom
+// property the `.card-art` child rotates by (see the CSS). Kept on the child, not
+// the wrapper, so it never fights the wrapper's drag/flight `transform`.
+let applyTilt = (wrapper, ~degrees) =>
+  style(wrapper)->setProperty("--card-rot", Float.toString(degrees) ++ "deg")
+
+// The loose cluster isn't a pile, so its cards tilt off this sentinel "pile"
+// (a large constant that can't collide with a real pile index) plus their
+// cluster index as the slot.
+let looseTiltPile = 1000
+
 // Build a scene that plays `game`: its id/label name the scene in the picker,
 // and its piles and opening deal drive everything below.
 //
@@ -551,6 +605,9 @@ let make = (
               | Game.Fanned => baseY +. Int.toFloat(i) *. fanStep *. scale.contents
               }
             place(c)
+            // Re-tilt the card for where it now rests (#65): stable while the pile
+            // sits still, freshly angled when a drop lands it in a new slot.
+            applyTilt(c.wrapper, ~degrees=cardTilt(~card=data, ~pile=zone.index, ~slot=i))
             // Layer by slot so the pile stacks bottom-to-top regardless of the order
             // the nodes were created in. During normal play slot order already
             // matches creation order, but a forced state (a `?state=` scenario) moves
@@ -1181,6 +1238,9 @@ let make = (
           c.x := pr.width /. 2. -. spread /. 2. +. Int.toFloat(i) *. stepX -. cw /. 2. +. jitterX
           c.y := centerY -. ch /. 2. +. stagger +. jitterY
           place(c)
+          // Tilt the loose cards too (#65), off the loose sentinel "pile" so the
+          // scattered cluster reads as hand-strewn rather than machine-aligned.
+          applyTilt(c.wrapper, ~degrees=cardTilt(~card=c.data, ~pile=looseTiltPile, ~slot=i))
         })
       }
 
