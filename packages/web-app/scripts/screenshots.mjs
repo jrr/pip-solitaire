@@ -46,15 +46,22 @@ const scenes = [
   { name: "Finish", query: "?scene=freecell&state=finish" },
 ];
 
-// A representative pair of devices: CSS size (portrait W×H) plus each one's real
+// A representative spread of devices: CSS size plus each one's real
 // devicePixelRatio, so the shots rasterize at the device's *physical* pixel
-// resolution (W·dpr × H·dpr) and you can judge legibility, not just layout. One
-// small phone and one tablet, each shot both ways up. (iPhone mini and iPhone SE
-// share the same 375-wide CSS size, so the mini stands in for the SE here — same
-// width, taller, and a 3× display.)
+// resolution and you can judge legibility, not just layout. A small phone and a
+// tablet — each shot both ways up — plus a wide desktop, shot landscape only (a
+// portrait 1080-wide desktop isn't a real target, and the wide layout is the
+// point: past ~1064px the card row caps its width and the stage grows side
+// margins instead of gaps, see TableScene's `--rows-max-w`). Each device lists
+// the `orientations` it's shot in; the portrait/landscape dimensions are the
+// device's smaller/larger CSS side either way, so the size can be given in either
+// order. (iPhone mini and iPhone SE share the same 375-wide CSS size, so the mini
+// stands in for the SE here — same width, taller, and a 3× display.)
+const both = ["portrait", "landscape"];
 const devices = [
-  { name: "iPhone 13 mini", width: 375, height: 812, dpr: 3 },
-  { name: "iPad mini", width: 768, height: 1024, dpr: 2 },
+  { name: "iPhone 13 mini", width: 375, height: 812, dpr: 3, orientations: both },
+  { name: "iPad mini", width: 768, height: 1024, dpr: 2, orientations: both },
+  { name: "Desktop", width: 1920, height: 1080, dpr: 1, orientations: ["landscape"] },
 ];
 
 const slug = (s) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
@@ -75,7 +82,7 @@ function reportHtml(shots) {
   const deviceCards = (scene) =>
     devices
       .map((device) => {
-        const cells = ["portrait", "landscape"]
+        const cells = device.orientations
           .map((orientation) => {
             const shot = shots.find(
               (s) =>
@@ -185,11 +192,16 @@ async function main() {
     for (const scene of scenes) {
       const target = `${base}/${scene.query}`;
       for (const device of devices) {
-        for (const orientation of ["portrait", "landscape"]) {
+        // Portrait is the device's narrower side up, landscape the wider — derived
+        // from min/max so a device's size can be given in either order (a desktop
+        // reads naturally as its native 1920×1080).
+        const portraitW = Math.min(device.width, device.height);
+        const portraitH = Math.max(device.width, device.height);
+        for (const orientation of device.orientations) {
           const [width, height] =
             orientation === "portrait"
-              ? [device.width, device.height]
-              : [device.height, device.width];
+              ? [portraitW, portraitH]
+              : [portraitH, portraitW];
 
           const context = await browser.newContext({
             viewport: { width, height },

@@ -682,6 +682,15 @@
         left: 0;
         right: 0;
         top: 16px;
+        /* Wide-desktop cap (#173): `--rows-max-w` (published by applyScale) is the
+           row width at which the columns' `space-evenly` gaps have grown to their
+           limit. Capping the row here and centring it (margin-inline: auto, between
+           left:0/right:0) means a stage wider than that pours its extra width into
+           equal left/right margins instead of ever-wider gaps, so the board keeps a
+           tidy solitaire-table shape. Defaults to `none` until the scene sizes
+           itself, so the initial render fills the stage exactly as before. */
+        max-width: var(--rows-max-w, none);
+        margin-inline: auto;
         display: flex;
         flex-direction: column;
         gap: 16px;
