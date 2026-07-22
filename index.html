@@ -9,7 +9,7 @@
          permitting pinch. Flipping pinch off later would be a one-line change
          here. -->
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <title>Sleight</title>
+    <title>Pip</title>
 
     <!-- PWA. vite-plugin-pwa injects the <link rel="manifest"> at build time.
          The tags below are the bits the manifest can't cover: theme color for
@@ -25,7 +25,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-    <meta name="apple-mobile-web-app-title" content="Sleight" />
+    <meta name="apple-mobile-web-app-title" content="Pip" />
 
     <!-- App styling. Kept as one inline stylesheet (no framework, no build step)
          to match the minimal DOM approach in src/Main.res. The key usability fix
@@ -42,7 +42,7 @@
          first offline launch, with no cross-origin CDN fetch.
 
            Libre Franklin — chrome (400) and the card rank labels (600).
-           Sleight Suits  — the four card pips ♠ ♣ ♥ ♦, a merged subset of IBM
+           Pip Suits  — the four card pips ♠ ♣ ♥ ♦, a merged subset of IBM
                             Plex Sans JP scoped to those code points.
 
          `font-display: swap` renders text immediately in the fallback and swaps
@@ -63,11 +63,11 @@
         src: url("./fonts/libre-franklin-600.woff2") format("woff2");
       }
       @font-face {
-        font-family: "Sleight Suits";
+        font-family: "Pip Suits";
         font-style: normal;
         font-weight: 400;
         font-display: swap;
-        src: url("./fonts/sleight-suits.woff2") format("woff2");
+        src: url("./fonts/pip-suits.woff2") format("woff2");
         /* ♠ U+2660 · ♣ U+2663 · ♥ U+2665 · ♦ U+2666 — the only glyphs it carries. */
         unicode-range: U+2660, U+2663, U+2665, U+2666;
       }
@@ -917,7 +917,7 @@
         cursor: pointer;
       }
     </style>
-    <script type="module" crossorigin src="./assets/index-CQ-sIkcp.js"></script>
+    <script type="module" crossorigin src="./assets/index-CHKD2Yj_.js"></script>
   <link rel="manifest" href="./manifest.webmanifest"></head>
   <body>
     <!-- Vite resolves the bare `core/…` specifier the compiled entry imports
