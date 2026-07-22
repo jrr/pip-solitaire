@@ -288,12 +288,20 @@ let doubleTapMoveTol = 12.
 // FreeCell a random seed; #98's deal-number entry can supply a chosen one).
 // Omitted, the board isn't re-dealable (the fixed-layout demos).
 //
-// `~publishNewGame` is how the chrome's top bar (#109) reaches the re-deal: when
+// `~publishNewGame` is how the chrome's menu (#156) reaches the re-deal: when
 // the board is re-dealable, the scene hands its `buildBoard(freshDeal())` thunk
-// to `publishNewGame` on mount, and the top bar's New Game button calls it. (The
-// New Game control lives in the top bar now, not on the board.) The chrome resets
-// its hook on every scene switch, so a non-re-dealable scene simply leaves it
-// unset — it never calls `publishNewGame`.
+// to `publishNewGame` on mount, and the menu's New Game button calls it. (The
+// New Game control lives in the menu now, not on the board or the top bar.) The
+// chrome resets its hook on every scene switch, so a non-re-dealable scene simply
+// leaves it unset — it never calls `publishNewGame`.
+//
+// `~publishRestart` is the sibling re-deal hook that replays the *same* deal (#156):
+// the menu's Restart button rebuilds the board from the game currently showing —
+// same seed, same opening layout — so a player can start the current deal over
+// rather than get a new one. Unlike New Game it's published by *every* card table
+// (a fixed-layout demo restarts to its own opening deal), tracking the live game
+// through the `currentGame` ref below so a Restart after a New Game replays the
+// *new* deal, not the one the scene first mounted with.
 // `~options` is a *ref* to the driver preference record (#125), read *live* at
 // each post-move step so a menu toggle (#139) that flips a field takes effect on
 // the very next move without rebuilding the board. Its `autoCollect` flag (on by
@@ -317,6 +325,7 @@ let make = (
   ~initial: option<GameState.t>=?,
   ~newDeal: option<unit => Game.t>=?,
   ~publishNewGame: option<(unit => unit) => unit>=?,
+  ~publishRestart: option<(unit => unit) => unit>=?,
   ~publishLoadState: option<(GameState.t => unit) => unit>=?,
   ~publishUndo: option<(unit => unit) => unit>=?,
   ~publishRedo: option<(unit => unit) => unit>=?,
@@ -347,6 +356,12 @@ let make = (
       outstandingAnimations := []
     }
 
+    // The deal currently on the table (#156), held at mount scope so Restart can
+    // replay it. `buildBoard` records its `game` here on every build, so a New Game
+    // re-deal updates it and a later Restart rebuilds the *new* seed's opening
+    // layout rather than the one the scene first mounted with.
+    let currentGame = ref(game)
+
     // Build (or rebuild) the whole board for `game` into `boardHost`. Every call
     // clears the host first, so a re-deal starts empty — none of the previous
     // deal's card nodes or drop zones survive (the tear-down New Game needs) —
@@ -360,6 +375,9 @@ let make = (
       // the fresh board.
       cancelOutstanding()
       WebDom.clear(boardHost)
+      // Record the deal now on the table so Restart (#156) can replay this exact
+      // game — a New Game re-deal that lands here updates what Restart will rebuild.
+      currentGame := game
       // The stage everything is positioned within; `position: relative` (in CSS)
       // makes it the origin for the cards' absolute left/top.
       let playfield = WebDom.createElement("div")
@@ -1297,6 +1315,18 @@ let make = (
     switch (newDeal, publishNewGame) {
     | (Some(freshDeal), Some(publish)) => publish(() => buildBoard(freshDeal()))
     | _ => ()
+    }
+
+    // Publish Restart (#156): rebuild the board from the deal currently showing
+    // (`currentGame`), replaying the same seed's opening layout. Every card table
+    // offers this — a fixed-layout demo restarts to its own deal — so unlike New
+    // Game it isn't gated on `newDeal`. `buildBoard` clears the host first, so the
+    // fresh-but-identical board replaces the current one cleanly, with a clean
+    // history from the opening position (no `~initial`, so a `?state=` scenario
+    // restarts to the game's real deal, not the forced position).
+    switch publishRestart {
+    | Some(publish) => publish(() => buildBoard(currentGame.contents))
+    | None => ()
     }
 
     // Publish the debug "states" loader: hand the chrome a thunk that rebuilds

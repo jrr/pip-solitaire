@@ -5,12 +5,12 @@
 // clear for dragging cards; every control lives up top.
 //
 // The chrome is two components over the scene:
-//   - `<TopBar>` — Menu · New Game · Undo · Redo. Always visible across the top;
-//     the Menu button carries a green pip when a version update is waiting (#165).
+//   - `<TopBar>` — Menu · Undo · Redo. Always visible across the top; the Menu
+//     button carries a green pip when a version update is waiting (#165).
 //   - `<Menu>` — the slide-over holding the title ("Pip", moved out of the
-//     retired Home scene), the debug/demo scene list as tappable rows, and the
-//     About footer (build/version info plus the conditional "Update now" button,
-//     #165).
+//     retired Home scene), a **Game** section (New Game · Restart, #156), the
+//     debug/demo scene list as tappable rows, and the About footer (build/version
+//     info plus the conditional "Update now" button, #165).
 // The scene area underneath is still the imperative `SceneSwitcher`; its scene
 // container and its row controls are spliced into the view untouched with
 // `Html.node` (the container into the scene band, the rows into the menu), which
@@ -77,10 +77,17 @@ let updateSW: ref<option<bool => promise<unit>>> = ref(None)
 
 // The active scene's "New Game" action, if it has one. The mounted scene
 // publishes its re-deal here (see `gameScene` / `TableScene`), the switcher's
-// `onActivate` clears it before each scene change, and the top bar's New Game
+// `onActivate` clears it before each scene change, and the menu's New Game
 // button runs whatever is current. Only FreeCell publishes one today, so on a
 // debug scene the button is a harmless no-op.
 let newGameHook: ref<option<unit => unit>> = ref(None)
+
+// The active scene's "Restart" action (#156), sibling of `newGameHook`: re-deals
+// the *same* seed to replay the current deal. Every card table publishes one (a
+// fixed-layout demo restarts to its own deal), the switcher's `onActivate` clears
+// it before each scene change, and the menu's Restart button runs whatever is
+// current — a no-op on a non-game scene.
+let restartHook: ref<option<unit => unit>> = ref(None)
 
 // The active card-table scene's "load state" action: a `GameState.t => unit` that
 // rebuilds the board into a forced position. Every `TableScene` publishes one on
@@ -179,6 +186,7 @@ let gameScene = (game: Game.t) => {
     ~initial=?url.state->Option.flatMap(name => Scenario.forName(game, name)),
     ~newDeal?,
     ~publishNewGame=hook => newGameHook := Some(hook),
+    ~publishRestart=hook => restartHook := Some(hook),
     ~publishLoadState=hook => loadStateHook := Some(hook),
     ~publishUndo=hook => undoHook := Some(hook),
     ~publishRedo=hook => redoHook := Some(hook),
@@ -194,6 +202,7 @@ let switcher = SceneSwitcher.render(
   // republishes whichever apply) and close the menu after a row tap.
   ~onActivate=_scene => {
     newGameHook := None
+    restartHook := None
     loadStateHook := None
     // Drop the outgoing board's undo/redo and reset the top bar's buttons to
     // disabled; the mounting scene republishes and reports its own history (#85).
@@ -230,11 +239,6 @@ let view = (model, dispatch) => <>
   <main id="app">
     <TopBar
       onMenu={() => dispatch(ToggleMenu)}
-      onNewGame={() =>
-        switch newGameHook.contents {
-        | Some(newGame) => newGame()
-        | None => ()
-        }}
       onUndo={() =>
         switch undoHook.contents {
         | Some(undo) => undo()
@@ -256,6 +260,14 @@ let view = (model, dispatch) => <>
   <Menu
     open_={model.menuOpen}
     onClose={() => dispatch(CloseMenu)}
+    onNewGame={() => {
+      newGameHook.contents->Option.forEach(newGame => newGame())
+      dispatch(CloseMenu)
+    }}
+    onRestart={() => {
+      restartHook.contents->Option.forEach(restart => restart())
+      dispatch(CloseMenu)
+    }}
     scenes={switcher.controls}
     debugStates={debugStates}
     autoCollect={model.autoCollect}

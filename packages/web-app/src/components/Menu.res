@@ -1,6 +1,11 @@
 // The menu (#109): a slide-over overlay opened from the top bar's Menu button,
 // holding everything that isn't day-to-day play. Top to bottom:
 //   - the **title** ("Pip"), moved here from the retired Home scene;
+//   - a **Game** section (#156): **New Game** (re-deals a fresh seed) and
+//     **Restart** (re-deals the *same* seed to replay the current deal). New Game
+//     moved here from the top bar; both call the scene's re-deal hooks and close
+//     the menu so the board is visible again. On a scene with no game (a demo)
+//     the handlers are wired to no-op hooks;
 //   - the **scene list** — SceneSwitcher's row controls, spliced in as the
 //     `scenes` node. It leads with FreeCell (the game) as a top-level row and
 //     buries the debug/demo scenes inside a collapsible "Debug scenes" group (#135),
@@ -28,6 +33,8 @@
 type props = {
   open_: bool,
   onClose: unit => unit,
+  onNewGame: unit => unit,
+  onRestart: unit => unit,
   scenes: Html.element,
   debugStates: Html.element,
   autoCollect: bool,
@@ -42,6 +49,8 @@ type props = {
 let make = ({
   open_,
   onClose,
+  onNewGame,
+  onRestart,
   scenes,
   debugStates,
   autoCollect,
@@ -64,6 +73,16 @@ let make = ({
         >
           {Html.string("✕")}
         </button>
+      </div>
+      <div className="menu-section" attrs={[("aria-label", "Game")]}>
+        <div className="menu-buttons">
+          <button className="menu-button" onClick={_ => onNewGame()} attrs={[("type", "button")]}>
+            {Html.string("New Game")}
+          </button>
+          <button className="menu-button" onClick={_ => onRestart()} attrs={[("type", "button")]}>
+            {Html.string("Restart")}
+          </button>
+        </div>
       </div>
       <nav className="menu-section" attrs={[("aria-label", "Scenes")]}> {Html.node(scenes)} </nav>
       <nav className="menu-section" attrs={[("aria-label", "Debug states")]}>

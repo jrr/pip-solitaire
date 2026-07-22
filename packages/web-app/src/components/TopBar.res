@@ -1,9 +1,10 @@
 // The app's single top bar (#109): all the chrome, banished to the top so the
 // bottom of the screen — the thumb arc — stays clear for dragging cards. Left to
-// right: a **Menu** button (opens the slide-over menu), a **New Game** button
-// (re-deals the primary game — its behaviour is the scene's re-deal hook, #108),
-// live **Undo** / **Redo** buttons (stepping over the board's `GameState` history,
-// #85). The **Update** control no longer lives here (#165): it moved into the
+// right: a **Menu** button (opens the slide-over menu), then live **Undo** /
+// **Redo** buttons (stepping over the board's `GameState` history, #85). The
+// **New Game** control no longer lives here (#156): it moved into the menu,
+// alongside a new **Restart** that re-deals the same seed. The **Update** control
+// left even earlier (#165): it moved into the
 // menu's About footer, and its availability is signalled instead by a small green
 // pip on the **Menu** button — the ☰ badge that keeps the now-hidden update
 // call-to-action discoverable.
@@ -21,7 +22,6 @@
 // index.html; here we build only structure and behaviour.
 type props = {
   onMenu: unit => unit,
-  onNewGame: unit => unit,
   onUndo: unit => unit,
   onRedo: unit => unit,
   canUndo: bool,
@@ -67,7 +67,7 @@ let redoIcon =
 let controlAttrs = (~enabled: bool, base: array<(string, string)>): array<(string, string)> =>
   enabled ? base : Array.concat(base, [("disabled", ""), ("aria-disabled", "true")])
 
-let make = ({onMenu, onNewGame, onUndo, onRedo, canUndo, canRedo, updateVisible}) =>
+let make = ({onMenu, onUndo, onRedo, canUndo, canRedo, updateVisible}) =>
   <header id="top-bar">
     <button
       className="top-bar__button top-bar__button--menu"
@@ -87,9 +87,6 @@ let make = ({onMenu, onNewGame, onUndo, onRedo, canUndo, canRedo, updateVisible}
       {updateVisible
         ? <span className="top-bar__pip" attrs={[("aria-hidden", "true")]} />
         : Html.array([])}
-    </button>
-    <button className="top-bar__button" onClick={_ => onNewGame()} attrs={[("type", "button")]}>
-      {Html.string("New Game")}
     </button>
     <button
       className="top-bar__button"

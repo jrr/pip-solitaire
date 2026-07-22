@@ -340,6 +340,28 @@
         color: #64748b;
       }
 
+      /* The Game section's actions (#156): New Game and Restart, sitting side by
+         side so the pair reads as one control group. Each shares the width evenly. */
+      .menu-buttons {
+        display: flex;
+        gap: 0.4rem;
+      }
+
+      /* A Game-section action button (#156), styled like the scene rows/toggle but
+         centred, since it's a command rather than a labelled row. `flex: 1` so
+         New Game and Restart split the row evenly. */
+      .menu-button {
+        flex: 1;
+        text-align: center;
+        padding: 10px 12px;
+        font: 600 14px "Libre Franklin", sans-serif;
+        color: #e2e8f0;
+        background: #16233b;
+        border: 1px solid #22304a;
+        border-radius: 8px;
+        cursor: pointer;
+      }
+
       /* A settings toggle row (#139): a full-width control styled like the scene
          rows, with its label on the left and a switch track on the right. It's a
          <button role="switch"> — the Html runtime only wires clicks, so the switch
