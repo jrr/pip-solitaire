@@ -213,6 +213,16 @@ let minScale = 0.4
 // rather than the columns butting card-to-card.
 let fillFraction = 0.9
 
+// The widest each `space-evenly` gap between columns is allowed to open before
+// the row stops spreading (#173). Past the point where the cards have hit their
+// design size (`scale` capped at 1), a wider stage keeps pouring its extra width
+// into these gaps — on a wide desktop that leaves the columns marooned in a sea
+// of green. So the row's width is capped at the point each gap reaches this
+// (see `applyScale`'s `--rows-max-w`), and the leftover stage width becomes equal
+// left/right margins instead. Half a card reads as a generous-but-tidy column
+// gap; the board settles into a solitaire-table shape rather than sprawling.
+let maxColumnGap = 0.5 *. cardW
+
 // The opening deal animation (#115). The cards fly up from below the stage, one
 // at a time, and these two knobs define the whole feel — everything else (the
 // interval between cards, and their speed) is derived from them and the card
@@ -590,6 +600,20 @@ let make = (
         s->setProperty("--card-w", Float.toString(cardW *. scale.contents) ++ "px")
         s->setProperty("--zone-w", Float.toString(zoneWidth *. scale.contents) ++ "px")
         s->setProperty("--zone-h", Float.toString(zoneBaseHeight *. scale.contents) ++ "px")
+        // Cap the row's width so the columns stop spreading on a wide desktop (#173):
+        // the widest row's zones (`widestRow · zoneWidth`) plus its `widestRow + 1`
+        // `space-evenly` gaps grown to at most `maxColumnGap` each, all at the live
+        // scale. `.drop-rows` takes this as a `max-width` and centres itself, so once
+        // the stage is wider than this the extra width falls into equal left/right
+        // margins rather than ever-wider gaps. Below the cap the value exceeds the
+        // stage width, so the `max-width` is slack and the row spreads as before.
+        s->setProperty(
+          "--rows-max-w",
+          Float.toString(
+            scale.contents *.
+            (Int.toFloat(widestRow) *. zoneWidth +. Int.toFloat(widestRow + 1) *. maxColumnGap),
+          ) ++ "px",
+        )
       }
 
       // The zone whose rect contains point (px, py), if any — the shared primitive
