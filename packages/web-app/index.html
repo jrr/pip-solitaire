@@ -651,7 +651,7 @@
       .drop-zone {
         position: relative;
         width: var(--zone-w, 88px);
-        height: var(--zone-h, 124px);
+        height: var(--zone-h, 120px);
         /* The resting-state dashed outline now lives on `.drop-zone__slot` below
            (#166); the zone itself draws nothing until a highlight state lights it.
            A *transparent* dashed border reserves the frame so `--over`/`--invalid`
@@ -659,7 +659,13 @@
            unchanged — while the plain, un-highlighted zone stays invisible and the
            card-sized static indicator carries the empty-pile cue. */
         border: 1px dashed transparent;
-        border-radius: 10px;
+        /* Concentric with the slot: the zone sits a uniform `zoneInset` (4px at
+           the default scale) outside the card-sized slot on every side (see
+           `zoneWidth`/`zoneBaseHeight` in TableScene), so the frame's radius is the
+           slot's radius plus that inset — `card-w · 0.1 + card-w · 0.05`. Keyed off
+           `--card-w` so it tracks the card at every scale and the two rounded
+           corners share a centre, keeping the gap even round the bends too. */
+        border-radius: calc(var(--card-w, 80px) * 0.15);
         transition: border-color 0.12s ease, background 0.12s ease;
       }
 
@@ -676,7 +682,7 @@
       .drop-zone__slot {
         position: absolute;
         left: 50%;
-        top: calc(var(--zone-h, 124px) / 2);
+        top: calc(var(--zone-h, 120px) / 2);
         transform: translate(-50%, -50%);
         width: var(--card-w, 80px);
         height: calc(var(--card-w, 80px) * 1.4);

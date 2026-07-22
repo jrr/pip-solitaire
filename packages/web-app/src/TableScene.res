@@ -166,13 +166,18 @@ let fanStep = 26.
 let cardW = 80.
 let cardH = 112.
 
-// The empty drop zone's footprint (matches `.drop-zone` in the CSS). A pile's
-// cards centre vertically within the base-height box, and a fanned zone grows
-// *below* it so its outline and highlight wrap the whole pile rather than just
-// the top card's footprint (see reflow). The width tracks the card with a little
-// breathing room, so a squared pile sits framed inside its zone.
-let zoneWidth = 88.
-let zoneBaseHeight = 124.
+// The empty drop zone's footprint (matches `.drop-zone` in the CSS): the
+// card-sized slot (`cardW` × `cardH`) plus a *uniform* breathing gap on every
+// side (#166 follow-up). Sizing it as `card + 2·inset` on both axes — rather
+// than the old hand-picked 88×124, which left a 4px side gap but a 6px top/bottom
+// one — makes the highlight frame sit an equal distance outside the resting card
+// all the way round, and lets the CSS round the frame concentrically (the slot's
+// radius + this inset). A pile's cards centre vertically within the base-height
+// box, and a fanned zone grows *below* it so its outline and highlight wrap the
+// whole pile rather than just the top card's footprint (see reflow).
+let zoneInset = 4.
+let zoneWidth = cardW +. 2. *. zoneInset
+let zoneBaseHeight = cardH +. 2. *. zoneInset
 
 // Card widths are capped at the design size (`cardW`) and floored here, so a
 // game with many piles on a narrow phone still deals cards you can read and grab
