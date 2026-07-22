@@ -831,8 +831,19 @@
         /* filter: drop-shadow(0 4px 10px rgba(0, 0, 0, 0.4)); */
       }
 
+      /* Each resting card carries a slight, hand-placed tilt (#65), driven by the
+         `--card-rot` custom property TableScene.res writes per card. The rotation
+         lives on the inner `.card-art`, not the `.stacking-card` wrapper, so it
+         never fights the wrapper's own `transform` (the drag `translateZ` and the
+         deal/finish flight animations). `transform-origin: center` pivots about
+         the card's middle (SVG elements otherwise default to a `0 0` origin), and
+         the transition eases a card into its new angle as it snaps home, matching
+         the wrapper's left/top snap. */
       .stacking-card .card-art {
         width: 100%;
+        transform: rotate(var(--card-rot, 0deg));
+        transform-origin: 50% 50%;
+        transition: transform 0.18s ease;
       }
 
       /* During the opening deal (#115) each card is positioned instantly — the
@@ -939,7 +950,7 @@
         cursor: pointer;
       }
     </style>
-    <script type="module" crossorigin src="./assets/index-Bf8OhGwB.js"></script>
+    <script type="module" crossorigin src="./assets/index-C37udMBP.js"></script>
   <link rel="manifest" href="./manifest.webmanifest"></head>
   <body>
     <!-- Vite resolves the bare `core/…` specifier the compiled entry imports
