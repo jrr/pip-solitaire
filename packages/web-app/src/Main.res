@@ -208,8 +208,17 @@ let randomSeed = () => (Math.random() *. 1_000_000.)->Float.toInt
 // they publish no New Game action. `~publishNewGame` hands the scene's re-deal to
 // the top bar (see `newGameHook`).
 let gameScene = (game: Game.t) => {
-  let newDeal =
-    game.id == Game.freecell.id ? Some(() => Game.freecellDeal(~seed=randomSeed())) : None
+  let isFreecell = game.id == Game.freecell.id
+  // Open FreeCell from a fresh random seed on each load too (#108/#98), so a plain
+  // reload lays out a new board instead of always deal #1 — matching what New Game
+  // does. The fixed module-level `Game.freecell` (seed 1) stays the deterministic
+  // fallback for a forced `?state=` scenario, which screenshots depend on: when a
+  // state is forced we mount the fixed deal so `Scenario.forName` derives from the
+  // exact same board the report expects. The fixed-layout demos have no seed to
+  // vary, so they mount as-is.
+  let opening =
+    isFreecell && url.state->Option.isNone ? Game.freecellDeal(~seed=randomSeed()) : game
+  let newDeal = isFreecell ? Some(() => Game.freecellDeal(~seed=randomSeed())) : None
   TableScene.make(
     ~initial=?url.state->Option.flatMap(name => Scenario.forName(game, name)),
     ~newDeal?,
@@ -222,7 +231,7 @@ let gameScene = (game: Game.t) => {
     ~onHistory=(canUndo, canRedo) => reportHistory.contents(canUndo, canRedo),
     ~options,
     ~tiltEnabled,
-    game,
+    opening,
   )
 }
 let switcher = SceneSwitcher.render(
