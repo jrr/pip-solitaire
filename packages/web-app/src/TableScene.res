@@ -52,6 +52,24 @@ external onPointer: (WebDom.element, string, pointerEvent => unit) => unit = "ad
 // before the first paint — hence this binding.
 @val external requestAnimationFrame: (unit => unit) => int = "requestAnimationFrame"
 
+// The card layout is pixel-positioned in JS from the stage's live size, so unlike
+// the pure-CSS drop zones it doesn't reflow itself when the stage resizes (#172).
+// A `ResizeObserver` on the board host is the trigger to re-run the layout: it
+// catches every stage size change — window resizes, orientation flips, chrome
+// reflowing, late font loads — not just `window.resize`. The callback is passed
+// the observed entries, but the relayout reads the live rects itself, so the
+// binding ignores them.
+type resizeObserver
+@new external makeResizeObserver: (unit => unit) => resizeObserver = "ResizeObserver"
+@send external observe: (resizeObserver, WebDom.element) => unit = "observe"
+@send external disconnect: resizeObserver => unit = "disconnect"
+// Look the constructor up off `globalThis` first so an environment without it —
+// jsdom in the tests, older engines — skips the resize wiring rather than throwing
+// on construction; the layout still runs on every deal, just not on resize. Read
+// via `globalThis` (not a bare identifier) so a missing global reads as `undefined`
+// instead of a `ReferenceError`.
+@val @scope("globalThis") external resizeObserverCtor: Nullable.t<unit> = "ResizeObserver"
+
 // getBoundingClientRect gives viewport coordinates; that's what hit-testing and
 // the snap maths use, converting to playfield-local left/top only at the end.
 type domRect = {left: float, top: float, width: float, height: float}
@@ -432,6 +450,13 @@ let make = (
     // layout rather than the one the scene first mounted with.
     let currentGame = ref(game)
 
+    // The current board's resize relayout (#172), held at mount scope so the
+    // `ResizeObserver` set up once below always drives the *live* board. Every
+    // `buildBoard` swaps in its own board's relayout here, so a resize after a New
+    // Game reflows the fresh board rather than the torn-down one whose closure the
+    // observer would otherwise still hold. Starts a no-op until the first build.
+    let resizeRelayout = ref(() => ())
+
     // Build (or rebuild) the whole board for `game` into `boardHost`. Every call
     // clears the host first, so a re-deal starts empty — none of the previous
     // deal's card nodes or drop zones survive (the tear-down New Game needs) —
@@ -544,11 +569,20 @@ let make = (
       // the stage's live width the moment before the deal — the one point at which
       // the stage is known laid out.
       let scale = ref(1.)
+      // The stage width the layout was last sized to (#172). Recorded by every
+      // `applyScale` so a later resize can scale the loose cards — which live only
+      // as pixel x/y and so aren't touched by `reflowAll` — by the width ratio,
+      // keeping them where they sit proportionally. Zero until the first `deal`
+      // runs, which also gates the resize relayout below (nothing to reflow yet).
+      let lastWidth = ref(0.)
       let applyScale = () => {
         let width = boundingRect(playfield).width
         if width > 0. && widestRow > 0 {
           let target = fillFraction *. width /. Int.toFloat(widestRow) /. cardW
           scale := Math.max(minScale, Math.min(1., target))
+        }
+        if width > 0. {
+          lastWidth := width
         }
         // Publish the factor to the CSS so `.stacking-card`/`.drop-zone` resize in
         // step with the JS geometry below.
@@ -1363,6 +1397,41 @@ let make = (
         })
       }
 
+      // Re-run the layout for the stage's current size (#172) — a resize snaps the
+      // piled cards to the resized zones and rescales them, *without* re-animating
+      // the opening deal. The pile cards follow the zones' live rects (`reflowAll`);
+      // the loose cards, which `reflowAll` doesn't touch (they hold only pixel x/y),
+      // scale by the width ratio so they keep their spot proportionally as the cards
+      // around them shrink or grow by that same factor. The left/top snap transition
+      // is suppressed so the cards track the zones immediately rather than easing
+      // after every resize step (`withSnapSuppressed`). Gated on a prior deal
+      // (`lastWidth > 0`, set by `applyScale`), so the observer's initial callback —
+      // before the deferred opening deal has sized anything — is a harmless no-op,
+      // and so the ratio never divides by a zero start width.
+      let relayoutForResize = () => {
+        let width = boundingRect(playfield).width
+        if width > 0. && lastWidth.contents > 0. {
+          let ratio = width /. lastWidth.contents
+          withSnapSuppressed(() => {
+            applyScale()
+            reflowAll()
+            nodes->Array.forEach(c =>
+              switch GameState.locationOf(state.contents, c.data) {
+              | Some(GameState.Loose) =>
+                c.x := c.x.contents *. ratio
+                c.y := c.y.contents *. ratio
+                place(c)
+              | _ => ()
+              }
+            )
+          })
+        }
+      }
+      // Publish this build's relayout as the live one the mount-scope observer
+      // drives, so a resize after a New Game reflows *this* board, not the one it
+      // replaced.
+      resizeRelayout := relayoutForResize
+
       // Deal now if the stage is already laid out (a later scene switch); otherwise
       // on the next frame, before the first paint, once the detached-at-mount stage
       // has been inserted and sized (the first page load). Both the pile cards and
@@ -1451,9 +1520,31 @@ let make = (
     // the URL named one.
     buildBoard(~initial?, game)
 
-    // The switcher clears the container on scene change, dropping the board host,
-    // the New Game control and every listener with them — nothing extra to tear
-    // down.
-    () => ()
+    // Reflow the card layout whenever the stage resizes (#172). One observer serves
+    // the scene's whole life: it watches the persistent `boardHost` and always
+    // dispatches through `resizeRelayout`, which each `buildBoard` repoints at its
+    // own board — so a resize after a New Game reflows the live board, not the torn-
+    // down one. The callback storm a drag-resize fires is coalesced to one relayout
+    // per frame with `requestAnimationFrame`. Absent a `ResizeObserver` (jsdom, old
+    // engines) the wiring is simply skipped.
+    switch resizeObserverCtor->Nullable.toOption {
+    | Some(_) =>
+      let resizePending = ref(false)
+      let observer = makeResizeObserver(() =>
+        if !resizePending.contents {
+          resizePending := true
+          requestAnimationFrame(() => {
+            resizePending := false
+            resizeRelayout.contents()
+          })->ignore
+        }
+      )
+      observer->observe(boardHost)
+      // The switcher clears the container on scene change, dropping the board host,
+      // the New Game control and every listener with them; the observer is all that
+      // outlives the DOM, so disconnect it here.
+      () => observer->disconnect
+    | None => () => ()
+    }
   },
 }
