@@ -401,6 +401,15 @@
         gap: 0.4rem;
       }
 
+      /* The first of the bottom-group sections (#185): the "Debug" section, and by
+         extension Settings and the About footer after it, are pushed to the foot of
+         the panel by this auto top margin, so the "This game"/"Games" sections stay
+         up top and the empty space grows between the two groups. (The footer no
+         longer needs its own `margin-top: auto` for this — see `.menu-footer`.) */
+      .menu-section--bottom {
+        margin-top: auto;
+      }
+
       /* A small muted heading for a menu section (the Settings group, #139), set
          apart from the tappable rows below it. */
       .menu-section__heading {
@@ -569,13 +578,14 @@
         padding-top: 0.3rem;
       }
 
-      /* The version info sits at the bottom of the menu, pushed there so it always
-         hugs the panel's foot however short the scene list is. */
       /* The About footer (#165): the build/version line and, when an update is
-         waiting, the note + Update button below it. Pushed to the bottom of the
-         panel (`margin-top: auto`); a small gap keeps its rows apart. */
+         waiting, the note + Update button below it. It sits at the foot of the
+         panel as the last of the bottom group — the "Debug" section's
+         `margin-top: auto` (see `.menu-section--bottom`) already pushes Debug,
+         Settings and this footer down together, so the footer needs no auto margin
+         of its own (a second one would split the free space and open a gap between
+         Settings and About). A small gap keeps its own rows apart. */
       .menu-footer {
-        margin-top: auto;
         display: flex;
         flex-direction: column;
         gap: 0.4rem;
@@ -1014,7 +1024,7 @@
         cursor: pointer;
       }
     </style>
-    <script type="module" crossorigin src="./assets/index-rJK4q-tx.js"></script>
+    <script type="module" crossorigin src="./assets/index-DcTyySmj.js"></script>
   <link rel="manifest" href="./manifest.webmanifest"></head>
   <body>
     <!-- Vite resolves the bare `core/…` specifier the compiled entry imports
