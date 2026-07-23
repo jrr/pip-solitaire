@@ -266,6 +266,77 @@
         pointer-events: none;
       }
 
+      /* Landscape-phone chrome (#179 follow-up): a phone held sideways is wide but
+         very short, so the horizontal top bar steals the scarce vertical height the
+         tableau needs. In this regime the app becomes a *row* — a slim vertical rail
+         of the same controls hugging the left edge, the scene filling the rest —
+         handing the reclaimed top band back to the cards. Keyed on a short landscape
+         viewport: phones in landscape are ≤ ~430px tall while tablets are ≥ 768px, so
+         `max-height` cleanly separates them without device sniffing. (Add
+         `(pointer: coarse)` here to confine the rail to touch devices — at the cost
+         of it no longer showing in the screenshot report, which drives a desktop
+         Chromium.) */
+      @media (orientation: landscape) and (max-height: 500px) {
+        /* Reclaim vertical height — the tableau is fighting for every pixel here.
+           Trim the body's top/bottom breathing room down to near the safe-area
+           insets; the left/right insets stay untouched so a side notch is still
+           cleared. */
+        body {
+          padding-top: calc(env(safe-area-inset-top) + 0.25rem);
+          padding-bottom: calc(env(safe-area-inset-bottom) + 0.4rem);
+        }
+
+        #app {
+          flex-direction: row;
+        }
+
+        /* The rail: the controls stacked, hugging the top-left. `align-self:
+           flex-start` keeps the rail from stretching to full height; `align-items:
+           stretch` makes the stacked buttons share one width so it reads as a tidy
+           column. The negative left margin is kept (hug the edge, still clearing the
+           notch through body's `safe-area-inset-left`); the old bottom gap becomes a
+           right gap before the scene. */
+        #top-bar {
+          flex-direction: column;
+          align-self: flex-start;
+          align-items: stretch;
+          width: auto;
+          margin: 0 0.5rem 0 -0.75rem;
+        }
+
+        /* The shaded band starts just right of the rail rather than bleeding under
+           it: drop only the *inline-start* (left) full-bleed margin, keeping the end
+           one so the band still runs to the screen's right edge. */
+        #scene-area {
+          margin-inline-start: 0;
+        }
+
+        /* The divider turns to match the bar. With the chrome now down the left
+           side, the horizontal top/bottom rules become an orphaned line across the
+           top; swap them for a single vertical rule down the band's left edge,
+           reading as the seam between the rail and the play area. */
+        #scene-box {
+          border-top-width: 0;
+          border-bottom-width: 0;
+          border-left: 1px solid #22304a;
+        }
+
+        /* Pull the tableau up to the top of the reclaimed band — with the top bar
+           gone from overhead there's no reason to hold the zones down. Zeroed here so
+           the only remaining gap above the top row is the zone's own slot-centering
+           inset (~5px), which — plus the trimmed body padding — lands the cards about
+           as far below the top edge as they sit right of the rail divider, roughly
+           symmetric at a phone-landscape size (it needn't track exactly as the window
+           resizes). Descendant selector (`.stacking-playfield .drop-rows`) outranks the
+           base `.drop-rows { top }` rule, which sits later in the sheet and would
+           otherwise win on source order — a media query adds no specificity of its own.
+           (Deep cascades can still run past the bottom until card size becomes
+           height-aware; that's the next step.) */
+        .stacking-playfield .drop-rows {
+          top: 0;
+        }
+      }
+
       /* The slide-over menu (#109): the title, the debug/demo scene rows, and the
          version info. A full-screen overlay so it floats above the game; `hidden`
          (set by the chrome model) collapses it entirely when closed. */
