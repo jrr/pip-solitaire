@@ -481,17 +481,32 @@
         cursor: pointer;
       }
 
+      /* The Settings screen's back button (#191): sits on the left of the header
+         opposite the ✕, styled like the close button so the pair reads as a
+         matched set. Returns to the main menu without closing the pane. */
+      .menu-back {
+        padding: 4px 10px;
+        font: 14px "Libre Franklin", sans-serif;
+        color: #cbd5e1;
+        background: transparent;
+        border: 1px solid #334155;
+        border-radius: 8px;
+        cursor: pointer;
+      }
+
       .menu-section {
         display: flex;
         flex-direction: column;
         gap: 0.4rem;
       }
 
-      /* The first of the bottom-group sections (#185): the "Debug" section, and by
-         extension Settings and the About footer after it, are pushed to the foot of
-         the panel by this auto top margin, so the "This game"/"Games" sections stay
-         up top and the empty space grows between the two groups. (The footer no
-         longer needs its own `margin-top: auto` for this — see `.menu-footer`.) */
+      /* The first of a screen's bottom-group elements is pushed to the foot of the
+         panel by this auto top margin, so the sections above it stay up top and the
+         empty space grows between the two groups. On the main menu that's the
+         Settings button (#191), just above the About footer; on the Settings screen
+         it's the Settings toggle section, which drags Debug and the footer down with
+         it. (The footer no longer needs its own `margin-top: auto` for this — see
+         `.menu-footer`.) */
       .menu-section--bottom {
         margin-top: auto;
       }
@@ -665,12 +680,13 @@
       }
 
       /* The About footer (#165): the build/version line and, when an update is
-         waiting, the note + Update button below it. It sits at the foot of the
-         panel as the last of the bottom group — the "Debug" section's
-         `margin-top: auto` (see `.menu-section--bottom`) already pushes Debug,
-         Settings and this footer down together, so the footer needs no auto margin
-         of its own (a second one would split the free space and open a gap between
-         Settings and About). A small gap keeps its own rows apart. */
+         waiting, the note + Update button below it. It stays put at the foot of the
+         panel on both the main menu and the Settings screen (#191) as the last of
+         the bottom group — the bottom group's leading `margin-top: auto` (see
+         `.menu-section--bottom`) already pushes that group and this footer down
+         together, so the footer needs no auto margin of its own (a second one would
+         split the free space and open a gap above About). A small gap keeps its own
+         rows apart. */
       .menu-footer {
         display: flex;
         flex-direction: column;
