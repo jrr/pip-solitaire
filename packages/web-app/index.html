@@ -213,8 +213,7 @@
       }
 
       /* The bar's buttons share the scene controls' look. A disabled button (Undo
-         with nothing to undo, Redo with nothing to redo — #85) is dimmed and
-         non-interactive. */
+         with nothing to undo — #85) is dimmed and non-interactive. */
       .top-bar__button {
         display: inline-flex;
         align-items: center;
@@ -290,16 +289,22 @@
           flex-direction: row;
         }
 
-        /* The rail: the controls stacked, hugging the top-left. `align-self:
-           flex-start` keeps the rail from stretching to full height; `align-items:
-           stretch` makes the stacked buttons share one width so it reads as a tidy
-           column. The negative left margin is kept (hug the edge, still clearing the
-           notch through body's `safe-area-inset-left`); the old bottom gap becomes a
-           right gap before the scene. */
+        /* The rail: the controls stacked down the edge, but split to opposite ends
+           rather than bunched at the top — Menu at the top, Undo at the bottom
+           (#180). `align-self: stretch` lets the rail span the band's full height and
+           `justify-content: space-between` then drives the two buttons to the top and
+           bottom corners; `align-items: stretch` makes them share one width so the
+           pair still reads as a tidy column. With the rail on a cutout edge (below),
+           the centered camera band falls in the gap *between* the two controls, so
+           each lands in a clear corner "wing" and neither sits under the notch. The
+           negative left margin is kept (hug the edge, still clearing the notch through
+           body's `safe-area-inset-left`); the old bottom gap becomes a right gap
+           before the scene. */
         #top-bar {
           flex-direction: column;
-          align-self: flex-start;
+          align-self: stretch;
           align-items: stretch;
+          justify-content: space-between;
           width: auto;
           margin: 0 0.5rem 0 -0.75rem;
         }

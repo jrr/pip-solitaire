@@ -419,13 +419,14 @@ let looseTiltPile = 1000
 // re-lays every resting card, so flipping the tilt switch re-tilts (or un-tilts)
 // the board in place, immediately, rather than only on the next move.
 //
-// `~publishUndo` / `~publishRedo` are the undo/redo hooks (#85), siblings of
-// `~publishNewGame`: on every build the board hands the top bar a thunk that steps
-// its `GameState` history back / forward and re-derives the layout. `~onHistory`
-// is the reverse channel — after every state change the board calls it with the
-// current `(canUndo, canRedo)` so the top bar can enable or disable each button.
-// Undo works even from a won board: a victory is just another recorded state, so
-// stepping back tears the win overlay down and returns to the prior position.
+// `~publishUndo` is the undo hook (#85), sibling of `~publishNewGame`: on every
+// build the board hands the top bar a thunk that steps its `GameState` history
+// back and re-derives the layout. `~onHistory` is the reverse channel — after
+// every state change the board calls it with the current `canUndo` so the top bar
+// can enable or disable the button. Undo works even from a won board: a victory is
+// just another recorded state, so stepping back tears the win overlay down and
+// returns to the prior position. (Redo lives on in `core`'s `History` for the CLI,
+// but the web app's top bar no longer surfaces it.)
 let make = (
   ~initial: option<GameState.t>=?,
   ~newDeal: option<unit => Game.t>=?,
@@ -433,9 +434,8 @@ let make = (
   ~publishRestart: option<(unit => unit) => unit>=?,
   ~publishLoadState: option<(GameState.t => unit) => unit>=?,
   ~publishUndo: option<(unit => unit) => unit>=?,
-  ~publishRedo: option<(unit => unit) => unit>=?,
   ~publishRelayout: option<(unit => unit) => unit>=?,
-  ~onHistory: option<(bool, bool) => unit>=?,
+  ~onHistory: option<bool => unit>=?,
   ~options: ref<Options.t>=ref(Options.default),
   ~tiltEnabled: ref<bool>=ref(true),
   // `~skipDealAnimation` drops the cards straight into their resting places instead
@@ -853,11 +853,11 @@ let make = (
         | None => ()
         }
 
-      // Report the current undo/redo availability to the chrome (#85) so the top
-      // bar can enable or disable its buttons. Called after every state change.
+      // Report the current undo availability to the chrome (#85) so the top bar
+      // can enable or disable its button. Called after every state change.
       let reportHistory = () =>
         switch onHistory {
-        | Some(f) => f(History.canUndo(history.contents), History.canRedo(history.contents))
+        | Some(f) => f(History.canUndo(history.contents))
         | None => ()
         }
 
@@ -1006,11 +1006,11 @@ let make = (
           }
         }
 
-      // Step the board's history back / forward (#85), re-deriving the layout from
-      // the restored state. Neither re-runs auto-collect — undo restores the prior
-      // *settled* state exactly. Undo tears down the win overlay first, so it steps
-      // cleanly back out of a victory; redo re-raises the win if the state it
-      // replays to is itself a won board.
+      // Step the board's history back (#85), re-deriving the layout from the
+      // restored state. Undo doesn't re-run auto-collect — it restores the prior
+      // *settled* state exactly. It tears down the win overlay first, so it steps
+      // cleanly back out of a victory. (Redo is still in `core`'s `History`, but the
+      // web app no longer exposes it — see the top bar.)
       let undo = () =>
         if History.canUndo(history.contents) {
           // Stop any finish sweep still in flight before laying out the restored
@@ -1021,18 +1021,6 @@ let make = (
           state := History.present(history.contents)
           removeWinOverlay()
           reflowAll()
-          updateFinishButton()
-          reportHistory()
-        }
-      let redo = () =>
-        if History.canRedo(history.contents) {
-          cancelOutstanding()
-          history := History.redo(history.contents)
-          state := History.present(history.contents)
-          reflowAll()
-          if GameState.hasWon(game, state.contents) {
-            showWin()
-          }
           updateFinishButton()
           reportHistory()
         }
@@ -1496,16 +1484,12 @@ let make = (
       // Layout-independent, so it needn't wait on the deal's frame.
       updateFinishButton()
 
-      // Publish this build's undo/redo actions to the chrome and report the opening
-      // history (nothing to undo or redo yet), so the top bar's buttons start
-      // disabled (#85). Re-published every build, so after a re-deal the top bar
-      // drives the fresh board's history, not the torn-down one's.
+      // Publish this build's undo action to the chrome and report the opening
+      // history (nothing to undo yet), so the top bar's button starts disabled
+      // (#85). Re-published every build, so after a re-deal the top bar drives the
+      // fresh board's history, not the torn-down one's.
       switch publishUndo {
       | Some(publish) => publish(undo)
-      | None => ()
-      }
-      switch publishRedo {
-      | Some(publish) => publish(redo)
       | None => ()
       }
       // Publish the relayout hook (#65): re-lay every resting card — the piles
