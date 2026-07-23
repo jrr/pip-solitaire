@@ -64,6 +64,12 @@ type model = {
   cardTilt: bool,
   cutoutDebug: bool,
   canUndo: bool,
+  // The adaptive Settings refresh control (#112). `refreshMode` is `None` until
+  // `Refresh.detect` resolves (and stays effectively hidden on an unsupported
+  // browser); it decides the button's "Refresh" vs "Check for updates" shape.
+  // `refreshStatus` is the transient line under it ("Checking…", "Up to date").
+  refreshMode: option<Refresh.mode>,
+  refreshStatus: option<string>,
 }
 
 type msg =
@@ -78,6 +84,9 @@ type msg =
   | ToggleCardTilt // the menu's hand-placed-tilt switch (#65)
   | ToggleCutoutDebug // the menu's safe-area overlay switch (debug)
   | HistoryChanged(bool) // whether the board can undo after a move (#85)
+  | RefreshDetected(Refresh.mode) // service-worker presence detected — sets the button's shape (#112)
+  | RefreshStarted(string) // the refresh button was tapped — show a transient status (#112)
+  | RefreshChecked(bool) // an update check finished; the bool is whether an update is now pending (#112)
 
 // `updateSW` only exists once registerSW has run, which needs `dispatch`, which
 // needs the loop to be mounted — so the Reload effect reaches it through a ref
@@ -150,14 +159,19 @@ let update = (msg, model) =>
   | UpdateAvailable => ({...model, updateAvailable: true}, Html.noEffect)
   // Opening or closing the menu resets it to the main screen, so a visit to
   // Settings never lingers into the next open (#191).
-  | ToggleMenu => ({...model, menuOpen: !model.menuOpen, settingsOpen: false}, Html.noEffect)
+  | ToggleMenu => (
+      {...model, menuOpen: !model.menuOpen, settingsOpen: false, refreshStatus: None},
+      Html.noEffect,
+    )
   | HistoryChanged(canUndo) =>
     canUndo == model.canUndo ? (model, Html.noEffect) : ({...model, canUndo}, Html.noEffect) // no change — don't re-render
   | CloseMenu =>
     model.menuOpen
-      ? ({...model, menuOpen: false, settingsOpen: false}, Html.noEffect)
+      ? ({...model, menuOpen: false, settingsOpen: false, refreshStatus: None}, Html.noEffect)
       : (model, Html.noEffect)
-  | OpenSettings => ({...model, settingsOpen: true}, Html.noEffect)
+  // Enter Settings clean: clear any stale status from a prior visit. The label
+  // itself is re-detected on open (see the view's `onOpenSettings`).
+  | OpenSettings => ({...model, settingsOpen: true, refreshStatus: None}, Html.noEffect)
   | BackToMenu => ({...model, settingsOpen: false}, Html.noEffect)
   | ToggleAutoCollect =>
     let autoCollect = !model.autoCollect
@@ -198,6 +212,14 @@ let update = (msg, model) =>
         | Some(reload) => reload(true)->ignore
         | None => ()
         },
+    )
+  | RefreshDetected(mode) => ({...model, refreshMode: Some(mode)}, Html.noEffect)
+  | RefreshStarted(status) => ({...model, refreshStatus: Some(status)}, Html.noEffect)
+  // An update check finished. If one's pending, the onNeedRefresh → "Update now"
+  // flow surfaces it, so drop our own status; otherwise we're up to date.
+  | RefreshChecked(pending) => (
+      {...model, refreshStatus: pending ? None : Some("Up to date")},
+      Html.noEffect,
     )
   }
 
@@ -318,7 +340,12 @@ let view = (model, dispatch) => <>
     open_={model.menuOpen}
     settingsOpen={model.settingsOpen}
     onClose={() => dispatch(CloseMenu)}
-    onOpenSettings={() => dispatch(OpenSettings)}
+    onOpenSettings={() => {
+      // Re-detect the service-worker state each time Settings opens, so the button
+      // reflects a worker that registered (or self-destructed) since page load.
+      Refresh.detect(mode => dispatch(RefreshDetected(mode)))
+      dispatch(OpenSettings)
+    }}
     onBackToMenu={() => dispatch(BackToMenu)}
     onNewGame={() => {
       newGameHook.contents->Option.forEach(newGame => newGame())
@@ -337,6 +364,27 @@ let view = (model, dispatch) => <>
     onToggleAutoCollect={() => dispatch(ToggleAutoCollect)}
     cardTilt={model.cardTilt}
     onToggleCardTilt={() => dispatch(ToggleCardTilt)}
+    refreshButton={switch model.refreshMode {
+    | None | Some(Refresh.Unsupported) => None // still detecting, or unsupported — no button
+    | Some(Refresh.NoWorker) =>
+      Some({
+        label: "Refresh",
+        status: model.refreshStatus,
+        onClick: () => {
+          dispatch(RefreshStarted("Refreshing…"))
+          Refresh.forceReload()
+        },
+      })
+    | Some(Refresh.HasWorker) =>
+      Some({
+        label: "Check for updates",
+        status: model.refreshStatus,
+        onClick: () => {
+          dispatch(RefreshStarted("Checking…"))
+          Refresh.checkForUpdates(pending => dispatch(RefreshChecked(pending)))
+        },
+      })
+    }}
     version={model.version}
     buildTime={model.buildTime}
     offlineReady={model.offlineReady}
@@ -385,6 +433,10 @@ let dispatch = Html.mount(
     cutoutDebug: false,
     // Undo starts disabled; the mounted board reports its history (#85).
     canUndo: false,
+    // The refresh button starts hidden until `Refresh.detect` reports the
+    // service-worker state (#112); no status line until an action runs.
+    refreshMode: None,
+    refreshStatus: None,
   },
   ~update,
   ~view,
@@ -396,6 +448,12 @@ closeMenu := (() => dispatch(CloseMenu))
 // …and let the board's history reports reach the loop, so Undo enables and
 // disables as moves are played and undone (#85).
 reportHistory := (canUndo => dispatch(HistoryChanged(canUndo)))
+
+// Detect the service-worker state up front so the Settings refresh button opens
+// with the right label (#112). It's re-detected each time Settings opens too (see
+// the view), which also covers the first-load race where the worker registers
+// just after this runs.
+Refresh.detect(mode => dispatch(RefreshDetected(mode)))
 
 // Now that `dispatch` exists, register the worker and let its callbacks drive
 // the loop. Stash the returned updater so the Reload message can reach it.

@@ -51,6 +51,19 @@
 // close button calls `onClose`. The scene rows are an externally-owned real DOM node (the
 // switcher owns them), spliced with `Html.node` so the reconciler leaves them be
 // across open/close re-renders. Layout lives in index.html.
+
+// The adaptive refresh control on the Settings screen (#112): one button whose
+// `label` and click behaviour adapt to whether a service worker is registered
+// ("Refresh" force-reloads a cache-only install; "Check for updates" checks a
+// real install without applying — see Refresh/Main). `status` is a transient
+// line under it ("Checking…", "Up to date"). The whole control is a `props`
+// option: `None` (still detecting, or `serviceWorker` unsupported) hides it.
+type refreshButton = {
+  label: string,
+  status: option<string>,
+  onClick: unit => unit,
+}
+
 type props = {
   open_: bool,
   settingsOpen: bool,
@@ -68,6 +81,7 @@ type props = {
   onToggleAutoCollect: unit => unit,
   cardTilt: bool,
   onToggleCardTilt: unit => unit,
+  refreshButton: option<refreshButton>,
   version: string,
   buildTime: string,
   offlineReady: bool,
@@ -92,6 +106,7 @@ let make = ({
   onToggleAutoCollect,
   cardTilt,
   onToggleCardTilt,
+  refreshButton,
   version,
   buildTime,
   offlineReady,
@@ -164,6 +179,22 @@ let make = ({
                 <span className="menu-toggle__switch" />
               </button>
             </nav>
+            {switch refreshButton {
+            | None => Html.array([])
+            | Some({label, status, onClick}) =>
+              <div className="menu-section" attrs={[("aria-label", "Updates")]}>
+                <h2 className="menu-section__heading"> {Html.string("Updates")} </h2>
+                <button
+                  className="menu-button" onClick={_ => onClick()} attrs={[("type", "button")]}
+                >
+                  {Html.string(label)}
+                </button>
+                {switch status {
+                | None => Html.array([])
+                | Some(text) => <p className="menu-refresh__status"> {Html.string(text)} </p>
+                }}
+              </div>
+            }}
           </>
         : <>
             <div className="menu-panel__header">
