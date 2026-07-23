@@ -315,7 +315,8 @@ let view = (model, dispatch) => <>
       restartHook.contents->Option.forEach(restart => restart())
       dispatch(CloseMenu)
     }}
-    scenes={switcher.controls}
+    games={switcher.controls}
+    debugScenes={switcher.debugScenes}
     debugStates={debugStates}
     autoCollect={model.autoCollect}
     onToggleAutoCollect={() => dispatch(ToggleAutoCollect)}

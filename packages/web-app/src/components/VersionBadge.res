@@ -27,28 +27,30 @@ let monthNames = [
   "Dec",
 ]
 
+// Zero-pad a clock field to two digits (`6` → `"06"`), so the time reads
+// `06:03` rather than `6:3`.
+let pad2 = n => n < 10 ? `0${n->Int.toString}` : n->Int.toString
+
 // Reformat the raw build timestamp — an ISO 8601 string baked in at build time
 // (`2026-07-21T11:03:00.000Z`, always UTC — see vite.config.js's `toISOString`)
-// — into something a human reads at a glance (`Jul 21, 2026 · 11:03 UTC`). It's
-// parsed by slicing the fixed ISO layout rather than through a `Date`, so it
-// stays in UTC with no timezone handling and no `Date` binding; anything that
-// doesn't look like that layout (it shouldn't happen) falls back to itself.
-let formatBuildTime = iso =>
-  if iso->String.length < 16 {
+// — into something a human reads at a glance, in *their own* time zone (#185):
+// `Jul 21, 2026 · 06:03` for a viewer six hours behind UTC. It's parsed through
+// `Date`, whose `get*` accessors report local time, so the same build reads
+// differently depending on where it's opened — no "UTC" suffix, because it's no
+// longer UTC. An unparseable string (it shouldn't happen — `getTime` is `NaN`)
+// falls back to itself.
+let formatBuildTime = iso => {
+  let date = Date.fromString(iso)
+  if date->Date.getTime->Float.isNaN {
     iso
   } else {
-    switch (
-      Int.fromString(iso->String.slice(~start=5, ~end=7)),
-      Int.fromString(iso->String.slice(~start=8, ~end=10)),
-    ) {
-    | (Some(month), Some(day)) if month >= 1 && month <= 12 =>
-      let year = iso->String.slice(~start=0, ~end=4)
-      let hourMinute = iso->String.slice(~start=11, ~end=16)
-      let monthName = monthNames->Array.get(month - 1)->Option.getOr("")
-      `${monthName} ${day->Int.toString}, ${year} · ${hourMinute} UTC`
-    | _ => iso
-    }
+    let monthName = monthNames->Array.get(date->Date.getMonth)->Option.getOr("")
+    let day = date->Date.getDate->Int.toString
+    let year = date->Date.getFullYear->Int.toString
+    let hourMinute = `${date->Date.getHours->pad2}:${date->Date.getMinutes->pad2}`
+    `${monthName} ${day}, ${year} · ${hourMinute}`
   }
+}
 
 let make = ({version, buildTime, offlineReady}) => {
   let built = formatBuildTime(buildTime)
