@@ -134,10 +134,6 @@ let options: ref<Options.t> = ref(Preferences.load())
 // its next relayout, and the model's mirror keeps the switch in sync.
 let tiltEnabled: ref<bool> = ref(Preferences.loadCardTilt())
 
-// The safe-area debug overlay's persisted state (default off). Seeds both the
-// menu switch's opening position and the overlay's initial visibility below.
-let cutoutDebugInitial = Preferences.loadCutoutDebug()
-
 // The active board's "relayout" action (#65), sibling of `undoHook`: the mounted
 // `TableScene` publishes a thunk that re-lays every resting card, so a tilt toggle
 // can re-tilt the board in place at once. Cleared on each scene change and a no-op
@@ -183,11 +179,9 @@ let update = (msg, model) =>
     let cutoutDebug = !model.cutoutDebug
     (
       {...model, cutoutDebug},
-      // Show/hide the overlay at once and persist the choice. Runs as the effect.
-      () => {
-        CutoutDebug.setVisible(cutoutDebug)
-        Preferences.saveCutoutDebug(cutoutDebug)
-      },
+      // Show/hide the overlay at once. Not persisted — it's a debug aid, on only
+      // for the session; the model state carries it across rotations regardless.
+      () => CutoutDebug.setVisible(cutoutDebug),
     )
   | Reload => (
       model, // no state change — just run the effect
@@ -365,10 +359,9 @@ body->WebDom.appendChild(root)->ignore
 CutoutSide.install()
 
 // The safe-area debug overlay (a menu Debug-section toggle): built once here,
-// shown only if the persisted preference is on, and flipped live by
-// ToggleCutoutDebug. A developer aid for spot-checking cutout detection on a
-// device.
-CutoutDebug.install(~visible=cutoutDebugInitial)
+// hidden, and flipped live by ToggleCutoutDebug. A developer aid for spot-checking
+// cutout detection on a device; session-only, not persisted.
+CutoutDebug.install(~visible=false)
 
 let dispatch = Html.mount(
   ~root,
@@ -382,7 +375,9 @@ let dispatch = Html.mount(
     // position (the board reads the `options` and `tiltEnabled` refs directly).
     autoCollect: options.contents.autoCollect,
     cardTilt: tiltEnabled.contents,
-    cutoutDebug: cutoutDebugInitial,
+    // Debug overlay starts off each session (not persisted); the model keeps it
+    // across rotations.
+    cutoutDebug: false,
     // Undo/redo start disabled; the mounted board reports its history (#85).
     canUndo: false,
     canRedo: false,

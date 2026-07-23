@@ -20,7 +20,6 @@
 // app might persist later.
 let autoCollectKey = "pip.autoCollect"
 let cardTiltKey = "pip.cardTilt"
-let cutoutDebugKey = "pip.cutoutDebug"
 
 // Read a boolean flag from storage, treating only an explicit "false" as off; a
 // missing, garbage, or unreadable value keeps the on-by-default `fallback`. This
@@ -60,9 +59,3 @@ let save = (options: Options.t) => saveFlag(autoCollectKey, options.autoCollect)
 // off, and this remembers that across launches.
 let loadCardTilt = (): bool => loadFlag(cardTiltKey, ~fallback=true)
 let saveCardTilt = (enabled: bool) => saveFlag(cardTiltKey, enabled)
-
-// The safe-area debug overlay is a developer aid (a menu Debug-section toggle that
-// draws the cutout visualisation, see CutoutDebug), so it defaults *off* and is
-// remembered across launches like the others.
-let loadCutoutDebug = (): bool => loadFlag(cutoutDebugKey, ~fallback=false)
-let saveCutoutDebug = (enabled: bool) => saveFlag(cutoutDebugKey, enabled)
