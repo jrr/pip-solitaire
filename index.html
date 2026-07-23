@@ -679,16 +679,27 @@
          the old single row was. */
       .drop-rows {
         position: absolute;
-        left: 0;
-        right: 0;
+        /* Inset the interactive layer by the safe-area insets (#179). The shaded
+           band (`#scene-area`) deliberately bleeds full-width under a display
+           cutout — it's just shading, harmless to draw under a notch — but the
+           zones, cards, empty-pile slots and everything else that must stay
+           legible are pinned inside the browser-reported safe rectangle here, so
+           the outer cascade columns never render under a side cutout in landscape.
+           On portrait and non-cutout devices these insets are `0`, so the row
+           spans the stage exactly as before and nothing moves. The `env()` sits in
+           the `left`/`right` offsets (not padding) so the `--rows-max-w` cap and
+           `margin-inline: auto` centring below keep working — the row just has
+           slightly less width to spread into on a cutout device. */
+        left: env(safe-area-inset-left);
+        right: env(safe-area-inset-right);
         top: 16px;
         /* Wide-desktop cap (#173): `--rows-max-w` (published by applyScale) is the
            row width at which the columns' `space-evenly` gaps have grown to their
            limit. Capping the row here and centring it (margin-inline: auto, between
-           left:0/right:0) means a stage wider than that pours its extra width into
-           equal left/right margins instead of ever-wider gaps, so the board keeps a
-           tidy solitaire-table shape. Defaults to `none` until the scene sizes
-           itself, so the initial render fills the stage exactly as before. */
+           the left/right insets) means a stage wider than that pours its extra width
+           into equal left/right margins instead of ever-wider gaps, so the board
+           keeps a tidy solitaire-table shape. Defaults to `none` until the scene
+           sizes itself, so the initial render fills the stage exactly as before. */
         max-width: var(--rows-max-w, none);
         margin-inline: auto;
         display: flex;
@@ -932,7 +943,7 @@
         cursor: pointer;
       }
     </style>
-    <script type="module" crossorigin src="./assets/index-BKCcayyg.js"></script>
+    <script type="module" crossorigin src="./assets/index-JMb6R_PR.js"></script>
   <link rel="manifest" href="./manifest.webmanifest"></head>
   <body>
     <!-- Vite resolves the bare `core/…` specifier the compiled entry imports
