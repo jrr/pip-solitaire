@@ -346,6 +346,10 @@ body->WebDom.appendChild(root)->ignore
 // the `[data-cutout="left"]` landscape rules in index.html).
 CutoutSide.install()
 
+// TEMPORARY: on-screen safe-area frame + inset/orientation readout for debugging
+// the cutout detection on real devices. Remove this call (and CutoutDebug.res).
+CutoutDebug.install()
+
 let dispatch = Html.mount(
   ~root,
   ~init={
