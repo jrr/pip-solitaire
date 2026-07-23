@@ -56,6 +56,10 @@ type model = {
   offlineReady: bool,
   updateAvailable: bool,
   menuOpen: bool,
+  // Which screen the open menu shows (#191): false is the main menu, true the
+  // dedicated Settings screen it swaps to in place. Reset to false whenever the
+  // menu opens or closes, so reopening always lands on the main menu.
+  settingsOpen: bool,
   autoCollect: bool,
   cardTilt: bool,
   cutoutDebug: bool,
@@ -68,6 +72,8 @@ type msg =
   | Reload // user asked to activate the waiting worker and reload
   | ToggleMenu // the top bar's Menu button
   | CloseMenu // backdrop / close button / a scene row was tapped
+  | OpenSettings // the main menu's Settings button — swap to the Settings screen (#191)
+  | BackToMenu // the Settings screen's back button — swap back to the main menu (#191)
   | ToggleAutoCollect // the menu's Auto-collect switch (#139)
   | ToggleCardTilt // the menu's hand-placed-tilt switch (#65)
   | ToggleCutoutDebug // the menu's safe-area overlay switch (debug)
@@ -142,11 +148,17 @@ let update = (msg, model) =>
   switch msg {
   | OfflineReady => ({...model, offlineReady: true}, Html.noEffect)
   | UpdateAvailable => ({...model, updateAvailable: true}, Html.noEffect)
-  | ToggleMenu => ({...model, menuOpen: !model.menuOpen}, Html.noEffect)
+  // Opening or closing the menu resets it to the main screen, so a visit to
+  // Settings never lingers into the next open (#191).
+  | ToggleMenu => ({...model, menuOpen: !model.menuOpen, settingsOpen: false}, Html.noEffect)
   | HistoryChanged(canUndo) =>
     canUndo == model.canUndo ? (model, Html.noEffect) : ({...model, canUndo}, Html.noEffect) // no change — don't re-render
   | CloseMenu =>
-    model.menuOpen ? ({...model, menuOpen: false}, Html.noEffect) : (model, Html.noEffect)
+    model.menuOpen
+      ? ({...model, menuOpen: false, settingsOpen: false}, Html.noEffect)
+      : (model, Html.noEffect)
+  | OpenSettings => ({...model, settingsOpen: true}, Html.noEffect)
+  | BackToMenu => ({...model, settingsOpen: false}, Html.noEffect)
   | ToggleAutoCollect =>
     let autoCollect = !model.autoCollect
     (
@@ -304,7 +316,10 @@ let view = (model, dispatch) => <>
   </main>
   <Menu
     open_={model.menuOpen}
+    settingsOpen={model.settingsOpen}
     onClose={() => dispatch(CloseMenu)}
+    onOpenSettings={() => dispatch(OpenSettings)}
+    onBackToMenu={() => dispatch(BackToMenu)}
     onNewGame={() => {
       newGameHook.contents->Option.forEach(newGame => newGame())
       dispatch(CloseMenu)
@@ -359,6 +374,8 @@ let dispatch = Html.mount(
     offlineReady: false,
     updateAvailable: false,
     menuOpen: false,
+    // The menu opens on its main screen; the Settings screen is a swap-in (#191).
+    settingsOpen: false,
     // Mirror the persisted preferences so the menu's switches open in the right
     // position (the board reads the `options` and `tiltEnabled` refs directly).
     autoCollect: options.contents.autoCollect,
