@@ -75,6 +75,15 @@ type resizeObserver
 type domRect = {left: float, top: float, width: float, height: float}
 @send external boundingRect: WebDom.element => domRect = "getBoundingClientRect"
 
+// The card scale is sized to the width the row *actually lays out in*, which on a
+// device with a side display cutout is narrower than the stage by the safe-area
+// insets (#179 pins `.drop-rows` inside them). Those insets aren't in a rect we
+// already read, so pull them off the row's *computed* `left`/`right` — they resolve
+// the `env(safe-area-inset-*)` to px — and `parseFloat` turns "44px" into 44.
+@val
+external getComputedStyle: WebDom.element => {"left": string, "right": string} = "getComputedStyle"
+@val external parseFloat: string => float = "parseFloat"
+
 // The opening deal (#115) flies each card in from a single origin below the
 // stage — as if a magician were throwing them into place off one stack — with
 // the Web Animations API, the same `element.animate(keyframes, options)` the
@@ -593,9 +602,21 @@ let make = (
       // runs, which also gates the resize relayout below (nothing to reflow yet).
       let lastWidth = ref(0.)
       let applyScale = () => {
+        // The stage width already excludes the nav rail — `playfield` is laid out
+        // beside it, not under it — so the only term left to subtract is the display
+        // cutaway: the safe-area insets `.drop-rows` is pinned inside (#179). Sizing
+        // the cards to that inset width (rather than the raw stage) keeps the columns
+        // fitting the row on a landscape phone with a side notch, instead of being
+        // sized for a stage wider than they actually get and packing together (their
+        // `space-evenly` gaps squeezed to nothing). Off a cutout device the insets are
+        // 0, so `avail == width` and nothing changes. The cutaway is read here, not
+        // folded into the `--rows-max-w` cap below, which stays a pure spreading limit.
         let width = boundingRect(playfield).width
-        if width > 0. && widestRow > 0 {
-          let target = fillFraction *. width /. Int.toFloat(widestRow) /. cardW
+        let cs = getComputedStyle(rows)
+        let cutaway = parseFloat(cs["left"]) +. parseFloat(cs["right"])
+        let avail = width -. cutaway
+        if avail > 0. && widestRow > 0 {
+          let target = fillFraction *. avail /. Int.toFloat(widestRow) /. cardW
           scale := Math.max(minScale, Math.min(1., target))
         }
         if width > 0. {
