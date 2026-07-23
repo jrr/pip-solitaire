@@ -1,28 +1,40 @@
-// `CutoutSide.sideFrom` is the whole decision: given the two resolved safe-area
-// insets, which side (if any) carries the display cutout. Pure and px-in/string-out
-// free, so it's unit-tested directly — the DOM probe and listeners around it
-// (`install`) are the untestable-in-jsdom glue.
+// `CutoutSide` decides the cutout side from the orientation angle (iOS reports
+// symmetric safe-area insets in landscape, so the insets can't tell the sides
+// apart — see the module header). These cover the angle→side mapping and the
+// screen-over-window fallback; the DOM listeners around them are the
+// untestable-in-jsdom glue.
 
 open Vitest
 
-describe("CutoutSide.sideFrom (#179 follow-up)", () => {
-  test("larger left inset ⇒ cutout on the left", () => {
-    expect(CutoutSide.sideFrom(44., 0.))->toBe("left")
+describe("CutoutSide angle mapping (#179 follow-up)", () => {
+  test("screen angle 90 ⇒ notch on the left", () => {
+    expect(CutoutSide.sideOfScreenAngle(90.))->toBe("left")
   })
 
-  test("larger right inset ⇒ cutout on the right", () => {
-    expect(CutoutSide.sideFrom(0., 44.))->toBe("right")
+  test("screen angle 270 ⇒ notch on the right", () => {
+    expect(CutoutSide.sideOfScreenAngle(270.))->toBe("right")
   })
 
-  test("equal insets ⇒ none (rail stays on its default side)", () => {
-    expect(CutoutSide.sideFrom(0., 0.))->toBe("none")
+  test("portrait (0 / 180) exposes no side", () => {
+    expect(CutoutSide.sideOfScreenAngle(0.))->toBe("none")
+    expect(CutoutSide.sideOfScreenAngle(180.))->toBe("none")
   })
 
-  test("a sub-pixel difference is noise, not a cutout", () => {
-    expect(CutoutSide.sideFrom(0.4, 0.))->toBe("none")
+  test("legacy window.orientation flips sign for the right landscape", () => {
+    expect(CutoutSide.sideOfWindowAngle(90.))->toBe("left")
+    expect(CutoutSide.sideOfWindowAngle(-90.))->toBe("right")
+    expect(CutoutSide.sideOfWindowAngle(0.))->toBe("none")
   })
 
-  test("NaN insets (env() unresolved off-device) read as none", () => {
-    expect(CutoutSide.sideFrom(Float.Constants.nan, Float.Constants.nan))->toBe("none")
+  test("side() prefers the modern screen angle when present", () => {
+    expect(CutoutSide.side(~screenAngle=Some(270.), ~windowAngle=Some(90.)))->toBe("right")
+  })
+
+  test("side() falls back to window.orientation without screen.orientation", () => {
+    expect(CutoutSide.side(~screenAngle=None, ~windowAngle=Some(-90.)))->toBe("right")
+  })
+
+  test("side() is none when neither angle is available (desktop / jsdom)", () => {
+    expect(CutoutSide.side(~screenAngle=None, ~windowAngle=None))->toBe("none")
   })
 })

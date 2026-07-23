@@ -60,6 +60,14 @@ let winOrientationText = () =>
   | None => "?"
   }
 
+// The resolved cutout side, via the same angle logic the real detection uses, so
+// the readout shows exactly what `CutoutSide` publishes.
+let sideText = () =>
+  CutoutSide.side(
+    ~screenAngle=screenOrientation->Nullable.toOption->Option.map(o => o["angle"]),
+    ~windowAngle=windowOrientation->Nullable.toOption,
+  )
+
 let install = () => {
   // The bright safe-area frame: styled straight off the four `env()` values, so it
   // outlines exactly what the browser reports as safe — no JS read needed.
@@ -91,7 +99,7 @@ let install = () => {
     let b = parseFloat(cs["paddingBottom"])
     let text =
       "cutout: " ++
-      CutoutSide.sideFrom(l, r) ++
+      sideText() ++
       "\ninsets  L" ++
       px(l) ++
       " R" ++

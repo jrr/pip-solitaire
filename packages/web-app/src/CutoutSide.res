@@ -1,67 +1,76 @@
 // Publishes which side a display cutout (notch / front camera) sits on to the
-// CSS, as a `data-cutout` attribute on the document root, so the landscape
-// chrome can move its control rail to the *safe* side and hand the freed width
-// back to the cards (cutout-aware orientation, #179 follow-up).
+// CSS, as a `data-cutout` attribute on the document root, so the landscape chrome
+// can move its control rail onto the cutout side — letting the rail's dead space
+// share the strip that's unsafe anyway, and handing the clear side wholly to the
+// cards (cutout-aware orientation, #179 follow-up).
 //
-// A `@media (orientation: landscape)` query separates portrait from landscape
-// but not landscape-left from landscape-right, and CSS has no way to compare the
-// two `env(safe-area-inset-*)` values against each other. So the side is decided
-// here in JS: a fixed, zero-size probe element carries
-// `padding-left: env(safe-area-inset-left)` and
-// `padding-right: env(safe-area-inset-right)`, and whichever *computed* padding
-// is larger marks the cutout side. The probe is `position: fixed` so it never
-// perturbs the flex layout, and reading a resolved *padding* keeps the value a
-// plain px length — the same trick TableScene uses to read the row's insets
-// (#179), just at the chrome level and independent of which scene is mounted.
+// This was first attempted by comparing the two `env(safe-area-inset-*)` values,
+// on the assumption the cutout side would report the larger inset. On-device that
+// proved false: iOS insets *both* landscape sides symmetrically (e.g. L50 R50)
+// regardless of which end the notch is on, so the insets carry no side signal at
+// all. What *does* distinguish the two landscape rotations is the orientation
+// angle, so the side is read from that instead. (A useful corollary of the
+// symmetric insets: the cards are already held clear of the notch on both sides,
+// so this attribute only steers where the rail sits, never card safety.)
 
-type computed = {"paddingLeft": string, "paddingRight": string}
-@val external getComputedStyle: WebDom.element => computed = "getComputedStyle"
-@val external parseFloat: string => float = "parseFloat"
+// The modern signal: `screen.orientation.angle` (0 / 90 / 180 / 270). Guarded as
+// Nullable because `screen.orientation` is absent on older iOS.
+type screenOrientation = {"angle": float}
+@val @scope(("window", "screen"))
+external screenOrientation: Nullable.t<screenOrientation> = "orientation"
+// The legacy fallback: `window.orientation` (0 / 90 / -90 / 180), for engines
+// without `screen.orientation`. `undefined` off touch devices, hence Nullable.
+@val @scope("window") external windowOrientation: Nullable.t<float> = "orientation"
+
 @val @scope("document") external documentElement: WebDom.element = "documentElement"
-@val @scope("document") external body: WebDom.element = "body"
-// The insets change on rotation and on any viewport resize; both events re-read
-// the probe. `resize` in particular fires *after* iOS has settled the new insets,
-// covering the case where `orientationchange` alone would read stale values.
 @val @scope("window")
 external addWindowListener: (string, unit => unit) => unit = "addEventListener"
 
-// The probe carries the two insets as paddings we can read back as px. Parked
-// off-screen and out of flow (`position: fixed`) so it costs nothing but the read.
-let makeProbe = () => {
-  let el = WebDom.createElement("div")
-  el->WebDom.setAttribute(
-    "style",
-    "position:fixed;top:0;left:0;width:0;height:0;visibility:hidden;pointer-events:none;" ++ "padding-left:env(safe-area-inset-left);padding-right:env(safe-area-inset-right)",
-  )
-  el
-}
-
-// A ≥1px difference is treated as a real cutout on the larger side; anything
-// smaller — symmetric insets, or none at all — is `"none"`, which leaves the rail
-// on its default left. `parseFloat` yields NaN where `env()` doesn't resolve
-// (e.g. jsdom), read as 0 so a non-browser host simply reports `"none"`.
-let sideFrom = (left, right) => {
-  let l = Float.isNaN(left) ? 0. : left
-  let r = Float.isNaN(right) ? 0. : right
-  if l -. r >= 1. {
+// `screen.orientation.angle` is the viewport's clockwise rotation. On an iPhone
+// the notch lives at the top edge in portrait, so a 90° rotation swings it to the
+// left and 270° to the right (confirmed on-device: screen:90 ⇒ notch left). Only
+// the two landscape angles name a side; portrait / upside-down expose none.
+let sideOfScreenAngle = angle =>
+  if angle == 90. {
     "left"
-  } else if r -. l >= 1. {
+  } else if angle == 270. {
     "right"
   } else {
     "none"
   }
-}
 
-let read = probe => {
-  let cs = getComputedStyle(probe)
-  sideFrom(parseFloat(cs["paddingLeft"]), parseFloat(cs["paddingRight"]))
-}
+// `window.orientation` agrees at 90 (notch left) but uses the opposite sign for
+// the other landscape: -90 ⇒ notch right.
+let sideOfWindowAngle = angle =>
+  if angle == 90. {
+    "left"
+  } else if angle == -90. {
+    "right"
+  } else {
+    "none"
+  }
 
-// Mount the probe, publish the side once, and keep it current on rotate/resize.
+// Resolve the cutout side, preferring the modern angle and falling back to the
+// legacy one; `"none"` when neither is available (e.g. a desktop / jsdom host).
+let side = (~screenAngle, ~windowAngle) =>
+  switch screenAngle {
+  | Some(a) => sideOfScreenAngle(a)
+  | None =>
+    switch windowAngle {
+    | Some(a) => sideOfWindowAngle(a)
+    | None => "none"
+    }
+  }
+
+let read = () =>
+  side(
+    ~screenAngle=screenOrientation->Nullable.toOption->Option.map(o => o["angle"]),
+    ~windowAngle=windowOrientation->Nullable.toOption,
+  )
+
+// Publish the side once, and keep it current on rotate/resize.
 let install = () => {
-  let probe = makeProbe()
-  body->WebDom.appendChild(probe)->ignore
-  let refresh = () => documentElement->WebDom.setAttribute("data-cutout", read(probe))
+  let refresh = () => documentElement->WebDom.setAttribute("data-cutout", read())
   refresh()
   addWindowListener("resize", refresh)
   addWindowListener("orientationchange", refresh)
