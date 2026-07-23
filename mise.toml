@@ -60,11 +60,12 @@ depends = ["build"]
 run = "pnpm --filter web-app run preview"
 
 # Render device-resolution screenshots of the game into a self-contained report
-# (packages/web-app/screenshots/index.html): FreeCell scenes (mid-game and the
-# finishable endgame) at a phone and a tablet size, portrait and landscape. Depends
-# on `bundle` so it shoots the real built site (served by Vite preview), and forces
-# the board into fixed positions via the app's URL contract (`?scene=freecell&
-# state=…`) so the shots are deterministic. CI publishes the result as an artifact
+# (packages/web-app/screenshots/index.html): FreeCell scenes (a freshly dealt board,
+# a mid-game layout and the finishable endgame) at a phone and a tablet size, portrait
+# and landscape. Depends on `bundle` so it shoots the real built site (served by Vite
+# preview), and forces the board into fixed positions via the app's URL contract
+# (`?scene=freecell&state=…`, or a pinned `seed` with `animate=off` for the dealt
+# board) so the shots are deterministic. CI publishes the result as an artifact
 # (see the screenshots workflow). The headless Chromium is Playwright's;
 # `playwright-install` fetches it on a clean runner (this repo's dev containers ship
 # one already).

@@ -3,8 +3,8 @@
 // `main` a stamped, retained history (deploy-pages.yml stages it with
 // scripts/stage-screenshots.mjs and pushes via peaceiris), and on a PR a
 // latest-only preview cleaned up on close (pr-preview.yml deploys this output
-// directly via pr-preview-action). It shoots mid-game FreeCell at a handful of
-// phone/tablet sizes in both portrait and landscape, each at the device's
+// directly via pr-preview-action). It shoots a spread of FreeCell scenes at a handful
+// of phone/tablet sizes in both portrait and landscape, each at the device's
 // *physical* pixel resolution (its real devicePixelRatio), so a change that breaks
 // the board on some screen — or type that's too small to read — is visible at a
 // glance in the PR's report.
@@ -39,9 +39,13 @@ const outDir = path.join(webAppRoot, "screenshots");
 // The scenes (board positions) the report captures, each via the app's URL
 // contract so the shots are deterministic and need no interaction. Kept in one
 // place so it's obvious what's being shot, and easy to add another scenario later.
+//   - Dealt — a freshly dealt FreeCell board at rest, pinned to deal #1 (`seed=1`)
+//     and shot with the fly-in suppressed (`animate=off`) so it captures the settled
+//     opening layout rather than a frame mid-deal (see AppUrl's seed/animate knobs).
 //   - Mid-game — a representative in-progress FreeCell layout.
 //   - Finish — the finishable endgame (#132), shot to show the "Finish" button.
 const scenes = [
+  { name: "Dealt", query: "?scene=freecell&seed=1&animate=off" },
   { name: "Mid-game", query: "?scene=freecell&state=midgame" },
   { name: "Finish", query: "?scene=freecell&state=finish" },
 ];

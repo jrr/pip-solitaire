@@ -429,6 +429,13 @@ let make = (
   ~onHistory: option<(bool, bool) => unit>=?,
   ~options: ref<Options.t>=ref(Options.default),
   ~tiltEnabled: ref<bool>=ref(true),
+  // `~skipDealAnimation` drops the cards straight into their resting places instead
+  // of flying them in — the URL's `?animate=off` (see `AppUrl`), for a screenshot of
+  // the *already-dealt* board rather than a frame mid-deal. The board is laid out at
+  // its rest positions either way; this only suppresses the cosmetic fly-in, exactly
+  // as the OS "reduce motion" preference already does. Applies to every deal this
+  // scene runs, re-deals included.
+  ~skipDealAnimation: bool=false,
   game: Game.t,
 ): Scene.t => {
   id: game.id,
@@ -1374,13 +1381,13 @@ let make = (
       // per-card start offset therefore differs on *both* axes, since each card
       // travels from that one origin to a different landing spot. The timing is
       // entirely the `dealMaxInFlight`/`dealPerCardMs` math above. With the OS
-      // asking for reduced motion, the cards simply stay where they were placed —
-      // no fly-in.
+      // asking for reduced motion — or the URL's `?animate=off` (`~skipDealAnimation`)
+      // — the cards simply stay where they were placed, no fly-in.
       let animateDeal = () => {
         let reduceMotion = matchMedia("(prefers-reduced-motion: reduce)")["matches"]
         let cards = dealSequence()
         let n = Array.length(cards)
-        if !reduceMotion && n > 0 {
+        if !reduceMotion && !skipDealAnimation && n > 0 {
           let pr = boundingRect(playfield)
           let cw = cardW *. scale.contents
           let ch = cardH *. scale.contents

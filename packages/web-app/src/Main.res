@@ -211,13 +211,17 @@ let gameScene = (game: Game.t) => {
   let isFreecell = game.id == Game.freecell.id
   // Open FreeCell from a fresh random seed on each load too (#108/#98), so a plain
   // reload lays out a new board instead of always deal #1 — matching what New Game
-  // does. The fixed module-level `Game.freecell` (seed 1) stays the deterministic
-  // fallback for a forced `?state=` scenario, which screenshots depend on: when a
-  // state is forced we mount the fixed deal so `Scenario.forName` derives from the
-  // exact same board the report expects. The fixed-layout demos have no seed to
-  // vary, so they mount as-is.
+  // does. A `?seed=` pins that deal number instead (#98), so a link — and the
+  // screenshot report's dealt-board shot — lands on the same board every time. The
+  // fixed module-level `Game.freecell` (seed 1) stays the deterministic fallback for
+  // a forced `?state=` scenario, which screenshots depend on: when a state is forced
+  // we mount the fixed deal so `Scenario.forName` derives from the exact same board
+  // the report expects. The fixed-layout demos have no seed to vary, so they mount
+  // as-is.
   let opening =
-    isFreecell && url.state->Option.isNone ? Game.freecellDeal(~seed=randomSeed()) : game
+    isFreecell && url.state->Option.isNone
+      ? Game.freecellDeal(~seed=url.seed->Option.getOr(randomSeed()))
+      : game
   let newDeal = isFreecell ? Some(() => Game.freecellDeal(~seed=randomSeed())) : None
   TableScene.make(
     ~initial=?url.state->Option.flatMap(name => Scenario.forName(game, name)),
@@ -231,6 +235,9 @@ let gameScene = (game: Game.t) => {
     ~onHistory=(canUndo, canRedo) => reportHistory.contents(canUndo, canRedo),
     ~options,
     ~tiltEnabled,
+    // Skip the opening-deal fly-in when the URL asks for `?animate=off`, so the
+    // board is shown already dealt (the same instant placement reduced-motion gives).
+    ~skipDealAnimation=!url.animate,
     opening,
   )
 }
