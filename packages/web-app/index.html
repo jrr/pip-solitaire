@@ -337,6 +337,47 @@
         }
       }
 
+      /* Cutout-aware rail side (#179 follow-up). The rules above pin the rail to
+         the left, which is what we want when the notch is on the left (or absent):
+         the rail's dead space rides on the strip that's unsafe anyway, and the cards
+         get the clear right side. Rotate the phone the other way and the notch moves
+         to the *right*, so the rail should follow it there — otherwise the rail sits
+         on the safe left while the right side both loses its inset to the notch and
+         holds the cards, doubly squeezed. `CutoutSide` reads the orientation angle
+         (iOS insets both sides symmetrically, so the insets can't tell the sides
+         apart) and stamps the notch side onto <html> as `data-cutout`; on `right`
+         we mirror the whole landscape row so the rail swings to the right edge and
+         the scene band bleeds left instead. The attribute selector outranks the base
+         id rules on specificity, so these win without `!important`; `left` / `none` /
+         absent all keep the default left rail. */
+      @media (orientation: landscape) and (max-height: 500px) {
+        /* Mirror the flex row: TopBar (first child) swings to the right edge, the
+           scene to the left. */
+        html[data-cutout="right"] #app {
+          flex-direction: row-reverse;
+        }
+
+        /* Hug the right edge now (its gutter is body's `safe-area-inset-right`
+           padding — the notch strip on this side), gap-before-scene on the left. */
+        html[data-cutout="right"] #top-bar {
+          margin: 0 -0.75rem 0 0.5rem;
+        }
+
+        /* Bleed the shaded band to the *left* edge (shading only — the cards stay
+           inside `.drop-rows`' left inset) and stop it at the rail on the right.
+           Restores the left full-bleed the base landscape rule had zeroed. */
+        html[data-cutout="right"] #scene-area {
+          margin-inline-start: calc(-1 * (env(safe-area-inset-left) + 1.5rem));
+          margin-inline-end: 0;
+        }
+
+        /* Move the rail seam to match: the divider goes to the band's right edge. */
+        html[data-cutout="right"] #scene-box {
+          border-left-width: 0;
+          border-right: 1px solid #22304a;
+        }
+      }
+
       /* The slide-over menu (#109): the title, the debug/demo scene rows, and the
          version info. A full-screen overlay so it floats above the game; `hidden`
          (set by the chrome model) collapses it entirely when closed. */

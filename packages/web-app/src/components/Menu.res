@@ -42,6 +42,8 @@ type props = {
   games: Html.element,
   debugScenes: Html.element,
   debugStates: Html.element,
+  cutoutDebug: bool,
+  onToggleCutoutDebug: unit => unit,
   autoCollect: bool,
   onToggleAutoCollect: unit => unit,
   cardTilt: bool,
@@ -61,6 +63,8 @@ let make = ({
   games,
   debugScenes,
   debugStates,
+  cutoutDebug,
+  onToggleCutoutDebug,
   autoCollect,
   onToggleAutoCollect,
   cardTilt,
@@ -103,6 +107,18 @@ let make = ({
         <h2 className="menu-section__heading"> {Html.string("Debug")} </h2>
         {Html.node(debugScenes)}
         {Html.node(debugStates)}
+        <button
+          className={cutoutDebug ? "menu-toggle menu-toggle--on" : "menu-toggle"}
+          onClick={_ => onToggleCutoutDebug()}
+          attrs={[
+            ("type", "button"),
+            ("role", "switch"),
+            ("aria-checked", cutoutDebug ? "true" : "false"),
+          ]}
+        >
+          <span className="menu-toggle__label"> {Html.string("Safe-area overlay")} </span>
+          <span className="menu-toggle__switch" />
+        </button>
       </nav>
       <div className="menu-section" attrs={[("aria-label", "Settings")]}>
         <h2 className="menu-section__heading"> {Html.string("Settings")} </h2>
