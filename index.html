@@ -213,8 +213,7 @@
       }
 
       /* The bar's buttons share the scene controls' look. A disabled button (Undo
-         with nothing to undo, Redo with nothing to redo — #85) is dimmed and
-         non-interactive. */
+         with nothing to undo — #85) is dimmed and non-interactive. */
       .top-bar__button {
         display: inline-flex;
         align-items: center;
@@ -290,18 +289,42 @@
           flex-direction: row;
         }
 
-        /* The rail: the controls stacked, hugging the top-left. `align-self:
-           flex-start` keeps the rail from stretching to full height; `align-items:
-           stretch` makes the stacked buttons share one width so it reads as a tidy
-           column. The negative left margin is kept (hug the edge, still clearing the
-           notch through body's `safe-area-inset-left`); the old bottom gap becomes a
+        /* The rail: the controls stacked down the edge, but split to opposite ends
+           rather than bunched at the top — Menu at the top, Undo at the bottom
+           (#180). `align-self: stretch` lets the rail span the band's full height and
+           `justify-content: space-between` then drives the two buttons to the top and
+           bottom corners; `align-items: stretch` makes them share one width so the
+           pair still reads as a tidy column. With the rail on a cutout edge (below),
+           the centered camera band falls in the gap *between* the two controls, so
+           each lands in a clear corner "wing" and neither sits under the notch.
+
+           The negative left margin now cancels body's `safe-area-inset-left` too, not
+           just the 0.75rem gutter trim: that inset reserves the whole notch *strip*
+           down the edge, but the camera only occupies its centre, so the top/bottom
+           corners of the strip are clear screen. Pulling the rail out by the full
+           inset lands the two controls in those wings — reclaiming the reserved strip
+           where it's physically safe — instead of holding them inboard of it. On a
+           notch-free edge the inset is `0`, so this collapses to the old -0.75rem and
+           the rail hugs the edge exactly as before. The old bottom gap becomes a
            right gap before the scene. */
         #top-bar {
           flex-direction: column;
-          align-self: flex-start;
+          align-self: stretch;
           align-items: stretch;
+          justify-content: space-between;
           width: auto;
-          margin: 0 0.5rem 0 -0.75rem;
+          margin: 0 0.5rem 0 calc(-1 * env(safe-area-inset-left) - 0.75rem);
+        }
+
+        /* Clear the Menu button off the top rounded corner. In landscape the
+           notch is on the *side*, so `safe-area-inset-top` is 0 and this top wing
+           gets no inset — the ☰ button would sit in the corner's curve and clip.
+           Undo escapes this only because the bottom home-indicator inset lifts it
+           clear. Borrow that same bottom inset as a top margin so Menu drops into
+           its wing by the identical amount, self-adjusting to whatever the device
+           reports (~20px here) rather than a hardcoded guess. */
+        .top-bar__button--menu {
+          margin-top: env(safe-area-inset-bottom);
         }
 
         /* The shaded band starts just right of the rail rather than bleeding under
@@ -357,10 +380,12 @@
           flex-direction: row-reverse;
         }
 
-        /* Hug the right edge now (its gutter is body's `safe-area-inset-right`
-           padding — the notch strip on this side), gap-before-scene on the left. */
+        /* Mirror the wing placement to the right edge: cancel body's
+           `safe-area-inset-right` (the notch strip on this side) so the rail's two
+           controls ride out into the right-hand corner wings, clear of the centered
+           camera, with the gap-before-scene now on the left. */
         html[data-cutout="right"] #top-bar {
-          margin: 0 -0.75rem 0 0.5rem;
+          margin: 0 calc(-1 * env(safe-area-inset-right) - 0.75rem) 0 0.5rem;
         }
 
         /* Bleed the shaded band to the *left* edge (shading only — the cards stay
@@ -375,6 +400,26 @@
         html[data-cutout="right"] #scene-box {
           border-left-width: 0;
           border-right: 1px solid #22304a;
+        }
+
+        /* Mirror the slide-over menu to the rail's side (#180). With the ☰ button
+           now in the *right* wing, a panel that still opens from the left reads as
+           coming from the wrong edge; anchor it to the end of the overlay flex row
+           so it enters from the right instead. Swap its divider and shadow onto the
+           left face (the seam now faces the play area, not the screen edge), and
+           clear the right safe-area inset rather than the left — the panel's own
+           edge is the notch side now. Only in this cutout-right landscape regime;
+           everywhere else the panel keeps its left-anchored default. */
+        html[data-cutout="right"] #menu-overlay {
+          justify-content: flex-end;
+        }
+
+        html[data-cutout="right"] .menu-panel {
+          border-right-width: 0;
+          border-left: 1px solid #22304a;
+          box-shadow: -2px 0 24px rgba(0, 0, 0, 0.45);
+          padding-right: calc(env(safe-area-inset-right) + 1.25rem);
+          padding-left: 1.25rem;
         }
       }
 
@@ -1065,7 +1110,7 @@
         cursor: pointer;
       }
     </style>
-    <script type="module" crossorigin src="./assets/index-Dz_W6N5a.js"></script>
+    <script type="module" crossorigin src="./assets/index-DkwRfCWS.js"></script>
   <link rel="manifest" href="./manifest.webmanifest"></head>
   <body>
     <!-- Vite resolves the bare `core/…` specifier the compiled entry imports
