@@ -6,9 +6,10 @@
 // from a drop-down to menu rows.
 //
 // The rows aren't a flat list: the primary game (the launch `~default`, FreeCell)
-// sits as a single row at the top, and the debug/demo scenes are buried inside a
-// collapsible "Debug scenes" disclosure below it (#135), so the menu leads with the
-// game and keeps the demos out of the way.
+// sits as a single row in the menu's "games" section, and the debug/demo scenes are
+// buried inside a collapsible "scenes" disclosure (#135) that the menu tucks under
+// its bottom "debug" section header (#185), so the menu leads with the game and
+// keeps the demos out of the way.
 //
 // The app always *launches* into its `~default` scene (FreeCell — the game is
 // home), or the `~forced` scene the URL names (`?scene=`); there is no longer any
@@ -23,12 +24,15 @@ let idleClass = "scene-menu__row"
 let activeClass = "scene-menu__row scene-menu__row--active"
 
 // The switcher's pieces, handed back separately so the caller can place them
-// independently — the `controls` rows live inside the menu overlay, while the
-// `scene` container is what the scene band wraps. `ensureActive` lets the chrome
-// bring a scene forward by id (the debug "states" menu uses it to surface FreeCell
-// before forcing a named position onto it).
+// independently (#185): the `controls` hold the primary game row(s) and go in the
+// menu's "games" section up top, while `debugScenes` — the collapsible group of
+// debug/demo scenes — goes in the "debug" section pushed to the bottom, beside the
+// debug-states group. The `scene` container is what the scene band wraps.
+// `ensureActive` lets the chrome bring a scene forward by id (the debug "states"
+// menu uses it to surface FreeCell before forcing a named position onto it).
 type t = {
-  controls: WebDom.element, // the tappable scene rows (placed in the menu)
+  controls: WebDom.element, // the primary game row(s) (placed in the menu's "games" section)
+  debugScenes: WebDom.element, // the collapsible debug/demo scene group (placed in "debug")
   scene: WebDom.element, // the shared container hosting the active scene
   ensureActive: string => unit, // mount the scene with this id, unless it's already current
 }
@@ -108,11 +112,12 @@ let render = (
   let primaryId =
     default->Option.flatMap(byId)->Option.orElse(scenes[0])->Option.map(scene => scene.id)
 
-  // The "Debug scenes" group: a native <details> disclosure holding the debug/demo
+  // The "scenes" group: a native <details> disclosure holding the debug/demo
   // rows, so the show/hide costs no JS and stays keyboard-accessible. Its body
-  // collects the rows; the group itself is only spliced into the menu if any debug
-  // scene exists. (A sibling "Debug states" group — the named starting positions —
-  // is built separately by the chrome; see `DebugStates`.)
+  // collects the rows. It lives under the menu's "debug" section header (#185),
+  // which is why its own label is just "scenes"; a sibling "states" group — the
+  // named starting positions — is built separately by the chrome (see
+  // `DebugStates`) and sits beside it.
   let debugBody = WebDom.createElement("div")
   debugBody->WebDom.setAttribute("class", "scene-menu__group-body")
 
@@ -120,32 +125,27 @@ let render = (
   debugGroup->WebDom.setAttribute("class", "scene-menu__group")
   let debugSummary = WebDom.createElement("summary")
   debugSummary->WebDom.setAttribute("class", "scene-menu__group-label")
-  debugSummary->WebDom.setTextContent("Debug scenes")
+  debugSummary->WebDom.setTextContent("scenes")
   debugGroup->WebDom.appendChild(debugSummary)->ignore
   debugGroup->WebDom.appendChild(debugBody)->ignore
 
-  // Place each row: the primary game as a plain row at the top of the menu, every
-  // other scene inside the Debug group.
-  let hasDebug = ref(false)
+  // Place each row: the primary game as a plain row in the menu's "games" list
+  // (`nav`), every other scene inside the Debug group.
   rows->Array.forEach(((scene, row)) =>
     if primaryId == Some(scene.id) {
       nav->WebDom.appendChild(row)->ignore
     } else {
-      hasDebug := true
       debugBody->WebDom.appendChild(row)->ignore
     }
   )
 
-  // Only mount the Debug group when it has something to hold. Open it from the
-  // start when the initial scene lives inside it (e.g. a `?scene=spinner` deep
-  // link), so its highlighted row is visible rather than hidden behind the
-  // collapsed disclosure.
-  if hasDebug.contents {
-    switch initial {
-    | Some(scene) if primaryId != Some(scene.id) => debugGroup->WebDom.setAttribute("open", "")
-    | _ => ()
-    }
-    nav->WebDom.appendChild(debugGroup)->ignore
+  // Open the Debug group from the start when the initial scene lives inside it
+  // (e.g. a `?scene=spinner` deep link), so its highlighted row is visible rather
+  // than hidden behind the collapsed disclosure. The group is handed back as its
+  // own node (`debugScenes`) for the menu's "debug" section.
+  switch initial {
+  | Some(scene) if primaryId != Some(scene.id) => debugGroup->WebDom.setAttribute("open", "")
+  | _ => ()
   }
 
   switch initial {
@@ -161,5 +161,5 @@ let render = (
       byId(id)->Option.forEach(activate)
     }
 
-  {controls: nav, scene: container, ensureActive}
+  {controls: nav, debugScenes: debugGroup, scene: container, ensureActive}
 }

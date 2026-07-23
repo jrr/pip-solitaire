@@ -1,24 +1,26 @@
 // The menu (#109): a slide-over overlay opened from the top bar's Menu button,
-// holding everything that isn't day-to-day play. Top to bottom:
+// holding everything that isn't day-to-day play. Its sections carry `menu-section__heading`
+// labels (#185) and split into a top group and a bottom group, with the panel's
+// flex column growing the empty space between so play controls sit up top and the
+// utility sections hug the foot. Top to bottom:
 //   - the **title** ("Pip"), moved here from the retired Home scene;
-//   - a **Game** section (#156): **New Game** (re-deals a fresh seed) and
+//   - a **"This game"** section (#156): **New Game** (re-deals a fresh seed) and
 //     **Restart** (re-deals the *same* seed to replay the current deal). New Game
 //     moved here from the top bar; both call the scene's re-deal hooks and close
 //     the menu so the board is visible again. On a scene with no game (a demo)
 //     the handlers are wired to no-op hooks;
-//   - the **scene list** — SceneSwitcher's row controls, spliced in as the
-//     `scenes` node. It leads with FreeCell (the game) as a top-level row and
-//     buries the debug/demo scenes inside a collapsible "Debug scenes" group (#135),
-//     so the menu opens on the game with the demos tucked away but one tap out;
-//   - the **debug states** — a sibling collapsible group (`DebugStates`, spliced in
-//     as the `debugStates` node) listing the named starting positions a tap drops
-//     the board into (`Scenario`), the menu twin of the URL's `?state=`;
+//   - a **"Games"** section — SceneSwitcher's primary game row(s), spliced in as the
+//     `games` node: FreeCell (the game) as a top-level row (#135);
+//   - --- the space between top and bottom grows here (`menu-section--bottom`) ---
+//   - a **"Debug"** section (#185) gathering the two collapsible groups that were the
+//     old "Debug scenes"/"Debug states": the debug/demo scenes (`debugScenes`, now
+//     labelled just "scenes") and the named starting positions (`debugStates`,
+//     "states") a tap drops the board into (`Scenario`), the menu twin of `?state=`;
 //   - a **Settings** section (#139): the preference toggles a player can flip
 //     mid-game. **Auto-collect** — its state passed in as `autoCollect`, a click
 //     reported out through `onToggleAutoCollect`; and **Hand-placed tilt** (#65) —
 //     the slight resting-card tilt, passed as `cardTilt` and toggled through
 //     `onToggleCardTilt`, for players who'd rather see cards stacked dead-square;
-//   - (a spot is left here for a future rules reference — not built yet);
 //   - the **About** footer — the build/version line (`<VersionBadge>`, folded in
 //     from the old bottom-right badge) and, when a service-worker update is
 //     waiting, a short note plus the green **Update now** button (#165). The
@@ -37,7 +39,8 @@ type props = {
   onClose: unit => unit,
   onNewGame: unit => unit,
   onRestart: unit => unit,
-  scenes: Html.element,
+  games: Html.element,
+  debugScenes: Html.element,
   debugStates: Html.element,
   autoCollect: bool,
   onToggleAutoCollect: unit => unit,
@@ -55,7 +58,8 @@ let make = ({
   onClose,
   onNewGame,
   onRestart,
-  scenes,
+  games,
+  debugScenes,
   debugStates,
   autoCollect,
   onToggleAutoCollect,
@@ -80,7 +84,8 @@ let make = ({
           {Html.string("✕")}
         </button>
       </div>
-      <div className="menu-section" attrs={[("aria-label", "Game")]}>
+      <div className="menu-section" attrs={[("aria-label", "This game")]}>
+        <h2 className="menu-section__heading"> {Html.string("This game")} </h2>
         <div className="menu-buttons">
           <button className="menu-button" onClick={_ => onNewGame()} attrs={[("type", "button")]}>
             {Html.string("New Game")}
@@ -90,8 +95,13 @@ let make = ({
           </button>
         </div>
       </div>
-      <nav className="menu-section" attrs={[("aria-label", "Scenes")]}> {Html.node(scenes)} </nav>
-      <nav className="menu-section" attrs={[("aria-label", "Debug states")]}>
+      <nav className="menu-section" attrs={[("aria-label", "Games")]}>
+        <h2 className="menu-section__heading"> {Html.string("Games")} </h2>
+        {Html.node(games)}
+      </nav>
+      <nav className="menu-section menu-section--bottom" attrs={[("aria-label", "Debug")]}>
+        <h2 className="menu-section__heading"> {Html.string("Debug")} </h2>
+        {Html.node(debugScenes)}
         {Html.node(debugStates)}
       </nav>
       <div className="menu-section" attrs={[("aria-label", "Settings")]}>
