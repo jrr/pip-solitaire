@@ -316,6 +316,17 @@
           margin: 0 0.5rem 0 calc(-1 * env(safe-area-inset-left) - 0.75rem);
         }
 
+        /* Clear the Menu button off the top rounded corner. In landscape the
+           notch is on the *side*, so `safe-area-inset-top` is 0 and this top wing
+           gets no inset — the ☰ button would sit in the corner's curve and clip.
+           Undo escapes this only because the bottom home-indicator inset lifts it
+           clear. Borrow that same bottom inset as a top margin so Menu drops into
+           its wing by the identical amount, self-adjusting to whatever the device
+           reports (~20px here) rather than a hardcoded guess. */
+        .top-bar__button--menu {
+          margin-top: env(safe-area-inset-bottom);
+        }
+
         /* The shaded band starts just right of the rail rather than bleeding under
            it: drop only the *inline-start* (left) full-bleed margin, keeping the end
            one so the band still runs to the screen's right edge. */
