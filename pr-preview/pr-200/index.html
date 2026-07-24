@@ -338,6 +338,18 @@
           margin-top: env(safe-area-inset-bottom);
         }
 
+        /* Clear the Undo button off the bottom rounded corner, the mirror of Menu
+           above. body no longer pads its bottom (#199), so the stretched rail runs
+           its bottom-most button (Undo) right into the corner's curve / home
+           indicator; the old body `padding-bottom` used to lift it clear. Borrow the
+           bottom safe-area inset as a bottom margin so Undo lifts into its wing by
+           the same amount Menu drops into the top one, self-adjusting to the device.
+           On a device with no home indicator the inset is 0 and Undo hugs the edge
+           exactly as the rail did before. */
+        .top-bar__button--undo {
+          margin-bottom: env(safe-area-inset-bottom);
+        }
+
         /* The shaded band starts just right of the rail rather than bleeding under
            it: drop only the *inline-start* (left) full-bleed margin, keeping the end
            one so the band still runs to the screen's right edge. */
@@ -1147,7 +1159,7 @@
         cursor: pointer;
       }
     </style>
-    <script type="module" crossorigin src="./assets/index-sN63V6ya.js"></script>
+    <script type="module" crossorigin src="./assets/index-Crd4vqIx.js"></script>
   <link rel="manifest" href="./manifest.webmanifest"></head>
   <body>
     <!-- Vite resolves the bare `core/…` specifier the compiled entry imports
