@@ -1216,43 +1216,38 @@ let make = (
 
         // Send this card home (#122): a top-of-pile or loose card whose foundation
         // will take it flies straight to that foundation — the FreeCell shortcut for
-        // the tedium of dragging every card home one at a time. Eligibility and
-        // legality are the same shared `core` queries a hand-drag consults
-        // (`foundationTarget` over the same `canDrop`), so the shortcut and a dragged
-        // drop can never disagree; a buried card, or one no foundation wants, is
-        // simply ignored. The move dispatched is the very `Move` a drag would, so a
-        // completing card still raises the win overlay.
-        let sendHome = () => {
-          let eligible = switch GameState.locationOf(state.contents, self.data) {
-          | Some(GameState.Loose) => true
-          | Some(GameState.InPile(i, slot)) =>
-            slot == Array.length(GameState.cardsInPile(state.contents, i)) - 1
-          | None => false
-          }
-          if eligible {
-            switch Reducer.foundationTarget(~game, state.contents, self.data) {
-            | Some(i) =>
-              switch Reducer.reduce(
-                ~game,
-                state.contents,
-                Reducer.Move({card: self.data, to: Reducer.ToPile(i)}),
-              ) {
-              | Ok(next) =>
-                state := next
-                autoCollectIfEnabled()
-                // Record the settled position as one undoable step (#85).
-                recordHistory()
-                reflowAll()
-                if GameState.hasWon(game, state.contents) {
-                  showWin()
-                }
-                updateFinishButton()
-              | Error(_) => ()
+        // the tedium of dragging every card home one at a time. Both eligibility and
+        // legality come from the shared `core` primitive `validMoves` (#196): it lists
+        // every drop a hand-drag would accept, movability already gated in core, so
+        // the send-home is just "find the `Foundation` move and take it". At most one
+        // foundation ever accepts a card, so this is behaviour-identical to the old
+        // `foundationTarget` path; a buried card, or one no foundation wants, yields no
+        // such move and is ignored. The move dispatched is the very `Move` a drag
+        // would, so a completing card still raises the win overlay.
+        let sendHome = () =>
+          switch Reducer.validMoves(~game, state.contents, self.data)->Array.find(m =>
+            m.role == Game.Foundation
+          ) {
+          | Some({to: i}) =>
+            switch Reducer.reduce(
+              ~game,
+              state.contents,
+              Reducer.Move({card: self.data, to: Reducer.ToPile(i)}),
+            ) {
+            | Ok(next) =>
+              state := next
+              autoCollectIfEnabled()
+              // Record the settled position as one undoable step (#85).
+              recordHistory()
+              reflowAll()
+              if GameState.hasWon(game, state.contents) {
+                showWin()
               }
-            | None => ()
+              updateFinishButton()
+            | Error(_) => ()
             }
+          | None => ()
           }
-        }
 
         let endDrag = ev =>
           switch grab.contents {

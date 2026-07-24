@@ -114,6 +114,47 @@ let canDrop = (~game: Game.t, state: GameState.t, card: card, ~onto: int): bool 
 let foundationTarget = (~game: Game.t, state: GameState.t, card: card): option<int> =>
   Game.pileIndices(game, Game.Foundation)->Array.find(i => canDrop(~game, state, card, ~onto=i))
 
+// One legal single-card destination in `validMoves` (#196): the pile index `to`
+// a drop would land on, tagged with that pile's `role` so a caller can prioritise
+// — the double-tap send-home wants the `Foundation` move, a later hint might rank
+// cascades first. `to` is a pile index into `Game.piles`/`GameState.piles`,
+// exactly the `ToPile(i)` a `Move` carries.
+type move = {to: int, role: Game.role}
+
+// Every legal single-card destination for `card` from the current state (#196),
+// each role-tagged so callers can prioritise. Built on `canDrop`, so the moves
+// listed are *exactly* the drops a hand-drag would accept — "valid outline" and
+// "accepted drop" can never disagree, the same property `foundationTarget` gives
+// the send-home shortcut, now generalised to every pile.
+//
+// Only a *movable* card has moves — the top of its pile, or a loose card; a buried
+// card returns `[]`. The card's own pile is excluded: an identity re-drop isn't a
+// relocation, so every listed move genuinely sends the card somewhere new. This is
+// the primitive the double-tap send-home reads today (filter to the `Foundation`
+// move and take it), and the seam later auto-move intents and a hint button build
+// on. It's purely additive: `foundationTarget` keeps its ungated semantics for
+// `isSafeToCollect`/`autoCollect`.
+let validMoves = (~game: Game.t, state: GameState.t, card: card): array<move> =>
+  switch GameState.locationOf(state, card) {
+  // A buried card (not the top of its pile) can't move at all.
+  | Some(InPile(i, slot)) if slot != Array.length(GameState.cardsInPile(state, i)) - 1 => []
+  | None => [] // not in play
+  | Some(location) =>
+    // The card's own pile — excluded below, since re-dropping where it rests isn't a
+    // move. A loose card has no such pile, so nothing is excluded for it.
+    let ownPile = switch location {
+    | InPile(i, _) => Some(i)
+    | Loose => None
+    }
+    let moves = []
+    game.piles->Array.forEachWithIndex((pile: Game.pile, i) =>
+      if Some(i) != ownPile && canDrop(~game, state, card, ~onto=i) {
+        moves->Array.push({to: i, role: pile.role})
+      }
+    )
+    moves
+  }
+
 // The standard FreeCell **supermove limit** (#123): the most cards you can move
 // as one ordered run is `(1 + emptyFreeCells) × 2 ^ emptyCascades` — exactly the
 // number you could relay one at a time through the empty free cells and empty

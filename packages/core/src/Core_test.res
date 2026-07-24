@@ -1241,6 +1241,135 @@ describe("Reducer", () => {
     )
   })
 
+  // The single-card move query (#196): `validMoves` lists every legal destination
+  // for one card, role-tagged, built on the same `canDrop` a hand-drag consults. A
+  // little four-pile board covers all three roles at once — a foundation, a free
+  // cell, and two cascades — so one movable card can offer a move of each kind.
+  describe("validMoves", () => {
+    let vmGame: Game.t = {
+      id: "vm",
+      name: "VM",
+      piles: [
+        {role: Foundation, stacking: Squared, rule: Rules.foundation, capacity: None, cards: []},
+        {role: FreeCell, stacking: Squared, rule: Rules.Free, capacity: Some(1), cards: []},
+        {role: Cascade, stacking: Fanned, rule: Rules.cascade, capacity: None, cards: []},
+        {role: Cascade, stacking: Fanned, rule: Rules.cascade, capacity: None, cards: []},
+      ],
+      free: true,
+      loose: [],
+      caption: None,
+    }
+    // A hand-built snapshot from the four piles' contents, so a test can pose any
+    // board it likes.
+    let stateOf = (piles): GameState.t => {GameState.piles, loose: []}
+
+    test(
+      "a buried card has no moves",
+      () => {
+        // The 2♥ rests atop the A♠ in a cascade (a legal build-down), so the A♠ is
+        // buried — not the top of its pile — and can move nowhere.
+        let state = stateOf([[], [], [{suit: Spades, rank: Ace}, {suit: Hearts, rank: Two}], []])
+        expect(Reducer.validMoves(~game=vmGame, state, {suit: Spades, rank: Ace}))->toEqual([])
+      },
+    )
+
+    test(
+      "a card not in play has no moves",
+      () => {
+        let state = stateOf([[], [], [], []])
+        expect(Reducer.validMoves(~game=vmGame, state, {suit: Spades, rank: Ace}))->toEqual([])
+      },
+    )
+
+    test(
+      "the top of a cascade lists every legal cell, cascade and foundation, role-tagged",
+      () => {
+        // 2♠ (black) tops its own cascade (pile 3). It can go home onto the A♠
+        // foundation, park in the empty free cell, and build down onto the 3♦ (red) in
+        // the other cascade — one destination of each role.
+        let state = stateOf([
+          [{suit: Spades, rank: Ace}], // foundation, ready for the 2♠
+          [], // empty free cell
+          [{suit: Diamonds, rank: Three}], // cascade: black 2 builds down onto red 3
+          [{suit: Spades, rank: Two}], // the card under test, atop its own cascade
+        ])
+        expect(Reducer.validMoves(~game=vmGame, state, {suit: Spades, rank: Two}))->toEqual([
+          {Reducer.to: 0, role: Game.Foundation},
+          {Reducer.to: 1, role: Game.FreeCell},
+          {Reducer.to: 2, role: Game.Cascade},
+        ])
+        // The card's *own* pile (3) never appears — an identity re-drop isn't a move.
+      },
+    )
+
+    test(
+      "an already-home card excludes its own pile — and here has nowhere else to go",
+      () => {
+        // A♠ rests home on the foundation (pile 0). The one pile that would accept it —
+        // that same foundation — is its own, so it's excluded (an identity re-drop
+        // isn't a move). Every other pile refuses: the free cell is occupied (full),
+        // and an Ace can never build *down* onto a non-empty cascade (nothing is a rank
+        // lower). So a card already home lists no moves.
+        let state = stateOf([
+          [{suit: Spades, rank: Ace}], // A♠ home — its own foundation, excluded
+          [{suit: Diamonds, rank: Five}], // free cell full — no room
+          [{suit: Hearts, rank: King}], // non-empty cascade — no Ace builds down
+          [{suit: Clubs, rank: Queen}], // non-empty cascade — no Ace builds down
+        ])
+        expect(Reducer.validMoves(~game=vmGame, state, {suit: Spades, rank: Ace}))->toEqual([])
+      },
+    )
+
+    test(
+      "the first foundation move is exactly the send-home target",
+      () => {
+        // The property the double-tap send-home now routes through: taking the first
+        // `Foundation` move in `validMoves` lands on the very pile `foundationTarget`
+        // picks. On a two-foundation board (both empty, so both accept an Ace) with a
+        // lone A♠ loose — `validMoves` lists both foundations in board order, and its
+        // first is what `foundationTarget` returns.
+        let twoFoundations: Game.t = {
+          id: "2f",
+          name: "2F",
+          piles: [
+            {
+              role: Foundation,
+              stacking: Squared,
+              rule: Rules.foundation,
+              capacity: None,
+              cards: [],
+            },
+            {
+              role: Foundation,
+              stacking: Squared,
+              rule: Rules.foundation,
+              capacity: None,
+              cards: [],
+            },
+          ],
+          free: true,
+          loose: [],
+          caption: None,
+        }
+        let state: GameState.t = {piles: [[], []], loose: [{suit: Spades, rank: Ace}]}
+        // Both empty foundations accept the Ace, so there are two foundation moves…
+        let foundationMoves =
+          Reducer.validMoves(~game=twoFoundations, state, {suit: Spades, rank: Ace})->Array.filter(
+            m => m.role == Game.Foundation,
+          )
+        expect(foundationMoves)->toEqual([
+          {Reducer.to: 0, role: Game.Foundation},
+          {Reducer.to: 1, role: Game.Foundation},
+        ])
+        // …and taking the first matches the send-home target exactly.
+        let firstFoundation = foundationMoves->Array.get(0)->Option.map(m => m.to)
+        expect(firstFoundation)->toEqual(
+          Reducer.foundationTarget(~game=twoFoundations, state, {suit: Spades, rank: Ace}),
+        )
+      },
+    )
+  })
+
   // Safe auto-collect (#125): `isSafeToCollect` (accepted *and* safe) and the
   // `autoCollect` fixpoint that sends every safe card home. Exercised on a little
   // four-foundation board — one foundation per suit, plus a Free cascade and a free
