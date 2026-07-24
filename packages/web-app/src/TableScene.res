@@ -75,13 +75,18 @@ type resizeObserver
 type domRect = {left: float, top: float, width: float, height: float}
 @send external boundingRect: WebDom.element => domRect = "getBoundingClientRect"
 
-// The card scale is sized to the width the row *actually lays out in*, which on a
-// device with a side display cutout is narrower than the stage by the safe-area
-// insets (#179 pins `.drop-rows` inside them). Those insets aren't in a rect we
-// already read, so pull them off the row's *computed* `left`/`right` — they resolve
-// the `env(safe-area-inset-*)` to px — and `parseFloat` turns "44px" into 44.
+// The card scale is sized to the box the row *actually lays out in* — narrower than
+// the stage by the safe-area cutout (#179 pins `.drop-rows` inside `left`/`right:
+// env(safe-area-inset-*)`), and, for the height fit, offset from the top by the row's
+// `top` and split by its inter-row `rowGap`. None of these are in a rect we already
+// read, so pull them off the row's *computed* style; `parseFloat` turns "44px" → 44.
 @val
-external getComputedStyle: WebDom.element => {"left": string, "right": string} = "getComputedStyle"
+external getComputedStyle: WebDom.element => {
+  "left": string,
+  "right": string,
+  "top": string,
+  "rowGap": string,
+} = "getComputedStyle"
 @val external parseFloat: string => float = "parseFloat"
 
 // The opening deal (#115) flies each card in from a single origin below the
@@ -231,6 +236,17 @@ let fillFraction = 0.9
 // left/right margins instead. Half a card reads as a generous-but-tidy column
 // gap; the board settles into a solitaire-table shape rather than sprawling.
 let maxColumnGap = 0.25 *. cardW
+
+// Headroom, in cards, the height fit (`applyScale`) leaves below the deepest pile
+// (#—). Card size is now bounded by height as well as width: on a short screen the
+// tallest column — the deepest cascade's fan plus the top row — must fit the safe
+// vertical height, or the fan runs off the bottom. Rather than size to the deal's
+// depth exactly (which would overflow the moment a pile grew), fit the deepest
+// *opening* pile plus this many more cards, so a pile can take on that many before
+// it reaches the edge. Held stable from the opening deal so cards don't resize as
+// piles grow and shrink mid-game. (A pile that grows past this still overflows;
+// the number is a tunable comfort margin, not a hard guarantee.)
+let fanHeadroom = 5
 
 // The opening deal animation (#115). The cards fly up from below the stage, one
 // at a time, and these two knobs define the whole feel — everything else (the
@@ -587,6 +603,19 @@ let make = (
       let nodes: array<card> = []
       let nodeFor = (data: Deck.card) => nodes->Array.find(n => GameState.sameCard(n.data, data))
 
+      // The depth the height fit sizes the deepest fan to (#—): the deepest *opening*
+      // pile plus `fanHeadroom`, captured once here so cards keep a stable size as
+      // piles grow and shrink through play. Only Fanned piles grow downward, so a board
+      // with no fans (every pile Squared) contributes no fan height — `referenceDepth`
+      // then goes unused (see `applyScale`). Read from the opening `state`, so a New
+      // Game rebuild recomputes it for that deal.
+      let hasFanned = game.piles->Array.some((p: Game.pile) => p.stacking == Game.Fanned)
+      let openingMaxDepth =
+        zones->Array.reduce(0, (m, z) =>
+          Math.Int.max(m, Array.length(GameState.cardsInPile(state.contents, z.index)))
+        )
+      let referenceDepth = openingMaxDepth + fanHeadroom
+
       // How much the design footprints are shrunk to fit the stage. Cards fill
       // `fillFraction × width` split across the busiest row (`fillFraction · width
       // / widestRow`), capped at the design size so a wide screen doesn't blow the
@@ -615,9 +644,25 @@ let make = (
         let cs = getComputedStyle(rows)
         let cutaway = parseFloat(cs["left"]) +. parseFloat(cs["right"])
         let avail = width -. cutaway
+        // Height fit (#—): card size is bounded by height as well as width, so a short
+        // screen (a landscape phone) shrinks cards to keep the tallest column on-screen
+        // instead of letting the fan run off the bottom. The vertical budget mirrors what
+        // reflow stacks into the playfield's live height: each row's base box
+        // (`rowsCount · zoneBaseHeight`) plus the deepest fan (`(referenceDepth − 1) ·
+        // fanStep`), all scaled, above the fixed `top` offset and the inter-row `rowGap`.
+        // Solving `budget ≤ height` for the scale gives a height cap; the smaller of it
+        // and the width target wins. On a tall screen the width target is smaller, so
+        // nothing changes there. A Squared-only board grows no fan, so its fan term is 0.
+        let availH = boundingRect(playfield).height
+        let rowsCount = twoRows ? 2 : 1
+        let fanExtent = hasFanned ? Int.toFloat(referenceDepth - 1) *. fanStep : 0.
+        let heightDenom = Int.toFloat(rowsCount) *. zoneBaseHeight +. fanExtent
+        let vFixed = parseFloat(cs["top"]) +. (twoRows ? parseFloat(cs["rowGap"]) : 0.)
         if avail > 0. && widestRow > 0 {
-          let target = fillFraction *. avail /. Int.toFloat(widestRow) /. cardW
-          scale := Math.max(minScale, Math.min(1., target))
+          let widthTarget = fillFraction *. avail /. Int.toFloat(widestRow) /. cardW
+          let heightTarget =
+            availH > 0. && heightDenom > 0. ? (availH -. vFixed) /. heightDenom : widthTarget
+          scale := Math.max(minScale, Math.min(1., Math.min(widthTarget, heightTarget)))
         }
         if width > 0. {
           lastWidth := width
