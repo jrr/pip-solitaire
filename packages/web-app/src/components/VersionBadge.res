@@ -1,6 +1,7 @@
 // The build-version badge tucked into the corner of the chrome: version and
-// build time, plus an "offline-ready" suffix once the service worker reports
-// its precache is complete.
+// build time. (It once carried an "offline-ready" suffix too, but the About
+// footer now sits the Update button beside this line, so the suffix was dropped
+// to keep the row short — #201.)
 //
 // A component is just a `props => vnode` function. The JSX transform lowers
 // `<VersionBadge .../>` to `Html.jsx(VersionBadge.make, props)` and fills this
@@ -10,7 +11,7 @@
 // we spell the record out, which is all that sugar expands to anyway.) Layout and
 // colors for `#version-badge` live in the stylesheet in index.html; here we build
 // only structure and state-dependent text.
-type props = {version: string, buildTime: string, offlineReady: bool}
+type props = {version: string, buildTime: string}
 
 let monthNames = [
   "Jan",
@@ -52,8 +53,7 @@ let formatBuildTime = iso => {
   }
 }
 
-let make = ({version, buildTime, offlineReady}) => {
+let make = ({version, buildTime}) => {
   let built = formatBuildTime(buildTime)
-  let label = offlineReady ? `v${version} · ${built} · offline-ready` : `v${version} · ${built}`
-  <div id="version-badge"> {Html.string(label)} </div>
+  <div id="version-badge"> {Html.string(`v${version} · ${built}`)} </div>
 }

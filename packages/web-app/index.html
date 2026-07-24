@@ -1129,39 +1129,31 @@
         -webkit-touch-callout: default;
       }
 
-      /* The "update available" control (#165), moved off the top bar (#109) and
-         into the About footer. Shown only when the service worker reports a
-         waiting update; the pip on the ☰ Menu button is what advertises it while
-         the menu is closed. A short note over the green call-to-action button. */
-      .menu-update {
+      /* The About footer's one row (#201): the build/version line on the left, the
+         Update button on the right, vertically centred. The button reserves its box
+         even when hidden (see `.menu-update--hidden`), so the row is the same height
+         whether or not an update is waiting. */
+      .menu-about__row {
         display: flex;
-        flex-direction: column;
-        gap: 0.4rem;
-        margin-top: 0.2rem;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.75rem;
       }
 
-      .menu-update[hidden] {
-        display: none;
+      /* Reserve an element's space while hiding it: `visibility` keeps the layout
+         box (unlike `display: none`, which collapses it), so a control can come and
+         go without reflowing its neighbours (#201). Used for the About Update button
+         when no update is waiting. */
+      .menu-update--hidden {
+        visibility: hidden;
       }
 
-      .menu-update__note {
-        margin: 0;
-        font: 12px/1.4 "Libre Franklin", sans-serif;
-        color: #94a3b8;
-      }
-
-      /* The transient status line under the adaptive Settings refresh button
-         (#112): "Checking…", "Up to date". Muted, matching the update note. */
-      .menu-refresh__status {
-        margin: 0;
-        font: 12px/1.4 "Libre Franklin", sans-serif;
-        color: #94a3b8;
-      }
-
-      /* The green call-to-action, keeping the accent fill it wore on the bar. Now a
-         full-width button sized to the panel rather than the bar's button metrics. */
+      /* The green call-to-action (#165), keeping the accent fill it wore on the bar.
+         Now a short button sitting at the end of the About row rather than a
+         full-width block below it (#201). */
       .menu-update__button {
-        align-self: flex-start;
+        flex: none;
+        white-space: nowrap;
         padding: 8px 14px;
         font: 14px "Libre Franklin", sans-serif;
         color: #f8fafc;
@@ -1169,6 +1161,29 @@
         border: 1px solid transparent;
         border-radius: 8px;
         cursor: pointer;
+      }
+
+      /* The on-button progress spinner for the Settings refresh control (#201):
+         a ¾ ring in the button's own text colour, spinning while a check/refresh is
+         in flight. It rides inside the button's text line — smaller than the line
+         box — so showing it never changes the button's or the section's height,
+         which is the point (it replaced a status line that used to reflow). */
+      .menu-refresh__spinner {
+        display: inline-block;
+        width: 0.85em;
+        height: 0.85em;
+        margin-right: 0.5em;
+        vertical-align: -0.12em;
+        border: 2px solid currentColor;
+        border-right-color: transparent;
+        border-radius: 50%;
+        animation: menu-refresh-spin 0.7s linear infinite;
+      }
+
+      @keyframes menu-refresh-spin {
+        to {
+          transform: rotate(360deg);
+        }
       }
     </style>
   </head>

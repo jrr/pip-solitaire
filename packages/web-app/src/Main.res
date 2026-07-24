@@ -10,7 +10,7 @@
 //   - `<Menu>` — the slide-over holding the title ("Pip", moved out of the
 //     retired Home scene), a **Game** section (New Game · Restart, #156), the
 //     debug/demo scene list as tappable rows, and the About footer (build/version
-//     info plus the conditional "Update now" button, #165).
+//     info plus the conditional "Update" button beside it, #165).
 // The scene area underneath is still the imperative `SceneSwitcher`; its scene
 // container and its row controls are spliced into the view untouched with
 // `Html.node` (the container into the scene band, the rows into the menu), which
@@ -53,7 +53,6 @@ external registerSW: registerSWOptions => bool => promise<unit> = "registerSW"
 type model = {
   version: string,
   buildTime: string,
-  offlineReady: bool,
   updateAvailable: bool,
   menuOpen: bool,
   // Which screen the open menu shows (#191): false is the main menu, true the
@@ -67,13 +66,13 @@ type model = {
   // The adaptive Settings refresh control (#112). `refreshMode` is `None` until
   // `Refresh.detect` resolves (and stays effectively hidden on an unsupported
   // browser); it decides the button's "Refresh" vs "Check for updates" shape.
-  // `refreshStatus` is the transient line under it ("Checking…", "Up to date").
+  // `refreshBusy` is whether a check/refresh is in flight — it spins the on-button
+  // indicator rather than a status line beneath it (#201).
   refreshMode: option<Refresh.mode>,
-  refreshStatus: option<string>,
+  refreshBusy: bool,
 }
 
 type msg =
-  | OfflineReady // precache finished — the app now works offline
   | UpdateAvailable // a new build is waiting in the wings
   | Reload // user asked to activate the waiting worker and reload
   | ToggleMenu // the top bar's Menu button
@@ -85,8 +84,8 @@ type msg =
   | ToggleCutoutDebug // the menu's safe-area overlay switch (debug)
   | HistoryChanged(bool) // whether the board can undo after a move (#85)
   | RefreshDetected(Refresh.mode) // service-worker presence detected — sets the button's shape (#112)
-  | RefreshStarted(string) // the refresh button was tapped — show a transient status (#112)
-  | RefreshChecked(bool) // an update check finished; the bool is whether an update is now pending (#112)
+  | RefreshStarted // the refresh button was tapped — start spinning the button (#112/#201)
+  | RefreshChecked // an update check finished — stop the spinner (a found update surfaces as the About button)
 
 // `updateSW` only exists once registerSW has run, which needs `dispatch`, which
 // needs the loop to be mounted — so the Reload effect reaches it through a ref
@@ -155,23 +154,22 @@ let relayoutHook: ref<option<unit => unit>> = ref(None)
 
 let update = (msg, model) =>
   switch msg {
-  | OfflineReady => ({...model, offlineReady: true}, Html.noEffect)
   | UpdateAvailable => ({...model, updateAvailable: true}, Html.noEffect)
   // Opening or closing the menu resets it to the main screen, so a visit to
   // Settings never lingers into the next open (#191).
   | ToggleMenu => (
-      {...model, menuOpen: !model.menuOpen, settingsOpen: false, refreshStatus: None},
+      {...model, menuOpen: !model.menuOpen, settingsOpen: false, refreshBusy: false},
       Html.noEffect,
     )
   | HistoryChanged(canUndo) =>
     canUndo == model.canUndo ? (model, Html.noEffect) : ({...model, canUndo}, Html.noEffect) // no change — don't re-render
   | CloseMenu =>
     model.menuOpen
-      ? ({...model, menuOpen: false, settingsOpen: false, refreshStatus: None}, Html.noEffect)
+      ? ({...model, menuOpen: false, settingsOpen: false, refreshBusy: false}, Html.noEffect)
       : (model, Html.noEffect)
-  // Enter Settings clean: clear any stale status from a prior visit. The label
+  // Enter Settings clean: clear any stale spinner from a prior visit. The label
   // itself is re-detected on open (see the view's `onOpenSettings`).
-  | OpenSettings => ({...model, settingsOpen: true, refreshStatus: None}, Html.noEffect)
+  | OpenSettings => ({...model, settingsOpen: true, refreshBusy: false}, Html.noEffect)
   | BackToMenu => ({...model, settingsOpen: false}, Html.noEffect)
   | ToggleAutoCollect =>
     let autoCollect = !model.autoCollect
@@ -214,13 +212,10 @@ let update = (msg, model) =>
         },
     )
   | RefreshDetected(mode) => ({...model, refreshMode: Some(mode)}, Html.noEffect)
-  | RefreshStarted(status) => ({...model, refreshStatus: Some(status)}, Html.noEffect)
-  // An update check finished. If one's pending, the onNeedRefresh → "Update now"
-  // flow surfaces it, so drop our own status; otherwise we're up to date.
-  | RefreshChecked(pending) => (
-      {...model, refreshStatus: pending ? None : Some("Up to date")},
-      Html.noEffect,
-    )
+  | RefreshStarted => ({...model, refreshBusy: true}, Html.noEffect)
+  // An update check finished. Stop the spinner; a pending update surfaces itself
+  // through the onNeedRefresh → About "Update" flow, so there's nothing more to do.
+  | RefreshChecked => ({...model, refreshBusy: false}, Html.noEffect)
   }
 
 // The scene area (switcher + demos) is built imperatively and owns its own
@@ -369,25 +364,24 @@ let view = (model, dispatch) => <>
     | Some(Refresh.NoWorker) =>
       Some({
         label: "Refresh",
-        status: model.refreshStatus,
+        busy: model.refreshBusy,
         onClick: () => {
-          dispatch(RefreshStarted("Refreshing…"))
+          dispatch(RefreshStarted)
           Refresh.forceReload()
         },
       })
     | Some(Refresh.HasWorker) =>
       Some({
         label: "Check for updates",
-        status: model.refreshStatus,
+        busy: model.refreshBusy,
         onClick: () => {
-          dispatch(RefreshStarted("Checking…"))
-          Refresh.checkForUpdates(pending => dispatch(RefreshChecked(pending)))
+          dispatch(RefreshStarted)
+          Refresh.checkForUpdates(_pending => dispatch(RefreshChecked))
         },
       })
     }}
     version={model.version}
     buildTime={model.buildTime}
-    offlineReady={model.offlineReady}
     updateVisible={model.updateAvailable}
     onReload={() => dispatch(Reload)}
   />
@@ -419,7 +413,6 @@ let dispatch = Html.mount(
   ~init={
     version: appVersion,
     buildTime,
-    offlineReady: false,
     updateAvailable: false,
     menuOpen: false,
     // The menu opens on its main screen; the Settings screen is a swap-in (#191).
@@ -434,9 +427,9 @@ let dispatch = Html.mount(
     // Undo starts disabled; the mounted board reports its history (#85).
     canUndo: false,
     // The refresh button starts hidden until `Refresh.detect` reports the
-    // service-worker state (#112); no status line until an action runs.
+    // service-worker state (#112); not busy until an action runs.
     refreshMode: None,
-    refreshStatus: None,
+    refreshBusy: false,
   },
   ~update,
   ~view,
@@ -457,12 +450,4 @@ Refresh.detect(mode => dispatch(RefreshDetected(mode)))
 
 // Now that `dispatch` exists, register the worker and let its callbacks drive
 // the loop. Stash the returned updater so the Reload message can reach it.
-updateSW :=
-  Some(
-    registerSW(
-      makeOptions(
-        ~onNeedRefresh=() => dispatch(UpdateAvailable),
-        ~onOfflineReady=() => dispatch(OfflineReady),
-      ),
-    ),
-  )
+updateSW := Some(registerSW(makeOptions(~onNeedRefresh=() => dispatch(UpdateAvailable))))
