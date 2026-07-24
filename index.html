@@ -460,6 +460,47 @@
         }
       }
 
+      /* "Display content around screen notch" off (#204). The default landscape
+         layout rides the Menu/Undo rail out into the corner "wings" beside the
+         notch — the negative margins above cancel body's `safe-area-inset-*` so the
+         controls reclaim the reserved notch strip where its top/bottom corners are
+         physically clear. That's the intended look on the phones we've tested, but
+         on untested geometry a control could land awkwardly or unreachably, so the
+         Settings toggle stamps `data-notch-wings="off"` on <html> to fall back to a
+         layout clamped entirely inside the browser-reported safe area.
+
+         These overrides drop only the safe-inset half of each wing margin, leaving
+         the plain gutter trim (and gaps before the scene) intact, so the rail sits
+         just inside the inset instead of out in the wing. The attribute + id/class
+         selectors outrank the base rules on specificity, so they win without
+         `!important` regardless of source order; the cards and shaded band already
+         sit clear of the notch (iOS insets both landscape sides symmetrically, so
+         the cards are held safe on both — see CutoutSide), so only the rail moves. */
+      @media (orientation: landscape) and (max-height: 500px) {
+        /* Left rail (notch left / absent): keep the -0.75rem gutter trim, drop the
+           `-1 * safe-area-inset-left` that pulled the rail into the notch strip. */
+        html[data-notch-wings="off"] #top-bar {
+          margin-left: -0.75rem;
+        }
+
+        /* Right rail (`data-cutout="right"`): the mirror — keep the gutter trim,
+           drop the `-1 * safe-area-inset-right`. */
+        html[data-notch-wings="off"][data-cutout="right"] #top-bar {
+          margin-right: -0.75rem;
+        }
+
+        /* Stop borrowing the bottom inset to drop/lift Menu and Undo into the
+           top/bottom corner wings; inside the safe area they sit flush at the rail's
+           ends like the non-cutout rail did. */
+        html[data-notch-wings="off"] .top-bar__button--menu {
+          margin-top: 0;
+        }
+
+        html[data-notch-wings="off"] .top-bar__button--undo {
+          margin-bottom: 0;
+        }
+      }
+
       /* The slide-over menu (#109): the title, the debug/demo scene rows, and the
          version info. A full-screen overlay so it floats above the game; `hidden`
          (set by the chrome model) collapses it entirely when closed. */
@@ -1186,7 +1227,7 @@
         }
       }
     </style>
-    <script type="module" crossorigin src="./assets/index-Bi3mI2R6.js"></script>
+    <script type="module" crossorigin src="./assets/index-DpKglyNj.js"></script>
   <link rel="manifest" href="./manifest.webmanifest"></head>
   <body>
     <!-- Vite resolves the bare `core/…` specifier the compiled entry imports
