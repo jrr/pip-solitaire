@@ -355,6 +355,14 @@
            one so the band still runs to the screen's right edge. */
         #scene-area {
           margin-inline-start: 0;
+          /* Pull the band up to the top edge too — the vertical mirror of its flush
+             bottom (#199). A negative block-start margin cancels body's top breathing
+             room (`env(safe-area-inset-top) + 0.25rem`) so the seam runs corner-to-
+             corner instead of floating a few px below the top. #scene-box re-insets
+             the cards by the same amount (its `padding-top` below), so only the
+             shading and the seam bleed up — the cards don't move — exactly as the
+             bottom bleeds under the home indicator while the playfield stays clear. */
+          margin-block-start: calc(-1 * (env(safe-area-inset-top) + 0.25rem));
         }
 
         /* The divider turns to match the bar. With the chrome now down the left
@@ -362,6 +370,10 @@
            top; swap them for a single vertical rule down the band's left edge,
            reading as the seam between the rail and the play area. */
         #scene-box {
+          /* Re-inset the playfield by the amount #scene-area is pulled up (above), so
+             the shaded band and its seam reach the top edge while the cards stay put —
+             the top twin of the base rule's `padding-bottom` home-indicator clearance. */
+          padding-top: calc(env(safe-area-inset-top) + 0.25rem);
           border-top-width: 0;
           border-bottom-width: 0;
           border-left: 1px solid #22304a;
@@ -1159,7 +1171,7 @@
         cursor: pointer;
       }
     </style>
-    <script type="module" crossorigin src="./assets/index-Crd4vqIx.js"></script>
+    <script type="module" crossorigin src="./assets/index-DeRsCwuR.js"></script>
   <link rel="manifest" href="./manifest.webmanifest"></head>
   <body>
     <!-- Vite resolves the bare `core/…` specifier the compiled entry imports
