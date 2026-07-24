@@ -20,6 +20,7 @@
 // app might persist later.
 let autoCollectKey = "pip.autoCollect"
 let cardTiltKey = "pip.cardTilt"
+let notchDisplayKey = "pip.notchDisplay"
 
 // Read a boolean flag from storage, treating only an explicit "false" as off; a
 // missing, garbage, or unreadable value keeps the on-by-default `fallback`. This
@@ -59,3 +60,15 @@ let save = (options: Options.t) => saveFlag(autoCollectKey, options.autoCollect)
 // off, and this remembers that across launches.
 let loadCardTilt = (): bool => loadFlag(cardTiltKey, ~fallback=true)
 let saveCardTilt = (enabled: bool) => saveFlag(cardTiltKey, enabled)
+
+// "Display content around screen notch" (#204) defaults on, matching today's
+// shipped landscape layout: the Menu/Undo rail rides out into the corner "wings"
+// beside the notch, sharing the strip that's unsafe anyway (see CutoutSide and the
+// wing-placement rules in index.html). A player on untested phone geometry, where
+// that placement could land a control awkwardly or unreachably, can turn it off to
+// fall back to a layout clamped entirely inside the browser-reported safe area —
+// worse-looking, but always playable. Presentation-only chrome the CLI has no
+// notion of, so it rides beside `options` like the tilt flag rather than inside
+// the shared `Options.t`.
+let loadNotchDisplay = (): bool => loadFlag(notchDisplayKey, ~fallback=true)
+let saveNotchDisplay = (enabled: bool) => saveFlag(notchDisplayKey, enabled)

@@ -61,6 +61,11 @@ type model = {
   settingsOpen: bool,
   autoCollect: bool,
   cardTilt: bool,
+  // "Display content around screen notch" (#204): on (default) lets the landscape
+  // rail ride out into the corner wings beside the notch; off clamps every control
+  // inside the safe area. Presentation-only chrome, so it mirrors a `Preferences`
+  // flag (like `cardTilt`) rather than a driver `Options` field.
+  notchDisplay: bool,
   cutoutDebug: bool,
   canUndo: bool,
   // The adaptive Settings refresh control (#112). `refreshMode` is `None` until
@@ -81,6 +86,7 @@ type msg =
   | BackToMenu // the Settings screen's back button — swap back to the main menu (#191)
   | ToggleAutoCollect // the menu's Auto-collect switch (#139)
   | ToggleCardTilt // the menu's hand-placed-tilt switch (#65)
+  | ToggleNotchDisplay // the menu's "Display content around screen notch" switch (#204)
   | ToggleCutoutDebug // the menu's safe-area overlay switch (debug)
   | HistoryChanged(bool) // whether the board can undo after a move (#85)
   | RefreshDetected(Refresh.mode) // service-worker presence detected — sets the button's shape (#112)
@@ -146,6 +152,12 @@ let options: ref<Options.t> = ref(Preferences.load())
 // its next relayout, and the model's mirror keeps the switch in sync.
 let tiltEnabled: ref<bool> = ref(Preferences.loadCardTilt())
 
+// The persisted "Display content around screen notch" preference (#204, defaults
+// on). Presentation-only and read entirely by the CSS via the document-root
+// attribute (see `NotchDisplay`), so unlike `tiltEnabled` the board never reads it
+// — a plain value seeds the model's mirror and the startup attribute apply below.
+let notchDisplayEnabled = Preferences.loadNotchDisplay()
+
 // The active board's "relayout" action (#65), sibling of `undoHook`: the mounted
 // `TableScene` publishes a thunk that re-lays every resting card, so a tilt toggle
 // can re-tilt the board in place at once. Cleared on each scene change and a no-op
@@ -193,6 +205,18 @@ let update = (msg, model) =>
         tiltEnabled := cardTilt
         Preferences.saveCardTilt(cardTilt)
         relayoutHook.contents->Option.forEach(relayout => relayout())
+      },
+    )
+  | ToggleNotchDisplay =>
+    let notchDisplay = !model.notchDisplay
+    (
+      {...model, notchDisplay},
+      // Reflect the flip onto the document root so the CSS wing-placement rules
+      // switch off/on at once, and persist it so the choice survives a reload. Both
+      // run as the post-update effect.
+      () => {
+        NotchDisplay.setEnabled(notchDisplay)
+        Preferences.saveNotchDisplay(notchDisplay)
       },
     )
   | ToggleCutoutDebug =>
@@ -359,6 +383,8 @@ let view = (model, dispatch) => <>
     onToggleAutoCollect={() => dispatch(ToggleAutoCollect)}
     cardTilt={model.cardTilt}
     onToggleCardTilt={() => dispatch(ToggleCardTilt)}
+    notchDisplay={model.notchDisplay}
+    onToggleNotchDisplay={() => dispatch(ToggleNotchDisplay)}
     refreshButton={switch model.refreshMode {
     | None | Some(Refresh.Unsupported) => None // still detecting, or unsupported — no button
     | Some(Refresh.NoWorker) =>
@@ -403,6 +429,11 @@ body->WebDom.appendChild(root)->ignore
 // the `[data-cutout="left"]` landscape rules in index.html).
 CutoutSide.install()
 
+// Reflect the persisted "Display content around screen notch" preference (#204)
+// onto the document root up front, so a player who turned wing placement off sees
+// the clamped layout from the first paint rather than after a toggle.
+NotchDisplay.setEnabled(notchDisplayEnabled)
+
 // The safe-area debug overlay (a menu Debug-section toggle): built once here,
 // hidden, and flipped live by ToggleCutoutDebug. A developer aid for spot-checking
 // cutout detection on a device; session-only, not persisted.
@@ -421,6 +452,10 @@ let dispatch = Html.mount(
     // position (the board reads the `options` and `tiltEnabled` refs directly).
     autoCollect: options.contents.autoCollect,
     cardTilt: tiltEnabled.contents,
+    // Mirror the persisted notch-display preference so the switch opens in the
+    // right position; the layout itself is driven by the root attribute applied
+    // above (see `NotchDisplay`).
+    notchDisplay: notchDisplayEnabled,
     // Debug overlay starts off each session (not persisted); the model keeps it
     // across rotations.
     cutoutDebug: false,

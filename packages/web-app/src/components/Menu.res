@@ -32,6 +32,9 @@
 //     reported out through `onToggleAutoCollect`; and **Hand-placed tilt** (#65) —
 //     the slight resting-card tilt, passed as `cardTilt` and toggled through
 //     `onToggleCardTilt`, for players who'd rather see cards stacked dead-square;
+//     and **Display content around notch** (#204) — whether the landscape rail may
+//     ride out into the corner wings beside the notch (`notchDisplay` /
+//     `onToggleNotchDisplay`); off clamps every control inside the safe area;
 //   - a **"Debug"** section (#185) gathering the two collapsible groups that were the
 //     old "Debug scenes"/"Debug states": the debug/demo scenes (`debugScenes`, now
 //     labelled just "scenes") and the named starting positions (`debugStates`,
@@ -84,6 +87,8 @@ type props = {
   onToggleAutoCollect: unit => unit,
   cardTilt: bool,
   onToggleCardTilt: unit => unit,
+  notchDisplay: bool,
+  onToggleNotchDisplay: unit => unit,
   refreshButton: option<refreshButton>,
   version: string,
   buildTime: string,
@@ -108,6 +113,8 @@ let make = ({
   onToggleAutoCollect,
   cardTilt,
   onToggleCardTilt,
+  notchDisplay,
+  onToggleNotchDisplay,
   refreshButton,
   version,
   buildTime,
@@ -160,6 +167,20 @@ let make = ({
                 ]}
               >
                 <span className="menu-toggle__label"> {Html.string("Hand-placed tilt")} </span>
+                <span className="menu-toggle__switch" />
+              </button>
+              <button
+                className={notchDisplay ? "menu-toggle menu-toggle--on" : "menu-toggle"}
+                onClick={_ => onToggleNotchDisplay()}
+                attrs={[
+                  ("type", "button"),
+                  ("role", "switch"),
+                  ("aria-checked", notchDisplay ? "true" : "false"),
+                ]}
+              >
+                <span className="menu-toggle__label">
+                  {Html.string("Display content around notch")}
+                </span>
                 <span className="menu-toggle__switch" />
               </button>
             </div>
