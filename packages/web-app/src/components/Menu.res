@@ -31,14 +31,15 @@
 // under an empty header. Top to bottom:
 //   - a header with a **back** button (`onBackToMenu`, returns to the main menu)
 //     and the ✕ (`onClose`, still closes the whole menu);
-//   - a **Settings** section (#139): each preference is a toggle row carrying a
-//     one-line description under its label (#211). **Auto-collect** — state passed
-//     as `autoCollect`, toggled through `onToggleAutoCollect`; **Hand-placed tilt**
-//     (#65) — the slight resting-card tilt, `cardTilt` / `onToggleCardTilt`, for
-//     players who'd rather see cards stacked dead-square; and **Display content
-//     around notch** (#204) — whether the landscape rail may ride out into the
-//     corner wings beside the notch (`notchDisplay` / `onToggleNotchDisplay`); off
-//     clamps every control inside the safe area;
+//   - the preference toggles (#139), one per row with a one-line description under
+//     its label (#211); no section heading — the "Settings" title in the header
+//     already names them. **Auto-collect** — state passed as `autoCollect`, toggled
+//     through `onToggleAutoCollect`; **Sloppy placement** (#65) — the slight
+//     resting-card tilt, `cardTilt` / `onToggleCardTilt`, for players who'd rather
+//     see cards stacked dead-square; and **Display content around notch** (#204) —
+//     whether the landscape rail may ride out into the corner wings beside the notch
+//     (`notchDisplay` / `onToggleNotchDisplay`); off clamps every control inside the
+//     safe area;
 //   - a **Debug** nav row (`onOpenDebug`) that opens the Debug screen — the debug
 //     tools moved off Settings entirely (#211) onto their own screen so the player
 //     preferences stand alone.
@@ -47,11 +48,11 @@
 // Settings screen, relocated onto their own screen a level below it. Top to bottom:
 //   - a header whose **back** button (`onBackToSettings`) returns to Settings — one
 //     step back up, not all the way out — beside the ✕;
-//   - the two collapsible groups that were the old "Debug scenes"/"Debug states":
-//     the debug/demo scenes (`debugScenes`, labelled "scenes") and the named
+//     the **Safe-area overlay** toggle (`cutoutDebug` / `onToggleCutoutDebug`) up
+//     top, then the two collapsible groups that were the old "Debug scenes"/"Debug
+//     states": the debug/demo scenes (`debugScenes`, labelled "scenes") and the named
 //     starting positions (`debugStates`, "states") a tap drops the board into
-//     (`Scenario`), the menu twin of `?state=`, plus the **Safe-area overlay**
-//     toggle (`cutoutDebug` / `onToggleCutoutDebug`).
+//     (`Scenario`), the menu twin of `?state=`.
 //
 // The **About** footer sits at the foot of every screen — the build/version line
 // and, when a service-worker update is waiting, the green **Update** button (#165).
@@ -205,7 +206,6 @@ let make = ({
           </div>
           <div className="menu-screen">
             <div className="menu-section" attrs={[("aria-label", "Settings")]}>
-              <h2 className="menu-section__heading"> {Html.string("Settings")} </h2>
               {toggleRow(
                 ~label="Auto-collect",
                 ~desc="Send cards to the foundations for you as soon as they're ready.",
@@ -213,8 +213,8 @@ let make = ({
                 ~onToggle=onToggleAutoCollect,
               )}
               {toggleRow(
-                ~label="Hand-placed tilt",
-                ~desc="Give resting cards a slight, hand-dealt tilt.",
+                ~label="Sloppy placement",
+                ~desc="Cards don't line up perfectly.",
                 ~on=cardTilt,
                 ~onToggle=onToggleCardTilt,
               )}
@@ -247,14 +247,14 @@ let make = ({
           </div>
           <div className="menu-screen">
             <nav className="menu-section" attrs={[("aria-label", "Debug")]}>
-              {Html.node(debugScenes)}
-              {Html.node(debugStates)}
               {toggleRow(
                 ~label="Safe-area overlay",
                 ~desc="Outline the device safe area to check cutout handling.",
                 ~on=cutoutDebug,
                 ~onToggle=onToggleCutoutDebug,
               )}
+              {Html.node(debugScenes)}
+              {Html.node(debugStates)}
             </nav>
           </div>
           {aboutFooter(~refresh=refreshNode)}
