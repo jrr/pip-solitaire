@@ -1004,6 +1004,25 @@
          and zones have the whole area to move in. A minimum height keeps it
          playable when the viewport is short. */
       .stacking-playfield {
+        /* The card-table footprints, as the unscaled design defaults. `applyScale`
+           (TableScene.res) overwrites all six on this element the moment the stage is
+           laid out — before the first paint — so these only cover the window before
+           that, and every rule below reads them with a bare `var()`.
+
+           They are declared here, once, rather than repeated as a fallback at each
+           `var()` site, and they are *values* rather than ratios: the proportions they
+           embody (`cardH / cardW`, the card's corner ratio, `zoneInset`) all live in
+           ReScript, where the geometry that consumes them lives too. The stylesheet
+           used to re-derive them here with `calc(… * 1.4)` / `* 0.1` / `* 0.15`
+           literals, which restated those facts a second time and could drift from
+           them silently. `mise run verify-geometry` pins the relationships. */
+        --card-w: 80px;
+        --card-h: 112px;
+        --card-radius: 8px;
+        --zone-w: 88px;
+        --zone-h: 120px;
+        --zone-radius: 12px;
+
         position: relative;
         flex: 1;
         width: 100%;
@@ -1061,12 +1080,12 @@
          playfield (see TableScene.res): the scene measures its live width and
          the game's pile count and shrinks the cards to fit, so however many
          piles a game declares still spread across the row without spilling off
-         a narrow screen. The values here are the unscaled design defaults, used
-         until the scene sizes itself. */
+         a narrow screen. Their unscaled design defaults are declared once on
+         `.stacking-playfield` above. */
       .drop-zone {
         position: relative;
-        width: var(--zone-w, 88px);
-        height: var(--zone-h, 120px);
+        width: var(--zone-w);
+        height: var(--zone-h);
         /* The resting-state dashed outline now lives on `.drop-zone__slot` below
            (#166); the zone itself draws nothing until a highlight state lights it.
            A *transparent* dashed border reserves the frame so `--over`/`--invalid`
@@ -1074,13 +1093,13 @@
            unchanged — while the plain, un-highlighted zone stays invisible and the
            card-sized static indicator carries the empty-pile cue. */
         border: 1px dashed transparent;
-        /* Concentric with the slot: the zone sits a uniform `zoneInset` (4px at
-           the default scale) outside the card-sized slot on every side (see
+        /* Concentric with the slot: the zone sits a uniform `zoneInset` (4px at the
+           default scale) outside the card-sized slot on every side (see
            `zoneWidth`/`zoneBaseHeight` in TableScene), so the frame's radius is the
-           slot's radius plus that inset — `card-w · 0.1 + card-w · 0.05`. Keyed off
-           `--card-w` so it tracks the card at every scale and the two rounded
-           corners share a centre, keeping the gap even round the bends too. */
-        border-radius: calc(var(--card-w, 80px) * 0.15);
+           slot's radius plus that inset — computed as `zoneRadius` there and scaled
+           with everything else, so the two rounded corners share a centre and the gap
+           stays even round the bends too. */
+        border-radius: var(--zone-radius);
         transition: border-color 0.12s ease, background 0.12s ease;
       }
 
@@ -1088,21 +1107,23 @@
          split off from the zone's old overloaded outline so it can match the card
          footprint exactly. Centred where a squared card rests — horizontally in the
          zone, vertically in its *base* box (`--zone-h`, which stays the base height
-         even as a fanned zone grows) — with the card's own width, 5:7 height and
-         10%-of-width corner radius (the SVG face's `rx="12"`/120). A resting card
-         (a sibling `.stacking-card`, layered above) then covers it pixel-for-pixel,
-         so the dashed cue shows only on empty piles. It keys off `--card-w`, not the
-         zone vars, so it tracks the card rather than the larger highlight frame;
+         even as a fanned zone grows) — at the card's own width, height and corner
+         radius. All three come straight from the card's design box (`CardArt`'s
+         120×168 viewBox and its `rx`, scaled by TableScene), so the slot traces the
+         card rather than approximating it with its own ratios. A resting card (a
+         sibling `.stacking-card`, layered above) then covers it pixel-for-pixel, so
+         the dashed cue shows only on empty piles. It keys off the card properties,
+         not the zone's, so it tracks the card rather than the larger highlight frame;
          `pointer-events: none` keeps the `.drop-zone` the drop hit-test box. */
       .drop-zone__slot {
         position: absolute;
         left: 50%;
-        top: calc(var(--zone-h, 120px) / 2);
+        top: calc(var(--zone-h) / 2);
         transform: translate(-50%, -50%);
-        width: var(--card-w, 80px);
-        height: calc(var(--card-w, 80px) * 1.4);
+        width: var(--card-w);
+        height: var(--card-h);
         border: 1px dashed #334155;
-        border-radius: calc(var(--card-w, 80px) * 0.1);
+        border-radius: var(--card-radius);
         pointer-events: none;
       }
 
@@ -1150,7 +1171,7 @@
         position: absolute;
         top: 0;
         left: 0;
-        width: var(--card-w, 80px);
+        width: var(--card-w);
         /* The drag/select locks now live on `.stacking-playfield` (#113), which
            covers the whole stage — cards inherit `user-select: none` and are
            already under the stage's `touch-action: none`. `-webkit-user-drag`

@@ -192,24 +192,36 @@ type card = {
 // newest card landing lowest and fully exposed.
 let fanStep = 26.
 
-// Card footprint in playfield pixels (width matches `.stacking-card` in the CSS;
-// height from the 5:7 viewBox). Used by the initial deal, which places cards
-// before they're laid out and so can't read their rects yet.
+// Card footprint in playfield pixels. The width is the design size; the height
+// follows from the art's own 5:7 design box (`CardArt.aspect`) rather than being a
+// second literal that has to agree with it. Used by the initial deal, which places
+// cards before they're laid out and so can't read their rects yet.
 let cardW = 80.
-let cardH = 112.
+let cardH = cardW *. CardArt.aspect
+
+// The card's corner radius at the design size, from the art's own `rx` over its
+// design-box width. The empty-pile slot traces the card, so this is the slot's
+// radius too — and the zone frame's radius is this plus `zoneInset` (below), which
+// is what makes the two corners concentric. Published to the CSS by `applyScale`
+// so the stylesheet no longer restates either ratio.
+let cardRadius = cardW *. CardArt.cornerRatio
 
 // The empty drop zone's footprint (matches `.drop-zone` in the CSS): the
 // card-sized slot (`cardW` × `cardH`) plus a *uniform* breathing gap on every
 // side (#166 follow-up). Sizing it as `card + 2·inset` on both axes — rather
 // than the old hand-picked 88×124, which left a 4px side gap but a 6px top/bottom
 // one — makes the highlight frame sit an equal distance outside the resting card
-// all the way round, and lets the CSS round the frame concentrically (the slot's
-// radius + this inset). A pile's cards centre vertically within the base-height
-// box, and a fanned zone grows *below* it so its outline and highlight wrap the
-// whole pile rather than just the top card's footprint (see reflow).
+// all the way round, and rounds the frame concentrically (the slot's radius + this
+// inset). A pile's cards centre vertically within the base-height box, and a fanned
+// zone grows *below* it so its outline and highlight wrap the whole pile rather
+// than just the top card's footprint (see reflow).
 let zoneInset = 4.
 let zoneWidth = cardW +. 2. *. zoneInset
 let zoneBaseHeight = cardH +. 2. *. zoneInset
+
+// Concentric with the slot: the frame sits `zoneInset` outside it on every side, so
+// its radius is the slot's plus that inset and the two corners share a centre.
+let zoneRadius = cardRadius +. zoneInset
 
 // Card widths are capped at the design size (`cardW`) and floored here, so a
 // game with many piles on a narrow phone still deals cards you can read and grab
@@ -667,12 +679,20 @@ let make = (
         if width > 0. {
           lastWidth := width
         }
-        // Publish the factor to the CSS so `.stacking-card`/`.drop-zone` resize in
-        // step with the JS geometry below.
+        // Publish every scaled footprint the CSS needs, so `.stacking-card`,
+        // `.drop-zone` and `.drop-zone__slot` resize in step with the JS geometry
+        // below. Each of these is a design constant above times the live scale — the
+        // stylesheet consumes them directly and derives nothing, so the proportions
+        // (`cardH / cardW`, the corner ratios, `zoneInset`) are stated once, here,
+        // rather than restated as `calc()` ratio literals that can drift from them.
         let s = style(playfield)
-        s->setProperty("--card-w", Float.toString(cardW *. scale.contents) ++ "px")
-        s->setProperty("--zone-w", Float.toString(zoneWidth *. scale.contents) ++ "px")
-        s->setProperty("--zone-h", Float.toString(zoneBaseHeight *. scale.contents) ++ "px")
+        let px = v => Float.toString(v *. scale.contents) ++ "px"
+        s->setProperty("--card-w", px(cardW))
+        s->setProperty("--card-h", px(cardH))
+        s->setProperty("--card-radius", px(cardRadius))
+        s->setProperty("--zone-w", px(zoneWidth))
+        s->setProperty("--zone-h", px(zoneBaseHeight))
+        s->setProperty("--zone-radius", px(zoneRadius))
         // Cap the row's width so the columns stop spreading on a wide desktop (#173):
         // the widest row's zones (`widestRow · zoneWidth`) plus its `widestRow + 1`
         // `space-evenly` gaps grown to at most `maxColumnGap` each, all at the live
@@ -682,10 +702,7 @@ let make = (
         // stage width, so the `max-width` is slack and the row spreads as before.
         s->setProperty(
           "--rows-max-w",
-          Float.toString(
-            scale.contents *.
-            (Int.toFloat(widestRow) *. zoneWidth +. Int.toFloat(widestRow + 1) *. maxColumnGap),
-          ) ++ "px",
+          px(Int.toFloat(widestRow) *. zoneWidth +. Int.toFloat(widestRow + 1) *. maxColumnGap),
         )
       }
 

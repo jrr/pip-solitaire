@@ -15,9 +15,47 @@
 
 type detail = Full
 
-// The card face geometry, shared by every card. A 120×168 viewBox keeps the
-// familiar 5:7 playing-card ratio; CSS sizes the rendered card responsively.
-let viewBox = "0 0 120 168"
+// The card face geometry, shared by every card, and the single source of the card's
+// proportions for the whole app. A 120×168 design box keeps the familiar 5:7
+// playing-card ratio; CSS sizes the rendered card responsively.
+//
+// `aspect` and `cornerRatio` are the *derived* forms, published because several
+// other card-sized boxes have to trace this one and previously each restated the
+// proportion as its own literal: `TableScene`'s `cardH` (a second 5:7 pair) and the
+// stylesheet's `calc(var(--card-w) * 1.4)` / `* 0.1`. Deriving them here means the
+// design box is stated once and the rest follows, so a change to the card's shape
+// can't leave the empty-pile slot or the zone frame tracing the old one. The
+// relationships are pinned by `mise run verify-geometry`.
+let boxW = 120.
+let boxH = 168.
+
+// The frame's corner radius, in design-box units (see the `<rect>` below).
+let cornerR = 12.
+
+let viewBox = `0 0 ${boxW->Float.toString} ${boxH->Float.toString}`
+
+// Height as a multiple of width — 1.4, the 5:7 ratio.
+let aspect = boxH /. boxW
+
+// Corner radius as a fraction of width. This is the radius of the frame's *path*;
+// the stroke is centred on it and extends half its width further out, so the
+// painted outer corner is marginally rounder. Boxes that trace the card (the
+// empty-pile slot) match the path, which is what they have always done.
+let cornerRatio = cornerR /. boxW
+
+// The frame's stroke. Centred on the path, so insetting the rect by half of it puts
+// the painted outer edge exactly on the design box's edge — which is why the rect
+// below is `boxW - strokeW` wide at an offset of `strokeW / 2`, rather than filling
+// the box. Derived so the three stay consistent if the stroke ever changes.
+let strokeW = 2.
+let frameInset = strokeW /. 2.
+
+// Centre of the design box: the pivot the bottom-right corner rank rotates about,
+// and where the middle suit glyph sits.
+let centerX = boxW /. 2.
+let centerY = boxH /. 2.
+
+let n = Float.toString
 
 // The card face *contents* — everything inside the `viewBox`, with no `<svg>`
 // wrapper. Kept separate from `svg` so the same drawing can be nested inside
@@ -33,8 +71,8 @@ let body = (~detail=Full, card: Deck.card) => {
 
   // Corner rank glyph. The top-left one uses these coordinates as-is; the
   // bottom-right one reuses the exact same node but rotates the whole thing 180°
-  // about the card's center (60, 84), which maps top-left to bottom-right and
-  // flips it upside down — so the two corners are always mirror images.
+  // about the card's center, which maps top-left to bottom-right and flips it
+  // upside down — so the two corners are always mirror images.
   let cornerRank = (~rotated) => {
     // Only the bottom-right corner carries a transform; the top-left one omits
     // the attribute entirely (SVG 1.1's `transform` grammar has no "none").
@@ -46,29 +84,31 @@ let body = (~detail=Full, card: Deck.card) => {
       ("font-family", "Libre Franklin, sans-serif"),
       ("fill", color),
     ]
-    let attrs = rotated ? base->Array.concat([("transform", "rotate(180 60 84)")]) : base
+    let attrs = rotated
+      ? base->Array.concat([("transform", `rotate(180 ${n(centerX)} ${n(centerY)})`)])
+      : base
     <text attrs> {Html.string(label)} </text>
   }
 
   <>
     <rect
       attrs={[
-        ("x", "1"),
-        ("y", "1"),
-        ("width", "118"),
-        ("height", "166"),
-        ("rx", "12"),
-        ("ry", "12"),
+        ("x", n(frameInset)),
+        ("y", n(frameInset)),
+        ("width", n(boxW -. strokeW)),
+        ("height", n(boxH -. strokeW)),
+        ("rx", n(cornerR)),
+        ("ry", n(cornerR)),
         ("fill", "#f7f7f7"),
         ("stroke", "#cbd5e1"),
-        ("stroke-width", "2"),
+        ("stroke-width", n(strokeW)),
       ]}
     />
     {cornerRank(~rotated=false)}
     <text
       attrs={[
-        ("x", "60"),
-        ("y", "84"),
+        ("x", n(centerX)),
+        ("y", n(centerY)),
         ("text-anchor", "middle"),
         ("dominant-baseline", "central"),
         ("font-size", "68"),
