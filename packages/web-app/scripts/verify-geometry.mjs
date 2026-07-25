@@ -65,13 +65,20 @@ const EXPECTED_ASPECT = 7 / 5;
 const PX_TOLERANCE = 0.1;
 const RATIO_TOLERANCE = 0.002;
 
-// Three viewports chosen so a different constraint binds in each — `applyScale`
-// caps at the design size on a wide screen, and is bounded by width in portrait
-// but by height in landscape (see its width/height targets). That way the
-// invariants are checked at scale 1 *and* at two different fractional scales,
-// where a ratio that had been folded into a literal would show up as drift.
+// Three viewports chosen so a different term of `applyScale`'s clamp binds in each:
+// the `maxScale` ceiling on a roomy desktop, the width target in portrait, the
+// height target in landscape. That spreads the invariants across three different
+// scale factors, which is the point — a proportion folded into a ratio literal
+// shows up as drift only once the scale moves off 1.
+//
+// The desktop case sits *above* the design footprint (`maxScale` is 1.35, so
+// `--card-w` lands at 108px), which is worth keeping: it exercises the one
+// direction — scaling up — that the layout never used while the ceiling was 1.
+// Deliberately no numbers here beyond the viewport sizes; the checks derive their
+// expectations from what was rendered, so raising or lowering `maxScale` moves the
+// measurements without needing a change on this side.
 const VIEWPORTS = [
-  { width: 1600, height: 1000, label: "desktop (scale capped at 1)" },
+  { width: 1600, height: 1000, label: "desktop (ceiling-bound, scale = maxScale)" },
   { width: 390, height: 844, label: "portrait phone (width-bound)" },
   { width: 844, height: 390, label: "landscape phone (height-bound)" },
 ];
