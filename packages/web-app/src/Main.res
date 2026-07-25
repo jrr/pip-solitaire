@@ -55,10 +55,10 @@ type model = {
   buildTime: string,
   updateAvailable: bool,
   menuOpen: bool,
-  // Which screen the open menu shows (#191): false is the main menu, true the
-  // dedicated Settings screen it swaps to in place. Reset to false whenever the
-  // menu opens or closes, so reopening always lands on the main menu.
-  settingsOpen: bool,
+  // Which screen the open menu shows (#191): the main menu, the Settings
+  // screen, or the Debug screen nested below it. Reset to `Main` whenever the menu
+  // opens or closes, so reopening always lands on the main menu.
+  menuScreen: Menu.screen,
   autoCollect: bool,
   cardTilt: bool,
   // "Display content around screen notch" (#204): on (default) lets the landscape
@@ -84,6 +84,8 @@ type msg =
   | CloseMenu // backdrop / close button / a scene row was tapped
   | OpenSettings // the main menu's Settings button — swap to the Settings screen (#191)
   | BackToMenu // the Settings screen's back button — swap back to the main menu (#191)
+  | OpenDebug // the Settings screen's Debug row — swap to the Debug screen
+  | BackToSettings // the Debug screen's back button — swap back to Settings
   | ToggleAutoCollect // the menu's Auto-collect switch (#139)
   | ToggleCardTilt // the menu's hand-placed-tilt switch (#65)
   | ToggleNotchDisplay // the menu's "Display content around screen notch" switch (#204)
@@ -170,19 +172,21 @@ let update = (msg, model) =>
   // Opening or closing the menu resets it to the main screen, so a visit to
   // Settings never lingers into the next open (#191).
   | ToggleMenu => (
-      {...model, menuOpen: !model.menuOpen, settingsOpen: false, refreshBusy: false},
+      {...model, menuOpen: !model.menuOpen, menuScreen: Menu.Main, refreshBusy: false},
       Html.noEffect,
     )
   | HistoryChanged(canUndo) =>
     canUndo == model.canUndo ? (model, Html.noEffect) : ({...model, canUndo}, Html.noEffect) // no change — don't re-render
   | CloseMenu =>
     model.menuOpen
-      ? ({...model, menuOpen: false, settingsOpen: false, refreshBusy: false}, Html.noEffect)
+      ? ({...model, menuOpen: false, menuScreen: Menu.Main, refreshBusy: false}, Html.noEffect)
       : (model, Html.noEffect)
   // Enter Settings clean: clear any stale spinner from a prior visit. The label
   // itself is re-detected on open (see the view's `onOpenSettings`).
-  | OpenSettings => ({...model, settingsOpen: true, refreshBusy: false}, Html.noEffect)
-  | BackToMenu => ({...model, settingsOpen: false}, Html.noEffect)
+  | OpenSettings => ({...model, menuScreen: Menu.Settings, refreshBusy: false}, Html.noEffect)
+  | BackToMenu => ({...model, menuScreen: Menu.Main}, Html.noEffect)
+  | OpenDebug => ({...model, menuScreen: Menu.Debug}, Html.noEffect)
+  | BackToSettings => ({...model, menuScreen: Menu.Settings}, Html.noEffect)
   | ToggleAutoCollect =>
     let autoCollect = !model.autoCollect
     (
@@ -357,7 +361,7 @@ let view = (model, dispatch) => <>
   </main>
   <Menu
     open_={model.menuOpen}
-    settingsOpen={model.settingsOpen}
+    screen={model.menuScreen}
     onClose={() => dispatch(CloseMenu)}
     onOpenSettings={() => {
       // Re-detect the service-worker state each time Settings opens, so the button
@@ -366,6 +370,8 @@ let view = (model, dispatch) => <>
       dispatch(OpenSettings)
     }}
     onBackToMenu={() => dispatch(BackToMenu)}
+    onOpenDebug={() => dispatch(OpenDebug)}
+    onBackToSettings={() => dispatch(BackToSettings)}
     onNewGame={() => {
       newGameHook.contents->Option.forEach(newGame => newGame())
       dispatch(CloseMenu)
@@ -446,8 +452,8 @@ let dispatch = Html.mount(
     buildTime,
     updateAvailable: false,
     menuOpen: false,
-    // The menu opens on its main screen; the Settings screen is a swap-in (#191).
-    settingsOpen: false,
+    // The menu opens on its main screen; Settings and Debug are swap-ins (#191).
+    menuScreen: Menu.Main,
     // Mirror the persisted preferences so the menu's switches open in the right
     // position (the board reads the `options` and `tiltEnabled` refs directly).
     autoCollect: options.contents.autoCollect,

@@ -46,6 +46,9 @@ let render = (~updateVisible): Html.element =>
       buildTime: "2026-07-23T20:20:00.000Z",
       updateVisible,
       onReload: () => (),
+      // The update-check slot; empty here so the size-stability assertions turn on
+      // the update button alone (its presence is what used to reflow the footer).
+      refresh: Html.array([]),
     }),
   )
 
