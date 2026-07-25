@@ -84,6 +84,18 @@ description = "Verify the web win overlay end-to-end in a headless browser"
 depends = ["bundle"]
 run = "node packages/web-app/scripts/verify-win.mjs"
 
+# Check the card/zone/empty-slot footprints still satisfy the geometry invariants
+# the stylesheet and TableScene both document: the slot traces the card, both keep
+# the 5:7 proportion, and the zone frame sits a uniform inset outside the slot with
+# concentric corners. Measured from the rendered layout at three viewports (so a
+# different scale binds in each), which needs real layout and `calc()` resolution —
+# jsdom has neither, so this is a headless-browser task beside `verify-win` rather
+# than a case in `mise run test`.
+[tasks.verify-geometry]
+description = "Verify the card-table geometry invariants in a headless browser"
+depends = ["bundle"]
+run = "node packages/web-app/scripts/verify-geometry.mjs"
+
 # Check the landscape control rail clears the shaded scene band in all four chrome
 # regimes — `data-cutout` left/right × `data-notch-wings` on/off (#204 follow-up).
 # Those rules live in `@media … (max-height: 500px)` blocks, which jsdom skips
