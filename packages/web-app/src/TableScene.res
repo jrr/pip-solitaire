@@ -211,14 +211,29 @@ let zoneInset = 4.
 let zoneWidth = cardW +. 2. *. zoneInset
 let zoneBaseHeight = cardH +. 2. *. zoneInset
 
-// Card widths are capped at the design size (`cardW`) and floored here, so a
-// game with many piles on a narrow phone still deals cards you can read and grab
-// rather than shrinking them away. Between the two, cards fill `fillFraction ×
-// width` of the stage split across the piles. The floor is set low enough that
-// eight cascades still fit *with room to spare* on a phone — otherwise the
-// columns hit the floor, overflow the row and butt together with no gap to
-// distribute (the `space-evenly` below has nothing to spread).
+// Card widths are floored here, so a game with many piles on a narrow phone
+// still deals cards you can read and grab rather than shrinking them away.
+// Between this and `maxScale`, cards fill `fillFraction × width` of the stage
+// split across the piles. The floor is set low enough that eight cascades still
+// fit *with room to spare* on a phone — otherwise the columns hit the floor,
+// overflow the row and butt together with no gap to distribute (the
+// `space-evenly` below has nothing to spread).
 let minScale = 0.4
+
+// The ceiling on card size, as a multiple of the design footprint — the single
+// knob for "how big do cards get on a roomy screen". Every pixel the layout
+// measures (`cardW`/`cardH`, `fanStep`, the zone box, `maxColumnGap` and the
+// `--rows-max-w` cap derived from them) is multiplied by `scale`, so raising
+// this grows the whole board in proportion rather than just the cards; the card
+// faces are inline SVG, so they resharpen at any size instead of blurring.
+//
+// Above 1 the design footprint stops being the maximum and becomes what it
+// really is — the size the *fits* are expressed in. Both fits still bind first
+// on a smaller window (a board needs `maxScale × 711px` of width and
+// `maxScale × 526px + 16px` of height to reach the ceiling, for the eight-column
+// deal), so this only takes effect once there's genuinely room, and a laptop
+// that falls short simply settles a little below it rather than clipping.
+let maxScale = 1.35
 
 // The share of the stage width the row of cards fills; the rest is the gaps
 // `space-evenly` opens around and between the columns. Kept well below 1 so the
@@ -229,8 +244,8 @@ let fillFraction = 0.9
 
 // The widest each `space-evenly` gap between columns is allowed to open before
 // the row stops spreading (#173). Past the point where the cards have hit their
-// design size (`scale` capped at 1), a wider stage keeps pouring its extra width
-// into these gaps — on a wide desktop that leaves the columns marooned in a sea
+// ceiling (`scale` capped at `maxScale`), a wider stage keeps pouring its extra
+// width into these gaps — on a wide desktop that leaves the columns marooned in a sea
 // of green. So the row's width is capped at the point each gap reaches this
 // (see `applyScale`'s `--rows-max-w`), and the leftover stage width becomes equal
 // left/right margins instead. Half a card reads as a generous-but-tidy column
@@ -616,13 +631,13 @@ let make = (
         )
       let referenceDepth = openingMaxDepth + fanHeadroom
 
-      // How much the design footprints are shrunk to fit the stage. Cards fill
+      // How much the design footprints are scaled to fit the stage. Cards fill
       // `fillFraction × width` split across the busiest row (`fillFraction · width
-      // / widestRow`), capped at the design size so a wide screen doesn't blow the
-      // cards up, and floored so a crowded, narrow one keeps them legible. Held in
-      // a ref because the geometry (reflow, the deal) reads it, and recomputed from
-      // the stage's live width the moment before the deal — the one point at which
-      // the stage is known laid out.
+      // / widestRow`), capped at `maxScale` so a wide screen doesn't blow the
+      // cards up without bound, and floored so a crowded, narrow one keeps them
+      // legible. Held in a ref because the geometry (reflow, the deal) reads it,
+      // and recomputed from the stage's live width the moment before the deal —
+      // the one point at which the stage is known laid out.
       let scale = ref(1.)
       // The stage width the layout was last sized to (#172). Recorded by every
       // `applyScale` so a later resize can scale the loose cards — which live only
@@ -662,7 +677,7 @@ let make = (
           let widthTarget = fillFraction *. avail /. Int.toFloat(widestRow) /. cardW
           let heightTarget =
             availH > 0. && heightDenom > 0. ? (availH -. vFixed) /. heightDenom : widthTarget
-          scale := Math.max(minScale, Math.min(1., Math.min(widthTarget, heightTarget)))
+          scale := Math.max(minScale, Math.min(maxScale, Math.min(widthTarget, heightTarget)))
         }
         if width > 0. {
           lastWidth := width
