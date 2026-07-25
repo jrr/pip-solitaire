@@ -12,11 +12,14 @@ on:
 
 jobs:
   claude-review:
-    # Optional: Filter by PR author
-    # if: |
-    #   github.event.pull_request.user.login == 'external-contributor' ||
-    #   github.event.pull_request.user.login == 'new-developer' ||
-    #   github.event.pull_request.author_association == 'FIRST_TIME_CONTRIBUTOR'
+    # Skip Dependabot's PRs. GitHub runs Dependabot-authored pull_request
+    # events with a read-only token and no access to this repo's secrets, so
+    # the review agent can't authenticate or post its findings; on top of that
+    # claude-code-action rejects it outright as a non-human actor (it isn't in
+    # allowed_bots below, and adding it wouldn't fix the token problem). A
+    # version bump has little to review anyway, so skip the job rather than
+    # let every Dependabot PR carry a red check.
+    if: github.event.pull_request.user.login != 'dependabot[bot]'
 
     runs-on: ubuntu-latest
     timeout-minutes: 10
