@@ -471,15 +471,32 @@
 
          These overrides drop only the safe-inset half of each wing margin, leaving
          the plain gutter trim (and gaps before the scene) intact, so the rail sits
-         just inside the inset instead of out in the wing. The attribute + id/class
-         selectors outrank the base rules on specificity, so they win without
-         `!important` regardless of source order; the cards and shaded band already
-         sit clear of the notch (iOS insets both landscape sides symmetrically, so
-         the cards are held safe on both — see CutoutSide), so only the rail moves. */
+         just inside the inset instead of out in the wing. The cards and shaded band
+         already sit clear of the notch (iOS insets both landscape sides symmetrically,
+         so the cards are held safe on both — see CutoutSide), so only the rail moves.
+
+         Specificity here needs care. These selectors outrank the *base* `#top-bar`
+         rule comfortably, but they tie with the `html[data-cutout="right"]` mirror
+         rules above — both are (1,1,1) — so a tie breaks on source order and these,
+         being later, win by default. That is only correct where the two rules mean
+         the same thing. Where the mirror rule sets a margin for a different reason
+         (the gap before the scene rather than a wing trim), the override has to
+         exclude the mirrored case explicitly; see the `:not()` below. */
       @media (orientation: landscape) and (max-height: 500px) {
         /* Left rail (notch left / absent): keep the -0.75rem gutter trim, drop the
-           `-1 * safe-area-inset-left` that pulled the rail into the notch strip. */
-        html[data-notch-wings="off"] #top-bar {
+           `-1 * safe-area-inset-left` that pulled the rail into the notch strip.
+
+           The `:not([data-cutout="right"])` is load-bearing, not decoration. On a
+           right-hand rail the mirror rule above (`html[data-cutout="right"] #top-bar`)
+           sets `margin-left: 0.5rem` — the *gap before the scene*, not a wing trim —
+           via its `margin` shorthand. Both selectors are (1,1,1), so without this
+           guard the tie broke on source order, this later rule won, and the right-hand
+           rail lost its 0.5rem gap for a -0.75rem pull: the Menu/Undo buttons then
+           overhung the shaded band by 12px, sitting over the play area they're
+           supposed to sit beside. Excluding the mirrored case leaves that rule's
+           margin-left alone (and raises this one to (1,2,1) for the cases it does
+           own). See `verify-rail` for the check that pins all four regimes. */
+        html[data-notch-wings="off"]:not([data-cutout="right"]) #top-bar {
           margin-left: -0.75rem;
         }
 
