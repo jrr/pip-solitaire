@@ -84,6 +84,17 @@ description = "Verify the web win overlay end-to-end in a headless browser"
 depends = ["bundle"]
 run = "node packages/web-app/scripts/verify-win.mjs"
 
+# Check the landscape control rail clears the shaded scene band in all four chrome
+# regimes — `data-cutout` left/right × `data-notch-wings` on/off (#204 follow-up).
+# Those rules live in `@media … (max-height: 500px)` blocks, which jsdom skips
+# entirely (it only evaluates media rules carrying the literal `screen` token), so
+# the cascade is only checkable in a real engine — hence a headless-browser task
+# beside `verify-win` rather than a case in `mise run test`.
+[tasks.verify-rail]
+description = "Verify the landscape rail clears the scene band in every chrome regime"
+depends = ["bundle"]
+run = "node packages/web-app/scripts/verify-rail.mjs"
+
 # Install the headless Chromium that `screenshots` drives. Split out from the task
 # itself so a machine that already has a browser (this repo's dev containers) skips
 # the download; CI runs this once before `screenshots`. `--with-deps` also pulls the
