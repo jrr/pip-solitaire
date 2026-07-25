@@ -1,17 +1,21 @@
-// The Settings screen's **Updates** section (#112), lifted out of `Menu` into its
+// The Settings screen's update-check control (#112), lifted out of `Menu` into its
 // own pure component so its states can be exercised in isolation (#201). It's the
 // adaptive refresh button whose `label` and `onClick` adapt to whether a service
 // worker is registered (see Refresh/Main).
 //
-// **The size story (#201).** This section used to carry a transient status line
+// It used to be its own **Updates** section with a heading of its own; the button
+// now lives folded into the **About** footer beside the version line (the update
+// check and the build info belong together), so this component is just the button
+// in its column wrapper — `AboutFooter` supplies the surrounding "About" heading.
+//
+// **The size story (#201).** This control used to carry a transient status line
 // *under* the button ("Checking…", "Up to date") that appeared and disappeared,
-// growing and shrinking the section — a visible reflow of everything below it. The
-// status line is gone: while a check is in flight the button itself shows a
-// spinner and reads **"Checking…"** (`busy`), all on the button's own line, so it
-// changes nothing about the section's height. With no line to come and go, the
-// section is heading + button in every state — trivially size-stable.
-// `RefreshControl_test` pins that: the section's rows are the same whether or not
-// a check is running.
+// growing and shrinking it — a visible reflow of everything below. The status line
+// is gone: while a check is in flight the button itself shows a spinner and reads
+// **"Checking…"** (`busy`), all on the button's own line, so it changes nothing
+// about the height. With no line to come and go, the control is a single button in
+// every state — trivially size-stable. `RefreshControl_test` pins that: its rows
+// are the same whether or not a check is running.
 //
 // A component is just a `props => vnode` function (see `VersionBadge` for why the
 // record is spelled out by hand). The whole section is optional at the *call* site
@@ -27,8 +31,7 @@ type props = {
 }
 
 let make = ({label, busy, onClick}) =>
-  <div className="menu-section" attrs={[("aria-label", "Updates")]}>
-    <h2 className="menu-section__heading"> {Html.string("Updates")} </h2>
+  <div className="menu-section menu-refresh" attrs={[("aria-label", "Updates")]}>
     <button
       className="menu-button"
       onClick={_ => onClick()}

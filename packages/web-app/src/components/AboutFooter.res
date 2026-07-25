@@ -16,6 +16,13 @@
 // `visibility: hidden` also takes the reserved button out of the tab order and out
 // of pointer events; `aria-hidden` mirrors that for assistive tech.
 //
+// **Updates folded in.** The adaptive "Check for updates" button used to sit in a
+// separate **Updates** section above this footer; it now lives here, under the
+// version row, as the `refresh` slot — the build info and the update check read as
+// one "About" block. `refresh` is a ready-made vnode (a `<RefreshControl>` when a
+// service-worker state is known, otherwise an empty node), so the footer stays a
+// dumb layout and `Menu` decides whether there's a button to show.
+//
 // A component is just a `props => vnode` function (see `VersionBadge` for why the
 // record is spelled out by hand).
 type props = {
@@ -23,9 +30,10 @@ type props = {
   buildTime: string,
   updateVisible: bool,
   onReload: unit => unit,
+  refresh: Html.vnode,
 }
 
-let make = ({version, buildTime, updateVisible, onReload}) =>
+let make = ({version, buildTime, updateVisible, onReload, refresh}) =>
   <div className="menu-footer" attrs={[("aria-label", "About")]}>
     <h2 className="menu-section__heading"> {Html.string("About")} </h2>
     <div className="menu-about__row">
@@ -48,4 +56,5 @@ let make = ({version, buildTime, updateVisible, onReload}) =>
         {Html.string("↻ Update")}
       </button>
     </div>
+    {refresh}
   </div>

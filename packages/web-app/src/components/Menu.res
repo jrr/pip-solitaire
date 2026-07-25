@@ -4,11 +4,12 @@
 // flex column growing the empty space between so play controls sit up top and the
 // utility sections hug the foot.
 //
-// The pane has **two screens** (#191): the **main menu** and a dedicated
-// **Settings screen** it swaps to in place, chosen by `settingsOpen`. The
-// **About** footer (version line + Update button) stays put across both — only
-// the content above it swaps. Reopening the menu always lands on the main
-// screen (the chrome resets `settingsOpen` when it closes/opens the menu).
+// The pane has **three screens** (#191, #211): the **main menu**, a dedicated
+// **Settings screen**, and a **Debug screen** nested one level below Settings —
+// which one shows is chosen by the `screen` variant. The **About** footer (version
+// line + update controls) stays put across all three — only the content above it
+// swaps. Reopening the menu always lands on the main screen (the chrome resets
+// `screen` to `Main` when it closes/opens the menu).
 //
 // **Main screen** — top to bottom:
 //   - the **title** ("Pip"), moved here from the retired Home scene, beside the ✕;
@@ -23,42 +24,61 @@
 //   - a single **Settings** button (`onOpenSettings`) low in the menu, just above
 //     the About footer — it takes over the pane with the Settings screen (#191).
 //
-// **Settings screen** (#191) — the toggles and Debug group, relocated here off
-// the main menu to declutter it. Top to bottom:
+// **Settings screen** (#191, #211) — the player-facing preferences, the toggles a
+// player can flip mid-game. Its content flows from the *top* now (#211): the panel
+// grows the space *below* the sections (a `.menu-screen` wrapper takes the slack)
+// so the footer still hugs the foot, but the settings no longer float in the middle
+// under an empty header. Top to bottom:
 //   - a header with a **back** button (`onBackToMenu`, returns to the main menu)
 //     and the ✕ (`onClose`, still closes the whole menu);
-//   - a **Settings** section (#139): the preference toggles a player can flip
-//     mid-game. **Auto-collect** — its state passed in as `autoCollect`, a click
-//     reported out through `onToggleAutoCollect`; and **Hand-placed tilt** (#65) —
-//     the slight resting-card tilt, passed as `cardTilt` and toggled through
-//     `onToggleCardTilt`, for players who'd rather see cards stacked dead-square;
-//     and **Display content around notch** (#204) — whether the landscape rail may
-//     ride out into the corner wings beside the notch (`notchDisplay` /
-//     `onToggleNotchDisplay`); off clamps every control inside the safe area;
-//   - a **"Debug"** section (#185) gathering the two collapsible groups that were the
-//     old "Debug scenes"/"Debug states": the debug/demo scenes (`debugScenes`, now
-//     labelled just "scenes") and the named starting positions (`debugStates`,
-//     "states") a tap drops the board into (`Scenario`), the menu twin of `?state=`,
-//     plus the **Safe-area overlay** toggle.
+//   - a **Settings** section (#139): each preference is a toggle row carrying a
+//     one-line description under its label (#211). **Auto-collect** — state passed
+//     as `autoCollect`, toggled through `onToggleAutoCollect`; **Hand-placed tilt**
+//     (#65) — the slight resting-card tilt, `cardTilt` / `onToggleCardTilt`, for
+//     players who'd rather see cards stacked dead-square; and **Display content
+//     around notch** (#204) — whether the landscape rail may ride out into the
+//     corner wings beside the notch (`notchDisplay` / `onToggleNotchDisplay`); off
+//     clamps every control inside the safe area;
+//   - a **Debug** nav row (`onOpenDebug`) that opens the Debug screen — the debug
+//     tools moved off Settings entirely (#211) onto their own screen so the player
+//     preferences stand alone.
 //
-// The **About** footer sits at the foot of both screens — the build/version line
-// and, when a service-worker update is waiting, a short note plus the green
-// **Update now** button (#165). The update control lived on the top bar before
-// (#109); it moved here so the bar no longer carries an always-present slot for a
-// rare action, and its availability is now flagged by a pip on the bar's Menu
-// button instead. That footer, and the Settings screen's **Updates** section, are
-// each their own pure component now (`<AboutFooter>` / `<RefreshControl>`), lifted
-// out so their size-across-state can be pinned in isolation (#201) — see those
-// files for the "don't wiggle" story.
+// **Debug screen** (#211) — the developer tools that used to sit at the foot of the
+// Settings screen, relocated onto their own screen a level below it. Top to bottom:
+//   - a header whose **back** button (`onBackToSettings`) returns to Settings — one
+//     step back up, not all the way out — beside the ✕;
+//   - the two collapsible groups that were the old "Debug scenes"/"Debug states":
+//     the debug/demo scenes (`debugScenes`, labelled "scenes") and the named
+//     starting positions (`debugStates`, "states") a tap drops the board into
+//     (`Scenario`), the menu twin of `?state=`, plus the **Safe-area overlay**
+//     toggle (`cutoutDebug` / `onToggleCutoutDebug`).
+//
+// The **About** footer sits at the foot of every screen — the build/version line
+// and, when a service-worker update is waiting, the green **Update** button (#165).
+// The adaptive **update-check** button (#112) folds into that footer too now (#211):
+// it used to be its own "Updates" section above About; the build info and the
+// update check belong together, so `Menu` hands the footer a `refresh` vnode (a
+// `<RefreshControl>` when a worker state is known, an empty node otherwise) and the
+// footer tucks it under the version row. Both `<AboutFooter>` and `<RefreshControl>`
+// are their own pure components, lifted out so their size-across-state can be pinned
+// in isolation (#201) — see those files for the "don't wiggle" story.
 //
 // It's a pure `props => vnode` in the `VersionBadge` mold (see VersionBadge for
 // why the record is spelled out by hand). Open/closed and which-screen are chrome
-// model state passed in as `open_`/`settingsOpen`; a click on the backdrop or the
-// close button calls `onClose`. The scene rows are an externally-owned real DOM node (the
+// model state passed in as `open_`/`screen`; a click on the backdrop or the close
+// button calls `onClose`. The scene rows are an externally-owned real DOM node (the
 // switcher owns them), spliced with `Html.node` so the reconciler leaves them be
 // across open/close re-renders. Layout lives in index.html.
 
-// The adaptive refresh control on the Settings screen (#112): one button whose
+// Which of the pane's three screens is showing (#191, #211). Reopening the menu
+// resets this to `Main` (see the chrome model), so a visit to Settings/Debug never
+// lingers into the next open.
+type screen =
+  | Main
+  | Settings
+  | Debug
+
+// The adaptive refresh control folded into the About footer (#112): one button whose
 // `label` and click behaviour adapt to whether a service worker is registered
 // ("Refresh" force-reloads a cache-only install; "Check for updates" checks a
 // real install without applying — see Refresh/Main). `busy` spins the on-button
@@ -72,10 +92,12 @@ type refreshButton = {
 
 type props = {
   open_: bool,
-  settingsOpen: bool,
+  screen: screen,
   onClose: unit => unit,
   onOpenSettings: unit => unit,
   onBackToMenu: unit => unit,
+  onOpenDebug: unit => unit,
+  onBackToSettings: unit => unit,
   onNewGame: unit => unit,
   onRestart: unit => unit,
   games: Html.element,
@@ -96,12 +118,31 @@ type props = {
   onReload: unit => unit,
 }
 
+// A settings toggle row (#139, #211): the label with a one-line description under
+// it on the left, a switch track on the right. It's a `<button role="switch">` —
+// the Html runtime only wires clicks, so the switch is a plain button, not a
+// checkbox — and toggling `--on` slides the knob and greens the track.
+let toggleRow = (~label, ~desc, ~on, ~onToggle) =>
+  <button
+    className={on ? "menu-toggle menu-toggle--on" : "menu-toggle"}
+    onClick={_ => onToggle()}
+    attrs={[("type", "button"), ("role", "switch"), ("aria-checked", on ? "true" : "false")]}
+  >
+    <span className="menu-toggle__text">
+      <span className="menu-toggle__label"> {Html.string(label)} </span>
+      <span className="menu-toggle__desc"> {Html.string(desc)} </span>
+    </span>
+    <span className="menu-toggle__switch" />
+  </button>
+
 let make = ({
   open_,
-  settingsOpen,
+  screen,
   onClose,
   onOpenSettings,
   onBackToMenu,
+  onOpenDebug,
+  onBackToSettings,
   onNewGame,
   onRestart,
   games,
@@ -120,130 +161,139 @@ let make = ({
   buildTime,
   updateVisible,
   onReload,
-}) =>
+}) => {
+  // A ✕ that closes the whole menu — the same control in every screen's header.
+  let closeButton =
+    <button
+      className="menu-close"
+      onClick={_ => onClose()}
+      attrs={[("type", "button"), ("aria-label", "Close menu")]}
+    >
+      {Html.string("✕")}
+    </button>
+
+  // A header back button: `label` names where it returns to, `onClick` goes there.
+  let backButton = (~label, ~onClick) =>
+    <button
+      className="menu-back"
+      onClick={_ => onClick()}
+      attrs={[("type", "button"), ("aria-label", label)]}
+    >
+      {Html.string("‹ Back")}
+    </button>
+
+  // The About footer, shown at the foot of every screen. `refresh` is the folded-in
+  // update-check button (#211): present on the Settings/Debug screens where a
+  // service-worker state has been detected, empty on the main menu.
+  let aboutFooter = (~refresh) => <AboutFooter version buildTime updateVisible onReload refresh />
+
+  let refreshNode = switch refreshButton {
+  | None => Html.array([])
+  | Some({label, busy, onClick}) => <RefreshControl label busy onClick />
+  }
+
   <div id="menu-overlay" hidden={!open_}>
     <div className="menu-overlay__backdrop" onClick={_ => onClose()} />
     <aside className="menu-panel" attrs={[("aria-label", "Menu")]}>
-      {settingsOpen
-        ? <>
-            <div className="menu-panel__header">
-              <button
-                className="menu-back"
-                onClick={_ => onBackToMenu()}
-                attrs={[("type", "button"), ("aria-label", "Back to menu")]}
-              >
-                {Html.string("‹ Back")}
-              </button>
-              <h1 className="menu-title"> {Html.string("Settings")} </h1>
-              <button
-                className="menu-close"
-                onClick={_ => onClose()}
-                attrs={[("type", "button"), ("aria-label", "Close menu")]}
-              >
-                {Html.string("✕")}
-              </button>
-            </div>
-            <div className="menu-section menu-section--bottom" attrs={[("aria-label", "Settings")]}>
+      {switch screen {
+      | Settings =>
+        <>
+          <div className="menu-panel__header">
+            {backButton(~label="Back to menu", ~onClick=onBackToMenu)}
+            <h1 className="menu-title"> {Html.string("Settings")} </h1>
+            {closeButton}
+          </div>
+          <div className="menu-screen">
+            <div className="menu-section" attrs={[("aria-label", "Settings")]}>
               <h2 className="menu-section__heading"> {Html.string("Settings")} </h2>
-              <button
-                className={autoCollect ? "menu-toggle menu-toggle--on" : "menu-toggle"}
-                onClick={_ => onToggleAutoCollect()}
-                attrs={[
-                  ("type", "button"),
-                  ("role", "switch"),
-                  ("aria-checked", autoCollect ? "true" : "false"),
-                ]}
-              >
-                <span className="menu-toggle__label"> {Html.string("Auto-collect")} </span>
-                <span className="menu-toggle__switch" />
-              </button>
-              <button
-                className={cardTilt ? "menu-toggle menu-toggle--on" : "menu-toggle"}
-                onClick={_ => onToggleCardTilt()}
-                attrs={[
-                  ("type", "button"),
-                  ("role", "switch"),
-                  ("aria-checked", cardTilt ? "true" : "false"),
-                ]}
-              >
-                <span className="menu-toggle__label"> {Html.string("Hand-placed tilt")} </span>
-                <span className="menu-toggle__switch" />
-              </button>
-              <button
-                className={notchDisplay ? "menu-toggle menu-toggle--on" : "menu-toggle"}
-                onClick={_ => onToggleNotchDisplay()}
-                attrs={[
-                  ("type", "button"),
-                  ("role", "switch"),
-                  ("aria-checked", notchDisplay ? "true" : "false"),
-                ]}
-              >
-                <span className="menu-toggle__label">
-                  {Html.string("Display content around notch")}
-                </span>
-                <span className="menu-toggle__switch" />
-              </button>
+              {toggleRow(
+                ~label="Auto-collect",
+                ~desc="Send cards to the foundations for you as soon as they're ready.",
+                ~on=autoCollect,
+                ~onToggle=onToggleAutoCollect,
+              )}
+              {toggleRow(
+                ~label="Hand-placed tilt",
+                ~desc="Give resting cards a slight, hand-dealt tilt.",
+                ~on=cardTilt,
+                ~onToggle=onToggleCardTilt,
+              )}
+              {toggleRow(
+                ~label="Display content around notch",
+                ~desc="Let the controls reach into the corners beside the camera notch.",
+                ~on=notchDisplay,
+                ~onToggle=onToggleNotchDisplay,
+              )}
             </div>
+            <nav className="menu-section" attrs={[("aria-label", "More")]}>
+              <button
+                className="menu-nav-row" onClick={_ => onOpenDebug()} attrs={[("type", "button")]}
+              >
+                <span className="menu-nav-row__label"> {Html.string("Debug")} </span>
+                <span className="menu-nav-row__chevron" attrs={[("aria-hidden", "true")]}>
+                  {Html.string("›")}
+                </span>
+              </button>
+            </nav>
+          </div>
+          {aboutFooter(~refresh=refreshNode)}
+        </>
+      | Debug =>
+        <>
+          <div className="menu-panel__header">
+            {backButton(~label="Back to settings", ~onClick=onBackToSettings)}
+            <h1 className="menu-title"> {Html.string("Debug")} </h1>
+            {closeButton}
+          </div>
+          <div className="menu-screen">
             <nav className="menu-section" attrs={[("aria-label", "Debug")]}>
-              <h2 className="menu-section__heading"> {Html.string("Debug")} </h2>
               {Html.node(debugScenes)}
               {Html.node(debugStates)}
-              <button
-                className={cutoutDebug ? "menu-toggle menu-toggle--on" : "menu-toggle"}
-                onClick={_ => onToggleCutoutDebug()}
-                attrs={[
-                  ("type", "button"),
-                  ("role", "switch"),
-                  ("aria-checked", cutoutDebug ? "true" : "false"),
-                ]}
-              >
-                <span className="menu-toggle__label"> {Html.string("Safe-area overlay")} </span>
-                <span className="menu-toggle__switch" />
-              </button>
+              {toggleRow(
+                ~label="Safe-area overlay",
+                ~desc="Outline the device safe area to check cutout handling.",
+                ~on=cutoutDebug,
+                ~onToggle=onToggleCutoutDebug,
+              )}
             </nav>
-            {switch refreshButton {
-            | None => Html.array([])
-            | Some({label, busy, onClick}) => <RefreshControl label busy onClick />
-            }}
-          </>
-        : <>
-            <div className="menu-panel__header">
-              <h1 className="menu-title"> {Html.string("Pip")} </h1>
+          </div>
+          {aboutFooter(~refresh=refreshNode)}
+        </>
+      | Main =>
+        <>
+          <div className="menu-panel__header">
+            <h1 className="menu-title"> {Html.string("Pip")} </h1>
+            {closeButton}
+          </div>
+          <div className="menu-section" attrs={[("aria-label", "This game")]}>
+            <h2 className="menu-section__heading"> {Html.string("This game")} </h2>
+            <div className="menu-buttons">
               <button
-                className="menu-close"
-                onClick={_ => onClose()}
-                attrs={[("type", "button"), ("aria-label", "Close menu")]}
+                className="menu-button" onClick={_ => onNewGame()} attrs={[("type", "button")]}
               >
-                {Html.string("✕")}
+                {Html.string("New Game")}
+              </button>
+              <button
+                className="menu-button" onClick={_ => onRestart()} attrs={[("type", "button")]}
+              >
+                {Html.string("Restart")}
               </button>
             </div>
-            <div className="menu-section" attrs={[("aria-label", "This game")]}>
-              <h2 className="menu-section__heading"> {Html.string("This game")} </h2>
-              <div className="menu-buttons">
-                <button
-                  className="menu-button" onClick={_ => onNewGame()} attrs={[("type", "button")]}
-                >
-                  {Html.string("New Game")}
-                </button>
-                <button
-                  className="menu-button" onClick={_ => onRestart()} attrs={[("type", "button")]}
-                >
-                  {Html.string("Restart")}
-                </button>
-              </div>
-            </div>
-            <nav className="menu-section" attrs={[("aria-label", "Games")]}>
-              <h2 className="menu-section__heading"> {Html.string("Games")} </h2>
-              {Html.node(games)}
-            </nav>
-            <div className="menu-section menu-section--bottom">
-              <button
-                className="menu-button" onClick={_ => onOpenSettings()} attrs={[("type", "button")]}
-              >
-                {Html.string("Settings")}
-              </button>
-            </div>
-          </>}
-      <AboutFooter version buildTime updateVisible onReload />
+          </div>
+          <nav className="menu-section" attrs={[("aria-label", "Games")]}>
+            <h2 className="menu-section__heading"> {Html.string("Games")} </h2>
+            {Html.node(games)}
+          </nav>
+          <div className="menu-section menu-section--bottom">
+            <button
+              className="menu-button" onClick={_ => onOpenSettings()} attrs={[("type", "button")]}
+            >
+              {Html.string("Settings")}
+            </button>
+          </div>
+          {aboutFooter(~refresh=Html.array([]))}
+        </>
+      }}
     </aside>
   </div>
+}
