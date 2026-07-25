@@ -55,7 +55,7 @@ type model = {
   buildTime: string,
   updateAvailable: bool,
   menuOpen: bool,
-  // Which screen the open menu shows (#191, #211): the main menu, the Settings
+  // Which screen the open menu shows (#191): the main menu, the Settings
   // screen, or the Debug screen nested below it. Reset to `Main` whenever the menu
   // opens or closes, so reopening always lands on the main menu.
   menuScreen: Menu.screen,
@@ -84,8 +84,8 @@ type msg =
   | CloseMenu // backdrop / close button / a scene row was tapped
   | OpenSettings // the main menu's Settings button — swap to the Settings screen (#191)
   | BackToMenu // the Settings screen's back button — swap back to the main menu (#191)
-  | OpenDebug // the Settings screen's Debug row — swap to the Debug screen (#211)
-  | BackToSettings // the Debug screen's back button — swap back to Settings (#211)
+  | OpenDebug // the Settings screen's Debug row — swap to the Debug screen
+  | BackToSettings // the Debug screen's back button — swap back to Settings
   | ToggleAutoCollect // the menu's Auto-collect switch (#139)
   | ToggleCardTilt // the menu's hand-placed-tilt switch (#65)
   | ToggleNotchDisplay // the menu's "Display content around screen notch" switch (#204)
@@ -452,7 +452,7 @@ let dispatch = Html.mount(
     buildTime,
     updateAvailable: false,
     menuOpen: false,
-    // The menu opens on its main screen; Settings and Debug are swap-ins (#191, #211).
+    // The menu opens on its main screen; Settings and Debug are swap-ins (#191).
     menuScreen: Menu.Main,
     // Mirror the persisted preferences so the menu's switches open in the right
     // position (the board reads the `options` and `tiltEnabled` refs directly).

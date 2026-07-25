@@ -4,7 +4,7 @@
 // flex column growing the empty space between so play controls sit up top and the
 // utility sections hug the foot.
 //
-// The pane has **three screens** (#191, #211): the **main menu**, a dedicated
+// The pane has **three screens** (#191): the **main menu**, a dedicated
 // **Settings screen**, and a **Debug screen** nested one level below Settings —
 // which one shows is chosen by the `screen` variant. The **About** footer (version
 // line + update controls) stays put across all three — only the content above it
@@ -24,15 +24,15 @@
 //   - a single **Settings** button (`onOpenSettings`) low in the menu, just above
 //     the About footer — it takes over the pane with the Settings screen (#191).
 //
-// **Settings screen** (#191, #211) — the player-facing preferences, the toggles a
-// player can flip mid-game. Its content flows from the *top* now (#211): the panel
+// **Settings screen** (#191) — the player-facing preferences, the toggles a
+// player can flip mid-game. Its content flows from the *top* now: the panel
 // grows the space *below* the sections (a `.menu-screen` wrapper takes the slack)
 // so the footer still hugs the foot, but the settings no longer float in the middle
 // under an empty header. Top to bottom:
 //   - a header with a **back** button (`onBackToMenu`, returns to the main menu)
 //     and the ✕ (`onClose`, still closes the whole menu);
 //   - the preference toggles (#139), one per row with a one-line description under
-//     its label (#211); no section heading — the "Settings" title in the header
+//     its label; no section heading — the "Settings" title in the header
 //     already names them. **Auto-collect** — state passed as `autoCollect`, toggled
 //     through `onToggleAutoCollect`; **Sloppy placement** (#65) — the slight
 //     resting-card tilt, `cardTilt` / `onToggleCardTilt`, for players who'd rather
@@ -41,10 +41,10 @@
 //     (`notchDisplay` / `onToggleNotchDisplay`); off clamps every control inside the
 //     safe area;
 //   - a **Debug** nav row (`onOpenDebug`) that opens the Debug screen — the debug
-//     tools moved off Settings entirely (#211) onto their own screen so the player
+//     tools moved off Settings entirely onto their own screen so the player
 //     preferences stand alone.
 //
-// **Debug screen** (#211) — the developer tools that used to sit at the foot of the
+// **Debug screen** — the developer tools that used to sit at the foot of the
 // Settings screen, relocated onto their own screen a level below it. Top to bottom:
 //   - a header whose **back** button (`onBackToSettings`) returns to Settings — one
 //     step back up, not all the way out — beside the ✕;
@@ -56,7 +56,7 @@
 //
 // The **About** footer sits at the foot of every screen — the build/version line
 // and, when a service-worker update is waiting, the green **Update** button (#165).
-// The adaptive **update-check** button (#112) folds into that footer too now (#211):
+// The adaptive **update-check** button (#112) folds into that footer too now:
 // it used to be its own "Updates" section above About; the build info and the
 // update check belong together, so `Menu` hands the footer a `refresh` vnode (a
 // `<RefreshControl>` when a worker state is known, an empty node otherwise) and the
@@ -71,7 +71,7 @@
 // switcher owns them), spliced with `Html.node` so the reconciler leaves them be
 // across open/close re-renders. Layout lives in index.html.
 
-// Which of the pane's three screens is showing (#191, #211). Reopening the menu
+// Which of the pane's three screens is showing (#191). Reopening the menu
 // resets this to `Main` (see the chrome model), so a visit to Settings/Debug never
 // lingers into the next open.
 type screen =
@@ -119,7 +119,7 @@ type props = {
   onReload: unit => unit,
 }
 
-// A settings toggle row (#139, #211): the label with a one-line description under
+// A settings toggle row (#139): the label with a one-line description under
 // it on the left, a switch track on the right. It's a `<button role="switch">` —
 // the Html runtime only wires clicks, so the switch is a plain button, not a
 // checkbox — and toggling `--on` slides the knob and greens the track.
@@ -184,7 +184,7 @@ let make = ({
     </button>
 
   // The About footer, shown at the foot of every screen. `refresh` is the folded-in
-  // update-check button (#211): present on the Settings/Debug screens where a
+  // update-check button: present on the Settings/Debug screens where a
   // service-worker state has been detected, empty on the main menu.
   let aboutFooter = (~refresh) => <AboutFooter version buildTime updateVisible onReload refresh />
 
