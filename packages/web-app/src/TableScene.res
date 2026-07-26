@@ -126,14 +126,15 @@ external animateZ: (
 
 // The double-tap "where can this go?" hint (#197, reworked in #217): when no
 // foundation will take a double-tapped card but it can still move, each legal
-// destination flashes a strong translucent-yellow mask so the card underneath goes
-// mostly-yellow for a beat, then clears. The mask is a throwaway `.hint-mask` div
-// pulsed over the *individual eligible card* — the exposed bottom card of the target
-// pile — rather than the whole column's drop zone; an empty target lights its slot
-// placeholder instead. Free cells are never hinted (they're the obvious park spot).
-// A WAAPI animation on `opacity` (looped for the pulse) with the same
-// `element.animate` the deal/finish flights use; `setOnFinish` removes the mask when
-// the pulse ends. Purely informational: it moves no card and selects nothing.
+// destination flashes a strong translucent-green mask (the menu's accent green) so the
+// card underneath goes mostly-green for a beat, then clears. The mask is a throwaway
+// `.hint-mask` div pulsed over the *individual eligible card* — the exposed bottom card
+// of the target pile — rather than the whole column's drop zone. Free cells (the
+// obvious park spot) and empty board spaces are never hinted, so only the exposed card
+// of an occupied pile lights. A WAAPI animation on `opacity` (looped for the pulse)
+// with the same `element.animate` the deal/finish flights use; `setOnFinish` removes
+// the mask when the pulse ends. Purely informational: it moves no card and selects
+// nothing.
 @send
 external animateMask: (
   WebDom.element,
@@ -184,10 +185,6 @@ type dropZone = {
   el: WebDom.element,
   index: int,
   stacking: Game.stacking,
-  // The card-sized placeholder inside `el` (the `.drop-zone__slot`). Held so the
-  // double-tap hint can light an *empty* target's slot — there's no card to flash —
-  // matching where a card would rest (see `flashMoveTargets`).
-  slot: WebDom.element,
 }
 // A draggable card node: its identity, its element, its live playfield-local
 // position, and whether it may be picked up right now. Where it *rests* is no
@@ -624,7 +621,7 @@ let make = (
         slot->WebDom.setAttribute("class", "drop-zone__slot")
         el->WebDom.appendChild(slot)->ignore
         rowFor(pile)->WebDom.appendChild(el)->ignore
-        {el, index, stacking: pile.stacking, slot}
+        {el, index, stacking: pile.stacking}
       })
 
       // The widest row's pile count drives the card scale below: with the piles
@@ -1349,11 +1346,10 @@ let make = (
 
         // When no foundation will take a double-tapped card but it can still move
         // somewhere, flash those destinations instead of sending it home (#197): each
-        // legal pile's *drop zone* lights up like a live drag hover, then clears.
-        // Purely informational: no card moves, nothing is selected, `state` is
-        // untouched. Lighting the zone (rather than the top card / empty slot) works
-        // uniformly for occupied and empty piles alike and mirrors the `--over`
-        // highlight the same drop would show mid-drag.
+        // legal target's *exposed card* pulses a green mask, then clears. Purely
+        // informational: no card moves, nothing is selected, `state` is untouched.
+        // Free cells and empty board spaces are never hinted (#217) — only the eligible
+        // card of an occupied pile lights, matching the menu's accent green.
         //
         // Reduced-motion users still get the information (#197 review): a colour fade
         // carries no movement, so instead of dropping the hint entirely the pulse
@@ -1362,8 +1358,8 @@ let make = (
         // which implements neither.)
         let flashMoveTargets = (moves: array<Reducer.move>) => {
           let reduceMotion = matchMedia("(prefers-reduced-motion: reduce)")["matches"]
-          // The mask goes mostly-yellow at its peak — opaque enough to read the card as
-          // "yellow for a frame or two" (#217) while a little translucency keeps the pip
+          // The mask goes mostly-green at its peak — opaque enough to read the card as
+          // "green for a frame or two" (#217) while a little translucency keeps the pip
           // showing through — then fades to nothing. No `fill`, so the mask ends fully
           // transparent (and is removed on finish anyway). Reduced-motion users get a
           // single hold-then-fade rather than the two-beat pulse: the colour still lands
@@ -1387,29 +1383,26 @@ let make = (
                 ],
                 {"duration": 500., "iterations": 2, "easing": "ease-in-out"},
               )
-          // Pulse a throwaway `.hint-mask` over one element — a card wrapper or an empty
-          // pile's slot, both card-sized — and drop it when the pulse ends.
+          // Pulse a throwaway `.hint-mask` over one eligible card wrapper (card-sized)
+          // and drop it when the pulse ends.
           let flash = el => {
             let mask = WebDom.createElement("div")
             mask->WebDom.setAttribute("class", "hint-mask")
             el->WebDom.appendChild(mask)->ignore
             animateMask(mask, keyframes, options)->setOnFinish(() => mask->WebDom.remove)
           }
-          // Never hint free cells — they're the obvious park spot (#217). Each remaining
-          // target lights its *individual eligible card* (the exposed bottom card of the
-          // pile the drop would land on); an empty target has no such card, so its slot
-          // placeholder lights instead.
+          // Never hint free cells — they're the obvious park spot (#217) — nor a blank
+          // space on the board: an empty target (an empty cascade) is skipped entirely
+          // rather than lighting its slot placeholder. Each remaining target lights its
+          // *individual eligible card* — the exposed bottom card of the pile the drop
+          // would land on.
           moves
           ->Array.filter(({role}) => role != Game.FreeCell)
           ->Array.forEach(({to: i}) => {
             let cards = GameState.cardsInPile(state.contents, i)
             switch cards->Array.get(Array.length(cards) - 1)->Option.flatMap(nodeFor) {
             | Some(node) => flash(node.wrapper)
-            | None =>
-              switch zones->Array.find(z => z.index == i) {
-              | Some(zone) => flash(zone.slot)
-              | None => ()
-              }
+            | None => ()
             }
           })
         }
