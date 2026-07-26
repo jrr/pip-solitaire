@@ -136,6 +136,19 @@ description = "Generate the web-app PWA icons from the card art"
 depends = ["build"]
 run = "node packages/web-app/scripts/generate-icons.mjs"
 
+# Regenerate the link-preview (Open Graph) image in packages/web-app/public
+# (issue #221). Unlike `icons`, which composes an SVG from the card art, the
+# preview is meant to look like gameplay, so it's a crop of the *actually rendered*
+# mid-game FreeCell board — driven through the same headless Chromium the
+# `screenshots` task uses, at a 2× (high-DPI) device scale for a crisp unfurl.
+# `depends = ["bundle"]` so it shoots the real built site; the output (og-image.png)
+# is committed like the icons and picked up by `bundle`'s public/ copy. The browser
+# is Playwright's; `playwright-install` fetches it on a clean runner.
+[tasks.og-image]
+description = "Generate the link-preview image from a rendered mid-game board"
+depends = ["bundle"]
+run = "node packages/web-app/scripts/generate-og-image.mjs"
+
 # Refresh the lockfile after changing dependencies (CI installs with a frozen
 # lockfile, so it must be committed in sync with the package.json files).
 [tasks.relock]
