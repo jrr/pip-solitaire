@@ -1154,6 +1154,27 @@
         }
       }
 
+      /* The double-tap "where can this go?" hint mask (#217). A throwaway div
+         TableScene.res pulses over one eligible target card (card-sized), driving it
+         mostly-green for a beat, then removing it. Solid accent green (#22c55e — the
+         same "go" green the menu and the drop-zone hover highlight wear) at full
+         strength; the `opacity` WAAPI animation holds it a touch translucent so the pip
+         reads through, and fades it out. It covers its parent's box exactly
+         (`.stacking-card` is card width × height) and traces the card's corners.
+         `pointer-events: none` keeps it clear of hit-testing; `opacity: 0` is the
+         resting state the animation starts and ends at. */
+      .hint-mask {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 100%;
+        height: 100%;
+        border-radius: var(--card-radius);
+        background: #22c55e;
+        opacity: 0;
+        pointer-events: none;
+      }
+
       /* A draggable card. It's moved by writing style.left/top; the transition
          animates the snap-into-place on drop, and is switched off while dragging
          (below) so the card tracks the pointer without lag.
@@ -1327,7 +1348,7 @@
         }
       }
     </style>
-    <script type="module" crossorigin src="./assets/index-DT1XfrGU.js"></script>
+    <script type="module" crossorigin src="./assets/index-BZPNmC8W.js"></script>
   <link rel="manifest" href="./manifest.webmanifest"></head>
   <body>
     <!-- Vite resolves the bare `core/…` specifier the compiled entry imports
