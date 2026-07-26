@@ -1154,6 +1154,27 @@
         }
       }
 
+      /* The double-tap "where can this go?" hint mask (#217). A throwaway div
+         TableScene.res pulses over one eligible target — a card wrapper or an empty
+         pile's slot, both card-sized — driving it mostly-yellow for a beat, then
+         removing it. Solid yellow at full strength; the `opacity` WAAPI animation
+         holds it a touch translucent so the pip reads through, and fades it out. It
+         covers its parent's box exactly (`.stacking-card` and `.drop-zone__slot` are
+         both card width × height) and traces the card's corners. `pointer-events:
+         none` keeps it clear of hit-testing; `opacity: 0` is the resting state the
+         animation starts and ends at. */
+      .hint-mask {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 100%;
+        height: 100%;
+        border-radius: var(--card-radius);
+        background: #facc15;
+        opacity: 0;
+        pointer-events: none;
+      }
+
       /* A draggable card. It's moved by writing style.left/top; the transition
          animates the snap-into-place on drop, and is switched off while dragging
          (below) so the card tracks the pointer without lag.
