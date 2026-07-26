@@ -48,9 +48,11 @@
 // Settings screen, relocated onto their own screen a level below it. Top to bottom:
 //   - a header whose **back** button (`onBackToSettings`) returns to Settings — one
 //     step back up, not all the way out — beside the ✕;
-//     the **Safe-area overlay** toggle (`cutoutDebug` / `onToggleCutoutDebug`) up
-//     top, then the two collapsible groups that were the old "Debug scenes"/"Debug
-//     states": the debug/demo scenes (`debugScenes`, labelled "scenes") and the named
+//     the **Safe-area overlay** toggle (`cutoutDebug` / `onToggleCutoutDebug`) and
+//     the **Console logging** toggle (`debugLog` / `onToggleDebugLog`, #213 — narrates
+//     the UI↔core traffic to the JS console) up top, then the two collapsible groups
+//     that were the old "Debug scenes"/"Debug states": the debug/demo scenes
+//     (`debugScenes`, labelled "scenes") and the named
 //     starting positions (`debugStates`, "states") a tap drops the board into
 //     (`Scenario`), the menu twin of `?state=`.
 //
@@ -106,6 +108,8 @@ type props = {
   debugStates: Html.element,
   cutoutDebug: bool,
   onToggleCutoutDebug: unit => unit,
+  debugLog: bool,
+  onToggleDebugLog: unit => unit,
   autoCollect: bool,
   onToggleAutoCollect: unit => unit,
   cardTilt: bool,
@@ -151,6 +155,8 @@ let make = ({
   debugStates,
   cutoutDebug,
   onToggleCutoutDebug,
+  debugLog,
+  onToggleDebugLog,
   autoCollect,
   onToggleAutoCollect,
   cardTilt,
@@ -252,6 +258,12 @@ let make = ({
                 ~desc="Outline the device safe area to check cutout handling.",
                 ~on=cutoutDebug,
                 ~onToggle=onToggleCutoutDebug,
+              )}
+              {toggleRow(
+                ~label="Console logging",
+                ~desc="Log every UI↔core interaction to the browser console.",
+                ~on=debugLog,
+                ~onToggle=onToggleDebugLog,
               )}
               {Html.node(debugScenes)}
               {Html.node(debugStates)}

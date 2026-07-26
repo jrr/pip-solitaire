@@ -21,6 +21,7 @@
 let autoCollectKey = "pip.autoCollect"
 let cardTiltKey = "pip.cardTilt"
 let notchDisplayKey = "pip.notchDisplay"
+let debugLogKey = "pip.debugLog"
 
 // Read a boolean flag from storage, treating only an explicit "false" as off; a
 // missing, garbage, or unreadable value keeps the on-by-default `fallback`. This
@@ -72,3 +73,10 @@ let saveCardTilt = (enabled: bool) => saveFlag(cardTiltKey, enabled)
 // the shared `Options.t`.
 let loadNotchDisplay = (): bool => loadFlag(notchDisplayKey, ~fallback=true)
 let saveNotchDisplay = (enabled: bool) => saveFlag(notchDisplayKey, enabled)
+
+// "Console logging" (#213) defaults off — a developer aid that narrates the app's
+// UI↔Core traffic to the JS console, not something a player wants running. Unlike
+// the session-only safe-area overlay it *is* persisted, so a developer who turns it
+// on still sees logs after a reload (see DebugLog / the menu's Debug screen).
+let loadDebugLog = (): bool => loadFlag(debugLogKey, ~fallback=false)
+let saveDebugLog = (enabled: bool) => saveFlag(debugLogKey, enabled)
