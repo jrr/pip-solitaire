@@ -124,19 +124,23 @@ external animateZ: (
   {"duration": float, "delay": float, "fill": string},
 ) => animation = "animate"
 
-// The double-tap "where can this go?" flash (#197): when no foundation will take a
-// double-tapped card but it can still move, each legal destination pulses a
-// translucent yellow glow twice, then clears itself. A WAAPI `filter: drop-shadow`
-// animation with no `fill`, so the element snaps back to its resting filter when the
-// pulse ends — the glow traces each card's silhouette and each empty slot's outline.
-// The same `element.animate` the deal/finish flights use, keyed on `filter` rather
-// than `transform` and looped (`iterations`) for the double pulse. Purely
-// informational: it moves no card and is untracked (unlike the flight animations,
-// nothing hangs off its finish or a cancel).
+// The double-tap "where can this go?" hint (#197): when no foundation will take a
+// double-tapped card but it can still move, each legal destination's *drop zone*
+// lights up with the same dashed frame + translucent fill a live drag hover shows
+// (`.drop-zone--over`), so the hint reads as exactly what it is — "these are the
+// drops a hand-drag would accept". Earlier this pulsed a `filter: drop-shadow` on
+// each target card/slot, but a shadow only tints the pixels the element actually
+// paints, so an empty zone (a 1px dashed hairline) barely changed; lighting the zone
+// frame is both visible and consistent with the hover it mirrors. A WAAPI animation
+// on `borderColor`/`backgroundColor` with no `fill`, so each zone snaps back to its
+// resting (transparent) frame when the pulse ends. The same `element.animate` the
+// deal/finish flights use, keyed on the frame colours and looped (`iterations`) for
+// the pulse. Purely informational: it moves no card and is untracked (unlike the
+// flight animations, nothing hangs off its finish or a cancel).
 @send
-external animateGlow: (
+external animateHint: (
   WebDom.element,
-  array<{"filter": string, "offset": float}>,
+  array<{"borderColor": string, "backgroundColor": string, "offset": float}>,
   {"duration": float, "iterations": int, "easing": string},
 ) => animation = "animate"
 
@@ -1300,36 +1304,50 @@ let make = (
 
         // When no foundation will take a double-tapped card but it can still move
         // somewhere, flash those destinations instead of sending it home (#197): each
-        // target glows translucent yellow twice, then clears — the top card of an
-        // occupied pile, or the empty slot of a vacant free cell / cascade. Purely
-        // informational: no card moves, nothing is selected, `state` is untouched.
-        // Honours the OS "reduce motion" preference by skipping the pulse, exactly as
-        // the deal and finish flights skip their motion (and, incidentally, keeping
-        // clear of jsdom, which implements neither `matchMedia` nor `Element.animate`).
-        let flashMoveTargets = (moves: array<Reducer.move>) =>
-          if !matchMedia("(prefers-reduced-motion: reduce)")["matches"] {
-            moves->Array.forEach(({to: i}) => {
-              // The element that stands for this destination: the top card's node if
-              // the pile holds one, else the empty zone slot.
-              let el = switch GameState.topOf(state.contents, i) {
-              | Some(top) => nodeFor(top)->Option.map(c => c.wrapper)
-              | None => zones->Array.find(z => z.index == i)->Option.map(z => z.el)
-              }
-              switch el {
-              | Some(el) =>
-                animateGlow(
-                  el,
-                  [
-                    {"filter": "drop-shadow(0 0 0 rgba(250, 204, 21, 0))", "offset": 0.},
-                    {"filter": "drop-shadow(0 0 10px rgba(250, 204, 21, 0.9))", "offset": 0.5},
-                    {"filter": "drop-shadow(0 0 0 rgba(250, 204, 21, 0))", "offset": 1.},
-                  ],
-                  {"duration": 420., "iterations": 2, "easing": "ease-in-out"},
-                )->ignore
-              | None => ()
-              }
-            })
-          }
+        // legal pile's *drop zone* lights up like a live drag hover, then clears.
+        // Purely informational: no card moves, nothing is selected, `state` is
+        // untouched. Lighting the zone (rather than the top card / empty slot) works
+        // uniformly for occupied and empty piles alike and mirrors the `--over`
+        // highlight the same drop would show mid-drag.
+        //
+        // Reduced-motion users still get the information (#197 review): a colour fade
+        // carries no movement, so instead of dropping the hint entirely the pulse
+        // becomes a single hold-then-fade — the targets are lit long enough to read,
+        // then settle back. (Reading `matchMedia`/`animate` also keeps clear of jsdom,
+        // which implements neither.)
+        let flashMoveTargets = (moves: array<Reducer.move>) => {
+          let reduceMotion = matchMedia("(prefers-reduced-motion: reduce)")["matches"]
+          // The lit frame mirrors `.drop-zone--over` (a hovered, acceptable drop): a
+          // solid yellow dashed border over a faint yellow fill. The zone's resting
+          // border/background are both transparent, so ending a keyframe run there — no
+          // `fill` — snaps each frame cleanly back to invisible.
+          let litBorder = "#facc15"
+          let litBg = "rgba(250, 204, 21, 0.15)"
+          let clear = "transparent"
+          let (keyframes, options) = reduceMotion
+            ? (
+                [
+                  {"borderColor": litBorder, "backgroundColor": litBg, "offset": 0.},
+                  {"borderColor": litBorder, "backgroundColor": litBg, "offset": 0.6},
+                  {"borderColor": clear, "backgroundColor": clear, "offset": 1.},
+                ],
+                {"duration": 900., "iterations": 1, "easing": "ease-out"},
+              )
+            : (
+                [
+                  {"borderColor": clear, "backgroundColor": clear, "offset": 0.},
+                  {"borderColor": litBorder, "backgroundColor": litBg, "offset": 0.5},
+                  {"borderColor": clear, "backgroundColor": clear, "offset": 1.},
+                ],
+                {"duration": 420., "iterations": 2, "easing": "ease-in-out"},
+              )
+          moves->Array.forEach(({to: i}) =>
+            switch zones->Array.find(z => z.index == i) {
+            | Some(zone) => animateHint(zone.el, keyframes, options)->ignore
+            | None => ()
+            }
+          )
+        }
 
         // The double-tap gesture (#197), branching on the card's `validMoves` (#196):
         // a `Foundation` move sends it home (unchanged from #122); otherwise, if it has
