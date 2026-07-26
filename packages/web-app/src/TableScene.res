@@ -124,23 +124,21 @@ external animateZ: (
   {"duration": float, "delay": float, "fill": string},
 ) => animation = "animate"
 
-// The double-tap "where can this go?" hint (#197): when no foundation will take a
-// double-tapped card but it can still move, each legal destination's *drop zone*
-// lights up with the same dashed frame + translucent fill a live drag hover shows
-// (`.drop-zone--over`), so the hint reads as exactly what it is — "these are the
-// drops a hand-drag would accept". Earlier this pulsed a `filter: drop-shadow` on
-// each target card/slot, but a shadow only tints the pixels the element actually
-// paints, so an empty zone (a 1px dashed hairline) barely changed; lighting the zone
-// frame is both visible and consistent with the hover it mirrors. A WAAPI animation
-// on `borderColor`/`backgroundColor` with no `fill`, so each zone snaps back to its
-// resting (transparent) frame when the pulse ends. The same `element.animate` the
-// deal/finish flights use, keyed on the frame colours and looped (`iterations`) for
-// the pulse. Purely informational: it moves no card and is untracked (unlike the
-// flight animations, nothing hangs off its finish or a cancel).
+// The double-tap "where can this go?" hint (#197, reworked in #217): when no
+// foundation will take a double-tapped card but it can still move, each legal
+// destination flashes a strong translucent-green mask (the menu's accent green) so the
+// card underneath goes mostly-green for a beat, then clears. The mask is a throwaway
+// `.hint-mask` div pulsed over the *individual eligible card* — the exposed bottom card
+// of the target pile — rather than the whole column's drop zone. Free cells (the
+// obvious park spot) and empty board spaces are never hinted, so only the exposed card
+// of an occupied pile lights. A WAAPI animation on `opacity` (looped for the pulse)
+// with the same `element.animate` the deal/finish flights use; `setOnFinish` removes
+// the mask when the pulse ends. Purely informational: it moves no card and selects
+// nothing.
 @send
-external animateHint: (
+external animateMask: (
   WebDom.element,
-  array<{"borderColor": string, "backgroundColor": string, "offset": float}>,
+  array<{"opacity": string, "offset": float}>,
   {"duration": float, "iterations": int, "easing": string},
 ) => animation = "animate"
 
@@ -1348,11 +1346,10 @@ let make = (
 
         // When no foundation will take a double-tapped card but it can still move
         // somewhere, flash those destinations instead of sending it home (#197): each
-        // legal pile's *drop zone* lights up like a live drag hover, then clears.
-        // Purely informational: no card moves, nothing is selected, `state` is
-        // untouched. Lighting the zone (rather than the top card / empty slot) works
-        // uniformly for occupied and empty piles alike and mirrors the `--over`
-        // highlight the same drop would show mid-drag.
+        // legal target's *exposed card* pulses a green mask, then clears. Purely
+        // informational: no card moves, nothing is selected, `state` is untouched.
+        // Free cells and empty board spaces are never hinted (#217) — only the eligible
+        // card of an occupied pile lights, matching the menu's accent green.
         //
         // Reduced-motion users still get the information (#197 review): a colour fade
         // carries no movement, so instead of dropping the hint entirely the pulse
@@ -1361,36 +1358,53 @@ let make = (
         // which implements neither.)
         let flashMoveTargets = (moves: array<Reducer.move>) => {
           let reduceMotion = matchMedia("(prefers-reduced-motion: reduce)")["matches"]
-          // The lit frame mirrors `.drop-zone--over` (a hovered, acceptable drop): a
-          // solid yellow dashed border over a faint yellow fill. The zone's resting
-          // border/background are both transparent, so ending a keyframe run there — no
-          // `fill` — snaps each frame cleanly back to invisible.
-          let litBorder = "#facc15"
-          let litBg = "rgba(250, 204, 21, 0.15)"
-          let clear = "transparent"
+          // The mask goes mostly-green at its peak — opaque enough to read the card as
+          // "green for a frame or two" (#217) while a little translucency keeps the pip
+          // showing through — then fades to nothing. No `fill`, so the mask ends fully
+          // transparent (and is removed on finish anyway). Reduced-motion users get a
+          // single hold-then-fade rather than the two-beat pulse: the colour still lands
+          // long enough to read without the flashing.
+          let peak = "0.82"
           let (keyframes, options) = reduceMotion
             ? (
                 [
-                  {"borderColor": litBorder, "backgroundColor": litBg, "offset": 0.},
-                  {"borderColor": litBorder, "backgroundColor": litBg, "offset": 0.6},
-                  {"borderColor": clear, "backgroundColor": clear, "offset": 1.},
+                  {"opacity": peak, "offset": 0.},
+                  {"opacity": peak, "offset": 0.6},
+                  {"opacity": "0", "offset": 1.},
                 ],
                 {"duration": 900., "iterations": 1, "easing": "ease-out"},
               )
             : (
                 [
-                  {"borderColor": clear, "backgroundColor": clear, "offset": 0.},
-                  {"borderColor": litBorder, "backgroundColor": litBg, "offset": 0.5},
-                  {"borderColor": clear, "backgroundColor": clear, "offset": 1.},
+                  {"opacity": "0", "offset": 0.},
+                  {"opacity": peak, "offset": 0.2},
+                  {"opacity": peak, "offset": 0.5},
+                  {"opacity": "0", "offset": 1.},
                 ],
-                {"duration": 420., "iterations": 2, "easing": "ease-in-out"},
+                {"duration": 500., "iterations": 2, "easing": "ease-in-out"},
               )
-          moves->Array.forEach(({to: i}) =>
-            switch zones->Array.find(z => z.index == i) {
-            | Some(zone) => animateHint(zone.el, keyframes, options)->ignore
+          // Pulse a throwaway `.hint-mask` over one eligible card wrapper (card-sized)
+          // and drop it when the pulse ends.
+          let flash = el => {
+            let mask = WebDom.createElement("div")
+            mask->WebDom.setAttribute("class", "hint-mask")
+            el->WebDom.appendChild(mask)->ignore
+            animateMask(mask, keyframes, options)->setOnFinish(() => mask->WebDom.remove)
+          }
+          // Never hint free cells — they're the obvious park spot (#217) — nor a blank
+          // space on the board: an empty target (an empty cascade) is skipped entirely
+          // rather than lighting its slot placeholder. Each remaining target lights its
+          // *individual eligible card* — the exposed bottom card of the pile the drop
+          // would land on.
+          moves
+          ->Array.filter(({role}) => role != Game.FreeCell)
+          ->Array.forEach(({to: i}) => {
+            let cards = GameState.cardsInPile(state.contents, i)
+            switch cards->Array.get(Array.length(cards) - 1)->Option.flatMap(nodeFor) {
+            | Some(node) => flash(node.wrapper)
             | None => ()
             }
-          )
+          })
         }
 
         // The double-tap gesture (#197), branching on the card's `validMoves` (#196):
