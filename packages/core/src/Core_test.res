@@ -987,6 +987,25 @@ describe("Reducer", () => {
     }
   })
 
+  test("GameState.equal tells a no-op re-drop from a real move (#215)", () => {
+    let state = fresh()
+    // The identity re-drop the reducer returns is `equal` to the state it started
+    // from — the signal a driver reads to skip the undo record for a no-op.
+    switch Reducer.reduce(~game, state, Move({card: {suit: Hearts, rank: Ace}, to: ToPile(0)})) {
+    | Ok(afterAce) =>
+      expect(GameState.equal(state, afterAce))->toBe(false) // a real move changed the board
+      switch Reducer.reduce(
+        ~game,
+        afterAce,
+        Move({card: {suit: Hearts, rank: Ace}, to: ToPile(0)}),
+      ) {
+      | Ok(noOp) => expect(GameState.equal(afterAce, noOp))->toBe(true) // the no-op didn't
+      | Error(_) => expect(true)->toBe(false)
+      }
+    | Error(_) => expect(true)->toBe(false)
+    }
+  })
+
   test("a completed foundation reports via Rules.isCompleteRun", () => {
     // Deal a whole Hearts Ace→King run loose and stack it onto the foundation
     // via the reducer; the finished pile is a complete run.

@@ -93,6 +93,24 @@ let locationOf = (state: t, card: card): option<location> => {
   }
 }
 
+// Do two snapshots rest every card the same way (#215)? True when the piles hold
+// the same cards in the same order and the loose table matches. Compared explicitly
+// via `sameCard`, matching how identity is decided everywhere else here (see
+// `sameCard`) rather than a whole-structure `==`. This lets a driver ask "did this
+// move actually change the board?" and treat a lawful no-op — an identity re-drop,
+// or a `MoveColumn` with `from == to` — as un-undoable (#85) rather than a fresh
+// step, and log it as a no-op instead of "accepted".
+let equal = (a: t, b: t): bool => {
+  let sameCards = (xs: array<card>, ys: array<card>) =>
+    Array.length(xs) == Array.length(ys) &&
+      xs->Array.mapWithIndex((c, i) => sameCard(c, ys->Array.getUnsafe(i)))->Array.every(x => x)
+  Array.length(a.piles) == Array.length(b.piles) &&
+  a.piles
+  ->Array.mapWithIndex((cards, i) => sameCards(cards, b.piles->Array.getUnsafe(i)))
+  ->Array.every(x => x) &&
+  sameCards(a.loose, b.loose)
+}
+
 // Has the game been won (#121)? True when every foundation on the board holds a
 // complete Ace→King run — the natural end of a FreeCell game, and the "done"
 // marker of M2 (#98). Win detection just *observes* the foundations: it targets
