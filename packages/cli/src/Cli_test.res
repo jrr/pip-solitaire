@@ -365,6 +365,20 @@ describe("Repl undo/redo", () => {
     expect(locationOf(redone, as_))->toEqual(Some(GameState.InPile(0, 0)))
   })
 
+  test("a no-op move records no undoable step (#215)", () => {
+    let as_ = {suit: Spades, rank: Ace}
+    // Found pile 0 with the Ace (one real step), then re-drop it onto pile 0 — a
+    // lawful no-op that must not push a second state onto the undo stack.
+    let session = runToSession(["deal stacking", "move AS 0", "move AS 0"])
+    expect(locationOf(session, as_))->toEqual(Some(GameState.InPile(0, 0)))
+    // A single undo returns to the opening deal (the Ace loose): the no-op left
+    // only the *one* founding move on the stack, not two.
+    let (undone, _) = Repl.step(~options=Options.default, session, "undo")
+    expect(locationOf(undone, as_))->toEqual(Some(GameState.Loose))
+    let (_, text) = Repl.step(~options=Options.default, undone, "undo")
+    expect(has(text, "Nothing to undo"))->toBe(true)
+  })
+
   test("undo past the start of a game is a no-op", () => {
     let dealt = runToSession(["deal stacking"])
     let (undone, text) = Repl.step(~options=Options.default, dealt, "undo")

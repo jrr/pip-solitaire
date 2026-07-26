@@ -900,7 +900,10 @@ let make = (
         DebugLog.log("dispatch", action)
         let result = Reducer.reduce(~game, state.contents, action)
         let outcome = switch result {
-        | Ok(_) => "accepted"
+        // A lawful no-op (#215) — an identity re-drop onto the pile a card already
+        // tops — reduces to `Ok` with the board untouched. Distinguished from a real
+        // move so it neither reads as "accepted" here nor records an undo step below.
+        | Ok(next) => GameState.equal(next, state.contents) ? "no-op" : "accepted"
         | Error(Rejected) => "rejected"
         | Error(PileFull) => "pile full"
         | Error(LooseNotAllowed) => "loose not allowed"
@@ -1302,12 +1305,17 @@ let make = (
             m.role == Game.Foundation
           ) {
           | Some({to: i}) =>
+            let before = state.contents
             switch dispatch(Reducer.Move({card: self.data, to: Reducer.ToPile(i)})) {
             | Ok(next) =>
               state := next
               autoCollectIfEnabled()
-              // Record the settled position as one undoable step (#85).
-              recordHistory()
+
+              // Record the settled position as one undoable step (#85), unless the
+              // move changed nothing (a lawful no-op, #215) — a no-op isn't undoable.
+              if !GameState.equal(state.contents, before) {
+                recordHistory()
+              }
               reflowAll()
               if GameState.hasWon(game, state.contents) {
                 showWin()
@@ -1339,6 +1347,7 @@ let make = (
               Array.length(spanCards) <= 1
                 ? Reducer.Move({card: self.data, to: target})
                 : Reducer.MoveRun({cards: spanCards, to: target})
+            let before = state.contents
             switch dispatch(action) {
             // Lawful move (including the identity re-drop): adopt the new state and
             // reflow every pile from it. Cards that joined a pile snap to their
@@ -1348,9 +1357,13 @@ let make = (
               // Auto-collect any now-safe cards (#125) before the reflow, so the
               // whole cascade settles in one pass; gated by the option.
               autoCollectIfEnabled()
+
               // Record the settled position as one undoable step (#85), so a move
-              // and the auto-collection it triggered undo together.
-              recordHistory()
+              // and the auto-collection it triggered undo together — unless nothing
+              // changed (dropping a card back where it started is a no-op, #215).
+              if !GameState.equal(state.contents, before) {
+                recordHistory()
+              }
               reflowAll()
 
               // A move that completes every foundation ends the game (#121): raise
