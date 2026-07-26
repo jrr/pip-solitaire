@@ -67,6 +67,11 @@ type model = {
   // flag (like `cardTilt`) rather than a driver `Options` field.
   notchDisplay: bool,
   cutoutDebug: bool,
+  // "Console logging" (#213): the Debug screen's switch for narrating every UI↔Core
+  // interaction to the JS console. Mirrors the persisted `Preferences` flag (like
+  // `cutoutDebug`) so the switch opens in the right position; the logging itself is
+  // driven by the shared `DebugLog.enabled` gate the toggle flips.
+  debugLog: bool,
   canUndo: bool,
   // The adaptive Settings refresh control (#112). `refreshMode` is `None` until
   // `Refresh.detect` resolves (and stays effectively hidden on an unsupported
@@ -90,6 +95,7 @@ type msg =
   | ToggleCardTilt // the menu's hand-placed-tilt switch (#65)
   | ToggleNotchDisplay // the menu's "Display content around screen notch" switch (#204)
   | ToggleCutoutDebug // the menu's safe-area overlay switch (debug)
+  | ToggleDebugLog // the Debug screen's console-logging switch (#213)
   | HistoryChanged(bool) // whether the board can undo after a move (#85)
   | RefreshDetected(Refresh.mode) // service-worker presence detected — sets the button's shape (#112)
   | RefreshStarted // the refresh button was tapped — start spinning the button (#112/#201)
@@ -159,6 +165,14 @@ let tiltEnabled: ref<bool> = ref(Preferences.loadCardTilt())
 // attribute (see `NotchDisplay`), so unlike `tiltEnabled` the board never reads it
 // — a plain value seeds the model's mirror and the startup attribute apply below.
 let notchDisplayEnabled = Preferences.loadNotchDisplay()
+
+// The persisted "Console logging" preference (#213, defaults off). Read once at
+// startup to seed both the model's toggle and the shared `DebugLog` gate, and the gate
+// is opened straight away — before the first board is built below — so a developer who
+// left logging on sees the opening deal's UI↔Core traffic too, not only interactions
+// after the first in-app toggle.
+let debugLogEnabled = Preferences.loadDebugLog()
+DebugLog.setEnabled(debugLogEnabled)
 
 // The active board's "relayout" action (#65), sibling of `undoHook`: the mounted
 // `TableScene` publishes a thunk that re-lays every resting card, so a tilt toggle
@@ -230,6 +244,17 @@ let update = (msg, model) =>
       // Show/hide the overlay at once. Not persisted — it's a debug aid, on only
       // for the session; the model state carries it across rotations regardless.
       () => CutoutDebug.setVisible(cutoutDebug),
+    )
+  | ToggleDebugLog =>
+    let debugLog = !model.debugLog
+    (
+      {...model, debugLog},
+      // Flip the shared gate the whole app logs through (#213) and persist the
+      // choice so it survives a reload. Both run as the post-update effect.
+      () => {
+        DebugLog.setEnabled(debugLog)
+        Preferences.saveDebugLog(debugLog)
+      },
     )
   | Reload => (
       model, // no state change — just run the effect
@@ -385,6 +410,8 @@ let view = (model, dispatch) => <>
     debugStates={debugStates}
     cutoutDebug={model.cutoutDebug}
     onToggleCutoutDebug={() => dispatch(ToggleCutoutDebug)}
+    debugLog={model.debugLog}
+    onToggleDebugLog={() => dispatch(ToggleDebugLog)}
     autoCollect={model.autoCollect}
     onToggleAutoCollect={() => dispatch(ToggleAutoCollect)}
     cardTilt={model.cardTilt}
@@ -465,6 +492,9 @@ let dispatch = Html.mount(
     // Debug overlay starts off each session (not persisted); the model keeps it
     // across rotations.
     cutoutDebug: false,
+    // Mirror the persisted console-logging preference (#213) so the switch opens in
+    // the right position; the `DebugLog` gate itself was seeded above.
+    debugLog: debugLogEnabled,
     // Undo starts disabled; the mounted board reports its history (#85).
     canUndo: false,
     // The refresh button starts hidden until `Refresh.detect` reports the

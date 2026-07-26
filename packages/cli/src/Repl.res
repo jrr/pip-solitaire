@@ -112,11 +112,12 @@ let afterMove = (~game: Game.t, ~options: Options.t, state: GameState.t): GameSt
 
 // Adopt a settled state as the session's new present, recording it as one
 // undoable step. Only accepted transitions ever reach here, so a rejected move
-// leaves the history untouched (#85).
-let commit = (s: session, next: GameState.t): session => {
-  ...s,
-  history: History.record(s.history, next),
-}
+// leaves the history untouched (#85). A lawful *no-op* — dropping a card back
+// where it already rests, or a `MoveColumn` with `from == to` — reduces to `Ok`
+// but changes nothing, so it records no step either (#215): there's nothing to
+// undo back to.
+let commit = (s: session, next: GameState.t): session =>
+  GameState.equal(next, present(s)) ? s : {...s, history: History.record(s.history, next)}
 
 // The win line shown beneath a board once every foundation is complete (#121).
 let boardText = (s: session): string => {

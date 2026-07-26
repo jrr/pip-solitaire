@@ -560,6 +560,13 @@ let make = (
       // the fresh board.
       cancelOutstanding()
       WebDom.clear(boardHost)
+      // Narrate the (re)deal to the debug console (#213): every board rebuild — the
+      // opening deal, a New Game, a Restart, or a debug-states load — passes through
+      // here, so this one line covers them all. A forced `~initial` state marks the
+      // scenario/debug-states loads apart from a fresh deal.
+      DebugLog.message(
+        "build board: " ++ game.id ++ (initial->Option.isSome ? " (forced state)" : ""),
+      )
       // Record the deal now on the table so Restart (#156) can replay this exact
       // game — a New Game re-deal that lands here updates what Restart will rebuild.
       currentGame := game
@@ -893,9 +900,42 @@ let make = (
       // trigger.
       let autoCollectIfEnabled = () =>
         if options.contents.autoCollect && !Reducer.canFinish(~game, state.contents) {
-          let (collected, _moved) = Reducer.autoCollect(~game, state.contents)
+          let (collected, moved) = Reducer.autoCollect(~game, state.contents)
+
+          // Narrate the collection to the debug console (#213) when it actually sent
+          // cards home; an empty sweep is the common no-op and isn't worth a line.
+          if Array.length(moved) > 0 {
+            DebugLog.log("auto-collect", moved)
+          }
           state := collected
         }
+
+      // Dispatch an action into core's reducer (#213-instrumented), narrating the
+      // interaction to the debug console when logging is on: the action the UI sends
+      // in, then the outcome core hands back. Both live move sites — a drop
+      // (`endDrag`) and the double-tap send-home — funnel through here, so the log
+      // captures every move the UI asks core to make. Logging is gated inside
+      // `DebugLog`, so with the toggle off this is a plain `Reducer.reduce`.
+      let dispatch = (action: Reducer.action): result<GameState.t, Reducer.moveError> => {
+        DebugLog.log("dispatch", action)
+        let result = Reducer.reduce(~game, state.contents, action)
+        let outcome = switch result {
+        // A lawful no-op (#215) — an identity re-drop onto the pile a card already
+        // tops — reduces to `Ok` with the board untouched. Distinguished from a real
+        // move so it neither reads as "accepted" here nor records an undo step below.
+        | Ok(next) => GameState.equal(next, state.contents) ? "no-op" : "accepted"
+        | Error(Rejected) => "rejected"
+        | Error(PileFull) => "pile full"
+        | Error(LooseNotAllowed) => "loose not allowed"
+        | Error(NoSuchPile) => "no such pile"
+        | Error(CardNotFound) => "card not found"
+        | Error(NotARun) => "not a run"
+        | Error(RunTooLong) => "run too long"
+        | Error(NotAColumn) => "not a column"
+        }
+        DebugLog.message("result: " ++ outcome)
+        result
+      }
 
       // The win overlay (#121): a dimmed panel over the board announcing the win,
       // with a New Game button to play on. Shown when a move completes every
@@ -910,6 +950,7 @@ let make = (
       let winOverlay = ref(None)
       let showWin = () =>
         if !winShown.contents {
+          DebugLog.message("win")
           winShown := true
           let overlay = WebDom.createElement("div")
           overlay->WebDom.setAttribute("class", "win-overlay")
@@ -1085,6 +1126,7 @@ let make = (
             btn->WebDom.setTextContent("Finish")
             btn->WebDom.addEventListener("click", () => {
               let (settled, moved) = Reducer.finishSequence(~game, state.contents)
+              DebugLog.log("finish", moved)
               state := settled
               // The whole sweep is one undoable step (#85): the model transition and
               // its single `recordHistory` commit immediately, so undo after a finish
@@ -1111,6 +1153,7 @@ let make = (
       // web app no longer exposes it — see the top bar.)
       let undo = () =>
         if History.canUndo(history.contents) {
+          DebugLog.message("undo")
           // Stop any finish sweep still in flight before laying out the restored
           // position, so its cards don't keep flying toward foundations the undo has
           // just emptied (the state is already committed, so nothing corrupts).
@@ -1282,16 +1325,17 @@ let make = (
             m.role == Game.Foundation
           ) {
           | Some({to: i}) =>
-            switch Reducer.reduce(
-              ~game,
-              state.contents,
-              Reducer.Move({card: self.data, to: Reducer.ToPile(i)}),
-            ) {
+            let before = state.contents
+            switch dispatch(Reducer.Move({card: self.data, to: Reducer.ToPile(i)})) {
             | Ok(next) =>
               state := next
               autoCollectIfEnabled()
-              // Record the settled position as one undoable step (#85).
-              recordHistory()
+
+              // Record the settled position as one undoable step (#85), unless the
+              // move changed nothing (a lawful no-op, #215) — a no-op isn't undoable.
+              if !GameState.equal(state.contents, before) {
+                recordHistory()
+              }
               reflowAll()
               if GameState.hasWon(game, state.contents) {
                 showWin()
@@ -1381,7 +1425,8 @@ let make = (
               Array.length(spanCards) <= 1
                 ? Reducer.Move({card: self.data, to: target})
                 : Reducer.MoveRun({cards: spanCards, to: target})
-            switch Reducer.reduce(~game, state.contents, action) {
+            let before = state.contents
+            switch dispatch(action) {
             // Lawful move (including the identity re-drop): adopt the new state and
             // reflow every pile from it. Cards that joined a pile snap to their
             // slots; a card left loose stays at the pixel it was dropped.
@@ -1390,9 +1435,13 @@ let make = (
               // Auto-collect any now-safe cards (#125) before the reflow, so the
               // whole cascade settles in one pass; gated by the option.
               autoCollectIfEnabled()
+
               // Record the settled position as one undoable step (#85), so a move
-              // and the auto-collection it triggered undo together.
-              recordHistory()
+              // and the auto-collection it triggered undo together — unless nothing
+              // changed (dropping a card back where it started is a no-op, #215).
+              if !GameState.equal(state.contents, before) {
+                recordHistory()
+              }
               reflowAll()
 
               // A move that completes every foundation ends the game (#121): raise
