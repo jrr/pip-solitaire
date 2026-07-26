@@ -25,3 +25,22 @@ exists.
 Wanted: auto-collect should follow a move that actually changed the board — gate
 `autoCollectIfEnabled()` on the dispatched move changing state, so a no-op drop
 (or a tap) sweeps nothing.
+
+## 2. Opening deal has no visible source stack
+
+The deal's shared launch point is invisible: `animateDeal`
+(`packages/web-app/src/TableScene.res:1609`) flies every card from
+`originY = pr.height +. ch` — a full card height *below* the stage's bottom edge —
+and nothing is drawn there, so cards appear out of empty space rather than
+visibly leaving a stack.
+
+Wanted:
+
+- A source stack visible at the centre bottom of the screen, so you can see
+  cards leaving it. If vertical space is tight it may hang off the bottom edge,
+  with only the stack's top edge showing — it just has to be visible enough to
+  read as the pile the cards come from.
+- Correct ordering: cards should pop off the *top* of that stack. The deal order
+  is `dealSequence` (line 1579) — round-robin by slot across the piles, loose
+  cards last — so the stack has to be built such that the next card to fly is
+  the one on top, and it visibly shrinks as the deal proceeds.
