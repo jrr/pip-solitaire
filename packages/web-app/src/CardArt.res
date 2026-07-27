@@ -4,8 +4,9 @@
 // diff and patch.
 //
 // This is the rudimentary first cut called for by #36: a rounded-rect frame,
-// the rank glyph — trailed by a small suit pip (#223) so the suit shows in the
-// thin strip a fanned card exposes — in two opposite corners (the bottom-right
+// the rank glyph — with a small suit pip (#223) pinned to the far right so the
+// suit shows in the thin strip a fanned card exposes — in two opposite corners
+// (the bottom-right
 // one rotated 180° so the card reads the same either way up), and one large suit
 // symbol in the middle. No pip grids and no court illustrations — those are
 // follow-ups.
@@ -71,15 +72,16 @@ let body = (~detail=Full, card: Deck.card) => {
   let label = Deck.rankLabel(card.rank)
   let glyph = Deck.suitSymbol(card.suit)
 
-  // Corner rank glyph, trailed by a small suit pip (#223). The top-left one uses
-  // these coordinates as-is; the bottom-right one reuses the exact same node but
-  // rotates the whole thing 180° about the card's center, which maps top-left to
-  // bottom-right and flips it upside down — so the two corners are always mirror
-  // images. The suit rides in a `<tspan>` after the rank rather than a fixed x, so
-  // it follows the rank's own advance width — hugging a narrow "A" and clearing a
-  // wide "10" alike — and stays high enough to sit inside the strip a fanned card
-  // leaves showing. `Pip Suits` matches the middle glyph's font; `dx`/`dy` set the
-  // gap and lift.
+  // Corner rank glyph, with a small suit pip (#223) pinned to the far right. The
+  // top-left one uses these coordinates as-is; the bottom-right one reuses the
+  // exact same node but rotates the whole thing 180° about the card's center,
+  // which maps top-left to bottom-right and flips it upside down — so the two
+  // corners are always mirror images. The suit rides in a `<tspan>` given an
+  // absolute `x` near the card's right edge (with `text-anchor="end"`) rather than
+  // trailing the rank, so the pips line up in a vertical column across a fan
+  // regardless of rank width — a narrow "A" and a wide "10" put their pip in the
+  // same place. It sits high enough to stay inside the strip a fanned card leaves
+  // showing. `Pip Suits` matches the middle glyph's font.
   let cornerRank = (~rotated) => {
     // Only the bottom-right corner carries a transform; the top-left one omits
     // the attribute entirely (SVG 1.1's `transform` grammar has no "none").
@@ -96,7 +98,15 @@ let body = (~detail=Full, card: Deck.card) => {
       : base
     <text attrs>
       {Html.string(label)}
-      <tspan attrs={[("dx", "5"), ("dy", "-4"), ("font-size", "26"), ("font-family", "Pip Suits")]}>
+      <tspan
+        attrs={[
+          ("x", "106"),
+          ("y", "34"),
+          ("text-anchor", "end"),
+          ("font-size", "26"),
+          ("font-family", "Pip Suits"),
+        ]}
+      >
         {Html.string(glyph)}
       </tspan>
     </text>
