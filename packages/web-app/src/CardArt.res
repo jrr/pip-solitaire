@@ -4,9 +4,11 @@
 // diff and patch.
 //
 // This is the rudimentary first cut called for by #36: a rounded-rect frame,
-// the rank character in two opposite corners (the bottom-right one rotated 180°
-// so the card reads the same either way up), and one suit symbol in the middle.
-// No pip grids and no court illustrations — those are follow-ups.
+// the rank glyph — trailed by a small suit pip (#223) so the suit shows in the
+// thin strip a fanned card exposes — in two opposite corners (the bottom-right
+// one rotated 180° so the card reads the same either way up), and one large suit
+// symbol in the middle. No pip grids and no court illustrations — those are
+// follow-ups.
 //
 // The `~detail` parameter exists from day one even though `Full` is its only
 // level. It's the hook for the later information-density variant (LOD): a second
@@ -69,10 +71,15 @@ let body = (~detail=Full, card: Deck.card) => {
   let label = Deck.rankLabel(card.rank)
   let glyph = Deck.suitSymbol(card.suit)
 
-  // Corner rank glyph. The top-left one uses these coordinates as-is; the
-  // bottom-right one reuses the exact same node but rotates the whole thing 180°
-  // about the card's center, which maps top-left to bottom-right and flips it
-  // upside down — so the two corners are always mirror images.
+  // Corner rank glyph, trailed by a small suit pip (#223). The top-left one uses
+  // these coordinates as-is; the bottom-right one reuses the exact same node but
+  // rotates the whole thing 180° about the card's center, which maps top-left to
+  // bottom-right and flips it upside down — so the two corners are always mirror
+  // images. The suit rides in a `<tspan>` after the rank rather than a fixed x, so
+  // it follows the rank's own advance width — hugging a narrow "A" and clearing a
+  // wide "10" alike — and stays high enough to sit inside the strip a fanned card
+  // leaves showing. `Pip Suits` matches the middle glyph's font; `dx`/`dy` set the
+  // gap and lift.
   let cornerRank = (~rotated) => {
     // Only the bottom-right corner carries a transform; the top-left one omits
     // the attribute entirely (SVG 1.1's `transform` grammar has no "none").
@@ -87,7 +94,12 @@ let body = (~detail=Full, card: Deck.card) => {
     let attrs = rotated
       ? base->Array.concat([("transform", `rotate(180 ${n(centerX)} ${n(centerY)})`)])
       : base
-    <text attrs> {Html.string(label)} </text>
+    <text attrs>
+      {Html.string(label)}
+      <tspan attrs={[("dx", "5"), ("dy", "-4"), ("font-size", "26"), ("font-family", "Pip Suits")]}>
+        {Html.string(glyph)}
+      </tspan>
+    </text>
   }
 
   <>
