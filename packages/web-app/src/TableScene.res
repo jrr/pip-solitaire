@@ -489,8 +489,19 @@ let looseTiltPile = 1000
 // just another recorded state, so stepping back tears the win overlay down and
 // returns to the prior position. (Redo lives on in `core`'s `History` for the CLI,
 // but the web app's top bar no longer surfaces it.)
+// `~history` restores a *whole* saved game (#177): the board's undo/redo stack,
+// not just its present position — so a resumed game comes back with Undo still
+// walking back through the moves played before the player left. It applies only to
+// the opening mount (a re-deal starts a clean history); when given, its present
+// state seeds the board and `~initial` is ignored. `~persist` is its write side: a
+// sink handed the board's full history after every change (each move, undo, and the
+// opening/New Game/Restart builds), so the driver can save it. Both are omitted for
+// the demos and for any board opened from a `?state=`/`?seed=` link, so
+// save-and-resume attaches only to a plain FreeCell game.
 let make = (
   ~initial: option<GameState.t>=?,
+  ~history: option<History.t<GameState.t>>=?,
+  ~persist: option<History.t<GameState.t> => unit>=?,
   ~newDeal: option<unit => Game.t>=?,
   ~publishNewGame: option<(unit => unit) => unit>=?,
   ~publishRestart: option<(unit => unit) => unit>=?,
@@ -552,7 +563,18 @@ let make = (
     // `state`, `topZ`, `scale`). `~initial` forces a starting `GameState` (the
     // `?state=` scenario) and applies only to the opening mount; a re-deal always
     // opens from its game's own fresh deal.
-    let rec buildBoard = (~initial: option<GameState.t>=?, game: Game.t) => {
+    // `~history as seedHistory` seeds the opening build with a saved undo/redo
+    // stack (#177) instead of a clean one — the resume path; a re-deal calls
+    // `buildBoard` without it and so starts fresh. `~persistThis` gates whether this
+    // particular build saves itself: on for the opening/New Game/Restart deals (each
+    // becomes the saved game), off for a forced-state load so a debug scenario never
+    // clobbers a real saved game (matching the URL's `?state=`).
+    let rec buildBoard = (
+      ~initial: option<GameState.t>=?,
+      ~history as seedHistory: option<History.t<GameState.t>>=?,
+      ~persistThis: bool=true,
+      game: Game.t,
+    ) => {
       // Cancel any finish sweep still in flight from the board being torn down, so
       // its cards stop animating and its last-card `onfinish` can't raise a win over
       // the fresh board.
@@ -639,7 +661,12 @@ let make = (
       // forced `~initial` scenario, when one is given), and re-derives every pile's
       // layout from it. Drops dispatch reducer actions and adopt the returned state;
       // the view keeps only transient geometry (below).
-      let state = ref(initial->Option.getOr(GameState.initial(game)))
+      let state = ref(
+        switch seedHistory {
+        | Some(h) => History.present(h)
+        | None => initial->Option.getOr(GameState.initial(game))
+        },
+      )
 
       // Undo/redo history over the board's `GameState` (#85): the states the board
       // has passed through, so a step back is a pop. `state` stays the live snapshot
@@ -647,7 +674,22 @@ let make = (
       // and is stepped by `undo`/`redo` (defined below, once the reflow/win helpers
       // they drive exist). A fresh build (a re-deal, or the opening mount) starts a
       // clean history from the opening position.
-      let history = ref(History.make(state.contents))
+      let history = ref(
+        switch seedHistory {
+        | Some(h) => h
+        | None => History.make(state.contents)
+        },
+      )
+
+      // Persist the board's whole undo/redo history after any change (#177), when the
+      // driver wired a `~persist` sink. A no-op otherwise — the demos, and any board
+      // opened from a `?state=`/`?seed=` link, pass none — so saving attaches only to a
+      // plain FreeCell game. Called from `recordHistory`, `undo`, and each fresh build.
+      let persistCurrent = () =>
+        switch persist {
+        | Some(save) => save(history.contents)
+        | None => ()
+        }
 
       // The DOM node for each model card, so a pile derived from `state` (structural
       // `{suit, rank}` cards) lays out onto the *same* elements every reflow — the
@@ -1004,6 +1046,8 @@ let make = (
       let recordHistory = () => {
         history := History.record(history.contents, state.contents)
         reportHistory()
+        // Save the new position (#177) so a reload resumes here, mid-game.
+        persistCurrent()
       }
 
       // Fly the finishing sweep home (#160): with the final `settled` state already
@@ -1162,6 +1206,9 @@ let make = (
           reflowAll()
           updateFinishButton()
           reportHistory()
+          // Save the stepped-back position (#177), redo stack and all, so a reload
+          // resumes exactly where the undo left the board.
+          persistCurrent()
         }
 
       // Build one draggable card and wire its pointer loop. It starts at 0,0 and is
@@ -1693,6 +1740,15 @@ let make = (
       // the loose cards need the stage's live rects, so both wait on this.
       boundingRect(playfield).width > 0. ? deal() : requestAnimationFrame(deal)->ignore
 
+      // Come back to a won board (#177): a resumed game saved in its victory state
+      // opens with the win overlay already up, rather than a silently finished board.
+      // Checked before the "Finish" button below so a completed board never offers to
+      // finish itself. A fresh deal, a re-deal, or a `?state=` scenario is never
+      // already won, so this only fires on a restored victory.
+      if GameState.hasWon(game, state.contents) {
+        showWin()
+      }
+
       // Show the "Finish" button (#132) straight away when the opening position is
       // already drainable — a `?state=` scenario can drop the board into one.
       // Layout-independent, so it needn't wait on the deal's frame.
@@ -1731,6 +1787,15 @@ let make = (
         boardHost->WebDom.appendChild(caption)->ignore
       | None => ()
       }
+
+      // Persist this freshly-built board (#177) when saving is on: the opening deal,
+      // a New Game, or a Restart each *become* the saved game, so a later reload
+      // resumes this board — and New Game replaces whatever was saved before. Skipped
+      // for a forced-state load (`~persistThis=false`), which must leave the saved
+      // game untouched; a no-op when no `~persist` sink is wired.
+      if persistThis {
+        persistCurrent()
+      }
     }
 
     // Publish the re-deal to the chrome (#109). When the game is re-dealable
@@ -1762,14 +1827,15 @@ let make = (
     // does at load. Like a re-deal, `buildBoard` clears the host first, so the
     // forced position replaces the current board cleanly.
     switch publishLoadState {
-    | Some(publish) => publish(state => buildBoard(~initial=state, game))
+    | Some(publish) => publish(state => buildBoard(~initial=state, ~persistThis=false, game))
     | None => ()
     }
     container->WebDom.appendChild(boardHost)->ignore
 
-    // Open the board from the game's deal, or the forced `~initial` scenario when
-    // the URL named one.
-    buildBoard(~initial?, game)
+    // Open the board: from a saved undo/redo history when one was restored (#177),
+    // else the forced `~initial` scenario when the URL named one, else the game's own
+    // deal. `~history` seeds only this opening mount; every later re-deal starts clean.
+    buildBoard(~initial?, ~history?, game)
 
     // Reflow the card layout whenever the stage resizes (#172). One observer serves
     // the scene's whole life: it watches the persistent `boardHost` and always

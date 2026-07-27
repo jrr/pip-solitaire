@@ -297,15 +297,28 @@ let randomSeed = () => (Math.random() *. 1_000_000.)->Float.toInt
 // the top bar (see `newGameHook`).
 let gameScene = (game: Game.t) => {
   let isFreecell = game.id == Game.freecell.id
+  // A *plain* FreeCell open is the only place save-and-resume applies (#177): the
+  // app's primary game, opened without a URL asking for a specific position. A
+  // `?state=` scenario or a `?seed=` deal link addresses an exact board, so it opens
+  // that board and leaves any saved game strictly alone — neither resumed nor
+  // overwritten (the issue's "a `?state=` link doesn't disturb a saved game", and the
+  // same for the screenshot report's `?seed=`/`?state=` shots, which must stay
+  // side-effect-free).
+  let plainOpen = isFreecell && url.state->Option.isNone && url.seed->Option.isNone
+  // Resume a saved game when there is one and this is a plain open; otherwise `None`
+  // (nothing saved, corrupt/old data, or a URL-addressed board) means deal fresh.
+  let savedHistory = plainOpen ? SavedGame.load(game.id) : None
+
   // Open FreeCell from a fresh random seed on each load too (#108/#98), so a plain
-  // reload lays out a new board instead of always deal #1 — matching what New Game
-  // does. A `?seed=` pins that deal number instead (#98), so a link — and the
-  // screenshot report's dealt-board shot — lands on the same board every time. The
-  // fixed module-level `Game.freecell` (seed 1) stays the deterministic fallback for
-  // a forced `?state=` scenario, which screenshots depend on: when a state is forced
-  // we mount the fixed deal so `Scenario.forName` derives from the exact same board
-  // the report expects. The fixed-layout demos have no seed to vary, so they mount
-  // as-is.
+  // reload with nothing saved lays out a new board instead of always deal #1 —
+  // matching what New Game does. A `?seed=` pins that deal number instead (#98), so a
+  // link — and the screenshot report's dealt-board shot — lands on the same board
+  // every time. The fixed module-level `Game.freecell` (seed 1) stays the
+  // deterministic fallback for a forced `?state=` scenario, which screenshots depend
+  // on: when a state is forced we mount the fixed deal so `Scenario.forName` derives
+  // from the exact same board the report expects. The fixed-layout demos have no seed
+  // to vary, so they mount as-is. When a saved game is resumed the opening deal only
+  // supplies the 52 card nodes; every resting position comes from the restored history.
   let opening =
     isFreecell && url.state->Option.isNone
       ? Game.freecellDeal(~seed=url.seed->Option.getOr(randomSeed()))
@@ -313,6 +326,11 @@ let gameScene = (game: Game.t) => {
   let newDeal = isFreecell ? Some(() => Game.freecellDeal(~seed=randomSeed())) : None
   TableScene.make(
     ~initial=?url.state->Option.flatMap(name => Scenario.forName(game, name)),
+    // Restore the saved undo/redo stack (#177) and, when saving applies, hand the
+    // board a sink that writes each change back to storage. New Game/Restart/every
+    // move flow through this same sink, so the saved game always tracks the live one.
+    ~history=?savedHistory,
+    ~persist=?plainOpen ? Some(history => SavedGame.save(game.id, history)) : None,
     ~newDeal?,
     ~publishNewGame=hook => newGameHook := Some(hook),
     ~publishRestart=hook => restartHook := Some(hook),
