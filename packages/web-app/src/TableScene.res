@@ -198,14 +198,22 @@ type card = {
   x: ref<float>,
   y: ref<float>,
   draggable: ref<bool>,
+  // How far a shake has knocked this card off the spot it rests on (#236). A channel
+  // of its own, *beside* the rest position above rather than folded into it, so a
+  // reflow (a drop, a resize, flipping the tilt switch) can't wipe the mess and a
+  // square-up can clear it without disturbing anything else. Published as the
+  // `--shake-*` custom properties by `place`; see `CardShake`.
+  shake: ref<CardShake.t>,
 }
 
-// The two shake operations a built board exposes to the persistent shake
-// subscription (#235): `jostle` nudges the current cards off their resting spots on
-// a shake, `squareUp` re-lays them clean when listening stops. Republished on every
-// `buildBoard` so the mount-scope subscription always drives the live board's nodes.
+// The two shake operations a built board exposes to the persistent gesture
+// subscription (#235, #236): `jostle` throws the current cards off their resting spots
+// along a shake, `squareUp` tidies them back to how they were dealt. Republished on
+// every `buildBoard` so the mount-scope subscription always drives the live board's
+// nodes. `jostle` takes the shake's high-passed acceleration, so the cards are thrown
+// the way the phone was actually moved rather than in a random direction.
 type boardOps = {
-  jostle: unit => unit,
+  jostle: Motion.reading => unit,
   squareUp: unit => unit,
 }
 
@@ -453,6 +461,52 @@ let tiltFor = (~enabled, ~card, ~pile, ~slot) => enabled ? cardTilt(~card, ~pile
 // cluster index as the slot.
 let looseTiltPile = 1000
 
+// Publish a card's shake disarray (#236) as the `--shake-x/y/rot` custom properties
+// beside `--card-rot`. The stylesheet *sums* the two rotations and adds the offset, so
+// this channel and the hand-placed tilt above are wholly independent: all four
+// combinations of Wiggle Waggle and Sloppy placement are valid, with no logic here
+// checking one against the other — both properties default to zero in the CSS.
+//
+// The offsets are in design px like every other footprint, so they're multiplied by
+// the stage's live `scale` on the way out and a resize rescales the mess along with
+// the cards.
+let applyShake = (wrapper, disarray: CardShake.t, ~scale) => {
+  let s = style(wrapper)
+  s->setProperty("--shake-x", Float.toString(disarray.dx *. scale) ++ "px")
+  s->setProperty("--shake-y", Float.toString(disarray.dy *. scale) ++ "px")
+  s->setProperty("--shake-rot", Float.toString(disarray.rot) ++ "deg")
+}
+
+// The screen's orientation angle in degrees (0/90/180/270), which turns a device-frame
+// shake into a screen-frame throw (`CardShake.driveFor`). `screen.orientation` is the
+// modern reading; older Safari carries it as the legacy `window.orientation`
+// (-90/0/90/180), normalised here to the same 0–359 range. Absent both — desktop, or
+// jsdom — a shake is treated as portrait, which is moot since neither reports motion.
+type screenOrientation = {angle: int}
+@val @scope("screen") external screenOrientation: Nullable.t<screenOrientation> = "orientation"
+@val @scope("window") external legacyOrientation: Nullable.t<int> = "orientation"
+let screenAngle = () =>
+  switch screenOrientation->Nullable.toOption {
+  | Some({angle}) => angle
+  | None =>
+    switch legacyOrientation->Nullable.toOption {
+    | Some(angle) => angle < 0 ? angle + 360 : angle
+    | None => 0
+    }
+  }
+
+// Throw a card to its overshoot now and let it settle a beat later (#236) — the shape
+// both gestures share, so a shake has some snap and a square-up has some weight rather
+// than either being a smooth crawl. The settle is a timer rather than a frame because
+// the card transition needs to have visibly *landed* before it's retargeted; see
+// `CardShake.settleMs`.
+@val external setTimeout: (unit => unit, float) => int = "setTimeout"
+let throwAndSettle = (c: card, ~transient, ~settled, ~scale) => {
+  c.shake := settled
+  applyShake(c.wrapper, transient, ~scale)
+  setTimeout(() => applyShake(c.wrapper, settled, ~scale), CardShake.settleMs)->ignore
+}
+
 // Build a scene that plays `game`: its id/label name the scene in the picker,
 // and its piles and opening deal drive everything below.
 //
@@ -583,10 +637,10 @@ let make = (
     // shake subscription below always jostles — or squares up — the *current* board:
     // every `buildBoard` repoints these at its own fresh card nodes. No-ops until the
     // first build.
-    let boardOps = ref({jostle: () => (), squareUp: () => ()})
+    let boardOps = ref({jostle: _ => (), squareUp: () => ()})
 
     // The active `devicemotion` shake subscription, `Some` while Wiggle Waggle is on
-    // and permission granted (#235). `Motion.subscribeShake` already parks the
+    // and permission granted (#235). `Motion.subscribeGestures` already parks the
     // listener while the page is hidden and returns the unsubscribe thunk kept here.
     let shakeUnsub: ref<option<unit => unit>> = ref(None)
     let unsubscribeShake = () =>
@@ -598,12 +652,23 @@ let make = (
       }
     // The chrome's shake control. `start` begins listening (idempotent — a second
     // call while already subscribed is a no-op), jostling the live board on each
-    // shake; `stop` ends listening and squares the board back up so the mess doesn't
-    // linger once the switch is off.
+    // shake and tidying it on each square-up (#236); `stop` ends listening and squares
+    // the board back up so the mess doesn't linger once the switch is off — the
+    // reliable escape hatch, which is what lets the square-up gesture itself stay an
+    // undocumented delight.
     let startShake = () =>
       switch shakeUnsub.contents {
       | Some(_) => ()
-      | None => shakeUnsub := Some(Motion.subscribeShake(~onShake=() => boardOps.contents.jostle()))
+      | None =>
+        shakeUnsub :=
+          Some(
+            Motion.subscribeGestures(~onGesture=gesture =>
+              switch gesture {
+              | Motion.Shake(reading) => boardOps.contents.jostle(reading)
+              | Motion.SquareUp => boardOps.contents.squareUp()
+              }
+            ),
+          )
       }
     let stopShake = () => {
       unsubscribeShake()
@@ -866,11 +931,16 @@ let make = (
         })
       }
 
-      // Write a card's live x/y into its style.
+      // Write a card's live x/y into its style, and re-publish its shake disarray
+      // (#236) at the current scale. Folding the disarray in here makes `place` the
+      // single writer of "where this card appears": every path that moves a card — a
+      // reflow, a resize, a drag — carries the mess along instead of silently dropping
+      // it, because the mess is state on the card, not a one-off style write.
       let place = c => {
         let s = style(c.wrapper)
         s->setLeft(Float.toString(c.x.contents) ++ "px")
         s->setTop(Float.toString(c.y.contents) ++ "px")
+        applyShake(c.wrapper, c.shake.contents, ~scale=scale.contents)
       }
 
       // Z-order is a single monotonic counter: whatever was touched most recently
@@ -1287,6 +1357,11 @@ let make = (
           x: ref(0.),
           y: ref(0.),
           draggable: ref(true),
+          // Freshly dealt cards sit exactly where they were dealt: no disarray until a
+          // shake puts some there (#236). A rebuild (New Game) therefore starts clean,
+          // and so does a reload — the mess is transient view state that never reaches
+          // the save (#177).
+          shake: ref(CardShake.zero),
         }
         // Register the node so a pile derived from `state` can be laid out onto it.
         nodes->Array.push(self)
@@ -1384,8 +1459,15 @@ let make = (
                 span->Array.map(c => (c, c.x.contents, c.y.contents)),
               ))
             // Raise the whole span above the rest of the board, keeping bottom-first
-            // order so the run stays coherently stacked while it's carried.
+            // order so the run stays coherently stacked while it's carried. Picking a
+            // card up also squares *it* up (#236): a card in hand has been straightened
+            // by the hand holding it, so its disarray is dropped here — which keeps the
+            // drag's hit-testing (which reads the wrapper's rect, not the offset art)
+            // exact, and means a card dropped somewhere new lands perfectly square,
+            // with only its base tilt re-rolled for the new slot by the reflow.
             span->Array.forEach(c => {
+              c.shake := CardShake.zero
+              place(c)
               classList(c.wrapper)->addClass("dragging")
               bringToFront(c.wrapper)
             })
@@ -1672,36 +1754,54 @@ let make = (
         })
       }
 
-      // The shake jostle (#235): a vigorous shake nudges every card a little off its
-      // resting spot, so the tableau ends messier than it was dealt. Each nudge is a
-      // small random offset written straight to the card's live x/y and eased in by
-      // the `.stacking-card` left/top snap transition, so the board visibly jostles.
-      // It's deliberately physical and cumulative — repeated shakes pile on more mess
-      // — and never touches the model, so it's purely presentational; squaring up
-      // (below) re-lays every card onto its deterministic resting place, undoing it.
+      // The shake jostle (#235, #236): a vigorous shake throws every card off its
+      // resting spot *the way the phone was moved* — the reading is the high-passed
+      // acceleration, rotated into screen axes — so the board is knocked about rather
+      // than jittered in place. Each card takes its own share of the throw and its own
+      // spin, or the whole board would slide as a rigid block and read as a camera
+      // shake. It's deliberately physical and cumulative: only `CardShake.creep` of
+      // each throw sticks, so repeated shakes pile on more mess up to the clamps, and
+      // it never touches the model — purely presentational view state, cleared by a
+      // square-up (below) and never saved (#177 keeps the save to the game itself).
       // `Math.random` is fine here: this fires only on a real device shake, never on
       // the reproducible screenshot path.
-      let jostle = () => {
-        let amp = 12. *. scale.contents
+      let jostle = (reading: Motion.reading) => {
+        let {x, y, z} = reading
+        let (driveX, driveY) = CardShake.driveFor(~x, ~y, ~angle=screenAngle())
+        let magnitude = Math.sqrt(x *. x +. y *. y +. z *. z)
         nodes->Array.forEach(c => {
-          c.x := c.x.contents +. (Math.random() -. 0.5) *. 2. *. amp
-          c.y := c.y.contents +. (Math.random() -. 0.5) *. 2. *. amp
-          place(c)
+          let share = CardShake.shareFor(~roll=Math.random())
+          let (transient, settled) =
+            c.shake.contents->CardShake.throw(
+              ~dx=driveX *. share,
+              ~dy=driveY *. share,
+              ~drot=CardShake.spinFor(~magnitude, ~roll=Math.random()),
+            )
+          throwAndSettle(c, ~transient, ~settled, ~scale=scale.contents)
         })
       }
 
+      // The square-up gesture (#236): tap the phone down like a deck on the table and
+      // the board tidies itself — a small downward nudge for weight, then every card
+      // glides home on the same transition that eases a drop.
+      //
+      // "Home" is *how the cards were dealt*, not machine-perfect: this clears the
+      // shake channel only, so each card keeps its base tilt — the dealt sloppiness
+      // with Sloppy placement on, true square with it off. That's the physical
+      // metaphor (tapping a deck down undoes the disturbance; it doesn't turn a
+      // hand-dealt tableau into a machine-dealt one), and it's why this is no longer
+      // the tilt switch's relayout: a relayout would also be free to re-derive the
+      // tilt, and clearing one channel says exactly what is being undone.
+      let squareUp = () =>
+        nodes->Array.forEach(c => {
+          let (transient, settled) = CardShake.tap(c.shake.contents)
+          throwAndSettle(c, ~transient, ~settled, ~scale=scale.contents)
+        })
+
       // Publish this build's shake operations into the mount-scope `boardOps` ref, so
       // the persistent subscription drives the live board's nodes (a New Game rebuild
-      // swaps in fresh ones). `squareUp` is exactly the tilt switch's relayout — reflow
-      // the piles, re-strew the loose cluster — reused so turning Wiggle Waggle off
-      // snaps the mess back to a clean deal (see `publishRelayout`).
-      boardOps := {
-          jostle,
-          squareUp: () => {
-            reflowAll()
-            dealFree()
-          },
-        }
+      // swaps in fresh ones).
+      boardOps := {jostle, squareUp}
 
       // Lay out each opening pile from `state`: reflow reads the cards the model
       // deals that pile and positions their nodes, so the pile ends laid out exactly

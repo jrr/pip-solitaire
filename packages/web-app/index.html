@@ -1244,10 +1244,19 @@
          deal/finish flight animations). `transform-origin: center` pivots about
          the card's middle (SVG elements otherwise default to a `0 0` origin), and
          the transition eases a card into its new angle as it snaps home, matching
-         the wrapper's left/top snap. */
+         the wrapper's left/top snap.
+
+         A shake adds a second, independent contribution (#236): `--shake-x/y/rot`,
+         how far the card has been knocked off the spot it rests on. The two channels
+         are simply *summed* here, and both default to zero — which is the whole
+         mechanism behind "Wiggle Waggle" and "Sloppy placement" being independent,
+         all four combinations valid, with no code checking one against the other.
+         Clearing only the shake half (the square-up gesture) therefore returns a card
+         to how it was *dealt* rather than to machine-square. */
       .stacking-card .card-art {
         width: 100%;
-        transform: rotate(var(--card-rot, 0deg));
+        transform: translate(var(--shake-x, 0px), var(--shake-y, 0px))
+          rotate(calc(var(--card-rot, 0deg) + var(--shake-rot, 0deg)));
         transform-origin: 50% 50%;
         transition: transform 0.18s ease;
       }

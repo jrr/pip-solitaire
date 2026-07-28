@@ -13,10 +13,15 @@
 //
 // The point of the scene is being *readable while the phone is moving*: raw x/y/z at
 // ~60Hz is an unreadable blur, so alongside the numbers there's a per-axis bar, a
-// peak-magnitude hold that decays, and a shake counter that ticks when the
-// gravity-corrected magnitude crosses `Motion.shakeThreshold` (debounced). The
-// counter is the real deliverable — it tells us whether the threshold matches what a
-// person means by "shake" without having to read anything mid-shake.
+// peak-magnitude hold that decays, and gesture counters. The counters are the real
+// deliverable — they tell us whether the thresholds match what a person means by
+// "shake" and by tapping a deck down, without having to read anything mid-gesture.
+//
+// Since #236 they come from `Motion.step`, the same classifier the board plays, so this
+// readout can't disagree with what the cards do — the two used to be independently
+// picked numbers, leaving a band where cards drifted but nothing was counted. The
+// `along`/`across` line under the counters is the gravity-relative split that
+// classification turns on, which is what the square-up thresholds are tuned against.
 //
 // Secure context only, and there's no sensor on desktop (DevTools can't usefully fake
 // `devicemotion`), so this is verified with a phone pointed at the deployed build —
@@ -107,11 +112,20 @@ let make = (): Scene.t => {
     peakRow->WebDom.appendChild(peakTrack)->ignore
     panel->WebDom.appendChild(peakRow)->ignore
 
-    // The real deliverable: how many shakes we've counted. Big and centred so it's
-    // readable across the room while shaking the phone.
+    // The real deliverable: how many shakes we've counted — and, since #236, how many
+    // square-ups. Big and centred so it's readable across the room while shaking the
+    // phone. Both come from `Motion.step`, the same classifier the board plays, so the
+    // counter can't disagree with what the cards do.
     let counter = el("p", "motion-counter")
-    counter->WebDom.setTextContent("shakes: 0")
+    counter->WebDom.setTextContent("shakes: 0 · squares: 0")
     panel->WebDom.appendChild(counter)->ignore
+
+    // The gravity-relative split behind that classification (#236): how much of the
+    // leftover acceleration lies *along* the gravity axis (a deck tapped down) versus
+    // *across* it (a shake). This is what the square-up thresholds are tuned against,
+    // so it needs to be readable on the device.
+    let splitLine = el("p", "motion-status")
+    panel->WebDom.appendChild(splitLine)->ignore
 
     // ---- State ----
     // `None` until the first `devicemotion` fires — so a device where the loop runs
@@ -120,23 +134,27 @@ let make = (): Scene.t => {
     let latest = ref(None) // most recent x/y/z, drawn each frame
     let peak = ref(0.0) // decaying peak of the gravity-corrected magnitude
     let shakeCount = ref(0)
-    let lastShake = ref(0.0) // timestamp of the last counted shake, for debounce
+    let squareUpCount = ref(0)
+    // The board's own gesture detector (#236) — the gravity estimate, the thresholds
+    // and both cooldowns all live in `Motion.step`, so this scene counts exactly the
+    // gestures the cards react to instead of re-deriving "vigorous" from its own
+    // formula. That's the reconciliation #236 asks for: one measure, one threshold.
+    let detector = ref(Motion.newDetector)
     let rafId = ref(None)
 
     // ---- The reading handler (fed by Motion's subscription) ----
     let onReading = (reading: Motion.reading) => {
       let {x, y, z}: Motion.reading = reading
       latest := Some((x, y, z))
-      let excess = Math.abs(Math.sqrt(x *. x +. y *. y +. z *. z) -. Motion.gravity)
-      if excess > peak.contents {
-        peak := excess
+      let (advanced, gesture) = Motion.step(detector.contents, ~reading, ~atMs=Motion.now())
+      detector := advanced
+      if advanced.last.excess > peak.contents {
+        peak := advanced.last.excess
       }
-
-      // Count a shake on the threshold crossing, but only once per debounce window — a
-      // single shake spikes across many 60Hz samples otherwise.
-      if excess > Motion.shakeThreshold && Motion.now() -. lastShake.contents > Motion.debounceMs {
-        lastShake := Motion.now()
-        shakeCount := shakeCount.contents + 1
+      switch gesture {
+      | Some(Motion.Shake(_)) => shakeCount := shakeCount.contents + 1
+      | Some(Motion.SquareUp) => squareUpCount := squareUpCount.contents + 1
+      | None => ()
       }
     }
 
@@ -166,7 +184,11 @@ let make = (): Scene.t => {
         drawAxis(yFill, y)
         drawAxis(zFill, z)
 
-        let excess = Math.abs(Math.sqrt(x *. x +. y *. y +. z *. z) -. Motion.gravity)
+        // The gravity-corrected leftover, taken from the detector's own decomposition
+        // rather than recomputed here (#236) — `|‖a‖ − 9.81|` and the true high-passed
+        // magnitude differ, and the readout must show the number the classifier used.
+        let {excess, along, perp} = detector.contents.last
+        splitLine->WebDom.setTextContent(`along ${fmt(along)} · across ${fmt(perp)}`)
         // Ease the hold toward the current reading; a fresh spike (set in onReading) is
         // never below this, so the bar rises instantly and only the fall decays.
         peak := Math.max(peak.contents *. peakDecay, excess)
@@ -177,7 +199,11 @@ let make = (): Scene.t => {
         )
       }
 
-      counter->WebDom.setTextContent(`shakes: ${Int.toString(shakeCount.contents)}`)
+      counter->WebDom.setTextContent(
+        `shakes: ${Int.toString(shakeCount.contents)} · squares: ${Int.toString(
+            squareUpCount.contents,
+          )}`,
+      )
       rafId := Some(requestAnimationFrame(tick))
     }
 
