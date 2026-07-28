@@ -21,7 +21,9 @@
 // readout can't disagree with what the cards do — the two used to be independently
 // picked numbers, leaving a band where cards drifted but nothing was counted. The
 // `along`/`across` line under the counters is the gravity-relative split that
-// classification turns on, which is what the square-up thresholds are tuned against.
+// classification turns on, which is what the square-up thresholds are tuned against —
+// shown live, and again as two slow-decay holds, since the live numbers are gone before
+// you can put the phone down and look at them.
 //
 // Secure context only, and there's no sensor on desktop (DevTools can't usefully fake
 // `devicemotion`), so this is verified with a phone pointed at the deployed build —
@@ -42,6 +44,12 @@
 let axisScale = 30.0 // m/s² that fills half the per-axis bar (a hard shake tops out here)
 let magScale = 30.0 // m/s² that fills the whole peak-magnitude bar
 let peakDecay = 0.94 // per-frame multiplier so the peak hold eases back down between shakes
+
+// The `along`/`across` holds decay *much* slower than the peak: their whole job is to
+// let you shake the phone, stop, and then read what the shake produced. At ~60fps this
+// keeps roughly half the reading legible for a second and fades over about three, so
+// the number is still on screen by the time your eyes are back on it.
+let holdDecay = 0.99
 
 // Round to one decimal for a readout that isn't a flickering blur of digits.
 let fmt = v => (Math.round(v *. 10.) /. 10.)->Float.toString
@@ -78,14 +86,14 @@ let make = (): Scene.t => {
     // One row per axis: label, live number, and a centred bar that swings left
     // (negative) or right (positive) from the middle. Returns the value/fill nodes so
     // the frame loop can update them.
-    let axisRow = name => {
+    let axisRow = (~fillClass="motion-bar__fill", name) => {
       let row = el("div", "motion-axis")
       let label = el("span", "motion-axis__label")
       label->WebDom.setTextContent(name)
       let value = el("span", "motion-axis__value")
       value->WebDom.setTextContent("0")
       let track = el("div", "motion-bar")
-      let fill = el("div", "motion-bar__fill")
+      let fill = el("div", fillClass)
       track->WebDom.appendChild(fill)->ignore
       row->WebDom.appendChild(label)->ignore
       row->WebDom.appendChild(value)->ignore
@@ -127,12 +135,29 @@ let make = (): Scene.t => {
     let splitLine = el("p", "motion-status")
     panel->WebDom.appendChild(splitLine)->ignore
 
+    // …and the same two numbers again as slow-decay holds, because the live line goes
+    // by far too fast to read: a gesture's whole life is a handful of 60Hz samples, so
+    // by the time you've stopped moving the phone and looked at the screen the split
+    // has long since fallen back to nothing. These hold the largest excursion each way
+    // and ease it down over a few seconds, which is what makes it possible to answer
+    // "what does *my* shake actually produce" — the question the thresholds are tuned
+    // against. `along` keeps its sign (a deck tapped down is positive, the phone
+    // snatched upwards negative), so it gets a centred bar like the axis rows; `across`
+    // is a magnitude and grows from the left edge like the peak.
+    let (alongValue, alongFill) = axisRow("along")
+    let (acrossValue, acrossFill) = axisRow(
+      ~fillClass="motion-bar__fill motion-bar__fill--across",
+      "across",
+    )
+
     // ---- State ----
     // `None` until the first `devicemotion` fires — so a device where the loop runs
     // but no reading ever arrives (desktop Chrome) stays visibly empty rather than
     // drawing the `(0,0,0)` sentinel as if it were live data.
     let latest = ref(None) // most recent x/y/z, drawn each frame
     let peak = ref(0.0) // decaying peak of the gravity-corrected magnitude
+    let alongHold = ref(0.0) // slow-decay hold of the signed gravity-axis component
+    let acrossHold = ref(0.0) // slow-decay hold of the perpendicular component
     let shakeCount = ref(0)
     let squareUpCount = ref(0)
     // The board's own gesture detector (#236) — the gravity estimate, the thresholds
@@ -148,8 +173,19 @@ let make = (): Scene.t => {
       latest := Some((x, y, z))
       let (advanced, gesture) = Motion.step(detector.contents, ~reading, ~atMs=Motion.now())
       detector := advanced
+
+      // Capture the holds *here* rather than in the frame loop: readings and frames
+      // both run at ~60Hz but aren't in step, so sampling `detector.last` once a frame
+      // drops roughly every other sample — and the one it drops is as likely as not to
+      // be the spike the whole readout exists to show.
       if advanced.last.excess > peak.contents {
         peak := advanced.last.excess
+      }
+      if Math.abs(advanced.last.along) > Math.abs(alongHold.contents) {
+        alongHold := advanced.last.along
+      }
+      if advanced.last.perp > acrossHold.contents {
+        acrossHold := advanced.last.perp
       }
       switch gesture {
       | Some(Motion.Shake(_)) => shakeCount := shakeCount.contents + 1
@@ -196,6 +232,25 @@ let make = (): Scene.t => {
         peakFill->WebDom.setAttribute(
           "style",
           `left:0;width:${fmt(Math.min(1.0, peak.contents /. magScale) *. 100.0)}%`,
+        )
+
+        // The two slow holds, on the same rise-instantly/fall-slowly rule. `along`
+        // compares magnitudes so a decaying hold isn't overwritten by a smaller
+        // excursion the other way — it keeps whichever direction was biggest.
+        let easedAlong = alongHold.contents *. holdDecay
+        alongHold := if Math.abs(along) >= Math.abs(easedAlong) {
+            along
+          } else {
+            easedAlong
+          }
+        alongValue->WebDom.setTextContent(fmt(alongHold.contents))
+        drawAxis(alongFill, alongHold.contents)
+
+        acrossHold := Math.max(acrossHold.contents *. holdDecay, perp)
+        acrossValue->WebDom.setTextContent(fmt(acrossHold.contents))
+        acrossFill->WebDom.setAttribute(
+          "style",
+          `left:0;width:${fmt(Math.min(1.0, acrossHold.contents /. magScale) *. 100.0)}%`,
         )
       }
 

@@ -1333,11 +1333,12 @@
         color: #94a3b8;
       }
 
-      /* An axis (or peak) row: label · number · bar, aligned into a grid so the
-         bars line up under one another. */
+      /* An axis (or peak, or along/across hold) row: label · number · bar, aligned
+         into a grid so the bars line up under one another. The label column is sized
+         for the longest label rather than for `x`, so every row shares one grid. */
       .motion-axis {
         display: grid;
-        grid-template-columns: 1.5em 3.5em 1fr;
+        grid-template-columns: 4.2em 3.5em 1fr;
         align-items: center;
         gap: 0.5rem;
       }
@@ -1381,6 +1382,13 @@
          tinted warm so it reads apart from the signed axis bars. */
       .motion-bar__fill--peak {
         background: #f59e0b;
+      }
+
+      /* The `across` hold also grows from the left edge (it's a magnitude), tinted
+         apart from the peak so the two left-anchored bars don't read as one thing.
+         The `along` hold is signed and reuses the plain centred fill. */
+      .motion-bar__fill--across {
+        background: #a78bfa;
       }
 
       .motion-counter {
