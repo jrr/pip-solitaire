@@ -134,12 +134,22 @@ let loadStateHook: ref<option<GameState.t => unit>> = ref(None)
 // publishes none, so the button is a harmless no-op there.
 let undoHook: ref<option<unit => unit>> = ref(None)
 
+// The undo availability the board reports during its *opening* mount, captured to
+// seed the model below (#177). That first report fires while the switcher mounts
+// the initial scene (see `switcher` below) — which happens during module init,
+// before `dispatch` (and so `reportHistory`'s real dispatcher) exists — so a
+// resumed game whose restored stack can already undo would otherwise lose its
+// `canUndo = true` and open with the Undo button wrongly disabled. The pre-mount
+// default `reportHistory` records the latest value here; the model reads it at init.
+let initialCanUndo = ref(false)
+
 // The board's reverse channel (#85): after every state change it reports whether
 // there's anything to undo so the top bar can enable/disable the button. Filled
-// with a real dispatcher just after mount (like `closeMenu`); until then a no-op,
-// and reset to `false` on each scene change so a non-game scene leaves the button
-// disabled.
-let reportHistory: ref<bool => unit> = ref(_ => ())
+// with a real dispatcher just after mount (like `closeMenu`); until then it stashes
+// the value into `initialCanUndo` (above) so the opening report survives to seed the
+// model, and it's reset to `false` on each scene change so a non-game scene leaves
+// the button disabled.
+let reportHistory: ref<bool => unit> = ref(canUndo => initialCanUndo := canUndo)
 
 // Closing the menu means dispatching into the loop, but a scene row is an
 // imperative listener built before `dispatch` exists (like `updateSW`). It
@@ -513,8 +523,12 @@ let dispatch = Html.mount(
     // Mirror the persisted console-logging preference (#213) so the switch opens in
     // the right position; the `DebugLog` gate itself was seeded above.
     debugLog: debugLogEnabled,
-    // Undo starts disabled; the mounted board reports its history (#85).
-    canUndo: false,
+    // Seeded from the board's opening history report (#177): a fresh deal reports
+    // `false` (nothing to undo yet), but a resumed game with a restored undo stack
+    // reports `true`, and that report already fired during the switcher's initial
+    // mount above — before `dispatch` existed — so it's read back from
+    // `initialCanUndo` here rather than hardcoded off (#85).
+    canUndo: initialCanUndo.contents,
     // The refresh button starts hidden until `Refresh.detect` reports the
     // service-worker state (#112); not busy until an action runs.
     refreshMode: None,

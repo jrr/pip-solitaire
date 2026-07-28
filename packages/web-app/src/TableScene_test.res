@@ -78,4 +78,25 @@ describe("TableScene save/resume (#177)", () => {
     let _teardown = scene.mount(container)
     expect(hasWinOverlay(container))->toBe(false)
   })
+
+  test("a resumed game with moves behind it reports it can undo on opening", () => {
+    // The board announces undo availability through `~onHistory` as it mounts; a
+    // resumed stack that already has a past must report `true` on that opening call,
+    // or the top bar's Undo button opens disabled with moves still to walk back — the
+    // "undo doesn't work after resuming" regression. `Main` reads exactly this opening
+    // report to seed the model's `canUndo`.
+    let game = Game.freecell
+    let initial = GameState.initial(game)
+    // A two-state history: present reached from a prior state, so `canUndo` is true.
+    let resumed = History.record(History.make(initial), initial)
+    let lastCanUndo = ref(None)
+    let container = createElement("div")
+    let scene = TableScene.make(
+      ~history=resumed,
+      ~onHistory=canUndo => lastCanUndo := Some(canUndo),
+      game,
+    )
+    let _teardown = scene.mount(container)
+    expect(lastCanUndo.contents->Option.getOr(false))->toBe(true)
+  })
 })
