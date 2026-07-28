@@ -224,8 +224,18 @@
 
       /* The app's title, moved out of the retired Home scene into the menu header
          (#109). Keeps the gradient wordmark it had as the greeting. */
+      /* The Settings screen's copy of this doubles as the hidden-options tap target
+         (ten taps; see HiddenOptions), so it has to survive being jabbed at rapidly:
+         `user-select: none` stops the run from smearing a text selection across the
+         title, and `touch-action: manipulation` drops the double-tap-to-zoom gesture
+         (and the ~300ms click delay that comes with it) so every tap in the run
+         registers. Applied to all three screens' titles — none of them is text anyone
+         needs to select. */
       .menu-title {
         margin: 0;
+        -webkit-user-select: none;
+        user-select: none;
+        touch-action: manipulation;
         font-size: 1.6rem;
         font-weight: 700;
         line-height: 1.15;
@@ -1454,7 +1464,7 @@
         }
       }
     </style>
-    <script type="module" crossorigin src="./assets/index-DdNKzXRm.js"></script>
+    <script type="module" crossorigin src="./assets/index-CZXIt1eA.js"></script>
   <link rel="manifest" href="./manifest.webmanifest"></head>
   <body>
     <!-- Vite resolves the bare `core/…` specifier the compiled entry imports
