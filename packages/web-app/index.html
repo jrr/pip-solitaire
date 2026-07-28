@@ -1245,11 +1245,29 @@
          the card's middle (SVG elements otherwise default to a `0 0` origin), and
          the transition eases a card into its new angle as it snaps home, matching
          the wrapper's left/top snap. */
+      /* The accelerometer spike (`CardShake.res`) rides in the same slot: it writes
+         `--shake-x`/`--shake-y`/`--shake-rot` on the wrapper — inherited down to
+         here exactly as `--card-rot` is — and they compose with the dealt tilt
+         rather than replacing it. Because this stays on the *inner* art, the
+         wrapper's `left`/`top` and its measured rect are untouched, so a shake can
+         never move a drop target. All three default to zero, so a board with the
+         knob off renders precisely as before. */
       .stacking-card .card-art {
         width: 100%;
-        transform: rotate(var(--card-rot, 0deg));
+        transform: translate(var(--shake-x, 0px), var(--shake-y, 0px))
+          rotate(calc(var(--card-rot, 0deg) + var(--shake-rot, 0deg)));
         transform-origin: 50% 50%;
         transition: transform 0.18s ease;
+      }
+
+      /* While a shake is live the offsets are rewritten every frame, and the 0.18s
+         transform easing above would smear them into mush (and re-run the whole
+         board's compositing on each write). Suppressed for the duration, exactly as
+         the opening deal suppresses the left/top snap; `CardShake` drops the class
+         when the cards settle, so the eased re-tilt is back for the next ordinary
+         drop. */
+      .card-shake-active .card-art {
+        transition: none;
       }
 
       /* During the opening deal (#115) each card is positioned instantly — the

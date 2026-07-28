@@ -353,6 +353,9 @@ let gameScene = (game: Game.t) => {
     // Skip the opening-deal fly-in when the URL asks for `?animate=off`, so the
     // board is shown already dealt (the same instant placement reduced-motion gives).
     ~skipDealAnimation=!url.animate,
+    // Let the accelerometer jostle the resting cards when the URL asks for
+    // `?shake=on` — the spike in `CardShake`, opt-in and off by default.
+    ~shake=url.shake,
     opening,
   )
 }

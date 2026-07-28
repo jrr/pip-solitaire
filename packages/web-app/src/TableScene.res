@@ -198,6 +198,10 @@ type card = {
   x: ref<float>,
   y: ref<float>,
   draggable: ref<bool>,
+  // The card's spring in the accelerometer spike (`CardShake`). Always present —
+  // an unattached driver simply never steps it, so nothing branches on the knob
+  // down in the layout — and always inert unless a shake is actually running.
+  shake: CardShake.entry,
 }
 
 // The design footprints, at scale 1. Everything the layout measures in pixels —
@@ -518,6 +522,11 @@ let make = (
   // as the OS "reduce motion" preference already does. Applies to every deal this
   // scene runs, re-deals included.
   ~skipDealAnimation: bool=false,
+  // `~shake` drives the resting cards from the accelerometer — the URL's `?shake=on`
+  // (see `AppUrl` / `CardShake`). Off by default, and the whole effect is confined to
+  // a visual offset on each card's inner art, so with it off (and on every device
+  // without a motion sensor) the board behaves exactly as it always has.
+  ~shake: bool=false,
   game: Game.t,
 ): Scene.t => {
   id: game.id,
@@ -555,6 +564,12 @@ let make = (
     // Game reflows the fresh board rather than the torn-down one whose closure the
     // observer would otherwise still hold. Starts a no-op until the first build.
     let resizeRelayout = ref(() => ())
+
+    // The live board's shake springs (`CardShake`), held at mount scope for the same
+    // reason and repointed by every `buildBoard` — so a New Game shakes the cards
+    // actually on the table rather than the torn-down board's. Empty until the first
+    // build, and never even read unless `~shake` attached a driver below.
+    let shakeCards: ref<unit => array<CardShake.entry>> = ref(() => [])
 
     // Build (or rebuild) the whole board for `game` into `boardHost`. Every call
     // clears the host first, so a re-deal starts empty — none of the previous
@@ -875,6 +890,11 @@ let make = (
                 ~slot=i,
               ),
             )
+            // How freely this card may be shaken about (`CardShake`): the exposed top
+            // card slides most, and each card stacked on it pins the one below
+            // further, so a deep fan shivers at its tip instead of coming apart.
+            // Written every reflow, so burying or exposing a card retunes it.
+            c.shake.mobility := CardShake.mobilityAtDepth(count - 1 - i)
             // Layer by slot so the pile stacks bottom-to-top regardless of the order
             // the nodes were created in. During normal play slot order already
             // matches creation order, but a forced state (a `?state=` scenario) moves
@@ -1229,6 +1249,14 @@ let make = (
           x: ref(0.),
           y: ref(0.),
           draggable: ref(true),
+          // Seeded from the card's *identity* alone, not its place: how eagerly it
+          // answers a shake and which way it twists should stay with the card as it
+          // moves around the board, unlike the dealt tilt, which is a property of
+          // where it came to rest.
+          shake: CardShake.makeEntry(
+            ~el=wrapper,
+            ~seed=suitOrdinal(cardData.suit) * 13 + rankOrdinal(cardData.rank),
+          ),
         }
         // Register the node so a pile derived from `state` can be laid out onto it.
         nodes->Array.push(self)
@@ -1471,6 +1499,11 @@ let make = (
             wrapper->releasePointerCapture(pointerId(ev))
             grab := None
             spanStarts->Array.forEach(((c, _, _)) => classList(c.wrapper)->removeClass("dragging"))
+            // A card the player has just put down sits where they put it, so it
+            // gives up whatever disarray a shake had accumulated for it (`CardShake`)
+            // and rests square again. The same instinct as the dealt tilt re-rolling
+            // on a drop: placing a card by hand is the thing that tidies it.
+            spanStarts->Array.forEach(((c, _, _)) => CardShake.settle(c.shake))
             let spanCards = spanStarts->Array.map(((c, _, _)) => c.data)
             // Where the grabbed card's centre was released decides the *action*:
             // onto a zone is a `Move`/`MoveRun` to that pile; a miss is a move to
@@ -1611,6 +1644,10 @@ let make = (
               ~slot=i,
             ),
           )
+          // A loose card has nothing on top of it, so it shakes with full mobility —
+          // the cluster is the part of the table that scatters most, which is about
+          // right for cards that are lying about rather than stacked.
+          c.shake.mobility := CardShake.mobilityAtDepth(0)
         })
       }
 
@@ -1733,6 +1770,10 @@ let make = (
       // drives, so a resize after a New Game reflows *this* board, not the one it
       // replaced.
       resizeRelayout := relayoutForResize
+      // Likewise point the shake driver at this build's card nodes. Read through a
+      // thunk rather than snapshotted, because `nodes` keeps growing as the deal
+      // makes cards — by the time a shake can arrive it's complete.
+      shakeCards := (() => nodes->Array.map(n => n.shake))
 
       // Deal now if the stage is already laid out (a later scene switch); otherwise
       // on the next frame, before the first paint, once the detached-at-mount stage
@@ -1837,6 +1878,16 @@ let make = (
     // deal. `~history` seeds only this opening mount; every later re-deal starts clean.
     buildBoard(~initial?, ~history?, game)
 
+    // Drive the resting cards from the accelerometer when the URL asked for it
+    // (`?shake=on`). Attached once for the scene's life — it reads the live board
+    // through `shakeCards`, so it survives a New Game without re-attaching — and it
+    // no-ops itself where there's no sensor, no motion permission, or an OS request
+    // for reduced motion. Its `devicemotion` listener is on `window`, so its teardown
+    // is folded into the scene's below.
+    let stopShake = shake
+      ? CardShake.attach(~host=boardHost, ~cards=() => shakeCards.contents())
+      : () => ()
+
     // Reflow the card layout whenever the stage resizes (#172). One observer serves
     // the scene's whole life: it watches the persistent `boardHost` and always
     // dispatches through `resizeRelayout`, which each `buildBoard` repoints at its
@@ -1858,10 +1909,14 @@ let make = (
       )
       observer->observe(boardHost)
       // The switcher clears the container on scene change, dropping the board host,
-      // the New Game control and every listener with them; the observer is all that
-      // outlives the DOM, so disconnect it here.
-      () => observer->disconnect
-    | None => () => ()
+      // the New Game control and every listener with them; the observer and the
+      // shake driver's window listener are all that outlive the DOM, so both are
+      // released here.
+      () => {
+        observer->disconnect
+        stopShake()
+      }
+    | None => () => stopShake()
     }
   },
 }

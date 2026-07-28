@@ -1,7 +1,8 @@
-// The URL query parameters the app understands, parsed once at startup. Four knobs,
-// all aimed at driving the app into a fixed, shareable position without touching
-// it — which is exactly what the screenshot report needs (it points a headless
-// browser at `?scene=freecell&state=midgame` and shoots the result):
+// The URL query parameters the app understands, parsed once at startup. Most are
+// aimed at driving the app into a fixed, shareable position without touching it —
+// which is exactly what the screenshot report needs (it points a headless browser
+// at `?scene=freecell&state=midgame` and shoots the result). The last one, `shake`,
+// is the odd one out: a spike switch rather than a positioning knob.
 //
 //   - `scene` — which scene to mount, by its id (`?scene=freecell`). Overrides the
 //     last scene persisted in localStorage, so a link always lands on the named
@@ -19,6 +20,9 @@
 //     a shot captures the settled board rather than a frame mid-deal. The same
 //     collapse-to-instant the OS "reduce motion" preference already triggers, but
 //     addressable from the URL so the report — and a shared link — can ask for it.
+//   - `shake` — whether the accelerometer drives the resting cards (`?shake=on`).
+//     Off unless asked for: it's an experiment, it prompts for motion permission on
+//     iOS, and it leaves the board permanently disarranged. See `CardShake`.
 //
 // All plain reads of `window.location.search`; nothing here mutates the URL.
 
@@ -36,6 +40,11 @@ type t = {
   seed: option<int>,
   // Whether to play the opening-deal fly-in; `true` unless the URL asks for `off`.
   animate: bool,
+  // Whether to drive the resting cards from the accelerometer (`?shake=on`). Off
+  // by default: it's a spike (see `CardShake`), it needs an iOS permission prompt,
+  // and it permanently disarranges the board — none of which belongs on a plain
+  // visit. Opt-in only, so nothing about the default app changes.
+  shake: bool,
 }
 
 // Parse the current location's query string. A missing *or empty* parameter reads
@@ -56,5 +65,10 @@ let parse = (): t => {
   | Some("off") | Some("no") | Some("false") | Some("0") => false
   | _ => true
   }
-  {scene: read("scene"), state: read("state"), seed, animate}
+  // The mirror of `animate`: opt *in* rather than out, accepting the same spellings.
+  let shake = switch read("shake") {
+  | Some("on") | Some("yes") | Some("true") | Some("1") => true
+  | _ => false
+  }
+  {scene: read("scene"), state: read("state"), seed, animate, shake}
 }
