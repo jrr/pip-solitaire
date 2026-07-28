@@ -134,12 +134,22 @@ let loadStateHook: ref<option<GameState.t => unit>> = ref(None)
 // publishes none, so the button is a harmless no-op there.
 let undoHook: ref<option<unit => unit>> = ref(None)
 
+// The undo availability the board reports during its *opening* mount, captured to
+// seed the model below (#177). That first report fires while the switcher mounts
+// the initial scene (see `switcher` below) — which happens during module init,
+// before `dispatch` (and so `reportHistory`'s real dispatcher) exists — so a
+// resumed game whose restored stack can already undo would otherwise lose its
+// `canUndo = true` and open with the Undo button wrongly disabled. The pre-mount
+// default `reportHistory` records the latest value here; the model reads it at init.
+let initialCanUndo = ref(false)
+
 // The board's reverse channel (#85): after every state change it reports whether
 // there's anything to undo so the top bar can enable/disable the button. Filled
-// with a real dispatcher just after mount (like `closeMenu`); until then a no-op,
-// and reset to `false` on each scene change so a non-game scene leaves the button
-// disabled.
-let reportHistory: ref<bool => unit> = ref(_ => ())
+// with a real dispatcher just after mount (like `closeMenu`); until then it stashes
+// the value into `initialCanUndo` (above) so the opening report survives to seed the
+// model, and it's reset to `false` on each scene change so a non-game scene leaves
+// the button disabled.
+let reportHistory: ref<bool => unit> = ref(canUndo => initialCanUndo := canUndo)
 
 // Closing the menu means dispatching into the loop, but a scene row is an
 // imperative listener built before `dispatch` exists (like `updateSW`). It
@@ -297,15 +307,28 @@ let randomSeed = () => (Math.random() *. 1_000_000.)->Float.toInt
 // the top bar (see `newGameHook`).
 let gameScene = (game: Game.t) => {
   let isFreecell = game.id == Game.freecell.id
+  // A *plain* FreeCell open is the only place save-and-resume applies (#177): the
+  // app's primary game, opened without a URL asking for a specific position. A
+  // `?state=` scenario or a `?seed=` deal link addresses an exact board, so it opens
+  // that board and leaves any saved game strictly alone — neither resumed nor
+  // overwritten (the issue's "a `?state=` link doesn't disturb a saved game", and the
+  // same for the screenshot report's `?seed=`/`?state=` shots, which must stay
+  // side-effect-free).
+  let plainOpen = isFreecell && url.state->Option.isNone && url.seed->Option.isNone
+  // Resume a saved game when there is one and this is a plain open; otherwise `None`
+  // (nothing saved, corrupt/old data, or a URL-addressed board) means deal fresh.
+  let savedHistory = plainOpen ? SavedGame.load(game.id) : None
+
   // Open FreeCell from a fresh random seed on each load too (#108/#98), so a plain
-  // reload lays out a new board instead of always deal #1 — matching what New Game
-  // does. A `?seed=` pins that deal number instead (#98), so a link — and the
-  // screenshot report's dealt-board shot — lands on the same board every time. The
-  // fixed module-level `Game.freecell` (seed 1) stays the deterministic fallback for
-  // a forced `?state=` scenario, which screenshots depend on: when a state is forced
-  // we mount the fixed deal so `Scenario.forName` derives from the exact same board
-  // the report expects. The fixed-layout demos have no seed to vary, so they mount
-  // as-is.
+  // reload with nothing saved lays out a new board instead of always deal #1 —
+  // matching what New Game does. A `?seed=` pins that deal number instead (#98), so a
+  // link — and the screenshot report's dealt-board shot — lands on the same board
+  // every time. The fixed module-level `Game.freecell` (seed 1) stays the
+  // deterministic fallback for a forced `?state=` scenario, which screenshots depend
+  // on: when a state is forced we mount the fixed deal so `Scenario.forName` derives
+  // from the exact same board the report expects. The fixed-layout demos have no seed
+  // to vary, so they mount as-is. When a saved game is resumed the opening deal only
+  // supplies the 52 card nodes; every resting position comes from the restored history.
   let opening =
     isFreecell && url.state->Option.isNone
       ? Game.freecellDeal(~seed=url.seed->Option.getOr(randomSeed()))
@@ -313,6 +336,11 @@ let gameScene = (game: Game.t) => {
   let newDeal = isFreecell ? Some(() => Game.freecellDeal(~seed=randomSeed())) : None
   TableScene.make(
     ~initial=?url.state->Option.flatMap(name => Scenario.forName(game, name)),
+    // Restore the saved undo/redo stack (#177) and, when saving applies, hand the
+    // board a sink that writes each change back to storage. New Game/Restart/every
+    // move flow through this same sink, so the saved game always tracks the live one.
+    ~history=?savedHistory,
+    ~persist=?plainOpen ? Some(history => SavedGame.save(game.id, history)) : None,
     ~newDeal?,
     ~publishNewGame=hook => newGameHook := Some(hook),
     ~publishRestart=hook => restartHook := Some(hook),
@@ -495,8 +523,12 @@ let dispatch = Html.mount(
     // Mirror the persisted console-logging preference (#213) so the switch opens in
     // the right position; the `DebugLog` gate itself was seeded above.
     debugLog: debugLogEnabled,
-    // Undo starts disabled; the mounted board reports its history (#85).
-    canUndo: false,
+    // Seeded from the board's opening history report (#177): a fresh deal reports
+    // `false` (nothing to undo yet), but a resumed game with a restored undo stack
+    // reports `true`, and that report already fired during the switcher's initial
+    // mount above — before `dispatch` existed — so it's read back from
+    // `initialCanUndo` here rather than hardcoded off (#85).
+    canUndo: initialCanUndo.contents,
     // The refresh button starts hidden until `Refresh.detect` reports the
     // service-worker state (#112); not busy until an action runs.
     refreshMode: None,
