@@ -39,7 +39,9 @@
 //     see cards stacked dead-square; **Wiggle Waggle** (#235) — shake-to-jostle,
 //     the one title-cased, description-less row, whose `Motion.state` drives both the
 //     switch and a problem-only subtitle (`wiggle` / `onToggleWiggle`, see
-//     `wiggleRow`); and **Display content around notch** (#204) —
+//     `wiggleRow`), and which is **hidden** until the screen's title has been tapped
+//     ten times (`revealHidden`, see `HiddenOptions`); and
+//     **Display content around notch** (#204) —
 //     whether the landscape rail may ride out into the corner wings beside the notch
 //     (`notchDisplay` / `onToggleNotchDisplay`); off clamps every control inside the
 //     safe area;
@@ -124,6 +126,12 @@ type props = {
   onToggleWiggle: unit => unit,
   notchDisplay: bool,
   onToggleNotchDisplay: unit => unit,
+  // Whether the not-ready-yet settings are showing (`HiddenOptions`). Today that's
+  // just the Wiggle Waggle row; `onTapSettingsTitle` counts a tap on the Settings
+  // screen's title, which is what unlocks them. The handler is attached *only* to
+  // the Settings screen's title — see the header below.
+  revealHidden: bool,
+  onTapSettingsTitle: unit => unit,
   refreshButton: option<refreshButton>,
   version: string,
   buildTime: string,
@@ -199,6 +207,8 @@ let make = ({
   onToggleWiggle,
   notchDisplay,
   onToggleNotchDisplay,
+  revealHidden,
+  onTapSettingsTitle,
   refreshButton,
   version,
   buildTime,
@@ -243,7 +253,21 @@ let make = ({
         <>
           <div className="menu-panel__header">
             {backButton(~label="Back to menu", ~onClick=onBackToMenu)}
-            <h1 className="menu-title"> {Html.string("Settings")} </h1>
+            {<h1
+              // The hidden-options tap target (`HiddenOptions`): ten taps here reveal
+              // the settings that aren't ready to be found yet. It's *this* screen's
+              // title only — the identical `menu-title` renders "Pip" and "Debug" on the
+              // other two screens and must stay inert. Two things keep it that way: the
+              // handler is attached in this branch alone (the reconciler re-applies
+              // `onClick` on every patch, so switching screens clears it from the reused
+              // <h1> — see `Html.applyProps`), and `Main` drops any tap that arrives while
+              // `menuScreen` isn't `Settings`. Belt and braces, because a leak here would
+              // be invisible until someone found it.
+              className="menu-title"
+              onClick={_ => onTapSettingsTitle()}
+            >
+              {Html.string("Settings")}
+            </h1>}
             {closeButton}
           </div>
           <div className="menu-screen">
@@ -260,9 +284,13 @@ let make = ({
                 ~on=cardTilt,
                 ~onToggle=onToggleCardTilt,
               )}
-              {// "Wiggle Waggle" (#235) sits below "Sloppy placement" but is *not*
-              // nested under it — the two are independent settings.
-              wiggleRow(~state=wiggle, ~onToggle=onToggleWiggle)}
+              {
+                // "Wiggle Waggle" (#235) sits below "Sloppy placement" but is *not*
+                // nested under it — the two are independent settings. It's hidden until
+                // the Settings title has been tapped ten times (`HiddenOptions`) — not
+                // ready to be found by a player yet, but reachable on a test device.
+                revealHidden ? wiggleRow(~state=wiggle, ~onToggle=onToggleWiggle) : Html.array([])
+              }
               {toggleRow(
                 ~label="Display content around notch",
                 ~desc="Let the controls reach into the corners beside the camera notch.",
