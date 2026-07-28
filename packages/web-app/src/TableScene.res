@@ -200,6 +200,25 @@ type card = {
   draggable: ref<bool>,
 }
 
+// The two shake operations a built board exposes to the persistent shake
+// subscription (#235): `jostle` nudges the current cards off their resting spots on
+// a shake, `squareUp` re-lays them clean when listening stops. Republished on every
+// `buildBoard` so the mount-scope subscription always drives the live board's nodes.
+type boardOps = {
+  jostle: unit => unit,
+  squareUp: unit => unit,
+}
+
+// The shake control the scene publishes to the chrome (#235), sibling of the
+// undo/relayout hooks: `start` begins listening for shakes (Settings turns Wiggle
+// Waggle on, once permission is granted), `stop` ends it and squares the board back
+// up. Held at mount scope so it survives re-deals — the chrome calls it as the
+// switch flips, never rebuilding the board.
+type shakeControl = {
+  start: unit => unit,
+  stop: unit => unit,
+}
+
 // The design footprints, at scale 1. Everything the layout measures in pixels —
 // the fan step, the card box, the empty zone box — is one of these multiplied by
 // the stage's live `scale` (see `make`), so cards, zones and fans all shrink
@@ -508,6 +527,10 @@ let make = (
   ~publishLoadState: option<(GameState.t => unit) => unit>=?,
   ~publishUndo: option<(unit => unit) => unit>=?,
   ~publishRelayout: option<(unit => unit) => unit>=?,
+  // `~publishShake` (#235) hands the chrome the board's shake control (start/stop
+  // listening). Published once per mount, since the control drives the *live* board
+  // through the mount-scope `boardOps` ref rather than closing over one build.
+  ~publishShake: option<shakeControl => unit>=?,
   ~onHistory: option<bool => unit>=?,
   ~options: ref<Options.t>=ref(Options.default),
   ~tiltEnabled: ref<bool>=ref(true),
@@ -555,6 +578,41 @@ let make = (
     // Game reflows the fresh board rather than the torn-down one whose closure the
     // observer would otherwise still hold. Starts a no-op until the first build.
     let resizeRelayout = ref(() => ())
+
+    // The live board's shake operations (#235), held at mount scope so the single
+    // shake subscription below always jostles — or squares up — the *current* board:
+    // every `buildBoard` repoints these at its own fresh card nodes. No-ops until the
+    // first build.
+    let boardOps = ref({jostle: () => (), squareUp: () => ()})
+
+    // The active `devicemotion` shake subscription, `Some` while Wiggle Waggle is on
+    // and permission granted (#235). `Motion.subscribeShake` already parks the
+    // listener while the page is hidden and returns the unsubscribe thunk kept here.
+    let shakeUnsub: ref<option<unit => unit>> = ref(None)
+    let unsubscribeShake = () =>
+      switch shakeUnsub.contents {
+      | Some(unsub) =>
+        unsub()
+        shakeUnsub := None
+      | None => ()
+      }
+    // The chrome's shake control. `start` begins listening (idempotent — a second
+    // call while already subscribed is a no-op), jostling the live board on each
+    // shake; `stop` ends listening and squares the board back up so the mess doesn't
+    // linger once the switch is off.
+    let startShake = () =>
+      switch shakeUnsub.contents {
+      | Some(_) => ()
+      | None => shakeUnsub := Some(Motion.subscribeShake(~onShake=() => boardOps.contents.jostle()))
+      }
+    let stopShake = () => {
+      unsubscribeShake()
+      boardOps.contents.squareUp()
+    }
+    switch publishShake {
+    | Some(publish) => publish({start: startShake, stop: stopShake})
+    | None => ()
+    }
 
     // Build (or rebuild) the whole board for `game` into `boardHost`. Every call
     // clears the host first, so a re-deal starts empty — none of the previous
@@ -1614,6 +1672,37 @@ let make = (
         })
       }
 
+      // The shake jostle (#235): a vigorous shake nudges every card a little off its
+      // resting spot, so the tableau ends messier than it was dealt. Each nudge is a
+      // small random offset written straight to the card's live x/y and eased in by
+      // the `.stacking-card` left/top snap transition, so the board visibly jostles.
+      // It's deliberately physical and cumulative — repeated shakes pile on more mess
+      // — and never touches the model, so it's purely presentational; squaring up
+      // (below) re-lays every card onto its deterministic resting place, undoing it.
+      // `Math.random` is fine here: this fires only on a real device shake, never on
+      // the reproducible screenshot path.
+      let jostle = () => {
+        let amp = 12. *. scale.contents
+        nodes->Array.forEach(c => {
+          c.x := c.x.contents +. (Math.random() -. 0.5) *. 2. *. amp
+          c.y := c.y.contents +. (Math.random() -. 0.5) *. 2. *. amp
+          place(c)
+        })
+      }
+
+      // Publish this build's shake operations into the mount-scope `boardOps` ref, so
+      // the persistent subscription drives the live board's nodes (a New Game rebuild
+      // swaps in fresh ones). `squareUp` is exactly the tilt switch's relayout — reflow
+      // the piles, re-strew the loose cluster — reused so turning Wiggle Waggle off
+      // snaps the mess back to a clean deal (see `publishRelayout`).
+      boardOps := {
+          jostle,
+          squareUp: () => {
+            reflowAll()
+            dealFree()
+          },
+        }
+
       // Lay out each opening pile from `state`: reflow reads the cards the model
       // deals that pile and positions their nodes, so the pile ends laid out exactly
       // as an interactively built one would.
@@ -1858,10 +1947,14 @@ let make = (
       )
       observer->observe(boardHost)
       // The switcher clears the container on scene change, dropping the board host,
-      // the New Game control and every listener with them; the observer is all that
-      // outlives the DOM, so disconnect it here.
-      () => observer->disconnect
-    | None => () => ()
+      // the New Game control and every listener with them; the observer and the
+      // window-level shake listener are all that outlive the DOM, so tear both down
+      // here (#235 — the `devicemotion` subscription must be detached explicitly).
+      () => {
+        unsubscribeShake()
+        observer->disconnect
+      }
+    | None => () => unsubscribeShake()
     }
   },
 }
