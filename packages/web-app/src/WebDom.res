@@ -13,6 +13,19 @@ type element = Html.element
 @send external removeAttribute: (element, string) => unit = "removeAttribute"
 @send external addEventListener: (element, string, unit => unit) => unit = "addEventListener"
 @set external setTextContent: (element, string) => unit = "textContent"
+
+// Window-level listeners. The element bindings above hang a listener on a
+// specific node, which the scene container's `clear` drops along with the node.
+// A few events (device motion, orientation) only fire on `window`, so a scene
+// that wants one must attach it here and — crucially — detach it in its teardown
+// thunk, since clearing the container can't reach a listener that isn't on any
+// scene node. Pass the *same* handler value to `removeWindowListener` that was
+// given to `addWindowListener` for the removal to take. The handler is
+// polymorphic over its event payload so a caller can bind whatever shape it reads.
+@val @scope("window")
+external addWindowListener: (string, 'event => unit) => unit = "addEventListener"
+@val @scope("window")
+external removeWindowListener: (string, 'event => unit) => unit = "removeEventListener"
 @get external firstChild: element => Nullable.t<element> = "firstChild"
 
 // Remove every child of an element — used to reset the shared scene container
