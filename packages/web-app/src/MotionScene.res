@@ -125,7 +125,10 @@ let make = (): Scene.t => {
     panel->WebDom.appendChild(counter)->ignore
 
     // ---- State ----
-    let latest = ref((0.0, 0.0, 0.0)) // most recent x/y/z, drawn each frame
+    // `None` until the first `devicemotion` fires — so a device where the loop
+    // runs but no reading ever arrives (desktop Chrome) stays visibly empty
+    // rather than drawing the `(0,0,0)` sentinel as if it were live data.
+    let latest = ref(None) // most recent x/y/z, drawn each frame
     let peak = ref(0.0) // decaying peak of the gravity-corrected magnitude
     let shakeCount = ref(0)
     let lastShake = ref(0.0) // timestamp of the last counted shake, for debounce
@@ -141,7 +144,7 @@ let make = (): Scene.t => {
         let x = axis(acc.x)
         let y = axis(acc.y)
         let z = axis(acc.z)
-        latest := (x, y, z)
+        latest := Some((x, y, z))
         let excess = Math.abs(Math.sqrt(x *. x +. y *. y +. z *. z) -. gravity)
         if excess > peak.contents {
           peak := excess
@@ -168,23 +171,29 @@ let make = (): Scene.t => {
 
     // ---- The frame loop: redraw the numbers/bars and ease the peak down ----
     let rec tick = () => {
-      let (x, y, z) = latest.contents
-      xValue->WebDom.setTextContent(fmt(x))
-      yValue->WebDom.setTextContent(fmt(y))
-      zValue->WebDom.setTextContent(fmt(z))
-      drawAxis(xFill, x)
-      drawAxis(yFill, y)
-      drawAxis(zFill, z)
+      // Only draw once a reading has arrived; until then the sentinel `(0,0,0)`
+      // would read as a real still-phone measurement and, worse, park the peak
+      // hold at `|0 - gravity|` forever (`Math.max` re-floors it every frame).
+      switch latest.contents {
+      | None => ()
+      | Some((x, y, z)) =>
+        xValue->WebDom.setTextContent(fmt(x))
+        yValue->WebDom.setTextContent(fmt(y))
+        zValue->WebDom.setTextContent(fmt(z))
+        drawAxis(xFill, x)
+        drawAxis(yFill, y)
+        drawAxis(zFill, z)
 
-      let excess = Math.abs(Math.sqrt(x *. x +. y *. y +. z *. z) -. gravity)
-      // Ease the hold toward the current reading; a fresh spike (set in onMotion)
-      // is never below this, so the bar rises instantly and only the fall decays.
-      peak := Math.max(peak.contents *. peakDecay, excess)
-      peakValue->WebDom.setTextContent(fmt(peak.contents))
-      peakFill->WebDom.setAttribute(
-        "style",
-        `left:0;width:${fmt(Math.min(1.0, peak.contents /. magScale) *. 100.0)}%`,
-      )
+        let excess = Math.abs(Math.sqrt(x *. x +. y *. y +. z *. z) -. gravity)
+        // Ease the hold toward the current reading; a fresh spike (set in onMotion)
+        // is never below this, so the bar rises instantly and only the fall decays.
+        peak := Math.max(peak.contents *. peakDecay, excess)
+        peakValue->WebDom.setTextContent(fmt(peak.contents))
+        peakFill->WebDom.setAttribute(
+          "style",
+          `left:0;width:${fmt(Math.min(1.0, peak.contents /. magScale) *. 100.0)}%`,
+        )
+      }
 
       counter->WebDom.setTextContent(`shakes: ${Int.toString(shakeCount.contents)}`)
       rafId := Some(requestAnimationFrame(tick))
