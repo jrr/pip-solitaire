@@ -345,7 +345,7 @@ let switcher = SceneSwitcher.render(
     closeMenu.contents()
   },
   Array.concat(
-    [SpinnerScene.make(), SvgScene.make(), GalleryScene.make()],
+    [SpinnerScene.make(), SvgScene.make(), GalleryScene.make(), MotionScene.make()],
     Game.all->Array.map(gameScene),
   ),
 )
