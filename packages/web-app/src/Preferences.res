@@ -20,6 +20,7 @@
 // app might persist later.
 let autoCollectKey = "pip.autoCollect"
 let cardTiltKey = "pip.cardTilt"
+let wantsShakeKey = "pip.wantsShake"
 let notchDisplayKey = "pip.notchDisplay"
 let debugLogKey = "pip.debugLog"
 
@@ -61,6 +62,14 @@ let save = (options: Options.t) => saveFlag(autoCollectKey, options.autoCollect)
 // off, and this remembers that across launches.
 let loadCardTilt = (): bool => loadFlag(cardTiltKey, ~fallback=true)
 let saveCardTilt = (enabled: bool) => saveFlag(cardTiltKey, enabled)
+
+// "Wiggle Waggle" (#235): whether the player wants shake-to-jostle on, defaulting
+// off. What's persisted is *intent*, not the OS permission — the grant can be
+// revoked behind us, so on relaunch the first board tap re-asks `Motion.requestAccess`
+// (which resolves silently if still granted) and the switch reflects whatever it
+// finds. Off by default: finding out what it does is the point, so it starts quiet.
+let loadWantsShake = (): bool => loadFlag(wantsShakeKey, ~fallback=false)
+let saveWantsShake = (enabled: bool) => saveFlag(wantsShakeKey, enabled)
 
 // "Display content around screen notch" (#204) defaults on, matching today's
 // shipped landscape layout: the Menu/Undo rail rides out into the corner "wings"

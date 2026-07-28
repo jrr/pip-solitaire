@@ -36,7 +36,10 @@
 //     already names them. **Auto-collect** — state passed as `autoCollect`, toggled
 //     through `onToggleAutoCollect`; **Sloppy placement** (#65) — the slight
 //     resting-card tilt, `cardTilt` / `onToggleCardTilt`, for players who'd rather
-//     see cards stacked dead-square; and **Display content around notch** (#204) —
+//     see cards stacked dead-square; **Wiggle Waggle** (#235) — shake-to-jostle,
+//     the one title-cased, description-less row, whose `Motion.state` drives both the
+//     switch and a problem-only subtitle (`wiggle` / `onToggleWiggle`, see
+//     `wiggleRow`); and **Display content around notch** (#204) —
 //     whether the landscape rail may ride out into the corner wings beside the notch
 //     (`notchDisplay` / `onToggleNotchDisplay`); off clamps every control inside the
 //     safe area;
@@ -114,6 +117,11 @@ type props = {
   onToggleAutoCollect: unit => unit,
   cardTilt: bool,
   onToggleCardTilt: unit => unit,
+  // "Wiggle Waggle" (#235): the shake-to-jostle switch. Not a bool — its
+  // `Motion.state` decides both the switch position and the problem-only subtitle
+  // (see `wiggleRow`). `onToggleWiggle` asks for motion permission on the flip.
+  wiggle: Motion.state,
+  onToggleWiggle: unit => unit,
   notchDisplay: bool,
   onToggleNotchDisplay: unit => unit,
   refreshButton: option<refreshButton>,
@@ -140,6 +148,32 @@ let toggleRow = (~label, ~desc, ~on, ~onToggle) =>
     <span className="menu-toggle__switch" />
   </button>
 
+// The "Wiggle Waggle" row (#235): the shake-to-jostle switch. Unlike the plain
+// `toggleRow`, its label is title-cased and it deliberately carries *no* description
+// — the other settings explain themselves; finding out what this one does is the
+// point. The subtitle line under the title appears *only* to report a problem
+// (`Motion.subtitle`): blocked, no sensor, or an insecure origin. A healthy switch
+// — off or listening — shows just the title and the switch, so the row renders no
+// `menu-toggle__desc` at all in those states. The switch reads on only while
+// actually listening; a `Blocked` state snaps it back to off but keeps its subtitle.
+let wiggleRow = (~state: Motion.state, ~onToggle) => {
+  let on = Motion.isOn(state)
+  <button
+    className={on ? "menu-toggle menu-toggle--on" : "menu-toggle"}
+    onClick={_ => onToggle()}
+    attrs={[("type", "button"), ("role", "switch"), ("aria-checked", on ? "true" : "false")]}
+  >
+    <span className="menu-toggle__text">
+      <span className="menu-toggle__label"> {Html.string("Wiggle Waggle")} </span>
+      {switch Motion.subtitle(state) {
+      | Some(line) => <span className="menu-toggle__desc"> {Html.string(line)} </span>
+      | None => Html.array([])
+      }}
+    </span>
+    <span className="menu-toggle__switch" />
+  </button>
+}
+
 let make = ({
   open_,
   screen,
@@ -161,6 +195,8 @@ let make = ({
   onToggleAutoCollect,
   cardTilt,
   onToggleCardTilt,
+  wiggle,
+  onToggleWiggle,
   notchDisplay,
   onToggleNotchDisplay,
   refreshButton,
@@ -224,6 +260,9 @@ let make = ({
                 ~on=cardTilt,
                 ~onToggle=onToggleCardTilt,
               )}
+              {// "Wiggle Waggle" (#235) sits below "Sloppy placement" but is *not*
+              // nested under it — the two are independent settings.
+              wiggleRow(~state=wiggle, ~onToggle=onToggleWiggle)}
               {toggleRow(
                 ~label="Display content around notch",
                 ~desc="Let the controls reach into the corners beside the camera notch.",

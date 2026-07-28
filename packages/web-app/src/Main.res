@@ -61,6 +61,11 @@ type model = {
   menuScreen: Menu.screen,
   autoCollect: bool,
   cardTilt: bool,
+  // "Wiggle Waggle" (#235): the shake-to-jostle switch, a state machine rather than a
+  // bool. `Motion.state` carries whether we're off/listening/blocked/unavailable, which
+  // drives both the switch position and its problem-only subtitle. Settings owns the
+  // motion grant; the board only listens when this is `On`.
+  wiggle: Motion.state,
   // "Display content around screen notch" (#204): on (default) lets the landscape
   // rail ride out into the corner wings beside the notch; off clamps every control
   // inside the safe area. Presentation-only chrome, so it mirrors a `Preferences`
@@ -93,6 +98,8 @@ type msg =
   | BackToSettings // the Debug screen's back button — swap back to Settings
   | ToggleAutoCollect // the menu's Auto-collect switch (#139)
   | ToggleCardTilt // the menu's hand-placed-tilt switch (#65)
+  | WiggleOff // the Wiggle Waggle switch turned off (#235) — stop listening, square up
+  | WiggleResolved(Motion.state) // a motion-permission request resolved to a new state (#235)
   | ToggleNotchDisplay // the menu's "Display content around screen notch" switch (#204)
   | ToggleCutoutDebug // the menu's safe-area overlay switch (debug)
   | ToggleDebugLog // the Debug screen's console-logging switch (#213)
@@ -190,6 +197,30 @@ DebugLog.setEnabled(debugLogEnabled)
 // until the next board republishes.
 let relayoutHook: ref<option<unit => unit>> = ref(None)
 
+// The persisted Wiggle Waggle *intent* (#235), read once at startup. It's intent, not
+// permission — the OS can revoke the grant behind us — so on relaunch the first board
+// tap re-asks `Motion.requestAccess` (silent if still granted; see the wiring at the
+// foot of the file) and the switch reflects whatever it finds.
+let wantsShake = Preferences.loadWantsShake()
+
+// The switch state the app opens in: `Unavailable(reason)` on a device/origin that
+// can't do motion, else the saved intent (`On`/`Off`). Never prompts — the real grant
+// is deferred to a user gesture. Also seeds `Motion.current`, the shared state the
+// debug Motion scene reads (it no longer owns a "Request permission" button).
+let wiggleInit = Motion.initialState(~wantsShake)
+Motion.current := wiggleInit
+
+// The active board's shake control (#235), sibling of `relayoutHook`: the mounted
+// `TableScene` publishes `{start, stop}` here, and Settings calls it as the switch
+// flips. Cleared on each scene change; the mounting board republishes.
+let shakeControlHook: ref<option<TableScene.shakeControl>> = ref(None)
+
+// Whether the board *should* be listening for shakes right now (#235): true once
+// Wiggle Waggle is on and permission is granted. Held outside the Elm model so a
+// scene mount — which happens through the imperative switcher — can re-apply it to
+// the freshly-published control (see `~publishShake` in `gameScene`).
+let shakeActive = ref(Motion.isOn(wiggleInit))
+
 let update = (msg, model) =>
   switch msg {
   | UpdateAvailable => ({...model, updateAvailable: true}, Html.noEffect)
@@ -233,6 +264,41 @@ let update = (msg, model) =>
         tiltEnabled := cardTilt
         Preferences.saveCardTilt(cardTilt)
         relayoutHook.contents->Option.forEach(relayout => relayout())
+      },
+    )
+  // Wiggle Waggle turned off (#235): stop listening and square the board back up
+  // (the board's `stop` does both), persist the flipped-off intent, and drop the
+  // shared state to `Off`. Snapping the mess back is the deliberate way out — a
+  // hidden square-up gesture can't be the only one (#236).
+  | WiggleOff => (
+      {...model, wiggle: Motion.Off},
+      () => {
+        shakeActive := false
+        Motion.current := Motion.Off
+        Preferences.saveWantsShake(false)
+        shakeControlHook.contents->Option.forEach(control => control.stop())
+      },
+    )
+  // A motion-permission request resolved (#235). `On` — granted or ungated: start
+  // listening and persist the intent so the next launch resumes. `Blocked` — the OS
+  // refused: the switch snaps back to off (its subtitle explains why) and we stop;
+  // crucially we *don't* persist a false intent, so a grant revoked behind us (the
+  // saved intent still `true`) keeps re-asking on future launches rather than giving
+  // up. `Unavailable`/`Off` just reflect the state.
+  | WiggleResolved(state) => (
+      {...model, wiggle: state},
+      () => {
+        Motion.current := state
+        switch state {
+        | Motion.On =>
+          shakeActive := true
+          Preferences.saveWantsShake(true)
+          shakeControlHook.contents->Option.forEach(control => control.start())
+        | Blocked =>
+          shakeActive := false
+          shakeControlHook.contents->Option.forEach(control => control.stop())
+        | Unavailable(_) | Off => ()
+        }
       },
     )
   | ToggleNotchDisplay =>
@@ -347,6 +413,15 @@ let gameScene = (game: Game.t) => {
     ~publishLoadState=hook => loadStateHook := Some(hook),
     ~publishUndo=hook => undoHook := Some(hook),
     ~publishRelayout=hook => relayoutHook := Some(hook),
+    // Adopt the board's shake control (#235) and, if Wiggle Waggle is already on,
+    // start it listening straight away — this is what re-applies an active shake to a
+    // board that mounts (or re-deals) after the switch was flipped.
+    ~publishShake=control => {
+      shakeControlHook := Some(control)
+      if shakeActive.contents {
+        control.start()
+      }
+    },
     ~onHistory=canUndo => reportHistory.contents(canUndo),
     ~options,
     ~tiltEnabled,
@@ -366,6 +441,10 @@ let switcher = SceneSwitcher.render(
     restartHook := None
     loadStateHook := None
     relayoutHook := None
+    // Drop the outgoing board's shake control (#235); its teardown already detached
+    // the `devicemotion` listener. The mounting scene republishes its own, and the
+    // `~publishShake` handler re-applies `shakeActive` to it.
+    shakeControlHook := None
     // Drop the outgoing board's undo and reset the top bar's button to disabled;
     // the mounting scene republishes and reports its own history (#85).
     undoHook := None
@@ -444,6 +523,20 @@ let view = (model, dispatch) => <>
     onToggleAutoCollect={() => dispatch(ToggleAutoCollect)}
     cardTilt={model.cardTilt}
     onToggleCardTilt={() => dispatch(ToggleCardTilt)}
+    wiggle={model.wiggle}
+    onToggleWiggle={() =>
+      // The single chance to ask (#235): flip *on* asks for the motion grant under
+      // this real click's transient activation — iOS won't prompt without it and
+      // remembers a denial per origin. Flip *off* just stops. An `Unavailable` switch
+      // has nothing to grant, so a tap is inert.
+      switch model.wiggle {
+      | Motion.Unavailable(_) => ()
+      | On => dispatch(WiggleOff)
+      | Off | Blocked =>
+        Motion.requestAccess()
+        ->Promise.thenResolve(state => dispatch(WiggleResolved(state)))
+        ->ignore
+      }}
     notchDisplay={model.notchDisplay}
     onToggleNotchDisplay={() => dispatch(ToggleNotchDisplay)}
     refreshButton={switch model.refreshMode {
@@ -513,6 +606,10 @@ let dispatch = Html.mount(
     // position (the board reads the `options` and `tiltEnabled` refs directly).
     autoCollect: options.contents.autoCollect,
     cardTilt: tiltEnabled.contents,
+    // The Wiggle Waggle switch opens in its computed startup state (#235): its saved
+    // intent, or an `Unavailable` reason on a device/origin that can't do motion. The
+    // real grant is deferred to the first board tap (wired at the foot of the file).
+    wiggle: wiggleInit,
     // Mirror the persisted notch-display preference so the switch opens in the
     // right position; the layout itself is driven by the root attribute applied
     // above (see `NotchDisplay`).
@@ -540,6 +637,25 @@ let dispatch = Html.mount(
 
 // Now that `dispatch` exists, let a scene row close the menu through it.
 closeMenu := (() => dispatch(CloseMenu))
+
+// Resume the shake grant on the first tap (#235). With `wantsShake` set, the switch
+// opened optimistically `On`, but iOS may require transient activation to (re)confirm
+// the grant, and it can have been revoked behind us — so we defer to the first user
+// gesture rather than prompting at startup. This one-shot `pointerdown` listener asks
+// `Motion.requestAccess` (which resolves silently if the grant survived the reload)
+// and routes the outcome back through the loop: `On` starts listening, `Blocked` snaps
+// the switch to off with its explanation. This is the spike's first-click listener,
+// promoted from a hack to the resume path. Only armed when the switch actually opened
+// listening — an off, blocked, or unavailable start has nothing to resume.
+if Motion.isOn(wiggleInit) {
+  let rec onFirstTap = _event => {
+    WebDom.removeWindowListener("pointerdown", onFirstTap)
+    Motion.requestAccess()
+    ->Promise.thenResolve(state => dispatch(WiggleResolved(state)))
+    ->ignore
+  }
+  WebDom.addWindowListener("pointerdown", onFirstTap)
+}
 
 // …and let the board's history reports reach the loop, so Undo enables and
 // disables as moves are played and undone (#85).
