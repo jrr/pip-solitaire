@@ -23,15 +23,24 @@ let cardTiltKey = "pip.cardTilt"
 let wantsShakeKey = "pip.wantsShake"
 let notchDisplayKey = "pip.notchDisplay"
 let debugLogKey = "pip.debugLog"
+let revealHiddenKey = "pip.revealHidden"
 
-// Read a boolean flag from storage, treating only an explicit "false" as off; a
-// missing, garbage, or unreadable value keeps the on-by-default `fallback`. This
-// is the shared shape both flags below are stored in.
+// Read a boolean flag from storage: an explicit "true"/"false" wins, and anything
+// else — missing, garbage, or unreadable — keeps `fallback`. This is the shared
+// shape every flag below is stored in.
+//
+// Honouring "true" matters for the flags that default *off* (`wantsShake`,
+// `debugLog`, `revealHidden`): reading only "false" and falling back otherwise
+// meant a stored `true` fell through to the off default, so those three could be
+// written but never read back — they silently failed to survive a reload. The
+// default-on flags were unaffected either way (their stored "true" and their
+// fallback agree), which is why it went unnoticed.
 let loadFlag = (key, ~fallback) => {
   let stored = try getItem(key)->Nullable.toOption catch {
   | _ => None
   }
   switch stored {
+  | Some("true") => true
   | Some("false") => false
   | _ => fallback
   }
@@ -89,3 +98,10 @@ let saveNotchDisplay = (enabled: bool) => saveFlag(notchDisplayKey, enabled)
 // on still sees logs after a reload (see DebugLog / the menu's Debug screen).
 let loadDebugLog = (): bool => loadFlag(debugLogKey, ~fallback=false)
 let saveDebugLog = (enabled: bool) => saveFlag(debugLogKey, enabled)
+
+// Whether the hidden settings are showing on this device (`HiddenOptions`): off
+// until someone taps the Settings title ten times, and persisted either way so the
+// gesture is performed once, not once per launch. Written in both directions — ten
+// more taps hides the rows again, without turning off whatever they switched on.
+let loadRevealHidden = (): bool => loadFlag(revealHiddenKey, ~fallback=false)
+let saveRevealHidden = (revealed: bool) => saveFlag(revealHiddenKey, revealed)

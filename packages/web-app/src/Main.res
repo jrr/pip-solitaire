@@ -77,6 +77,10 @@ type model = {
   // `cutoutDebug`) so the switch opens in the right position; the logging itself is
   // driven by the shared `DebugLog.enabled` gate the toggle flips.
   debugLog: bool,
+  // The hidden settings and the run of taps that reveals them (`HiddenOptions`).
+  // `revealed` is persisted; the tap count is session state, cleared on the way out
+  // of the Settings screen so a half-finished run can't be resumed later.
+  hidden: HiddenOptions.t,
   canUndo: bool,
   // The adaptive Settings refresh control (#112). `refreshMode` is `None` until
   // `Refresh.detect` resolves (and stays effectively hidden on an unsupported
@@ -103,6 +107,7 @@ type msg =
   | ToggleNotchDisplay // the menu's "Display content around screen notch" switch (#204)
   | ToggleCutoutDebug // the menu's safe-area overlay switch (debug)
   | ToggleDebugLog // the Debug screen's console-logging switch (#213)
+  | SettingsTitleTapped // a tap on the Settings screen's title — ten reveal the hidden settings
   | HistoryChanged(bool) // whether the board can undo after a move (#85)
   | RefreshDetected(Refresh.mode) // service-worker presence detected — sets the button's shape (#112)
   | RefreshStarted // the refresh button was tapped — start spinning the button (#112/#201)
@@ -226,22 +231,57 @@ let update = (msg, model) =>
   | UpdateAvailable => ({...model, updateAvailable: true}, Html.noEffect)
   // Opening or closing the menu resets it to the main screen, so a visit to
   // Settings never lingers into the next open (#191).
+  // Every screen change also abandons a part-finished run of reveal taps
+  // (`HiddenOptions.reset`), here and in the five branches below: the counter only
+  // ever spans one uninterrupted visit to the Settings screen.
   | ToggleMenu => (
-      {...model, menuOpen: !model.menuOpen, menuScreen: Menu.Main, refreshBusy: false},
+      {
+        ...model,
+        menuOpen: !model.menuOpen,
+        menuScreen: Menu.Main,
+        refreshBusy: false,
+        hidden: HiddenOptions.reset(model.hidden),
+      },
       Html.noEffect,
     )
   | HistoryChanged(canUndo) =>
     canUndo == model.canUndo ? (model, Html.noEffect) : ({...model, canUndo}, Html.noEffect) // no change — don't re-render
   | CloseMenu =>
     model.menuOpen
-      ? ({...model, menuOpen: false, menuScreen: Menu.Main, refreshBusy: false}, Html.noEffect)
+      ? (
+          {
+            ...model,
+            menuOpen: false,
+            menuScreen: Menu.Main,
+            refreshBusy: false,
+            hidden: HiddenOptions.reset(model.hidden),
+          },
+          Html.noEffect,
+        )
       : (model, Html.noEffect)
   // Enter Settings clean: clear any stale spinner from a prior visit. The label
   // itself is re-detected on open (see the view's `onOpenSettings`).
-  | OpenSettings => ({...model, menuScreen: Menu.Settings, refreshBusy: false}, Html.noEffect)
-  | BackToMenu => ({...model, menuScreen: Menu.Main}, Html.noEffect)
-  | OpenDebug => ({...model, menuScreen: Menu.Debug}, Html.noEffect)
-  | BackToSettings => ({...model, menuScreen: Menu.Settings}, Html.noEffect)
+  | OpenSettings => (
+      {
+        ...model,
+        menuScreen: Menu.Settings,
+        refreshBusy: false,
+        hidden: HiddenOptions.reset(model.hidden),
+      },
+      Html.noEffect,
+    )
+  | BackToMenu => (
+      {...model, menuScreen: Menu.Main, hidden: HiddenOptions.reset(model.hidden)},
+      Html.noEffect,
+    )
+  | OpenDebug => (
+      {...model, menuScreen: Menu.Debug, hidden: HiddenOptions.reset(model.hidden)},
+      Html.noEffect,
+    )
+  | BackToSettings => (
+      {...model, menuScreen: Menu.Settings, hidden: HiddenOptions.reset(model.hidden)},
+      Html.noEffect,
+    )
   | ToggleAutoCollect =>
     let autoCollect = !model.autoCollect
     (
@@ -331,6 +371,27 @@ let update = (msg, model) =>
         DebugLog.setEnabled(debugLog)
         Preferences.saveDebugLog(debugLog)
       },
+    )
+  // A tap on the Settings screen's title (`HiddenOptions`): every tenth flips the
+  // settings that aren't ready to be found yet into or out of view, and persists that
+  // so the gesture is performed once per device rather than once per launch. Hiding
+  // them again leaves whatever they switched on running — see `HiddenOptions` for why
+  // that's deliberate, and what it costs.
+  //
+  // The screen guard is the other half of "only Settings unlocks": the same green
+  // `menu-title` heads all three screens, and while the view only wires the handler
+  // onto Settings' copy, this makes the invariant explicit rather than resting on the
+  // reconciler clearing a reused node's click handler.
+  | SettingsTitleTapped if model.menuScreen != Menu.Settings => (model, Html.noEffect)
+  | SettingsTitleTapped =>
+    let hidden = HiddenOptions.tap(model.hidden)
+    (
+      {...model, hidden},
+      // Only the tap that actually flipped the reveal is worth persisting; the other
+      // nine in a run just move the counter.
+      HiddenOptions.revealChanged(~before=model.hidden, ~after=hidden)
+        ? () => Preferences.saveRevealHidden(hidden.revealed)
+        : Html.noEffect,
     )
   | Reload => (
       model, // no state change — just run the effect
@@ -539,6 +600,8 @@ let view = (model, dispatch) => <>
       }}
     notchDisplay={model.notchDisplay}
     onToggleNotchDisplay={() => dispatch(ToggleNotchDisplay)}
+    revealHidden={model.hidden.revealed}
+    onTapSettingsTitle={() => dispatch(SettingsTitleTapped)}
     refreshButton={switch model.refreshMode {
     | None | Some(Refresh.Unsupported) => None // still detecting, or unsupported — no button
     | Some(Refresh.NoWorker) =>
@@ -620,6 +683,9 @@ let dispatch = Html.mount(
     // Mirror the persisted console-logging preference (#213) so the switch opens in
     // the right position; the `DebugLog` gate itself was seeded above.
     debugLog: debugLogEnabled,
+    // The hidden settings open showing or not according to whether this device has
+    // ever completed the ten-tap unlock; the tap run always starts fresh.
+    hidden: HiddenOptions.initial(~revealed=Preferences.loadRevealHidden()),
     // Seeded from the board's opening history report (#177): a fresh deal reports
     // `false` (nothing to undo yet), but a resumed game with a restored undo stack
     // reports `true`, and that report already fired during the switcher's initial
