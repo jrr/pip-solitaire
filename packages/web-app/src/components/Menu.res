@@ -128,8 +128,9 @@ type props = {
   onToggleNotchDisplay: unit => unit,
   // Whether the not-ready-yet settings are showing (`HiddenOptions`). Today that's
   // just the Wiggle Waggle row; `onTapSettingsTitle` counts a tap on the Settings
-  // screen's title, which is what unlocks them. The handler is attached *only* to
-  // the Settings screen's title — see the header below.
+  // screen's title, every ten of which flip this. The handler is attached *only* to
+  // the Settings screen's title — see the header below. A hidden row says nothing
+  // about whether its setting is *on*: hiding leaves it running.
   revealHidden: bool,
   onTapSettingsTitle: unit => unit,
   refreshButton: option<refreshButton>,
@@ -254,8 +255,9 @@ let make = ({
           <div className="menu-panel__header">
             {backButton(~label="Back to menu", ~onClick=onBackToMenu)}
             {<h1
-              // The hidden-options tap target (`HiddenOptions`): ten taps here reveal
-              // the settings that aren't ready to be found yet. It's *this* screen's
+              // The hidden-options tap target (`HiddenOptions`): every ten taps here
+              // flip the settings that aren't ready to be found yet into or out of
+              // view — hiding them is the same gesture again. It's *this* screen's
               // title only — the identical `menu-title` renders "Pip" and "Debug" on the
               // other two screens and must stay inert. Two things keep it that way: the
               // handler is attached in this branch alone (the reconciler re-applies
@@ -289,6 +291,8 @@ let make = ({
                 // nested under it — the two are independent settings. It's hidden until
                 // the Settings title has been tapped ten times (`HiddenOptions`) — not
                 // ready to be found by a player yet, but reachable on a test device.
+                // Ten more taps hide the row again *without* stopping the shake, so an
+                // absent row here doesn't mean the board is sitting still.
                 revealHidden ? wiggleRow(~state=wiggle, ~onToggle=onToggleWiggle) : Html.array([])
               }
               {toggleRow(

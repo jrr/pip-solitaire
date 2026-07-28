@@ -372,9 +372,11 @@ let update = (msg, model) =>
         Preferences.saveDebugLog(debugLog)
       },
     )
-  // A tap on the Settings screen's title (`HiddenOptions`): the tenth reveals the
-  // settings that aren't ready to be found yet, and persists that so it's done once
-  // per device rather than once per launch.
+  // A tap on the Settings screen's title (`HiddenOptions`): every tenth flips the
+  // settings that aren't ready to be found yet into or out of view, and persists that
+  // so the gesture is performed once per device rather than once per launch. Hiding
+  // them again leaves whatever they switched on running — see `HiddenOptions` for why
+  // that's deliberate, and what it costs.
   //
   // The screen guard is the other half of "only Settings unlocks": the same green
   // `menu-title` heads all three screens, and while the view only wires the handler
@@ -383,16 +385,14 @@ let update = (msg, model) =>
   | SettingsTitleTapped if model.menuScreen != Menu.Settings => (model, Html.noEffect)
   | SettingsTitleTapped =>
     let hidden = HiddenOptions.tap(model.hidden)
-    // An inert tap (the options are already showing) leaves the state physically
-    // unchanged, so hand back the very same model and skip the re-render entirely.
-    hidden === model.hidden
-      ? (model, Html.noEffect)
-      : (
-          {...model, hidden},
-          HiddenOptions.justRevealed(~before=model.hidden, ~after=hidden)
-            ? () => Preferences.saveRevealHidden()
-            : Html.noEffect,
-        )
+    (
+      {...model, hidden},
+      // Only the tap that actually flipped the reveal is worth persisting; the other
+      // nine in a run just move the counter.
+      HiddenOptions.revealChanged(~before=model.hidden, ~after=hidden)
+        ? () => Preferences.saveRevealHidden(hidden.revealed)
+        : Html.noEffect,
+    )
   | Reload => (
       model, // no state change — just run the effect
       () =>

@@ -99,10 +99,9 @@ let saveNotchDisplay = (enabled: bool) => saveFlag(notchDisplayKey, enabled)
 let loadDebugLog = (): bool => loadFlag(debugLogKey, ~fallback=false)
 let saveDebugLog = (enabled: bool) => saveFlag(debugLogKey, enabled)
 
-// Whether the hidden settings have been unlocked on this device (`HiddenOptions`):
-// off until someone taps the Settings title ten times, and persisted from then on so
-// the unlock is done once, not once per launch. Only ever written `true` — there's no
-// in-app way to re-hide, deliberately, since a player who turned a hidden setting on
-// needs to be able to find it again to turn it off.
+// Whether the hidden settings are showing on this device (`HiddenOptions`): off
+// until someone taps the Settings title ten times, and persisted either way so the
+// gesture is performed once, not once per launch. Written in both directions — ten
+// more taps hides the rows again, without turning off whatever they switched on.
 let loadRevealHidden = (): bool => loadFlag(revealHiddenKey, ~fallback=false)
-let saveRevealHidden = () => saveFlag(revealHiddenKey, true)
+let saveRevealHidden = (revealed: bool) => saveFlag(revealHiddenKey, revealed)

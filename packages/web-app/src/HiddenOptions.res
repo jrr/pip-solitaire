@@ -12,20 +12,27 @@
 // enforce on its own — the caller decides which taps to feed in. See `Main`'s
 // `SettingsTitleTapped`, which drops any tap arriving while another screen shows.
 //
-// Once revealed it *stays* revealed, persisted like any other preference: nobody
-// wants to tap ten times a day, and a switch you can turn on but can't find again
-// to turn off is worse than one that was never hidden. The tap count itself is
-// session state, held in the chrome model and reset on the way out of Settings, so
-// a half-finished run doesn't lie in wait to be completed hours later.
+// The gesture is a *toggle*: every run of ten flips the reveal, so ten more taps
+// put the rows away again. The reveal is persisted like any other preference —
+// nobody wants to tap ten times a day — and the tap count itself is session state,
+// held in the chrome model and reset on the way out of Settings, so a half-finished
+// run doesn't lie in wait to be completed hours later.
 //
-// Deliberately unfeedbacked for now: ten silent taps, then the rows appear. The
-// "you are N steps away" countdown Android shows is a follow-up.
+// Re-hiding deliberately does *not* turn the hidden settings off: whatever was
+// switched on stays on and keeps running. So a device can sit with Wiggle Waggle
+// jostling the board and no switch on screen to stop it, and the only way back to
+// that switch is another ten taps. That's the accepted cost of being able to tidy
+// the menu without disturbing what's under test — worth knowing before assuming a
+// hidden row means an inactive setting.
+//
+// Deliberately unfeedbacked for now: ten silent taps, then the rows appear (or go).
+// The "you are N steps away" countdown Android shows is a follow-up.
 
-// How many taps on the Settings title reveal the hidden options.
+// How many taps on the Settings title flip the reveal, in either direction.
 let tapsToReveal = 10
 
 // The reveal state: whether the hidden options are showing, and how far into a
-// run of taps we are. `taps` is meaningless once `revealed` — the counter stops.
+// run of taps we are.
 type t = {
   revealed: bool,
   taps: int,
@@ -34,22 +41,19 @@ type t = {
 // The opening state, seeded from the persisted reveal flag. A fresh run of taps.
 let initial = (~revealed) => {revealed, taps: 0}
 
-// Count one tap on the Settings title. The `taps`th one flips the reveal on, and
-// from then on taps are inert (`state` is returned unchanged, so the chrome loop
-// can skip the re-render — see `Html.mount`'s physical-equality check).
-let tap = state =>
-  if state.revealed {
-    state
-  } else {
-    let taps = state.taps + 1
-    taps >= tapsToReveal ? {revealed: true, taps: 0} : {...state, taps}
-  }
+// Count one tap on the Settings title. Every `tapsToReveal`th one flips the reveal
+// and starts the count over, so the gesture works the same in both directions —
+// hiding is just revealing again.
+let tap = state => {
+  let taps = state.taps + 1
+  taps >= tapsToReveal ? {revealed: !state.revealed, taps: 0} : {...state, taps}
+}
 
 // Abandon a part-finished run — the way out of the Settings screen. Already-clear
-// state is returned as-is, again so an unchanged model skips the re-render.
+// state is returned physically unchanged, so the chrome loop can skip the
+// re-render (see `Html.mount`'s equality check).
 let reset = state => state.taps == 0 ? state : {...state, taps: 0}
 
-// Whether this tap is the one that just revealed the options, given the state
-// before it. What the caller persists (and, later, what a reveal animation would
-// key off) — a plain `revealed` test would re-persist on every subsequent tap.
-let justRevealed = (~before: t, ~after: t) => after.revealed && !before.revealed
+// Whether this tap flipped the reveal, given the state before it. What the caller
+// persists on — the other nine taps in a run change nothing worth storing.
+let revealChanged = (~before: t, ~after: t) => before.revealed != after.revealed
