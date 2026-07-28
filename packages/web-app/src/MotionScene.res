@@ -21,26 +21,8 @@
 
 // --- Bindings ---------------------------------------------------------------
 
-// The `devicemotion` event payload. Read `accelerationIncludingGravity`, not
-// `acceleration`: the gravity-free field is `null` on Android devices without a
-// gyro. Every field is `Nullable` — the whole reading can be absent, and any axis
-// can be `null` on a partial sensor.
-type acceleration = {
-  x: Nullable.t<float>,
-  y: Nullable.t<float>,
-  z: Nullable.t<float>,
-}
-type motionEvent = {accelerationIncludingGravity: Nullable.t<acceleration>}
-
-// The `DeviceMotionEvent` constructor, read off `window` so its absence is a
-// plain `undefined` (a bare global reference would throw) — that's the distinct
-// "no DeviceMotionEvent" state. Its static `requestPermission` exists only on
-// iOS 13+; bound `Nullable` so we can fall straight through to attaching the
-// listener where it's absent (Android, desktop Chrome). The call itself goes
-// through `@send` so `this` stays the constructor.
-type motionCtor = {requestPermission: Nullable.t<unit => promise<string>>}
-@val @scope("window") external motionCtor: Nullable.t<motionCtor> = "DeviceMotionEvent"
-@send external requestPermission: motionCtor => promise<string> = "requestPermission"
+// The `devicemotion` payload and the permission dance both live in `Motion`, which
+// this scene and the card-shake spike share.
 
 @val external requestAnimationFrame: (unit => unit) => int = "requestAnimationFrame"
 @val external cancelAnimationFrame: int => unit = "cancelAnimationFrame"
@@ -136,7 +118,7 @@ let make = (): Scene.t => {
     let attached = ref(false)
 
     // ---- The listener (attached to `window`, so teardown must detach it) ----
-    let onMotion = (event: motionEvent) =>
+    let onMotion = (event: Motion.event) =>
       switch event.accelerationIncludingGravity->Nullable.toOption {
       | None => () // no gravity-inclusive reading this tick — nothing to show
       | Some(acc) =>
@@ -207,43 +189,34 @@ let make = (): Scene.t => {
       }
 
     // ---- The button: request permission (iOS), else attach directly ----
+    // The request has to happen under this real click's transient activation, which
+    // is exactly why it lives on the button; `Motion.requestAccess` owns the branch
+    // between "iOS wants a prompt" and "nothing to ask", and the scene's job is
+    // narrating the answer. The resolved state is shown verbatim because iOS
+    // remembers a denial per-origin and won't re-prompt — surfacing "denied" tells a
+    // dead scene from a broken one.
     let onRequest = () =>
-      switch motionCtor->Nullable.toOption {
-      | None => setStatus("no DeviceMotionEvent") // shouldn't reach here (button disabled), but explicit
-      | Some(ctor) =>
-        switch ctor.requestPermission->Nullable.toOption {
-        | None =>
-          // Android / desktop Chrome: no gate — attach straight away.
-          setStatus("listening (no prompt needed)")
+      Motion.requestAccess(outcome => {
+        setStatus(
+          switch outcome {
+          | Motion.Unsupported => "no DeviceMotionEvent" // the button is disabled in this state, but be explicit
+          | Motion.Ungated => "listening (no prompt needed)"
+          | Motion.Prompted(state) => `permission: ${state}`
+          | Motion.Failed => "permission request failed"
+          },
+        )
+        if Motion.mayListen(outcome) {
           attach()
-        | Some(_) =>
-          // iOS 13+: prompt under this real click's transient activation, then
-          // show the resolved state verbatim. iOS remembers a denial per-origin
-          // and won't re-prompt, so surfacing "denied" tells a dead scene from a
-          // broken one.
-          ctor
-          ->requestPermission
-          ->Promise.thenResolve(state => {
-            setStatus(`permission: ${state}`)
-            if state == "granted" {
-              attach()
-            }
-          })
-          ->Promise.catch(_ => {
-            setStatus("permission request failed")
-            Promise.resolve()
-          })
-          ->ignore
         }
-      }
+      })
     button->WebDom.addEventListener("click", onRequest)
 
     // Initial status: distinguish a missing API from an un-prompted one.
-    switch motionCtor->Nullable.toOption {
-    | None =>
+    if Motion.isSupported() {
+      setStatus("tap “Request permission”, then move the phone")
+    } else {
       setStatus("no DeviceMotionEvent — this device/browser has no motion sensor API")
       button->WebDom.setAttribute("disabled", "")
-    | Some(_) => setStatus("tap “Request permission”, then move the phone")
     }
 
     // ---- Teardown ----

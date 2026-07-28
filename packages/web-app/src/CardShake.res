@@ -35,35 +35,10 @@
 
 // --- Bindings ---------------------------------------------------------------
 
-// The `devicemotion` payload, bound as in `MotionScene`: read
-// `accelerationIncludingGravity`, since the gravity-free `acceleration` field is
-// `null` on Android devices without a gyro. Every field is `Nullable` — the whole
-// reading can be absent, and any axis can be `null` on a partial sensor.
-type acceleration = {
-  x: Nullable.t<float>,
-  y: Nullable.t<float>,
-  z: Nullable.t<float>,
-}
-type motionEvent = {accelerationIncludingGravity: Nullable.t<acceleration>}
-
-// `DeviceMotionEvent` read off `window`, so its absence is a plain `undefined`
-// rather than a throwing bare global reference. Its static `requestPermission`
-// exists only on iOS 13+; bound `Nullable` so Android and desktop Chrome fall
-// straight through to attaching the listener.
-type motionCtor = {requestPermission: Nullable.t<unit => promise<string>>}
-@val @scope("window") external motionCtor: Nullable.t<motionCtor> = "DeviceMotionEvent"
-@send external requestPermission: motionCtor => promise<string> = "requestPermission"
-
-@val @scope("window")
-external addWindowListener: (string, motionEvent => unit) => unit = "addEventListener"
-@val @scope("window")
-external removeWindowListener: (string, motionEvent => unit) => unit = "removeEventListener"
-// The one-shot permission tap below listens for a bare click, which carries no
-// payload we care about — hence a second, event-less pair.
-@val @scope("window")
-external addClickListener: (string, unit => unit) => unit = "addEventListener"
-@val @scope("window")
-external removeClickListener: (string, unit => unit) => unit = "removeEventListener"
+// The `devicemotion` payload and the permission dance come from `Motion`, shared
+// with the `motion` debug scene; `WebDom`'s window-scoped listener pair (generic in
+// the event, so it serves both the motion listener and the permission click)
+// attaches them.
 
 // `screen.orientation.angle` (0 / 90 / 180 / 270), the viewport's clockwise
 // rotation — needed because `devicemotion` axes are fixed to the *device*, not to
@@ -377,7 +352,7 @@ let attach = (~host: Html.element, ~cards: unit => array<entry>) => {
         rafId := Some(requestAnimationFrame(tick))
       }
 
-    let onMotion = (event: motionEvent) =>
+    let onMotion = (event: Motion.event) =>
       switch event.accelerationIncludingGravity->Nullable.toOption {
       | None => () // no gravity-inclusive reading this tick
       | Some(acc) =>
@@ -424,35 +399,26 @@ let attach = (~host: Html.element, ~cards: unit => array<entry>) => {
     let startListening = () =>
       if !listening.contents {
         listening := true
-        addWindowListener("devicemotion", onMotion)
+        WebDom.addWindowListener("devicemotion", onMotion)
       }
 
+    // Unlike the debug scene, which narrates every outcome to a status line, the
+    // spike has no UI of its own: an unsupported sensor or a refused prompt just
+    // leaves the knob inert, and the board plays exactly as it would without it.
     let rec onFirstClick = () => {
-      removeClickListener("click", onFirstClick)
-      switch motionCtor->Nullable.toOption {
-      | None => () // no sensor API on this device; the knob is simply inert
-      | Some(ctor) =>
-        switch ctor.requestPermission->Nullable.toOption {
-        | None => startListening() // Android / desktop Chrome: no gate
-        | Some(_) =>
-          ctor
-          ->requestPermission
-          ->Promise.thenResolve(state =>
-            if state == "granted" {
-              startListening()
-            }
-          )
-          ->Promise.catch(_ => Promise.resolve())
-          ->ignore
+      WebDom.removeWindowListener("click", onFirstClick)
+      Motion.requestAccess(outcome =>
+        if Motion.mayListen(outcome) {
+          startListening()
         }
-      }
+      )
     }
-    addClickListener("click", onFirstClick)
+    WebDom.addWindowListener("click", onFirstClick)
 
     () => {
-      removeClickListener("click", onFirstClick)
+      WebDom.removeWindowListener("click", onFirstClick)
       if listening.contents {
-        removeWindowListener("devicemotion", onMotion)
+        WebDom.removeWindowListener("devicemotion", onMotion)
       }
       switch rafId.contents {
       | Some(id) => cancelAnimationFrame(id)
