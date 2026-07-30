@@ -513,7 +513,14 @@ let switcher = SceneSwitcher.render(
     closeMenu.contents()
   },
   Array.concat(
-    [SpinnerScene.make(), SvgScene.make(), GalleryScene.make(), MotionScene.make()],
+    [
+      SpinnerScene.make(),
+      SvgScene.make(),
+      GalleryScene.make(),
+      MotionScene.make(),
+      FlingScene.make(),
+      FlingTargetScene.make(),
+    ],
     Game.all->Array.map(gameScene),
   ),
 )

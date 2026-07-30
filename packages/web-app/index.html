@@ -1391,6 +1391,296 @@
         color: #f8fafc;
       }
 
+      /* Fling scenes (FlingScene / FlingTargetScene): the two gesture
+         playgrounds behind the "incomplete drag" control scheme. Both are built
+         the same way — a transparent `.fling-surface` owning the pointer loop,
+         with a `.fling-overlay` <svg> drawn over it that never takes a hit — so
+         the visuals can be an ordinary diffed view while the gesture stays
+         imperative. Verified by thumb on a real phone; there is nothing here a
+         screenshot can check. */
+      /* Both scenes hang their whole contents off one wrapper so they anchor to
+         the top of #scene-container rather than being centred in it. The panel
+         below the stage grows and shrinks as attempts accumulate and the legal
+         set changes; centred, that would slide the stage up and down between
+         gestures — moving the board out from under the thumb doing the testing. */
+      .fling-scene {
+        /* `flex: 1` is the load-bearing part: it fills #scene-container's main
+           axis so its `justify-content: center` has no slack left to re-centre
+           with. `align-self: stretch` only ever handled the cross axis. */
+        flex: 1;
+        align-self: stretch;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: flex-start;
+        gap: 0.6rem;
+        padding-block: 0.4rem;
+      }
+
+      .fling-stage {
+        position: relative;
+        width: min(94vw, 460px);
+        height: min(42vh, 300px);
+        border: 1px solid #334155;
+        border-radius: 10px;
+        background: #0b1220;
+        overflow: hidden;
+      }
+
+      .fling-stage--board {
+        height: min(38vh, 260px);
+      }
+
+      /* The hit area. `touch-action: none` is load-bearing: without it the
+         browser claims a fast drag as a scroll and the pointer stream stops
+         mid-fling — which is the one gesture this whole scene measures. */
+      .fling-surface {
+        position: absolute;
+        inset: 0;
+        touch-action: none;
+        cursor: grab;
+      }
+
+      .fling-overlay {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        pointer-events: none;
+      }
+
+      .fling-cross {
+        stroke: #334155;
+        stroke-width: 1;
+      }
+
+      .fling-trail {
+        stroke-width: 2.5;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+      }
+      .fling-trail--live {
+        stroke: #38bdf8;
+      }
+      .fling-trail--yes {
+        stroke: #4ade80;
+      }
+      .fling-trail--no {
+        stroke: #f59e0b;
+      }
+
+      /* Where the gesture was heading when it was released — the vector that
+         would pick a destination. */
+      .fling-ray {
+        stroke-width: 2;
+        stroke-dasharray: 5 4;
+      }
+      .fling-ray--yes {
+        stroke: #4ade80;
+      }
+      .fling-ray--no {
+        stroke: #64748b;
+      }
+
+      .fling-start {
+        fill: #64748b;
+      }
+
+      .fling-puck {
+        fill: #e2e8f0;
+        stroke: #94a3b8;
+        stroke-width: 2;
+      }
+
+      /* The acceptance cone, drawn from the dot out past the edge of the board. */
+      .fling-cone {
+        fill: rgba(74, 222, 128, 0.14);
+        stroke: rgba(74, 222, 128, 0.5);
+        stroke-width: 1;
+      }
+
+      .fling-box {
+        fill: #101c30;
+        stroke: #334155;
+        stroke-width: 1;
+      }
+      .fling-box--legal {
+        stroke: #4ade80;
+        stroke-width: 1.5;
+      }
+      .fling-box--winner {
+        fill: rgba(74, 222, 128, 0.3);
+      }
+
+      .fling-box__label {
+        fill: #64748b;
+        font: 9px ui-monospace, "SF Mono", Menlo, monospace;
+      }
+
+      .fling-spoke {
+        stroke: rgba(148, 163, 184, 0.5);
+        stroke-width: 1;
+      }
+      .fling-spoke--winner {
+        stroke: #4ade80;
+        stroke-width: 2;
+      }
+
+      /* The readout below the stage. */
+      .fling-panel {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+        width: min(94vw, 460px);
+        font: 12px ui-monospace, "SF Mono", Menlo, monospace;
+        color: #e2e8f0;
+        text-align: left;
+      }
+
+      .fling-verdict {
+        margin: 0;
+        text-align: center;
+        font: 600 17px "Libre Franklin", sans-serif;
+        color: #94a3b8;
+      }
+      .fling-verdict--yes {
+        color: #4ade80;
+      }
+      .fling-verdict--no {
+        color: #f59e0b;
+      }
+
+      .fling-hint {
+        margin: -0.25rem 0 0;
+        text-align: center;
+        font-size: 11px;
+        color: #64748b;
+      }
+
+      .fling-readouts {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 0.2rem 0.6rem;
+      }
+
+      .fling-readout {
+        display: flex;
+        flex-direction: column;
+      }
+
+      .fling-readout__label {
+        font-size: 10px;
+        color: #64748b;
+      }
+
+      .fling-readout__value {
+        color: #e2e8f0;
+      }
+
+      /* Knobs step rather than slide: the hand-rolled Html runtime carries only
+         `onClick`, and a known increment is the better control for hunting the
+         value at which the history below flips. */
+      .fling-knobs {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 0.25rem 0.75rem;
+      }
+
+      .fling-knob {
+        display: grid;
+        grid-template-columns: 1fr auto auto auto;
+        align-items: center;
+        gap: 0.3rem;
+      }
+
+      .fling-knob__label {
+        font-size: 10px;
+        color: #64748b;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .fling-knob__value {
+        min-width: 4.5em;
+        text-align: right;
+      }
+
+      .fling-knob__step {
+        width: 24px;
+        height: 24px;
+        padding: 0;
+        border: 1px solid #334155;
+        border-radius: 6px;
+        background: #16233a;
+        color: #e2e8f0;
+        font: 14px "Libre Franklin", sans-serif;
+        line-height: 1;
+        cursor: pointer;
+      }
+
+      /* Past attempts, re-judged against the current thresholds on every change
+         — stepping a knob re-colours these rows, which is how a threshold gets
+         chosen. */
+      .fling-history {
+        display: flex;
+        flex-direction: column;
+        gap: 1px;
+      }
+
+      .fling-row {
+        display: flex;
+        align-items: baseline;
+        gap: 0.4rem;
+        padding: 1px 0.3rem;
+        border-radius: 3px;
+        font-size: 11px;
+        color: #94a3b8;
+      }
+      .fling-row--head {
+        color: #475569;
+        font-size: 10px;
+      }
+      .fling-row--yes {
+        background: rgba(74, 222, 128, 0.12);
+        color: #bbf7d0;
+      }
+      .fling-row--no {
+        color: #64748b;
+      }
+
+      .fling-row__id {
+        width: 2.2em;
+      }
+
+      .fling-row__verdict {
+        flex: 1;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .fling-row__num {
+        width: 4em;
+        text-align: right;
+      }
+
+      .fling-buttons {
+        display: flex;
+        gap: 0.5rem;
+      }
+
+      .fling-button {
+        flex: 1;
+        padding: 0.4rem 0.6rem;
+        border: 1px solid #334155;
+        border-radius: 8px;
+        background: #16233a;
+        color: #e2e8f0;
+        font: 12px "Libre Franklin", sans-serif;
+        cursor: pointer;
+      }
+
       /* The build/version info, folded out of its old bottom-right corner into the
          foot of the menu (#109). Now a plain muted line within the panel — the
          menu's `.menu-footer` handles placement. */
