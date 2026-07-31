@@ -4,10 +4,10 @@
 // can't live in `mise run test` (Vitest + jsdom, over the compiled ReScript), so
 // they run here instead, against the *bundled* site.
 //
-// Run it with `mise run verify`, which bundles first. For anything else the CLI
+// Run it with `mise run browsertest`, which bundles first. For anything else the CLI
 // offers — `--ui`, `--headed`, `-g <pattern>`, `--trace on`, `show-report` — use
 // the passthrough task: `mise run playwright -- test --headed -g rail` (bundle
-// first, or run `mise run verify` once).
+// first, or run `mise run browsertest` once).
 //
 // Deliberately *not* wired into `mise run ci`: `ci` stays browser-free, and this
 // suite needs `bundle` (a built dist/) where the unit tests only need `build`.

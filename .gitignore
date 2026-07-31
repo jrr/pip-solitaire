@@ -13,6 +13,6 @@ dist/
 # not source.
 screenshots/
 
-# Playwright run output (traces, HTML report) from `mise run verify`.
+# Playwright run output (traces, HTML report) from `mise run browsertest`.
 test-results/
 playwright-report/

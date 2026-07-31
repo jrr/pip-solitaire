@@ -87,7 +87,7 @@ run = "node packages/web-app/scripts/screenshots.mjs"
 # needs `bundle` (a built dist/, served by Vite preview — see the config's
 # `webServer`) where the ReScript unit tests only need `build`. CI runs it as its
 # own job, after `playwright-install`.
-[tasks.verify]
+[tasks.browsertest]
 description = "Run the browser test suite against the built web app"
 depends = ["bundle"]
 run = "pnpm --filter web-app exec playwright test"
@@ -100,8 +100,8 @@ run = "pnpm --filter web-app exec playwright test"
 #   mise run playwright -- test --ui               # the interactive runner
 #   mise run playwright -- show-report             # the last run's HTML report
 #
-# Unlike `verify` this doesn't bundle first (a passthrough shouldn't assume the
-# subcommand wants one); run `mise run bundle` — or `mise run verify` once — if
+# Unlike `browsertest` this doesn't bundle first (a passthrough shouldn't assume the
+# subcommand wants one); run `mise run bundle` — or `mise run browsertest` once — if
 # dist/ is stale.
 [tasks.playwright]
 description = "Run the Playwright CLI: `mise run playwright -- test --headed -g rail`"

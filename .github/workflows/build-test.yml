@@ -32,7 +32,7 @@ jobs:
         run: mise run playwright-install
 
       - name: Run the browser test suite
-        run: mise run verify
+        run: mise run browsertest
 
       - name: Upload Playwright report
         if: failure()
