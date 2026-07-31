@@ -107,6 +107,16 @@ description = "Verify the landscape rail clears the scene band in every chrome r
 depends = ["bundle"]
 run = "node packages/web-app/scripts/verify-rail.mjs"
 
+# Check the finish sweep doesn't re-tilt the board before it moves it (#241): drive
+# the finishable position (`?state=finish`), tap Finish, and sample each card's
+# rendered angle as the sweep runs — with the hand-placed tilt on and off. Rendered
+# angles mean resolved transform matrices and live CSS transitions, neither of which
+# jsdom has, so this is a headless-browser task beside `verify-win`.
+[tasks.verify-finish-tilt]
+description = "Verify the finish sweep's re-tilt rides each card's flight"
+depends = ["bundle"]
+run = "node packages/web-app/scripts/verify-finish-tilt.mjs"
+
 # Install the headless Chromium that `screenshots` drives. Split out from the task
 # itself so a machine that already has a browser (this repo's dev containers) skips
 # the download; CI runs this once before `screenshots`. `--with-deps` also pulls the

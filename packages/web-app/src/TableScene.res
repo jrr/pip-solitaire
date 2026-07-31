@@ -164,6 +164,10 @@ type style
 // published to the CSS as custom properties so `.stacking-card`/`.drop-zone`
 // resize in step with the JS geometry.
 @send external setProperty: (style, string, string) => unit = "setProperty"
+// …and dropped again, so a card that borrowed a property for the length of one
+// animation (the finish sweep's per-card tilt timing, below) falls back to the
+// stylesheet's default rather than carrying the sweep's values into normal play.
+@send external removeProperty: (style, string) => unit = "removeProperty"
 
 // Toggling the drag/hover/buried marker classes goes through classList rather
 // than rewriting the whole `class` attribute each move.
@@ -441,6 +445,29 @@ let cardTilt = (~card: Deck.card, ~pile, ~slot) => {
 // the wrapper, so it never fights the wrapper's drag/flight `transform`.
 let applyTilt = (wrapper, ~degrees) =>
   style(wrapper)->setProperty("--card-rot", Float.toString(degrees) ++ "deg")
+
+// Because the tilt is keyed on *where a card rests*, a card re-tilts the moment it
+// is laid out somewhere new — which the finish sweep (#160) does to every card at
+// once, up front: `reflowAll` snaps each node onto its foundation (and re-tilts it
+// there) while the flights hold it visually at its source until its staggered turn.
+// Left alone, the whole board would swing to its landing angles in unison, in
+// place, before anything moved (#241). These two properties push a card's tilt
+// transition out to its own launch delay and stretch it over its flight, so the
+// rotation rides along with the movement — a tilt at the source, a tilt at the
+// destination, and the turn between them happening while the card is in the air.
+// (With the hand-placed look off both angles are 0°, so nothing rotates either
+// way.) The CSS defaults these to the plain in-game snap, so they're only set for
+// the length of a sweep and cleared again once it settles.
+let setTiltTiming = (wrapper, ~delay, ~duration) => {
+  let s = style(wrapper)
+  s->setProperty("--card-rot-delay", Float.toString(delay) ++ "ms")
+  s->setProperty("--card-rot-dur", Float.toString(duration) ++ "ms")
+}
+let clearTiltTiming = wrapper => {
+  let s = style(wrapper)
+  s->removeProperty("--card-rot-delay")
+  s->removeProperty("--card-rot-dur")
+}
 
 // The tilt to publish for `card` resting at (`pile`, `slot`), gated on whether the
 // player wants the hand-placed look at all (#65). When they've turned it off the
@@ -755,6 +782,12 @@ let make = (
       // itself here; lookup is the deck-scoped `GameState.sameCard`.
       let nodes: array<card> = []
       let nodeFor = (data: Deck.card) => nodes->Array.find(n => GameState.sameCard(n.data, data))
+
+      // Put every card's tilt transition back to the stylesheet's in-game snap,
+      // dropping the per-card delay/duration a finish sweep borrowed (#241). Called
+      // wherever a sweep ends — its own settle, or an undo cutting it short — so a
+      // later drop re-tilts immediately instead of on the dead sweep's schedule.
+      let clearTiltTimings = () => nodes->Array.forEach(c => clearTiltTiming(c.wrapper))
 
       // The depth the height fit sizes the deepest fan to (#—): the deepest *opening*
       // pile plus `fanHeadroom`, captured once here so cards keep a stable size as
@@ -1140,14 +1173,25 @@ let make = (
             // inverting those fans the instant the sweep starts.
             let starts =
               cards->Array.map(c => (c, c.x.contents, c.y.contents, style(c.wrapper)->zIndex))
-            // Snap every node to its foundation slot; the flights below are a visual
-            // catch-up over nodes that already "belong" there.
-            reflowAll()
+            // The stagger (Δ) and per-card flight time. Derived *before* the reflow,
+            // because each card's tilt timing below has to be in place by the time
+            // `reflowAll` re-tilts it.
             let (delta, flight) = staggerTiming(
               ~maxInFlight=finishMaxInFlight,
               ~perCardMs=finishPerCardMs,
               ~n,
             )
+            // Hold each card at its *source* angle until it launches, then turn it to
+            // its foundation angle over the flight (#241) — otherwise the re-tilt that
+            // `reflowAll` is about to apply would swing every card in place, in unison,
+            // before the sweep had moved anything. Same index as the flight loop below,
+            // so a card's rotation and its flight start together.
+            cards->Array.forEachWithIndex((c, i) =>
+              setTiltTiming(c.wrapper, ~delay=Int.toFloat(i) *. delta, ~duration=flight)
+            )
+            // Snap every node to its foundation slot; the flights below are a visual
+            // catch-up over nodes that already "belong" there.
+            reflowAll()
             starts->Array.forEachWithIndex(((c, sx, sy, sz), i) => {
               // Hold this node at its *resting* layer for now: `reflowAll` above
               // relayered it by its foundation slot, which would scramble the source
@@ -1186,6 +1230,10 @@ let make = (
                 anim->setOnFinish(
                   () => {
                     cancelOutstanding()
+                    // Every card is home and at its landing angle, so the sweep's
+                    // deferred tilt timing has served its purpose (#241); the settling
+                    // reflow below re-applies the same angles, so this drops nothing.
+                    clearTiltTimings()
                     reflowAll()
                     onDone()
                   },
@@ -1258,6 +1306,9 @@ let make = (
           // position, so its cards don't keep flying toward foundations the undo has
           // just emptied (the state is already committed, so nothing corrupts).
           cancelOutstanding()
+          // …including the tilt timing a cut-short sweep left on its cards (#241), or
+          // the restored position's angles would arrive on the dead sweep's schedule.
+          clearTiltTimings()
           history := History.undo(history.contents)
           state := History.present(history.contents)
           removeWinOverlay()
