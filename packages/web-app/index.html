@@ -1254,12 +1254,21 @@
          deal/finish flight animations). `transform-origin: center` pivots about
          the card's middle (SVG elements otherwise default to a `0 0` origin), and
          the transition eases a card into its new angle as it snaps home, matching
-         the wrapper's left/top snap. */
+         the wrapper's left/top snap.
+
+         That transition's delay and duration are themselves per-card properties,
+         defaulting to the in-game snap above. The finish sweep (#160) overrides
+         them while it plays: it re-tilts every card for its foundation slot up
+         front, but the cards leave one at a time, so each one's rotation is pushed
+         out to its own launch and stretched over its flight rather than swinging in
+         place before the sweep starts (#241). The `.dealing` rule below can't cover
+         this — that switches off the *wrapper's* left/top snap, a different
+         selector, deliberately so the tilt never fights the flight transform. */
       .stacking-card .card-art {
         width: 100%;
         transform: rotate(var(--card-rot, 0deg));
         transform-origin: 50% 50%;
-        transition: transform 0.18s ease;
+        transition: transform var(--card-rot-dur, 0.18s) ease var(--card-rot-delay, 0s);
       }
 
       /* During the opening deal (#115) each card is positioned instantly — the
