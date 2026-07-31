@@ -20,20 +20,17 @@
 //   3. For each scene × device size, shoot portrait and landscape, then write an
 //      index.html contact sheet next to the PNGs.
 //
-// Run it with `mise run screenshots` (which builds the app first). Browser
-// resolution: it launches the environment's pre-installed Chromium when present
-// (PLAYWRIGHT_CHROMIUM_EXECUTABLE or /opt/pw-browsers/chromium), otherwise the
-// one `playwright install chromium` fetched — so it works both in this sandbox
-// and on a clean CI runner.
+// Run it with `mise run screenshots` (which builds the app first). Serving the
+// bundle and finding a browser are both scripts/lib/preview-app.mjs's job, shared
+// with generate-og-image.mjs and the browser test suite: it launches the
+// environment's pre-installed Chromium when present, otherwise the one
+// `playwright install chromium` fetched — so this works both in this sandbox and
+// on a clean CI runner.
 
-import { chromium } from "playwright";
-import { preview } from "vite";
 import fs from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { assertBundled, launchChromium, startPreview, webAppRoot } from "./lib/preview-app.mjs";
 
-const here = path.dirname(fileURLToPath(import.meta.url));
-const webAppRoot = path.resolve(here, "..");
 const outDir = path.join(webAppRoot, "screenshots");
 
 // The scenes (board positions) the report captures, each via the app's URL
@@ -69,18 +66,6 @@ const devices = [
 ];
 
 const slug = (s) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
-
-// The pre-installed Chromium in managed environments is a specific revision that
-// may not match the playwright package's default; launching it by path sidesteps
-// the version check (see the env's browser notes). On a clean CI runner neither
-// exists and we fall through to Playwright's own resolution.
-function resolveExecutablePath() {
-  const explicit = process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE;
-  if (explicit && fs.existsSync(explicit)) return explicit;
-  const preinstalled = "/opt/pw-browsers/chromium";
-  if (fs.existsSync(preinstalled)) return preinstalled;
-  return undefined;
-}
 
 function reportHtml(shots) {
   const deviceCards = (scene) =>
@@ -174,23 +159,15 @@ function reportHtml(shots) {
 }
 
 async function main() {
-  if (!fs.existsSync(path.join(webAppRoot, "dist", "index.html"))) {
-    throw new Error(
-      "packages/web-app/dist is not built — run `mise run bundle` first (the screenshots task depends on it).",
-    );
-  }
+  assertBundled("screenshots");
 
   fs.rmSync(outDir, { recursive: true, force: true });
   fs.mkdirSync(outDir, { recursive: true });
 
-  const server = await preview({
-    root: webAppRoot,
-    preview: { port: 0, strictPort: false, open: false },
-    logLevel: "warn",
-  });
-  const base = server.resolvedUrls.local[0].replace(/\/$/, "");
+  const server = await startPreview();
+  const base = server.base;
 
-  const browser = await chromium.launch({ executablePath: resolveExecutablePath() });
+  const browser = await launchChromium();
   const shots = [];
   try {
     for (const scene of scenes) {
@@ -243,7 +220,7 @@ async function main() {
     }
   } finally {
     await browser.close();
-    await server.httpServer.close();
+    await server.close();
   }
 
   fs.writeFileSync(path.join(outDir, "index.html"), reportHtml(shots));

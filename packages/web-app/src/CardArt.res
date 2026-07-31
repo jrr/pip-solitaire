@@ -28,7 +28,7 @@ type detail = Full
 // stylesheet's `calc(var(--card-w) * 1.4)` / `* 0.1`. Deriving them here means the
 // design box is stated once and the rest follows, so a change to the card's shape
 // can't leave the empty-pile slot or the zone frame tracing the old one. The
-// relationships are pinned by `mise run verify-geometry`.
+// relationships are pinned by browser-tests/geometry.spec.mjs (`mise run verify`).
 let boxW = 120.
 let boxH = 168.
 

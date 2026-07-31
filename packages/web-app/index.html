@@ -536,7 +536,8 @@
            overhung the shaded band by 12px, sitting over the play area they're
            supposed to sit beside. Excluding the mirrored case leaves that rule's
            margin-left alone (and raises this one to (1,2,1) for the cases it does
-           own). See `verify-rail` for the check that pins all four regimes. */
+           own). See browser-tests/rail.spec.mjs (`mise run verify`) for the check
+           that pins all four regimes. */
         html[data-notch-wings="off"]:not([data-cutout="right"]) #top-bar {
           margin-left: -0.75rem;
         }
@@ -1056,7 +1057,8 @@
            ReScript, where the geometry that consumes them lives too. The stylesheet
            used to re-derive them here with `calc(… * 1.4)` / `* 0.1` / `* 0.15`
            literals, which restated those facts a second time and could drift from
-           them silently. `mise run verify-geometry` pins the relationships. */
+           them silently. browser-tests/geometry.spec.mjs (`mise run verify`) pins
+           the relationships. */
         --card-w: 80px;
         --card-h: 112px;
         --card-radius: 8px;

@@ -1,7 +1,9 @@
 node_modules/
 
-# ReScript compiler output (in-source builds emit alongside sources)
-lib/
+# ReScript compiler output (in-source builds emit alongside sources). Scoped to
+# each package's root, which is where the compiler puts it — an unanchored `lib/`
+# also swallowed hand-written ones further down (scripts/lib, browser-tests/lib).
+packages/*/lib/
 *.res.mjs
 
 # Vite build output
@@ -10,3 +12,7 @@ dist/
 # Generated screenshot report (packages/web-app/screenshots) — a CI artifact,
 # not source.
 screenshots/
+
+# Playwright run output (traces, HTML report) from `mise run verify`.
+test-results/
+playwright-report/
