@@ -18,3 +18,28 @@ jobs:
 
       - name: Run CI
         run: mise run ci
+
+  browser-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Install mise
+        uses: jdx/mise-action@v4
+
+      - name: Install headless Chromium
+        run: mise run playwright-install
+
+      - name: Run the browser test suite
+        run: mise run browsertest
+
+      - name: Upload Playwright report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            packages/web-app/playwright-report
+            packages/web-app/test-results
+          retention-days: 7

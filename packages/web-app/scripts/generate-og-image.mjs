@@ -23,19 +23,16 @@
 // alongside the icons, and it's committed like them):
 //   og-image.png   ~1200×630, the 1.91:1 landscape most unfurlers crop to.
 //
-// Run it with `mise run og-image` (which bundles the app first). Browser
-// resolution matches screenshots.mjs: the environment's pre-installed Chromium
-// when present, otherwise Playwright's own — so it works in this sandbox and on a
-// clean CI runner (after `mise run playwright-install`).
+// Run it with `mise run og-image` (which bundles the app first). Serving the
+// bundle and finding a browser come from scripts/lib/preview-app.mjs, shared with
+// screenshots.mjs and the browser test suite: the environment's pre-installed
+// Chromium when present, otherwise Playwright's own — so it works in this sandbox
+// and on a clean CI runner (after `mise run playwright-install`).
 
-import { chromium } from "playwright";
-import { preview } from "vite";
 import fs from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { assertBundled, launchChromium, startPreview, webAppRoot } from "./lib/preview-app.mjs";
 
-const here = path.dirname(fileURLToPath(import.meta.url));
-const webAppRoot = path.resolve(here, "..");
 const outFile = path.join(webAppRoot, "public", "og-image.png");
 
 // The deterministic scene to shoot: the mid-game FreeCell snapshot, dealt with the
@@ -54,18 +51,6 @@ const DEVICE_SCALE_FACTOR = 2;
 // a horizontal band of the middle cascades at that ratio and let the game's own
 // dark background fill any margin, so the card reads as a slice of a real board.
 const TARGET_RATIO = 1200 / 630;
-
-// The pre-installed Chromium in managed environments is a specific revision that
-// may not match the playwright package's default; launching it by path sidesteps
-// the version check. On a clean CI runner neither exists and we fall through to
-// Playwright's own resolution. (Same helper as screenshots.mjs.)
-function resolveExecutablePath() {
-  const explicit = process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE;
-  if (explicit && fs.existsSync(explicit)) return explicit;
-  const preinstalled = "/opt/pw-browsers/chromium";
-  if (fs.existsSync(preinstalled)) return preinstalled;
-  return undefined;
-}
 
 // From the rendered board, compute the pixel rectangle (CSS px) to crop: a
 // TARGET_RATIO-wide band centred on the cascades, tall enough to hold the deepest
@@ -132,20 +117,12 @@ function measureCrop(ratio) {
 }
 
 async function main() {
-  if (!fs.existsSync(path.join(webAppRoot, "dist", "index.html"))) {
-    throw new Error(
-      "packages/web-app/dist is not built — run `mise run bundle` first (the og-image task depends on it).",
-    );
-  }
+  assertBundled("og-image");
 
-  const server = await preview({
-    root: webAppRoot,
-    preview: { port: 0, strictPort: false, open: false },
-    logLevel: "warn",
-  });
-  const base = server.resolvedUrls.local[0].replace(/\/$/, "");
+  const server = await startPreview();
+  const base = server.base;
 
-  const browser = await chromium.launch({ executablePath: resolveExecutablePath() });
+  const browser = await launchChromium();
   try {
     const context = await browser.newContext({
       viewport: VIEWPORT,
@@ -171,7 +148,7 @@ async function main() {
     await context.close();
   } finally {
     await browser.close();
-    await server.httpServer.close();
+    await server.close();
   }
 }
 
