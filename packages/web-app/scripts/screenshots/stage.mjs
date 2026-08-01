@@ -9,8 +9,8 @@
 // PR side doesn't use this at all: there, `rossjrw/pr-preview-action` deploys the
 // report directly (latest-only, auto-removed on close).
 //
-// Usage:
-//   node stage-screenshots.mjs <stagingDir> <stamp> [--existing <jsonArray>] [--title <t>]
+// Usage (the deploy workflow calls it through the task, not with `node`):
+//   mise run stage-screenshots -- <stagingDir> <stamp> [--existing <jsonArray>] [--title <t>]
 //
 //   <stagingDir>   local dir to build (published as-is into screenshots/branch/main)
 //   <stamp>        this snapshot's dir name, e.g. 2026.07.28_abc1234
@@ -26,7 +26,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-const srcDir = path.resolve(here, "..", "screenshots");
+const srcDir = path.resolve(here, "..", "..", "screenshots");
 
 const argv = process.argv.slice(2);
 const positional = argv.filter((a, i) => !a.startsWith("--") && !argv[i - 1]?.startsWith("--"));

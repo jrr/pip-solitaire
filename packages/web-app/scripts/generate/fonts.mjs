@@ -34,7 +34,7 @@ import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
 const here = dirname(fileURLToPath(import.meta.url));
-const webAppRoot = join(here, "..");
+const webAppRoot = join(here, "..", "..");
 const fontsource = join(webAppRoot, "node_modules", "@fontsource");
 const publicFonts = join(webAppRoot, "public", "fonts");
 const srcFonts = join(webAppRoot, "src", "fonts");

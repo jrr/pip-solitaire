@@ -4,7 +4,9 @@ node = "26"
 "npm:pnpm" = "11"
 
 # Tasks are the set of actions available to developers and agents at the repo
-# root. Run `mise tasks` to list them.
+# root: `mise tasks` lists them, `mise run <task>` runs one. The "why" for a
+# script-backed task lives in the script's header comment; packages/web-app/
+# scripts/README.md maps script → task → output.
 
 [tasks.install]
 description = "Install workspace dependencies"
@@ -25,32 +27,22 @@ description = "Build and run the CLI"
 depends = ["build"]
 run = "pnpm run start"
 
-# Run the CLI with arguments. Everything after `--` is forwarded to the built
-# script, so this exposes the CLI's whole surface through the task interface
-# without granting raw `node` access:
-#
-#   mise run cli -- list            # list the available games
-#   mise run cli -- show stacking   # draw a game's opening layout
+# Passthrough: everything after `--` reaches the CLI, so its whole surface is
+# available without granting raw `node` access.
 [tasks.cli]
 description = "Run the CLI with args: `mise run cli -- show <game>`"
 depends = ["build"]
 run = "node packages/cli/dist/cli.js"
 
-# Vite dev/build/preview for the web-app. Each `depends = ["build"]` so ReScript
-# compiles the .res.mjs sources first, then Vite operates on them.
-#   mise run dev      # Vite dev server with HMR
-#   mise run bundle   # production build -> packages/web-app/dist
-#   mise run preview  # serve the built dist locally
 [tasks.dev]
 description = "Run the web-app Vite dev server"
 depends = ["build"]
 run = "pnpm --filter web-app run dev"
 
+# `depends = ["icons"]` so a deployed bundle always ships icons matching the
+# current card art (#49).
 [tasks.bundle]
 description = "Build the web-app into a static site (packages/web-app/dist)"
-# `icons` regenerates the app icons from the current card art (and itself
-# depends on `build`), so a deployed bundle always ships icons that match the
-# cards — the "svg renderer in a build step for deployed builds" from #49.
 depends = ["icons"]
 run = "pnpm --filter web-app run bundle"
 
@@ -59,136 +51,98 @@ description = "Preview the built web-app locally"
 depends = ["build"]
 run = "pnpm --filter web-app run preview"
 
-# Render device-resolution screenshots of the game into a self-contained report
-# (packages/web-app/screenshots/index.html): FreeCell scenes (a freshly dealt board,
-# a mid-game layout and the finishable endgame) at a phone and a tablet size, portrait
-# and landscape. Depends on `bundle` so it shoots the real built site (served by Vite
-# preview), and forces the board into fixed positions via the app's URL contract
-# (`?scene=freecell&state=…`, or a pinned `seed` with `animate=off` for the dealt
-# board) so the shots are deterministic. CI publishes the result as an artifact
-# (see the screenshots workflow). The headless Chromium is Playwright's;
-# `playwright-install` fetches it on a clean runner (this repo's dev containers ship
-# one already).
+# Shoots the built site on emulated devices (Playwright's `devices` registry) and
+# writes packages/web-app/screenshots/index.html. CI publishes it as an artifact.
 [tasks.screenshots]
 description = "Render device-resolution screenshots of the game into a report"
 depends = ["bundle"]
-run = "node packages/web-app/scripts/screenshots.mjs"
+run = "node packages/web-app/scripts/screenshots/render.mjs"
 
-# The browser-driven checks (issue #243): a `@playwright/test` suite in
-# packages/web-app/browser-tests, covering the things jsdom can't answer —
-#   win.spec          the win overlay end-to-end, played by a real pointer drag (#121)
-#   geometry.spec     the card/zone/slot footprint invariants, at three viewports
-#   rail.spec         the landscape rail clearing the scene band, in four chrome regimes (#204)
-#   finish-tilt.spec  the finish sweep's re-tilt riding each card's flight (#241)
-# — because each needs real layout, `calc()`, media queries, resolved transform
-# matrices or live transitions.
-#
-# Kept out of `mise run ci` on purpose: `ci` stays browser-free, and this suite
-# needs `bundle` (a built dist/, served by Vite preview — see the config's
-# `webServer`) where the ReScript unit tests only need `build`. CI runs it as its
-# own job, after `playwright-install`.
+# Stage the rendered report for publication to gh-pages (called by deploy-pages.yml):
+#   mise run stage-screenshots -- <stagingDir> <stamp> [--existing <json>] [--title <t>]
+[tasks.stage-screenshots]
+description = "Stage the rendered report + history listing for Pages publication"
+run = "node packages/web-app/scripts/screenshots/stage.mjs"
+
+# Write the `/screenshots/` hub page that lists the per-branch and per-PR reports:
+#   mise run screenshots-hub -- <outDir>
+[tasks.screenshots-hub]
+description = "Generate the screenshots hub page (`mise run screenshots-hub -- <outDir>`)"
+run = "node packages/web-app/scripts/screenshots/hub.mjs"
+
+# The browser-driven checks (packages/web-app/browser-tests): the things jsdom
+# can't answer — real layout, `calc()`, media queries, transform matrices, live
+# transitions, pointer input. Kept out of `ci` on purpose (`ci` stays
+# browser-free); CI runs it as its own job after `playwright-install`.
 [tasks.browsertest]
 description = "Run the browser test suite against the built web app"
 depends = ["bundle"]
 run = "pnpm --filter web-app exec playwright test"
 
-# Passthrough to the Playwright CLI in the web-app, in the same spirit as the
-# `rescript` task: everything after `--` is forwarded, so the whole CLI surface is
-# reachable without widening the `Bash(mise run:*)` allowlist —
-#
-#   mise run playwright -- test --headed -g rail   # one spec, in a visible browser
-#   mise run playwright -- test --ui               # the interactive runner
-#   mise run playwright -- show-report             # the last run's HTML report
-#
-# Unlike `browsertest` this doesn't bundle first (a passthrough shouldn't assume the
-# subcommand wants one); run `mise run bundle` — or `mise run browsertest` once — if
+# Passthrough to the Playwright CLI — `mise run playwright -- test --headed -g rail`,
+# `-- test --ui`, `-- show-report`. Doesn't bundle first; run `browsertest` once if
 # dist/ is stale.
 [tasks.playwright]
 description = "Run the Playwright CLI: `mise run playwright -- test --headed -g rail`"
 run = "pnpm --filter web-app exec playwright"
 
-# Install the headless Chromium that `verify` and `screenshots` drive. Split out
-# from the tasks themselves so a machine that already has a browser (this repo's
-# dev containers) skips the download; CI runs this once before each. `--with-deps`
-# also pulls the system libraries Chromium needs on a bare Linux runner.
+# Split out from the browser tasks so a machine that already has a Chromium skips
+# the download; CI runs it once before each.
 [tasks.playwright-install]
 description = "Install the headless Chromium Playwright uses for the browser tasks"
 depends = ["install"]
 run = "pnpm --filter web-app exec playwright install --with-deps chromium"
 
-# Regenerate the self-hosted fonts in packages/web-app (issue #114). Rebuilds
-# the vendored woff2/ttf from their upstream @fontsource sources — Libre Franklin
-# (chrome + card ranks) and a merged four-glyph "Pip Suits" subset of IBM
-# Plex Sans JP (card pips) — so the faces are reproducible, not opaque binaries.
-# Analogous to `icons`; the outputs are committed, so this only needs re-running
-# when the source faces or the subset change.
+# Outputs are committed, so this only needs re-running when the source faces or
+# the subset change (#114).
 [tasks.fonts]
 description = "Regenerate the web-app self-hosted fonts from their sources"
 depends = ["install"]
-run = "node packages/web-app/scripts/generate-fonts.mjs"
+run = "node packages/web-app/scripts/generate/fonts.mjs"
 
-# Regenerate the PWA icons in packages/web-app/public. The icon is composed from
-# the real CardArt cards (a fanned 7·8·9), so it depends on `build` to compile
-# the ReScript art first, then rasterizes it with @resvg/resvg-js. Pass
+# Composed from the real CardArt cards, hence `depends = ["build"]`. Pass
 # `-- --svg` to print the master SVG instead of writing files.
 [tasks.icons]
 description = "Generate the web-app PWA icons from the card art"
 depends = ["build"]
-run = "node packages/web-app/scripts/generate-icons.mjs"
+run = "node packages/web-app/scripts/generate/icons.mjs"
 
-# Regenerate the link-preview (Open Graph) image in packages/web-app/public
-# (issue #221). Unlike `icons`, which composes an SVG from the card art, the
-# preview is meant to look like gameplay, so it's a crop of the *actually rendered*
-# mid-game FreeCell board — driven through the same headless Chromium the
-# `screenshots` task uses, at a 2× (high-DPI) device scale for a crisp unfurl.
-# `depends = ["bundle"]` so it shoots the real built site; the output (og-image.png)
-# is committed like the icons and picked up by `bundle`'s public/ copy. The browser
-# is Playwright's; `playwright-install` fetches it on a clean runner.
+# A crop of the actually-rendered mid-game board, so it needs the built site
+# (#221). Output is committed like the icons.
 [tasks.og-image]
 description = "Generate the link-preview image from a rendered mid-game board"
 depends = ["bundle"]
-run = "node packages/web-app/scripts/generate-og-image.mjs"
+run = "node packages/web-app/scripts/generate/og-image.mjs"
 
-# Refresh the lockfile after changing dependencies (CI installs with a frozen
-# lockfile, so it must be committed in sync with the package.json files).
+# CI installs with a frozen lockfile, so the lockfile must be committed in sync
+# with the package.json files.
 [tasks.relock]
 description = "Refresh the pnpm lockfile after dependency changes"
 run = "pnpm install --lockfile-only"
 
-# Format every ReScript source file in the workspace, in place. ReScript ships
-# its own formatter, so this just fans the `rescript format` CLI across all
-# packages. Run it before committing; editors can also format-on-save (see
-# .vscode/ and CLAUDE.md).
+# ReScript ships its own formatter; this fans it across all packages. Run it
+# before committing (editors can also format-on-save — see .vscode/).
 [tasks.format]
 description = "Format all ReScript source files in place"
 depends = ["install"]
 run = "pnpm -r exec rescript format"
 
-# Verify formatting without changing anything — fails if any file would be
-# reformatted. This is what CI enforces (wired into `ci` below).
 [tasks.format-check]
 description = "Check that all ReScript source is formatted (fails if not)"
 depends = ["install"]
 run = "pnpm -r exec rescript format --check"
 
-# Passthrough to the ReScript CLI in a single package. Everything after `--`
-# is forwarded to `rescript`, so this one task exposes the whole compiler
-# surface (build, build -w, format, clean, …) without granting raw CLI access:
-#
-#   mise run rescript -- core build -w      # rescript build -w, in packages/core
-#   mise run rescript -- core format -all
-#
-# It stays inside the `Bash(mise run:*)` allowlist, so no workflow change is
-# needed to reach a new rescript subcommand.
+# Passthrough to the ReScript CLI in one package, so the whole compiler surface
+# (build, build -w, format, clean, …) is reachable through the task interface:
+#   mise run rescript -- core build -w
 [tasks.rescript]
 description = "Run the ReScript CLI in one package: `mise run rescript -- <package> <args>`"
 run = "pnpm --filter \"{{arg(name='package')}}\" exec rescript"
 
-# `depends` runs in parallel, so listing install/build/test here would race
-# (test importing build output before build finished). Chain them instead:
-# test → build → install, so `ci` just needs `test` and the order is enforced.
-# `format-check` only reads source (no build output), so it can run alongside
-# test — its own `depends = ["install"]` dedupes with test's install.
+# `depends` runs in parallel, so install/build/test are chained through each
+# other's `depends` rather than listed here (test → build → install), which is
+# why this only names `test`. `format-check` only reads source, so it can run
+# alongside.
 [tasks.ci]
 description = "Install, build, test, and format-check — what the CI pipeline runs"
 depends = ["test", "format-check"]

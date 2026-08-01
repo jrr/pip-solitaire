@@ -322,10 +322,10 @@
          of the same controls hugging the left edge, the scene filling the rest —
          handing the reclaimed top band back to the cards. Keyed on a short landscape
          viewport: phones in landscape are ≤ ~430px tall while tablets are ≥ 768px, so
-         `max-height` cleanly separates them without device sniffing. (Add
-         `(pointer: coarse)` here to confine the rail to touch devices — at the cost
-         of it no longer showing in the screenshot report, which drives a desktop
-         Chromium.) */
+         `max-height` cleanly separates them without device sniffing. (Adding
+         `(pointer: coarse)` here would confine the rail to touch devices; since
+         #244 the screenshot report emulates real devices, so the phone shots would
+         still show it — see #204 for whether to make that change.) */
       @media (orientation: landscape) and (max-height: 500px) {
         /* Reclaim vertical height — the tableau is fighting for every pixel here.
            Trim the body's top breathing room down to near the safe-area inset; the

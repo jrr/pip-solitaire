@@ -1,13 +1,19 @@
-// Render the game at a spread of device resolutions into a self-contained
+// Render the game at a spread of emulated devices into a self-contained
 // screenshot report. CI publishes it to GitHub Pages via the deploy workflows: on
 // `main` a stamped, retained history (deploy-pages.yml stages it with
-// scripts/stage-screenshots.mjs and pushes via peaceiris), and on a PR a
+// scripts/screenshots/stage.mjs and pushes via peaceiris), and on a PR a
 // latest-only preview cleaned up on close (pr-preview.yml deploys this output
-// directly via pr-preview-action). It shoots a spread of FreeCell scenes at a handful
-// of phone/tablet sizes in both portrait and landscape, each at the device's
+// directly via pr-preview-action). It shoots a spread of FreeCell scenes on a handful
+// of emulated phones/tablets in both portrait and landscape, each at the device's
 // *physical* pixel resolution (its real devicePixelRatio), so a change that breaks
 // the board on some screen — or type that's too small to read — is visible at a
 // glance in the PR's report.
+//
+// The devices come from Playwright's `devices` registry (lib/devices.mjs), so a
+// phone shot is a phone: meta viewport honoured, touch events on, and
+// `(pointer: coarse)` / `(hover: none)` resolving the way they do on the real
+// thing. Before #244 this list was hand-rolled sizes, which meant the report was
+// phone-shaped *desktop* Chromium and any touch-only CSS was invisible in it.
 //
 // How it works, end to end:
 //   1. Serve the already-built web app (packages/web-app/dist) with Vite's own
@@ -22,14 +28,15 @@
 //
 // Run it with `mise run screenshots` (which builds the app first). Serving the
 // bundle and finding a browser are both scripts/lib/preview-app.mjs's job, shared
-// with generate-og-image.mjs and the browser test suite: it launches the
+// with generate/og-image.mjs and the browser test suite: it launches the
 // environment's pre-installed Chromium when present, otherwise the one
 // `playwright install chromium` fetched — so this works both in this sandbox and
 // on a clean CI runner.
 
 import fs from "node:fs";
 import path from "node:path";
-import { assertBundled, launchChromium, startPreview, webAppRoot } from "./lib/preview-app.mjs";
+import { assertBundled, launchChromium, startPreview, webAppRoot } from "../lib/preview-app.mjs";
+import { contextOptions, describe, reportDevices } from "../lib/devices.mjs";
 
 const outDir = path.join(webAppRoot, "screenshots");
 
@@ -47,23 +54,9 @@ const scenes = [
   { name: "Finish", query: "?scene=freecell&state=finish" },
 ];
 
-// A representative spread of devices: CSS size plus each one's real
-// devicePixelRatio, so the shots rasterize at the device's *physical* pixel
-// resolution and you can judge legibility, not just layout. A small phone and a
-// tablet — each shot both ways up — plus a wide desktop, shot landscape only (a
-// portrait 1080-wide desktop isn't a real target, and the wide layout is the
-// point: past ~1064px the card row caps its width and the stage grows side
-// margins instead of gaps, see TableScene's `--rows-max-w`). Each device lists
-// the `orientations` it's shot in; the portrait/landscape dimensions are the
-// device's smaller/larger CSS side either way, so the size can be given in either
-// order. (iPhone mini and iPhone SE share the same 375-wide CSS size, so the mini
-// stands in for the SE here — same width, taller, and a 3× display.)
-const both = ["portrait", "landscape"];
-const devices = [
-  { name: "iPhone 13 mini", width: 375, height: 812, dpr: 3, orientations: both },
-  { name: "iPad mini", width: 768, height: 1024, dpr: 2, orientations: both },
-  { name: "Desktop", width: 1920, height: 1080, dpr: 1, orientations: ["landscape"] },
-];
+// The spread of devices, and the emulation profile for each orientation of each
+// — see lib/devices.mjs, which builds them from Playwright's registry.
+const devices = reportDevices;
 
 const slug = (s) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
 
@@ -71,7 +64,7 @@ function reportHtml(shots) {
   const deviceCards = (scene) =>
     devices
       .map((device) => {
-        const cells = device.orientations
+        const cells = Object.keys(device.orientations)
           .map((orientation) => {
             const shot = shots.find(
               (s) =>
@@ -87,9 +80,16 @@ function reportHtml(shots) {
             </figure>`;
           })
           .join("");
+        // The heading describes the emulated device itself, so it reads off the
+        // portrait profile (the desktop, landscape-only, reads off its own) —
+        // including whether the context has touch, which is now the difference
+        // between the phone/tablet shots and the desktop one.
+        const primary = describe(
+          device.orientations.portrait ?? device.orientations.landscape,
+        );
         return `
         <section class="device">
-          <h3>${device.name} <span>${device.width}×${device.height} · @${device.dpr}×</span></h3>
+          <h3>${device.name} <span>${primary.width}×${primary.height} · @${primary.dpr}× · ${primary.input}</span></h3>
           <div class="shots">${cells}</div>
         </section>`;
       })
@@ -150,7 +150,7 @@ function reportHtml(shots) {
 <body>
   <header>
     <h1>Pip — screenshot report</h1>
-    <p>FreeCell scenes across device sizes, portrait and landscape.</p>
+    <p>FreeCell scenes across emulated devices, portrait and landscape.</p>
   </header>
   ${scenesHtml}
 </body>
@@ -173,21 +173,13 @@ async function main() {
     for (const scene of scenes) {
       const target = `${base}/${scene.query}`;
       for (const device of devices) {
-        // Portrait is the device's narrower side up, landscape the wider — derived
-        // from min/max so a device's size can be given in either order (a desktop
-        // reads naturally as its native 1920×1080).
-        const portraitW = Math.min(device.width, device.height);
-        const portraitH = Math.max(device.width, device.height);
-        for (const orientation of device.orientations) {
-          const [width, height] =
-            orientation === "portrait"
-              ? [portraitW, portraitH]
-              : [portraitH, portraitW];
+        // Each orientation carries its own emulation profile — the registry has a
+        // separate landscape descriptor per device, rotated *and* re-fitted around
+        // the browser chrome, so there's no width/height swapping to do here.
+        for (const [orientation, descriptor] of Object.entries(device.orientations)) {
+          const { width, height, pxWidth, pxHeight, input } = describe(descriptor);
 
-          const context = await browser.newContext({
-            viewport: { width, height },
-            deviceScaleFactor: device.dpr,
-          });
+          const context = await browser.newContext(contextOptions(descriptor));
           const page = await context.newPage();
           await page.goto(target, { waitUntil: "load" });
           // The board deals its cards on the first animation frame and settles with
@@ -196,9 +188,8 @@ async function main() {
           await page.waitForSelector(".stacking-card", { state: "visible", timeout: 15000 });
           await page.waitForTimeout(600);
 
-          // The PNG comes out at the device's physical resolution (CSS size × dpr).
-          const pxWidth = Math.round(width * device.dpr);
-          const pxHeight = Math.round(height * device.dpr);
+          // The PNG comes out at the device's physical resolution (CSS size × dpr,
+          // both from the descriptor).
           const file = `${slug(scene.name)}-${slug(device.name)}-${orientation}.png`;
           await page.screenshot({ path: path.join(outDir, file) });
           shots.push({
@@ -212,7 +203,7 @@ async function main() {
             file,
           });
           console.log(
-            `  shot ${scene.name} · ${device.name} ${orientation} (${width}×${height} CSS → ${pxWidth}×${pxHeight}px)`,
+            `  shot ${scene.name} · ${device.name} ${orientation} (${width}×${height} CSS → ${pxWidth}×${pxHeight}px, ${input})`,
           );
           await context.close();
         }

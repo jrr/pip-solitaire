@@ -14,14 +14,14 @@
 // only republished when *it* changes (the deploy workflow stages it to
 // `screenshots/` with keep_files, preserving the branch/ and pr/ subtrees).
 //
-// Usage: node landing-page.mjs <outDir>   (writes <outDir>/index.html)
+// Usage: mise run screenshots-hub -- <outDir>   (writes <outDir>/index.html)
 
 import fs from "node:fs";
 import path from "node:path";
 
 const outDir = process.argv[2];
 if (!outDir) {
-  console.error("usage: landing-page.mjs <outDir>");
+  console.error("usage: mise run screenshots-hub -- <outDir>");
   process.exit(1);
 }
 

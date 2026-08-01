@@ -26,10 +26,10 @@ import { dirname, join } from "node:path";
 
 // The compiled ReScript art. `mise run icons` depends on `build`, so these
 // `.res.mjs` siblings exist by the time this runs.
-import { standardSvg, maskableSvg, fullBleedSvg } from "../src/IconArt.res.mjs";
+import { standardSvg, maskableSvg, fullBleedSvg } from "../../src/IconArt.res.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-const OUT_DIR = join(HERE, "..", "public");
+const OUT_DIR = join(HERE, "..", "..", "public");
 
 // The exact fonts the app ships, vendored by `mise run fonts` (issue #114): the
 // card ranks are Libre Franklin 600 and the suits are the merged "Pip Suits"
@@ -38,8 +38,8 @@ const OUT_DIR = join(HERE, "..", "public");
 // fonts turned *off* — makes the icons deterministic and pixel-for-pixel the
 // faces the app renders, instead of whatever sans-serif the build machine has.
 const FONT_FILES = [
-  join(HERE, "..", "src", "fonts", "libre-franklin-600.ttf"),
-  join(HERE, "..", "src", "fonts", "pip-suits.ttf"),
+  join(HERE, "..", "..", "src", "fonts", "libre-franklin-600.ttf"),
+  join(HERE, "..", "..", "src", "fonts", "pip-suits.ttf"),
 ];
 
 // Rasterize an SVG string to a PNG buffer at the given pixel width (icons are
