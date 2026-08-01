@@ -81,7 +81,7 @@ jobs:
           # `{"message":"Not Found",...}[]` to --existing and break JSON.parse).
           existing="$(gh api "repos/$GITHUB_REPOSITORY/contents/screenshots/branch/main?ref=gh-pages" \
             --jq '[.[] | select(.type == "dir") | .name]' 2>/dev/null)" || existing='[]'
-          node packages/web-app/scripts/stage-screenshots.mjs staging "$stamp" --existing "$existing"
+          mise run stage-screenshots -- staging "$stamp" --existing "$existing"
           [ -f staging/index.html ] && echo "staged=true" >> "$GITHUB_OUTPUT" || echo "staged=false" >> "$GITHUB_OUTPUT"
 
       - name: Publish report to Pages
@@ -103,7 +103,7 @@ jobs:
       # preserves the `branch/` and `pr/` report subtrees it links to.
       - name: Stage screenshots hub
         if: ${{ !cancelled() }}
-        run: node packages/web-app/scripts/landing-page.mjs staging-hub
+        run: mise run screenshots-hub -- staging-hub
 
       - name: Publish screenshots hub
         if: ${{ !cancelled() }}
