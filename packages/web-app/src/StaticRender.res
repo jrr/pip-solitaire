@@ -2,7 +2,7 @@
 //
 // The runtime `Html` module renders vnodes to *live DOM* in the browser; this
 // renders the very same vnodes to *markup* — the build-time counterpart used by
-// the icon generator (see scripts/generate-icons.mjs). Because the app icon is
+// the icon generator (see scripts/generate/icons.mjs). Because the app icon is
 // built from the real `CardArt` vnodes and stringified here, the icon can't
 // drift from the on-screen card design: both come from one source.
 //

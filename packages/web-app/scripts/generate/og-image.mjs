@@ -5,10 +5,10 @@
 // preview image (`og:image`). This script renders that image.
 //
 // Unlike the PWA icons — a trio of `CardArt` cards fanned over the background,
-// composed as SVG and rasterized (see generate-icons.mjs) — the preview is meant
+// composed as SVG and rasterized (see icons.mjs) — the preview is meant
 // to look like *gameplay*, so it comes from an actually-rendered game rather than
 // a hand-composed SVG. It drives the same headless-Chromium + Vite-preview rig the
-// screenshot report uses (see screenshots.mjs): serve the built site, point the
+// screenshot report uses (see ../screenshots/render.mjs): serve the built site, point the
 // browser at the deterministic mid-game FreeCell scene (`?scene=freecell&
 // state=midgame`, the URL contract from AppUrl/Scenario), and crop a landscape
 // band of a few cascades — the "few short stacks" the issue asks for.
@@ -23,15 +23,19 @@
 // alongside the icons, and it's committed like them):
 //   og-image.png   ~1200×630, the 1.91:1 landscape most unfurlers crop to.
 //
+// It lives in generate/ rather than screenshots/ because purpose beats mechanism:
+// it writes a committed asset into public/, on the same lifecycle as the icons and
+// fonts, and only happens to reach it through a browser.
+//
 // Run it with `mise run og-image` (which bundles the app first). Serving the
 // bundle and finding a browser come from scripts/lib/preview-app.mjs, shared with
-// screenshots.mjs and the browser test suite: the environment's pre-installed
+// the screenshot renderer and the browser test suite: the environment's pre-installed
 // Chromium when present, otherwise Playwright's own — so it works in this sandbox
 // and on a clean CI runner (after `mise run playwright-install`).
 
 import fs from "node:fs";
 import path from "node:path";
-import { assertBundled, launchChromium, startPreview, webAppRoot } from "./lib/preview-app.mjs";
+import { assertBundled, launchChromium, startPreview, webAppRoot } from "../lib/preview-app.mjs";
 
 const outFile = path.join(webAppRoot, "public", "og-image.png");
 

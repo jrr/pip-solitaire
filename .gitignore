@@ -9,9 +9,10 @@ packages/*/lib/
 # Vite build output
 dist/
 
-# Generated screenshot report (packages/web-app/screenshots) — a CI artifact,
-# not source.
-screenshots/
+# Generated screenshot report — a CI artifact, not source. Anchored for the same
+# reason as `packages/*/lib/` above: unanchored, it also swallowed the
+# hand-written scripts/screenshots/ (the code that *renders* the report).
+packages/web-app/screenshots/
 
 # Playwright run output (traces, HTML report) from `mise run browsertest`.
 test-results/
