@@ -14,8 +14,17 @@ framework is [ReScript](https://rescript-lang.org).
 
 ## The task interface
 
-**Do your work through mise tasks, not ad-hoc shell commands.** The tasks in
-`mise.toml` are the supported set of operations for both developers and agents.
+**Anything repeatable belongs in a mise task.** The tasks in `mise.toml` are the
+supported set of operations for both developers and agents: they carry the
+`depends` that build or bundle first, they work identically in CI, and they're
+the only thing an agent on a tight allowlist can reach.
+
+Ad-hoc `node` for genuine one-offs — a throwaway probe, measuring something
+before you know whether it's worth keeping — is fine, and is often how a task
+starts life. The rule of thumb: **if you run it twice, make it a task.** What's
+not fine is reaching past a task that already exists (`node
+packages/web-app/scripts/…` when `mise run screenshots` is right there), because
+that skips the `depends` and drifts from what CI does.
 
 ```
 mise tasks          # list available tasks
@@ -46,18 +55,43 @@ of a tool you already have a passthrough for, just pass it after `--`.
 
 ### When `mise` isn't installed (sandboxed agents)
 
-This project uses mise as a command runner, but if you're in a claude cloud
-sandbox you probably can't install it the normal way. Instead, source
-`claude-cloud-dev-env.sh` from the repo root:
+Cloud sessions run a **SessionStart hook** (`.claude/hooks/session-start.sh`,
+wired up in `.claude/settings.json`) that provisions the toolchain before you
+start work, so `mise run <task>` should just work in a plain shell from your
+first command — nothing to source.
+
+If it didn't run, or you're in some other sandbox without `mise`, do it by hand:
 
 ```
-source claude-cloud-dev-env.sh
+source claude-cloud-dev-env.sh   # tools on this shell's PATH too
+bash claude-cloud-dev-env.sh     # just provision; `mise run` works after
 ```
 
-It installs `mise`, trusts the repo, installs the pinned tools, and activates
-them for the current shell — after which `mise tasks` / `mise run ci` work as
-normal. This only fixes the current session; wiring it into the environment's
-setup script is a human decision, so flag it rather than assuming it.
+The sourced form additionally puts `node`/`pnpm` on your PATH, which you only
+need to call them *directly* — `mise run` resolves a task's pinned tools itself.
+
+## Seeing the app move
+
+`mise run capture` shoots one scene frame by frame and writes a contact sheet:
+
+```
+mise run capture -- "?scene=freecell&state=finish"
+mise run capture -- "?scene=freecell&seed=1" --steps 180 --hz 120
+```
+
+Reach for it when the question is about *motion* — timing, trajectory, whether
+an effect reads right — which the other tools can't answer: `test` is jsdom and
+has no motion, `browsertest` measures an animation but only reports numbers, and
+`screenshots` shoots one still per scene.
+
+It runs on a fake clock by default, so a capture is reproducible frame for frame
+and can shoot refresh rates and frame durations the host doesn't have. The
+script header (`packages/web-app/scripts/capture/frames.mjs`) documents exactly
+which clocks it owns; read it before trusting a capture of something new.
+
+Both the images it writes and the report from `mise run screenshots` are worth
+actually looking at — agents can read PNGs, so "does this look right?" is a
+question you can answer yourself rather than escalate.
 
 ## Permissions (for CI agents)
 
@@ -65,10 +99,13 @@ The `@claude` GitHub agent runs under a deliberately **tight** allowlist (see
 `--allowedTools` in `.github/workflows/claude.yml`):
 
 - Bash is limited to `mise run`, `mise tasks`, `mise install`, and
-  `gh pr create`.
-- Web access is limited to specific toolchain-docs domains
-  (`rescript-lang.org`, `pnpm.io`, `mise.jdx.dev`) via domain-scoped
-  `WebFetch`. There is no open web or `WebSearch`.
+  `gh pr create`. Note this rules out ad-hoc `node`, which an interactive
+  session *can* run — so a probe you wrote by hand has to become a task before
+  the CI agent can reuse it.
+- Web access is limited to specific docs domains via domain-scoped `WebFetch`
+  (`rescript-lang.org`, `pnpm.io`, `mise.jdx.dev`, `playwright.dev`,
+  `developer.mozilla.org`, `raw.githubusercontent.com`). There is no open web
+  or `WebSearch`.
 
 This is intentional. When you need a capability you don't have, **widen the
 interface, not the allowlist**:
@@ -85,6 +122,33 @@ interface, not the allowlist**:
 
 Keep the review workflow (`claude-code-review.yml`) and the implementer
 workflow (`claude.yml`) consistent with this model.
+
+### Network in a claude cloud session (different constraint entirely)
+
+The allowlist above is a *tool* allowlist, and it only binds the GitHub agent —
+the Actions runner itself has open internet. A **cloud session** is the opposite:
+tools are unrestricted, but the VM sits behind an egress policy set on the cloud
+environment, not by this repo. On the default **Trusted** level that policy
+allows package registries and GitHub and denies everything else, which means
+`rescript-lang.org`, `developer.mozilla.org`, `playwright.dev`, `pnpm.io` and
+`mise.jdx.dev` all fail with a `403` at CONNECT — the exact domains the workflows
+grant.
+
+Two things follow, and the second matters more:
+
+- **Don't diagnose it as a bug.** A 403 from the proxy is a policy denial. It's
+  fixed by editing the environment at claude.ai/code (see below), not from here.
+- **You can still get the docs.** `raw.githubusercontent.com` is allowed, and
+  these projects keep their docs in public repos — MDN's pages are in
+  `mdn/content` under `files/en-us/…`, ReScript's site is in
+  `rescript-lang/rescript-lang.org`. Read the source rather than guessing from
+  memory. `WebSearch` also works, since it runs server-side, but it returns
+  snippets rather than pages.
+
+To widen it: open the environment selector at claude.ai/code (the cloud icon
+above the message box), edit the environment, set **Network access** to
+**Custom**, tick *"Also include default list of common package managers"*, and
+add the domains. There's no repo-side setting for this.
 
 ## Pull request lifecycle
 

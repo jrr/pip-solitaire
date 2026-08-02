@@ -79,7 +79,7 @@ jobs:
           claude_args: |
             --model claude-sonnet-5
             --max-turns 300
-            --allowedTools "Bash(mise run:*)" "Bash(mise tasks:*)" "Bash(mise install)" "Bash(gh pr view:*)" "Bash(gh pr diff:*)" "Bash(gh pr comment:*)" "Bash(gh pr list:*)" "Bash(gh issue view:*)" "Bash(gh issue list:*)" "Bash(gh search:*)" "Skill" "mcp__github_inline_comment__create_inline_comment"
+            --allowedTools "Bash(mise run:*)" "Bash(mise tasks:*)" "Bash(mise install)" "Bash(gh pr view:*)" "Bash(gh pr diff:*)" "Bash(gh pr comment:*)" "Bash(gh pr list:*)" "Bash(gh issue view:*)" "Bash(gh issue list:*)" "Bash(gh search:*)" "Skill" "mcp__github_inline_comment__create_inline_comment" "WebFetch(domain:rescript-lang.org)" "WebFetch(domain:pnpm.io)" "WebFetch(domain:mise.jdx.dev)" "WebFetch(domain:playwright.dev)" "WebFetch(domain:developer.mozilla.org)" "WebFetch(domain:raw.githubusercontent.com)"
 
       # Capture the full JSON session log (all messages, incl. the result
       # message's permission_denials details) as a downloadable artifact

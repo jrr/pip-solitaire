@@ -70,6 +70,17 @@ run = "node packages/web-app/scripts/screenshots/stage.mjs"
 description = "Generate the screenshots hub page (`mise run screenshots-hub -- <outDir>`)"
 run = "node packages/web-app/scripts/screenshots/hub.mjs"
 
+# Shoots a scene frame by frame and writes a contact sheet, so a *trajectory* can
+# be looked at rather than measured. Runs on a fake clock by default (see the
+# script header), which makes a capture reproducible and lets it shoot refresh
+# rates and frame durations the host doesn't have:
+#   mise run capture -- "?scene=freecell&state=finish"
+#   mise run capture -- "?scene=freecell&seed=1" --steps 180 --hz 120
+[tasks.capture]
+description = "Shoot a scene frame by frame into a contact sheet (`-- \"?scene=…\"`)"
+depends = ["bundle"]
+run = "node packages/web-app/scripts/capture/frames.mjs"
+
 # The browser-driven checks (packages/web-app/browser-tests): the things jsdom
 # can't answer — real layout, `calc()`, media queries, transform matrices, live
 # transitions, pointer input. Kept out of `ci` on purpose (`ci` stays

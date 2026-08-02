@@ -3,7 +3,29 @@
     "allow": [
       "Bash(mise run:*)",
       "Bash(mise tasks:*)",
-      "Bash(mise install)"
+      "Bash(mise install)",
+      "Bash(node:*)",
+      "WebFetch(domain:rescript-lang.org)",
+      "WebFetch(domain:pnpm.io)",
+      "WebFetch(domain:mise.jdx.dev)",
+      "WebFetch(domain:playwright.dev)",
+      "WebFetch(domain:developer.mozilla.org)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "WebFetch(domain:code.claude.com)"
+    ]
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|resume",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/session-start.sh",
+            "timeout": 600
+          }
+        ]
+      }
     ]
   }
 }

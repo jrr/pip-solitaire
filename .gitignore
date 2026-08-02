@@ -17,3 +17,8 @@ packages/web-app/screenshots/
 # Playwright run output (traces, HTML report) from `mise run browsertest`.
 test-results/
 playwright-report/
+
+# Frame captures from `mise run capture` — a look-at-it artifact for whoever ran
+# it, regenerated on demand. Anchored like the screenshot report above so it
+# can't also swallow the hand-written scripts/capture/.
+packages/web-app/capture/

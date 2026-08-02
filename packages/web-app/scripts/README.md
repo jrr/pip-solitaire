@@ -11,6 +11,7 @@ The directories split by **purpose**, not by mechanism:
 | `lib/` | shared machinery, imported by the rest (and by `playwright.config.mjs` / the browser tests) |
 | `generate/` | asset generators — they write committed files into `public/` or `src/` |
 | `screenshots/` | the screenshot report: rendering it, and the two pieces that publish it |
+| `capture/` | frame capture: shoot a scene over time into a contact sheet |
 
 `generate/og-image.mjs` is the awkward one: an asset generator by purpose, a
 browser-driver by mechanism. Purpose wins — it writes a committed
@@ -27,10 +28,23 @@ imports the shared browser boot from `lib/`.
 | `screenshots/render.mjs` | `mise run screenshots` | `screenshots/` — the report: FreeCell scenes × emulated devices × orientation, plus an `index.html` contact sheet |
 | `screenshots/stage.mjs` | `mise run stage-screenshots -- <dir> <stamp>` | a local staging dir for `peaceiris/actions-gh-pages` to publish |
 | `screenshots/hub.mjs` | `mise run screenshots-hub -- <dir>` | `<dir>/index.html` — the `/screenshots/` hub listing every published report |
+| `capture/frames.mjs` | `mise run capture -- "?scene=…"` | `capture/` — one PNG per sampled frame plus `sheet.png`, the contact sheet of the run |
 
 The three `generate/` outputs are **committed**, so those tasks only need
-re-running when their inputs change. The `screenshots/` outputs are not — CI
-renders and publishes them per push.
+re-running when their inputs change. The `screenshots/` and `capture/` outputs
+are not — CI renders and publishes the report per push, and a capture is
+regenerated on demand by whoever is looking at it.
+
+### `screenshots/` vs `capture/` — both drive a browser, different questions
+
+`screenshots/` answers *how does a scene look on this device?*: one still per
+scene × device × orientation, laid out for a per-PR visual diff.
+
+`capture/` answers *how does it move?*: many frames of **one** scene over
+simulated time, on a fake clock that makes the run reproducible and lets it shoot
+refresh rates the host doesn't have. It's the only thing here that shows a
+trajectory, which is what a question about animation *feel* needs. See the
+script header for what the fake clock does and doesn't own.
 
 ## lib/
 
