@@ -100,3 +100,38 @@ describe("TableScene save/resume (#177)", () => {
     expect(lastCanUndo.contents->Option.getOr(false))->toBe(true)
   })
 })
+
+// Re-mounting a scene replays the *seeded* history instead of the live board.
+// The switcher mounts a scene again on every row tap — including a tap on the row
+// for the scene already showing — but `~history` seeds every mount, not just the
+// opening one, so the second mount re-opens the board the seed described and
+// throws the game in progress away.
+describe("TableScene re-mount", () => {
+  let hasWinOverlay = (container): bool =>
+    container->querySelector(".win-overlay")->Nullable.toOption->Option.isSome
+
+  test("a second mount opens the live board, not the seeded one", () => {
+    let game = Game.freecell
+    let (won, _moved) = Reducer.finishSequence(~game, Scenario.freecellAlmostWon(game))
+    let container = createElement("div")
+    let newGame = ref(None)
+    let scene = TableScene.make(
+      ~history=History.make(won),
+      ~newDeal=() => Game.freecellDeal(~seed=7),
+      ~publishNewGame=hook => newGame := Some(hook),
+      game,
+    )
+    let _teardown = scene.mount(container)
+    // The resumed victory, as #177 intends.
+    expect(hasWinOverlay(container))->toBe(true)
+    // New Game deals a fresh board: the win is over and done with.
+    (newGame.contents->Option.getOrThrow)()
+    expect(hasWinOverlay(container))->toBe(false)
+    // What a tap on the menu's "FreeCell" row does: tear the board down, clear the
+    // container, mount the same scene again. The board that comes back must be the
+    // one that was being played, not the finished game from the seed.
+    WebDom.clear(container)
+    let _remounted = scene.mount(container)
+    expect(hasWinOverlay(container))->toBe(false)
+  })
+})
