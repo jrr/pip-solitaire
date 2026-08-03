@@ -535,18 +535,29 @@ let looseTiltPile = 1000
 // just another recorded state, so stepping back tears the win overlay down and
 // returns to the prior position. (Redo lives on in `core`'s `History` for the CLI,
 // but the web app's top bar no longer surfaces it.)
-// `~history` restores a *whole* saved game (#177): the board's undo/redo stack,
+// `~loadHistory` restores a *whole* saved game (#177): the board's undo/redo stack,
 // not just its present position — so a resumed game comes back with Undo still
 // walking back through the moves played before the player left. It applies only to
-// the opening mount (a re-deal starts a clean history); when given, its present
-// state seeds the board and `~initial` is ignored. `~persist` is its write side: a
+// the opening build of each mount (a re-deal starts a clean history); when it
+// yields a history, that history's present state seeds the board and `~initial` is
+// ignored.
+//
+// It's a *thunk*, read afresh on every mount, and that matters: a scene can be
+// mounted more than once (the switcher re-mounts on a scene change), and a value
+// read when the scene was *built* is a snapshot of storage at page load. Re-opening
+// a board from that snapshot silently rewinds the game to where it stood when the
+// page loaded — and if the player had resumed a finished game that session, brings
+// the victory back with it. Reading at mount time resumes whatever is saved *now*,
+// which is the board they were just playing.
+//
+// `~persist` is its write side: a
 // sink handed the board's full history after every change (each move, undo, and the
 // opening/New Game/Restart builds), so the driver can save it. Both are omitted for
 // the demos and for any board opened from a `?state=`/`?seed=` link, so
 // save-and-resume attaches only to a plain FreeCell game.
 let make = (
   ~initial: option<GameState.t>=?,
-  ~history: option<History.t<GameState.t>>=?,
+  ~loadHistory: unit => option<History.t<GameState.t>>=() => None,
   ~persist: option<History.t<GameState.t> => unit>=?,
   ~newDeal: option<unit => Game.t>=?,
   ~publishNewGame: option<(unit => unit) => unit>=?,
@@ -1974,8 +1985,12 @@ let make = (
 
     // Open the board: from a saved undo/redo history when one was restored (#177),
     // else the forced `~initial` scenario when the URL named one, else the game's own
-    // deal. `~history` seeds only this opening mount; every later re-deal starts clean.
-    buildBoard(~initial?, ~history?, game)
+    // deal. The save is read *here*, as this mount opens — not once when the scene
+    // was built — so a scene mounted a second time resumes the game as it stands
+    // now rather than re-opening a page-load snapshot of it over the board the
+    // player was on. It seeds only this opening build; every later re-deal within
+    // the mount starts clean.
+    buildBoard(~initial?, ~history=?loadHistory(), game)
 
     // Reflow the card layout whenever the stage resizes (#172). One observer serves
     // the scene's whole life: it watches the persistent `boardHost` and always
