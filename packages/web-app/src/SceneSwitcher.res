@@ -97,12 +97,21 @@ let render = (
     )
   }
 
-  // Tapping a row activates its scene. Unconditionally, including the row of the
-  // scene already showing — the bug the accompanying test pins. `onReselect` is
-  // accepted but never reached until that's fixed.
-  ignore(onReselect)
+  // Tapping a row activates its scene — unless that scene is the one already
+  // showing, which is the same "don't re-mount what's already up" rule
+  // `ensureActive` applies below, and for the same reason: activation tears the live
+  // scene down and mounts it afresh, so a tap on the current game's own row would
+  // throw the game in progress away and re-open whatever that scene opens with.
+  // `onReselect` still runs, so the chrome can close the menu — the row acknowledges
+  // the tap, it just doesn't restart the game behind it.
   rows->Array.forEach(((scene, row)) =>
-    row->WebDom.addEventListener("click", () => activate(scene))
+    row->WebDom.addEventListener("click", () =>
+      if activeId.contents == Some(scene.id) {
+        onReselect->Option.forEach(f => f())
+      } else {
+        activate(scene)
+      }
+    )
   )
 
   // Initial scene: the forced (URL) id if it names a scene, else the launch
