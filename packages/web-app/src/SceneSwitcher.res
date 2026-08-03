@@ -44,13 +44,18 @@ type t = {
 // first scene.
 //
 // `~onActivate` is called at the *start* of every activation (the initial mount
-// and each row tap) with the scene about to mount — the chrome uses it to reset
-// any per-scene action it tracks (the top bar's New Game hook, which the mounting
-// scene then re-publishes if it's re-dealable) and to close the menu.
+// and each row tap that changes scene) with the scene about to mount — the chrome
+// uses it to reset any per-scene action it tracks (the top bar's New Game hook,
+// which the mounting scene then re-publishes if it's re-dealable) and to close the
+// menu. `~onReselect` is its counterpart for the tap that *doesn't* switch scene —
+// the current scene's own row — where nothing mounts and so no hook may be reset
+// (the live board's New Game/Undo hooks must keep pointing at it); the chrome
+// wires it to close the menu alone.
 let render = (
   ~default: option<string>=?,
   ~forced: option<string>=?,
   ~onActivate: option<Scene.t => unit>=?,
+  ~onReselect: option<unit => unit>=?,
   scenes: array<Scene.t>,
 ): t => {
   // A plain container for the rows; the menu wraps it in a labelled <nav>, so
@@ -92,7 +97,10 @@ let render = (
     )
   }
 
-  // Tapping a row activates its scene.
+  // Tapping a row activates its scene. Unconditionally, including the row of the
+  // scene already showing — the bug the accompanying test pins. `onReselect` is
+  // accepted but never reached until that's fixed.
+  ignore(onReselect)
   rows->Array.forEach(((scene, row)) =>
     row->WebDom.addEventListener("click", () => activate(scene))
   )

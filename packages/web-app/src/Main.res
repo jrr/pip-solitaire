@@ -444,7 +444,11 @@ let gameScene = (game: Game.t) => {
   let plainOpen = isFreecell && url.state->Option.isNone && url.seed->Option.isNone
   // Resume a saved game when there is one and this is a plain open; otherwise `None`
   // (nothing saved, corrupt/old data, or a URL-addressed board) means deal fresh.
-  let savedHistory = plainOpen ? SavedGame.load(game.id) : None
+  // Storage is read when the scene *mounts*, not here where it's built: a scene can
+  // mount more than once (the switcher re-mounts on a scene change), and a value read
+  // at build time is a snapshot of the save as it stood at page load, which a later
+  // mount would restore over the game actually being played.
+  let loadHistory = () => plainOpen ? SavedGame.load(game.id) : None
 
   // Open FreeCell from a fresh random seed on each load too (#108/#98), so a plain
   // reload with nothing saved lays out a new board instead of always deal #1 —
@@ -466,7 +470,7 @@ let gameScene = (game: Game.t) => {
     // Restore the saved undo/redo stack (#177) and, when saving applies, hand the
     // board a sink that writes each change back to storage. New Game/Restart/every
     // move flow through this same sink, so the saved game always tracks the live one.
-    ~history=?savedHistory,
+    ~loadHistory,
     ~persist=?plainOpen ? Some(history => SavedGame.save(game.id, history)) : None,
     ~newDeal?,
     ~publishNewGame=hook => newGameHook := Some(hook),
@@ -512,6 +516,10 @@ let switcher = SceneSwitcher.render(
     reportHistory.contents(false)
     closeMenu.contents()
   },
+  // A tap on the row for the game already showing: nothing mounts, so none of the
+  // per-scene hooks above may be reset — they still belong to the live board — and
+  // closing the menu is the whole response. The board carries on untouched.
+  ~onReselect=() => closeMenu.contents(),
   Array.concat(
     [SpinnerScene.make(), SvgScene.make(), GalleryScene.make(), MotionScene.make()],
     Game.all->Array.map(gameScene),
