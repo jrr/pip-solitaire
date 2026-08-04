@@ -937,9 +937,22 @@
          driven from the top bar (#109), which stays put across the rebuild. It
          fills the scene band and lets the playfield's `flex: 1` grow into it, so
          the board still stretches exactly as when the playfield was a direct child
-         of the container. */
+         of the container.
+
+         `isolation: isolate` makes it a **stacking context**, which keeps the
+         board's layering to itself (#249). The board stacks in the large: the
+         cards carry an imperative counter (TableScene.res), the finish sweep flies
+         at 100000, the Finish button sits at 900 and the win overlay at 1000 —
+         numbers chosen relative to *each other*. Without a stacking context here
+         they were all siblings of the app chrome in the root context, where the
+         slide-over menu sits at a modest z-index: 20, so the Finish button floated
+         over an open menu. Isolating means those numbers only ever order the board
+         internally, and the board as a whole (z-index: auto) stays under the menu —
+         so the chrome can keep its small, readable numbers without having to
+         out-bid the playfield. */
       .table-board {
         position: relative;
+        isolation: isolate;
         flex: 1;
         width: 100%;
         display: flex;
@@ -1475,7 +1488,7 @@
         }
       }
     </style>
-    <script type="module" crossorigin src="./assets/index-HD9W2Zko.js"></script>
+    <script type="module" crossorigin src="./assets/index-BsUBy2py.js"></script>
   <link rel="manifest" href="./manifest.webmanifest"></head>
   <body>
     <!-- Vite resolves the bare `core/…` specifier the compiled entry imports
