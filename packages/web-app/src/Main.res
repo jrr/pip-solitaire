@@ -521,7 +521,15 @@ let switcher = SceneSwitcher.render(
   // closing the menu is the whole response. The board carries on untouched.
   ~onReselect=() => closeMenu.contents(),
   Array.concat(
-    [SpinnerScene.make(), SvgScene.make(), GalleryScene.make(), MotionScene.make()],
+    [
+      SpinnerScene.make(),
+      SvgScene.make(),
+      GalleryScene.make(),
+      // The card-sprite fidelity check (#225). `?raster=` picks which
+      // rasterizing strategy it opens on; without it the scene's own default wins.
+      RasterScene.make(~strategy=?url.raster),
+      MotionScene.make(),
+    ],
     Game.all->Array.map(gameScene),
   ),
 )

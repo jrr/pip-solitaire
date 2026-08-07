@@ -932,6 +932,87 @@
         /* filter: drop-shadow(0 4px 10px rgba(0, 0, 0, 0.35)); */
       }
 
+      /* Raster scene (issue #225): the card-sprite fidelity check — every card
+         twice, the live CardArt <svg> immediately left of the CardRaster bitmap
+         of it. The comparison only means anything if the two are the same size
+         and *touching*, so `--raster-card-w` (published on the scene root by
+         RasterScene, the one place the number lives) drives both, and the pair
+         has no gap between its halves: a rasterization that's off by a pixel
+         shows as a step across the seam rather than as two cards that look
+         "about the same" a centimetre apart. The bitmap's own CSS width/height
+         are set inline by CardRaster from the same number. */
+      .raster-scene {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 0.6rem;
+        width: min(94vw, 760px);
+      }
+
+      .raster-scene__toolbar {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: center;
+        gap: 0.5rem;
+      }
+
+      .raster-toggle {
+        font: inherit;
+        font-size: 0.85rem;
+        padding: 0.35rem 0.7rem;
+        border-radius: 999px;
+        border: 1px solid #2d4066;
+        background: #16233a;
+        color: #cbd5e1;
+        cursor: pointer;
+      }
+
+      .raster-toggle--on {
+        border-color: #22c55e;
+        background: #14532d;
+        color: #f0fdf4;
+      }
+
+      .raster-scene__status {
+        margin: 0;
+        font-size: 0.78rem;
+        color: #94a3b8;
+        text-align: center;
+      }
+
+      /* `auto-fill` over the pair width (two cards side by side) so the sheet
+         reflows from one pair per row on a phone up to several on a desktop,
+         without ever splitting a pair across rows. */
+      .raster-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, calc(var(--raster-card-w) * 2));
+        justify-content: center;
+        gap: 0.7rem;
+        width: 100%;
+      }
+
+      .raster-pair {
+        display: flex;
+        align-items: flex-start;
+      }
+
+      /* Both halves at exactly one card width; `height: auto` lets the live SVG
+         take its 5:7 height from the viewBox, which is the same height the
+         bitmap is given inline. */
+      .raster-pair > .card-art {
+        width: var(--raster-card-w);
+        height: auto;
+      }
+
+      /* The sprite's placeholder before the (async) decode lands, so the grid
+         doesn't reflow underneath the comparison as the 52 bitmaps arrive. */
+      .raster-pair__pending {
+        width: var(--raster-card-w);
+        height: calc(var(--raster-card-w) * 1.4);
+        border-radius: calc(var(--raster-card-w) * 0.1);
+        background: #16233a;
+      }
+
       /* The board host (TableScene.res): wraps the playfield (and caption) so a
          New Game re-deal can rebuild just the board in place — the re-deal is now
          driven from the top bar (#109), which stays put across the rebuild. It
