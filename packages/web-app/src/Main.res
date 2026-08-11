@@ -525,9 +525,9 @@ let switcher = SceneSwitcher.render(
       SpinnerScene.make(),
       SvgScene.make(),
       GalleryScene.make(),
-      // The card-sprite fidelity check (#225). `?raster=` picks which
-      // rasterizing strategy it opens on; without it the scene's own default wins.
-      RasterScene.make(~strategy=?url.raster),
+      // The card-sprite fidelity check (#225). `?raster=` picks which of the
+      // three renderings it opens on; without it the scene's own default wins.
+      RasterScene.make(~rendering=?url.raster),
       MotionScene.make(),
     ],
     Game.all->Array.map(gameScene),

@@ -48,14 +48,15 @@ const outDir = path.join(webAppRoot, "screenshots");
 //     opening layout rather than a frame mid-deal (see AppUrl's seed/animate knobs).
 //   - Mid-game — a representative in-progress FreeCell layout.
 //   - Finish — the finishable endgame (#132), shot to show the "Finish" button.
-//   - Card raster — not a board at all: the sprite-fidelity sheet (#225), each
-//     card's live SVG beside the bitmap the victory animation will blit. It's here
-//     because the failure mode it guards against — a rasterization that loses the
-//     card's fonts — is invisible to any assertion and obvious to an eye, which is
-//     exactly what a per-PR report is for. It's shot per *device* rather than only
-//     on the desktop because that failure is resolution-dependent: a sprite built
-//     at the wrong device-pixel ratio reads as slightly soft, and only the retina
-//     shots show it.
+//   - Card raster — not a board at all: the sprite-fidelity sheet (#225), all 52
+//     of the bitmaps the victory animation will blit. It's here because the failure
+//     mode it guards against — a rasterization that loses the card's fonts — is
+//     invisible to any assertion and obvious to an eye, which is exactly what a
+//     per-PR report is for. It's shot per *device* rather than only on the desktop
+//     because that failure is resolution-dependent: a sprite built at the wrong
+//     device-pixel ratio reads as slightly soft, and only the retina shots show it.
+//     The scene draws one rendering at a time (`?raster=live|svg|canvas`); the plain
+//     query shoots its default, the sprite path that ships.
 //
 // `ready` is the selector that means "this scene has settled"; scenes that draw the
 // board share the default.

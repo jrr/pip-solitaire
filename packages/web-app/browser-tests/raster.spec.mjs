@@ -8,9 +8,12 @@
 // tofu where the pips should be — which is *not* subtle, but is also not
 // something any unit test can see. It's a question about pixels.
 //
-// So this measures pixels. The `raster` scene lays each card out twice at card
-// size — the live `CardArt.svg` beside the `CardRaster` bitmap of it — and this
-// shoots both halves and diffs them, once per strategy.
+// So this measures pixels. The `raster` scene draws all 52 cards one of three
+// ways — live `CardArt.svg`, or either `CardRaster` strategy — in the same grid
+// cells, so this shoots a card under `?raster=live` and again under the strategy
+// and diffs the two shots. That is the same flip the scene is built around: the
+// cell geometry is identical across renderings, so the comparison is of one card
+// against itself rather than of two neighbours.
 //
 // The decode happens back *inside the page*: Node has no PNG decoder, and the
 // browser already has one plus a canvas to read pixels out of. So each shot goes
@@ -50,8 +53,8 @@ const samples = [
 // accident of tuning — this is where issue #225's "pick by looking" is written
 // down. Measured on the sample cards below:
 //
-//   svg     mean 2.4-4.2 · hard 2.5-4.4%
-//   canvas  mean 3.1-7.8 · hard 3.0-7.0%
+//   svg     mean 1.2-2.4 · hard 1.3-3.8%
+//   canvas  mean 1.6-2.9 · hard 1.9-4.4%
 //
 // The SVG-with-embedded-face path is closer to the live card on every card, and
 // its worst case is better than the canvas path's *best* case on the hardest
@@ -141,42 +144,56 @@ async function comparePngs(page, a, b, level) {
   )
 }
 
-// A roomy desktop viewport at 1× so a pair is exactly two card widths of real
+// A roomy desktop viewport at 1× so a cell is exactly one card width of real
 // pixels and the shots line up without any device-pixel rounding to reason about.
 test.use({ viewport: { width: 1200, height: 900 }, deviceScaleFactor: 1 })
 
+/**
+ * Open the scene on one rendering and wait for it to be showing. `data-raster`
+ * lands once the 52 bitmaps are in (the decodes are async, so there's nothing
+ * else to wait on) — and immediately for `live`, which builds nothing.
+ */
+async function open(page, rendering) {
+  await page.goto(`/?scene=raster&raster=${rendering}`)
+  await expect(page.locator('.raster-scene[data-raster="ready"]')).toBeVisible()
+  await expect(page.locator(".raster-scene")).toHaveAttribute("data-rendering", rendering)
+}
+
+const cell = (page, index) => page.locator(".raster-cell").nth(index)
+
 for (const strategy of ["svg", "canvas"]) {
   test.describe(`raster scene — ${strategy} strategy`, () => {
-    test.beforeEach(async ({ page }) => {
-      await page.goto(`/?scene=raster&raster=${strategy}`)
-      // The scene publishes this only once all 52 bitmaps are in — the decodes
-      // are async, so there is nothing else to wait on.
-      await expect(page.locator('.raster-scene[data-raster="ready"]')).toBeVisible()
-    })
+    test("every card is a sprite, in the same box the live card occupied", async ({ page }) => {
+      // The flip only means anything if nothing but the pixels moves, so this is
+      // the load-bearing assertion behind every diff below: the cell a card
+      // lands in is the same box under both renderings.
+      await open(page, "live")
+      await expect(page.locator(".raster-cell")).toHaveCount(52)
+      await expect(page.locator(".raster-cell .card-art")).toHaveCount(52)
+      const live = await cell(page, 0).boundingBox()
 
-    test("every card has a sprite, sized to match the live card", async ({ page }) => {
-      const pairs = page.locator(".raster-pair")
-      await expect(pairs).toHaveCount(52)
-      await expect(page.locator(".raster-pair canvas")).toHaveCount(52)
+      await open(page, strategy)
+      await expect(page.locator(".raster-cell")).toHaveCount(52)
+      await expect(page.locator(".raster-cell canvas")).toHaveCount(52)
+      const sprite = await cell(page, 0).boundingBox()
 
-      const first = pairs.first()
-      const live = await first.locator(".card-art").boundingBox()
-      const sprite = await first.locator("canvas").boundingBox()
       expect(sprite.width).toBeCloseTo(live.width, 1)
       expect(sprite.height).toBeCloseTo(live.height, 1)
+      expect(sprite.x).toBeCloseTo(live.x, 1)
+      expect(sprite.y).toBeCloseTo(live.y, 1)
     })
 
     const budget = BUDGETS[strategy]
 
     for (const sample of samples) {
       test(`the ${sample.name} sprite matches the live card`, async ({ page }) => {
-        const pair = page.locator(".raster-pair").nth(sample.index)
-        const result = await comparePngs(
-          page,
-          await shoot(pair.locator(".card-art")),
-          await shoot(pair.locator("canvas")),
-          HARD_DIFF_LEVEL,
-        )
+        await open(page, "live")
+        const liveShot = await shoot(cell(page, sample.index))
+
+        await open(page, strategy)
+        const spriteShot = await shoot(cell(page, sample.index))
+
+        const result = await comparePngs(page, liveShot, spriteShot, HARD_DIFF_LEVEL)
         expect(result.sizeMismatch, `size mismatch: ${result.sizeMismatch}`).toBeUndefined()
         // Logged so a regression report says *how far off* rather than just
         // "failed", and so the two strategies can be compared by reading the run.
@@ -238,6 +255,37 @@ test.describe("raster scene — switching strategy mid-build", () => {
     await page.waitForTimeout(FONT_HOLD_MS + 1500)
 
     await expect(page.locator(".raster-scene__status")).toContainText("via Canvas 2D")
-    await expect(page.locator(".raster-toggle--on")).toHaveText("Canvas 2D")
+    // `toContainText`, not `toHaveText`: the button also carries its key number.
+    await expect(page.locator(".raster-toggle--on")).toContainText("Canvas 2D")
+  })
+})
+
+// The keys are the reason the scene is one-at-a-time: a difference of a few
+// pixels is something you catch by flipping in place, and reaching for a button
+// is slower than the afterimage lasts. Key *n* picks the *n*th rendering, which
+// is also the number printed on the *n*th button — one order, three consumers
+// (`renderings`, the buttons, the keys), so this walks all three.
+test.describe("raster scene — the 1/2/3 keys", () => {
+  test("each key picks the rendering its button is numbered with", async ({ page }) => {
+    await open(page, "live")
+
+    for (const [key, rendering, label] of [
+      ["2", "svg", "SVG + embedded font"],
+      ["3", "canvas", "Canvas 2D"],
+      ["1", "live", "Live SVG"],
+    ]) {
+      await page.keyboard.press(key)
+      await expect(page.locator('.raster-scene[data-raster="ready"]')).toBeVisible()
+      await expect(page.locator(".raster-scene")).toHaveAttribute("data-rendering", rendering)
+      await expect(page.locator(".raster-toggle--on")).toContainText(label)
+    }
+  })
+
+  test("a modified press is left to the browser", async ({ page }) => {
+    // ⌘1/^1 switch browser tabs; a debug scene has no business eating that.
+    await open(page, "live")
+    await page.keyboard.press("Meta+3")
+    await page.keyboard.press("Control+3")
+    await expect(page.locator(".raster-scene")).toHaveAttribute("data-rendering", "live")
   })
 })
