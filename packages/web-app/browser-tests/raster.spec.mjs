@@ -191,3 +191,53 @@ for (const strategy of ["svg", "canvas"]) {
     }
   })
 }
+
+// Moving the toggle mid-build leaves two builds in flight, and they don't take
+// the same time (~270ms of decodes for svg, near-nothing for canvas once the
+// document's faces are loaded), so they finish in the wrong order: the one the
+// user asked for lands first and the one they abandoned lands on top of it. The
+// scene has to drop the abandoned one — otherwise the grid ends up showing the
+// old strategy's sprites under the new strategy's toggle, with the status line
+// (which reads the cache) and the toolbar (which reads the model) disagreeing in
+// the same render.
+//
+// Reproducing that ordering means clicking *inside* the first build, and
+// unthrottled that window is a couple hundred milliseconds — narrow enough that
+// a run can miss it and pass without having tested anything. So the svg build is
+// held open: the woff2 bytes it fetches to inline are stalled on the wire.
+//
+// Only *its* request is held, by resource type — the `<img>`-side fetch, not the
+// page's own `@font-face` loads (`font`), which the canvas strategy waits on and
+// which must stay fast. Holding both would push them out together and close the
+// gap that is the whole point.
+const FONT_HOLD_MS = 1500
+
+test.describe("raster scene — switching strategy mid-build", () => {
+  test("the abandoned build doesn't land on top of the newer one", async ({ page }) => {
+    await page.route("**/*.woff2", async (route) => {
+      if (route.request().resourceType() === "font") return await route.continue()
+      await new Promise((resolve) => setTimeout(resolve, FONT_HOLD_MS))
+      await route.continue()
+    })
+
+    // `commit` rather than the default `load`: the point is to be here early,
+    // and the scene mounts (and starts building) well before the page settles.
+    await page.goto("/?scene=raster&raster=svg", { waitUntil: "commit" })
+
+    // The svg build can't have finished — its fonts are still on the wire — so
+    // this is a fact about the state the click is about to land in, not a race
+    // with it. Without it a passing run could mean "no overlap ever happened".
+    await expect(page.locator(".raster-scene__status")).toContainText("rasterizing")
+
+    await page.locator(".raster-scene__toolbar").getByText("Canvas 2D").click()
+    await expect(page.locator('.raster-scene[data-raster="ready"]')).toBeVisible()
+
+    // Not an arbitrary settle: the assertion is that something *doesn't* happen.
+    // The abandoned svg build lands after this point, and waiting past it is the
+    // only way to catch it dispatching.
+    await page.waitForTimeout(FONT_HOLD_MS + 1500)
+
+    await expect(page.locator(".raster-scene__status")).toContainText("via Canvas 2D")
+    await expect(page.locator(".raster-toggle--on")).toHaveText("Canvas 2D")
+  })
+})

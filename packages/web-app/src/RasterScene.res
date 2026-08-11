@@ -102,10 +102,21 @@ let make = (~strategy=CardRaster.Svg): Scene.t => {
   id: "raster",
   label: "Raster",
   mount: container => {
-    // The scene can be torn down mid-build (52 decodes take a moment, and the
-    // switcher won't wait). `live` gates the resolution so a late promise can't
-    // dispatch into a dismantled tree.
-    let live = ref(true)
+    // A build takes a moment (52 decodes), and two things can happen inside that
+    // moment: the scene can be torn down, and the toggle can be moved. `wanted`
+    // is the number of the one build whose result is still wanted — each request
+    // takes the next number, and unmount takes a number no request can hold. A
+    // promise resolving under any other number is a build nobody is waiting for
+    // any more, and dispatching it would be wrong twice over: into a dismantled
+    // tree, or over the top of a newer build.
+    //
+    // The overwrite is the live hazard, because the strategies don't cost the
+    // same. Clicking Canvas (~80ms) while the default Svg build (~270ms) is
+    // still in flight resolves Canvas first and then lets Svg land on top of it
+    // — leaving the grid full of Svg sprites under a Canvas toggle, with the
+    // status line (which reads `cache.strategy`) disagreeing with the toolbar
+    // (which reads `model.strategy`) in the same render.
+    let wanted = ref(0)
     let request = ref(_ => ())
 
     let update = (msg, model) =>
@@ -125,15 +136,19 @@ let make = (~strategy=CardRaster.Svg): Scene.t => {
 
     request :=
       (
-        wanted =>
-          CardRaster.build(~strategy=wanted, ~cssWidth=cardWidth, Deck.allCards)
+        chosen => {
+          wanted := wanted.contents + 1
+          let mine = wanted.contents
+          let stillWanted = () => mine == wanted.contents
+
+          CardRaster.build(~strategy=chosen, ~cssWidth=cardWidth, Deck.allCards)
           ->Promise.thenResolve(cache =>
-            if live.contents {
+            if stillWanted() {
               dispatch(Built(cache))
             }
           )
           ->Promise.catch(error => {
-            if live.contents {
+            if stillWanted() {
               let message = switch error->JsExn.fromException {
               | Some(e) => e->JsExn.message->Option.getOr("unknown error")
               | None => "unknown error"
@@ -143,10 +158,12 @@ let make = (~strategy=CardRaster.Svg): Scene.t => {
             Promise.resolve()
           })
           ->ignore
+        }
       )
 
     request.contents(strategy)
 
-    () => live := false
+    // No request holds 0, so unmount abandons every build in flight.
+    () => wanted := 0
   },
 }
