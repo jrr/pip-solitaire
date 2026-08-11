@@ -30,8 +30,8 @@
 // the live card at card size (browser-tests/raster.spec.mjs, mean per-channel
 // distance over five sample cards):
 //
-//   Svg     2.4-4.2 · 52 cards in ~270ms
-//   Canvas  3.1-7.8 · 52 cards in ~80ms
+//   Svg     1.2-2.4 · 52 cards in ~270ms
+//   Canvas  1.6-2.9 · 52 cards in ~80ms
 //
 // Canvas is three times quicker and still looks fine to the eye — but the build
 // is a one-off before the animation starts, so 270ms buys nothing back, and it's
@@ -106,7 +106,6 @@ external canvasElement: canvas => WebDom.element = "%identity"
 @send external restore: context => unit = "restore"
 @send external scale: (context, float, float) => unit = "scale"
 @send external translate: (context, float, float) => unit = "translate"
-@send external rotate: (context, float) => unit = "rotate"
 @send external beginPath: context => unit = "beginPath"
 @send external roundRect: (context, float, float, float, float, float) => unit = "roundRect"
 @send external fill: context => unit = "fill"
@@ -296,11 +295,30 @@ let paintFace = (ctx, card: Deck.card) => {
   ctx->setTextBaseline("alphabetic")
   ctx->fillText(glyph, CardArt.centerX, CardArt.centerGlyphBaseline)
 
-  // The bottom-right corner is the top-left one rotated 180° about the card's
+  // The bottom-right corner is the top-left one turned 180° about the card's
   // centre — the same trick the vnodes use, so the two corners can't drift apart.
+  //
+  // `scale(-1, -1)` rather than the `rotate(pi)` that reads more naturally,
+  // because `rotate` goes through `sin`/`cos` and `Math.sin(pi)` is not 0 — it's
+  // 1.2246e-16. The resulting matrix carries that as an off-diagonal term, so
+  // the CTM is *very nearly* axis-aligned rather than exactly so, and a text
+  // rasterizer that grid-fits axis-aligned glyph runs (Skia's `rectStaysRect`
+  // fast path) can take one route for the upright corner drawn under the
+  // identity and another for this one. That is a sub-pixel vertical split
+  // between the two corners of a single card, visible only on the rotated half
+  // — which is what the raster scene was reported showing on macOS, where the
+  // two SVG renderings agreed with each other and only Canvas 2D's bottom
+  // corner sat differently.
+  //
+  // `scale(-1, -1)` is the same geometry with an exactly axis-aligned matrix
+  // (the off-diagonal terms are 0, not 1e-16), so both corners are the same kind
+  // of transform. Chromium on Linux renders the two spellings byte-for-byte
+  // identically, so this is not *confirmed* to be the macOS cause — but the
+  // inexactness is real, it costs nothing to remove, and an exact matrix is
+  // what this code meant to ask for either way.
   ctx->save
   ctx->translate(CardArt.centerX, CardArt.centerY)
-  ctx->rotate(Math.Constants.pi)
+  ctx->scale(-1., -1.)
   ctx->translate(-.CardArt.centerX, -.CardArt.centerY)
   cornerRank()
   ctx->restore
