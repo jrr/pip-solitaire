@@ -15,10 +15,12 @@
 // they can be compared side by side rather than argued about:
 //
 //   Svg    — serialize `CardArt.body` (the very same vnodes the app renders, via
-//            `StaticRender`, exactly as the icon generator does) into a
-//            standalone SVG carrying its own `@font-face` rules with the woff2
-//            bytes inlined as base64. Self-contained, so the isolated document
-//            has the faces after all. Card geometry keeps one source of truth.
+//            `StaticRender`, exactly as the icon generator does) into an SVG
+//            carrying its own `@font-face` rules with the woff2 bytes inlined as
+//            base64. Self-contained, so the isolated document has the faces
+//            after all. Card geometry keeps one source of truth. The whole deck
+//            goes into *one* document laid out as a grid, which is then cut into
+//            per-card sprites — see `markup`, and the note on cost below.
 //
 //   Canvas — draw the face with the canvas 2D API: `roundRect` for the frame,
 //            `fillText` for the glyphs. Canvas sees the *document's* fonts
@@ -30,12 +32,17 @@
 // the live card at card size (browser-tests/raster.spec.mjs, mean per-channel
 // distance over five sample cards):
 //
-//   Svg     1.2-2.4 · 52 cards in ~270ms
-//   Canvas  1.6-2.9 · 52 cards in ~80ms
+//   Svg     1.2-2.4 · 52 cards in ~60ms
+//   Canvas  1.6-2.9 · 52 cards in ~50ms
 //
-// Canvas is three times quicker and still looks fine to the eye — but the build
-// is a one-off before the animation starts, so 270ms buys nothing back, and it's
-// worse on every card. It also had to be *taught* the card's geometry twice
+// Svg used to be the slow one by a distance (~300-400ms), and that was the only
+// argument for keeping Canvas within reach. It isn't any more: rasterizing the
+// deck as one document instead of 52 took it to ~60ms without moving a pixel
+// (see `markup`), which is level with Canvas rather than six times worse. Of
+// what's left, roughly half is `base64` below walking the font bytes a character
+// at a time; that would be the next thing to look at if this ever mattered, and
+// it doesn't, because the build is a one-off before the animation starts. It
+// also never had to be *taught* the card's geometry, where Canvas learned it twice
 // over, and that bill came due immediately: the middle glyph originally rebuilt
 // the art's `dominant-baseline="central"` from `measureText()`, which agreed with
 // the SVG engine on Linux and missed it by 4.5 design units on macOS — a
@@ -112,6 +119,23 @@ external canvasElement: canvas => WebDom.element = "%identity"
 @send external stroke: context => unit = "stroke"
 @send external fillText: (context, string, float, float) => unit = "fillText"
 @send external drawImage: (context, image, float, float, float, float) => unit = "drawImage"
+// `drawImage`'s nine-argument form, cropping a source rectangle — how a card is
+// lifted out of the rasterized sheet (see `markup`). Source is a canvas, not an
+// image: the sheet is rasterized once into one, and blitting from that is a copy
+// rather than 52 fresh rasterizations of the same SVG.
+@send
+external drawCanvasPart: (
+  context,
+  canvas,
+  float,
+  float,
+  float,
+  float,
+  float,
+  float,
+  float,
+  float,
+) => unit = "drawImage"
 @set external setFillStyle: (context, string) => unit = "fillStyle"
 @set external setStrokeStyle: (context, string) => unit = "strokeStyle"
 @set external setLineWidth: (context, float) => unit = "lineWidth"
@@ -125,6 +149,8 @@ external canvasElement: canvas => WebDom.element = "%identity"
 
 @val external fetch: string => promise<response> = "fetch"
 @send external arrayBuffer: response => promise<buffer> = "arrayBuffer"
+@get external responseOk: response => bool = "ok"
+@get external responseStatus: response => int = "status"
 @new external bytesOf: buffer => bytes = "Uint8Array"
 @get external byteCount: bytes => int = "length"
 @get_index external byteAt: (bytes, int) => int = ""
@@ -155,6 +181,15 @@ type url
 // public/fonts by `mise run fonts` (#114). Weight is spelled out because the
 // embedded copy has to declare the same weight the card art asks for — a
 // `@font-face` at the default 400 wouldn't match `font-weight: 600` text.
+//
+// These are the faces the *page* serves, deliberately, rather than anything cut
+// down for embedding. Subsetting the rank face to just the thirteen characters a
+// rank label can be is tempting — it is 15.6KB against 3.0KB — but measured, the
+// subset rasterizes a little differently from the face the live card is drawn
+// with (0.08-0.66 mean channel difference per rank, and every card shows a rank
+// twice), which is a fidelity loss in the one strategy whose whole claim is
+// fidelity. The size mattered when each card was its own document; `markup` puts
+// the deck in one, so it doesn't any more.
 let faces = [
   ("Libre Franklin", "600", "libre-franklin-600.woff2"),
   ("Pip Suits", "400", "pip-suits.woff2"),
@@ -187,13 +222,28 @@ let fontUrl = file => makeUrl("./fonts/" ++ file, baseUri)->urlHref
 
 // Fetch every face and render it as `@font-face` rules with the bytes inline.
 // Deliberately *without* the stylesheet's `unicode-range` on Pip Suits: that
-// exists in the page to keep the subset from shadowing Latin text, and inside a
-// one-card SVG there's nothing to shadow.
+// exists in the page to keep the subset from shadowing Latin text, and inside
+// the sprite sheet there's nothing to shadow.
+//
+// A face that doesn't fetch is checked for rather than trusted, because the
+// failure is otherwise invisible: an empty `src:url(data:font/woff2;base64,)`
+// is a *valid* `@font-face` that simply never loads, so the SVG falls through to
+// the `sans-serif` in the card art's font stack and every rank quietly renders
+// in the wrong typeface. The cards still look like cards. Raising here instead
+// puts it on the scene's error line, which is what that line is for.
 let buildFontCss = async () => {
   let rules = await faces
   ->Array.map(async ((family, weight, file)) => {
-    let response = await fetch(fontUrl(file))
-    let encoded = base64(await response->arrayBuffer)
+    let url = fontUrl(file)
+    let response = await fetch(url)
+    if !(response->responseOk) {
+      panic(`couldn't fetch ${file} (HTTP ${response->responseStatus->Int.toString})`)
+    }
+    let bytes = await response->arrayBuffer
+    if byteCount(bytesOf(bytes)) == 0 {
+      panic(`${file} fetched empty`)
+    }
+    let encoded = base64(bytes)
     `@font-face{font-family:"${family}";font-style:normal;font-weight:${weight};` ++
     `src:url(data:font/woff2;base64,${encoded}) format("woff2");}`
   })
@@ -214,23 +264,56 @@ let embeddedFontCss = () =>
     pending
   }
 
-// One card as standalone SVG markup: the real `CardArt.body` vnodes, an explicit
+// How many cards a sheet lays out per row. Any value renders the same picture —
+// see `markup` for why there is a sheet at all — so this is only a shape choice:
+// 8 puts the 52-card deck in a 1280x1568 bitmap at card size on a 2x screen,
+// comfortably inside every engine's maximum, and keeps it roughly square so no
+// single dimension grows fast if the card size or the pixel ratio goes up.
+let sheetColumns = 8
+
+let sheetRows = (~columns, count) => (count + columns - 1) / columns
+
+// The cards as *one* SVG document: a grid of `CardArt.body` vnodes, an explicit
 // pixel size (see the header — a viewBox alone rasterizes inconsistently), and
-// the embedded faces in a `<style>`.
-let markup = (~fontCss, ~pxWidth, ~pxHeight, card) =>
+// the embedded faces in a single `<style>`.
+//
+// One document rather than one per card is the whole performance story of this
+// strategy. Each `<img>`-rasterized SVG is an isolated document: it parses its
+// own copy of the embedded woff2 faces, and shares nothing with its siblings —
+// so a card per document meant decoding the same ~22KB of font bytes 52 times
+// and standing up 52 documents to draw one card each. Measured, that is ~230ms
+// against ~28ms for the sheet, and the sheet's output is the same picture: every
+// cell sits at an integer device-pixel offset and is drawn at the same scale, so
+// each card rasterizes exactly as it did standalone (worst per-card mean channel
+// difference between the two, over the deck: 0.0018/255).
+//
+// `~pxWidth`/`~pxHeight` are one *card's* size; the sheet is that times the grid.
+let markup = (~fontCss, ~pxWidth, ~pxHeight, ~columns, cards) => {
+  let rows = sheetRows(~columns, Array.length(cards))
+  let n = Float.toString
   StaticRender.toString(
     <svg
       attrs={[
         ("xmlns", "http://www.w3.org/2000/svg"),
-        ("width", Int.toString(pxWidth)),
-        ("height", Int.toString(pxHeight)),
-        ("viewBox", CardArt.viewBox),
+        ("width", Int.toString(columns * pxWidth)),
+        ("height", Int.toString(rows * pxHeight)),
+        (
+          "viewBox",
+          `0 0 ${n(Int.toFloat(columns) *. CardArt.boxW)} ${n(Int.toFloat(rows) *. CardArt.boxH)}`,
+        ),
       ]}
     >
       <style> {Html.string(fontCss)} </style>
-      {CardArt.body(card)}
+      {cards
+      ->Array.mapWithIndex((card, index) => {
+        let x = Int.toFloat(mod(index, columns)) *. CardArt.boxW
+        let y = Int.toFloat(index / columns) *. CardArt.boxH
+        <g attrs={[("transform", `translate(${n(x)} ${n(y)})`)]}> {CardArt.body(card)} </g>
+      })
+      ->Html.array}
     </svg>,
   )
+}
 
 // `encodeURIComponent` rather than base64 for the outer document: the suit glyphs
 // are non-ASCII, which `btoa` can't take without a second UTF-8 dance.
@@ -377,16 +460,52 @@ let blankCanvas = (~pxWidth, ~pxHeight, ~cssWidth, ~cssHeight) => {
   canvas
 }
 
-let rasterizeSvg = async (~fontCss, ~pxWidth, ~pxHeight, ~cssWidth, ~cssHeight, card) => {
-  let img = makeImage()
-  img->setSrc(dataUrl(markup(~fontCss, ~pxWidth, ~pxHeight, card)))
-  await img->decode
-  let canvas = blankCanvas(~pxWidth, ~pxHeight, ~cssWidth, ~cssHeight)
-  switch canvas->getContext("2d")->Nullable.toOption {
-  | Some(ctx) => ctx->drawImage(img, 0., 0., Int.toFloat(pxWidth), Int.toFloat(pxHeight))
-  | None => ()
+// Rasterize the whole deck through one document, then cut it up: decode the
+// sheet, draw it once into a canvas its own size, and blit each cell into the
+// per-card sprite the cache hands out. The cache's shape is unchanged — callers
+// still get one canvas per card — only the number of documents is.
+let rasterizeSheet = async (~fontCss, ~pxWidth, ~pxHeight, ~cssWidth, ~cssHeight, cards) => {
+  let columns = sheetColumns
+  let rows = sheetRows(~columns, Array.length(cards))
+
+  // An empty deck would ask for a zero-height SVG, which doesn't decode.
+  if rows == 0 {
+    []
+  } else {
+    let img = makeImage()
+    img->setSrc(dataUrl(markup(~fontCss, ~pxWidth, ~pxHeight, ~columns, cards)))
+    await img->decode
+
+    let sheetWidth = columns * pxWidth
+    let sheetHeight = rows * pxHeight
+    let sheet = createCanvas("canvas")
+    sheet->setPixelWidth(sheetWidth)
+    sheet->setPixelHeight(sheetHeight)
+    switch sheet->getContext("2d")->Nullable.toOption {
+    | Some(ctx) => ctx->drawImage(img, 0., 0., Int.toFloat(sheetWidth), Int.toFloat(sheetHeight))
+    | None => ()
+    }
+
+    cards->Array.mapWithIndex((card, index) => {
+      let canvas = blankCanvas(~pxWidth, ~pxHeight, ~cssWidth, ~cssHeight)
+      switch canvas->getContext("2d")->Nullable.toOption {
+      | Some(ctx) =>
+        ctx->drawCanvasPart(
+          sheet,
+          Int.toFloat(mod(index, columns) * pxWidth),
+          Int.toFloat(index / columns * pxHeight),
+          Int.toFloat(pxWidth),
+          Int.toFloat(pxHeight),
+          0.,
+          0.,
+          Int.toFloat(pxWidth),
+          Int.toFloat(pxHeight),
+        )
+      | None => ()
+      }
+      (key(card), canvas)
+    })
   }
-  canvas
 }
 
 let paintCanvas = (~pxWidth, ~pxHeight, ~cssWidth, ~cssHeight, card) => {
@@ -414,12 +533,7 @@ let build = async (~strategy, ~cssWidth, ~pixelRatio=devicePixelRatio, cards) =>
   let built = switch strategy {
   | Svg =>
     let fontCss = await embeddedFontCss()
-    await cards
-    ->Array.map(async card => (
-      key(card),
-      await rasterizeSvg(~fontCss, ~pxWidth, ~pxHeight, ~cssWidth, ~cssHeight, card),
-    ))
-    ->Promise.all
+    await rasterizeSheet(~fontCss, ~pxWidth, ~pxHeight, ~cssWidth, ~cssHeight, cards)
   | Canvas =>
     await ensureDocumentFonts()
     cards->Array.map(card => (

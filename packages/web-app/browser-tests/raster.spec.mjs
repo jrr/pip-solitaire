@@ -209,6 +209,43 @@ for (const strategy of ["svg", "canvas"]) {
   })
 }
 
+// The Svg strategy rasterizes the whole deck as one grid and cuts it up, and
+// inlines the faces it draws with. Both of those fail *quietly*: a sheet cut at
+// the wrong offset yields a neighbouring card, and an embedded face that didn't
+// load leaves the card art's `sans-serif` fallback to draw the rank, which still
+// produces a perfectly plausible-looking card. Neither throws. The five sample
+// cards above only cover ranks A, 10 and K, so this walks all thirteen — one
+// page load per rendering, then a per-rank diff against the live card.
+const RANK_ONE_OF_EACH = [
+  { index: 0, rank: "A" }, { index: 1, rank: "2" }, { index: 2, rank: "3" },
+  { index: 3, rank: "4" }, { index: 4, rank: "5" }, { index: 5, rank: "6" },
+  { index: 6, rank: "7" }, { index: 7, rank: "8" }, { index: 8, rank: "9" },
+  { index: 9, rank: "10" }, { index: 10, rank: "J" }, { index: 11, rank: "Q" },
+  { index: 12, rank: "K" },
+]
+
+test.describe("raster scene — the embedded rank subset", () => {
+  test("every rank draws in the real face, not a fallback", async ({ page }) => {
+    await open(page, "live")
+    const live = []
+    for (const { index } of RANK_ONE_OF_EACH) live.push(await shoot(cell(page, index)))
+
+    await open(page, "svg")
+    const worst = []
+    for (const [i, { rank }] of RANK_ONE_OF_EACH.entries()) {
+      const result = await comparePngs(page, live[i], await shoot(cell(page, i)), HARD_DIFF_LEVEL)
+      expect(result.sizeMismatch, `size mismatch: ${result.sizeMismatch}`).toBeUndefined()
+      worst.push(`${rank} ${result.meanChannelDiff.toFixed(2)}`)
+      // A missing glyph is not a subtle failure — a substituted face fills area
+      // rather than shifting edges, so it lands far past the antialiasing budget
+      // the sample cards are held to.
+      expect(result.meanChannelDiff, `rank ${rank} does not match the live card`)
+        .toBeLessThan(BUDGETS.svg.meanDiff)
+    }
+    console.log(`  svg · per-rank mean: ${worst.join(", ")}`)
+  })
+})
+
 // Moving the toggle mid-build leaves two builds in flight, and they don't take
 // the same time (~270ms of decodes for svg, near-nothing for canvas once the
 // document's faces are loaded), so they finish in the wrong order: the one the
