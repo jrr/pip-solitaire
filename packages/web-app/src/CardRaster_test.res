@@ -48,6 +48,18 @@ describe("CardRaster's standalone SVG", () => {
     expect(svg()->has(StaticRender.toString(CardArt.body(card))))->toBe(true)
   })
 
+  test("places the middle glyph without asking the renderer to read font metrics", () => {
+    // `dominant-baseline="central"` resolves against the font's vertical metrics,
+    // and Pip Suits ships two pairs of those half an em apart (see
+    // `CardArt.centerGlyphBaseline`). Which pair a renderer believes is its own
+    // business, so the card art states the baseline instead — and this is the
+    // check that it keeps doing so, because every renderer that disagrees fails
+    // silently, by drawing the pip somewhere else.
+    let markup = svg()
+    expect(markup->has("dominant-baseline"))->toBe(false)
+    expect(markup->has(`y="${CardArt.centerGlyphBaseline->Float.toString}"`))->toBe(true)
+  })
+
   test("escapes into a data URL that survives the non-ASCII pips", () => {
     let url = CardRaster.dataUrl(svg())
     expect(url->String.startsWith("data:image/svg+xml;charset=utf-8,"))->toBe(true)

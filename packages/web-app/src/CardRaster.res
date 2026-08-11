@@ -36,12 +36,15 @@
 // Canvas is three times quicker and still looks fine to the eye — but the build
 // is a one-off before the animation starts, so 270ms buys nothing back, and it's
 // worse on every card. It also had to be *taught* the card's geometry twice
-// over: the middle glyph needed `dominant-baseline="central"` reproduced by hand
-// from font metrics (see `paintFace`) before it was even close, which is the
-// second-source-of-truth cost arriving on day one rather than later. It's kept,
-// switchable, and budgeted in the browser suite, because it's the fallback if
-// the embedded-font path ever stops working somewhere — but the default reuses
-// the real card art.
+// over, and that bill came due immediately: the middle glyph originally rebuilt
+// the art's `dominant-baseline="central"` from `measureText()`, which agreed with
+// the SVG engine on Linux and missed it by 4.5 design units on macOS — a
+// visible-at-card-size difference that the browser suite, running on Linux,
+// could not see. The fix was to stop deriving the number on either side;
+// `CardArt.centerGlyphBaseline` now states it, and both strategies read it.
+// Canvas is kept, switchable, and budgeted in the browser suite, because it's the
+// fallback if the embedded-font path ever stops working somewhere — but the
+// default reuses the real card art.
 //
 // Two details that bite:
 //   - `CardArt.svg` emits only a `viewBox`. An SVG with no intrinsic size
@@ -109,12 +112,6 @@ external canvasElement: canvas => WebDom.element = "%identity"
 @send external fill: context => unit = "fill"
 @send external stroke: context => unit = "stroke"
 @send external fillText: (context, string, float, float) => unit = "fillText"
-// Text metrics, needed to reproduce SVG's `dominant-baseline="central"` — see
-// `paintFace`, where canvas's own "middle" turns out not to be the same thing.
-type metrics
-@send external measureText: (context, string) => metrics = "measureText"
-@get external fontAscent: metrics => float = "fontBoundingBoxAscent"
-@get external fontDescent: metrics => float = "fontBoundingBoxDescent"
 @send external drawImage: (context, image, float, float, float, float) => unit = "drawImage"
 @set external setFillStyle: (context, string) => unit = "fillStyle"
 @set external setStrokeStyle: (context, string) => unit = "strokeStyle"
@@ -246,8 +243,8 @@ let dataUrl = svg => "data:image/svg+xml;charset=utf-8," ++ encodeURIComponent(s
 // (the caller has already scaled the context), which is this strategy's whole
 // cost: these numbers have to be kept in step with the vnodes by hand. The ones
 // CardArt publishes as bindings are reused; the ones it writes as attribute
-// literals (the corner's 5/38/40, the pip's 106/34/26, the middle glyph's 68)
-// are restated, and that is the drift the `raster` scene exists to show.
+// literals (the corner's 5/38/40, the pip's 106/34/26) are restated, and that is
+// the drift the `raster` scene exists to show.
 let paintFace = (ctx, card: Deck.card) => {
   let color = Deck.suitColor(card.suit)
   let label = Deck.rankLabel(card.rank)
@@ -287,18 +284,17 @@ let paintFace = (ctx, card: Deck.card) => {
 
   cornerRank()
 
-  // The middle glyph. SVG's `dominant-baseline="central"` centres the *font's*
-  // ascent-to-descent band on `y`, which is not what canvas's `"middle"` does
-  // (that centres the em box), and on a 68px glyph the two land visibly apart.
-  // So the shift is computed from the face's own metrics and applied to an
-  // ordinary alphabetic baseline — which is the definition of `central`, rather
-  // than an eyeballed nudge.
-  ctx->setFont(suitFont(68.))
+  // The middle glyph, on the baseline `CardArt` publishes. This used to rebuild
+  // the art's `dominant-baseline="central"` here from `measureText()`, which is
+  // the drift this strategy was expected to produce arriving for real: the sprite
+  // sat 4.5 design units above the live card on macOS while matching it on Linux.
+  // `CardArt.centerGlyphBaseline` (see its comment — the cause turned out to be
+  // worth writing down) settles the number in one place, so there is nothing left
+  // here for a renderer to resolve differently.
+  ctx->setFont(suitFont(CardArt.centerGlyphSize))
   ctx->setTextAlign("center")
   ctx->setTextBaseline("alphabetic")
-  let m = ctx->measureText(glyph)
-  let central = (m->fontAscent -. m->fontDescent) /. 2.
-  ctx->fillText(glyph, CardArt.centerX, CardArt.centerY +. central)
+  ctx->fillText(glyph, CardArt.centerX, CardArt.centerGlyphBaseline)
 
   // The bottom-right corner is the top-left one rotated 180° about the card's
   // centre — the same trick the vnodes use, so the two corners can't drift apart.
@@ -315,7 +311,7 @@ let paintFace = (ctx, card: Deck.card) => {
 let ensureDocumentFonts = async () => {
   let _ = await Promise.all([
     documentFonts->loadFont(rankFont(40.), rankGlyphs),
-    documentFonts->loadFont(suitFont(68.), suitGlyphs),
+    documentFonts->loadFont(suitFont(CardArt.centerGlyphSize), suitGlyphs),
   ])
   let _ = await documentFonts->fontsReady
 }
