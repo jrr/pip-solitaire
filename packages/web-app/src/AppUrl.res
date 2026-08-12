@@ -19,6 +19,12 @@
 //     a shot captures the settled board rather than a frame mid-deal. The same
 //     collapse-to-instant the OS "reduce motion" preference already triggers, but
 //     addressable from the URL so the report — and a shared link — can ask for it.
+//   - `raster` — which of the `raster` scene's three renderings it opens on
+//     (`?scene=raster&raster=live|svg|canvas`), resolved by
+//     `RasterScene.renderingFromString`. The scene has in-page buttons and the
+//     1/2/3 keys too; this is the linkable form of them, so a comparison can be
+//     shared, and so the browser suite can shoot each rendering without clicking.
+//     An unrecognised name opens the scene's own default.
 //
 // All plain reads of `window.location.search`; nothing here mutates the URL.
 
@@ -36,6 +42,8 @@ type t = {
   seed: option<int>,
   // Whether to play the opening-deal fly-in; `true` unless the URL asks for `off`.
   animate: bool,
+  // The `raster` scene's opening rendering; `None` leaves the scene's own default.
+  raster: option<RasterScene.rendering>,
 }
 
 // Parse the current location's query string. A missing *or empty* parameter reads
@@ -56,5 +64,8 @@ let parse = (): t => {
   | Some("off") | Some("no") | Some("false") | Some("0") => false
   | _ => true
   }
-  {scene: read("scene"), state: read("state"), seed, animate}
+  // An unrecognised rendering name reads as `None` — the scene opens on its own
+  // default rather than refusing the link.
+  let raster = read("raster")->Option.flatMap(RasterScene.renderingFromString)
+  {scene: read("scene"), state: read("state"), seed, animate, raster}
 }

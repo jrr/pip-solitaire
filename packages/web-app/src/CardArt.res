@@ -58,6 +58,47 @@ let frameInset = strokeW /. 2.
 let centerX = boxW /. 2.
 let centerY = boxH /. 2.
 
+// The middle suit glyph's size, and the baseline it sits on.
+//
+// This used to be `dominant-baseline="central"` with `y = centerY`, which reads
+// far better and is why it was written that way — but `central` doesn't place the
+// glyph, it places the *font's* ascent-to-descent band, and then everything
+// depends on which font's metrics the renderer decided to use. Four paths draw
+// this card (inline in the page, serialized through `<img>` by CardRaster, canvas
+// 2D by CardRaster, resvg by the icon generator) and they did not agree:
+//
+//   - Pip Suits ships two vertical-metric pairs half an em apart — hhea/OS2-typo
+//     1060/-440 (0.310 em) against OS2-usWin/head-bbox 815/-55 (0.380 em).
+//     `scripts/generate/fonts.mjs` builds the face with opentype.js, which takes
+//     the first from IBM Plex Sans JP and computes the second from the bounding
+//     box of the four pip glyphs it kept. Nothing says which to believe: OS/2
+//     fsSelection bit 7 (USE_TYPO_METRICS) is clear.
+//   - Worse, the page's `@font-face` for Pip Suits carries a `unicode-range`
+//     (index.html), which keeps the subset from shadowing Latin text but also
+//     means Pip Suits is *not* the element's primary font. The pips still come
+//     from it, but `central` was measuring the fallback — a different, OS-supplied
+//     face on every platform. The band it centres is 75.25 units in the page and
+//     102 (Pip Suits' own 1500/1000 em) inside the embedded-font SVG, from the
+//     very same markup.
+//
+// The visible result was the `raster` scene's whole point: the canvas sprite's
+// pip sat 4.5 design units above the live card's on macOS, and the live card and
+// the SVG sprite were 1.5 apart on Linux. None of it is catchable on one machine,
+// which is why the browser suite was green throughout.
+//
+// So the baseline is stated outright rather than derived at paint time, and every
+// renderer now reads the same number. 0.310 em is Pip Suits' own `central` — the
+// value the embedded-font SVG and resvg were already using (the icon PNGs come
+// out byte-identical across this change); it's the live page card that moves,
+// about 1.5 units, off the fallback face it should never have been measuring.
+//
+// Worth knowing separately: this is not where the pip is optically centred. The
+// suits' ink sits 0.355-0.380 em above their baseline, so the glyph rides ~4.8
+// units high in the design box. That's how the card has always looked; centring
+// it properly is a design change, not this one.
+let centerGlyphSize = 68.
+let centerGlyphBaseline = centerY +. centerGlyphSize *. 0.31
+
 let n = Float.toString
 
 // The card face *contents* — everything inside the `viewBox`, with no `<svg>`
@@ -130,10 +171,9 @@ let body = (~detail=Full, card: Deck.card) => {
     <text
       attrs={[
         ("x", n(centerX)),
-        ("y", n(centerY)),
+        ("y", n(centerGlyphBaseline)),
         ("text-anchor", "middle"),
-        ("dominant-baseline", "central"),
-        ("font-size", "68"),
+        ("font-size", n(centerGlyphSize)),
         ("font-family", "Pip Suits"),
         ("fill", color),
       ]}

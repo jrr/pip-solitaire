@@ -48,10 +48,30 @@ const outDir = path.join(webAppRoot, "screenshots");
 //     opening layout rather than a frame mid-deal (see AppUrl's seed/animate knobs).
 //   - Mid-game — a representative in-progress FreeCell layout.
 //   - Finish — the finishable endgame (#132), shot to show the "Finish" button.
+//   - Card raster — not a board at all: the sprite-fidelity sheet (#225), all 52
+//     of the bitmaps the victory animation will blit. It's here because the failure
+//     mode it guards against — a rasterization that loses the card's fonts — is
+//     invisible to any assertion and obvious to an eye, which is exactly what a
+//     per-PR report is for. It's shot per *device* rather than only on the desktop
+//     because that failure is resolution-dependent: a sprite built at the wrong
+//     device-pixel ratio reads as slightly soft, and only the retina shots show it.
+//     The scene draws one rendering at a time (`?raster=live|svg|canvas`); the plain
+//     query shoots its default, the sprite path that ships.
+//
+// `ready` is the selector that means "this scene has settled"; scenes that draw the
+// board share the default.
+const BOARD_READY = ".stacking-card";
 const scenes = [
   { name: "Dealt", query: "?scene=freecell&seed=1&animate=off" },
   { name: "Mid-game", query: "?scene=freecell&state=midgame" },
   { name: "Finish", query: "?scene=freecell&state=finish" },
+  {
+    name: "Card raster",
+    query: "?scene=raster",
+    // The scene sets this once all 52 bitmaps have decoded; there's nothing else
+    // to wait on, since the decodes are async and start off-frame.
+    ready: '.raster-scene[data-raster="ready"]',
+  },
 ];
 
 // The spread of devices, and the emulation profile for each orientation of each
@@ -183,9 +203,12 @@ async function main() {
           const page = await context.newPage();
           await page.goto(target, { waitUntil: "load" });
           // The board deals its cards on the first animation frame and settles with
-          // a short CSS transition; wait for a card to exist, then a beat for the
-          // fan to land, so the shot captures the resting layout.
-          await page.waitForSelector(".stacking-card", { state: "visible", timeout: 15000 });
+          // a short CSS transition; wait for the scene's own "settled" selector, then
+          // a beat for the fan to land, so the shot captures the resting layout.
+          await page.waitForSelector(scene.ready ?? BOARD_READY, {
+            state: "visible",
+            timeout: 15000,
+          });
           await page.waitForTimeout(600);
 
           // The PNG comes out at the device's physical resolution (CSS size × dpr,
