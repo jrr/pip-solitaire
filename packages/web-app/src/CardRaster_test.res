@@ -102,3 +102,29 @@ describe("CardRaster's standalone SVG", () => {
     expect(url->has(`♠`))->toBe(false)
   })
 })
+
+// The pixel ratio everything is rasterized at (#226). The reading of
+// `devicePixelRatio` needs a screen, but the arithmetic on it doesn't, and the
+// arithmetic is the part that can be wrong: the sprite sheet and the overlay that
+// blits it have to arrive at the *same* number, or every blit is a resample.
+describe("CardRaster's pixel ratio", () => {
+  test("holds a big device ratio under the cap", () => {
+    // Not a hypothetical: browser zoom multiplies the device ratio, and a Retina
+    // Mac one zoom step in reports 3.75 (observed while reviewing #252).
+    expect(CardRaster.cappedRatio(~cap=2., ~device=3.75))->toBe(2.)
+  })
+
+  test("leaves a ratio already under the cap alone", () => {
+    // An ordinary 1× display must not be rasterized at 2× "just in case" — that
+    // would be four times the bitmap for a picture the screen can't show.
+    expect(CardRaster.cappedRatio(~cap=2., ~device=1.))->toBe(1.)
+    expect(CardRaster.cappedRatio(~cap=3., ~device=2.))->toBe(2.)
+  })
+
+  test("the cap the whole pipeline shares is 2", () => {
+    // The `trail` scene's 1×/2×/3× toggle is the check that this is far enough;
+    // this is the check that only one number is in play. A build that stopped
+    // agreeing with the overlay's backing store wouldn't fail — it would blur.
+    expect(CardRaster.maxPixelRatio)->toBe(2.)
+  })
+})
