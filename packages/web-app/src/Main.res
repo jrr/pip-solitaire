@@ -528,6 +528,9 @@ let switcher = SceneSwitcher.render(
       // The card-sprite fidelity check (#225). `?raster=` picks which of the
       // three renderings it opens on; without it the scene's own default wins.
       RasterScene.make(~rendering=?url.raster),
+      // The victory overlay's two mechanics on their own (#226): a transparent
+      // canvas over live DOM, and handing a resting card off to it.
+      TrailScene.make(),
       MotionScene.make(),
     ],
     Game.all->Array.map(gameScene),

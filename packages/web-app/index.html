@@ -1035,6 +1035,119 @@
         background: #16233a;
       }
 
+      /* Trail scene (issue #226): the victory overlay's two mechanics on their
+         own — a transparent canvas over live DOM, and handing a resting card off
+         to it. See TrailScene.res. The toolbar borrows the raster scene's pill
+         buttons; only the stage below is new. */
+      .trail-scene {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 0.6rem;
+        width: min(94vw, 760px);
+      }
+
+      .trail-scene__toolbar {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: center;
+        gap: 0.5rem;
+      }
+
+      .trail-toggle,
+      .trail-action {
+        font: inherit;
+        font-size: 0.85rem;
+        padding: 0.35rem 0.7rem;
+        border-radius: 999px;
+        border: 1px solid #2d4066;
+        background: #16233a;
+        color: #cbd5e1;
+        cursor: pointer;
+      }
+
+      .trail-toggle--on {
+        border-color: #22c55e;
+        background: #14532d;
+        color: #f0fdf4;
+      }
+
+      /* Nothing to hand off until the sprites have landed, or once every backdrop
+         card has already gone. */
+      .trail-action[disabled] {
+        opacity: 0.45;
+        cursor: default;
+      }
+
+      /* The key number on each cap button, so the 1/2/3 mapping is legible
+         without a legend (the same device the raster scene's toolbar uses). */
+      .trail-toggle__key {
+        display: inline-block;
+        min-width: 1.1em;
+        margin-right: 0.4em;
+        padding: 0 0.25em;
+        border-radius: 0.25rem;
+        background: #0b1220;
+        color: #94a3b8;
+        font-size: 0.85em;
+        text-align: center;
+      }
+
+      .trail-toggle--on .trail-toggle__key {
+        background: #052e16;
+        color: #86efac;
+      }
+
+      .trail-scene__status,
+      .trail-scene__hint {
+        margin: 0;
+        font-size: 0.78rem;
+        color: #94a3b8;
+        text-align: center;
+      }
+
+      /* The stage: the backdrop and the overlay share this box exactly, so a
+         pointer position measured against it is the same number in both. Its
+         height is set inline by TrailScene (two overlapped card rows plus room to
+         draw), and `touch-action: none` keeps a drag across it from scrolling the
+         page on a phone — the same lock the playfield takes.
+
+         The frame is a `box-shadow`, not a `border`, and that's load-bearing
+         rather than stylistic: a border makes the padding box (which `inset: 0`
+         and `left/top: 0` resolve against) smaller than the border box that
+         `getBoundingClientRect` reports, so the overlay would sit a pixel down and
+         right of the coordinate space TrailScene converts pointer positions into,
+         and its backing store would be sized two pixels too big. A box-shadow
+         draws outside layout, so the two boxes stay the same box. */
+      .trail-stage {
+        position: relative;
+        width: 100%;
+        box-shadow: 0 0 0 1px #2d4066;
+        border-radius: 10px;
+        background: #0f172a;
+        overflow: hidden;
+        touch-action: none;
+      }
+
+      .trail-backdrop {
+        position: absolute;
+        inset: 0;
+      }
+
+      /* The overlay. Transparent by default — the backdrop below shows through
+         every pixel that hasn't been drawn on, which is the first of the two
+         mechanics. `pointer-events: none` is the second half of that: the cards
+         underneath keep receiving hover and taps, so the canvas covers the DOM
+         without taking it over. Its CSS size and its backing store are both
+         written by TrailScene (`cssSize × ratio`), so nothing here may set a
+         width or height. */
+      .trail-canvas {
+        position: absolute;
+        left: 0;
+        top: 0;
+        pointer-events: none;
+      }
+
       /* The board host (TableScene.res): wraps the playfield (and caption) so a
          New Game re-deal can rebuild just the board in place — the re-deal is now
          driven from the top bar (#109), which stays put across the rebuild. It
