@@ -19,11 +19,7 @@ describe("RasterScene renderings", () => {
   })
 
   test("the ids are the ones the links and the browser suite use", () => {
-    expect(RasterScene.renderings->Array.map(RasterScene.renderingId))->toEqual([
-      "live",
-      "svg",
-      "canvas",
-    ])
+    expect(RasterScene.renderings->Array.map(RasterScene.renderingId))->toEqual(["live", "sprite"])
   })
 
   test("an unknown name is ignored rather than guessed at", () => {
@@ -32,11 +28,10 @@ describe("RasterScene renderings", () => {
 
   // The keyboard shortcut is `renderings` indexed by key number, and the button
   // labels are numbered from the same array, so the order *is* the mapping.
-  test("the order is the 1/2/3 key mapping", () => {
+  test("the order is the 1/2 key mapping", () => {
     expect(RasterScene.renderings->Array.map(RasterScene.renderingLabel))->toEqual([
       "Live SVG",
-      "SVG + embedded font",
-      "Canvas 2D",
+      "Sprite",
     ])
   })
 })

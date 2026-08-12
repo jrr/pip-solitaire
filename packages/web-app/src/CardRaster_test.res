@@ -102,18 +102,3 @@ describe("CardRaster's standalone SVG", () => {
     expect(url->has(`♠`))->toBe(false)
   })
 })
-
-describe("CardRaster strategy names", () => {
-  test("round-trip through the `?raster=` URL knob", () => {
-    [CardRaster.Svg, CardRaster.Canvas]->Array.forEach(
-      strategy =>
-        expect(CardRaster.strategyFromString(CardRaster.strategyId(strategy)))->toEqual(
-          Some(strategy),
-        ),
-    )
-  })
-
-  test("an unknown name is ignored rather than guessed at", () => {
-    expect(CardRaster.strategyFromString("webgl"))->toEqual(None)
-  })
-})

@@ -8,27 +8,28 @@
 // So before any motion gets written, this scene answers the only question that
 // matters: does a rasterized card still *look like* a card?
 //
-// Both strategies are built and switchable here rather than one being picked on
-// paper, because "indistinguishable at card size" is a thing you settle by
-// looking. The renderings are:
+// The two renderings are:
 //
-//   1  Live SVG             the `CardArt.svg` the app itself draws — the thing
-//                           the other two are trying to be
-//   2  SVG + embedded font  `CardRaster`'s default sprite
-//   3  Canvas 2D            `CardRaster`'s second sprite
+//   1  Live SVG   the `CardArt.svg` the app itself draws — the thing the sprite
+//                 is trying to be
+//   2  Sprite     the `CardRaster` bitmap the animation will blit
 //
-// **One at a time, in the same grid cells, on keys 1/2/3.** This was originally
-// a side-by-side sheet — each card's live SVG touching its bitmap — and that is
+// **One at a time, in the same grid cells, on keys 1/2.** This was originally a
+// side-by-side sheet — each card's live SVG touching its bitmap — and that is
 // the weaker instrument. Two cards a card-width apart are compared by moving
 // your eye, which is exactly the comparison the eye is worst at; the difference
-// that started all this (the middle pip 4.5 design units high, see
+// that started all this (a middle pip 4.5 design units high, see
 // `CardArt.centerGlyphBaseline`) reads as a *jump* when you flip renderings in
 // place and as "hmm, about the same" when you look left and right. Nothing moves
 // between renderings but the pixels under test, so anything that shifts is real.
 //
+// A third rendering lived here for a while: a second sprite painted with the
+// canvas 2D API, so the two could be picked between by looking (#225). It lost
+// and was removed; `CardRaster`'s header keeps the account of why. What's left is
+// the comparison that was always the point — the sprite against the live card.
+//
 // The choice is mirrored into `?raster=` (see AppUrl) so a link — and the
-// screenshot report — can open any of the three. `Svg` is the one that won (the
-// numbers, and why, are in `CardRaster`'s header), so it's the default the plain
+// screenshot report — can open either. `Sprite` is the default the plain
 // `?scene=raster` link and the report land on.
 //
 // The sprite build is async (`img.decode()` is), so a rasterizing choice mounts
@@ -48,37 +49,34 @@
 // comparison would end up measuring.
 let cardWidth = 80.
 
-// What the sheet is showing. `Live` isn't a rasterizing strategy — it's the
-// absence of one — which is why this lives here and not in `CardRaster`: that
-// module is the sprite cache, and "don't rasterize" is not something it can
-// build.
+// What the sheet is showing.
 type rendering =
   | Live
-  | Raster(CardRaster.strategy)
+  | Sprite
 
 // The order is the whole keyboard mapping: key *n* picks the *n*th of these, and
 // each button is labelled with its own index, so the two can't drift apart.
-let renderings = [Live, Raster(CardRaster.Svg), Raster(CardRaster.Canvas)]
+let renderings = [Live, Sprite]
 
 let renderingLabel = rendering =>
   switch rendering {
   | Live => "Live SVG"
-  | Raster(strategy) => CardRaster.strategyLabel(strategy)
+  | Sprite => "Sprite"
   }
 
 let renderingId = rendering =>
   switch rendering {
   | Live => "live"
-  | Raster(strategy) => CardRaster.strategyId(strategy)
+  | Sprite => "sprite"
   }
 
-// Parse the `?raster=` URL knob. Delegates the two strategy names to
-// `CardRaster` so the ids stay stated once; anything unrecognised reads as
-// `None` and leaves the scene's own default in place.
+// Parse the `?raster=` URL knob. Anything unrecognised reads as `None` and
+// leaves the scene's own default in place.
 let renderingFromString = value =>
   switch value {
   | "live" => Some(Live)
-  | _ => CardRaster.strategyFromString(value)->Option.map(strategy => Raster(strategy))
+  | "sprite" => Some(Sprite)
+  | _ => None
   }
 
 type model = {
@@ -103,12 +101,11 @@ let status = model =>
   | (None, Live, _) =>
     let width = Float.toString(cardWidth)
     `52 live CardArt SVGs · ${width}px · ` ++ `the card the app draws, and what the other two are measured against`
-  | (None, Raster(strategy), None) =>
-    `rasterizing 52 cards (${CardRaster.strategyLabel(strategy)})…`
-  | (None, Raster(_), Some(cache)) =>
+  | (None, Sprite, None) => `rasterizing 52 cards…`
+  | (None, Sprite, Some(cache)) =>
     let ms = Math.round(cache.elapsedMs)->Float.toString
     let dpr = (Math.round(cache.pixelRatio *. 100.) /. 100.)->Float.toString
-    `52 cards via ${CardRaster.strategyLabel(cache.strategy)} in ${ms}ms · ` ++
+    `52 cards rasterized in ${ms}ms · ` ++
     `${Float.toString(cache.cssWidth)}px @${dpr}× · every card is a bitmap`
   }
 
@@ -134,7 +131,7 @@ let view = (model, dispatch) => {
     <div className="raster-cell">
       {switch model.rendering {
       | Live => CardArt.svg(card)
-      | Raster(_) =>
+      | Sprite =>
         switch model.cache->Option.flatMap(cache => CardRaster.get(cache, card)) {
         | Some(sprite) => Html.node(CardRaster.element(sprite))
         | None => <div className="raster-cell__pending" />
@@ -149,7 +146,7 @@ let view = (model, dispatch) => {
   // consumer of this signal would hang on `?raster=live`.
   let settled = switch model.rendering {
   | Live => true
-  | Raster(_) => model.cache->Option.isSome
+  | Sprite => model.cache->Option.isSome
   }
   let rootAttrs = Array.concat(
     [
@@ -177,7 +174,7 @@ type keyEvent
 @get external ctrlKey: keyEvent => bool = "ctrlKey"
 @get external altKey: keyEvent => bool = "altKey"
 
-let make = (~rendering=Raster(CardRaster.Svg)): Scene.t => {
+let make = (~rendering=Sprite): Scene.t => {
   id: "raster",
   label: "Raster",
   mount: container => {
@@ -189,16 +186,10 @@ let make = (~rendering=Raster(CardRaster.Svg)): Scene.t => {
     // waiting for any more, and dispatching it would be wrong twice over: into a
     // dismantled tree, or over the top of a newer build.
     //
-    // The overwrite is the live hazard, because the strategies don't cost the
-    // same. Choosing Canvas (~80ms) while the default Svg build (~270ms) is
-    // still in flight resolves Canvas first and then lets Svg land on top of it
-    // — leaving the grid full of Svg sprites under a Canvas toggle, with the
-    // status line (which reads `cache.strategy`) disagreeing with the toolbar
-    // (which reads `model.rendering`) in the same render.
-    //
     // `Live` takes a number too, without building anything: it has to *cancel*
-    // an in-flight build the same way, or flipping 2 → 1 would let the sprites
-    // arrive underneath the live sheet.
+    // an in-flight build the same way, or flipping 2 → 1 would let a build
+    // started before the flip land afterwards and light up `data-raster` under
+    // the live sheet.
     let wanted = ref(0)
     let request = ref(_ => ())
 
@@ -226,8 +217,8 @@ let make = (~rendering=Raster(CardRaster.Svg)): Scene.t => {
 
           switch chosen {
           | Live => ()
-          | Raster(strategy) =>
-            CardRaster.build(~strategy, ~cssWidth=cardWidth, Deck.allCards)
+          | Sprite =>
+            CardRaster.build(~cssWidth=cardWidth, Deck.allCards)
             ->Promise.thenResolve(cache =>
               if stillWanted() {
                 dispatch(Built(cache))

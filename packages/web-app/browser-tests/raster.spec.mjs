@@ -8,11 +8,11 @@
 // tofu where the pips should be — which is *not* subtle, but is also not
 // something any unit test can see. It's a question about pixels.
 //
-// So this measures pixels. The `raster` scene draws all 52 cards one of three
-// ways — live `CardArt.svg`, or either `CardRaster` strategy — in the same grid
-// cells, so this shoots a card under `?raster=live` and again under the strategy
-// and diffs the two shots. That is the same flip the scene is built around: the
-// cell geometry is identical across renderings, so the comparison is of one card
+// So this measures pixels. The `raster` scene draws all 52 cards either way —
+// live `CardArt.svg` or the `CardRaster` sprite — in the same grid cells, so this
+// shoots a card under `?raster=live` and again under `?raster=sprite` and diffs
+// the two shots. That is the same flip the scene is built around: the cell
+// geometry is identical across renderings, so the comparison is of one card
 // against itself rather than of two neighbours.
 //
 // The decode happens back *inside the page*: Node has no PNG decoder, and the
@@ -49,23 +49,15 @@ const samples = [
 //             in any channel. Antialiasing puts those on glyph outlines only, so
 //             they stay a thin minority; a substituted glyph fills areas.
 //
-// The budgets differ per strategy, and **the gap is the finding** rather than an
-// accident of tuning — this is where issue #225's "pick by looking" is written
-// down. Measured on the sample cards below:
+// Measured on the sample cards below: mean 1.2-2.4, hard 1.3-3.8%. The budget is
+// set well clear of that rather than snug against it, because what it is for is
+// catching a *substituted face* or a mis-cut sprite — failures that move these
+// numbers by tens — not for policing antialiasing drift between browser
+// versions, which would make it a maintenance burden that gets waived.
 //
-//   svg     mean 1.2-2.4 · hard 1.3-3.8%
-//   canvas  mean 1.6-2.9 · hard 1.9-4.4%
-//
-// The SVG-with-embedded-face path is closer to the live card on every card, and
-// its worst case is better than the canvas path's *best* case on the hardest
-// one. That's on top of the structural argument (it renders `CardArt.body`
-// itself, so it can't drift), which is why it's the default. The canvas budget
-// is kept honest rather than waived: it's a real second implementation and it
-// should stay roughly this good, so a regression in it still fails.
-const BUDGETS = {
-  svg: { meanDiff: 6, hardDiff: 0.06 },
-  canvas: { meanDiff: 9, hardDiff: 0.09 },
-}
+// (A second strategy, painting the face with canvas 2D, was budgeted here too
+// while the two were being compared; it ran 1.6-2.9 and lost. See CardRaster.)
+const BUDGET = { meanDiff: 6, hardDiff: 0.06 }
 const HARD_DIFF_LEVEL = 60
 
 /** Shoot a locator and hand the PNG back as a data URL the page can decode. */
@@ -161,8 +153,8 @@ async function open(page, rendering) {
 
 const cell = (page, index) => page.locator(".raster-cell").nth(index)
 
-for (const strategy of ["svg", "canvas"]) {
-  test.describe(`raster scene — ${strategy} strategy`, () => {
+test.describe("raster scene", () => {
+  {
     test("every card is a sprite, in the same box the live card occupied", async ({ page }) => {
       // The flip only means anything if nothing but the pixels moves, so this is
       // the load-bearing assertion behind every diff below: the cell a card
@@ -172,7 +164,7 @@ for (const strategy of ["svg", "canvas"]) {
       await expect(page.locator(".raster-cell .card-art")).toHaveCount(52)
       const live = await cell(page, 0).boundingBox()
 
-      await open(page, strategy)
+      await open(page, "sprite")
       await expect(page.locator(".raster-cell")).toHaveCount(52)
       await expect(page.locator(".raster-cell canvas")).toHaveCount(52)
       const sprite = await cell(page, 0).boundingBox()
@@ -183,14 +175,12 @@ for (const strategy of ["svg", "canvas"]) {
       expect(sprite.y).toBeCloseTo(live.y, 1)
     })
 
-    const budget = BUDGETS[strategy]
-
     for (const sample of samples) {
       test(`the ${sample.name} sprite matches the live card`, async ({ page }) => {
         await open(page, "live")
         const liveShot = await shoot(cell(page, sample.index))
 
-        await open(page, strategy)
+        await open(page, "sprite")
         const spriteShot = await shoot(cell(page, sample.index))
 
         const result = await comparePngs(page, liveShot, spriteShot, HARD_DIFF_LEVEL)
@@ -198,18 +188,18 @@ for (const strategy of ["svg", "canvas"]) {
         // Logged so a regression report says *how far off* rather than just
         // "failed", and so the two strategies can be compared by reading the run.
         console.log(
-          `  ${strategy} · ${sample.name}: mean ${result.meanChannelDiff.toFixed(2)}/255, ` +
+          `  ${sample.name}: mean ${result.meanChannelDiff.toFixed(2)}/255, ` +
             `hard ${(result.hardDiffFraction * 100).toFixed(2)}% (${result.width}x${result.height}) ` +
             `best@${result.best.dx},${result.best.dy} mean ${result.best.meanChannelDiff.toFixed(2)}`,
         )
-        expect(result.meanChannelDiff).toBeLessThan(budget.meanDiff)
-        expect(result.hardDiffFraction).toBeLessThan(budget.hardDiff)
+        expect(result.meanChannelDiff).toBeLessThan(BUDGET.meanDiff)
+        expect(result.hardDiffFraction).toBeLessThan(BUDGET.hardDiff)
       })
     }
-  })
-}
+  }
+})
 
-// The Svg strategy rasterizes the whole deck as one grid and cuts it up, and
+// The sprite build rasterizes the whole deck as one grid and cuts it up, and
 // inlines the faces it draws with. Both of those fail *quietly*: a sheet cut at
 // the wrong offset yields a neighbouring card, and an embedded face that didn't
 // load leaves the card art's `sans-serif` fallback to draw the rank, which still
@@ -230,7 +220,7 @@ test.describe("raster scene — the embedded rank subset", () => {
     const live = []
     for (const { index } of RANK_ONE_OF_EACH) live.push(await shoot(cell(page, index)))
 
-    await open(page, "svg")
+    await open(page, "sprite")
     const worst = []
     for (const [i, { rank }] of RANK_ONE_OF_EACH.entries()) {
       const result = await comparePngs(page, live[i], await shoot(cell(page, i)), HARD_DIFF_LEVEL)
@@ -240,34 +230,30 @@ test.describe("raster scene — the embedded rank subset", () => {
       // rather than shifting edges, so it lands far past the antialiasing budget
       // the sample cards are held to.
       expect(result.meanChannelDiff, `rank ${rank} does not match the live card`)
-        .toBeLessThan(BUDGETS.svg.meanDiff)
+        .toBeLessThan(BUDGET.meanDiff)
     }
-    console.log(`  svg · per-rank mean: ${worst.join(", ")}`)
+    console.log(`  per-rank mean: ${worst.join(", ")}`)
   })
 })
 
-// Moving the toggle mid-build leaves two builds in flight, and they don't take
-// the same time (~270ms of decodes for svg, near-nothing for canvas once the
-// document's faces are loaded), so they finish in the wrong order: the one the
-// user asked for lands first and the one they abandoned lands on top of it. The
-// scene has to drop the abandoned one — otherwise the grid ends up showing the
-// old strategy's sprites under the new strategy's toggle, with the status line
-// (which reads the cache) and the toolbar (which reads the model) disagreeing in
-// the same render.
+// Flipping to Live mid-build leaves a build in flight that nobody wants any
+// more, and it will still resolve. If it lands it sets the cache — which lights
+// up `data-raster="ready"` and would let a shot be taken of a sheet the scene
+// was told to stop showing. The scene numbers its builds so the abandoned one is
+// dropped; this is the check on that.
 //
-// Reproducing that ordering means clicking *inside* the first build, and
-// unthrottled that window is a couple hundred milliseconds — narrow enough that
-// a run can miss it and pass without having tested anything. So the svg build is
-// held open: the woff2 bytes it fetches to inline are stalled on the wire.
+// Reproducing the overlap means flipping *inside* the build, and unthrottled
+// that window is tens of milliseconds — narrow enough that a run could miss it
+// and pass without having tested anything. So the build is held open: the woff2
+// bytes it fetches to inline are stalled on the wire.
 //
-// Only *its* request is held, by resource type — the `<img>`-side fetch, not the
-// page's own `@font-face` loads (`font`), which the canvas strategy waits on and
-// which must stay fast. Holding both would push them out together and close the
-// gap that is the whole point.
+// Only *its* request is held, by resource type — the `fetch()` the sprite build
+// makes, not the page's own `@font-face` loads (`font`), which the live card
+// needs and which must stay fast. Holding both would stall the whole page.
 const FONT_HOLD_MS = 1500
 
-test.describe("raster scene — switching strategy mid-build", () => {
-  test("the abandoned build doesn't land on top of the newer one", async ({ page }) => {
+test.describe("raster scene — flipping away mid-build", () => {
+  test("the abandoned build doesn't land after the flip", async ({ page }) => {
     await page.route("**/*.woff2", async (route) => {
       if (route.request().resourceType() === "font") return await route.continue()
       await new Promise((resolve) => setTimeout(resolve, FONT_HOLD_MS))
@@ -276,24 +262,24 @@ test.describe("raster scene — switching strategy mid-build", () => {
 
     // `commit` rather than the default `load`: the point is to be here early,
     // and the scene mounts (and starts building) well before the page settles.
-    await page.goto("/?scene=raster&raster=svg", { waitUntil: "commit" })
+    await page.goto("/?scene=raster&raster=sprite", { waitUntil: "commit" })
 
-    // The svg build can't have finished — its fonts are still on the wire — so
-    // this is a fact about the state the click is about to land in, not a race
-    // with it. Without it a passing run could mean "no overlap ever happened".
+    // The build can't have finished — its fonts are still on the wire — so this
+    // is a fact about the state the flip is about to land in, not a race with
+    // it. Without it a passing run could mean "no overlap ever happened".
     await expect(page.locator(".raster-scene__status")).toContainText("rasterizing")
 
-    await page.locator(".raster-scene__toolbar").getByText("Canvas 2D").click()
-    await expect(page.locator('.raster-scene[data-raster="ready"]')).toBeVisible()
+    await page.locator(".raster-scene__toolbar").getByText("Live SVG").click()
+    await expect(page.locator('.raster-scene[data-rendering="live"]')).toBeVisible()
 
     // Not an arbitrary settle: the assertion is that something *doesn't* happen.
-    // The abandoned svg build lands after this point, and waiting past it is the
+    // The abandoned build resolves after this point, and waiting past it is the
     // only way to catch it dispatching.
     await page.waitForTimeout(FONT_HOLD_MS + 1500)
 
-    await expect(page.locator(".raster-scene__status")).toContainText("via Canvas 2D")
-    // `toContainText`, not `toHaveText`: the button also carries its key number.
-    await expect(page.locator(".raster-toggle--on")).toContainText("Canvas 2D")
+    await expect(page.locator(".raster-scene")).toHaveAttribute("data-rendering", "live")
+    await expect(page.locator(".raster-scene__status")).toContainText("live CardArt SVGs")
+    await expect(page.locator(".raster-toggle--on")).toContainText("Live SVG")
   })
 })
 
@@ -301,15 +287,15 @@ test.describe("raster scene — switching strategy mid-build", () => {
 // pixels is something you catch by flipping in place, and reaching for a button
 // is slower than the afterimage lasts. Key *n* picks the *n*th rendering, which
 // is also the number printed on the *n*th button — one order, three consumers
-// (`renderings`, the buttons, the keys), so this walks all three.
-test.describe("raster scene — the 1/2/3 keys", () => {
+// (`renderings`, the buttons, the keys), so this walks it both ways and back.
+test.describe("raster scene — the 1/2 keys", () => {
   test("each key picks the rendering its button is numbered with", async ({ page }) => {
     await open(page, "live")
 
     for (const [key, rendering, label] of [
-      ["2", "svg", "SVG + embedded font"],
-      ["3", "canvas", "Canvas 2D"],
+      ["2", "sprite", "Sprite"],
       ["1", "live", "Live SVG"],
+      ["2", "sprite", "Sprite"],
     ]) {
       await page.keyboard.press(key)
       await expect(page.locator('.raster-scene[data-raster="ready"]')).toBeVisible()
@@ -321,8 +307,8 @@ test.describe("raster scene — the 1/2/3 keys", () => {
   test("a modified press is left to the browser", async ({ page }) => {
     // ⌘1/^1 switch browser tabs; a debug scene has no business eating that.
     await open(page, "live")
-    await page.keyboard.press("Meta+3")
-    await page.keyboard.press("Control+3")
+    await page.keyboard.press("Meta+2")
+    await page.keyboard.press("Control+2")
     await expect(page.locator(".raster-scene")).toHaveAttribute("data-rendering", "live")
   })
 })

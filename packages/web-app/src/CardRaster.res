@@ -10,48 +10,29 @@
 // isolated document with no access to the page's `@font-face` rules, and our
 // card face is *almost entirely text* — the rank, the corner pip, the big middle
 // suit glyph. Rasterized naively, every card comes out in a fallback face with
-// tofu where the pips should be. There's no workaround from the outside, so
-// there are exactly two ways in, and both are built here behind `strategy` so
-// they can be compared side by side rather than argued about:
+// tofu where the pips should be. There's no workaround from the outside, so the
+// SVG has to carry the faces itself: `markup` serializes `CardArt.body` (the very
+// same vnodes the app renders, via `StaticRender`, exactly as the icon generator
+// does) with the woff2 bytes inlined as base64 in a `<style>`. Self-contained, so
+// the isolated document has the faces after all — and it reuses the real card
+// art, so the sprite can't drift from the card the game draws.
 //
-//   Svg    — serialize `CardArt.body` (the very same vnodes the app renders, via
-//            `StaticRender`, exactly as the icon generator does) into an SVG
-//            carrying its own `@font-face` rules with the woff2 bytes inlined as
-//            base64. Self-contained, so the isolated document has the faces
-//            after all. Card geometry keeps one source of truth. The whole deck
-//            goes into *one* document laid out as a grid, which is then cut into
-//            per-card sprites — see `markup`, and the note on cost below.
+// The whole deck goes into *one* document laid out as a grid, which is then cut
+// into per-card sprites. See `markup` for why: it is the difference between a
+// ~60ms build and a ~400ms one, and it costs nothing.
 //
-//   Canvas — draw the face with the canvas 2D API: `roundRect` for the frame,
-//            `fillText` for the glyphs. Canvas sees the *document's* fonts
-//            natively, so there's nothing to embed — but it restates CardArt's
-//            geometry in a second place, which is exactly the drift the icon
-//            generator was built to avoid.
-//
-// **`Svg` is the one that won**, and it's the scene's default. Measured against
-// the live card at card size (browser-tests/raster.spec.mjs, mean per-channel
-// distance over five sample cards):
-//
-//   Svg     1.2-2.4 · 52 cards in ~60ms
-//   Canvas  1.6-2.9 · 52 cards in ~50ms
-//
-// Svg used to be the slow one by a distance (~300-400ms), and that was the only
-// argument for keeping Canvas within reach. It isn't any more: rasterizing the
-// deck as one document instead of 52 took it to ~60ms without moving a pixel
-// (see `markup`), which is level with Canvas rather than six times worse. Of
-// what's left, roughly half is `base64` below walking the font bytes a character
-// at a time; that would be the next thing to look at if this ever mattered, and
-// it doesn't, because the build is a one-off before the animation starts. It
-// also never had to be *taught* the card's geometry, where Canvas learned it twice
-// over, and that bill came due immediately: the middle glyph originally rebuilt
-// the art's `dominant-baseline="central"` from `measureText()`, which agreed with
-// the SVG engine on Linux and missed it by 4.5 design units on macOS — a
-// visible-at-card-size difference that the browser suite, running on Linux,
-// could not see. The fix was to stop deriving the number on either side;
-// `CardArt.centerGlyphBaseline` now states it, and both strategies read it.
-// Canvas is kept, switchable, and budgeted in the browser suite, because it's the
-// fallback if the embedded-font path ever stops working somewhere — but the
-// default reuses the real card art.
+// This was one of two strategies for a while (#225). The other painted the face
+// with the canvas 2D API — `roundRect` and `fillText`, no font embedding needed
+// because canvas sees the document's own fonts — and the `raster` scene existed
+// to pick between them by looking. It lost, and was removed once it had. It was
+// quicker before the sheet (~50ms against ~400ms), which was its whole case; it
+// was also worse against the live card on every sample, and it had to restate
+// CardArt's geometry in a second place, which cost two real bugs in the space of
+// one pull request — a middle glyph 4.5 design units high on macOS from rebuilding
+// `dominant-baseline="central"` out of `measureText()`, and a corner turned with
+// `rotate(pi)` whose matrix isn't exactly axis-aligned. Both were invisible to a
+// Linux CI. The scene still compares the sprite against the live card, which is
+// the comparison that was always doing the work.
 //
 // Two details that bite:
 //   - `CardArt.svg` emits only a `viewBox`. An SVG with no intrinsic size
@@ -59,32 +40,6 @@
 //     default sizes), so `markup` below always writes explicit `width`/`height`.
 //   - `img.decode()` is async, so building the cache is a promise. Callers await
 //     the whole 52-card set before their first frame.
-
-// --- Strategy ----------------------------------------------------------------
-
-type strategy = Svg | Canvas
-
-let strategyId = strategy =>
-  switch strategy {
-  | Svg => "svg"
-  | Canvas => "canvas"
-  }
-
-let strategyLabel = strategy =>
-  switch strategy {
-  | Svg => "SVG + embedded font"
-  | Canvas => "Canvas 2D"
-  }
-
-// Parse the `?raster=` URL knob, so a link can open the scene on either strategy
-// — which is how the browser suite shoots them both without clicking. Anything
-// unrecognised reads as `None` and leaves the scene's own default in place.
-let strategyFromString = value =>
-  switch value {
-  | "svg" => Some(Svg)
-  | "canvas" => Some(Canvas)
-  | _ => None
-  }
 
 // --- Bindings ----------------------------------------------------------------
 // Canvas, `<img>` decoding, `fetch`, and the font-loading API. All kept here
@@ -97,8 +52,6 @@ type image
 type response
 type buffer
 type bytes
-type fontFaceSet
-type fontFace
 
 @val @scope("document") external createCanvas: string => canvas = "createElement"
 // A canvas *is* an element; the identity cast lets the scene splice a sprite
@@ -109,15 +62,6 @@ external canvasElement: canvas => WebDom.element = "%identity"
 @set external setPixelHeight: (canvas, int) => unit = "height"
 @send external getContext: (canvas, string) => Nullable.t<context> = "getContext"
 
-@send external save: context => unit = "save"
-@send external restore: context => unit = "restore"
-@send external scale: (context, float, float) => unit = "scale"
-@send external translate: (context, float, float) => unit = "translate"
-@send external beginPath: context => unit = "beginPath"
-@send external roundRect: (context, float, float, float, float, float) => unit = "roundRect"
-@send external fill: context => unit = "fill"
-@send external stroke: context => unit = "stroke"
-@send external fillText: (context, string, float, float) => unit = "fillText"
 @send external drawImage: (context, image, float, float, float, float) => unit = "drawImage"
 // `drawImage`'s nine-argument form, cropping a source rectangle — how a card is
 // lifted out of the rasterized sheet (see `markup`). Source is a canvas, not an
@@ -136,12 +80,6 @@ external drawCanvasPart: (
   float,
   float,
 ) => unit = "drawImage"
-@set external setFillStyle: (context, string) => unit = "fillStyle"
-@set external setStrokeStyle: (context, string) => unit = "strokeStyle"
-@set external setLineWidth: (context, float) => unit = "lineWidth"
-@set external setFont: (context, string) => unit = "font"
-@set external setTextAlign: (context, string) => unit = "textAlign"
-@set external setTextBaseline: (context, string) => unit = "textBaseline"
 
 @new external makeImage: unit => image = "Image"
 @set external setSrc: (image, string) => unit = "src"
@@ -157,13 +95,6 @@ external drawCanvasPart: (
 @val external charOf: int => string = "String.fromCharCode"
 @val external btoa: string => string = "btoa"
 @val external encodeURIComponent: string => string = "encodeURIComponent"
-
-// The document's font set — the Canvas strategy's whole reason for existing, and
-// the thing it has to *wait* for: `fillText` with an unloaded face silently
-// paints the fallback rather than blocking.
-@val @scope("document") external documentFonts: fontFaceSet = "fonts"
-@send external loadFont: (fontFaceSet, string, string) => promise<array<fontFace>> = "load"
-@get external fontsReady: fontFaceSet => promise<fontFaceSet> = "ready"
 
 // Resolve a font URL the way index.html's own `@font-face` rules do — relative to
 // the document — so it inherits the GitHub Pages project subpath instead of
@@ -195,16 +126,7 @@ let faces = [
   ("Pip Suits", "400", "pip-suits.woff2"),
 ]
 
-// The glyphs the card face can ask for, so the Canvas strategy can pre-load
-// exactly the coverage it needs rather than the whole face.
-let rankGlyphs = "A234567890JQK"
-let suitGlyphs = `♠♥♦♣`
-
-// The canvas-side spelling of the two faces, as CSS font shorthand.
-let rankFont = size => `600 ${Float.toString(size)}px "Libre Franklin", sans-serif`
-let suitFont = size => `${Float.toString(size)}px "Pip Suits"`
-
-// --- Strategy 1: a self-contained SVG with the faces inlined -----------------
+// --- The self-contained SVG -------------------------------------------------
 
 // `btoa` wants a binary string, so walk the bytes. 16KB a face, twice, once per
 // page — small enough that a plain loop is the honest implementation.
@@ -319,104 +241,6 @@ let markup = (~fontCss, ~pxWidth, ~pxHeight, ~columns, cards) => {
 // are non-ASCII, which `btoa` can't take without a second UTF-8 dance.
 let dataUrl = svg => "data:image/svg+xml;charset=utf-8," ++ encodeURIComponent(svg)
 
-// --- Strategy 2: the same face, drawn with canvas 2D -------------------------
-
-// A restatement of `CardArt.body` in canvas calls, in the same design-box units
-// (the caller has already scaled the context), which is this strategy's whole
-// cost: these numbers have to be kept in step with the vnodes by hand. The ones
-// CardArt publishes as bindings are reused; the ones it writes as attribute
-// literals (the corner's 5/38/40, the pip's 106/34/26) are restated, and that is
-// the drift the `raster` scene exists to show.
-let paintFace = (ctx, card: Deck.card) => {
-  let color = Deck.suitColor(card.suit)
-  let label = Deck.rankLabel(card.rank)
-  let glyph = Deck.suitSymbol(card.suit)
-
-  // The frame: the same inset-by-half-a-stroke rect the card art draws, so the
-  // painted outer edge lands on the design box's edge.
-  ctx->beginPath
-  ctx->roundRect(
-    CardArt.frameInset,
-    CardArt.frameInset,
-    CardArt.boxW -. CardArt.strokeW,
-    CardArt.boxH -. CardArt.strokeW,
-    CardArt.cornerR,
-  )
-  ctx->setFillStyle("#f7f7f7")
-  ctx->fill
-  ctx->setStrokeStyle("#cbd5e1")
-  ctx->setLineWidth(CardArt.strokeW)
-  ctx->stroke
-
-  ctx->setFillStyle(color)
-
-  // The corner rank plus its right-pinned suit pip. SVG `<text>` places its
-  // baseline at `y` and canvas's default `textBaseline` is "alphabetic", so the
-  // coordinates carry over unchanged; the pip's `text-anchor="end"` becomes
-  // `textAlign = "right"`.
-  let cornerRank = () => {
-    ctx->setFont(rankFont(40.))
-    ctx->setTextAlign("start")
-    ctx->setTextBaseline("alphabetic")
-    ctx->fillText(label, 5., 38.)
-    ctx->setFont(suitFont(26.))
-    ctx->setTextAlign("right")
-    ctx->fillText(glyph, 106., 34.)
-  }
-
-  cornerRank()
-
-  // The middle glyph, on the baseline `CardArt` publishes. This used to rebuild
-  // the art's `dominant-baseline="central"` here from `measureText()`, which is
-  // the drift this strategy was expected to produce arriving for real: the sprite
-  // sat 4.5 design units above the live card on macOS while matching it on Linux.
-  // `CardArt.centerGlyphBaseline` (see its comment — the cause turned out to be
-  // worth writing down) settles the number in one place, so there is nothing left
-  // here for a renderer to resolve differently.
-  ctx->setFont(suitFont(CardArt.centerGlyphSize))
-  ctx->setTextAlign("center")
-  ctx->setTextBaseline("alphabetic")
-  ctx->fillText(glyph, CardArt.centerX, CardArt.centerGlyphBaseline)
-
-  // The bottom-right corner is the top-left one turned 180° about the card's
-  // centre — the same trick the vnodes use, so the two corners can't drift apart.
-  //
-  // `scale(-1, -1)` rather than the `rotate(pi)` that reads more naturally,
-  // because `rotate` goes through `sin`/`cos` and `Math.sin(pi)` is not 0 — it's
-  // 1.2246e-16. The resulting matrix carries that as an off-diagonal term, so
-  // the CTM is *very nearly* axis-aligned rather than exactly so, and a text
-  // rasterizer that grid-fits axis-aligned glyph runs (Skia's `rectStaysRect`
-  // fast path) can take one route for the upright corner drawn under the
-  // identity and another for this one. That is a sub-pixel vertical split
-  // between the two corners of a single card, visible only on the rotated half
-  // — which is what the raster scene was reported showing on macOS, where the
-  // two SVG renderings agreed with each other and only Canvas 2D's bottom
-  // corner sat differently.
-  //
-  // `scale(-1, -1)` is the same geometry with an exactly axis-aligned matrix
-  // (the off-diagonal terms are 0, not 1e-16), so both corners are the same kind
-  // of transform. Chromium on Linux renders the two spellings byte-for-byte
-  // identically, so this is not *confirmed* to be the macOS cause — but the
-  // inexactness is real, it costs nothing to remove, and an exact matrix is
-  // what this code meant to ask for either way.
-  ctx->save
-  ctx->translate(CardArt.centerX, CardArt.centerY)
-  ctx->scale(-1., -1.)
-  ctx->translate(-.CardArt.centerX, -.CardArt.centerY)
-  cornerRank()
-  ctx->restore
-}
-
-// Make sure the document actually has the faces before `fillText` runs — an
-// unloaded face paints the fallback silently rather than waiting.
-let ensureDocumentFonts = async () => {
-  let _ = await Promise.all([
-    documentFonts->loadFont(rankFont(40.), rankGlyphs),
-    documentFonts->loadFont(suitFont(CardArt.centerGlyphSize), suitGlyphs),
-  ])
-  let _ = await documentFonts->fontsReady
-}
-
 // --- The cache ---------------------------------------------------------------
 
 // One card's bitmap. `canvas` is sized in *device* pixels; `cssWidth`/`cssHeight`
@@ -429,11 +253,11 @@ type sprite = {
 }
 
 type t = {
-  strategy: strategy,
   cssWidth: float,
   pixelRatio: float,
-  // How long building all of them took, in ms — the other half of "pick by
-  // looking": one strategy can win on fidelity and lose badly on cost.
+  // How long building all of them took, in ms. Kept because it's the number that
+  // settled which strategy shipped, and the one to watch if the deck, the card
+  // art or the sheet layout ever grows.
   elapsedMs: float,
   sprites: Dict.t<sprite>,
 }
@@ -508,42 +332,20 @@ let rasterizeSheet = async (~fontCss, ~pxWidth, ~pxHeight, ~cssWidth, ~cssHeight
   }
 }
 
-let paintCanvas = (~pxWidth, ~pxHeight, ~cssWidth, ~cssHeight, card) => {
-  let canvas = blankCanvas(~pxWidth, ~pxHeight, ~cssWidth, ~cssHeight)
-  switch canvas->getContext("2d")->Nullable.toOption {
-  | Some(ctx) =>
-    // Scale once, then draw in the card's own design-box units — the same units
-    // the vnodes are written in, so the two are comparable line for line.
-    ctx->scale(Int.toFloat(pxWidth) /. CardArt.boxW, Int.toFloat(pxHeight) /. CardArt.boxH)
-    paintFace(ctx, card)
-  | None => ()
-  }
-  canvas
-}
-
 // Build the whole cache. `~cssWidth` is the width a card is shown at; the bitmaps
 // come out at `~pixelRatio` times that, so they're crisp on a retina screen and
 // can be blitted 1:1.
-let build = async (~strategy, ~cssWidth, ~pixelRatio=devicePixelRatio, cards) => {
+let build = async (~cssWidth, ~pixelRatio=devicePixelRatio, cards) => {
   let started = Date.now()
   let cssHeight = cssWidth *. CardArt.aspect
   let pxWidth = Math.round(cssWidth *. pixelRatio)->Float.toInt
   let pxHeight = Math.round(cssHeight *. pixelRatio)->Float.toInt
 
-  let built = switch strategy {
-  | Svg =>
-    let fontCss = await embeddedFontCss()
-    await rasterizeSheet(~fontCss, ~pxWidth, ~pxHeight, ~cssWidth, ~cssHeight, cards)
-  | Canvas =>
-    await ensureDocumentFonts()
-    cards->Array.map(card => (
-      key(card),
-      paintCanvas(~pxWidth, ~pxHeight, ~cssWidth, ~cssHeight, card),
-    ))
-  }
+  let fontCss = await embeddedFontCss()
+  let built = await rasterizeSheet(~fontCss, ~pxWidth, ~pxHeight, ~cssWidth, ~cssHeight, cards)
 
   let sprites = Dict.make()
   built->Array.forEach(((name, canvas)) => sprites->Dict.set(name, {canvas, cssWidth, cssHeight}))
 
-  {strategy, cssWidth, pixelRatio, elapsedMs: Date.now() -. started, sprites}
+  {cssWidth, pixelRatio, elapsedMs: Date.now() -. started, sprites}
 }
