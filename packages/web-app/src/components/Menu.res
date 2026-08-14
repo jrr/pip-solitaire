@@ -115,6 +115,15 @@ type props = {
   onToggleCutoutDebug: unit => unit,
   debugLog: bool,
   onToggleDebugLog: unit => unit,
+  // "Share game state" (`ShareLink`): the Debug screen's action row. `shareEnabled`
+  // is whether a link has been encoded for the board behind this screen — false on a
+  // scene with no game, and for the moment between opening the screen and the encode
+  // resolving, which is what the disabled state covers. `shareStatus` is the
+  // transient line reporting where the link went; it replaces the row's description
+  // while it's up, so the row doesn't change height as it comes and goes.
+  shareEnabled: bool,
+  shareStatus: option<string>,
+  onShareGame: unit => unit,
   autoCollect: bool,
   onToggleAutoCollect: unit => unit,
   cardTilt: bool,
@@ -155,6 +164,26 @@ let toggleRow = (~label, ~desc, ~on, ~onToggle) =>
       <span className="menu-toggle__desc"> {Html.string(desc)} </span>
     </span>
     <span className="menu-toggle__switch" />
+  </button>
+
+// An action row: the same box and label/description stack as `toggleRow`, but it
+// *does* something once rather than flipping a setting, so it carries no switch and
+// stays a plain `<button>`. `enabled` drives the real `disabled` attribute — a
+// disabled button emits no click at all, so the handler guard below is belt and
+// braces — and the muted styling that goes with it.
+let actionRow = (~label, ~desc, ~enabled, ~onClick) =>
+  <button
+    className="menu-action-row"
+    onClick={_ =>
+      if enabled {
+        onClick()
+      }}
+    attrs={enabled ? [("type", "button")] : [("type", "button"), ("disabled", "")]}
+  >
+    <span className="menu-toggle__text">
+      <span className="menu-toggle__label"> {Html.string(label)} </span>
+      <span className="menu-toggle__desc"> {Html.string(desc)} </span>
+    </span>
   </button>
 
 // The "Wiggle Waggle" row (#235): the shake-to-jostle switch. Unlike the plain
@@ -200,6 +229,9 @@ let make = ({
   onToggleCutoutDebug,
   debugLog,
   onToggleDebugLog,
+  shareEnabled,
+  shareStatus,
+  onShareGame,
   autoCollect,
   onToggleAutoCollect,
   cardTilt,
@@ -336,6 +368,26 @@ let make = ({
                 ~on=debugLog,
                 ~onToggle=onToggleDebugLog,
               )}
+              {
+                // "Share game state" (`ShareLink`): encode the board behind this
+                // screen into a link and hand it to the OS share sheet, or failing
+                // that the clipboard. The status line takes over the description
+                // while it's up, so reporting where the link went doesn't reflow the
+                // rows around it.
+                let desc = switch shareStatus {
+                | Some(status) => status
+                | None =>
+                  shareEnabled
+                    ? "Copy a link that reopens this exact game, undo history and all."
+                    : "No game on screen to share."
+                }
+                actionRow(
+                  ~label="Share game state",
+                  ~desc,
+                  ~enabled=shareEnabled,
+                  ~onClick=onShareGame,
+                )
+              }
               {Html.node(debugScenes)}
               {Html.node(debugStates)}
             </nav>
