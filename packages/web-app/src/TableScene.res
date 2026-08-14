@@ -570,6 +570,13 @@ let make = (
   // through the mount-scope `boardOps` ref rather than closing over one build.
   ~publishShake: option<shakeControl => unit>=?,
   ~onHistory: option<bool => unit>=?,
+  // The board's other reverse channel: the deal number now on the table (#98), or
+  // `None` on a board that has no reproducible one (the fixed-layout demos). Called
+  // on *every* build, so a New Game re-deal reports its fresh seed and the chrome's
+  // "Copy seed" always offers the deal actually showing rather than the one this
+  // scene first mounted with. Sibling of `~onHistory`, and reported for the same
+  // reason: the chrome renders from it, so it can't reach into the board for it.
+  ~onDeal: option<option<int> => unit>=?,
   ~options: ref<Options.t>=ref(Options.default),
   ~tiltEnabled: ref<bool>=ref(true),
   // `~skipDealAnimation` drops the cards straight into their resting places instead
@@ -686,6 +693,16 @@ let make = (
       // Record the deal now on the table so Restart (#156) can replay this exact
       // game — a New Game re-deal that lands here updates what Restart will rebuild.
       currentGame := game
+      // Tell the chrome which deal number is showing (#98), from the same spot and
+      // for the same reason: every board rebuild passes through here, so a New Game
+      // reports its new seed and a scene switch to a demo reports `None`. A forced
+      // `~initial` state still reports the *game's* seed — the board was dealt from
+      // it and Restart returns to it, so the number remains the honest answer to
+      // "which deal is this?" even while a scenario position is showing.
+      switch onDeal {
+      | Some(f) => f(game.seed)
+      | None => ()
+      }
       // The stage everything is positioned within; `position: relative` (in CSS)
       // makes it the origin for the cards' absolute left/top.
       let playfield = WebDom.createElement("div")

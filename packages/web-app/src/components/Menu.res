@@ -55,7 +55,10 @@
 //     step back up, not all the way out — beside the ✕;
 //     the **Safe-area overlay** toggle (`cutoutDebug` / `onToggleCutoutDebug`) and
 //     the **Console logging** toggle (`debugLog` / `onToggleDebugLog`, #213 — narrates
-//     the UI↔core traffic to the JS console) up top, then the two collapsible groups
+//     the UI↔core traffic to the JS console) up top, then the **Copy seed** row
+//     (`seed` / `seedCopied` / `onCopySeed`, #98 — the deal number on the table and a
+//     button that puts it on the clipboard, so a deal can be shared and reopened
+//     with `?seed=`; absent on a board with no deal number), then the two collapsible groups
 //     that were the old "Debug scenes"/"Debug states": the debug/demo scenes
 //     (`debugScenes`, labelled "scenes") and the named
 //     starting positions (`debugStates`, "states") a tap drops the board into
@@ -115,6 +118,14 @@ type props = {
   onToggleCutoutDebug: unit => unit,
   debugLog: bool,
   onToggleDebugLog: unit => unit,
+  // The deal number showing on the table (#98) and the Copy seed action for it.
+  // `None` hides the row entirely: a fixed-layout demo has no deal number, and a
+  // button offering to copy nothing is worse than no button. `seedCopied` is the
+  // last tap's outcome — `Some(true)` copied, `Some(false)` couldn't (no clipboard
+  // API on an insecure origin, or permission denied), `None` the resting state.
+  seed: option<int>,
+  seedCopied: option<bool>,
+  onCopySeed: unit => unit,
   autoCollect: bool,
   onToggleAutoCollect: unit => unit,
   cardTilt: bool,
@@ -183,6 +194,47 @@ let wiggleRow = (~state: Motion.state, ~onToggle) => {
   </button>
 }
 
+// The Debug screen's "Copy seed" row (#98): the deal number on the table, with a
+// button that puts it on the clipboard so it can be shared — the other player pastes
+// it into `?seed=` and is dealt the identical board (the shuffle is deterministic, so
+// the same number reproduces the same layout everywhere).
+//
+// It's laid out as a `menu-toggle` — label and description on the left, control on
+// the right — because it *is* that shape; only the right-hand control differs, a
+// "Copy" button in place of a switch. Reusing the class keeps it aligned with the two
+// switches above it without a second row style to maintain.
+//
+// The seed is shown, not just copied: it's the value being shared, and on a browser
+// where the clipboard is unavailable (an insecure origin — a phone on a dev box's LAN
+// IP, exactly where you'd want to read a deal number off the screen) it's still there
+// to copy by hand. That's also why a failed copy says so rather than silently doing
+// nothing: the number stays legible above the message.
+let copySeedRow = (~seed: int, ~copied: option<bool>, ~onCopy) => {
+  // Only a *successful* copy changes the button: a failure leaves it saying "Copy"
+  // (the thing to try again) and puts the explanation in the description line below.
+  let copiedOk = copied == Some(true)
+  <div className="menu-toggle menu-copy">
+    <span className="menu-toggle__text">
+      <span className="menu-toggle__label"> {Html.string("Deal " ++ Int.toString(seed))} </span>
+      <span className="menu-toggle__desc">
+        {Html.string(
+          switch copied {
+          | Some(false) => "Couldn't copy — this browser blocks clipboard access here."
+          | Some(true) | None => "Open this deal anywhere with ?seed=" ++ Int.toString(seed)
+          },
+        )}
+      </span>
+    </span>
+    <button
+      className={copiedOk ? "menu-copy__button menu-copy__button--done" : "menu-copy__button"}
+      onClick={_ => onCopy()}
+      attrs={[("type", "button"), ("aria-label", "Copy seed " ++ Int.toString(seed))]}
+    >
+      {Html.string(copiedOk ? "Copied" : "Copy")}
+    </button>
+  </div>
+}
+
 let make = ({
   open_,
   screen,
@@ -200,6 +252,9 @@ let make = ({
   onToggleCutoutDebug,
   debugLog,
   onToggleDebugLog,
+  seed,
+  seedCopied,
+  onCopySeed,
   autoCollect,
   onToggleAutoCollect,
   cardTilt,
@@ -336,6 +391,12 @@ let make = ({
                 ~on=debugLog,
                 ~onToggle=onToggleDebugLog,
               )}
+              {switch // The deal number and its Copy button (#98), shown only on a board that
+              // has one — a demo scene reports no seed, so the row simply isn't there.
+              seed {
+              | Some(seed) => copySeedRow(~seed, ~copied=seedCopied, ~onCopy=onCopySeed)
+              | None => Html.array([])
+              }}
               {Html.node(debugScenes)}
               {Html.node(debugStates)}
             </nav>

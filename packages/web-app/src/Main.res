@@ -82,6 +82,17 @@ type model = {
   // of the Settings screen so a half-finished run can't be resumed later.
   hidden: HiddenOptions.t,
   canUndo: bool,
+  // The deal number on the table (#98), reported by the board on every build and
+  // `None` on a scene with no reproducible deal. It drives the Debug screen's
+  // "Copy seed" row: the seed it shows and hands to the clipboard, and — being
+  // `None` — whether the row appears at all.
+  seed: option<int>,
+  // The outcome of the last "Copy seed" tap, shown as transient feedback on the row
+  // and cleared by a timer (see `SeedCopied`/`SeedFeedbackCleared`). `None` is the
+  // resting state: no tap yet, or the feedback has expired. A copy can genuinely
+  // fail — no clipboard API on an insecure origin, or a denied permission — so this
+  // distinguishes the two outcomes rather than always claiming success.
+  seedCopied: option<bool>,
   // The adaptive Settings refresh control (#112). `refreshMode` is `None` until
   // `Refresh.detect` resolves (and stays effectively hidden on an unsupported
   // browser); it decides the button's "Refresh" vs "Check for updates" shape.
@@ -109,6 +120,9 @@ type msg =
   | ToggleDebugLog // the Debug screen's console-logging switch (#213)
   | SettingsTitleTapped // a tap on the Settings screen's title — ten reveal the hidden settings
   | HistoryChanged(bool) // whether the board can undo after a move (#85)
+  | DealChanged(option<int>) // the board reported the deal number it's showing (#98)
+  | SeedCopied(bool) // the clipboard write settled — `true` if the seed landed
+  | SeedFeedbackCleared // the copy feedback's timer elapsed — back to the resting label
   | RefreshDetected(Refresh.mode) // service-worker presence detected — sets the button's shape (#112)
   | RefreshStarted // the refresh button was tapped — start spinning the button (#112/#201)
   | RefreshChecked // an update check finished — stop the spinner (a found update surfaces as the About button)
@@ -162,6 +176,30 @@ let initialCanUndo = ref(false)
 // model, and it's reset to `false` on each scene change so a non-game scene leaves
 // the button disabled.
 let reportHistory: ref<bool => unit> = ref(canUndo => initialCanUndo := canUndo)
+
+// The deal number the opening board reports (#98), captured for exactly the reason
+// `initialCanUndo` is: the first report fires while the switcher mounts the initial
+// scene during module init, before `dispatch` exists, so without somewhere to land
+// the opening deal's seed the Debug screen would show "no deal number" until the
+// first New Game. Random-seeded opens make that the common case, not a corner.
+let initialSeed: ref<option<int>> = ref(None)
+
+// The board's deal-number channel (#98), twin of `reportHistory`: every board build
+// reports the seed showing (`None` on a demo). Pre-mount it stashes the value for the
+// model's init; after mount it dispatches. Reset to `None` on each scene change so a
+// non-game scene doesn't leave the previous board's seed on offer.
+let reportDeal: ref<option<int> => unit> = ref(seed => initialSeed := seed)
+
+// The "Copy seed" feedback timer (#98). The row reports the copy's outcome for a
+// beat and then goes back to its resting label; this holds the pending clear so a
+// second tap can cancel the first one's timer before arming its own. Without that
+// cancel, two taps in quick succession leave the earlier timer running, and it
+// would wipe the *later* tap's feedback almost as soon as it appeared.
+type timeoutId
+@val @scope("window") external setTimeout: (unit => unit, int) => timeoutId = "setTimeout"
+@val @scope("window") external clearTimeout: timeoutId => unit = "clearTimeout"
+let seedFeedbackTimer: ref<option<timeoutId>> = ref(None)
+let seedFeedbackMs = 1600
 
 // Closing the menu means dispatching into the loop, but a scene row is an
 // imperative listener built before `dispatch` exists (like `updateSW`). It
@@ -246,6 +284,17 @@ let update = (msg, model) =>
     )
   | HistoryChanged(canUndo) =>
     canUndo == model.canUndo ? (model, Html.noEffect) : ({...model, canUndo}, Html.noEffect) // no change — don't re-render
+  // The board reported which deal it's showing (#98). Like `HistoryChanged`, an
+  // unchanged value doesn't re-render. A new deal also drops any lingering copy
+  // feedback: "Copied" beside a seed you didn't copy would be a lie.
+  | DealChanged(seed) =>
+    seed == model.seed
+      ? (model, Html.noEffect)
+      : ({...model, seed, seedCopied: None}, Html.noEffect)
+  // A clipboard write settled (`true` if the seed landed). The row shows the outcome
+  // until the timer set alongside this dispatch clears it.
+  | SeedCopied(ok) => ({...model, seedCopied: Some(ok)}, Html.noEffect)
+  | SeedFeedbackCleared => ({...model, seedCopied: None}, Html.noEffect)
   | CloseMenu =>
     model.menuOpen
       ? (
@@ -488,6 +537,7 @@ let gameScene = (game: Game.t) => {
       }
     },
     ~onHistory=canUndo => reportHistory.contents(canUndo),
+    ~onDeal=seed => reportDeal.contents(seed),
     ~options,
     ~tiltEnabled,
     // Skip the opening-deal fly-in when the URL asks for `?animate=off`, so the
@@ -514,6 +564,11 @@ let switcher = SceneSwitcher.render(
     // the mounting scene republishes and reports its own history (#85).
     undoHook := None
     reportHistory.contents(false)
+    // Clear the outgoing board's deal number the same way (#98). A `TableScene`
+    // republishes its own as it builds, but a non-table scene (the spinner, the
+    // gallery) never reports at all — without this reset its Debug screen would
+    // still offer the seed of a board that's no longer on the table.
+    reportDeal.contents(None)
     closeMenu.contents()
   },
   // A tap on the row for the game already showing: nothing mounts, so none of the
@@ -596,6 +651,33 @@ let view = (model, dispatch) => <>
     onToggleCutoutDebug={() => dispatch(ToggleCutoutDebug)}
     debugLog={model.debugLog}
     onToggleDebugLog={() => dispatch(ToggleDebugLog)}
+    seed={model.seed}
+    seedCopied={model.seedCopied}
+    // Copy the deal number (#98). The clipboard write is async and can fail, so the
+    // outcome is routed back through the loop — the same shape as the motion-permission
+    // and update-check handlers above, which is why the async work lives here in the
+    // view rather than in `update` (which has no `dispatch`).
+    //
+    // The copied text is the bare number, not a URL: it's what `?seed=` takes, and it
+    // pastes usefully into a chat message or straight into the address bar of a link
+    // someone already has. Building a full URL here would bake in whatever host this
+    // build happens to be served from, which for a dev build is a LAN IP no one else
+    // can reach.
+    onCopySeed={() =>
+      switch model.seed {
+      | None => () // no deal number showing — the row isn't rendered, so this can't fire
+      | Some(seed) =>
+        Clipboard.copy(Int.toString(seed))
+        ->Promise.thenResolve(ok => {
+          dispatch(SeedCopied(ok))
+          // Arm the timer that puts the row back to its resting label, cancelling any
+          // still pending from an earlier tap so *this* tap's feedback gets its full
+          // beat rather than being cut short by the previous one's clear.
+          seedFeedbackTimer.contents->Option.forEach(clearTimeout)
+          seedFeedbackTimer := Some(setTimeout(() => dispatch(SeedFeedbackCleared), seedFeedbackMs))
+        })
+        ->ignore
+      }}
     autoCollect={model.autoCollect}
     onToggleAutoCollect={() => dispatch(ToggleAutoCollect)}
     cardTilt={model.cardTilt}
@@ -708,6 +790,13 @@ let dispatch = Html.mount(
     // mount above — before `dispatch` existed — so it's read back from
     // `initialCanUndo` here rather than hardcoded off (#85).
     canUndo: initialCanUndo.contents,
+    // Seeded from the board's opening deal report (#98), for the same reason
+    // `canUndo` is: that report fired during the switcher's initial mount above,
+    // before `dispatch` existed, so it's read back from `initialSeed` rather than
+    // started empty — otherwise the seed of the deal you're actually looking at
+    // wouldn't be on offer until the next re-deal.
+    seed: initialSeed.contents,
+    seedCopied: None, // nothing copied yet
     // The refresh button starts hidden until `Refresh.detect` reports the
     // service-worker state (#112); not busy until an action runs.
     refreshMode: None,
@@ -742,6 +831,10 @@ if Motion.isOn(wiggleInit) {
 // …and let the board's history reports reach the loop, so Undo enables and
 // disables as moves are played and undone (#85).
 reportHistory := (canUndo => dispatch(HistoryChanged(canUndo)))
+
+// …and the same for its deal-number reports (#98), so the Debug screen's "Copy
+// seed" tracks the deal actually on the table across New Game and scene changes.
+reportDeal := (seed => dispatch(DealChanged(seed)))
 
 // Detect the service-worker state up front so the Settings refresh button opens
 // with the right label (#112). It's re-detected each time Settings opens too (see

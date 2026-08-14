@@ -796,6 +796,40 @@
         background: #f0fdf4;
       }
 
+      /* The Debug screen's "Copy seed" row (#98): the deal number on the table with
+         a Copy button where a switch would sit. It borrows `.menu-toggle` for the
+         row shell, so only the differences live here — it's a <div> wrapping a
+         button rather than being one, so the row itself isn't clickable and shouldn't
+         look it. `user-select: text` lets the deal number be selected by hand on a
+         browser with no clipboard API (an insecure origin), where the Copy button
+         can't work and reading the number off the screen is the fallback. */
+      .menu-copy {
+        cursor: default;
+        user-select: text;
+      }
+
+      .menu-copy__button {
+        flex: 0 0 auto;
+        min-width: 72px;
+        padding: 6px 10px;
+        font: 600 13px "Libre Franklin", sans-serif;
+        color: #e2e8f0;
+        background: #334155;
+        border: 1px solid #475569;
+        border-radius: 6px;
+        cursor: pointer;
+        transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+      }
+
+      /* Copied: the same accent green the "on" switch uses, so the confirmation
+         reads as the familiar success colour rather than a new one. Reverts on its
+         own after a beat (see Main's copy-feedback timer). */
+      .menu-copy__button--done {
+        color: #f0fdf4;
+        background: #166534;
+        border-color: #166534;
+      }
+
       /* The scene list: SceneSwitcher's row controls (#109), replacing the old
          <select> picker. Each scene is a tappable row; the active scene is
          highlighted so the menu shows where you are. */
