@@ -174,6 +174,9 @@ let currentHistory = () => readHistoryHook.contents->Option.flatMap(read => read
 // lands, but not before — the placeholder deal the board wears while the blob
 // inflates must never be written over the player's own saved game, and a link that
 // turns out to be corrupt must leave that game untouched.
+//
+// This flag only exists because a shared open builds the board twice (#259). Close
+// that gap and the placeholder build goes with it, and so does the need for this.
 let shareLanded = ref(false)
 
 // The active board's Undo action (#85), sibling of `newGameHook`. The mounted
@@ -521,9 +524,10 @@ let gameScene = (game: Game.t) => {
   // A `#g=` share link joins `?state=` in taking the fixed deal rather than a random
   // one. Decompressing the blob is asynchronous, so the board is necessarily built
   // *before* the shared history can land on it (see the restore below) — and dealing
-  // a random board for those few milliseconds would make the swap read as a glitch.
-  // The fixed deal keeps that opening frame stable and identical every time; the
-  // fly-in is skipped for the same reason.
+  // a random board for that frame would make the swap read as a glitch. The fixed
+  // deal keeps it stable and identical every time; the fly-in is skipped for the
+  // same reason. Both are mitigations, not a fix — see #259, which measures the gap
+  // (sub-millisecond, so one render frame) and weighs the ways to close it.
   let addressed = url.state->Option.isSome || url.shared->Option.isSome
   let opening =
     isFreecell && !addressed ? Game.freecellDeal(~seed=url.seed->Option.getOr(randomSeed())) : game
@@ -625,7 +629,7 @@ let switcher = SceneSwitcher.render(
 // fixed opening deal by the time the history arrives, and this drops the real
 // position onto it. That's one frame of a stable, un-animated FreeCell deal before
 // the swap; both are arranged above precisely so this reads as the board settling
-// rather than as a board changing its mind.
+// rather than as a board changing its mind. The frame itself is #259.
 //
 // Landing is also the point the shared game takes over storage: `shareLanded` is
 // set first, so the rebuild this triggers writes itself through `gameScene`'s
