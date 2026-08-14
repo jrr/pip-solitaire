@@ -566,9 +566,9 @@ let make = (
   // `~publishLoadHistory` is the share-link twin of `~publishLoadState` (see
   // `ShareLink`): where that forces a single `GameState`, this rebuilds the board
   // onto a whole restored undo/redo stack, so a shared game arrives with its history
-  // intact and the recipient can undo back through it. Like a forced state — and
-  // like the URL's `?state=` — the rebuilt board doesn't persist itself, so opening
-  // someone else's link never overwrites your own saved game.
+  // intact and the recipient can undo back through it. *Unlike* a forced state, the
+  // rebuilt board persists like any other — a shared game is adopted as this
+  // device's saved game rather than borrowed.
   ~publishLoadHistory: option<(History.t<GameState.t> => unit) => unit>=?,
   // `~publishReadHistory` is the read side the share button needs: a thunk handing
   // back the *live* board's history, whatever build is currently on the table. It's
@@ -2007,11 +2007,14 @@ let make = (
     }
 
     // Publish the share-link loader (`ShareLink`): rebuild the board onto a whole
-    // restored history, undo stack and all. `~persistThis=false` for the same reason
-    // the forced-state load above sets it — a board that arrived from someone else's
-    // link is not this device's saved game and must not overwrite it.
+    // restored history, undo stack and all. Unlike the forced-state load above this
+    // *does* persist — a shared game takes over as this device's saved game, so it
+    // saves on arrival and play continues from it normally. Whether that write
+    // actually reaches storage is still the driver's call: the sink is only wired for
+    // the opens that may write (see `Main`'s `~persist`), so this is a no-op on a
+    // demo scene or a `?state=` board.
     switch publishLoadHistory {
-    | Some(publish) => publish(restored => buildBoard(~history=restored, ~persistThis=false, game))
+    | Some(publish) => publish(restored => buildBoard(~history=restored, game))
     | None => ()
     }
 

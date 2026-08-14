@@ -83,6 +83,45 @@ test("a shared link reopens the same board", async ({ page }) => {
   expect(await readBoard(page)).toEqual(shared)
 })
 
+test("a shared link takes over the saved game", async ({ page }) => {
+  // A shared game is adopted, not borrowed: it becomes this device's saved game, so
+  // a later plain load resumes it. Checked by loading the bare URL afterwards —
+  // no fragment, no query — which only ever shows a board if one was saved.
+  await page.goto(MIDGAME)
+  await settleBoard(page)
+  const url = await shareFromDebugScreen(page)
+
+  await page.goto(url)
+  await settleBoard(page)
+  const adopted = await readBoard(page)
+
+  await page.goto("/")
+  await settleBoard(page)
+  expect(await readBoard(page)).toEqual(adopted)
+})
+
+test("a corrupt link leaves an existing saved game alone", async ({ page }) => {
+  // The failure path must not cost the player their game: nothing landed, so nothing
+  // is written, and the save that was there survives. Set one up by adopting a
+  // shared board first, then open a broken link over the top of it.
+  await page.goto(MIDGAME)
+  await settleBoard(page)
+  const url = await shareFromDebugScreen(page)
+  await page.goto(url)
+  await settleBoard(page)
+  const saved = await readBoard(page)
+
+  await page.goto("/#g=this-is-not-a-real-blob")
+  await settleBoard(page)
+  // The broken link deals a normal game rather than showing an error…
+  expect((await readBoard(page)).length).toBe(52)
+
+  // …and the game that was already saved is still there.
+  await page.goto("/")
+  await settleBoard(page)
+  expect(await readBoard(page)).toEqual(saved)
+})
+
 test("a corrupt link opens a playable board instead of failing", async ({ page }) => {
   // Links get truncated in chat clients and mangled in mail. The contract is that a
   // bad blob is ignored — the app deals a normal game rather than showing nothing.

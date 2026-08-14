@@ -22,6 +22,12 @@
 // link can never render a picture of the position. Not something this app offers
 // anyway, and not worth the ceiling to buy.
 //
+// Being in the fragment also keeps this cleanly apart from the query parameters
+// `AppUrl` already understands: `#g=` and `?state=` occupy different halves of the
+// URL and never have to agree about precedence, which is why a shared link can take
+// over the saved game while a `?state=` scenario deliberately doesn't — the two
+// aren't competing readings of one parameter. See `Main`'s `sharedOpen`.
+//
 // **Delivery** prefers the OS share sheet (`navigator.share`) when the platform has
 // one — the phone case, where "copy to clipboard" is the more awkward of the two —
 // and falls back to writing the clipboard. See `deliver` for the transient-

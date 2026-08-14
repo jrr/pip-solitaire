@@ -169,6 +169,13 @@ let loadHistoryHook: ref<option<History.t<GameState.t> => unit>> = ref(None)
 // a board has mounted. What the share button encodes.
 let currentHistory = () => readHistoryHook.contents->Option.flatMap(read => read())
 
+// Whether a `#g=` link's game has actually reached the board. It gates saving on a
+// shared open (see `gameScene`): a shared game takes over storage the moment it
+// lands, but not before — the placeholder deal the board wears while the blob
+// inflates must never be written over the player's own saved game, and a link that
+// turns out to be corrupt must leave that game untouched.
+let shareLanded = ref(false)
+
 // The active board's Undo action (#85), sibling of `newGameHook`. The mounted
 // `TableScene` publishes a thunk here on every build (a re-deal republishes the
 // fresh board's), the switcher's `onActivate` clears it before each scene change,
@@ -483,11 +490,13 @@ let gameScene = (game: Game.t) => {
   // overwritten (the issue's "a `?state=` link doesn't disturb a saved game", and the
   // same for the screenshot report's `?seed=`/`?state=` shots, which must stay
   // side-effect-free).
-  // A `#g=` share link addresses an exact board too, so it joins `?state=`/`?seed=`
-  // in disqualifying a plain open: the shared game is neither resumed from storage
-  // nor written back to it, and the recipient's own saved game sits untouched
-  // underneath. Playing on from a shared position is deliberately not persisted —
-  // the same bargain a `?state=` scenario makes.
+  // A `#g=` share link is the one addressed open that *does* touch storage, and it
+  // splits the two halves apart: it doesn't resume (the link says which board to
+  // open, so reading the save would be pointless), but once the shared game lands it
+  // **takes over** — becoming the saved game, with play from there saving as usual,
+  // exactly as if it had been dealt here. Opening someone's link adopts their game
+  // rather than borrowing it, so the two halves are gated separately below.
+  let sharedOpen = isFreecell && url.shared->Option.isSome
   let plainOpen =
     isFreecell && url.state->Option.isNone && url.seed->Option.isNone && url.shared->Option.isNone
   // Resume a saved game when there is one and this is a plain open; otherwise `None`
@@ -525,7 +534,20 @@ let gameScene = (game: Game.t) => {
     // board a sink that writes each change back to storage. New Game/Restart/every
     // move flow through this same sink, so the saved game always tracks the live one.
     ~loadHistory,
-    ~persist=?plainOpen ? Some(history => SavedGame.save(game.id, history)) : None,
+    // A plain open saves from the first build. A shared open saves too, but only
+    // from the moment the shared game actually lands (`shareLanded`) — the fixed
+    // deal the board is built from while the blob inflates is scaffolding, and
+    // writing *that* to storage would clobber the player's own game with a board
+    // nobody asked for. It also means a link that fails to decode leaves the saved
+    // game exactly as it was: nothing landed, so nothing is written.
+    ~persist=?plainOpen || sharedOpen
+      ? Some(
+          history =>
+            if plainOpen || shareLanded.contents {
+              SavedGame.save(game.id, history)
+            },
+        )
+      : None,
     ~newDeal?,
     ~publishNewGame=hook => newGameHook := Some(hook),
     ~publishRestart=hook => restartHook := Some(hook),
@@ -605,15 +627,24 @@ let switcher = SceneSwitcher.render(
 // the swap; both are arranged above precisely so this reads as the board settling
 // rather than as a board changing its mind.
 //
+// Landing is also the point the shared game takes over storage: `shareLanded` is
+// set first, so the rebuild this triggers writes itself through `gameScene`'s
+// persist sink and every later move follows it. From here on it's simply the saved
+// game, indistinguishable from one dealt on this device.
+//
 // A blob that doesn't decode (truncated in the paste, or written by an incompatible
 // `SaveState` version) leaves the dealt board exactly where it is: a bad link opens
-// a playable game rather than an error.
+// a playable game rather than an error. `shareLanded` stays false in that case, so
+// the placeholder board is never saved and whatever game this device already had is
+// still there on the next plain load.
 switch url.shared {
 | Some(blob) =>
   (
     async () =>
       switch await ShareLink.historyFrom(blob) {
-      | Some(restored) => loadHistoryHook.contents->Option.forEach(load => load(restored))
+      | Some(restored) =>
+        shareLanded := true
+        loadHistoryHook.contents->Option.forEach(load => load(restored))
       | None => DebugLog.message("share link: could not decode the shared game")
       }
   )()->ignore
