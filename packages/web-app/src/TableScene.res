@@ -563,6 +563,18 @@ let make = (
   ~publishNewGame: option<(unit => unit) => unit>=?,
   ~publishRestart: option<(unit => unit) => unit>=?,
   ~publishLoadState: option<(GameState.t => unit) => unit>=?,
+  // `~publishLoadHistory` is the share-link twin of `~publishLoadState` (see
+  // `ShareLink`): where that forces a single `GameState`, this rebuilds the board
+  // onto a whole restored undo/redo stack, so a shared game arrives with its history
+  // intact and the recipient can undo back through it. Like a forced state — and
+  // like the URL's `?state=` — the rebuilt board doesn't persist itself, so opening
+  // someone else's link never overwrites your own saved game.
+  ~publishLoadHistory: option<(History.t<GameState.t> => unit) => unit>=?,
+  // `~publishReadHistory` is the read side the share button needs: a thunk handing
+  // back the *live* board's history, whatever build is currently on the table. It's
+  // `option` because it's called before the first `buildBoard` has run in principle
+  // (never in practice — the opening build happens during this same mount).
+  ~publishReadHistory: option<(unit => option<History.t<GameState.t>>) => unit>=?,
   ~publishUndo: option<(unit => unit) => unit>=?,
   ~publishRelayout: option<(unit => unit) => unit>=?,
   // `~publishShake` (#235) hands the chrome the board's shake control (start/stop
@@ -622,6 +634,14 @@ let make = (
     // every `buildBoard` repoints these at its own fresh card nodes. No-ops until the
     // first build.
     let boardOps = ref({jostle: () => (), squareUp: () => ()})
+
+    // The live board's undo/redo history, held at mount scope for the same reason as
+    // `resizeRelayout` above: `history` is rebound by every `buildBoard`, so a reader
+    // that closed over one build would go on reporting a torn-down board's stack
+    // after a New Game. Each build repoints this at its own; the share button
+    // (`ShareLink`, via `~publishReadHistory`) reads through it and so always
+    // encodes what's actually on the table. `None` until the first build.
+    let readHistory: ref<unit => option<History.t<GameState.t>>> = ref(() => None)
 
     // The active `devicemotion` shake subscription, `Some` while Wiggle Waggle is on
     // and permission granted (#235). `Motion.subscribeShake` already parks the
@@ -776,6 +796,10 @@ let make = (
         | None => History.make(state.contents)
         },
       )
+
+      // Point the mount-scope reader at *this* build's history, so the share button
+      // encodes the board on the table rather than one a re-deal has since replaced.
+      readHistory := (() => Some(history.contents))
 
       // Persist the board's whole undo/redo history after any change (#177), when the
       // driver wired a `~persist` sink. A no-op otherwise — the demos, and any board
@@ -1979,6 +2003,23 @@ let make = (
     // forced position replaces the current board cleanly.
     switch publishLoadState {
     | Some(publish) => publish(state => buildBoard(~initial=state, ~persistThis=false, game))
+    | None => ()
+    }
+
+    // Publish the share-link loader (`ShareLink`): rebuild the board onto a whole
+    // restored history, undo stack and all. `~persistThis=false` for the same reason
+    // the forced-state load above sets it — a board that arrived from someone else's
+    // link is not this device's saved game and must not overwrite it.
+    switch publishLoadHistory {
+    | Some(publish) => publish(restored => buildBoard(~history=restored, ~persistThis=false, game))
+    | None => ()
+    }
+
+    // …and the read side, so the chrome can encode whatever is currently on the
+    // table. Published once per mount; the thunk defers to the mount-scope ref, which
+    // each build repoints at its own history.
+    switch publishReadHistory {
+    | Some(publish) => publish(() => readHistory.contents())
     | None => ()
     }
     container->WebDom.appendChild(boardHost)->ignore

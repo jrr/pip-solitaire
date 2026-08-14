@@ -24,6 +24,11 @@
 @val external appVersion: string = "__APP_VERSION__"
 @val external buildTime: string = "__BUILD_TIME__"
 
+@val external setTimeout: (unit => unit, int) => int = "setTimeout"
+
+// How long the share row's "Link copied…" line stays up before clearing itself.
+let shareStatusMs = 2500
+
 // --- Service-worker registration (vite-plugin-pwa virtual module) -----------
 // `registerSW` registers the worker (with a relative URL, so its scope follows
 // the GitHub Pages subpath) and returns an `updateSW(reloadPage)` function that
@@ -89,6 +94,16 @@ type model = {
   // indicator rather than a status line beneath it (#201).
   refreshMode: option<Refresh.mode>,
   refreshBusy: bool,
+  // The Debug screen's "Share game state" row (`ShareLink`). `shareUrl` is the
+  // encoded link for the board as it stood when the screen opened — computed *then*,
+  // not on the press, because `navigator.share` needs the click's transient
+  // activation and would lose it behind the compression's `await` (see
+  // `ShareLink.deliver`). The board can't move while the menu covers it, so a link
+  // built on open is still current when the button is pressed. `None` means there's
+  // nothing to share (a demo scene) or the encode hasn't finished yet, and the row
+  // renders disabled. `shareStatus` is the transient line reporting what happened.
+  shareUrl: option<string>,
+  shareStatus: option<string>,
 }
 
 type msg =
@@ -112,6 +127,8 @@ type msg =
   | RefreshDetected(Refresh.mode) // service-worker presence detected — sets the button's shape (#112)
   | RefreshStarted // the refresh button was tapped — start spinning the button (#112/#201)
   | RefreshChecked // an update check finished — stop the spinner (a found update surfaces as the About button)
+  | ShareLinkReady(option<string>) // the open Debug screen's board, encoded into a link (`ShareLink`)
+  | ShareStatus(option<string>) // the share row's transient status line; `None` clears it
 
 // `updateSW` only exists once registerSW has run, which needs `dispatch`, which
 // needs the loop to be mounted — so the Reload effect reaches it through a ref
@@ -138,6 +155,19 @@ let restartHook: ref<option<unit => unit>> = ref(None)
 // change, and the debug-states menu (below) calls it after surfacing FreeCell to
 // drop the board into a named `Scenario` position.
 let loadStateHook: ref<option<GameState.t => unit>> = ref(None)
+
+// The active card-table scene's share-link hooks (`ShareLink`), siblings of
+// `loadStateHook`. `readHistoryHook` hands back the live board's undo/redo history
+// so the Debug screen can encode it into a link; `loadHistoryHook` is the way back
+// in, rebuilding the board onto a history a `#g=` link carried. Both are published
+// by every `TableScene` on mount and cleared on each scene change, so on a demo
+// scene there's nothing to share and nothing to restore into.
+let readHistoryHook: ref<option<unit => option<History.t<GameState.t>>>> = ref(None)
+let loadHistoryHook: ref<option<History.t<GameState.t> => unit>> = ref(None)
+
+// The live board's history, or `None` on a scene that has none (a demo) or before
+// a board has mounted. What the share button encodes.
+let currentHistory = () => readHistoryHook.contents->Option.flatMap(read => read())
 
 // The active board's Undo action (#85), sibling of `newGameHook`. The mounted
 // `TableScene` publishes a thunk here on every build (a re-deal republishes the
@@ -274,8 +304,18 @@ let update = (msg, model) =>
       {...model, menuScreen: Menu.Main, hidden: HiddenOptions.reset(model.hidden)},
       Html.noEffect,
     )
+  // Opening the Debug screen clears the previous visit's share link rather than
+  // leaving it up: the board may well have moved on since, and a stale link is worse
+  // than a briefly disabled button. The view kicks off a fresh encode alongside this
+  // message, which arrives back as `ShareLinkReady` and re-enables the row.
   | OpenDebug => (
-      {...model, menuScreen: Menu.Debug, hidden: HiddenOptions.reset(model.hidden)},
+      {
+        ...model,
+        menuScreen: Menu.Debug,
+        hidden: HiddenOptions.reset(model.hidden),
+        shareUrl: None,
+        shareStatus: None,
+      },
       Html.noEffect,
     )
   | BackToSettings => (
@@ -406,6 +446,8 @@ let update = (msg, model) =>
   // An update check finished. Stop the spinner; a pending update surfaces itself
   // through the onNeedRefresh → About "Update" flow, so there's nothing more to do.
   | RefreshChecked => ({...model, refreshBusy: false}, Html.noEffect)
+  | ShareLinkReady(shareUrl) => ({...model, shareUrl}, Html.noEffect)
+  | ShareStatus(shareStatus) => ({...model, shareStatus}, Html.noEffect)
   }
 
 // The scene area (switcher + demos) is built imperatively and owns its own
@@ -441,7 +483,13 @@ let gameScene = (game: Game.t) => {
   // overwritten (the issue's "a `?state=` link doesn't disturb a saved game", and the
   // same for the screenshot report's `?seed=`/`?state=` shots, which must stay
   // side-effect-free).
-  let plainOpen = isFreecell && url.state->Option.isNone && url.seed->Option.isNone
+  // A `#g=` share link addresses an exact board too, so it joins `?state=`/`?seed=`
+  // in disqualifying a plain open: the shared game is neither resumed from storage
+  // nor written back to it, and the recipient's own saved game sits untouched
+  // underneath. Playing on from a shared position is deliberately not persisted —
+  // the same bargain a `?state=` scenario makes.
+  let plainOpen =
+    isFreecell && url.state->Option.isNone && url.seed->Option.isNone && url.shared->Option.isNone
   // Resume a saved game when there is one and this is a plain open; otherwise `None`
   // (nothing saved, corrupt/old data, or a URL-addressed board) means deal fresh.
   // Storage is read when the scene *mounts*, not here where it's built: a scene can
@@ -460,10 +508,16 @@ let gameScene = (game: Game.t) => {
   // from the exact same board the report expects. The fixed-layout demos have no seed
   // to vary, so they mount as-is. When a saved game is resumed the opening deal only
   // supplies the 52 card nodes; every resting position comes from the restored history.
+  //
+  // A `#g=` share link joins `?state=` in taking the fixed deal rather than a random
+  // one. Decompressing the blob is asynchronous, so the board is necessarily built
+  // *before* the shared history can land on it (see the restore below) — and dealing
+  // a random board for those few milliseconds would make the swap read as a glitch.
+  // The fixed deal keeps that opening frame stable and identical every time; the
+  // fly-in is skipped for the same reason.
+  let addressed = url.state->Option.isSome || url.shared->Option.isSome
   let opening =
-    isFreecell && url.state->Option.isNone
-      ? Game.freecellDeal(~seed=url.seed->Option.getOr(randomSeed()))
-      : game
+    isFreecell && !addressed ? Game.freecellDeal(~seed=url.seed->Option.getOr(randomSeed())) : game
   let newDeal = isFreecell ? Some(() => Game.freecellDeal(~seed=randomSeed())) : None
   TableScene.make(
     ~initial=?url.state->Option.flatMap(name => Scenario.forName(game, name)),
@@ -476,6 +530,8 @@ let gameScene = (game: Game.t) => {
     ~publishNewGame=hook => newGameHook := Some(hook),
     ~publishRestart=hook => restartHook := Some(hook),
     ~publishLoadState=hook => loadStateHook := Some(hook),
+    ~publishLoadHistory=hook => loadHistoryHook := Some(hook),
+    ~publishReadHistory=hook => readHistoryHook := Some(hook),
     ~publishUndo=hook => undoHook := Some(hook),
     ~publishRelayout=hook => relayoutHook := Some(hook),
     // Adopt the board's shake control (#235) and, if Wiggle Waggle is already on,
@@ -492,7 +548,10 @@ let gameScene = (game: Game.t) => {
     ~tiltEnabled,
     // Skip the opening-deal fly-in when the URL asks for `?animate=off`, so the
     // board is shown already dealt (the same instant placement reduced-motion gives).
-    ~skipDealAnimation=!url.animate,
+    // A shared board skips the fly-in too: the cards it deals are about to be
+    // replaced by the shared position, so animating them in only draws the eye to a
+    // board that isn't the one being opened.
+    ~skipDealAnimation=!url.animate || url.shared->Option.isSome,
     opening,
   )
 }
@@ -505,6 +564,10 @@ let switcher = SceneSwitcher.render(
     newGameHook := None
     restartHook := None
     loadStateHook := None
+    // Drop the outgoing board's share-link hooks; a demo scene publishes none, so
+    // the Debug screen's share row correctly reports nothing to share there.
+    readHistoryHook := None
+    loadHistoryHook := None
     relayoutHook := None
     // Drop the outgoing board's shake control (#235); its teardown already detached
     // the `devicemotion` listener. The mounting scene republishes its own, and the
@@ -533,6 +596,29 @@ let switcher = SceneSwitcher.render(
     Game.all->Array.map(gameScene),
   ),
 )
+
+// Land a shared game on the board (`ShareLink`). The blob came off the `#g=`
+// fragment synchronously, but inflating it is asynchronous — `DecompressionStream`
+// has no synchronous form — so the board is already mounted from `gameScene`'s
+// fixed opening deal by the time the history arrives, and this drops the real
+// position onto it. That's one frame of a stable, un-animated FreeCell deal before
+// the swap; both are arranged above precisely so this reads as the board settling
+// rather than as a board changing its mind.
+//
+// A blob that doesn't decode (truncated in the paste, or written by an incompatible
+// `SaveState` version) leaves the dealt board exactly where it is: a bad link opens
+// a playable game rather than an error.
+switch url.shared {
+| Some(blob) =>
+  (
+    async () =>
+      switch await ShareLink.historyFrom(blob) {
+      | Some(restored) => loadHistoryHook.contents->Option.forEach(load => load(restored))
+      | None => DebugLog.message("share link: could not decode the shared game")
+      }
+  )()->ignore
+| None => ()
+}
 
 // The debug "states" menu (sibling to the switcher's "Debug scenes"): one row per
 // named FreeCell position (`Scenario.scenariosFor`). Tapping a row surfaces FreeCell
@@ -579,7 +665,23 @@ let view = (model, dispatch) => <>
       dispatch(OpenSettings)
     }}
     onBackToMenu={() => dispatch(BackToMenu)}
-    onOpenDebug={() => dispatch(OpenDebug)}
+    onOpenDebug={() => {
+      dispatch(OpenDebug)
+      // Encode the board *now*, while the menu is going up, so the share button has a
+      // link ready to hand straight to `navigator.share` without an `await` in front
+      // of it (see `ShareLink.deliver`). Nothing can move the board until this screen
+      // is dismissed, so the link stays current for as long as the row is on screen.
+      // A scene with no history to read (a demo) resolves to `None` and the row
+      // stays disabled.
+
+      (
+        async () =>
+          switch currentHistory() {
+          | Some(history) => dispatch(ShareLinkReady(await ShareLink.urlFor(history)))
+          | None => dispatch(ShareLinkReady(None))
+          }
+      )()->ignore
+    }}
     onBackToSettings={() => dispatch(BackToSettings)}
     onNewGame={() => {
       newGameHook.contents->Option.forEach(newGame => newGame())
@@ -596,6 +698,21 @@ let view = (model, dispatch) => <>
     onToggleCutoutDebug={() => dispatch(ToggleCutoutDebug)}
     debugLog={model.debugLog}
     onToggleDebugLog={() => dispatch(ToggleDebugLog)}
+    shareEnabled={model.shareUrl->Option.isSome}
+    shareStatus={model.shareStatus}
+    onShareGame={() =>
+      // Straight into `deliver` with the link encoded on screen-open: no `await`
+      // between the click and `navigator.share`, which is what keeps the gesture's
+      // transient activation intact for the OS share sheet. The status line clears
+      // itself a few seconds later so it doesn't sit there stale.
+      model.shareUrl->Option.forEach(url =>
+        ShareLink.deliver(url)
+        ->Promise.thenResolve(outcome => {
+          dispatch(ShareStatus(Some(ShareLink.message(outcome))))
+          setTimeout(() => dispatch(ShareStatus(None)), shareStatusMs)->ignore
+        })
+        ->ignore
+      )}
     autoCollect={model.autoCollect}
     onToggleAutoCollect={() => dispatch(ToggleAutoCollect)}
     cardTilt={model.cardTilt}
@@ -712,6 +829,10 @@ let dispatch = Html.mount(
     // service-worker state (#112); not busy until an action runs.
     refreshMode: None,
     refreshBusy: false,
+    // The share row is filled in when the Debug screen opens (`ShareLink`), not at
+    // startup — there's no point encoding a board nobody has asked to share.
+    shareUrl: None,
+    shareStatus: None,
   },
   ~update,
   ~view,
