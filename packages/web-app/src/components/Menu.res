@@ -13,11 +13,15 @@
 //
 // **Main screen** — top to bottom:
 //   - the **title** ("Pip"), moved here from the retired Home scene, beside the ✕;
-//   - a **"This game"** section (#156): **New Game** (re-deals a fresh seed) and
-//     **Restart** (re-deals the *same* seed to replay the current deal). New Game
-//     moved here from the top bar; both call the scene's re-deal hooks and close
-//     the menu so the board is visible again. On a scene with no game (a demo)
-//     the handlers are wired to no-op hooks;
+//   - a **"This game"** section (#156): **New Game** (re-deals a fresh seed),
+//     **Restart** (re-deals the *same* seed to replay the current deal) and
+//     **Share** (#98, hands over a `?seed=` link to the deal on the table). New Game
+//     moved here from the top bar; New Game and Restart call the scene's re-deal
+//     hooks and close the menu so the board is visible again. On a scene with no game
+//     (a demo) the handlers are wired to no-op hooks. Share is the odd one of the
+//     three: it *keeps* the menu open, because the line under the buttons reporting
+//     where the link went is the only confirmation there is, and it's disabled on a
+//     board with no deal number to name (`shareDealEnabled`);
 //   - a **"Games"** section — SceneSwitcher's primary game row(s), spliced in as the
 //     `games` node: FreeCell (the game) as a top-level row (#135);
 //   - --- the space between top and bottom grows here (`menu-section--bottom`) ---
@@ -55,10 +59,7 @@
 //     step back up, not all the way out — beside the ✕;
 //     the **Safe-area overlay** toggle (`cutoutDebug` / `onToggleCutoutDebug`) and
 //     the **Console logging** toggle (`debugLog` / `onToggleDebugLog`, #213 — narrates
-//     the UI↔core traffic to the JS console) up top, then the **Copy seed** row
-//     (`seed` / `seedCopied` / `onCopySeed`, #98 — the deal number on the table and a
-//     button that puts it on the clipboard, so a deal can be shared and reopened
-//     with `?seed=`; absent on a board with no deal number), then the two collapsible groups
+//     the UI↔core traffic to the JS console) up top, then the two collapsible groups
 //     that were the old "Debug scenes"/"Debug states": the debug/demo scenes
 //     (`debugScenes`, labelled "scenes") and the named
 //     starting positions (`debugStates`, "states") a tap drops the board into
@@ -111,6 +112,21 @@ type props = {
   onBackToSettings: unit => unit,
   onNewGame: unit => unit,
   onRestart: unit => unit,
+  // "Share" (#98): the main menu's third game button, handing over a link to the
+  // *deal* on the table (`ShareLink.urlForDeal`) — which board to lay out, not the
+  // position it's in. That's the share a player reaches for mid-game, so it sits with
+  // New Game and Restart rather than down in Debug beside "Share game state", which
+  // carries the whole undo history and answers a different question.
+  //
+  // `shareDealSeed` is the deal number the board reports, and `None` is why the
+  // button greys out: a demo scene has no seed, and neither does a game restored from
+  // a save written before deal numbers were kept. The seed is passed rather than a
+  // bare bool so the row can *name* the deal — a share is easier to trust when you
+  // can see the number going out. `shareDealStatus` is the transient line under the
+  // buttons reporting where the link went.
+  shareDealSeed: option<int>,
+  shareDealStatus: option<string>,
+  onShareDeal: unit => unit,
   games: Html.element,
   debugScenes: Html.element,
   debugStates: Html.element,
@@ -118,14 +134,15 @@ type props = {
   onToggleCutoutDebug: unit => unit,
   debugLog: bool,
   onToggleDebugLog: unit => unit,
-  // The deal number showing on the table (#98) and the Copy seed action for it.
-  // `None` hides the row entirely: a fixed-layout demo has no deal number, and a
-  // button offering to copy nothing is worse than no button. `seedCopied` is the
-  // last tap's outcome — `Some(true)` copied, `Some(false)` couldn't (no clipboard
-  // API on an insecure origin, or permission denied), `None` the resting state.
-  seed: option<int>,
-  seedCopied: option<bool>,
-  onCopySeed: unit => unit,
+  // "Share game state" (`ShareLink`): the Debug screen's action row. `shareEnabled`
+  // is whether a link has been encoded for the board behind this screen — false on a
+  // scene with no game, and for the moment between opening the screen and the encode
+  // resolving, which is what the disabled state covers. `shareStatus` is the
+  // transient line reporting where the link went; it replaces the row's description
+  // while it's up, so the row doesn't change height as it comes and goes.
+  shareEnabled: bool,
+  shareStatus: option<string>,
+  onShareGame: unit => unit,
   autoCollect: bool,
   onToggleAutoCollect: unit => unit,
   cardTilt: bool,
@@ -168,6 +185,39 @@ let toggleRow = (~label, ~desc, ~on, ~onToggle) =>
     <span className="menu-toggle__switch" />
   </button>
 
+// An action row: the same box and label/description stack as `toggleRow`, but it
+// *does* something once rather than flipping a setting, so it carries no switch and
+// stays a plain `<button>`. `enabled` drives the real `disabled` attribute — a
+// disabled button emits no click at all, so the handler guard below is belt and
+// braces — and the muted styling that goes with it.
+let actionRow = (~label, ~desc, ~enabled, ~onClick) =>
+  <button
+    className="menu-action-row"
+    onClick={_ =>
+      if enabled {
+        onClick()
+      }}
+    attrs={enabled ? [("type", "button")] : [("type", "button"), ("disabled", "")]}
+  >
+    <span className="menu-toggle__text">
+      <span className="menu-toggle__label"> {Html.string(label)} </span>
+      <span className="menu-toggle__desc"> {Html.string(desc)} </span>
+    </span>
+  </button>
+
+// The line under the "This game" buttons (#98). One line, three things to say, in
+// priority order: what just happened to a share, else which deal is on the table,
+// else why there's nothing to share. It's always rendered — the same slot in every
+// state — so a share confirmation appears and clears without the buttons above it
+// moving, and so the deal number is on screen to be read (and typed by hand) on a
+// browser where the link can't be delivered at all.
+let dealLine = (~seed: option<int>, ~status: option<string>): string =>
+  switch (status, seed) {
+  | (Some(status), _) => status
+  | (None, Some(seed)) => "Deal " ++ Int.toString(seed)
+  | (None, None) => "No deal number for this board."
+  }
+
 // The "Wiggle Waggle" row (#235): the shake-to-jostle switch. Unlike the plain
 // `toggleRow`, its label is title-cased and it deliberately carries *no* description
 // — the other settings explain themselves; finding out what this one does is the
@@ -194,47 +244,6 @@ let wiggleRow = (~state: Motion.state, ~onToggle) => {
   </button>
 }
 
-// The Debug screen's "Copy seed" row (#98): the deal number on the table, with a
-// button that puts it on the clipboard so it can be shared — the other player pastes
-// it into `?seed=` and is dealt the identical board (the shuffle is deterministic, so
-// the same number reproduces the same layout everywhere).
-//
-// It's laid out as a `menu-toggle` — label and description on the left, control on
-// the right — because it *is* that shape; only the right-hand control differs, a
-// "Copy" button in place of a switch. Reusing the class keeps it aligned with the two
-// switches above it without a second row style to maintain.
-//
-// The seed is shown, not just copied: it's the value being shared, and on a browser
-// where the clipboard is unavailable (an insecure origin — a phone on a dev box's LAN
-// IP, exactly where you'd want to read a deal number off the screen) it's still there
-// to copy by hand. That's also why a failed copy says so rather than silently doing
-// nothing: the number stays legible above the message.
-let copySeedRow = (~seed: int, ~copied: option<bool>, ~onCopy) => {
-  // Only a *successful* copy changes the button: a failure leaves it saying "Copy"
-  // (the thing to try again) and puts the explanation in the description line below.
-  let copiedOk = copied == Some(true)
-  <div className="menu-toggle menu-copy">
-    <span className="menu-toggle__text">
-      <span className="menu-toggle__label"> {Html.string("Deal " ++ Int.toString(seed))} </span>
-      <span className="menu-toggle__desc">
-        {Html.string(
-          switch copied {
-          | Some(false) => "Couldn't copy — this browser blocks clipboard access here."
-          | Some(true) | None => "Open this deal anywhere with ?seed=" ++ Int.toString(seed)
-          },
-        )}
-      </span>
-    </span>
-    <button
-      className={copiedOk ? "menu-copy__button menu-copy__button--done" : "menu-copy__button"}
-      onClick={_ => onCopy()}
-      attrs={[("type", "button"), ("aria-label", "Copy seed " ++ Int.toString(seed))]}
-    >
-      {Html.string(copiedOk ? "Copied" : "Copy")}
-    </button>
-  </div>
-}
-
 let make = ({
   open_,
   screen,
@@ -245,6 +254,9 @@ let make = ({
   onBackToSettings,
   onNewGame,
   onRestart,
+  shareDealSeed,
+  shareDealStatus,
+  onShareDeal,
   games,
   debugScenes,
   debugStates,
@@ -252,9 +264,9 @@ let make = ({
   onToggleCutoutDebug,
   debugLog,
   onToggleDebugLog,
-  seed,
-  seedCopied,
-  onCopySeed,
+  shareEnabled,
+  shareStatus,
+  onShareGame,
   autoCollect,
   onToggleAutoCollect,
   cardTilt,
@@ -391,12 +403,26 @@ let make = ({
                 ~on=debugLog,
                 ~onToggle=onToggleDebugLog,
               )}
-              {switch // The deal number and its Copy button (#98), shown only on a board that
-              // has one — a demo scene reports no seed, so the row simply isn't there.
-              seed {
-              | Some(seed) => copySeedRow(~seed, ~copied=seedCopied, ~onCopy=onCopySeed)
-              | None => Html.array([])
-              }}
+              {
+                // "Share game state" (`ShareLink`): encode the board behind this
+                // screen into a link and hand it to the OS share sheet, or failing
+                // that the clipboard. The status line takes over the description
+                // while it's up, so reporting where the link went doesn't reflow the
+                // rows around it.
+                let desc = switch shareStatus {
+                | Some(status) => status
+                | None =>
+                  shareEnabled
+                    ? "Copy a link that reopens this exact game, undo history and all."
+                    : "No game on screen to share."
+                }
+                actionRow(
+                  ~label="Share game state",
+                  ~desc,
+                  ~enabled=shareEnabled,
+                  ~onClick=onShareGame,
+                )
+              }
               {Html.node(debugScenes)}
               {Html.node(debugStates)}
             </nav>
@@ -422,7 +448,36 @@ let make = ({
               >
                 {Html.string("Restart")}
               </button>
+              {
+                // Share (#98). Disabled — the real attribute, so no click is emitted
+                // at all, with the handler guard behind it as belt and braces — when
+                // the board has no deal number to hand out. The accessible name names
+                // the deal, since "Share" alone doesn't say *what* is being shared and
+                // the number is the whole content of the link.
+                let enabled = shareDealSeed->Option.isSome
+                <button
+                  className="menu-button"
+                  onClick={_ =>
+                    if enabled {
+                      onShareDeal()
+                    }}
+                  attrs={enabled
+                    ? [
+                        ("type", "button"),
+                        (
+                          "aria-label",
+                          "Share deal " ++ shareDealSeed->Option.mapOr("", n => Int.toString(n)),
+                        ),
+                      ]
+                    : [("type", "button"), ("disabled", "")]}
+                >
+                  {Html.string("Share")}
+                </button>
+              }
             </div>
+            <p className="menu-share-line" attrs={[("aria-live", "polite")]}>
+              {Html.string(dealLine(~seed=shareDealSeed, ~status=shareDealStatus))}
+            </p>
           </div>
           <nav className="menu-section" attrs={[("aria-label", "Games")]}>
             <h2 className="menu-section__heading"> {Html.string("Games")} </h2>

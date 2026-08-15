@@ -8,7 +8,7 @@
 //   - `<TopBar>` — Menu · Undo. Always visible across the top; the Menu
 //     button carries a green pip when a version update is waiting (#165).
 //   - `<Menu>` — the slide-over holding the title ("Pip", moved out of the
-//     retired Home scene), a **Game** section (New Game · Restart, #156), the
+//     retired Home scene), a **Game** section (New Game · Restart · Share, #156/#98), the
 //     debug/demo scene list as tappable rows, and the About footer (build/version
 //     info plus the conditional "Update" button beside it, #165).
 // The scene area underneath is still the imperative `SceneSwitcher`; its scene
@@ -23,6 +23,11 @@
 // if the build ran without git.
 @val external appVersion: string = "__APP_VERSION__"
 @val external buildTime: string = "__BUILD_TIME__"
+
+@val external setTimeout: (unit => unit, int) => int = "setTimeout"
+
+// How long the share row's "Link copied…" line stays up before clearing itself.
+let shareStatusMs = 2500
 
 // --- Service-worker registration (vite-plugin-pwa virtual module) -----------
 // `registerSW` registers the worker (with a relative URL, so its scope follows
@@ -82,17 +87,6 @@ type model = {
   // of the Settings screen so a half-finished run can't be resumed later.
   hidden: HiddenOptions.t,
   canUndo: bool,
-  // The deal number on the table (#98), reported by the board on every build and
-  // `None` on a scene with no reproducible deal. It drives the Debug screen's
-  // "Copy seed" row: the seed it shows and hands to the clipboard, and — being
-  // `None` — whether the row appears at all.
-  seed: option<int>,
-  // The outcome of the last "Copy seed" tap, shown as transient feedback on the row
-  // and cleared by a timer (see `SeedCopied`/`SeedFeedbackCleared`). `None` is the
-  // resting state: no tap yet, or the feedback has expired. A copy can genuinely
-  // fail — no clipboard API on an insecure origin, or a denied permission — so this
-  // distinguishes the two outcomes rather than always claiming success.
-  seedCopied: option<bool>,
   // The adaptive Settings refresh control (#112). `refreshMode` is `None` until
   // `Refresh.detect` resolves (and stays effectively hidden on an unsupported
   // browser); it decides the button's "Refresh" vs "Check for updates" shape.
@@ -100,6 +94,24 @@ type model = {
   // indicator rather than a status line beneath it (#201).
   refreshMode: option<Refresh.mode>,
   refreshBusy: bool,
+  // The Debug screen's "Share game state" row (`ShareLink`). `shareUrl` is the
+  // encoded link for the board as it stood when the screen opened — computed *then*,
+  // not on the press, because `navigator.share` needs the click's transient
+  // activation and would lose it behind the compression's `await` (see
+  // `ShareLink.deliver`). The board can't move while the menu covers it, so a link
+  // built on open is still current when the button is pressed. `None` means there's
+  // nothing to share (a demo scene) or the encode hasn't finished yet, and the row
+  // renders disabled. `shareStatus` is the transient line reporting what happened.
+  shareUrl: option<string>,
+  shareStatus: option<string>,
+  // The main menu's Share button (#98): the deal number of the board on the table,
+  // reported by the scene (`~onDeal` below), and the transient line under the buttons
+  // reporting where its link went. `None` greys the button out — a demo scene, or a
+  // game resumed from a save with no deal number recorded. Unlike `shareUrl` above
+  // there's nothing to prepare: the link is a `?seed=` string built on the press
+  // (`ShareLink.urlForDeal`), so only the number has to be to hand.
+  dealSeed: option<int>,
+  shareDealStatus: option<string>,
 }
 
 type msg =
@@ -120,12 +132,13 @@ type msg =
   | ToggleDebugLog // the Debug screen's console-logging switch (#213)
   | SettingsTitleTapped // a tap on the Settings screen's title — ten reveal the hidden settings
   | HistoryChanged(bool) // whether the board can undo after a move (#85)
-  | DealChanged(option<int>) // the board reported the deal number it's showing (#98)
-  | SeedCopied(bool) // the clipboard write settled — `true` if the seed landed
-  | SeedFeedbackCleared // the copy feedback's timer elapsed — back to the resting label
   | RefreshDetected(Refresh.mode) // service-worker presence detected — sets the button's shape (#112)
   | RefreshStarted // the refresh button was tapped — start spinning the button (#112/#201)
   | RefreshChecked // an update check finished — stop the spinner (a found update surfaces as the About button)
+  | ShareLinkReady(option<string>) // the open Debug screen's board, encoded into a link (`ShareLink`)
+  | ShareStatus(option<string>) // the share row's transient status line; `None` clears it
+  | DealChanged(option<int>) // the board reported which deal it's showing (#98)
+  | ShareDealStatus(option<string>) // the Share button's transient status line; `None` clears it
 
 // `updateSW` only exists once registerSW has run, which needs `dispatch`, which
 // needs the loop to be mounted — so the Reload effect reaches it through a ref
@@ -153,6 +166,29 @@ let restartHook: ref<option<unit => unit>> = ref(None)
 // drop the board into a named `Scenario` position.
 let loadStateHook: ref<option<GameState.t => unit>> = ref(None)
 
+// The active card-table scene's share-link hooks (`ShareLink`), siblings of
+// `loadStateHook`. `readHistoryHook` hands back the live board's undo/redo history
+// so the Debug screen can encode it into a link; `loadHistoryHook` is the way back
+// in, rebuilding the board onto a history a `#g=` link carried. Both are published
+// by every `TableScene` on mount and cleared on each scene change, so on a demo
+// scene there's nothing to share and nothing to restore into.
+let readHistoryHook: ref<option<unit => option<History.t<GameState.t>>>> = ref(None)
+let loadHistoryHook: ref<option<History.t<GameState.t> => unit>> = ref(None)
+
+// The live board's history, or `None` on a scene that has none (a demo) or before
+// a board has mounted. What the share button encodes.
+let currentHistory = () => readHistoryHook.contents->Option.flatMap(read => read())
+
+// Whether a `#g=` link's game has actually reached the board. It gates saving on a
+// shared open (see `gameScene`): a shared game takes over storage the moment it
+// lands, but not before — the placeholder deal the board wears while the blob
+// inflates must never be written over the player's own saved game, and a link that
+// turns out to be corrupt must leave that game untouched.
+//
+// This flag only exists because a shared open builds the board twice (#259). Close
+// that gap and the placeholder build goes with it, and so does the need for this.
+let shareLanded = ref(false)
+
 // The active board's Undo action (#85), sibling of `newGameHook`. The mounted
 // `TableScene` publishes a thunk here on every build (a re-deal republishes the
 // fresh board's), the switcher's `onActivate` clears it before each scene change,
@@ -177,29 +213,19 @@ let initialCanUndo = ref(false)
 // the button disabled.
 let reportHistory: ref<bool => unit> = ref(canUndo => initialCanUndo := canUndo)
 
-// The deal number the opening board reports (#98), captured for exactly the reason
-// `initialCanUndo` is: the first report fires while the switcher mounts the initial
-// scene during module init, before `dispatch` exists, so without somewhere to land
-// the opening deal's seed the Debug screen would show "no deal number" until the
-// first New Game. Random-seeded opens make that the common case, not a corner.
-let initialSeed: ref<option<int>> = ref(None)
+// The deal number the board reports during its *opening* mount (#98), captured to
+// seed the model — the same pre-mount problem `initialCanUndo` solves, and here it's
+// the ordinary case rather than a corner: every plain open deals a board and reports
+// its number while the switcher mounts the initial scene, which is during module
+// init, before `dispatch` exists. Without this the Share button would open dark on
+// every load and only light up after a New Game.
+let initialDealSeed: ref<option<int>> = ref(None)
 
-// The board's deal-number channel (#98), twin of `reportHistory`: every board build
-// reports the seed showing (`None` on a demo). Pre-mount it stashes the value for the
-// model's init; after mount it dispatches. Reset to `None` on each scene change so a
-// non-game scene doesn't leave the previous board's seed on offer.
-let reportDeal: ref<option<int> => unit> = ref(seed => initialSeed := seed)
-
-// The "Copy seed" feedback timer (#98). The row reports the copy's outcome for a
-// beat and then goes back to its resting label; this holds the pending clear so a
-// second tap can cancel the first one's timer before arming its own. Without that
-// cancel, two taps in quick succession leave the earlier timer running, and it
-// would wipe the *later* tap's feedback almost as soon as it appeared.
-type timeoutId
-@val @scope("window") external setTimeout: (unit => unit, int) => timeoutId = "setTimeout"
-@val @scope("window") external clearTimeout: timeoutId => unit = "clearTimeout"
-let seedFeedbackTimer: ref<option<timeoutId>> = ref(None)
-let seedFeedbackMs = 1600
+// The board's deal-number channel (#98), sibling of `reportHistory`: the deal now on
+// the table, for the menu's Share button. Filled with a real dispatcher just after
+// mount; until then it stashes the value for the model to read at init, and it's
+// reset to `None` on each scene change so a demo scene offers nothing to share.
+let reportDeal: ref<option<int> => unit> = ref(seed => initialDealSeed := seed)
 
 // Closing the menu means dispatching into the loop, but a scene row is an
 // imperative listener built before `dispatch` exists (like `updateSW`). It
@@ -284,17 +310,6 @@ let update = (msg, model) =>
     )
   | HistoryChanged(canUndo) =>
     canUndo == model.canUndo ? (model, Html.noEffect) : ({...model, canUndo}, Html.noEffect) // no change — don't re-render
-  // The board reported which deal it's showing (#98). Like `HistoryChanged`, an
-  // unchanged value doesn't re-render. A new deal also drops any lingering copy
-  // feedback: "Copied" beside a seed you didn't copy would be a lie.
-  | DealChanged(seed) =>
-    seed == model.seed
-      ? (model, Html.noEffect)
-      : ({...model, seed, seedCopied: None}, Html.noEffect)
-  // A clipboard write settled (`true` if the seed landed). The row shows the outcome
-  // until the timer set alongside this dispatch clears it.
-  | SeedCopied(ok) => ({...model, seedCopied: Some(ok)}, Html.noEffect)
-  | SeedFeedbackCleared => ({...model, seedCopied: None}, Html.noEffect)
   | CloseMenu =>
     model.menuOpen
       ? (
@@ -323,8 +338,18 @@ let update = (msg, model) =>
       {...model, menuScreen: Menu.Main, hidden: HiddenOptions.reset(model.hidden)},
       Html.noEffect,
     )
+  // Opening the Debug screen clears the previous visit's share link rather than
+  // leaving it up: the board may well have moved on since, and a stale link is worse
+  // than a briefly disabled button. The view kicks off a fresh encode alongside this
+  // message, which arrives back as `ShareLinkReady` and re-enables the row.
   | OpenDebug => (
-      {...model, menuScreen: Menu.Debug, hidden: HiddenOptions.reset(model.hidden)},
+      {
+        ...model,
+        menuScreen: Menu.Debug,
+        hidden: HiddenOptions.reset(model.hidden),
+        shareUrl: None,
+        shareStatus: None,
+      },
       Html.noEffect,
     )
   | BackToSettings => (
@@ -455,6 +480,16 @@ let update = (msg, model) =>
   // An update check finished. Stop the spinner; a pending update surfaces itself
   // through the onNeedRefresh → About "Update" flow, so there's nothing more to do.
   | RefreshChecked => ({...model, refreshBusy: false}, Html.noEffect)
+  | ShareLinkReady(shareUrl) => ({...model, shareUrl}, Html.noEffect)
+  | ShareStatus(shareStatus) => ({...model, shareStatus}, Html.noEffect)
+  // A new deal reached the table (#98). Whatever status line the previous deal's
+  // share left up goes with it — "Link copied to clipboard." must not sit under a
+  // number it no longer refers to.
+  | DealChanged(dealSeed) =>
+    dealSeed == model.dealSeed
+      ? (model, Html.noEffect) // no change — don't re-render
+      : ({...model, dealSeed, shareDealStatus: None}, Html.noEffect)
+  | ShareDealStatus(shareDealStatus) => ({...model, shareDealStatus}, Html.noEffect)
   }
 
 // The scene area (switcher + demos) is built imperatively and owns its own
@@ -490,7 +525,15 @@ let gameScene = (game: Game.t) => {
   // overwritten (the issue's "a `?state=` link doesn't disturb a saved game", and the
   // same for the screenshot report's `?seed=`/`?state=` shots, which must stay
   // side-effect-free).
-  let plainOpen = isFreecell && url.state->Option.isNone && url.seed->Option.isNone
+  // A `#g=` share link is the one addressed open that *does* touch storage, and it
+  // splits the two halves apart: it doesn't resume (the link says which board to
+  // open, so reading the save would be pointless), but once the shared game lands it
+  // **takes over** — becoming the saved game, with play from there saving as usual,
+  // exactly as if it had been dealt here. Opening someone's link adopts their game
+  // rather than borrowing it, so the two halves are gated separately below.
+  let sharedOpen = isFreecell && url.shared->Option.isSome
+  let plainOpen =
+    isFreecell && url.state->Option.isNone && url.seed->Option.isNone && url.shared->Option.isNone
   // Resume a saved game when there is one and this is a plain open; otherwise `None`
   // (nothing saved, corrupt/old data, or a URL-addressed board) means deal fresh.
   // Storage is read when the scene *mounts*, not here where it's built: a scene can
@@ -509,10 +552,17 @@ let gameScene = (game: Game.t) => {
   // from the exact same board the report expects. The fixed-layout demos have no seed
   // to vary, so they mount as-is. When a saved game is resumed the opening deal only
   // supplies the 52 card nodes; every resting position comes from the restored history.
+  //
+  // A `#g=` share link joins `?state=` in taking the fixed deal rather than a random
+  // one. Decompressing the blob is asynchronous, so the board is necessarily built
+  // *before* the shared history can land on it (see the restore below) — and dealing
+  // a random board for that frame would make the swap read as a glitch. The fixed
+  // deal keeps it stable and identical every time; the fly-in is skipped for the
+  // same reason. Both are mitigations, not a fix — see #259, which measures the gap
+  // (sub-millisecond, so one render frame) and weighs the ways to close it.
+  let addressed = url.state->Option.isSome || url.shared->Option.isSome
   let opening =
-    isFreecell && url.state->Option.isNone
-      ? Game.freecellDeal(~seed=url.seed->Option.getOr(randomSeed()))
-      : game
+    isFreecell && !addressed ? Game.freecellDeal(~seed=url.seed->Option.getOr(randomSeed())) : game
   let newDeal = isFreecell ? Some(() => Game.freecellDeal(~seed=randomSeed())) : None
   TableScene.make(
     ~initial=?url.state->Option.flatMap(name => Scenario.forName(game, name)),
@@ -520,11 +570,26 @@ let gameScene = (game: Game.t) => {
     // board a sink that writes each change back to storage. New Game/Restart/every
     // move flow through this same sink, so the saved game always tracks the live one.
     ~loadHistory,
-    ~persist=?plainOpen ? Some(history => SavedGame.save(game.id, history)) : None,
+    // A plain open saves from the first build. A shared open saves too, but only
+    // from the moment the shared game actually lands (`shareLanded`) — the fixed
+    // deal the board is built from while the blob inflates is scaffolding, and
+    // writing *that* to storage would clobber the player's own game with a board
+    // nobody asked for. It also means a link that fails to decode leaves the saved
+    // game exactly as it was: nothing landed, so nothing is written.
+    ~persist=?plainOpen || sharedOpen
+      ? Some(
+          history =>
+            if plainOpen || shareLanded.contents {
+              SavedGame.save(game.id, history)
+            },
+        )
+      : None,
     ~newDeal?,
     ~publishNewGame=hook => newGameHook := Some(hook),
     ~publishRestart=hook => restartHook := Some(hook),
     ~publishLoadState=hook => loadStateHook := Some(hook),
+    ~publishLoadHistory=hook => loadHistoryHook := Some(hook),
+    ~publishReadHistory=hook => readHistoryHook := Some(hook),
     ~publishUndo=hook => undoHook := Some(hook),
     ~publishRelayout=hook => relayoutHook := Some(hook),
     // Adopt the board's shake control (#235) and, if Wiggle Waggle is already on,
@@ -537,12 +602,39 @@ let gameScene = (game: Game.t) => {
       }
     },
     ~onHistory=canUndo => reportHistory.contents(canUndo),
-    ~onDeal=seed => reportDeal.contents(seed),
+    // The deal number behind the board, resolved from what the scene can see to what
+    // is actually true of the game on screen (#98).
+    //
+    // `Some(n)` is a board freshly dealt from `n` — the opening deal, a New Game, a
+    // Restart. When this open is one that saves, the number is saved with it: it's
+    // the one fact the history doesn't carry (see `SavedGame.saveSeed`), and without
+    // it the *next* session's resumed game couldn't be shared at all.
+    //
+    // `None` from the scene means the board is showing something other than a deal's
+    // opening position — a restored history or a forced state. On a plain open that's
+    // the resume path, and the deal number is exactly what was stored last time, so
+    // it's read back here; on any other open (a `?state=` scenario, a `#g=` shared
+    // game) there's genuinely no deal to name and the Share button stays dark rather
+    // than offering a board nobody is looking at.
+    ~onDeal=seed =>
+      reportDeal.contents(
+        switch seed {
+        | Some(n) =>
+          if plainOpen || (sharedOpen && shareLanded.contents) {
+            SavedGame.saveSeed(game.id, n)
+          }
+          Some(n)
+        | None => plainOpen ? SavedGame.loadSeed(game.id) : None
+        },
+      ),
     ~options,
     ~tiltEnabled,
     // Skip the opening-deal fly-in when the URL asks for `?animate=off`, so the
     // board is shown already dealt (the same instant placement reduced-motion gives).
-    ~skipDealAnimation=!url.animate,
+    // A shared board skips the fly-in too: the cards it deals are about to be
+    // replaced by the shared position, so animating them in only draws the eye to a
+    // board that isn't the one being opened.
+    ~skipDealAnimation=!url.animate || url.shared->Option.isSome,
     opening,
   )
 }
@@ -555,6 +647,10 @@ let switcher = SceneSwitcher.render(
     newGameHook := None
     restartHook := None
     loadStateHook := None
+    // Drop the outgoing board's share-link hooks; a demo scene publishes none, so
+    // the Debug screen's share row correctly reports nothing to share there.
+    readHistoryHook := None
+    loadHistoryHook := None
     relayoutHook := None
     // Drop the outgoing board's shake control (#235); its teardown already detached
     // the `devicemotion` listener. The mounting scene republishes its own, and the
@@ -564,10 +660,8 @@ let switcher = SceneSwitcher.render(
     // the mounting scene republishes and reports its own history (#85).
     undoHook := None
     reportHistory.contents(false)
-    // Clear the outgoing board's deal number the same way (#98). A `TableScene`
-    // republishes its own as it builds, but a non-table scene (the spinner, the
-    // gallery) never reports at all — without this reset its Debug screen would
-    // still offer the seed of a board that's no longer on the table.
+    // …and clear the deal number with it (#98), so the Share button is dark for the
+    // moment between scenes; the mounting scene reports its own (a demo reports none).
     reportDeal.contents(None)
     closeMenu.contents()
   },
@@ -588,6 +682,44 @@ let switcher = SceneSwitcher.render(
     Game.all->Array.map(gameScene),
   ),
 )
+
+// Land a shared game on the board (`ShareLink`). The blob came off the `#g=`
+// fragment synchronously, but inflating it is asynchronous — `DecompressionStream`
+// has no synchronous form — so the board is already mounted from `gameScene`'s
+// fixed opening deal by the time the history arrives, and this drops the real
+// position onto it. That's one frame of a stable, un-animated FreeCell deal before
+// the swap; both are arranged above precisely so this reads as the board settling
+// rather than as a board changing its mind. The frame itself is #259.
+//
+// Landing is also the point the shared game takes over storage: `shareLanded` is
+// set first, so the rebuild this triggers writes itself through `gameScene`'s
+// persist sink and every later move follows it. From here on it's simply the saved
+// game, indistinguishable from one dealt on this device.
+//
+// A blob that doesn't decode (truncated in the paste, or written by an incompatible
+// `SaveState` version) leaves the dealt board exactly where it is: a bad link opens
+// a playable game rather than an error. `shareLanded` stays false in that case, so
+// the placeholder board is never saved and whatever game this device already had is
+// still there on the next plain load.
+switch url.shared {
+| Some(blob) =>
+  (
+    async () =>
+      switch await ShareLink.historyFrom(blob) {
+      | Some(restored) =>
+        shareLanded := true
+        // The shared game takes over storage, so the previous game's deal number must
+        // not stay behind to be read as its own (#98): a shared position was never
+        // dealt from a number here, and a later resume asking "which deal is this?"
+        // has to be told there isn't one rather than handed the last one this device
+        // dealt for itself.
+        SavedGame.clearSeed(Game.freecell.id)
+        loadHistoryHook.contents->Option.forEach(load => load(restored))
+      | None => DebugLog.message("share link: could not decode the shared game")
+      }
+  )()->ignore
+| None => ()
+}
 
 // The debug "states" menu (sibling to the switcher's "Debug scenes"): one row per
 // named FreeCell position (`Scenario.scenariosFor`). Tapping a row surfaces FreeCell
@@ -634,7 +766,23 @@ let view = (model, dispatch) => <>
       dispatch(OpenSettings)
     }}
     onBackToMenu={() => dispatch(BackToMenu)}
-    onOpenDebug={() => dispatch(OpenDebug)}
+    onOpenDebug={() => {
+      dispatch(OpenDebug)
+      // Encode the board *now*, while the menu is going up, so the share button has a
+      // link ready to hand straight to `navigator.share` without an `await` in front
+      // of it (see `ShareLink.deliver`). Nothing can move the board until this screen
+      // is dismissed, so the link stays current for as long as the row is on screen.
+      // A scene with no history to read (a demo) resolves to `None` and the row
+      // stays disabled.
+
+      (
+        async () =>
+          switch currentHistory() {
+          | Some(history) => dispatch(ShareLinkReady(await ShareLink.urlFor(history)))
+          | None => dispatch(ShareLinkReady(None))
+          }
+      )()->ignore
+    }}
     onBackToSettings={() => dispatch(BackToSettings)}
     onNewGame={() => {
       newGameHook.contents->Option.forEach(newGame => newGame())
@@ -644,6 +792,28 @@ let view = (model, dispatch) => <>
       restartHook.contents->Option.forEach(restart => restart())
       dispatch(CloseMenu)
     }}
+    shareDealSeed={model.dealSeed}
+    shareDealStatus={model.shareDealStatus}
+    onShareDeal={() =>
+      // Share the *deal* (#98). The link is a `?seed=` string, so it's built right
+      // here and handed straight to `deliver` — no `await` between the click and
+      // `navigator.share`, which is what keeps the gesture's transient activation
+      // intact for the OS share sheet (the Debug screen's whole-game share has to
+      // encode ahead of time for exactly this reason; this one doesn't).
+      //
+      // The menu deliberately stays open, unlike New Game and Restart: the status
+      // line under the buttons is the only confirmation the player gets, and on a
+      // desktop browser — where the link goes quietly onto the clipboard with no OS
+      // sheet to acknowledge it — closing over it would leave nothing to see. It
+      // clears itself a few seconds later so it can't go stale.
+      model.dealSeed->Option.forEach(seed =>
+        ShareLink.deliver(ShareLink.urlForDeal(seed))
+        ->Promise.thenResolve(outcome => {
+          dispatch(ShareDealStatus(Some(ShareLink.message(outcome))))
+          setTimeout(() => dispatch(ShareDealStatus(None)), shareStatusMs)->ignore
+        })
+        ->ignore
+      )}
     games={switcher.controls}
     debugScenes={switcher.debugScenes}
     debugStates={debugStates}
@@ -651,33 +821,21 @@ let view = (model, dispatch) => <>
     onToggleCutoutDebug={() => dispatch(ToggleCutoutDebug)}
     debugLog={model.debugLog}
     onToggleDebugLog={() => dispatch(ToggleDebugLog)}
-    seed={model.seed}
-    seedCopied={model.seedCopied}
-    // Copy the deal number (#98). The clipboard write is async and can fail, so the
-    // outcome is routed back through the loop — the same shape as the motion-permission
-    // and update-check handlers above, which is why the async work lives here in the
-    // view rather than in `update` (which has no `dispatch`).
-    //
-    // The copied text is the bare number, not a URL: it's what `?seed=` takes, and it
-    // pastes usefully into a chat message or straight into the address bar of a link
-    // someone already has. Building a full URL here would bake in whatever host this
-    // build happens to be served from, which for a dev build is a LAN IP no one else
-    // can reach.
-    onCopySeed={() =>
-      switch model.seed {
-      | None => () // no deal number showing — the row isn't rendered, so this can't fire
-      | Some(seed) =>
-        Clipboard.copy(Int.toString(seed))
-        ->Promise.thenResolve(ok => {
-          dispatch(SeedCopied(ok))
-          // Arm the timer that puts the row back to its resting label, cancelling any
-          // still pending from an earlier tap so *this* tap's feedback gets its full
-          // beat rather than being cut short by the previous one's clear.
-          seedFeedbackTimer.contents->Option.forEach(clearTimeout)
-          seedFeedbackTimer := Some(setTimeout(() => dispatch(SeedFeedbackCleared), seedFeedbackMs))
+    shareEnabled={model.shareUrl->Option.isSome}
+    shareStatus={model.shareStatus}
+    onShareGame={() =>
+      // Straight into `deliver` with the link encoded on screen-open: no `await`
+      // between the click and `navigator.share`, which is what keeps the gesture's
+      // transient activation intact for the OS share sheet. The status line clears
+      // itself a few seconds later so it doesn't sit there stale.
+      model.shareUrl->Option.forEach(url =>
+        ShareLink.deliver(url)
+        ->Promise.thenResolve(outcome => {
+          dispatch(ShareStatus(Some(ShareLink.message(outcome))))
+          setTimeout(() => dispatch(ShareStatus(None)), shareStatusMs)->ignore
         })
         ->ignore
-      }}
+      )}
     autoCollect={model.autoCollect}
     onToggleAutoCollect={() => dispatch(ToggleAutoCollect)}
     cardTilt={model.cardTilt}
@@ -790,17 +948,21 @@ let dispatch = Html.mount(
     // mount above — before `dispatch` existed — so it's read back from
     // `initialCanUndo` here rather than hardcoded off (#85).
     canUndo: initialCanUndo.contents,
-    // Seeded from the board's opening deal report (#98), for the same reason
-    // `canUndo` is: that report fired during the switcher's initial mount above,
-    // before `dispatch` existed, so it's read back from `initialSeed` rather than
-    // started empty — otherwise the seed of the deal you're actually looking at
-    // wouldn't be on offer until the next re-deal.
-    seed: initialSeed.contents,
-    seedCopied: None, // nothing copied yet
     // The refresh button starts hidden until `Refresh.detect` reports the
     // service-worker state (#112); not busy until an action runs.
     refreshMode: None,
     refreshBusy: false,
+    // The share row is filled in when the Debug screen opens (`ShareLink`), not at
+    // startup — there's no point encoding a board nobody has asked to share.
+    shareUrl: None,
+    shareStatus: None,
+    // Seeded from the board's opening deal report (#98), for the same reason
+    // `canUndo` is: it fired during the switcher's initial mount above, before
+    // `dispatch` existed. On a plain open that report *is* the deal number the Share
+    // button offers, so reading it back here is what lets the button work on the
+    // first menu open rather than only after a re-deal.
+    dealSeed: initialDealSeed.contents,
+    shareDealStatus: None,
   },
   ~update,
   ~view,
@@ -832,8 +994,8 @@ if Motion.isOn(wiggleInit) {
 // disables as moves are played and undone (#85).
 reportHistory := (canUndo => dispatch(HistoryChanged(canUndo)))
 
-// …and the same for its deal-number reports (#98), so the Debug screen's "Copy
-// seed" tracks the deal actually on the table across New Game and scene changes.
+// …and the same for the deal number (#98), so the Share button follows the board: a
+// New Game's fresh deal, a Restart's same one, a scene switch to a board with none.
 reportDeal := (seed => dispatch(DealChanged(seed)))
 
 // Detect the service-worker state up front so the Settings refresh button opens

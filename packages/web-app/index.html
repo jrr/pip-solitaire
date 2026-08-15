@@ -671,19 +671,28 @@
         color: #64748b;
       }
 
-      /* The Game section's actions (#156): New Game and Restart, sitting side by
-         side so the pair reads as one control group. Each shares the width evenly. */
+      /* The Game section's actions (#156, #98): New Game, Restart and Share, sitting
+         side by side so the three read as one control group. They share the width
+         evenly, and wrap rather than squeeze: with a `min-width` per button (below)
+         a panel too narrow for three across drops Share onto its own full-width
+         line instead of clipping "New Game" — the labels stay whole either way. */
       .menu-buttons {
         display: flex;
+        flex-wrap: wrap;
         gap: 0.4rem;
       }
 
       /* A Game-section action button (#156), styled like the scene rows/toggle but
-         centred, since it's a command rather than a labelled row. `flex: 1` so
-         New Game and Restart split the row evenly. */
+         centred, since it's a command rather than a labelled row. `flex: 1` so the
+         row's buttons split the width evenly; `min-width` is the widest label
+         ("New Game") on one line, which is what makes the row wrap on a narrow panel
+         rather than shrink below legibility. Disabled — the Share button on a board
+         with no deal number — is muted and inert (see Menu). */
       .menu-button {
-        flex: 1;
+        flex: 1 1 auto;
+        min-width: 5.5rem;
         text-align: center;
+        white-space: nowrap;
         padding: 10px 12px;
         font: 600 14px "Libre Franklin", sans-serif;
         color: #e2e8f0;
@@ -691,6 +700,22 @@
         border: 1px solid #22304a;
         border-radius: 8px;
         cursor: pointer;
+      }
+
+      .menu-button:disabled {
+        opacity: 0.5;
+        cursor: default;
+      }
+
+      /* The line under the Game section's buttons (#98): the deal number on the
+         table, or where a share link just went. Always present so a confirmation
+         appearing and clearing never shoves the sections below it, and `min-height`
+         holds the slot even if a state ever leaves it empty. */
+      .menu-share-line {
+        margin: 0;
+        min-height: 1.1em;
+        font: 12px "Libre Franklin", sans-serif;
+        color: #94a3b8;
       }
 
       /* A settings toggle row (#139): a full-width control styled like the scene
@@ -736,6 +761,29 @@
         font-size: 12px;
         line-height: 1.35;
         color: #94a3b8;
+      }
+
+      /* An action row on the Debug screen ("Share game state"): the toggle row's box
+         and label/description stack, but with nothing on the right — it runs a
+         command rather than holding a state, so there's no switch to show. Disabled
+         while there's no link to hand over (no game on screen, or the encode still in
+         flight), which the muted styling and `cursor: default` announce. */
+      .menu-action-row {
+        display: flex;
+        align-items: center;
+        width: 100%;
+        padding: 10px 12px;
+        font: 14px "Libre Franklin", sans-serif;
+        color: #e2e8f0;
+        background: #16233b;
+        border: 1px solid #22304a;
+        border-radius: 8px;
+        cursor: pointer;
+      }
+
+      .menu-action-row:disabled {
+        opacity: 0.5;
+        cursor: default;
       }
 
       /* A nav row that opens a deeper screen: the Settings screen's "Debug"
@@ -794,40 +842,6 @@
       .menu-toggle--on .menu-toggle__switch::after {
         transform: translateX(18px);
         background: #f0fdf4;
-      }
-
-      /* The Debug screen's "Copy seed" row (#98): the deal number on the table with
-         a Copy button where a switch would sit. It borrows `.menu-toggle` for the
-         row shell, so only the differences live here — it's a <div> wrapping a
-         button rather than being one, so the row itself isn't clickable and shouldn't
-         look it. `user-select: text` lets the deal number be selected by hand on a
-         browser with no clipboard API (an insecure origin), where the Copy button
-         can't work and reading the number off the screen is the fallback. */
-      .menu-copy {
-        cursor: default;
-        user-select: text;
-      }
-
-      .menu-copy__button {
-        flex: 0 0 auto;
-        min-width: 72px;
-        padding: 6px 10px;
-        font: 600 13px "Libre Franklin", sans-serif;
-        color: #e2e8f0;
-        background: #334155;
-        border: 1px solid #475569;
-        border-radius: 6px;
-        cursor: pointer;
-        transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
-      }
-
-      /* Copied: the same accent green the "on" switch uses, so the confirmation
-         reads as the familiar success colour rather than a new one. Reverts on its
-         own after a beat (see Main's copy-feedback timer). */
-      .menu-copy__button--done {
-        color: #f0fdf4;
-        background: #166534;
-        border-color: #166534;
       }
 
       /* The scene list: SceneSwitcher's row controls (#109), replacing the old

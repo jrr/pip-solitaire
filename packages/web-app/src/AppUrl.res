@@ -11,7 +11,8 @@
 //     the scene) means the ordinary opening deal.
 //   - `seed` — the FreeCell deal number to open (`?seed=1`), pinning the otherwise
 //     random opening shuffle so a link (and the screenshot report) lands on the same
-//     board every time. The future "deal-number" entry point (#98); ignored when a
+//     board every time. This is the receiving end of the menu's **Share** button
+//     (#98): the deal number a player shares arrives back here. Ignored when a
 //     `state` is forced (that mounts the fixed deal itself) or by the fixed-layout
 //     demos, which have no seed to vary.
 //   - `animate` — whether to play the opening-deal fly-in. On by default; `off`
@@ -26,9 +27,20 @@
 //     shared, and so the browser suite can shoot each rendering without clicking.
 //     An unrecognised name opens the scene's own default.
 //
-// All plain reads of `window.location.search`; nothing here mutates the URL.
+// Plus one parameter that rides in the **fragment** rather than the query:
+//
+//   - `#g=` — a whole shared game, compressed (`ShareLink`). It's in the fragment
+//     because it's far larger than the knobs above and because a fragment is never
+//     sent to the server, which is what keeps it clear of the ~8 KB request-line
+//     limit servers and CDNs put on a path-and-query. Parsed here with the same
+//     `URLSearchParams` the query gets, so `#g=…` escapes and repeats by the same
+//     rules; decoding the blob is `ShareLink`'s job, and asynchronous, so all this
+//     hands back is the raw string.
+//
+// All plain reads of `window.location`; nothing here mutates the URL.
 
 @val @scope(("window", "location")) external search: string = "search"
+@val @scope(("window", "location")) external hash: string = "hash"
 
 // The browser's own query-string parser, so escaping and repeated keys behave
 // exactly as a URL says rather than by hand-rolled splitting.
@@ -44,6 +56,10 @@ type t = {
   animate: bool,
   // The `raster` scene's opening rendering; `None` leaves the scene's own default.
   raster: option<RasterScene.rendering>,
+  // A shared game's compressed blob, straight off the `#g=` fragment and not yet
+  // decoded — turning it into a board is async, so that's `ShareLink`'s job and the
+  // caller's timing problem, not this parser's.
+  shared: option<string>,
 }
 
 // Parse the current location's query string. A missing *or empty* parameter reads
@@ -57,7 +73,7 @@ let parse = (): t => {
     }
   // The deal number to pin, when it parses as an int; a non-numeric `?seed=` is
   // ignored (reads as `None`) rather than crashing the opening deal.
-  let seed = read("seed")->Option.flatMap(value => Int.fromString(value))
+  let seed = read(ShareLink.dealKey)->Option.flatMap(value => Int.fromString(value))
   // Animate unless the URL explicitly opts out; any other (or absent) value plays
   // the fly-in as before.
   let animate = switch read("animate") {
@@ -67,5 +83,13 @@ let parse = (): t => {
   // An unrecognised rendering name reads as `None` — the scene opens on its own
   // default rather than refusing the link.
   let raster = read("raster")->Option.flatMap(RasterScene.renderingFromString)
-  {scene: read("scene"), state: read("state"), seed, animate, raster}
+  // The fragment, parsed with the same machinery as the query once its leading `#`
+  // is off — `URLSearchParams` wants bare `k=v` pairs. An empty or absent `#g=`
+  // reads as `None`, exactly as an empty query parameter does.
+  let fragment = makeSearchParams(hash->String.replace("#", ""))
+  let shared = switch fragment->getParam(ShareLink.fragmentKey)->Nullable.toOption {
+  | Some("") | None => None
+  | Some(blob) => Some(blob)
+  }
+  {scene: read("scene"), state: read("state"), seed, animate, raster, shared}
 }

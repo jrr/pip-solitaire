@@ -1,71 +1,131 @@
-// The Debug screen's "Copy seed" row (#98).
+// The main menu's **Share** button (#98).
 //
-// The row exists so a deal can be *shared*: the number it shows is what the other
-// player pastes into `?seed=` to be dealt the identical board. That makes two things
-// worth pinning, and they're what this file tests.
+// The button hands over a link to the *deal* on the table — `?seed=N`, which deals
+// the identical board wherever it's opened. Two things about that are worth pinning,
+// and they're what this file tests:
 //
-// 1. **The number on screen is the deal number.** If the row rendered anything else —
-//    an index, a truncated value, a label that drifted from the seed it copies — the
-//    share would quietly send someone to a different board. So the assertions look for
-//    the exact seed in the row's text and in the copy button's accessible name.
-// 2. **A failed copy says so.** `navigator.clipboard` is absent on an insecure origin
-//    (a phone hitting a dev box over LAN, exactly the setup where you'd want to read a
-//    deal number), and the write can be denied. The row must not claim "Copied" in
-//    those cases — a silent no-op leaves the player believing a number is on their
-//    clipboard when it isn't.
+// 1. **The number on screen is the deal number.** The row shows it as well as
+//    sharing it, so a player can read it off (or dictate it) on a browser where the
+//    link can't be delivered at all. If the line rendered anything else — an index, a
+//    stale number from the previous deal — the share would quietly send someone to a
+//    different board, which is the one failure a share button can't afford.
+// 2. **A board with no deal number offers nothing.** A demo scene, or a game resumed
+//    from a save that predates deal numbers, has no board to point at. The button
+//    must be genuinely `disabled` (so no click is emitted at all) rather than lit and
+//    inert, and the line must say why.
 //
 // Rendered through `Html.create` like the other component tests here (see
-// `AboutFooter_test`), which need no DOM beyond what jsdom gives.
+// `AboutFooter_test`), which needs no DOM beyond what jsdom gives. The props record
+// is spelled out in full because `Menu` takes the whole chrome model — everything but
+// the three share fields is scenery, held fixed across the cases.
 open Vitest
 
 @get external textContent: Html.element => string = "textContent"
 @send external querySelector: (Html.element, string) => Nullable.t<Html.element> = "querySelector"
 @send external getAttribute: (Html.element, string) => Nullable.t<string> = "getAttribute"
+@send external hasAttribute: (Html.element, string) => bool = "hasAttribute"
 
-let render = (~seed, ~copied): Html.element =>
-  Html.create(Menu.copySeedRow(~seed, ~copied, ~onCopy=() => ()))
+// The main menu, opened, with everything but the deal-sharing fields held fixed.
+let render = (~seed, ~status): Html.element =>
+  Html.create(
+    Menu.make({
+      open_: true,
+      screen: Menu.Main,
+      onClose: () => (),
+      onOpenSettings: () => (),
+      onBackToMenu: () => (),
+      onOpenDebug: () => (),
+      onBackToSettings: () => (),
+      onNewGame: () => (),
+      onRestart: () => (),
+      // The three under test.
+      shareDealSeed: seed,
+      shareDealStatus: status,
+      onShareDeal: () => (),
+      // The externally-owned nodes the menu splices in; empty stand-ins here.
+      games: Html.make("div"),
+      debugScenes: Html.make("div"),
+      debugStates: Html.make("div"),
+      cutoutDebug: false,
+      onToggleCutoutDebug: () => (),
+      debugLog: false,
+      onToggleDebugLog: () => (),
+      shareEnabled: false,
+      shareStatus: None,
+      onShareGame: () => (),
+      autoCollect: true,
+      onToggleAutoCollect: () => (),
+      cardTilt: true,
+      onToggleCardTilt: () => (),
+      wiggle: Motion.Off,
+      onToggleWiggle: () => (),
+      notchDisplay: true,
+      onToggleNotchDisplay: () => (),
+      revealHidden: false,
+      onTapSettingsTitle: () => (),
+      refreshButton: None,
+      version: "1.2.3",
+      buildTime: "2026-08-14T04:00:00.000Z",
+      updateVisible: false,
+      onReload: () => (),
+    }),
+  )
 
-let button = (row): option<Html.element> =>
-  row->querySelector(".menu-copy__button")->Nullable.toOption
+// The Share button — the third of the "This game" buttons.
+let shareButton = (menu): option<Html.element> =>
+  menu->querySelector(".menu-buttons button:nth-child(3)")->Nullable.toOption
 
-// The button's label — "Copy" at rest, "Copied" only after a copy that landed.
-let buttonLabel = (row): string =>
-  switch row->button {
-  | Some(b) => b->textContent
-  | None => "<no button>"
+// The line beneath the buttons: the deal number, or where a link just went.
+let line = (menu): string =>
+  switch menu->querySelector(".menu-share-line")->Nullable.toOption {
+  | Some(el) => el->textContent
+  | None => "<no line>"
   }
 
-describe("Menu copy-seed row (#98)", () => {
-  test("shows the deal number that a `?seed=` share would carry", () => {
-    let row = render(~seed=123456, ~copied=None)
-    // The seed itself, and the `?seed=` form to paste it into — both name the number
-    // the recipient needs, so a player can act on the row without copying at all.
-    expect(row->textContent->String.includes("123456"))->toBe(true)
-    expect(row->textContent->String.includes("?seed=123456"))->toBe(true)
+describe("Menu Share button (#98)", () => {
+  test("names the deal on the table, which is what the link carries", () => {
+    expect(render(~seed=Some(123456), ~status=None)->line)->toBe("Deal 123456")
   })
 
-  test("names the seed in the copy button's accessible label", () => {
-    // The visible label is a bare "Copy"; screen-reader users need to know *what*.
-    let row = render(~seed=777, ~copied=None)
-    let label = switch row->button {
+  test("names the deal in the button's accessible label too", () => {
+    // The visible label is a bare "Share"; a screen-reader user needs to know *what*
+    // is going out, and the deal number is the entire content of the link.
+    let label = switch render(~seed=Some(777), ~status=None)->shareButton {
     | Some(b) => b->getAttribute("aria-label")->Nullable.toOption->Option.getOr("")
-    | None => ""
+    | None => "<no button>"
     }
-    expect(label)->toBe("Copy seed 777")
+    expect(label)->toBe("Share deal 777")
   })
 
-  test("confirms only a copy that actually landed", () => {
-    expect(render(~seed=1, ~copied=None)->buttonLabel)->toBe("Copy")
-    expect(render(~seed=1, ~copied=Some(true))->buttonLabel)->toBe("Copied")
-    // The regression that matters: a *failed* copy must never read as success.
-    expect(render(~seed=1, ~copied=Some(false))->buttonLabel)->toBe("Copy")
+  test("disables the button on a board with no deal number, and says why", () => {
+    let menu = render(~seed=None, ~status=None)
+    switch menu->shareButton {
+    | Some(b) => expect(b->hasAttribute("disabled"))->toBe(true)
+    | None => expect("share button")->toBe("missing")
+    }
+    expect(menu->line)->toBe("No deal number for this board.")
+    // …and it's the real attribute, so the button emits no click at all — the reason
+    // the handler guard behind it is only belt and braces.
+    expect(render(~seed=Some(1), ~status=None)->shareButton->Option.isSome)->toBe(true)
+    switch render(~seed=Some(1), ~status=None)->shareButton {
+    | Some(b) => expect(b->hasAttribute("disabled"))->toBe(false)
+    | None => expect("share button")->toBe("missing")
+    }
   })
 
-  test("explains a failed copy instead of failing silently", () => {
-    let failed = render(~seed=42, ~copied=Some(false))
-    expect(failed->textContent->String.includes("Couldn't copy"))->toBe(true)
-    // …and the seed stays on screen, so it can still be read off and typed by hand —
-    // the whole fallback on a browser where the clipboard API isn't available.
-    expect(failed->textContent->String.includes("42"))->toBe(true)
+  test("reports where the link went, in place of the deal number", () => {
+    // One slot, so a confirmation appears and clears without moving the buttons above
+    // it. While it's up it wins; when it clears, the deal number is back (above).
+    let menu = render(~seed=Some(24680), ~status=Some("Link copied to clipboard."))
+    expect(menu->line)->toBe("Link copied to clipboard.")
+  })
+
+  test("still offers the share while a status is up", () => {
+    // The status is transient chrome, not a state change: the deal hasn't gone
+    // anywhere, so a second press must still be possible.
+    switch render(~seed=Some(24680), ~status=Some("Link copied to clipboard."))->shareButton {
+    | Some(b) => expect(b->hasAttribute("disabled"))->toBe(false)
+    | None => expect("share button")->toBe("missing")
+    }
   })
 })

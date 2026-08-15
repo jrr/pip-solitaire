@@ -563,6 +563,18 @@ let make = (
   ~publishNewGame: option<(unit => unit) => unit>=?,
   ~publishRestart: option<(unit => unit) => unit>=?,
   ~publishLoadState: option<(GameState.t => unit) => unit>=?,
+  // `~publishLoadHistory` is the share-link twin of `~publishLoadState` (see
+  // `ShareLink`): where that forces a single `GameState`, this rebuilds the board
+  // onto a whole restored undo/redo stack, so a shared game arrives with its history
+  // intact and the recipient can undo back through it. *Unlike* a forced state, the
+  // rebuilt board persists like any other — a shared game is adopted as this
+  // device's saved game rather than borrowed.
+  ~publishLoadHistory: option<(History.t<GameState.t> => unit) => unit>=?,
+  // `~publishReadHistory` is the read side the share button needs: a thunk handing
+  // back the *live* board's history, whatever build is currently on the table. It's
+  // `option` because it's called before the first `buildBoard` has run in principle
+  // (never in practice — the opening build happens during this same mount).
+  ~publishReadHistory: option<(unit => option<History.t<GameState.t>>) => unit>=?,
   ~publishUndo: option<(unit => unit) => unit>=?,
   ~publishRelayout: option<(unit => unit) => unit>=?,
   // `~publishShake` (#235) hands the chrome the board's shake control (start/stop
@@ -570,12 +582,15 @@ let make = (
   // through the mount-scope `boardOps` ref rather than closing over one build.
   ~publishShake: option<shakeControl => unit>=?,
   ~onHistory: option<bool => unit>=?,
-  // The board's other reverse channel: the deal number now on the table (#98), or
-  // `None` on a board that has no reproducible one (the fixed-layout demos). Called
-  // on *every* build, so a New Game re-deal reports its fresh seed and the chrome's
-  // "Copy seed" always offers the deal actually showing rather than the one this
-  // scene first mounted with. Sibling of `~onHistory`, and reported for the same
-  // reason: the chrome renders from it, so it can't reach into the board for it.
+  // The board's other reverse channel (#98), sibling of `~onHistory`: the deal number
+  // of the board now on the table, or `None` for a board that isn't showing a deal —
+  // a fixed-layout demo (no seed at all), or a build that restored a *history*, where
+  // the cards came from a saved or shared stack and the deal underneath them is not
+  // this build's to name (the driver knows; see `Main`). Called on every build, so a
+  // New Game reports its fresh seed and a scene switch to a demo reports `None` — the
+  // chrome's Share button always offers the deal actually showing rather than the one
+  // this scene first mounted with. Reported rather than read for the same reason
+  // `~onHistory` is: the chrome renders from it, so it can't reach into the board.
   ~onDeal: option<option<int> => unit>=?,
   ~options: ref<Options.t>=ref(Options.default),
   ~tiltEnabled: ref<bool>=ref(true),
@@ -629,6 +644,14 @@ let make = (
     // every `buildBoard` repoints these at its own fresh card nodes. No-ops until the
     // first build.
     let boardOps = ref({jostle: () => (), squareUp: () => ()})
+
+    // The live board's undo/redo history, held at mount scope for the same reason as
+    // `resizeRelayout` above: `history` is rebound by every `buildBoard`, so a reader
+    // that closed over one build would go on reporting a torn-down board's stack
+    // after a New Game. Each build repoints this at its own; the share button
+    // (`ShareLink`, via `~publishReadHistory`) reads through it and so always
+    // encodes what's actually on the table. `None` until the first build.
+    let readHistory: ref<unit => option<History.t<GameState.t>>> = ref(() => None)
 
     // The active `devicemotion` shake subscription, `Some` while Wiggle Waggle is on
     // and permission granted (#235). `Motion.subscribeShake` already parks the
@@ -693,14 +716,30 @@ let make = (
       // Record the deal now on the table so Restart (#156) can replay this exact
       // game — a New Game re-deal that lands here updates what Restart will rebuild.
       currentGame := game
-      // Tell the chrome which deal number is showing (#98), from the same spot and
-      // for the same reason: every board rebuild passes through here, so a New Game
-      // reports its new seed and a scene switch to a demo reports `None`. A forced
-      // `~initial` state still reports the *game's* seed — the board was dealt from
-      // it and Restart returns to it, so the number remains the honest answer to
-      // "which deal is this?" even while a scenario position is showing.
+      // Tell the chrome which deal is showing (#98), from the same spot and for the
+      // same reason: every board rebuild passes through here, so a New Game reports
+      // its new seed and a scene switch to a demo reports `None`.
+      //
+      // The rule is exactly "what's on the table *is* this deal's opening position",
+      // which is the only claim a deal-number share can make good on. So a *fresh*
+      // deal — the opening one, a New Game, a Restart — reports the game's seed, and
+      // the two builds that put something else on the table report `None`:
+      //
+      //   - a restored `~history` (a resumed save, or a shared game landing): the
+      //     cards come from that stack, and the deal they were first dealt from isn't
+      //     the one `game` carries — a resume mounts on a freshly-seeded deal whose
+      //     only job is to supply card nodes. Naming that seed would send someone to a
+      //     board nobody is looking at, the one failure a share button can't afford.
+      //     The driver knows where the history came from and fills the gap (`Main`);
+      //   - a forced `~initial` state (`?state=`, or the debug-states rows): a posed
+      //     position, not a deal.
+      //
+      // Falling to `None` on those two also keeps the reporting in step with saving:
+      // a seed is reported precisely on the builds that become the saved game
+      // (`~persistThis`), so the driver can persist it without a second rule.
       switch onDeal {
-      | Some(f) => f(game.seed)
+      | Some(report) =>
+        report(initial->Option.isSome || seedHistory->Option.isSome ? None : game.seed)
       | None => ()
       }
       // The stage everything is positioned within; `position: relative` (in CSS)
@@ -793,6 +832,10 @@ let make = (
         | None => History.make(state.contents)
         },
       )
+
+      // Point the mount-scope reader at *this* build's history, so the share button
+      // encodes the board on the table rather than one a re-deal has since replaced.
+      readHistory := (() => Some(history.contents))
 
       // Persist the board's whole undo/redo history after any change (#177), when the
       // driver wired a `~persist` sink. A no-op otherwise — the demos, and any board
@@ -1996,6 +2039,26 @@ let make = (
     // forced position replaces the current board cleanly.
     switch publishLoadState {
     | Some(publish) => publish(state => buildBoard(~initial=state, ~persistThis=false, game))
+    | None => ()
+    }
+
+    // Publish the share-link loader (`ShareLink`): rebuild the board onto a whole
+    // restored history, undo stack and all. Unlike the forced-state load above this
+    // *does* persist — a shared game takes over as this device's saved game, so it
+    // saves on arrival and play continues from it normally. Whether that write
+    // actually reaches storage is still the driver's call: the sink is only wired for
+    // the opens that may write (see `Main`'s `~persist`), so this is a no-op on a
+    // demo scene or a `?state=` board.
+    switch publishLoadHistory {
+    | Some(publish) => publish(restored => buildBoard(~history=restored, game))
+    | None => ()
+    }
+
+    // …and the read side, so the chrome can encode whatever is currently on the
+    // table. Published once per mount; the thunk defers to the mount-scope ref, which
+    // each build repoints at its own history.
+    switch publishReadHistory {
+    | Some(publish) => publish(() => readHistory.contents())
     | None => ()
     }
     container->WebDom.appendChild(boardHost)->ignore

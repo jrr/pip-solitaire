@@ -50,6 +50,48 @@ describe("SavedGame (#177)", () => {
     expect(SavedGame.load(game.id))->toEqual(None)
   })
 
+  // The deal number stored beside the history (#98). It's a separate key because the
+  // history has no room for it and no need of it — but the Share button does, since a
+  // resumed board can't work out which deal it came from on its own.
+  test("a deal number saved with a game reads back with it", () => {
+    SavedGame.saveSeed(game.id, 24680)
+    expect(SavedGame.loadSeed(game.id))->toEqual(Some(24680))
+  })
+
+  test("a game saved with no deal number has none to read", () => {
+    // What an older save looks like — written before deal numbers were kept. "No
+    // number" is the right answer for it, and the Share button greys out rather than
+    // offering a board nobody has seen.
+    SavedGame.clearSeed("legacy-game")
+    SavedGame.save("legacy-game", history)
+    expect(SavedGame.loadSeed("legacy-game"))->toEqual(None)
+  })
+
+  test("clearSeed drops the deal number and leaves the game", () => {
+    // The shared-game case: the save is taken over by a position that was never dealt
+    // from a number here, so the previous deal's number must not stay behind to be
+    // read as its own.
+    SavedGame.save(game.id, history)
+    SavedGame.saveSeed(game.id, 13579)
+    SavedGame.clearSeed(game.id)
+    expect(SavedGame.loadSeed(game.id))->toEqual(None)
+    expect(SavedGame.load(game.id)->Option.isSome)->toBe(true)
+  })
+
+  test("clear drops the deal number along with the game", () => {
+    SavedGame.save(game.id, history)
+    SavedGame.saveSeed(game.id, 13579)
+    SavedGame.clear(game.id)
+    expect(SavedGame.loadSeed(game.id))->toEqual(None)
+  })
+
+  test("deal numbers are namespaced per game type, like the saves", () => {
+    SavedGame.saveSeed("freecell", 111)
+    SavedGame.clearSeed("other")
+    expect(SavedGame.loadSeed("other"))->toEqual(None)
+    expect(SavedGame.loadSeed("freecell"))->toEqual(Some(111))
+  })
+
   test("saves are namespaced per game type", () => {
     // A save under one game id doesn't leak into another — one saved game per type.
     SavedGame.save("freecell", history)
