@@ -11,7 +11,8 @@
 //     the scene) means the ordinary opening deal.
 //   - `seed` — the FreeCell deal number to open (`?seed=1`), pinning the otherwise
 //     random opening shuffle so a link (and the screenshot report) lands on the same
-//     board every time. The future "deal-number" entry point (#98); ignored when a
+//     board every time. This is the receiving end of the menu's **Share** button
+//     (#98): the deal number a player shares arrives back here. Ignored when a
 //     `state` is forced (that mounts the fixed deal itself) or by the fixed-layout
 //     demos, which have no seed to vary.
 //   - `animate` — whether to play the opening-deal fly-in. On by default; `off`
@@ -72,7 +73,7 @@ let parse = (): t => {
     }
   // The deal number to pin, when it parses as an int; a non-numeric `?seed=` is
   // ignored (reads as `None`) rather than crashing the opening deal.
-  let seed = read("seed")->Option.flatMap(value => Int.fromString(value))
+  let seed = read(ShareLink.dealKey)->Option.flatMap(value => Int.fromString(value))
   // Animate unless the URL explicitly opts out; any other (or absent) value plays
   // the fly-in as before.
   let animate = switch read("animate") {

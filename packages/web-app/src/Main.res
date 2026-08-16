@@ -8,7 +8,7 @@
 //   - `<TopBar>` — Menu · Undo. Always visible across the top; the Menu
 //     button carries a green pip when a version update is waiting (#165).
 //   - `<Menu>` — the slide-over holding the title ("Pip", moved out of the
-//     retired Home scene), a **Game** section (New Game · Restart, #156), the
+//     retired Home scene), a **game** section (New · Restart · Share Seed, #156/#98), the
 //     debug/demo scene list as tappable rows, and the About footer (build/version
 //     info plus the conditional "Update" button beside it, #165).
 // The scene area underneath is still the imperative `SceneSwitcher`; its scene
@@ -104,6 +104,14 @@ type model = {
   // renders disabled. `shareStatus` is the transient line reporting what happened.
   shareUrl: option<string>,
   shareStatus: option<string>,
+  // The main menu's Share Seed button (#98): the seed of the board on the table,
+  // reported by the scene (`~onDeal` below), and the transient line under the buttons
+  // reporting where its link went. `None` greys the button out — a demo scene, or a
+  // game resumed from a save with no deal number recorded. Unlike `shareUrl` above
+  // there's nothing to prepare: the link is a `?seed=` string built on the press
+  // (`ShareLink.urlForDeal`), so only the number has to be to hand.
+  dealSeed: option<int>,
+  shareDealStatus: option<string>,
 }
 
 type msg =
@@ -129,6 +137,8 @@ type msg =
   | RefreshChecked // an update check finished — stop the spinner (a found update surfaces as the About button)
   | ShareLinkReady(option<string>) // the open Debug screen's board, encoded into a link (`ShareLink`)
   | ShareStatus(option<string>) // the share row's transient status line; `None` clears it
+  | DealChanged(option<int>) // the board reported which deal it's showing (#98)
+  | ShareDealStatus(option<string>) // the Share button's transient status line; `None` clears it
 
 // `updateSW` only exists once registerSW has run, which needs `dispatch`, which
 // needs the loop to be mounted — so the Reload effect reaches it through a ref
@@ -202,6 +212,20 @@ let initialCanUndo = ref(false)
 // model, and it's reset to `false` on each scene change so a non-game scene leaves
 // the button disabled.
 let reportHistory: ref<bool => unit> = ref(canUndo => initialCanUndo := canUndo)
+
+// The deal number the board reports during its *opening* mount (#98), captured to
+// seed the model — the same pre-mount problem `initialCanUndo` solves, and here it's
+// the ordinary case rather than a corner: every plain open deals a board and reports
+// its number while the switcher mounts the initial scene, which is during module
+// init, before `dispatch` exists. Without this the Share button would open dark on
+// every load and only light up after a New Game.
+let initialDealSeed: ref<option<int>> = ref(None)
+
+// The board's deal-number channel (#98), sibling of `reportHistory`: the deal now on
+// the table, for the menu's Share button. Filled with a real dispatcher just after
+// mount; until then it stashes the value for the model to read at init, and it's
+// reset to `None` on each scene change so a demo scene offers nothing to share.
+let reportDeal: ref<option<int> => unit> = ref(seed => initialDealSeed := seed)
 
 // Closing the menu means dispatching into the loop, but a scene row is an
 // imperative listener built before `dispatch` exists (like `updateSW`). It
@@ -458,6 +482,14 @@ let update = (msg, model) =>
   | RefreshChecked => ({...model, refreshBusy: false}, Html.noEffect)
   | ShareLinkReady(shareUrl) => ({...model, shareUrl}, Html.noEffect)
   | ShareStatus(shareStatus) => ({...model, shareStatus}, Html.noEffect)
+  // A new deal reached the table (#98). Whatever status line the previous deal's
+  // share left up goes with it — "Link copied to clipboard." must not sit under a
+  // number it no longer refers to.
+  | DealChanged(dealSeed) =>
+    dealSeed == model.dealSeed
+      ? (model, Html.noEffect) // no change — don't re-render
+      : ({...model, dealSeed, shareDealStatus: None}, Html.noEffect)
+  | ShareDealStatus(shareDealStatus) => ({...model, shareDealStatus}, Html.noEffect)
   }
 
 // The scene area (switcher + demos) is built imperatively and owns its own
@@ -570,6 +602,31 @@ let gameScene = (game: Game.t) => {
       }
     },
     ~onHistory=canUndo => reportHistory.contents(canUndo),
+    // The deal number behind the board, resolved from what the scene can see to what
+    // is actually true of the game on screen (#98).
+    //
+    // `Some(n)` is a board freshly dealt from `n` — the opening deal, a New Game, a
+    // Restart. When this open is one that saves, the number is saved with it: it's
+    // the one fact the history doesn't carry (see `SavedGame.saveSeed`), and without
+    // it the *next* session's resumed game couldn't be shared at all.
+    //
+    // `None` from the scene means the board is showing something other than a deal's
+    // opening position — a restored history or a forced state. On a plain open that's
+    // the resume path, and the deal number is exactly what was stored last time, so
+    // it's read back here; on any other open (a `?state=` scenario, a `#g=` shared
+    // game) there's genuinely no deal to name and the Share button stays dark rather
+    // than offering a board nobody is looking at.
+    ~onDeal=seed =>
+      reportDeal.contents(
+        switch seed {
+        | Some(n) =>
+          if plainOpen || (sharedOpen && shareLanded.contents) {
+            SavedGame.saveSeed(game.id, n)
+          }
+          Some(n)
+        | None => plainOpen ? SavedGame.loadSeed(game.id) : None
+        },
+      ),
     ~options,
     ~tiltEnabled,
     // Skip the opening-deal fly-in when the URL asks for `?animate=off`, so the
@@ -603,6 +660,9 @@ let switcher = SceneSwitcher.render(
     // the mounting scene republishes and reports its own history (#85).
     undoHook := None
     reportHistory.contents(false)
+    // …and clear the deal number with it (#98), so the Share button is dark for the
+    // moment between scenes; the mounting scene reports its own (a demo reports none).
+    reportDeal.contents(None)
     closeMenu.contents()
   },
   // A tap on the row for the game already showing: nothing mounts, so none of the
@@ -648,6 +708,12 @@ switch url.shared {
       switch await ShareLink.historyFrom(blob) {
       | Some(restored) =>
         shareLanded := true
+        // The shared game takes over storage, so the previous game's deal number must
+        // not stay behind to be read as its own (#98): a shared position was never
+        // dealt from a number here, and a later resume asking "which deal is this?"
+        // has to be told there isn't one rather than handed the last one this device
+        // dealt for itself.
+        SavedGame.clearSeed(Game.freecell.id)
         loadHistoryHook.contents->Option.forEach(load => load(restored))
       | None => DebugLog.message("share link: could not decode the shared game")
       }
@@ -726,6 +792,28 @@ let view = (model, dispatch) => <>
       restartHook.contents->Option.forEach(restart => restart())
       dispatch(CloseMenu)
     }}
+    shareDealSeed={model.dealSeed}
+    shareDealStatus={model.shareDealStatus}
+    onShareDeal={() =>
+      // Share the *deal* (#98). The link is a `?seed=` string, so it's built right
+      // here and handed straight to `deliver` — no `await` between the click and
+      // `navigator.share`, which is what keeps the gesture's transient activation
+      // intact for the OS share sheet (the Debug screen's whole-game share has to
+      // encode ahead of time for exactly this reason; this one doesn't).
+      //
+      // The menu deliberately stays open, unlike New Game and Restart: the status
+      // line under the buttons is the only confirmation the player gets, and on a
+      // desktop browser — where the link goes quietly onto the clipboard with no OS
+      // sheet to acknowledge it — closing over it would leave nothing to see. It
+      // clears itself a few seconds later so it can't go stale.
+      model.dealSeed->Option.forEach(seed =>
+        ShareLink.deliver(ShareLink.urlForDeal(seed))
+        ->Promise.thenResolve(outcome => {
+          dispatch(ShareDealStatus(Some(ShareLink.message(outcome))))
+          setTimeout(() => dispatch(ShareDealStatus(None)), shareStatusMs)->ignore
+        })
+        ->ignore
+      )}
     games={switcher.controls}
     debugScenes={switcher.debugScenes}
     debugStates={debugStates}
@@ -868,6 +956,13 @@ let dispatch = Html.mount(
     // startup — there's no point encoding a board nobody has asked to share.
     shareUrl: None,
     shareStatus: None,
+    // Seeded from the board's opening deal report (#98), for the same reason
+    // `canUndo` is: it fired during the switcher's initial mount above, before
+    // `dispatch` existed. On a plain open that report *is* the deal number the Share
+    // button offers, so reading it back here is what lets the button work on the
+    // first menu open rather than only after a re-deal.
+    dealSeed: initialDealSeed.contents,
+    shareDealStatus: None,
   },
   ~update,
   ~view,
@@ -898,6 +993,10 @@ if Motion.isOn(wiggleInit) {
 // …and let the board's history reports reach the loop, so Undo enables and
 // disables as moves are played and undone (#85).
 reportHistory := (canUndo => dispatch(HistoryChanged(canUndo)))
+
+// …and the same for the deal number (#98), so the Share button follows the board: a
+// New Game's fresh deal, a Restart's same one, a scene switch to a board with none.
+reportDeal := (seed => dispatch(DealChanged(seed)))
 
 // Detect the service-worker state up front so the Settings refresh button opens
 // with the right label (#112). It's re-detected each time Settings opens too (see

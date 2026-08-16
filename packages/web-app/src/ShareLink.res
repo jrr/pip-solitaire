@@ -32,10 +32,21 @@
 // one — the phone case, where "copy to clipboard" is the more awkward of the two —
 // and falls back to writing the clipboard. See `deliver` for the transient-
 // activation constraint that shapes how this gets called.
+//
+// There are **two things worth sharing**, and this module builds a link for each:
+// the game state above, and the *deal* (`urlForDeal`, #98) — a link that says which
+// board to lay out and nothing more, so both players start level. They differ in
+// what they carry, so they differ in where they ride and what they cost; see
+// `urlForDeal`. Delivery is common to both — whatever the link says, getting it to
+// the player is the same problem.
 
 // The fragment parameter carrying a shared game. Read back by `AppUrl`, which owns
 // all URL parsing; this module owns the format, so the name lives here.
 let fragmentKey = "g"
+
+// The query parameter carrying a shared *deal* (#98), same arrangement: `AppUrl`
+// parses it, this module writes it, so the spelling lives in one place.
+let dealKey = "seed"
 
 @val @scope(("window", "location")) external origin: string = "origin"
 @val @scope(("window", "location")) external pathname: string = "pathname"
@@ -54,6 +65,33 @@ let urlFor = async (history: History.t<GameState.t>): option<string> =>
   (await Compression.compress(SaveState.encode(history)))->Option.map(blob =>
     origin ++ pathname ++ "#" ++ fragmentKey ++ "=" ++ blob
   )
+
+// A shareable URL for deal number `seed`: this page plus `?seed=`, which opens
+// FreeCell dealt from that exact shuffle (`Game.freecellDeal`, via `AppUrl`).
+//
+// Deliberately a *different* share from `urlFor` above rather than a cheaper one.
+// That link carries a position — this game, mid-play, undo stack and all — so the
+// recipient picks up where the sender left off. This one carries only which board
+// to deal, so both players start level and play it out themselves, which is what
+// sharing a deal number has always meant where solitaire has them.
+//
+// Carrying so little is what lets it ride in the query rather than the fragment,
+// and it should: `?seed=` is a knob `AppUrl` has always parsed, it costs a handful
+// of characters (no request-line limit is anywhere in sight), and it survives being
+// read off one screen and typed into another by hand — which a compressed blob
+// does not. The link being legible is half the point of a deal number.
+//
+// Synchronous, unlike `urlFor`: there's nothing to compress. That matters at the
+// call site — the share can be attempted in the click handler itself, with the
+// gesture's transient activation intact (see `deliver`), rather than having to be
+// prepared in advance.
+//
+// The page's own query is dropped for the same reason `urlFor` drops it: whatever
+// `?scene=`/`?state=`/`?seed=` got this board on screen, the deal number now says
+// it in full. `pathname` stays, so a link shared from a GitHub Pages subpath — or a
+// PR preview's deeper one — opens that same build.
+let urlForDeal = (seed: int): string =>
+  origin ++ pathname ++ "?" ++ dealKey ++ "=" ++ Int.toString(seed)
 
 // The history a shared blob carries, or `None` for anything that isn't one: a
 // truncated paste, a link from an incompatible `SaveState` version, or a browser
