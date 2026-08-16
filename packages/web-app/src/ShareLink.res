@@ -39,6 +39,11 @@
 // what they carry, so they differ in where they ride and what they cost; see
 // `urlForDeal`. Delivery is common to both — whatever the link says, getting it to
 // the player is the same problem.
+//
+// Three *buttons* hand those two links out, though: the win overlay's victory share
+// (#264) is a deal link wrapped in a message (`victoryMessage`), not a third kind of
+// link. Sharing the position from a won board would ship the solution, so a victory
+// can only ever offer the deal.
 
 // The fragment parameter carrying a shared game. Read back by `AppUrl`, which owns
 // all URL parsing; this module owns the format, so the name lives here.
@@ -93,6 +98,30 @@ let urlFor = async (history: History.t<GameState.t>): option<string> =>
 let urlForDeal = (seed: int): string =>
   origin ++ pathname ++ "?" ++ dealKey ++ "=" ++ Int.toString(seed)
 
+// The message a won game shares (#264) — the boast the win overlay's Share button
+// hands over, in the shape the Wordle-likes made familiar: a line naming the game
+// and the deal, a line saying how it went, and a link to play the same board.
+//
+// It rides on `urlForDeal`, never `urlFor`, and that's the whole design: a link to
+// the *position* would hand the recipient a solved board, which is the one thing a
+// victory share must not do. The deal number is the invitation — here's the board I
+// beat, go and beat it yourself — and it's the only share where "both players start
+// level" is the entire point. Being a `?seed=` link also means there's nothing to
+// compress, so the share can be attempted straight out of the click handler with
+// the gesture's transient activation intact (see `deliver`).
+//
+// `moves` is the length of the winning line of play (`History.steps`), so an undone
+// move doesn't pad the number.
+//
+// The URL is deliberately *not* in this string: `deliver` adds it, once, on whichever
+// route it takes — as the share sheet's own `url` field, or appended for the
+// clipboard. Composing it here as well is how a link ends up in the message twice.
+let victoryMessage = (~seed: int, ~moves: int): string =>
+  "♣️♥️♠️♦️ Pip FreeCell #" ++
+  Int.toString(seed) ++
+  "\nSolved in " ++
+  Int.toString(moves) ++ (moves == 1 ? " move" : " moves")
+
 // The history a shared blob carries, or `None` for anything that isn't one: a
 // truncated paste, a link from an incompatible `SaveState` version, or a browser
 // that can't decompress. Every one of those means "ignore the link and deal
@@ -138,10 +167,20 @@ external makeShareData: (~title: string=?, ~text: string=?, ~url: string=?) => s
 // a genuine failure and a player who opened the sheet and thought better of it —
 // and lands both on "the URL is on your clipboard", which is a harmless place to
 // end up and saves inspecting `DOMException` names to tell them apart.
-let deliver = async (url: string): outcome => {
+//
+// `~text` is the message to carry the link, for the one share that has something to
+// say (`victoryMessage`); the plain link shares omit it and keep the generic blurb
+// they always had. It's this function's job rather than the caller's because the two
+// routes want the URL in different places — the share sheet takes it as its own
+// field and lets the OS compose, while the clipboard needs it appended to the text —
+// and a caller that folded the URL into its message would have it land twice on the
+// sheet.
+let deliver = async (~text: option<string>=?, url: string): outcome => {
   let shared = if canShare {
     try {
-      await navigatorShare(makeShareData(~title="Pip", ~text="A game of FreeCell", ~url))
+      await navigatorShare(
+        makeShareData(~title="Pip", ~text=text->Option.getOr("A game of FreeCell"), ~url),
+      )
       true
     } catch {
     | _ => false
@@ -152,8 +191,12 @@ let deliver = async (url: string): outcome => {
   if shared {
     Shared
   } else if canCopy {
+    let payload = switch text {
+    | Some(message) => message ++ "\n\n" ++ url
+    | None => url
+    }
     try {
-      await writeText(url)
+      await writeText(payload)
       Copied
     } catch {
     | _ => Failed

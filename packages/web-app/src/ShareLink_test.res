@@ -71,3 +71,39 @@ describe("ShareLink", () => {
     expect(await ShareLink.historyFrom(blob))->toEqual(None)
   })
 })
+
+// The victory message (#264): what the win overlay hands over when a player wins.
+// It's a *string* the recipient reads, so what's pinned here is what it says — the
+// deal number they need to play the same board, and the length of the winning line —
+// and, just as load-bearing, what it doesn't say: the message carries no URL of its
+// own, because `deliver` adds the link on whichever route it takes and a message
+// that composed one too would deliver it twice.
+describe("ShareLink.victoryMessage (#264)", () => {
+  test("names the deal and the length of the winning line", () => {
+    let message = ShareLink.victoryMessage(~seed=847213, ~moves=94)
+    expect(message->String.includes("847213"))->toBe(true)
+    expect(message->String.includes("94 moves"))->toBe(true)
+    // The suits lead the message — the thing that makes it recognisable in a chat.
+    expect(message->String.startsWith("♣️♥️♠️♦️"))->toBe(true)
+  })
+
+  test("counts a one-move win in the singular", () => {
+    expect(ShareLink.victoryMessage(~seed=1, ~moves=1)->String.includes("1 move"))->toBe(true)
+    expect(ShareLink.victoryMessage(~seed=1, ~moves=1)->String.includes("moves"))->toBe(false)
+  })
+
+  test("carries no link of its own — `deliver` owns the URL", () => {
+    let message = ShareLink.victoryMessage(~seed=847213, ~moves=94)
+    expect(message->String.includes("http"))->toBe(false)
+    expect(message->String.includes(ShareLink.dealKey ++ "="))->toBe(false)
+  })
+
+  test("shares the deal, never the position", () => {
+    // The one thing this share must never do is hand over a solved board, so the
+    // number in the message has to be the one `urlForDeal` will build a link from —
+    // the deal, which both players can start level on.
+    expect(
+      ShareLink.urlForDeal(847213)->String.endsWith("?" ++ ShareLink.dealKey ++ "=847213"),
+    )->toBe(true)
+  })
+})

@@ -16,6 +16,7 @@ open Vitest
 @val @scope("document") external createElement: string => WebDom.element = "createElement"
 @send
 external querySelector: (WebDom.element, string) => Nullable.t<WebDom.element> = "querySelector"
+@send external click: WebDom.element => unit = "click"
 
 let hasFinishButton = (container): bool =>
   container->querySelector(".finish-button")->Nullable.toOption->Option.isSome
@@ -143,5 +144,85 @@ describe("TableScene re-mount", () => {
     WebDom.clear(container)
     let _remounted = scene.mount(container)
     expect(hasWinOverlay(container))->toBe(false)
+  })
+})
+
+// The win overlay's Share button (#264). The button is the driver's to offer: the
+// board asks `available` as the overlay goes up and builds the button only if the
+// answer is yes, because a deal number can outlive the board that was dealt from it
+// (a resumed game's lives in storage) and can also be missing entirely (a posed or
+// shared position). Mounting the real scene onto a won history and querying for the
+// control proves that conditional end to end, the same way the Finish button above is
+// covered.
+describe("TableScene win share (#264)", () => {
+  let shareButton = (container): option<WebDom.element> =>
+    container->querySelector(".win-panel__button--share")->Nullable.toOption
+
+  // A won board reached by one recorded step, so the line of play behind the victory
+  // has a length worth reporting (and a bare `History.make(won)` — which has none —
+  // couldn't tell a working move count from a hardcoded zero).
+  let wonHistory = game => {
+    let (won, _moved) = Reducer.finishSequence(~game, Scenario.freecellAlmostWon(game))
+    History.record(History.make(GameState.initial(game)), won)
+  }
+
+  test("offers the button when the driver has a deal to share", () => {
+    let game = Game.freecell
+    let container = createElement("div")
+    let scene = TableScene.make(
+      ~loadHistory=() => Some(wonHistory(game)),
+      ~winShare={available: () => true, share: (~moves as _) => Promise.resolve("")},
+      game,
+    )
+    let _teardown = scene.mount(container)
+    expect(shareButton(container)->Option.isSome)->toBe(true)
+  })
+
+  test("leaves it out when there's no deal number to offer", () => {
+    // A `?state=` scenario or a game landed from a `#g=` link: the position is real
+    // but the deal behind it isn't ours to name, so the overlay is New Game alone
+    // rather than a button that would share a board nobody is looking at.
+    let game = Game.freecell
+    let container = createElement("div")
+    let scene = TableScene.make(
+      ~loadHistory=() => Some(wonHistory(game)),
+      ~winShare={available: () => false, share: (~moves as _) => Promise.resolve("")},
+      game,
+    )
+    let _teardown = scene.mount(container)
+    expect(shareButton(container)->Option.isSome)->toBe(false)
+  })
+
+  test("a driver that offers no share at all still wins normally", () => {
+    // The demos and the CLI-ish call sites pass no `~winShare`; the overlay they get
+    // is exactly the one #121 built.
+    let game = Game.freecell
+    let container = createElement("div")
+    let scene = TableScene.make(~loadHistory=() => Some(wonHistory(game)), game)
+    let _teardown = scene.mount(container)
+    expect(container->querySelector(".win-overlay")->Nullable.toOption->Option.isSome)->toBe(true)
+    expect(shareButton(container)->Option.isSome)->toBe(false)
+  })
+
+  test("shares the length of the line that reached the win", () => {
+    // The move count comes off the live history (`History.steps`), not the board's
+    // opening state — so a win resumed with a move behind it reports that move.
+    let game = Game.freecell
+    let shared = ref(None)
+    let container = createElement("div")
+    let scene = TableScene.make(
+      ~loadHistory=() => Some(wonHistory(game)),
+      ~winShare={
+        available: () => true,
+        share: (~moves) => {
+          shared := Some(moves)
+          Promise.resolve("Link copied to clipboard.")
+        },
+      },
+      game,
+    )
+    let _teardown = scene.mount(container)
+    shareButton(container)->Option.getOrThrow->click
+    expect(shared.contents)->toEqual(Some(1))
   })
 })

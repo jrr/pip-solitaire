@@ -96,7 +96,10 @@ for (const input of inputs) {
       await expect(page.locator(".win-panel__title")).toBeVisible()
       await expect(page.locator(".win-panel__title")).not.toHaveText("")
 
-      await page.locator(".win-panel__button").click()
+      // By name, not by class: the panel grew a second button when the victory share
+      // landed (#264), and this scenario carries a deal number so both are on offer
+      // here. `share-win.spec.mjs` covers the other one.
+      await page.getByRole("button", { name: "New Game" }).click()
       await expect(overlay).toHaveCount(0)
       // New Game deals a fresh board rather than just clearing the overlay.
       await expect(page.locator(".stacking-card").first()).toBeVisible()

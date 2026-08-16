@@ -223,6 +223,26 @@ type shakeControl = {
   stop: unit => unit,
 }
 
+// What the driver offers the win overlay's Share button (#264), the victory twin of
+// the menu's Share Seed. `available` is asked as the overlay goes up and decides
+// whether the button is built at all; `share` hands the win over and resolves with
+// the one-line status to show beneath the buttons.
+//
+// The driver answers both because the board can't. A deal number survives a resume
+// only in the driver's storage, and a board showing a shared or posed position has
+// none at all — which is exactly why `~onDeal` below reports `None` on those builds
+// and leaves `Main` to fill the gap. Asking at overlay time rather than at build time
+// keeps the answer about the board that was just won.
+//
+// A pair rather than two separate props because they have to agree: offering a
+// button that then has no deal to share is the one failure a share button can't
+// afford, and a single record makes that a type-level impossibility rather than a
+// convention two call sites have to keep.
+type winShare = {
+  available: unit => bool,
+  share: (~moves: int) => promise<string>,
+}
+
 // The design footprints, at scale 1. Everything the layout measures in pixels —
 // the fan step, the card box, the empty zone box — is one of these multiplied by
 // the stage's live `scale` (see `make`), so cards, zones and fans all shrink
@@ -592,6 +612,10 @@ let make = (
   // this scene first mounted with. Reported rather than read for the same reason
   // `~onHistory` is: the chrome renders from it, so it can't reach into the board.
   ~onDeal: option<option<int> => unit>=?,
+  // The victory share (#264): what the win overlay's Share button calls, and whether
+  // it's offered at all. Omitted by the demos and the tests that don't care, in which
+  // case the overlay is the New Game button alone, exactly as before.
+  ~winShare: option<winShare>=?,
   ~options: ref<Options.t>=ref(Options.default),
   ~tiltEnabled: ref<bool>=ref(true),
   // `~skipDealAnimation` drops the cards straight into their resting places instead
@@ -1140,7 +1164,8 @@ let make = (
       }
 
       // The win overlay (#121): a dimmed panel over the board announcing the win,
-      // with a New Game button to play on. Shown when a move completes every
+      // with a New Game button to play on — and, when the driver has a deal number to
+      // hand out, a Share button beside it (#264). Shown when a move completes every
       // foundation (`GameState.hasWon`); the button re-deals a fresh FreeCell
       // (`newDeal`) or, for a fixed-layout board, replays the same deal — either way
       // `buildBoard` clears `boardHost` first, so the overlay is torn down with the
@@ -1164,6 +1189,11 @@ let make = (
           title->WebDom.setAttribute("class", "win-panel__title")
           title->WebDom.setTextContent("You win!")
 
+          // The buttons sit in a row of their own, so a second one lands beside New
+          // Game rather than under it and the panel stays as wide as its widest line.
+          let actions = WebDom.createElement("div")
+          actions->WebDom.setAttribute("class", "win-panel__actions")
+
           let button = WebDom.createElement("button")
           button->WebDom.setAttribute("type", "button")
           button->WebDom.setAttribute("class", "win-panel__button")
@@ -1174,9 +1204,50 @@ let make = (
             | None => buildBoard(game)
             }
           )
+          actions->WebDom.appendChild(button)->ignore
 
           panel->WebDom.appendChild(title)->ignore
-          panel->WebDom.appendChild(button)->ignore
+          panel->WebDom.appendChild(actions)->ignore
+
+          // The victory share (#264), offered only when the driver has a deal to hand
+          // out — asked *now*, as the overlay goes up, so the answer is about the board
+          // that was just won rather than whatever the scene mounted with.
+          //
+          // The click calls `share` with nothing awaited in front of it, so the
+          // gesture's transient activation survives into `navigator.share` (see
+          // `ShareLink.deliver`). That's affordable here precisely because a victory
+          // shares the *deal*: a `?seed=` link is built from a number, with no
+          // compression standing between the tap and the sheet.
+          //
+          // The status line beneath reports where the link went — the only
+          // acknowledgement a desktop player gets, since the clipboard route opens no
+          // OS sheet. Unlike the menu's, it doesn't clear itself: the panel is torn
+          // down by the very next thing the player does, so there's no stale state for
+          // a timer to save us from. Its height is reserved in CSS so the line landing
+          // doesn't jostle the buttons above it.
+          switch winShare {
+          | Some(offer) if offer.available() =>
+            let status = WebDom.createElement("p")
+            status->WebDom.setAttribute("class", "win-panel__status")
+            status->WebDom.setAttribute("aria-live", "polite")
+
+            let shareButton = WebDom.createElement("button")
+            shareButton->WebDom.setAttribute("type", "button")
+            shareButton->WebDom.setAttribute("class", "win-panel__button win-panel__button--share")
+            shareButton->WebDom.setTextContent("Share")
+            shareButton->WebDom.addEventListener("click", () =>
+              offer.share(~moves=History.steps(history.contents))
+              // Writing into the panel is safe even if it's been torn down by the time
+              // the share resolves (an undo out of the win, a New Game): the node is
+              // detached by then, and setting text on it changes nothing anyone sees.
+              ->Promise.thenResolve(line => status->WebDom.setTextContent(line))
+              ->ignore
+            )
+            actions->WebDom.appendChild(shareButton)->ignore
+            panel->WebDom.appendChild(status)->ignore
+          | _ => ()
+          }
+
           overlay->WebDom.appendChild(panel)->ignore
           boardHost->WebDom.appendChild(overlay)->ignore
           winOverlay := Some(overlay)

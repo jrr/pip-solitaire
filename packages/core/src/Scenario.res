@@ -280,14 +280,25 @@ let freecellFinish = (game: Game.t): GameState.t => {
 }
 
 // A named scenario as *data*: the `name` the URL/CLI address it by, a human
-// `label` for a picker (the web-app's debug "states" menu), and the pure `build`
-// that produces its `GameState` for a board. Collecting the set here — rather
-// than burying it in `forName`'s switch — gives a single source of truth a UI can
-// enumerate (`scenariosFor`) and a resolver can look up (`forName`) alike.
+// `label` for a picker (the web-app's debug "states" menu), the pure `build`
+// that produces its `GameState` for a board, and the deal it descends from.
+// Collecting the set here — rather than burying it in `forName`'s switch — gives a
+// single source of truth a UI can enumerate (`scenariosFor`) and a resolver can
+// look up (`forName`) alike.
+//
+// `seed` is a claim with teeth: `Some(n)` says *this exact position is reachable by
+// legal play from deal number n*. It exists because a scenario is otherwise a
+// position with no provenance — posed straight from the deck, as the builders above
+// all are — and the web app's share buttons need to know which deal, if any, a board
+// can honestly point someone at (see `Main`). Naming the wrong one would send a
+// recipient to a board nobody is looking at, so the field is `None` for every
+// scenario whose reachability nobody has established, and a scenario that claims a
+// number owes a test that replays the line (`Scenario_test`).
 type named = {
   name: string,
   label: string,
   build: Game.t => GameState.t,
+  seed: option<int>,
 }
 
 // FreeCell's scenarios, in menu order — the whole vocabulary `?state=` and the
@@ -298,11 +309,28 @@ let freecellScenarios: array<named> = [
     name: "midgame",
     label: "Mid-game",
     build: game => freecellMidgame(game, ~seed=Game.freecellSeed),
+    // A representative *layout*, assembled from the shuffled deck rather than played
+    // to — as its own comment says, it isn't the result of a specific line. Nothing
+    // establishes which deal (if any) reaches it, so it points at none.
+    seed: None,
   },
-  {name: "almost-won", label: "Almost won", build: freecellAlmostWon},
-  {name: "supermove", label: "Supermove", build: freecellSupermove},
-  {name: "sendhome", label: "Send home", build: freecellSendHome},
-  {name: "finish", label: "Finishable", build: freecellFinish},
+  {
+    name: "almost-won",
+    label: "Almost won",
+    build: freecellAlmostWon,
+    // Deal **264** genuinely arrives here: 129 legal moves drain 51 cards home and
+    // park the Clubs King in the first free cell, which is this position exactly.
+    // `Scenario_test` replays that line through the reducer and compares the result,
+    // so the claim is checked rather than asserted — and the number stops being one
+    // the web app has to invent to light up its victory share (#264).
+    //
+    // It's the only scenario with a deal behind it because it's the only one that can
+    // be *won*, and a win is what has something to share.
+    seed: Some(264),
+  },
+  {name: "supermove", label: "Supermove", build: freecellSupermove, seed: None},
+  {name: "sendhome", label: "Send home", build: freecellSendHome, seed: None},
+  {name: "finish", label: "Finishable", build: freecellFinish, seed: None},
 ]
 
 // The named scenarios that apply to `game`, in menu order — empty for a board
@@ -318,3 +346,10 @@ let scenariosFor = (game: Game.t): array<named> =>
 // vocabulary and the debug menu's list can never drift apart.
 let forName = (game: Game.t, name: string): option<GameState.t> =>
   scenariosFor(game)->Array.find(s => s.name == name)->Option.map(s => s.build(game))
+
+// The deal a named scenario descends from, or `None` when the name is unknown to
+// this board *or* the scenario claims no deal. The two collapse deliberately: both
+// mean "there's no deal number to offer for this", which is the only question the
+// caller (a share button) is asking.
+let seedForName = (game: Game.t, name: string): option<int> =>
+  scenariosFor(game)->Array.find(s => s.name == name)->Option.flatMap(s => s.seed)
