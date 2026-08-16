@@ -684,11 +684,13 @@
 
       /* A game-section action button (#156), styled like the scene rows/toggle but
          centred, since it's a command rather than a labelled row. `flex: 1` so the
-         row's buttons split the width evenly; `min-width` is the widest label
-         ("Share Seed") on one line, which is what makes the row wrap on a narrow panel
-         rather than shrink below legibility. Disabled — Share Seed on a board with no
-         seed — is muted and inert (see Menu). The Settings button at the foot of the
-         main menu borrows this class too. */
+         row's buttons split the width evenly, and `min-width` a legibility floor, so
+         a row too narrow for its buttons wraps rather than squeezing them. That's the
+         ordinary case here: "Share Seed" plus a six-digit seed is wider than the panel
+         has left beside New and Restart, so it takes the second line and grows to fill
+         it. Disabled — Share Seed on a board with no seed — is muted and inert (see
+         Menu). The Settings button at the foot of the main menu borrows this class
+         too. */
       .menu-button {
         flex: 1 1 auto;
         min-width: 6.5rem;
@@ -708,13 +710,32 @@
         cursor: default;
       }
 
-      /* The line under the game section's buttons (#98): the seed on the table, or
-         where a share link just went. Always present so a confirmation appearing and
-         clearing never shoves the sections below it, and `min-height` holds the slot
-         even if a state ever leaves it empty. */
+      /* A number a game button carries as *data* rather than prose (#98): the seed
+         on Share Seed. The mono stack — the one the board readout and the motion
+         panel already use — plus a step down in weight and colour make the digits
+         read as a value beside the label rather than as more of the sentence, and
+         mono keeps 0/O and 1/l unambiguous for a number meant to be read aloud or
+         typed in by hand. */
+      .menu-button__value {
+        font: 13px ui-monospace, "SF Mono", Menlo, monospace;
+        color: #94a3b8;
+      }
+
+      /* The line under the game section's buttons (#98): where a share link just
+         went, or why Share Seed is greyed out — and empty the rest of the time, the
+         seed itself now riding on the button. `min-height` is what makes the empty
+         case work: the slot holds its height, so a confirmation appears and clears
+         without shoving the sections below it. */
       .menu-share-line {
         margin: 0;
-        min-height: 1.1em;
+        /* The two have to agree exactly, or the slot still grows a pixel or two as
+           the text lands: `line-height` sets the height of the line box the text
+           makes, `min-height` the height of the box when there's no text to make
+           one. Stated as a ratio and an em of the same font-size so they can't
+           drift apart. `normal` line-height won't do — it's font-dependent, and
+           can't be matched by a min-height. */
+        line-height: 1.35;
+        min-height: 1.35em;
         font: 12px "Libre Franklin", sans-serif;
         color: #94a3b8;
       }

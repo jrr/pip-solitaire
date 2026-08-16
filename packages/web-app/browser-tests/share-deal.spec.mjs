@@ -44,12 +44,15 @@ async function openMenu(page) {
   await expect(page.locator("#menu-overlay")).toBeVisible()
 }
 
-// The line under the buttons: the seed on the table, or where a link just went.
+// The Share Seed button, which names the seed it would hand out.
+const shareButton = (page) => page.getByRole("button", { name: /^Share Seed/ })
+
+// The line under the buttons: where a link just went, or why the button is dark.
 const shareLine = (page) => page.locator(".menu-share-line")
 
 // Press Share Seed and hand back the link it put on the clipboard.
 async function shareDeal(page) {
-  await page.getByRole("button", { name: /^Share seed / }).click()
+  await shareButton(page).click()
   await expect(shareLine(page)).toHaveText("Link copied to clipboard.")
   return await page.evaluate(() => navigator.clipboard.readText())
 }
@@ -62,9 +65,17 @@ test("shares a link to the deal on the table, and that link reopens it", async (
   expect(dealt.length).toBe(52)
 
   await openMenu(page)
-  await expect(shareLine(page)).toHaveText("Seed 24680")
+  await expect(shareButton(page)).toHaveText("Share Seed 24680")
+  // The line beneath is empty until there's something to report, but present: the
+  // confirmation below takes a slot that's already holding its height, so nothing
+  // below it moves when it appears.
+  await expect(shareLine(page)).toHaveText("")
+  const before = await shareLine(page).boundingBox()
 
   const url = await shareDeal(page)
+  // …and it appeared in that same slot, without resizing it.
+  expect((await shareLine(page).boundingBox()).height).toBe(before.height)
+
   // The link says which board to deal and nothing else — legible, and short enough
   // to be read off one screen and typed into another.
   expect(new URL(url).searchParams.get("seed")).toBe("24680")
@@ -84,7 +95,7 @@ test("offers the fresh deal after a New Game", async ({ page }) => {
   await settleBoard(page)
 
   await openMenu(page)
-  await expect(shareLine(page)).toHaveText("Seed 13579")
+  await expect(shareButton(page)).toHaveText("Share Seed 13579")
 
   // New Game deals a fresh random seed and closes the menu; reopen and look again.
   await page.getByRole("button", { name: "New", exact: true }).click()
@@ -92,7 +103,7 @@ test("offers the fresh deal after a New Game", async ({ page }) => {
   const afterNewGame = await readBoard(page)
 
   await openMenu(page)
-  await expect(shareLine(page)).not.toHaveText("Seed 13579")
+  await expect(shareButton(page)).not.toHaveText("Share Seed 13579")
 
   // …and whatever it now offers is a link to *this* board.
   const url = await shareDeal(page)
@@ -110,15 +121,15 @@ test("a resumed game can still say which seed it is", async ({ page }) => {
   await page.goto("/?animate=off")
   await settleBoard(page)
   await openMenu(page)
-  const dealt = await shareLine(page).textContent()
-  expect(dealt).toMatch(/^Seed \d+$/)
+  const dealt = await shareButton(page).textContent()
+  expect(dealt).toMatch(/^Share Seed \d+$/)
 
   // Reload with a bare URL: no seed to pin the deal, so the board that comes back is
   // the saved one, resumed.
   await page.goto("/")
   await settleBoard(page)
   await openMenu(page)
-  await expect(shareLine(page)).toHaveText(dealt)
+  await expect(shareButton(page)).toHaveText(dealt)
 })
 
 test("says so on a board with no seed, rather than offering one", async ({ page }) => {

@@ -211,15 +211,20 @@ let actionRow = (~label, ~desc, ~enabled, ~onClick) =>
 // `disabled` attribute — a disabled button emits no click at all, so the handler
 // guard is belt and braces — and the muted styling that goes with it. Only Share Seed
 // is ever disabled; the other two are no-ops on a scene without a game rather than
-// unavailable, which is the behaviour they've always had. `name` overrides the
-// accessible name where the label alone doesn't say enough (Share Seed names the
-// seed it would hand out).
-let gameButton = (~label, ~name=?, ~enabled=true, ~onClick) => {
+// unavailable, which is the behaviour they've always had.
+//
+// `value` is a number the button carries *as data* rather than prose — the seed
+// Share Seed would hand out. It's set in the mono stack a step dimmer than the label
+// (see `.menu-button__value`), which is the label/value split the About footer's build
+// string already uses: the word says what the button does, the digits say what it
+// would act on. It stays inside the button rather than becoming an `aria-label`, so
+// the accessible name is the visible text — the trailing space in the label is what
+// keeps the two from running together when a screen reader concatenates them.
+let gameButton = (~label, ~value=?, ~enabled=true, ~onClick) => {
   let attrs = [("type", "button")]
   if !enabled {
     attrs->Array.push(("disabled", ""))
   }
-  name->Option.forEach(name => attrs->Array.push(("aria-label", name)))
   <button
     className="menu-button"
     onClick={_ =>
@@ -228,21 +233,27 @@ let gameButton = (~label, ~name=?, ~enabled=true, ~onClick) => {
       }}
     attrs
   >
-    {Html.string(label)}
+    {Html.string(value->Option.isSome ? label ++ " " : label)}
+    {switch value {
+    | Some(value) => <span className="menu-button__value"> {Html.string(value)} </span>
+    | None => Html.array([])
+    }}
   </button>
 }
 
-// The line under the "game" buttons (#98). One line, three things to say, in
-// priority order: what just happened to a share, else which seed is on the table,
-// else why there's nothing to share. It's always rendered — the same slot in every
-// state — so a share confirmation appears and clears without the buttons above it
-// moving, and so the seed is on screen to be read (and typed by hand) on a browser
-// where the link can't be delivered at all.
+// The line under the "game" buttons (#98). It reports what became of a share ("Link
+// copied to clipboard.") or, on a board with nothing to share, why the button is
+// greyed out — and is otherwise *empty*, now that the seed itself rides on the button.
+//
+// Empty, but always rendered: the slot holds its height (`min-height`, see index.html)
+// so the confirmation appears and clears without shoving the sections below it. That
+// reflow is the whole reason the line is unconditional rather than a node that comes
+// and goes.
 let seedLine = (~seed: option<int>, ~status: option<string>): string =>
   switch (status, seed) {
   | (Some(status), _) => status
-  | (None, Some(seed)) => "Seed " ++ Int.toString(seed)
   | (None, None) => "No seed for this board."
+  | (None, Some(_)) => ""
   }
 
 // The "Wiggle Waggle" row (#235): the shake-to-jostle switch. Unlike the plain
@@ -470,12 +481,14 @@ let make = ({
               {// Share Seed (#98). The only one of the three that ever goes
               // `disabled` — the real attribute, so no click is emitted at all, with
               // the handler guard behind it as belt and braces — because a board
-              // with no seed has no link to hand out. The accessible name names the
-              // seed: the label says what *kind* of thing goes out, and the number
-              // is the whole content of it.
+              // with no seed has no link to hand out. It carries the seed as its
+              // value: the label says what kind of thing goes out, the digits say
+              // exactly which, and a player can read the number off (or dictate it)
+              // where no link can be delivered at all. A disabled button shows the
+              // bare label, there being no number to name.
               gameButton(
                 ~label="Share Seed",
-                ~name=?shareDealSeed->Option.map(n => "Share seed " ++ Int.toString(n)),
+                ~value=?shareDealSeed->Option.map(seed => Int.toString(seed)),
                 ~enabled=shareDealSeed->Option.isSome,
                 ~onClick=onShareDeal,
               )}
