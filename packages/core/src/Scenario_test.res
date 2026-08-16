@@ -287,3 +287,83 @@ describe("hasWon", () => {
     expect(GameState.hasWon(Game.stacking, GameState.initial(Game.stacking)))->toBe(false)
   })
 })
+
+// The `almost-won` scenario claims to descend from deal **264** (`named.seed`), and
+// the web app leans on that claim: it's what lets a victory won from `?state=almost-won`
+// hand someone a `?seed=` link that's actually true (#264). A claim like that is worth
+// nothing unasserted, so this replays the line and checks where it lands.
+//
+// The line was found by a solver and is fixture data, not something to read: 130 moves
+// as `<rank><suit>:<pile>`, using the same two-character card codes `SaveState` writes.
+// What makes it a *proof* rather than a second assertion is that every move goes through
+// the real `Reducer` — an illegal one fails the test rather than being skipped — and the
+// end state is compared against `freecellAlmostWon` itself. Change the shuffle, the deal,
+// the rules or the scenario, and this goes red instead of the app quietly sharing a link
+// to a board nobody played.
+let almostWonLine264 =
+  "7S:0 AC:7 AH:5 QH:8 TH:1 2H:5 6C:2 3H:3 6H:10 8D:13 7S:13 3H:5 KD:0 2C:7 4H:3 5D:15 " ++
+  "5S:10 6C:9 5S:2 6H:13 5S:13 4H:13 KS:2 QS:3 AD:6 6C:12 7C:11 7H:10 2D:6 6C:10 KD:9 " ++
+  "QS:9 7C:0 7D:3 8H:12 7C:12 9H:0 JC:8 3C:7 KS:11 JC:2 QH:11 JC:11 TH:11 7C:1 8H:2 " ++
+  "9C:11 8H:11 7C:11 4H:1 5S:2 6H:11 5S:11 4H:11 KC:1 7S:2 4S:15 4C:7 4H:5 5H:5 QS:8 " ++
+  "3D:15 7S:13 KD:2 7D:9 5S:3 6C:9 6H:5 7H:5 8C:12 2S:15 JD:8 5S:10 TD:3 AS:4 2S:4 3S:4 " ++
+  "3D:6 4S:4 5S:4 5D:9 6S:4 JH:15 9H:14 7C:0 8H:5 9H:5 TS:15 9C:14 TH:5 TD:11 7S:3 " ++
+  "8D:14 9S:11 5C:7 7S:4 8S:4 JD:13 9S:4 TS:4 7C:14 6D:14 JS:4 QS:10 KH:0 QD:3 4D:6 " ++
+  "5D:6 6C:7 6D:6 7D:6 7C:7 8C:7 8D:6 9D:6 TD:6 QS:4 9C:7 JD:6 JH:5 QC:8 TC:7 QD:6 JC:7 " ++ "KD:6 QC:7 QH:5 KH:5 KS:4 KC:0"
+
+describe("Scenario almost-won provenance (#264)", () => {
+  test("deal 264 really does play to the almost-won position", () => {
+    let seed =
+      Scenario.freecellScenarios
+      ->Array.find(s => s.name == "almost-won")
+      ->Option.flatMap(s => s.seed)
+      ->Option.getOrThrow
+    expect(seed)->toBe(264)
+
+    let game = Game.freecellDeal(~seed)
+    let played =
+      almostWonLine264
+      ->String.split(" ")
+      ->Array.reduce(
+        Ok(GameState.initial(game)),
+        (acc, token) =>
+          switch acc {
+          | Error(_) => acc
+          | Ok(state) =>
+            switch String.split(token, ":") {
+            | [code, pile] =>
+              switch (SaveState.decodeCard(code), Int.fromString(pile)) {
+              | (Some(card), Some(to)) =>
+                switch Reducer.reduce(~game, state, Move({card, to: ToPile(to)})) {
+                | Ok(next) => Ok(next)
+                | Error(_) => Error("the rules rejected " ++ token)
+                }
+              | _ => Error("unreadable move " ++ token)
+              }
+            | _ => Error("unreadable move " ++ token)
+            }
+          },
+      )
+
+    switch played {
+    | Error(why) => expect(why)->toBe("") // fail, naming the move that broke
+    | Ok(state) =>
+      // Every move was legal, and the board it left is the scenario, card for card.
+      expect(GameState.equal(state, Scenario.freecellAlmostWon(game)))->toBe(true)
+      // …and it really is one move from a win, which is the whole point of it.
+      expect(GameState.hasWon(game, state))->toBe(false)
+      let (finished, _moved) = Reducer.finishSequence(~game, state)
+      expect(GameState.hasWon(game, finished))->toBe(true)
+    }
+  })
+
+  test("the scenarios with no established deal say so", () => {
+    // The claim is per-scenario and deliberately narrow: a posed layout nobody has
+    // shown a line to keeps `None`, so a share button stays dark rather than guessing.
+    let seedOf = name =>
+      Scenario.freecellScenarios->Array.find(s => s.name == name)->Option.flatMap(s => s.seed)
+    expect(seedOf("midgame"))->toBe(None)
+    expect(seedOf("finish"))->toBe(None)
+    expect(Scenario.seedForName(Game.freecell, "almost-won"))->toBe(Some(264))
+    expect(Scenario.seedForName(Game.freecell, "no-such-scenario"))->toBe(None)
+  })
+})

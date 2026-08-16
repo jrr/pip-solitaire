@@ -1,28 +1,23 @@
 // The win overlay's Share button, end to end (#264).
 //
-// What the feature promises is a *boast that's also an invitation*: when you win,
-// the button hands over a message naming the deal you beat and a link that deals
-// that same board to whoever reads it. The unit tests pin each half — the message's
-// wording (`ShareLink_test`), and the board offering the button only when there's a
-// deal to name (`TableScene_test`) — but the two only meet in a real browser, which
-// is also the only place with a clipboard for the link to land on.
+// What the feature promises is a *boast that's also an invitation*: when you win, the
+// button hands over a message naming the deal you beat and a link that deals that same
+// board to whoever reads it. The unit tests pin each half — the message's wording
+// (`ShareLink_test`), the board offering the button only when there's a deal to name
+// (`TableScene_test`), and the deal that the almost-won position descends from
+// (`Scenario_test`) — but the three only meet in a real browser, which is also the
+// only place with a clipboard for the link to land on.
 //
-// Getting to a *won* board with a deal number behind it is the awkward part, and
-// worth spelling out, because it's the one path that exists:
-//
-//   - `?state=almost-won` (what `win.spec.mjs` uses) is a posed position, so the app
-//     deliberately reports no deal for it and the button is correctly absent.
-//   - `?seed=N` names a deal, but nothing saves on a URL-addressed open, so dropping
-//     a debug state onto that board loses the number.
-//   - A *plain* open deals a real board and saves its number beside the game. From
-//     there a debug state can pose the position without the number going anywhere —
-//     `SavedGame.loadSeed` still answers for the deal that was dealt here.
-//
-// So this opens plainly, notes the deal it got, jumps the board to one move from
-// victory, and plays that move. Everything after the jump is the ordinary win.
+// `?state=almost-won` is the way in, and it's honest rather than a test fixture: that
+// scenario carries deal **264**, proved by replaying the line through the reducer in
+// `Scenario_test`. So the link this test reads off the clipboard really does deal the
+// board the position came from — which is the property being checked.
 
 import { expect, test } from "@playwright/test"
 import { settleBoard } from "./lib/board.mjs"
+
+// The deal `Scenario`'s almost-won position was played from.
+const ALMOST_WON_DEAL = "264"
 
 test.use({
   viewport: { width: 800, height: 1000 },
@@ -30,18 +25,6 @@ test.use({
   // the clipboard — the path under test, and reading it back needs the grant.
   permissions: ["clipboard-read", "clipboard-write"],
 })
-
-// Walk the menu down to the Debug screen and drop the board into a named position,
-// the in-app twin of `?state=` (see `DebugStates`). The "states" group opens
-// collapsed, so it has to be disclosed before its rows can be clicked.
-async function loadDebugState(page, label) {
-  await page.getByRole("button", { name: "Open menu" }).click()
-  await page.getByRole("button", { name: "Settings" }).click()
-  await page.getByRole("button", { name: "Debug" }).first().click()
-  await page.locator("summary", { hasText: "states" }).click()
-  await page.getByRole("button", { name: label }).click()
-  await expect(page.locator("#menu-overlay")).toBeHidden()
-}
 
 // Play the single winning move: the pending King rests alone in the first free cell
 // (drop zone 0) and its foundation is the last zone (4 cells, then 4 foundations,
@@ -71,20 +54,34 @@ async function playTheWinningMove(page) {
 const shareButton = (page) => page.locator(".win-panel__button--share")
 const shareStatus = (page) => page.locator(".win-panel__status")
 
-test("a won game shares the deal it was played from", async ({ page }) => {
-  // A plain open: a random deal, whose number the app stores beside the saved game.
-  await page.goto("/?animate=off")
-  await settleBoard(page)
-  const seed = await page.evaluate(() => localStorage.getItem("pip.savedDeal.freecell"))
-  expect(seed).toMatch(/^\d+$/)
+// The board's card layout as plain data, for checking that a link reopens the deal it
+// names. Sorted, because DOM order follows z-stacking rather than layout.
+async function readBoard(page) {
+  return await page.evaluate(() =>
+    [...document.querySelectorAll(".stacking-card")]
+      .map((card) => {
+        const art = card.querySelector("[aria-label]")
+        const { left, top } = getComputedStyle(card)
+        return `${art?.getAttribute("aria-label") ?? "?"} @ ${left},${top}`
+      })
+      .sort(),
+  )
+}
 
-  await loadDebugState(page, "Almost won")
+test("a won game shares the deal it came from, and that link deals it", async ({ page }) => {
+  // What deal 264 actually lays out, for the round trip at the end.
+  await page.goto(`/?seed=${ALMOST_WON_DEAL}&animate=off`)
+  await settleBoard(page)
+  const dealt = await readBoard(page)
+  expect(dealt.length).toBe(52)
+
+  await page.goto("/?scene=freecell&state=almost-won&animate=off")
   await playTheWinningMove(page)
   await expect(page.locator(".win-overlay")).toHaveCount(1)
 
   // The status line is present but empty before the press, holding its height so the
-  // confirmation lands without pushing the buttons around — the same reserved slot
-  // the menu's share line uses.
+  // confirmation lands without pushing the buttons around — the same reserved slot the
+  // menu's share line uses.
   await expect(shareStatus(page)).toHaveText("")
   const before = await shareStatus(page).boundingBox()
 
@@ -95,36 +92,47 @@ test("a won game shares the deal it was played from", async ({ page }) => {
   const shared = await page.evaluate(() => navigator.clipboard.readText())
 
   // The message: the suits that make it recognisable in a chat, the deal that was
-  // beaten, and the length of the winning line — one move, since the jump to the
-  // posed position starts a fresh history.
-  expect(shared).toContain("♠️♥️♦️♣️ Pip FreeCell #" + seed)
+  // beaten, and the length of the winning line — one move, since a forced position
+  // starts a fresh history.
+  expect(shared).toContain(`♣️♥️♠️♦️ Pip FreeCell #${ALMOST_WON_DEAL}`)
   expect(shared).toContain("Solved in 1 move")
 
   // …and the link. It has to be the *deal*, not the position: a link to the board as
-  // it stands would hand the recipient a solved game, which is the one thing this
-  // share must never do.
+  // it stands would hand the recipient a solved game, which is the one thing this share
+  // must never do.
   const url = new URL(shared.slice(shared.indexOf("http")))
-  expect(url.searchParams.get("seed")).toBe(seed)
+  expect(url.searchParams.get("seed")).toBe(ALMOST_WON_DEAL)
   expect(url.hash).toBe("")
 
-  // The round trip, as the recipient makes it: the link opens that deal, unplayed.
+  // The round trip, as the recipient makes it: the link deals the board the sender's
+  // position was played from, unplayed.
   await page.goto(url.toString())
   await settleBoard(page)
   await expect(page.locator(".win-overlay")).toHaveCount(0)
-  await expect(page.locator(".stacking-card")).toHaveCount(52)
+  expect(await readBoard(page)).toEqual(dealt)
 })
 
-test("a posed board offers no share, having no deal to name", async ({ page }) => {
-  // `?state=almost-won` is a position, not a deal — the app has no number for it, so
-  // the win overlay is New Game alone rather than a button that would send someone to
-  // a board nobody is looking at. (This is the case worth revisiting: the position is
-  // real, it just doesn't carry where it came from.)
-  await page.goto("/?scene=freecell&state=almost-won&animate=off")
-  await playTheWinningMove(page)
+test("a scenario with no deal behind it offers no share", async ({ page }) => {
+  // Only `almost-won` has had a line to it proved (`Scenario_test`); the rest are posed
+  // layouts with no established provenance, and a board with no deal to name offers no
+  // Share button rather than guessing at one. `midgame` stands in for all of them — it
+  // can't be won, so this checks the menu's Share Seed, which reads the same number.
+  await page.goto("/?scene=freecell&state=midgame&animate=off")
+  await settleBoard(page)
 
-  await expect(page.locator(".win-overlay")).toHaveCount(1)
-  await expect(shareButton(page)).toHaveCount(0)
-  // The New Game button is still there, and still the way out.
-  await page.locator(".win-panel__button").click()
-  await expect(page.locator(".win-overlay")).toHaveCount(0)
+  await page.getByRole("button", { name: "Open menu" }).click()
+  await expect(page.getByRole("button", { name: "Share Seed", exact: true })).toBeDisabled()
+  await expect(page.locator(".menu-share-line")).toHaveText("No seed for this board.")
+})
+
+test("the almost-won board names its deal on the menu too", async ({ page }) => {
+  // Both share buttons read the same number, so the menu is where it can be seen
+  // without winning first.
+  await page.goto("/?scene=freecell&state=almost-won&animate=off")
+  await settleBoard(page)
+
+  await page.getByRole("button", { name: "Open menu" }).click()
+  await expect(page.getByRole("button", { name: /^Share Seed/ })).toHaveText(
+    `Share Seed ${ALMOST_WON_DEAL}`,
+  )
 })

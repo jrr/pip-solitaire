@@ -84,7 +84,7 @@ describe("ShareLink.victoryMessage (#264)", () => {
     expect(message->String.includes("847213"))->toBe(true)
     expect(message->String.includes("94 moves"))->toBe(true)
     // The suits lead the message — the thing that makes it recognisable in a chat.
-    expect(message->String.startsWith("♠️♥️♦️♣️"))->toBe(true)
+    expect(message->String.startsWith("♣️♥️♠️♦️"))->toBe(true)
   })
 
   test("counts a one-move win in the singular", () => {

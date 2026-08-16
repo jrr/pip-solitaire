@@ -117,7 +117,7 @@ let urlForDeal = (seed: int): string =>
 // route it takes — as the share sheet's own `url` field, or appended for the
 // clipboard. Composing it here as well is how a link ends up in the message twice.
 let victoryMessage = (~seed: int, ~moves: int): string =>
-  "♠️♥️♦️♣️ Pip FreeCell #" ++
+  "♣️♥️♠️♦️ Pip FreeCell #" ++
   Int.toString(seed) ++
   "\nSolved in " ++
   Int.toString(moves) ++ (moves == 1 ? " move" : " moves")

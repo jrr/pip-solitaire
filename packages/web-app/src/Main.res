@@ -628,11 +628,18 @@ let gameScene = (game: Game.t) => {
     // it the *next* session's resumed game couldn't be shared at all.
     //
     // `None` from the scene means the board is showing something other than a deal's
-    // opening position — a restored history or a forced state. On a plain open that's
-    // the resume path, and the deal number is exactly what was stored last time, so
-    // it's read back here; on any other open (a `?state=` scenario, a `#g=` shared
-    // game) there's genuinely no deal to name and the Share button stays dark rather
-    // than offering a board nobody is looking at.
+    // opening position — a restored history or a forced state — and where the number
+    // comes from then depends on which:
+    //
+    //   - a plain open is the resume path, and the deal number is exactly what was
+    //     stored last time, so it's read back here;
+    //   - a `?state=` scenario asks `core` which deal that position descends from
+    //     (`Scenario.seedForName`). Only a scenario that has *proved* a line to itself
+    //     answers — `almost-won` from deal 264 (#264) — so a posed board either offers
+    //     the deal it genuinely came from or offers nothing;
+    //   - a `#g=` shared game has a real position with no deal number attached to it,
+    //     so there's nothing to name and the Share buttons stay dark rather than
+    //     pointing at a board nobody is looking at.
     ~onDeal=seed =>
       publishDeal(
         switch seed {
@@ -641,7 +648,10 @@ let gameScene = (game: Game.t) => {
             SavedGame.saveSeed(game.id, n)
           }
           Some(n)
-        | None => plainOpen ? SavedGame.loadSeed(game.id) : None
+        | None =>
+          plainOpen
+            ? SavedGame.loadSeed(game.id)
+            : url.state->Option.flatMap(name => Scenario.seedForName(game, name))
         },
       ),
     // The win overlay's Share button (#264): the same deal number the menu's Share
@@ -780,6 +790,14 @@ let debugStates = DebugStates.render(
     onSelect: () => {
       switcher.ensureActive("freecell")
       loadStateHook.contents->Option.forEach(load => load(scenario.build(Game.freecell)))
+      // Say which deal the board is now showing, the menu twin of the `?state=` rule
+      // above (#264): a posed position offers the deal it's been shown to descend from,
+      // and nothing otherwise. This runs *after* the load because the rebuild it
+      // triggers reports `None` through `~onDeal` on its way past — on a plain open
+      // that resolves to the saved game's seed, which is the board this load has just
+      // replaced. Correcting it here is what stops a debug jump from leaving the Share
+      // buttons pointing at the deal the player was on a moment ago.
+      publishDeal(scenario.seed)
       closeMenu.contents()
     },
   }),
