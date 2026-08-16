@@ -1191,6 +1191,37 @@
         background: #15803d;
       }
 
+      /* The panel's button row (#264), so Share sits beside New Game rather than
+         under it. The panel is a centred column, so a row of one (a board with no
+         deal number to share) looks exactly as it did before the Share button
+         existed. */
+      .win-panel__actions {
+        display: flex;
+        gap: 12px;
+      }
+
+      /* Share is the secondary action of the two: New Game keeps the green, this
+         takes the panel's slate so the eye lands on "play on" first. */
+      .win-panel__button--share {
+        background: #334155;
+      }
+
+      .win-panel__button--share:hover {
+        background: #475569;
+      }
+
+      /* Where the share reports what it did ("Link copied to clipboard."). Its
+         height is reserved by the same line-height/min-height pair the menu's share
+         line uses, so the text landing doesn't push the buttons up the screen —
+         see `.menu-share-line` for why the two values have to be stated this way. */
+      .win-panel__status {
+        margin: 0;
+        line-height: 1.35;
+        min-height: 1.35em;
+        font: 13px "Libre Franklin", sans-serif;
+        color: #94a3b8;
+      }
+
       /* The end-game "Finish" button (#132): a floating control that appears
          (this element is only in the DOM while the board is drainable) low on the
          stage, offering the one-tap win sweep. Styled off the win panel's button
@@ -1661,7 +1692,7 @@
         }
       }
     </style>
-    <script type="module" crossorigin src="./assets/index-6BbtMXq3.js"></script>
+    <script type="module" crossorigin src="./assets/index-Gzhmzk3m.js"></script>
   <link rel="manifest" href="./manifest.webmanifest"></head>
   <body>
     <!-- Vite resolves the bare `core/…` specifier the compiled entry imports
