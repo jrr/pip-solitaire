@@ -9,10 +9,13 @@ on:
     types: [opened, reopened, synchronize, closed]
 
 # `contents: write` pushes commits to `gh-pages` to deploy/remove the preview;
-# `pull-requests: write` lets the actions post/update the preview-link comments.
+# `pull-requests: write` lets the actions post/update the preview-link comments;
+# `deployments: write` records the preview in GitHub's deployments API so the
+# PR's merge box links to it (see "Start deployment" below).
 permissions:
   contents: write
   pull-requests: write
+  deployments: write
 
 # Share the `gh-pages` group with the main deploy so all writers of that
 # branch are serialized and can't race.
@@ -29,6 +32,50 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
+
+      # `pr-preview-action` only pushes to `gh-pages` and comments a link — it
+      # never touches the deployments API, which is why the PR reads "This branch
+      # has not been deployed" even though the preview is live. Opening a
+      # deployment here (and closing it below) is what lights up the merge box's
+      # "View deployment" button and the repo's Environments page.
+      #
+      # Created before the build so the box shows the preview as in progress
+      # while it runs; the SHA-keyed `ref` is what ties it to this PR.
+      - name: Start deployment
+        id: deployment
+        if: github.event.action != 'closed'
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const pr = context.payload.pull_request;
+            const { data } = await github.rest.repos.createDeployment({
+              owner, repo,
+              ref: pr.head.sha,
+              // One environment per PR, so a new preview never marks another
+              // PR's still-live preview inactive. `transient` tells GitHub to
+              // retire it once the branch goes away.
+              environment: `pr-preview-${pr.number}`,
+              transient_environment: true,
+              production_environment: false,
+              description: `Preview for PR #${pr.number}`,
+              // Without these the API answers with a merge commit or a
+              // "waiting on checks" message instead of a deployment: there are
+              // no commit statuses to gate on, and the preview is built from
+              // the head as-is rather than from a merge with the base.
+              required_contexts: [],
+              auto_merge: false,
+            });
+            // A deployment carries no state until its first status, so without
+            // this the box sits on "pending" for the whole build instead of
+            // showing it as deploying.
+            await github.rest.repos.createDeploymentStatus({
+              owner, repo,
+              deployment_id: data.id,
+              state: "in_progress",
+              log_url: `${context.serverUrl}/${owner}/${repo}/actions/runs/${context.runId}`,
+            });
+            core.setOutput("id", data.id);
 
       # The build is only needed for deploy actions, not cleanup. On close the
       # action just removes the preview dir, so skip the build to save time.
@@ -53,6 +100,72 @@ jobs:
         uses: rossjrw/pr-preview-action@v1
         with:
           source-dir: packages/web-app/dist
+
+      # `environment_url` is what the merge box's "View deployment" button opens.
+      # Built by hand from the action's default `pr-preview/pr-<N>/` umbrella,
+      # same as the screenshot comment below builds its own links.
+      - name: Finish deployment
+        if: github.event.action != 'closed'
+        uses: actions/github-script@v9
+        env:
+          DEPLOYMENT_ID: ${{ steps.deployment.outputs.id }}
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const n = context.payload.pull_request.number;
+            await github.rest.repos.createDeploymentStatus({
+              owner, repo,
+              deployment_id: Number(process.env.DEPLOYMENT_ID),
+              state: "success",
+              environment_url: `https://${owner}.github.io/${repo}/pr-preview/pr-${n}/`,
+              log_url: `${context.serverUrl}/${owner}/${repo}/actions/runs/${context.runId}`,
+            });
+
+      # Without this a failed build leaves the deployment stuck "in progress"
+      # forever, which reads worse than no deployment at all.
+      - name: Mark deployment failed
+        if: failure() && steps.deployment.outputs.id
+        uses: actions/github-script@v9
+        env:
+          DEPLOYMENT_ID: ${{ steps.deployment.outputs.id }}
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            await github.rest.repos.createDeploymentStatus({
+              owner, repo,
+              deployment_id: Number(process.env.DEPLOYMENT_ID),
+              state: "failure",
+              log_url: `${context.serverUrl}/${owner}/${repo}/actions/runs/${context.runId}`,
+            });
+
+      # The preview dir is gone by now, so retire the deployment to match —
+      # otherwise the closed PR keeps advertising a URL that 404s.
+      - name: Deactivate deployment
+        if: github.event.action == 'closed'
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const environment = `pr-preview-${context.payload.pull_request.number}`;
+            const deployments = await github.paginate(github.rest.repos.listDeployments, {
+              owner, repo, environment, per_page: 100,
+            });
+            for (const d of deployments) {
+              await github.rest.repos.createDeploymentStatus({
+                owner, repo, deployment_id: d.id, state: "inactive",
+              });
+            }
+            // Tidy-up only: one environment per PR would otherwise pile up in
+            // Settings -> Environments forever. Deleting one needs repo-admin
+            // rights that `GITHUB_TOKEN` may not have, and the deployments are
+            // already inactive above, so a refusal here isn't worth failing on.
+            try {
+              await github.rest.repos.deleteAnEnvironment({
+                owner, repo, environment_name: environment,
+              });
+            } catch (error) {
+              core.info(`Left environment ${environment} in place: ${error.message}`);
+            }
 
   # Render the screenshot report and publish it as a *latest-only* per-PR preview:
   # the same pr-preview-action deploys it to its own umbrella `screenshots/pr/pr-<N>/`
