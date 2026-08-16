@@ -242,25 +242,70 @@ export function stateKey(s) {
 }
 
 /**
- * Build a position from the sixteen piles `read-board.mjs` returns.
+ * The live card of a foundation, read two independent ways that must agree.
  *
- * The foundations need care. Cascades are `Fanned`, so the reader's order is the
- * pile order — but foundations are `Squared`: every card sits at identical
- * coordinates, there is no visual "on top", and DOM order there is z-order, not
- * pile order. Reading the last element as the top gets it wrong (which is exactly
- * how this went wrong the first time — a foundation read as `[2D, AD]`). A
- * foundation is an ascending same-suit run from the Ace, so its top is simply its
- * highest rank; that's recoverable no matter what order the cards come back in.
+ * A foundation is `Squared` — every card at identical coordinates, DOM order is
+ * z-order — so its order can't be read from geometry, and it once came back as
+ * `3H AH 4H 2H`. What can be read is which card the board *shows*: since #267
+ * reflow leaves only the top card of a squared pile in the accessible tree, so
+ * exactly one card here is announced, and that one is the top.
+ *
+ * That's the first reading. The second is the pile's contents, which under
+ * `Rules.foundation` must be an ascending same-suit run from the Ace up to that
+ * top card. Checking them against each other is the point: this used to *infer*
+ * the top as the pile's highest rank, which is sound only because core's rule
+ * says so — so a foundation that had somehow gone wrong would have been read as
+ * a tidy, plausible, wrong board, and the harness would have laundered the bug
+ * into a pass. Now the app says which card is live and the harness checks that
+ * claim, so a disagreement is loud.
+ *
+ * Returns the card, or `-1` for an empty foundation.
+ */
+export function foundationTop(pile) {
+  if (!pile.length) return -1
+  const announced = pile.filter((c) => c.announced)
+  if (announced.length !== 1) {
+    throw new Error(
+      `a foundation holding ${pile.length} cards announces ${announced.length} of them ` +
+        `(expected exactly one): ${pile.map((c) => c.code).join(" ")}`,
+    )
+  }
+  const top = cardId(announced[0].code)
+  const held = pile.map((c) => cardId(c.code)).sort((a, b) => a - b)
+  const run = Array.from({ length: rankOf(top) }, (_, i) => suitOf(top) * 13 + i)
+  if (held.join() !== run.join()) {
+    throw new Error(
+      `a foundation shows ${cardCode(top)} but holds ${held.map(cardCode).join(" ")} — ` +
+        `not the ascending same-suit run from the Ace that Rules.foundation builds`,
+    )
+  }
+  return top
+}
+
+/**
+ * Build a position from the sixteen piles `read-board.mjs` returns, each a list
+ * of `{ code, announced }` bottom-first.
+ *
+ * Cascades are `Fanned`, so the reader's geometric order is the pile order.
+ * Foundations go through `foundationTop` above. Free cells hold one card by
+ * capacity, so there's nothing to disambiguate — but a second card in one would
+ * mean the board had broken its own rule, so say so rather than quietly taking
+ * the first.
  */
 export function stateFromPiles(piles) {
-  const cells = [0, 1, 2, 3].map((i) => (piles[i].length ? cardId(piles[i][0]) : -1))
+  const cells = [0, 1, 2, 3].map((i) => {
+    const pile = piles[i]
+    if (!pile.length) return -1
+    if (pile.length > 1)
+      throw new Error(`a free cell holds ${pile.length} cards: ${pile.map((c) => c.code).join(" ")}`)
+    return cardId(pile[0].code)
+  })
   const found = [0, 0, 0, 0]
   for (const pile of piles.slice(4, 8)) {
-    if (!pile.length) continue
-    const ids = pile.map(cardId)
-    found[suitOf(ids[0])] = Math.max(...ids.map(rankOf))
+    const top = foundationTop(pile)
+    if (top >= 0) found[suitOf(top)] = rankOf(top)
   }
-  return { cells, found, casc: piles.slice(8, 16).map((p) => p.map(cardId)) }
+  return { cells, found, casc: piles.slice(8, 16).map((p) => p.map((c) => cardId(c.code))) }
 }
 
 /** A move in words, for the play-by-play. */

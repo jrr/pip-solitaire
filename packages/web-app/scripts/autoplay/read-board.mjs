@@ -44,6 +44,12 @@ export async function readGeometry(page) {
       zones: [...document.querySelectorAll(".drop-zone")].map((el, i) => ({ i, ...box(el) })),
       cards: [...document.querySelectorAll(".stacking-card")].map((el) => ({
         name: el.querySelector("[aria-label]")?.getAttribute("aria-label") ?? null,
+        // Is this card in the accessible tree — i.e. would a screen reader be told
+        // about it? A card the board draws underneath another is marked
+        // `aria-hidden` by reflow (#267), which is what lets a squared pile say
+        // which of its cards is the live one. `closest`, not the card's own
+        // attribute, so a card hidden by an ancestor counts as hidden too.
+        announced: el.closest('[aria-hidden="true"]') === null,
         ...box(el),
       })),
     }
@@ -64,8 +70,9 @@ export async function readGeometry(page) {
  * Within a pile the cards come back top-of-screen first, which for a `Fanned`
  * cascade is bottom-of-pile first — the order `GameState.cardsInPile` uses.
  * `Squared` piles stack every card at identical coordinates, so their order is
- * *not* recoverable here; see `stateFromPiles` in rules.mjs for what to do about
- * that.
+ * *not* recoverable from geometry — but since #267 the board says which card is
+ * the live one by leaving only that one in the accessible tree. See
+ * `foundationTop` in rules.mjs.
  */
 export function assignPiles(geom) {
   const piles = geom.zones.map(() => [])

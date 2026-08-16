@@ -22,17 +22,24 @@ import {
   CASCADES, CELLS, FOUNDATIONS, assignPiles, parseCardName, readGeometry, settle,
 } from "./read-board.mjs"
 import {
-  applyMove, canFinish, cardCode, cardId, describeMove, foundationTotal, hasWon,
-  rankOf, stateFromPiles, stateKey, suitOf,
+  applyMove, canFinish, cardCode, describeMove, foundationTop, foundationTotal,
+  hasWon, rankOf, stateFromPiles, stateKey, suitOf,
 } from "./rules.mjs"
 import { solve } from "./solver.mjs"
 
-/** The board as the page currently draws it. */
+/**
+ * The board as the page currently draws it: `geom` (raw boxes), `piles` (the
+ * card elements, for aiming a drag), `cards` (each card's code and whether the
+ * board announces it), `codes` (just the names, for reading), and `state` (the
+ * position, for planning).
+ */
 export async function look(page) {
   const geom = await readGeometry(page)
   const piles = assignPiles(geom)
-  const codes = piles.map((pile) => pile.map((c) => parseCardName(c.name)))
-  return { geom, piles, codes, state: stateFromPiles(codes) }
+  const cards = piles.map((pile) =>
+    pile.map((c) => ({ code: parseCardName(c.name), announced: c.announced })),
+  )
+  return { geom, piles, cards, codes: cards.map((p) => p.map((c) => c.code)), state: stateFromPiles(cards) }
 }
 
 /**
@@ -77,15 +84,14 @@ function targetZone(view, move) {
     return free
   }
   // A foundation: the first one in board order that will take this card, which is
-  // how `Reducer.foundationTarget` picks. Squared pile — its top is its highest
-  // rank, not its last-drawn card (see `stateFromPiles`).
+  // how `Reducer.foundationTarget` picks. Which card a foundation is showing comes
+  // from `foundationTop` — the board's own answer, checked (see rules.mjs).
   const suit = suitOf(move.card)
   const rank = rankOf(move.card)
   const found = FOUNDATIONS.find((i) => {
-    const pile = view.codes[i].map(cardId)
-    if (!pile.length) return rank === 1
-    if (suitOf(pile[0]) !== suit) return false
-    return Math.max(...pile.map(rankOf)) === rank - 1
+    const top = foundationTop(view.cards[i])
+    if (top < 0) return rank === 1 // an empty foundation takes an Ace
+    return suitOf(top) === suit && rankOf(top) === rank - 1
   })
   if (found === undefined) throw new Error(`no foundation accepts ${cardCode(move.card)}`)
   return found

@@ -50,7 +50,7 @@ const page = await browser.newPage({ baseURL: base, viewport: { width: 900, heig
 await page.goto("/?scene=freecell&seed=24680&animate=off")
 await settle(page)
 
-let view = await look(page)                            // { geom, piles, codes, state }
+let view = await look(page)                            // { geom, piles, cards, codes, state }
 console.log(view.codes.slice(8))                       // the eight cascades, bottom-first
 console.log(legalMoves(view.state).map(describeMove))  // what's playable right now
 
@@ -107,10 +107,13 @@ Query parameters, all documented in `src/AppUrl.res`:
    overlapping vertically. The card tracks the pointer by its grab offset, so
    subtract that offset from the target — otherwise a card grabbed by its sliver
    lands a row high, on a free cell instead of the cascade beneath it.
-3. **A squared pile has no readable order.** Foundations stack every card at
-   identical coordinates, so DOM order there is z-order, not pile order. Infer
-   the top by rank (a foundation is an ascending same-suit run), never by
-   position. Cascades are `Fanned` and *are* readable by position.
+3. **A squared pile has no readable position — ask the accessible tree.**
+   Foundations stack every card at identical coordinates, so DOM order there is
+   z-order, not pile order (one really does come back as `3H AH 4H 2H`). Since
+   #267 reflow leaves only the visible card of a squared pile in the accessible
+   tree, so the announced card *is* the top: `foundationTop` reads that, and
+   checks it against the pile's contents. Cascades are `Fanned` and *are*
+   readable by position.
 4. **The board moves on its own after a move.** Safe auto-collect
    (`Reducer.autoCollect`, on by `Options.default`) sends cards home after every
    accepted move — until `canFinish` flips true, at which point it stands aside
