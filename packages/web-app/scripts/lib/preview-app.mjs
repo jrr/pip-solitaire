@@ -71,7 +71,11 @@ export async function startPreview() {
   }
 }
 
-/** A headless Chromium, resolved as above. */
-export async function launchChromium() {
-  return await chromium.launch({ executablePath: resolveChromiumExecutable() })
+/**
+ * A headless Chromium, resolved as above. `options` passes straight through to
+ * `chromium.launch` — `{ headless: false }` is the one that gets used, so a human
+ * can watch `mise run autoplay -- --headed` play a game.
+ */
+export async function launchChromium(options = {}) {
+  return await chromium.launch({ executablePath: resolveChromiumExecutable(), ...options })
 }

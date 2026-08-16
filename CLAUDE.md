@@ -99,6 +99,15 @@ back on the issue. Don't wait to be asked a second time.
 - If the requirements are genuinely ambiguous or CI can't be made green, say so
   on the issue instead of opening a PR, and explain what's blocking.
 
+## Playing the game
+
+The app can be played by an agent, in a real browser, with pointer drags —
+`mise run autoplay -- <deal>` plays a deal to the win overlay. Use it to see a
+change in the actual game rather than only in tests. Driving the board by hand
+(one move, a particular position, a reproduction) is documented as a skill in
+`.claude/skills/play-in-browser/`; the harness itself is
+`packages/web-app/scripts/autoplay/`.
+
 ## Formatting
 
 Code is formatted by ReScript's own formatter. **Run `mise run format` before
