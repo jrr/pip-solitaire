@@ -8,7 +8,7 @@
 //   - `<TopBar>` — Menu · Undo. Always visible across the top; the Menu
 //     button carries a green pip when a version update is waiting (#165).
 //   - `<Menu>` — the slide-over holding the title ("Pip", moved out of the
-//     retired Home scene), a **game** section (new · Restart · share seed, #156, #261), the
+//     retired Home scene), a **game** section (New · Restart · Share Seed, #156, #261), the
 //     debug/demo scene list as tappable rows, and the About footer (build/version
 //     info plus the conditional "Update" button beside it, #165).
 // The scene area underneath is still the imperative `SceneSwitcher`; its scene
@@ -94,7 +94,7 @@ type model = {
   // indicator rather than a status line beneath it (#201).
   refreshMode: option<Refresh.mode>,
   refreshBusy: bool,
-  // The menu's "share seed" button (`ShareLink`). `shareUrl` is the encoded link for the
+  // The menu's "Share Seed" button (`ShareLink`). `shareUrl` is the encoded link for the
   // board as it stood when the menu opened — computed *then*, not on the press,
   // because `navigator.share` needs the click's transient activation and would lose
   // it behind the compression's `await` (see `ShareLink.deliver`). The board can't
@@ -745,7 +745,7 @@ let view = (model, dispatch) => <>
     onToggleDebugLog={() => dispatch(ToggleDebugLog)}
     shareEnabled={model.shareUrl->Option.isSome}
     // The one line under the "game" buttons: what became of a link just handed
-    // out, or — on a scene with no game — why "share seed" is greyed out. Silent in between,
+    // out, or — on a scene with no game — why "Share Seed" is greyed out. Silent in between,
     // including the moment a real board's encode is still in flight, so the ordinary
     // menu open shows nothing but the buttons.
     shareNote={switch (model.shareStatus, model.shareable) {
