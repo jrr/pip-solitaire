@@ -24,7 +24,7 @@ let sampleJson = {
 
 describe("Compression", () => {
   testAsync("round-trips a string unchanged", async () => {
-    let squeezed = (await Compression.compress(sampleJson))->Option.getExn
+    let squeezed = (await Compression.compress(sampleJson))->Option.getOrThrow
     expect(await Compression.decompress(squeezed))->toEqual(Some(sampleJson))
   })
 
@@ -32,19 +32,19 @@ describe("Compression", () => {
     // The codec goes through `TextEncoder`/`TextDecoder`, so multi-byte characters
     // have to survive the byte round trip as well as the DEFLATE one.
     let text = `♠♥♦♣ — カード — 🂡`
-    let squeezed = (await Compression.compress(text))->Option.getExn
+    let squeezed = (await Compression.compress(text))->Option.getOrThrow
     expect(await Compression.decompress(squeezed))->toEqual(Some(text))
   })
 
   testAsync("round-trips the empty string", async () => {
-    let squeezed = (await Compression.compress(""))->Option.getExn
+    let squeezed = (await Compression.compress(""))->Option.getOrThrow
     expect(await Compression.decompress(squeezed))->toEqual(Some(""))
   })
 
   testAsync("emits only URL-safe characters", async () => {
     // The whole point of base64url: no `+`, `/` or `=`, so the blob can sit in a URL
     // without percent-encoding — which would re-inflate it and undo the compression.
-    let squeezed = (await Compression.compress(sampleJson))->Option.getExn
+    let squeezed = (await Compression.compress(sampleJson))->Option.getOrThrow
     expect(squeezed->String.includes("+"))->toBe(false)
     expect(squeezed->String.includes("/"))->toBe(false)
     expect(squeezed->String.includes("="))->toBe(false)
@@ -54,7 +54,7 @@ describe("Compression", () => {
     // Not a precise ratio — that's the compressor's business, not ours — just the
     // guarantee the feature rests on: a long game shrinks by an order of magnitude,
     // so an undo stack fits in a link. Base64 costs 33% back and this still clears it.
-    let squeezed = (await Compression.compress(sampleJson))->Option.getExn
+    let squeezed = (await Compression.compress(sampleJson))->Option.getOrThrow
     expect(String.length(squeezed) * 10 < String.length(sampleJson))->toBe(true)
   })
 
@@ -65,7 +65,7 @@ describe("Compression", () => {
   testAsync("a truncated blob decodes to None", async () => {
     // The paste-went-wrong case: well-formed base64url, but the DEFLATE stream it
     // carries stops in the middle. Must be a rejected link, not a thrown exception.
-    let squeezed = (await Compression.compress(sampleJson))->Option.getExn
+    let squeezed = (await Compression.compress(sampleJson))->Option.getOrThrow
     let half = squeezed->String.slice(~start=0, ~end=String.length(squeezed) / 2)
     expect(await Compression.decompress(half))->toEqual(None)
   })
