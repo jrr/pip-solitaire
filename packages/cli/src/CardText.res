@@ -82,7 +82,7 @@ let parse = (token: string): option<card> => {
     None
   } else {
     let rankPart = s->String.slice(~start=0, ~end=n - 1)
-    let suitPart = s->String.sliceToEnd(~start=n - 1)
+    let suitPart = s->String.slice(~start=n - 1)
     switch (parseRank(rankPart), parseSuit(suitPart)) {
     | (Some(rank), Some(suit)) => Some({suit, rank})
     | _ => None
