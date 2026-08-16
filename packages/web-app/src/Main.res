@@ -64,6 +64,11 @@ type model = {
   // screen, or the Debug screen nested below it. Reset to `Main` whenever the menu
   // opens or closes, so reopening always lands on the main menu.
   menuScreen: Menu.screen,
+  // Whether the drop-down debug console is showing (#271). Dev chrome, so it lives
+  // here in the chrome model and never reaches `core`'s reducer — and it's session
+  // state, deliberately unpersisted: the panel is always closed on load, so a
+  // rendered screenshot or OG image can never carry one.
+  consoleOpen: bool,
   autoCollect: bool,
   cardTilt: bool,
   // "Wiggle Waggle" (#235): the shake-to-jostle switch, a state machine rather than a
@@ -119,6 +124,8 @@ type msg =
   | Reload // user asked to activate the waiting worker and reload
   | ToggleMenu // the top bar's Menu button
   | CloseMenu // backdrop / close button / a scene row was tapped
+  | ToggleConsole // the ` key — drop the debug console over the board, or put it away (#271)
+  | CloseConsole // Escape while the console is showing (#271)
   | OpenSettings // the main menu's Settings button — swap to the Settings screen (#191)
   | BackToMenu // the Settings screen's back button — swap back to the main menu (#191)
   | OpenDebug // the Settings screen's Debug row — swap to the Debug screen
@@ -275,7 +282,7 @@ let notchDisplayEnabled = Preferences.loadNotchDisplay()
 // left logging on sees the opening deal's UI↔Core traffic too, not only interactions
 // after the first in-app toggle.
 let debugLogEnabled = Preferences.loadDebugLog()
-DebugLog.setEnabled(debugLogEnabled)
+DebugLog.setConsoleEnabled(debugLogEnabled)
 
 // The active board's "relayout" action (#65), sibling of `undoHook`: the mounted
 // `TableScene` publishes a thunk that re-lays every resting card, so a tilt toggle
@@ -315,16 +322,39 @@ let update = (msg, model) =>
   // Every screen change also abandons a part-finished run of reveal taps
   // (`HiddenOptions.reset`), here and in the five branches below: the counter only
   // ever spans one uninterrupted visit to the Settings screen.
-  | ToggleMenu => (
+  // Opening the menu also puts the debug console away (#271): the menu is the modal
+  // chrome and takes the screen for itself, and the console's twin rule below closes
+  // the menu on the way in. Only ever one of the two is up.
+  | ToggleMenu =>
+    let menuOpen = !model.menuOpen
+    (
       {
         ...model,
-        menuOpen: !model.menuOpen,
+        menuOpen,
         menuScreen: Menu.Main,
         refreshBusy: false,
         hidden: HiddenOptions.reset(model.hidden),
+        consoleOpen: menuOpen ? false : model.consoleOpen,
       },
-      Html.noEffect,
+      menuOpen ? () => DebugConsole.setOpen(false) : Html.noEffect,
     )
+  // The ` key (#271). Opening subscribes the panel to `DebugLog` — a closed console
+  // isn't listening, so it costs nothing — and closes the menu if it was showing.
+  | ToggleConsole =>
+    let consoleOpen = !model.consoleOpen
+    (
+      {
+        ...model,
+        consoleOpen,
+        menuOpen: consoleOpen ? false : model.menuOpen,
+        menuScreen: consoleOpen ? Menu.Main : model.menuScreen,
+      },
+      () => DebugConsole.setOpen(consoleOpen),
+    )
+  | CloseConsole =>
+    model.consoleOpen
+      ? ({...model, consoleOpen: false}, () => DebugConsole.setOpen(false))
+      : (model, Html.noEffect)
   | HistoryChanged(canUndo) =>
     canUndo == model.canUndo ? (model, Html.noEffect) : ({...model, canUndo}, Html.noEffect) // no change — don't re-render
   | CloseMenu =>
@@ -456,10 +486,12 @@ let update = (msg, model) =>
     let debugLog = !model.debugLog
     (
       {...model, debugLog},
-      // Flip the shared gate the whole app logs through (#213) and persist the
-      // choice so it survives a reload. Both run as the post-update effect.
+      // Subscribe (or drop) the JS console on the shared log the whole app publishes
+      // through (#213) and persist the choice so it survives a reload. Both run as the
+      // post-update effect. The drop-down console (#271) is a separate subscriber, so
+      // the two are independent: either, both, or neither can be listening.
       () => {
-        DebugLog.setEnabled(debugLog)
+        DebugLog.setConsoleEnabled(debugLog)
         Preferences.saveDebugLog(debugLog)
       },
     )
@@ -819,6 +851,11 @@ let view = (model, dispatch) => <>
       <div id="scene-box"> {Html.node(switcher.scene)} </div>
     </section>
   </main>
+  // The drop-down debug console (#271). Only its shell is JSX; the scrollback itself
+  // is a real `<ol>` the module appends to, spliced in with `Html.node` — the same
+  // arrangement as the scene container above, and for the same reason (the reconciler
+  // leaves a spliced node alone, so a growing log never re-patches its lines).
+  <DebugConsole open_={model.consoleOpen} body={DebugConsole.lines} />
   <Menu
     open_={model.menuOpen}
     screen={model.menuScreen}
@@ -985,6 +1022,9 @@ let dispatch = Html.mount(
     menuOpen: false,
     // The menu opens on its main screen; Settings and Debug are swap-ins (#191).
     menuScreen: Menu.Main,
+    // The debug console is closed on every load (#271) — it's opened by a keypress and
+    // never remembered, so a rendered screenshot or link-preview image can't show one.
+    consoleOpen: false,
     // Mirror the persisted preferences so the menu's switches open in the right
     // position (the board reads the `options` and `tiltEnabled` refs directly).
     autoCollect: options.contents.autoCollect,
@@ -1034,6 +1074,14 @@ let dispatch = Html.mount(
 
 // Now that `dispatch` exists, let a scene row close the menu through it.
 closeMenu := (() => dispatch(CloseMenu))
+
+// …and arm the debug console's key (#271): ` drops it over the board, ` or Escape puts
+// it away. A window listener, so it works wherever the focus happens to be — the board
+// is plain DOM with nothing focusable in the way.
+DebugConsole.installKeys(
+  ~onToggle=() => dispatch(ToggleConsole),
+  ~onClose=() => dispatch(CloseConsole),
+)
 
 // Resume the shake grant on the first tap (#235). With `wantsShake` set, the switch
 // opened optimistically `On`, but iOS may require transient activation to (re)confirm

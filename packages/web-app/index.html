@@ -560,6 +560,113 @@
         }
       }
 
+      /* The drop-down debug console (#271): the Quake-style panel `` ` `` drops over
+         the top of the board, showing the lines the app publishes through `DebugLog`.
+         Top-anchored and translucent so the board stays readable underneath — you're
+         meant to watch the log *and* the game it's narrating — and monospace, because
+         the payloads are JSON.
+
+         `z-index: 15` puts it above the board (which isolates its own large numbers;
+         see `.table-board`) and **below the menu** at 20: the menu is the modal chrome
+         and wins. The chrome model keeps the two from being up at once anyway, so this
+         is the belt to that pair of braces.
+
+         `hidden` (set by the chrome model) collapses it entirely when closed — needed
+         explicitly because the `display: flex` here would otherwise out-specify the
+         UA's `[hidden] { display: none }`. */
+      #debug-console {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        z-index: 15;
+        display: flex;
+        flex-direction: column;
+        height: 40vh;
+        /* The top padding is the top bar's height: the panel covers the chrome, and
+           the log starting *under* the Menu button keeps the two from being read on
+           top of each other. It clears the landscape rail's ☰ too, which sits in the
+           same corner. */
+        padding: calc(env(safe-area-inset-top) + 3rem) 0.6rem 0.35rem
+          calc(env(safe-area-inset-left) + 0.6rem);
+        box-sizing: border-box;
+        color: #d6e2f5;
+        /* Translucent, so the board is still legible through it — watching the log and
+           the game it's narrating at the same time is the point. */
+        background: rgba(6, 11, 22, 0.72);
+        border-bottom: 1px solid #2b3b58;
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+        font: 12px/1.45 ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+        /* **Pointer-transparent**, and that's the whole trick: the panel is a
+           read-only HUD, so it takes no input at all. A console covering the top of
+           the board would otherwise cover the free cells, the foundations *and* the
+           top bar's Menu button — you couldn't play the game the log is narrating,
+           which is exactly what an open console is for. Nothing here swallows a drag
+           aimed at the board underneath. The scrollback is still scrollable: with no
+           element to receive them, wheel events are forwarded to it by hand while the
+           panel is open (see `DebugConsole.res`).
+
+           `touch-action`/`overscroll-behavior` say the same thing to the touch and
+           scroll-chaining machinery — belt to that brace, and what would keep the
+           panel to itself if a later revision ever did take pointer events. */
+        pointer-events: none;
+        overscroll-behavior: contain;
+        touch-action: pan-y;
+      }
+
+      #debug-console[hidden] {
+        display: none;
+      }
+
+      /* The status line at the foot: what this panel is, and the keys that work it.
+         Also the seam for a typed-command prompt later (#91/#92). */
+      .debug-console__status {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: 1rem;
+        padding-top: 0.3rem;
+        border-top: 1px solid #223148;
+        color: #8aa2c4;
+        text-transform: lowercase;
+        letter-spacing: 0.04em;
+      }
+
+      .debug-console__hint {
+        color: #5f7396;
+      }
+
+      /* The scrollback: a plain <ol> owned by DebugConsole.res and spliced in with
+         `Html.node`, appended to one <li> at a time (#45 — the reconciler has no keys,
+         so a re-rendered list would re-patch every visible line). It's the scroller,
+         and it grows to fill whatever the header leaves. */
+      .debug-console__lines {
+        flex: 1 1 auto;
+        margin: 0;
+        padding: 0 0 0.3rem 0;
+        overflow-y: auto;
+        list-style: none;
+      }
+
+      .debug-console__line {
+        display: flex;
+        gap: 0.5rem;
+        padding: 1px 0;
+        white-space: pre-wrap;
+        word-break: break-word;
+      }
+
+      /* Label and payload styled apart — the reason DebugLog publishes structured
+         entries rather than finished strings. */
+      .debug-console__label {
+        flex: none;
+        color: #7fd6a2;
+      }
+
+      .debug-console__value {
+        color: #c8d6ea;
+      }
+
       /* The slide-over menu (#109): the title, the debug/demo scene rows, and the
          version info. A full-screen overlay so it floats above the game; `hidden`
          (set by the chrome model) collapses it entirely when closed. */
