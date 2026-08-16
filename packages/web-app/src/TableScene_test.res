@@ -7,16 +7,36 @@
 // The deferred opening deal (scheduled on the next animation frame) would reach
 // `matchMedia` and `Element.animate`, neither of which jsdom implements. Stubbing
 // `matchMedia` to report reduced motion makes the deal skip the fly-in animation
-// entirely, so the frame — if it fires during the test — stays within jsdom's
-// support. The button itself is added synchronously at mount, before any frame.
+// entirely, so the frame — whenever it runs — stays within jsdom's support. The
+// button itself is added synchronously at mount, before any frame.
 %%raw(`globalThis.matchMedia = () => ({ matches: true })`)
+
+// The opening deal itself is deferred to the next animation frame — the stage is
+// detached at mount and has no layout yet — and jsdom's own frames never run
+// inside a synchronous test body. Queueing the callbacks instead makes that frame
+// something a test can *ask* for (`flushFrames`), which is what the tests below
+// that read the laid-out board need. Tests that only assert on the chrome (the
+// buttons and the overlay, all added synchronously at mount) simply never flush.
+%%raw(`
+  globalThis.__frames = []
+  globalThis.requestAnimationFrame = (cb) => globalThis.__frames.push(cb)
+`)
+let flushFrames: unit => unit = %raw(`() => {
+  // Splice first: a flushed callback may queue the next frame, and that one is
+  // the *next* flush's business, not this one's (or the deal would recurse).
+  globalThis.__frames.splice(0).forEach((cb) => cb(0))
+}`)
 
 open Vitest
 
 @val @scope("document") external createElement: string => WebDom.element = "createElement"
 @send
 external querySelector: (WebDom.element, string) => Nullable.t<WebDom.element> = "querySelector"
+@send external querySelectorAll: (WebDom.element, string) => {"length": int} = "querySelectorAll"
 @send external click: WebDom.element => unit = "click"
+
+// How many nodes in the mounted board match a selector.
+let countOf = (container, selector) => (container->querySelectorAll(selector))["length"]
 
 let hasFinishButton = (container): bool =>
   container->querySelector(".finish-button")->Nullable.toOption->Option.isSome
@@ -38,6 +58,75 @@ describe("TableScene Finish button (#132)", () => {
     let _teardown = scene.mount(container)
     expect(hasFinishButton(container))->toBe(false)
   })
+})
+
+// A Squared pile draws every card it holds on one spot, so all but the top card
+// are off screen — yet each one stays in the DOM as a `role="img"` carrying the
+// card's name (`CardArt`). Without a mark saying so, a screen reader is read a
+// foundation's whole history as if it were laid out on the table: forty-eight of
+// the fifty-two cards on a won board that shows exactly four. Reflow marks the
+// covered ones `aria-hidden`, so the page announces what it actually shows (#267).
+//
+// These read the *laid-out* board rather than the chrome, so each flushes the deal's
+// deferred frame first (see `flushFrames` above).
+describe("TableScene squared-pile occlusion (#267)", () => {
+  let cards = container => container->countOf(".stacking-card")
+  let hidden = container => container->countOf(".stacking-card[aria-hidden='true']")
+
+  test("a fresh deal hides nothing — every card is in a Fanned cascade", () => {
+    // FreeCell opens with all 52 in the cascades and its Squared piles (the cells
+    // and foundations) empty. A fan exposes every card's edge, so nothing there is
+    // occluded and nothing may be marked: Fanned piles are untouched by this.
+    let container = createElement("div")
+    let scene = TableScene.make(Game.freecell)
+    let _teardown = scene.mount(container)
+    flushFrames()
+    expect(cards(container))->toBe(52)
+    expect(hidden(container))->toBe(0)
+  })
+
+  test("a won board announces four cards, not fifty-two", () => {
+    // Victory puts all 52 into four Squared foundations, which show their four top
+    // cards and hide the rest — so 48 are out of the accessible tree.
+    let game = Game.freecell
+    let (won, _moved) = Reducer.finishSequence(~game, Scenario.freecellAlmostWon(game))
+    let container = createElement("div")
+    let scene = TableScene.make(~loadHistory=() => Some(History.make(won)), game)
+    let _teardown = scene.mount(container)
+    flushFrames()
+    expect(cards(container))->toBe(52)
+    expect(hidden(container))->toBe(48)
+  })
+
+  test(
+    "the mark tracks the board: cards go quiet as they're covered, undo brings them back",
+    () => {
+      // Drive a real transition rather than mounting two positions: the Finish sweep
+      // sends every remaining card home (collapsing to an instant reflow under the
+      // reduced-motion stub above), and undo steps the whole sweep back as one.
+      let game = Game.freecell
+      let undo = ref(() => ())
+      let container = createElement("div")
+      let scene = TableScene.make(
+        ~initial=Scenario.freecellFinish(game),
+        ~publishUndo=u => undo := u,
+        game,
+      )
+      let _teardown = scene.mount(container)
+      flushFrames()
+      // The starting position has cards home already, but nowhere near all of them —
+      // so "before" is a real count that the win's 48 can't be confused with, and the
+      // restored count below can't match it by both being zero.
+      let before = hidden(container)
+      expect(before > 0 && before < 48)->toBe(true)
+
+      container->querySelector(".finish-button")->Nullable.toOption->Option.getOrThrow->click
+      expect(hidden(container))->toBe(48)
+
+      undo.contents()
+      expect(hidden(container))->toBe(before)
+    },
+  )
 })
 
 // Save-and-resume (#177): the board hands its whole undo/redo history to the
