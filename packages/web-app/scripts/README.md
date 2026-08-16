@@ -11,6 +11,7 @@ The directories split by **purpose**, not by mechanism:
 | `lib/` | shared machinery, imported by the rest (and by `playwright.config.mjs` / the browser tests) |
 | `generate/` | asset generators — they write committed files into `public/` or `src/` |
 | `screenshots/` | the screenshot report: rendering it, and the two pieces that publish it |
+| `autoplay/` | playing the game: read the board off the page, plan, and drag the moves |
 
 `generate/og-image.mjs` is the awkward one: an asset generator by purpose, a
 browser-driver by mechanism. Purpose wins — it writes a committed
@@ -27,6 +28,7 @@ imports the shared browser boot from `lib/`.
 | `screenshots/render.mjs` | `mise run screenshots` | `screenshots/` — the report: FreeCell scenes (plus the card-raster fidelity sheet, #225) × emulated devices × orientation, and an `index.html` contact sheet |
 | `screenshots/stage.mjs` | `mise run stage-screenshots -- <dir> <stamp>` | a local staging dir for `peaceiris/actions-gh-pages` to publish |
 | `screenshots/hub.mjs` | `mise run screenshots-hub -- <dir>` | `<dir>/index.html` — the `/screenshots/` hub listing every published report |
+| `autoplay/play.mjs` | `mise run autoplay -- <seed…>` | nothing on disk — a game played to the win overlay, and a play-by-play on stdout (`--shots <dir>` also writes screenshots) |
 
 The three `generate/` outputs are **committed**, so those tasks only need
 re-running when their inputs change. The `screenshots/` outputs are not — CI
@@ -43,3 +45,23 @@ renders and publishes them per push.
 `lib/` is imported from outside `scripts/` too: `playwright.config.mjs` takes
 `resolveChromiumExecutable` from `preview-app.mjs`, and the browser tests take
 `touchDrag` from `touch.mjs`.
+
+## autoplay/
+
+Plays FreeCell in a real browser, every move a pointer drag on the rendered
+board — nothing reaches into game state, which is what makes a game played this
+way evidence about the *app*. Three parts:
+
+| module | what it is |
+| --- | --- |
+| `read-board.mjs` | the eyes — the board read off the DOM (zone boxes, card `aria-label`s), plus the `settle()` wait |
+| `rules.mjs` | a JS **mirror** of `core`'s rules, to plan against. Not a second source of truth; see its header |
+| `solver.mjs` | best-first search to a `canFinish` board, where the Finish button takes over |
+| `autoplay.mjs` | the hands — `playGame()` / `dragMove()`: plan a move, drag it, look at the board again |
+| `play.mjs` | the `mise run autoplay` CLI over the above |
+
+`autoplay.mjs` is imported from outside `scripts/` too:
+`browser-tests/autoplay.spec.mjs` plays a fixed deal end to end as a test, and
+asserts that the mirror and `core` never once disagreed over a whole game.
+Driving the app by hand for anything else is documented as a skill, in
+`.claude/skills/play-in-browser/`.

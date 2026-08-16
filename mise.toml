@@ -70,6 +70,14 @@ run = "node packages/web-app/scripts/screenshots/stage.mjs"
 description = "Generate the screenshots hub page (`mise run screenshots-hub -- <outDir>`)"
 run = "node packages/web-app/scripts/screenshots/hub.mjs"
 
+# Plays the built site to a win in a real browser, every move a pointer drag —
+# no reaching into game state (packages/web-app/scripts/autoplay). Takes deal
+# numbers and ranges: `-- 24680`, `-- 1-25`, plus `--headed` to watch it play.
+[tasks.autoplay]
+description = "Play FreeCell in a browser, end to end: `mise run autoplay -- 24680`"
+depends = ["bundle"]
+run = "node packages/web-app/scripts/autoplay/play.mjs"
+
 # The browser-driven checks (packages/web-app/browser-tests): the things jsdom
 # can't answer — real layout, `calc()`, media queries, transform matrices, live
 # transitions, pointer input. Kept out of `ci` on purpose (`ci` stays
