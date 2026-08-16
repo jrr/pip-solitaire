@@ -23,6 +23,8 @@
 //     start with everything already stacked.
 //   - `caption` — optional prose the view shows beneath the board, describing
 //     how this particular game plays. `None` means no caption.
+//   - `seed` — the deal number that reproduces this board, when it has one, so a
+//     dealt board can say where it came from. `None` for the fixed-layout demos.
 //
 // The view (`TableScene`) reads all of this and lays the board out on its own
 // terms — "piles hang from the top of the stage and grow downward".
@@ -83,6 +85,21 @@ type t = {
   free: bool,
   loose: array<card>,
   caption: option<string>, // prose shown beneath the board; `None` for none
+  // The **deal number that reproduces this board**, when there is one. Until now the
+  // seed was an *input* to the deal and nothing more: `freecellDeal` used it and
+  // dropped it, so a dealt board couldn't say which number produced it. Carrying it
+  // here makes the board self-describing, which is what lets the app report a deal
+  // number and build a `?seed=` link back to this exact layout (#98).
+  //
+  // It's deliberately narrower than "the seed some shuffle used": `Some(n)` promises
+  // that dealing `n` lays out *this* board again, so it's set only where that round
+  // trip actually holds — `freecellDeal` today. The fixed-layout demos are `None`,
+  // and so is the `shuffledDeal` demo even though it *is* built from a seeded
+  // shuffle (`shuffledDealSeed`): its number doesn't round-trip, because the deal-
+  // number path (`?seed=`) always opens FreeCell, so handing that seed out would
+  // produce a link to a different board. Anything offering to share a deal can then
+  // just read this field rather than special-casing a game by id.
+  seed: option<int>,
 }
 
 // The card-stacking demo, now as data: two empty piles (one squared, one
@@ -115,6 +132,7 @@ let stacking = {
   caption: Some(
     "Build a pile Ace to King: each card must be the next rank up and the opposite colour.",
   ),
+  seed: None, // fixed layout — no deal number to reproduce it from
 }
 
 // A second game with different rules, proving the view interprets the model
@@ -157,6 +175,7 @@ let fourFans = {
   free: false,
   loose: [],
   caption: Some("Drag the cards between the slots — they can only rest in a pile."),
+  seed: None, // fixed layout — no deal number to reproduce it from
 }
 
 // The rule-as-data demo (#76): two *different* pile kinds on one board, so the
@@ -199,6 +218,7 @@ let foundations = {
   caption: Some(
     "Two rules on one board: build the foundation up in a single suit from the Ace, and the tableau up in alternating colours.",
   ),
+  seed: None, // fixed layout — no deal number to reproduce it from
 }
 
 // The capacity demo (#93), the first FreeCell (M2) enabler: a row of four
@@ -226,6 +246,7 @@ let freeCells = {
   caption: Some(
     "Free cells: each holds exactly one card of any suit. Park a card in an empty cell; a second card dropped on an occupied cell flashes red and bounces back.",
   ),
+  seed: None, // fixed layout — no deal number to reproduce it from
 }
 
 // The pile-roles demo (#94), a proto-FreeCell board: the three FreeCell roles
@@ -270,6 +291,7 @@ let mixedRoles = {
   caption: Some(
     "Three roles on one board: a foundation and two free cells across the top, a cascade below — a proto-FreeCell layout.",
   ),
+  seed: None, // fixed layout — no deal number to reproduce it from
 }
 
 // The cascade demo (#95), proving `Rules.Down`: two piles enforcing
@@ -304,6 +326,7 @@ let cascade = {
   caption: Some(
     "Build a cascade King down to Ace: each card must be the next rank down and the opposite colour — the reverse of Stacking.",
   ),
+  seed: None, // fixed layout — no deal number to reproduce it from
 }
 
 // The seeded-shuffle demo (#96): a full 52-card deck shuffled from a *fixed
@@ -337,6 +360,11 @@ let shuffledDeal = {
         shuffledDealSeed,
       )}) and dealt across eight piles. The shuffle is deterministic, so the same seed always lays out this exact board — the seed is the future "deal number".`,
   ),
+  // `None` despite being seeded, because `seed` promises a *round trip* and this
+  // one doesn't make it: the deal-number path (`?seed=`) opens FreeCell, so
+  // `shuffledDealSeed` handed to it would lay out a different board. The caption
+  // above already names the seed for the demo's own explanatory purposes.
+  seed: None,
 }
 
 // The assembled FreeCell board (#97), where the four enablers converge: pile
@@ -405,6 +433,10 @@ let freecellDeal = (~seed: int): t => {
     // shows a bare board — the seed-mentioning "dealt from seed N…" prose reads as
     // demo-explainer text and is dropped. The debug tables above keep their captions.
     caption: None,
+    // The deal number that laid this board out, kept so the app can report it and
+    // link back to it (#98). This is the one board where the round trip holds:
+    // `freecellDeal(~seed)` is exactly what a `?seed=` open calls.
+    seed: Some(seed),
   }
 }
 

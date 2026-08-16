@@ -325,6 +325,42 @@ describe("Game", () => {
     )
 
     test(
+      "a dealt board carries the seed that reproduces it (#98)",
+      () => {
+        // The board says where it came from, which is what lets the app report a
+        // deal number and build a `?seed=` link back to it.
+        expect(Game.freecellDeal(~seed=4242).seed)->toEqual(Some(4242))
+        expect(Game.freecell.seed)->toEqual(Some(Game.freecellSeed))
+
+        // The promise the field makes, and the one sharing a deal number rests on:
+        // dealing a board's *reported* seed lays out that same board again. This is
+        // the round trip a recipient makes when they paste the number into `?seed=`.
+        let dealt = Game.freecellDeal(~seed=987654)
+        let reopened = switch dealt.seed {
+        | Some(seed) => Game.freecellDeal(~seed)
+        | None => Game.freecell // can't happen; fails the comparison below if it does
+        }
+        expect(reopened.piles->Array.map(p => p.cards))->toEqual(
+          dealt.piles->Array.map(p => p.cards),
+        )
+      },
+    )
+
+    test(
+      "a board with no reproducible deal reports no seed (#98)",
+      () => {
+        // The fixed-layout demos have no deal number, so anything offering to share
+        // a deal can read the field instead of special-casing games by id.
+        expect(Game.stacking.seed)->toEqual(None)
+        expect(Game.cascade.seed)->toEqual(None)
+        // `shuffledDeal` *is* built from a seeded shuffle, but its seed doesn't round
+        // trip — `?seed=` opens FreeCell, so handing that number out would address a
+        // different board. It reports `None` for that reason, not by oversight.
+        expect(Game.shuffledDeal.seed)->toEqual(None)
+      },
+    )
+
+    test(
       "plays a scripted sequence of legal and illegal single-card moves through the reducer",
       () => {
         let board = Game.freecell
@@ -849,6 +885,7 @@ describe("Reducer", () => {
       {suit: Hearts, rank: Nine},
     ],
     caption: None,
+    seed: None,
   }
 
   // The reducer must never mutate its input; assert the source snapshot is
@@ -1067,6 +1104,7 @@ describe("Reducer", () => {
       free: true,
       loose: [{suit: Spades, rank: Ace}, {suit: Hearts, rank: King}],
       caption: None,
+      seed: None,
     }
     let fresh = () => GameState.initial(capGame)
 
@@ -1277,6 +1315,7 @@ describe("Reducer", () => {
       free: true,
       loose: [],
       caption: None,
+      seed: None,
     }
     // A hand-built snapshot from the four piles' contents, so a test can pose any
     // board it likes.
@@ -1369,6 +1408,7 @@ describe("Reducer", () => {
           free: true,
           loose: [],
           caption: None,
+          seed: None,
         }
         let state: GameState.t = {piles: [[], []], loose: [{suit: Spades, rank: Ace}]}
         // Both empty foundations accept the Ace, so there are two foundation moves…
@@ -1409,6 +1449,7 @@ describe("Reducer", () => {
       free: false,
       loose: [],
       caption: None,
+      seed: None,
     }
     // A hand-built snapshot from the six piles' contents (foundations 0–3, then two
     // Free cascades 4–5), so a test can pose any foundation heights it likes.
@@ -1589,6 +1630,7 @@ describe("Reducer", () => {
       free: false,
       loose: [],
       caption: None,
+      seed: None,
     }
     // A snapshot from four foundation runs then the cascade contents, padded to the
     // board's eight cascades so the pile count always lines up.
@@ -1683,6 +1725,7 @@ describe("Reducer", () => {
       free: false,
       loose: [],
       caption: None,
+      seed: None,
     }
     // A distinct single-card filler, so "occupied" piles hold real, unique cards.
     let f = i => [Cards.all->Array.getUnsafe(i)]
@@ -1938,6 +1981,7 @@ describe("Reducer", () => {
       free: false,
       loose: [],
       caption: None,
+      seed: None,
     }
     let fresh = () => GameState.initial(mcGame)
 

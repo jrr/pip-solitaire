@@ -13,11 +13,15 @@
 //
 // **Main screen** — top to bottom:
 //   - the **title** ("Pip"), moved here from the retired Home scene, beside the ✕;
-//   - a **"This game"** section (#156): **New Game** (re-deals a fresh seed) and
-//     **Restart** (re-deals the *same* seed to replay the current deal). New Game
-//     moved here from the top bar; both call the scene's re-deal hooks and close
-//     the menu so the board is visible again. On a scene with no game (a demo)
-//     the handlers are wired to no-op hooks;
+//   - a **"game"** section (#156, #98): **New** (re-deals a fresh seed),
+//     **Restart** (re-deals the *same* seed to replay the current deal) and
+//     **Share Seed** (#98, hands over a `?seed=` link to the deal on the table). New
+//     moved here from the top bar; it and Restart call the scene's re-deal hooks and
+//     close the menu so the board is visible again. On a scene with no game (a demo)
+//     those two are wired to no-op hooks. Share Seed is the odd one of the three: it
+//     *keeps* the menu open, because the line under the buttons reporting where the
+//     link went is the only confirmation there is, and it's the only one that ever
+//     renders *disabled* — on a board with no seed to name;
 //   - a **"Games"** section — SceneSwitcher's primary game row(s), spliced in as the
 //     `games` node: FreeCell (the game) as a top-level row (#135);
 //   - --- the space between top and bottom grows here (`menu-section--bottom`) ---
@@ -108,6 +112,23 @@ type props = {
   onBackToSettings: unit => unit,
   onNewGame: unit => unit,
   onRestart: unit => unit,
+  // "Share Seed" (#98): the main menu's third game button, handing over a link to the
+  // *deal* on the table (`ShareLink.urlForDeal`) — which board to lay out, not the
+  // position it's in. That's the share a player reaches for mid-game, so it sits with
+  // New and Restart rather than down in Debug beside "Share game state", which
+  // carries the whole undo history and answers a different question. The label says
+  // "Seed" for the same reason: the two shares are easy to confuse, and naming what
+  // goes out is the shortest way to tell them apart.
+  //
+  // `shareDealSeed` is the seed the board reports, and `None` is why the button greys
+  // out: a demo scene has no seed, and neither does a game restored from a save
+  // written before seeds were kept. The seed is passed rather than a bare bool so the
+  // group can *name* it — a share is easier to trust when you can see the number
+  // going out. `shareDealStatus` is the transient line under the buttons reporting
+  // where the link went.
+  shareDealSeed: option<int>,
+  shareDealStatus: option<string>,
+  onShareDeal: unit => unit,
   games: Html.element,
   debugScenes: Html.element,
   debugStates: Html.element,
@@ -186,6 +207,44 @@ let actionRow = (~label, ~desc, ~enabled, ~onClick) =>
     </span>
   </button>
 
+// A "game" action button: New, Restart, Share Seed. `enabled` drives the real
+// `disabled` attribute — a disabled button emits no click at all, so the handler
+// guard is belt and braces — and the muted styling that goes with it. Only Share Seed
+// is ever disabled; the other two are no-ops on a scene without a game rather than
+// unavailable, which is the behaviour they've always had. `name` overrides the
+// accessible name where the label alone doesn't say enough (Share Seed names the
+// seed it would hand out).
+let gameButton = (~label, ~name=?, ~enabled=true, ~onClick) => {
+  let attrs = [("type", "button")]
+  if !enabled {
+    attrs->Array.push(("disabled", ""))
+  }
+  name->Option.forEach(name => attrs->Array.push(("aria-label", name)))
+  <button
+    className="menu-button"
+    onClick={_ =>
+      if enabled {
+        onClick()
+      }}
+    attrs
+  >
+    {Html.string(label)}
+  </button>
+}
+
+// The line under the "game" buttons (#98). One line, three things to say, in
+// priority order: what just happened to a share, else which seed is on the table,
+// else why there's nothing to share. It's always rendered — the same slot in every
+// state — so a share confirmation appears and clears without the buttons above it
+// moving, and so the seed is on screen to be read (and typed by hand) on a browser
+// where the link can't be delivered at all.
+let seedLine = (~seed: option<int>, ~status: option<string>): string =>
+  switch (status, seed) {
+  | (Some(status), _) => status
+  | (None, Some(seed)) => "Seed " ++ Int.toString(seed)
+  | (None, None) => "No seed for this board."
+  }
+
 // The "Wiggle Waggle" row (#235): the shake-to-jostle switch. Unlike the plain
 // `toggleRow`, its label is title-cased and it deliberately carries *no* description
 // — the other settings explain themselves; finding out what this one does is the
@@ -222,6 +281,9 @@ let make = ({
   onBackToSettings,
   onNewGame,
   onRestart,
+  shareDealSeed,
+  shareDealStatus,
+  onShareDeal,
   games,
   debugScenes,
   debugStates,
@@ -400,20 +462,27 @@ let make = ({
             <h1 className="menu-title"> {Html.string("Pip")} </h1>
             {closeButton}
           </div>
-          <div className="menu-section" attrs={[("aria-label", "This game")]}>
-            <h2 className="menu-section__heading"> {Html.string("This game")} </h2>
+          <div className="menu-section" attrs={[("aria-label", "game")]}>
+            <h2 className="menu-section__heading"> {Html.string("game")} </h2>
             <div className="menu-buttons">
-              <button
-                className="menu-button" onClick={_ => onNewGame()} attrs={[("type", "button")]}
-              >
-                {Html.string("New Game")}
-              </button>
-              <button
-                className="menu-button" onClick={_ => onRestart()} attrs={[("type", "button")]}
-              >
-                {Html.string("Restart")}
-              </button>
+              {gameButton(~label="New", ~onClick=onNewGame)}
+              {gameButton(~label="Restart", ~onClick=onRestart)}
+              {// Share Seed (#98). The only one of the three that ever goes
+              // `disabled` — the real attribute, so no click is emitted at all, with
+              // the handler guard behind it as belt and braces — because a board
+              // with no seed has no link to hand out. The accessible name names the
+              // seed: the label says what *kind* of thing goes out, and the number
+              // is the whole content of it.
+              gameButton(
+                ~label="Share Seed",
+                ~name=?shareDealSeed->Option.map(n => "Share seed " ++ Int.toString(n)),
+                ~enabled=shareDealSeed->Option.isSome,
+                ~onClick=onShareDeal,
+              )}
             </div>
+            <p className="menu-share-line" attrs={[("aria-live", "polite")]}>
+              {Html.string(seedLine(~seed=shareDealSeed, ~status=shareDealStatus))}
+            </p>
           </div>
           <nav className="menu-section" attrs={[("aria-label", "Games")]}>
             <h2 className="menu-section__heading"> {Html.string("Games")} </h2>
