@@ -13,12 +13,12 @@
 //
 // **Main screen** — top to bottom:
 //   - the **title** ("Pip"), moved here from the retired Home scene, beside the ✕;
-//   - a **"This game"** section (#156, #261): **New Game** (re-deals a fresh seed),
+//   - a **"game"** section (#156, #261): **new** (re-deals a fresh seed),
 //     **Restart** (re-deals the *same* seed to replay the current deal) and
-//     **Share** (#261 — hands the position out as a link, `ShareLink`). New Game
+//     **share seed** (#261 — hands the position out as a link, `ShareLink`). New game
 //     moved here from the top bar; it and Restart call the scene's re-deal hooks and
 //     close the menu so the board is visible again. On a scene with no game (a demo)
-//     those two are wired to no-op hooks, while Share — which would have to produce
+//     those two are wired to no-op hooks, while share seed — which would have to produce
 //     a link to a board that doesn't exist — is the one that renders *disabled*, with
 //     `shareNote` under the group saying why. That note is also where a completed
 //     share reports itself ("Link copied to clipboard."), which is why it's one line
@@ -120,7 +120,7 @@ type props = {
   onToggleCutoutDebug: unit => unit,
   debugLog: bool,
   onToggleDebugLog: unit => unit,
-  // "Share" (`ShareLink`): the third button in the main screen's "This game" group.
+  // "share seed" (`ShareLink`): the third button in the main screen's "game" group.
   // `shareEnabled` is whether a link has been encoded for the board behind the menu —
   // false on a scene with no game, and for the moment between the menu opening and
   // the encode resolving, which is what the disabled state covers. `shareNote` is the
@@ -172,9 +172,9 @@ let toggleRow = (~label, ~desc, ~on, ~onToggle) =>
     <span className="menu-toggle__switch" />
   </button>
 
-// A "This game" action button: New Game, Restart, Share. `enabled` drives the real
+// A "game" action button: new, Restart, share seed. `enabled` drives the real
 // `disabled` attribute — a disabled button emits no click at all, so the handler
-// guard is belt and braces — and the muted styling that goes with it. Only Share is
+// guard is belt and braces — and the muted styling that goes with it. Only share seed is
 // ever disabled; the other two are no-ops on a scene without a game rather than
 // unavailable, which is the behaviour they've always had.
 let gameButton = (~label, ~enabled=true, ~onClick) =>
@@ -189,8 +189,8 @@ let gameButton = (~label, ~enabled=true, ~onClick) =>
     {Html.string(label)}
   </button>
 
-// The line under the "This game" buttons, when there is one: where a link just went
-// ("Link copied to clipboard."), or why Share is greyed out. `None` renders nothing
+// The line under the "game" buttons, when there is one: where a link just went
+// ("Link copied to clipboard."), or why share seed is greyed out. `None` renders nothing
 // at all rather than an empty box, so the ordinary menu carries no explanatory
 // clutter and the group doesn't reserve height it isn't using.
 let gameNote = (note: option<string>) =>
@@ -393,12 +393,12 @@ let make = ({
             <h1 className="menu-title"> {Html.string("Pip")} </h1>
             {closeButton}
           </div>
-          <div className="menu-section" attrs={[("aria-label", "This game")]}>
-            <h2 className="menu-section__heading"> {Html.string("This game")} </h2>
+          <div className="menu-section" attrs={[("aria-label", "game")]}>
+            <h2 className="menu-section__heading"> {Html.string("game")} </h2>
             <div className="menu-buttons">
-              {gameButton(~label="New Game", ~onClick=onNewGame)}
+              {gameButton(~label="new", ~onClick=onNewGame)}
               {gameButton(~label="Restart", ~onClick=onRestart)}
-              {gameButton(~label="Share", ~enabled=shareEnabled, ~onClick=onShareGame)}
+              {gameButton(~label="share seed", ~enabled=shareEnabled, ~onClick=onShareGame)}
             </div>
             {gameNote(shareNote)}
           </div>

@@ -15,7 +15,7 @@ import { settleBoard } from "./lib/board.mjs"
 
 test.use({
   viewport: { width: 800, height: 1000 },
-  // Share falls back to the clipboard when the platform has no OS share sheet, which
+  // Sharing falls back to the clipboard when the platform has no OS share sheet, which
   // is the case in headless Chromium — so that's the path under test, and reading the
   // result back needs the grant.
   permissions: ["clipboard-read", "clipboard-write"],
@@ -43,13 +43,13 @@ async function readBoard(page) {
   )
 }
 
-// Open the menu, where Share sits beside New Game and Restart.
+// Open the menu, where "share seed" sits beside "new" and Restart.
 async function openMenu(page) {
   await page.getByRole("button", { name: "Open menu" }).click()
-  return page.getByRole("button", { name: "Share", exact: true })
+  return page.getByRole("button", { name: "share seed", exact: true })
 }
 
-// Press "Share" and hand back the URL it put on the clipboard.
+// Press "share seed" and hand back the URL it put on the clipboard.
 async function shareFromMenu(page) {
   const share = await openMenu(page)
   // The link is encoded when the menu opens, not on the press — the button stays
@@ -128,7 +128,7 @@ test("a corrupt link opens a playable board instead of failing", async ({ page }
   expect((await readBoard(page)).length).toBe(52)
 })
 
-test("Share is disabled on a scene with no game", async ({ page }) => {
+test("share seed is disabled on a scene with no game", async ({ page }) => {
   // A demo scene publishes no history hooks, so there's nothing to encode and the
   // button must say so rather than offering a link to a board that doesn't exist.
   await page.goto("/?scene=spinner")
@@ -137,7 +137,7 @@ test("Share is disabled on a scene with no game", async ({ page }) => {
   await expect(page.getByText("No game on screen to share.")).toBeVisible()
 })
 
-test("Share says nothing about a real game while its link encodes", async ({ page }) => {
+test("share seed says nothing about a real game while its link encodes", async ({ page }) => {
   // The note under the buttons is for a link's fate or a scene that can't be shared —
   // it must not flash the demo-scene explanation at a board that's merely mid-encode
   // (`shareable` in the model exists precisely to tell those two apart).
