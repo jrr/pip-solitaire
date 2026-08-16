@@ -140,12 +140,33 @@ description = "Check that all ReScript source is formatted (fails if not)"
 depends = ["install"]
 run = "pnpm -r exec rescript format --check"
 
+# Every deprecation the compiler warns about names the rewrite that resolves it,
+# and ships it as an automatic migration; this fans those across all packages the
+# way `format` fans the formatter, so `mise run build` can be kept warning-free
+# without hand-editing each call site. It rewrites source in place and doesn't
+# format afterwards — run `format` next, and read the diff before committing.
+#
+# `depends = ["build"]` because the tool reads the compiler's analysis artifacts,
+# not the source: against a stale (or absent) lib/ it reports "migrated 0" and
+# silently changes nothing.
+[tasks.migrate]
+description = "Apply ReScript's automatic deprecation migrations to all source in place"
+depends = ["build"]
+run = "pnpm -r exec rescript-tools migrate-all ."
+
 # Passthrough to the ReScript CLI in one package, so the whole compiler surface
 # (build, build -w, format, clean, …) is reachable through the task interface:
 #   mise run rescript -- core build -w
 [tasks.rescript]
 description = "Run the ReScript CLI in one package: `mise run rescript -- <package> <args>`"
 run = "pnpm --filter \"{{arg(name='package')}}\" exec rescript"
+
+# The same passthrough for ReScript's *tools* CLI, which ships separately from the
+# compiler: migrate/migrate-all (see `migrate` above), doc, reanalyze, …
+#   mise run rescript-tools -- core migrate src/CardText.res --stdout
+[tasks.rescript-tools]
+description = "Run the ReScript Tools CLI in one package: `mise run rescript-tools -- <package> <args>`"
+run = "pnpm --filter \"{{arg(name='package')}}\" exec rescript-tools"
 
 # `depends` runs in parallel, so install/build/test are chained through each
 # other's `depends` rather than listed here (test → build → install), which is

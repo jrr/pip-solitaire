@@ -28,7 +28,7 @@ describe("ShareLink", () => {
     })
 
   testAsync("a link's blob restores the whole history", async () => {
-    let url = (await ShareLink.urlFor(history))->Option.getExn
+    let url = (await ShareLink.urlFor(history))->Option.getOrThrow
     let blob = url->String.split("#" ++ ShareLink.fragmentKey ++ "=")->Array.getUnsafe(1)
     expect(await ShareLink.historyFrom(blob))->toEqual(Some(history))
   })
@@ -36,7 +36,7 @@ describe("ShareLink", () => {
   testAsync("the state rides in the fragment, not the query", async () => {
     // The reason there's no length ceiling to design around: a fragment never
     // reaches the server, so none of the ~8 KB request-line limits apply to it.
-    let url = (await ShareLink.urlFor(history))->Option.getExn
+    let url = (await ShareLink.urlFor(history))->Option.getOrThrow
     expect(url->String.includes("#" ++ ShareLink.fragmentKey ++ "="))->toBe(true)
     expect(url->String.includes("?"))->toBe(false)
   })
@@ -67,7 +67,7 @@ describe("ShareLink", () => {
     // `SaveState.decode`'s version/shape rejection has to survive the trip through
     // the codec: a link that decompresses cleanly can still be one this build can't
     // read, and that must read as "no game" rather than a half-built board.
-    let blob = (await Compression.compress(`{"v":99,"past":[],"present":null}`))->Option.getExn
+    let blob = (await Compression.compress(`{"v":99,"past":[],"present":null}`))->Option.getOrThrow
     expect(await ShareLink.historyFrom(blob))->toEqual(None)
   })
 })
