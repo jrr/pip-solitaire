@@ -1015,8 +1015,9 @@ let make = (
       // Re-lay a zone's pile from scratch: every card squares up on the zone
       // centre, then Fanned cards step *down* by their slot so the newest lands
       // lowest and fully exposed. Only the top (last) card stays draggable; the
-      // rest are marked buried. Reading the rects live keeps the maths correct
-      // wherever flexbox placed the zone.
+      // rest are marked buried, and in a Squared pile — where they're not on
+      // screen at all — hidden from the accessible tree too (#267). Reading the
+      // rects live keeps the maths correct wherever flexbox placed the zone.
       //
       // Cards centre within the base box (`zoneBaseHeight`), *not* the zone's live
       // height — a fanned zone is then grown *downward* to enclose its whole fan
@@ -1079,6 +1080,23 @@ let make = (
             headsRun
               ? classList(c.wrapper)->removeClass("stacking-card--buried")
               : classList(c.wrapper)->addClass("stacking-card--buried")
+            // Take the cards this pile *hides* out of the accessible tree (#267).
+            // Every card is a `role="img"` with an `aria-label` (see `CardArt`), and a
+            // Squared pile draws its whole contents on one spot — so a screen reader
+            // was read the cards behind the top one as if they were on the table: six
+            // of them mid-game, and forty-eight of fifty-two on a won board, whose
+            // four foundations show exactly four cards. Only the top card is visible,
+            // so only the top card is announced.
+            //
+            // Fanned piles are untouched: every card there keeps a visible edge, so
+            // every card is something the player can actually see. Free cells hold one
+            // card and so never occlude. Derived here from the live pile like the rest
+            // of the layout, so the mark tracks the board — a card sent home goes quiet
+            // as the next one covers it, and an undo brings it back.
+            let covered = zone.stacking == Game.Squared && i < count - 1
+            covered
+              ? c.wrapper->WebDom.setAttribute("aria-hidden", "true")
+              : c.wrapper->WebDom.removeAttribute("aria-hidden")
           | None => ()
           }
         )
