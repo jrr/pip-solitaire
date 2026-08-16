@@ -26,7 +26,7 @@
 
 @val external setTimeout: (unit => unit, int) => int = "setTimeout"
 
-// How long the share row's "Link copied…" line stays up before clearing itself.
+// How long the Share button's "Link copied…" line stays up before clearing itself.
 let shareStatusMs = 2500
 
 // --- Service-worker registration (vite-plugin-pwa virtual module) -----------
@@ -94,14 +94,20 @@ type model = {
   // indicator rather than a status line beneath it (#201).
   refreshMode: option<Refresh.mode>,
   refreshBusy: bool,
-  // The Debug screen's "Share game state" row (`ShareLink`). `shareUrl` is the
-  // encoded link for the board as it stood when the screen opened — computed *then*,
-  // not on the press, because `navigator.share` needs the click's transient
-  // activation and would lose it behind the compression's `await` (see
-  // `ShareLink.deliver`). The board can't move while the menu covers it, so a link
-  // built on open is still current when the button is pressed. `None` means there's
-  // nothing to share (a demo scene) or the encode hasn't finished yet, and the row
-  // renders disabled. `shareStatus` is the transient line reporting what happened.
+  // The menu's "Share" button (`ShareLink`). `shareUrl` is the encoded link for the
+  // board as it stood when the menu opened — computed *then*, not on the press,
+  // because `navigator.share` needs the click's transient activation and would lose
+  // it behind the compression's `await` (see `ShareLink.deliver`). The board can't
+  // move while the menu covers it, so a link built on open is still current when the
+  // button is pressed. `None` means there's nothing to share (a demo scene) or the
+  // encode hasn't finished yet, and the button renders disabled.
+  //
+  // `shareable` splits those two cases apart: it's set synchronously as the menu goes
+  // up, from a read of the live board's history, so the moment before the encode
+  // resolves is distinguishable from a scene that has no game at all. Without it the
+  // button would flash "No game on screen to share." under every real game on every
+  // menu open. `shareStatus` is the transient line reporting what happened to a link.
+  shareable: bool,
   shareUrl: option<string>,
   shareStatus: option<string>,
 }
@@ -109,7 +115,10 @@ type model = {
 type msg =
   | UpdateAvailable // a new build is waiting in the wings
   | Reload // user asked to activate the waiting worker and reload
-  | ToggleMenu // the top bar's Menu button
+  // The top bar's Menu button. Carries whether the board behind it has a game to
+  // share, read synchronously as the menu goes up so the Share button opens in the
+  // right state (see the view's `onMenu`); ignored on the closing half of the toggle.
+  | ToggleMenu(bool)
   | CloseMenu // backdrop / close button / a scene row was tapped
   | OpenSettings // the main menu's Settings button — swap to the Settings screen (#191)
   | BackToMenu // the Settings screen's back button — swap back to the main menu (#191)
@@ -127,8 +136,8 @@ type msg =
   | RefreshDetected(Refresh.mode) // service-worker presence detected — sets the button's shape (#112)
   | RefreshStarted // the refresh button was tapped — start spinning the button (#112/#201)
   | RefreshChecked // an update check finished — stop the spinner (a found update surfaces as the About button)
-  | ShareLinkReady(option<string>) // the open Debug screen's board, encoded into a link (`ShareLink`)
-  | ShareStatus(option<string>) // the share row's transient status line; `None` clears it
+  | ShareLinkReady(option<string>) // the open menu's board, encoded into a link (`ShareLink`)
+  | ShareStatus(option<string>) // the Share button's transient status line; `None` clears it
 
 // `updateSW` only exists once registerSW has run, which needs `dispatch`, which
 // needs the loop to be mounted — so the Reload effect reaches it through a ref
@@ -158,7 +167,7 @@ let loadStateHook: ref<option<GameState.t => unit>> = ref(None)
 
 // The active card-table scene's share-link hooks (`ShareLink`), siblings of
 // `loadStateHook`. `readHistoryHook` hands back the live board's undo/redo history
-// so the Debug screen can encode it into a link; `loadHistoryHook` is the way back
+// so the menu's Share button can encode it into a link; `loadHistoryHook` is the way back
 // in, rebuilding the board onto a history a `#g=` link carried. Both are published
 // by every `TableScene` on mount and cleared on each scene change, so on a demo
 // scene there's nothing to share and nothing to restore into.
@@ -274,13 +283,21 @@ let update = (msg, model) =>
   // Every screen change also abandons a part-finished run of reveal taps
   // (`HiddenOptions.reset`), here and in the five branches below: the counter only
   // ever spans one uninterrupted visit to the Settings screen.
-  | ToggleMenu => (
+  // Each open also starts the Share button from scratch: `shareable` says whether
+  // there's a board behind the menu at all, and the previous visit's link and status
+  // are dropped rather than left up. The board may well have moved on since, and a
+  // stale link is worse than a briefly disabled button — the view kicks off a fresh
+  // encode alongside this message, which arrives back as `ShareLinkReady`.
+  | ToggleMenu(shareable) => (
       {
         ...model,
         menuOpen: !model.menuOpen,
         menuScreen: Menu.Main,
         refreshBusy: false,
         hidden: HiddenOptions.reset(model.hidden),
+        shareable,
+        shareUrl: None,
+        shareStatus: None,
       },
       Html.noEffect,
     )
@@ -295,6 +312,11 @@ let update = (msg, model) =>
             menuScreen: Menu.Main,
             refreshBusy: false,
             hidden: HiddenOptions.reset(model.hidden),
+            // Drop the link with the menu, so nothing survives to be handed out
+            // against a board that has since moved (the next open encodes afresh).
+            shareable: false,
+            shareUrl: None,
+            shareStatus: None,
           },
           Html.noEffect,
         )
@@ -314,18 +336,8 @@ let update = (msg, model) =>
       {...model, menuScreen: Menu.Main, hidden: HiddenOptions.reset(model.hidden)},
       Html.noEffect,
     )
-  // Opening the Debug screen clears the previous visit's share link rather than
-  // leaving it up: the board may well have moved on since, and a stale link is worse
-  // than a briefly disabled button. The view kicks off a fresh encode alongside this
-  // message, which arrives back as `ShareLinkReady` and re-enables the row.
   | OpenDebug => (
-      {
-        ...model,
-        menuScreen: Menu.Debug,
-        hidden: HiddenOptions.reset(model.hidden),
-        shareUrl: None,
-        shareStatus: None,
-      },
+      {...model, menuScreen: Menu.Debug, hidden: HiddenOptions.reset(model.hidden)},
       Html.noEffect,
     )
   | BackToSettings => (
@@ -591,7 +603,7 @@ let switcher = SceneSwitcher.render(
     restartHook := None
     loadStateHook := None
     // Drop the outgoing board's share-link hooks; a demo scene publishes none, so
-    // the Debug screen's share row correctly reports nothing to share there.
+    // the menu's Share button correctly reports nothing to share there.
     readHistoryHook := None
     loadHistoryHook := None
     relayoutHook := None
@@ -676,7 +688,21 @@ let debugStates = DebugStates.render(
 let view = (model, dispatch) => <>
   <main id="app">
     <TopBar
-      onMenu={() => dispatch(ToggleMenu)}
+      onMenu={() => {
+        // Encode the board *now*, as the menu goes up, so the Share button has a link
+        // ready to hand straight to `navigator.share` without an `await` in front of
+        // it (see `ShareLink.deliver`). Nothing can move the board while the menu
+        // covers it, so the link stays current for as long as the button is on
+        // screen. Reading the history is synchronous, so whether there's anything to
+        // share rides along with the message itself — a scene with no game (a demo)
+        // opens with the button disabled and says so, while a real game merely opens
+        // disabled for the moment the encode takes.
+        let history = model.menuOpen ? None : currentHistory()
+        dispatch(ToggleMenu(history->Option.isSome))
+        history->Option.forEach(history =>
+          (async () => dispatch(ShareLinkReady(await ShareLink.urlFor(history))))()->ignore
+        )
+      }}
       onUndo={() =>
         switch undoHook.contents {
         | Some(undo) => undo()
@@ -700,23 +726,7 @@ let view = (model, dispatch) => <>
       dispatch(OpenSettings)
     }}
     onBackToMenu={() => dispatch(BackToMenu)}
-    onOpenDebug={() => {
-      dispatch(OpenDebug)
-      // Encode the board *now*, while the menu is going up, so the share button has a
-      // link ready to hand straight to `navigator.share` without an `await` in front
-      // of it (see `ShareLink.deliver`). Nothing can move the board until this screen
-      // is dismissed, so the link stays current for as long as the row is on screen.
-      // A scene with no history to read (a demo) resolves to `None` and the row
-      // stays disabled.
-
-      (
-        async () =>
-          switch currentHistory() {
-          | Some(history) => dispatch(ShareLinkReady(await ShareLink.urlFor(history)))
-          | None => dispatch(ShareLinkReady(None))
-          }
-      )()->ignore
-    }}
+    onOpenDebug={() => dispatch(OpenDebug)}
     onBackToSettings={() => dispatch(BackToSettings)}
     onNewGame={() => {
       newGameHook.contents->Option.forEach(newGame => newGame())
@@ -734,9 +744,17 @@ let view = (model, dispatch) => <>
     debugLog={model.debugLog}
     onToggleDebugLog={() => dispatch(ToggleDebugLog)}
     shareEnabled={model.shareUrl->Option.isSome}
-    shareStatus={model.shareStatus}
+    // The one line under the "This game" buttons: what became of a link just handed
+    // out, or — on a scene with no game — why Share is greyed out. Silent in between,
+    // including the moment a real board's encode is still in flight, so the ordinary
+    // menu open shows nothing but the buttons.
+    shareNote={switch (model.shareStatus, model.shareable) {
+    | (Some(status), _) => Some(status)
+    | (None, false) => Some("No game on screen to share.")
+    | (None, true) => None
+    }}
     onShareGame={() =>
-      // Straight into `deliver` with the link encoded on screen-open: no `await`
+      // Straight into `deliver` with the link encoded on menu-open: no `await`
       // between the click and `navigator.share`, which is what keeps the gesture's
       // transient activation intact for the OS share sheet. The status line clears
       // itself a few seconds later so it doesn't sit there stale.
@@ -864,8 +882,9 @@ let dispatch = Html.mount(
     // service-worker state (#112); not busy until an action runs.
     refreshMode: None,
     refreshBusy: false,
-    // The share row is filled in when the Debug screen opens (`ShareLink`), not at
-    // startup — there's no point encoding a board nobody has asked to share.
+    // The Share button is filled in when the menu opens (`ShareLink`), not at startup
+    // — there's no point encoding a board nobody has asked to share.
+    shareable: false,
     shareUrl: None,
     shareStatus: None,
   },

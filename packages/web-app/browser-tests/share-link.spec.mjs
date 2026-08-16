@@ -15,9 +15,9 @@ import { settleBoard } from "./lib/board.mjs"
 
 test.use({
   viewport: { width: 800, height: 1000 },
-  // The share row falls back to the clipboard when the platform has no OS share
-  // sheet, which is the case in headless Chromium — so that's the path under test,
-  // and reading the result back needs the grant.
+  // Share falls back to the clipboard when the platform has no OS share sheet, which
+  // is the case in headless Chromium — so that's the path under test, and reading the
+  // result back needs the grant.
   permissions: ["clipboard-read", "clipboard-write"],
 })
 
@@ -43,18 +43,16 @@ async function readBoard(page) {
   )
 }
 
-// Walk the menu down to the Debug screen, which is where the share row lives.
-async function openDebugScreen(page) {
+// Open the menu, where Share sits beside New Game and Restart.
+async function openMenu(page) {
   await page.getByRole("button", { name: "Open menu" }).click()
-  await page.getByRole("button", { name: "Settings" }).click()
-  await page.getByRole("button", { name: "Debug" }).first().click()
-  return page.getByRole("button", { name: /Share game state/ })
+  return page.getByRole("button", { name: "Share", exact: true })
 }
 
-// Press "Share game state" and hand back the URL it put on the clipboard.
-async function shareFromDebugScreen(page) {
-  const share = await openDebugScreen(page)
-  // The link is encoded when the screen opens, not on the press — the row stays
+// Press "Share" and hand back the URL it put on the clipboard.
+async function shareFromMenu(page) {
+  const share = await openMenu(page)
+  // The link is encoded when the menu opens, not on the press — the button stays
   // disabled until that resolves, so waiting for it to enable is also the assertion
   // that the encode succeeded.
   await expect(share).toBeEnabled()
@@ -70,7 +68,7 @@ test("a shared link reopens the same board", async ({ page }) => {
   // The premise: this position actually has a boardful of cards to compare.
   expect(shared.length).toBe(52)
 
-  const url = await shareFromDebugScreen(page)
+  const url = await shareFromMenu(page)
   expect(url).toContain("#g=")
   // The payload rides in the fragment, so none of the board reaches the server —
   // which is what keeps it clear of any request-line limit.
@@ -89,7 +87,7 @@ test("a shared link takes over the saved game", async ({ page }) => {
   // no fragment, no query — which only ever shows a board if one was saved.
   await page.goto(MIDGAME)
   await settleBoard(page)
-  const url = await shareFromDebugScreen(page)
+  const url = await shareFromMenu(page)
 
   await page.goto(url)
   await settleBoard(page)
@@ -106,7 +104,7 @@ test("a corrupt link leaves an existing saved game alone", async ({ page }) => {
   // shared board first, then open a broken link over the top of it.
   await page.goto(MIDGAME)
   await settleBoard(page)
-  const url = await shareFromDebugScreen(page)
+  const url = await shareFromMenu(page)
   await page.goto(url)
   await settleBoard(page)
   const saved = await readBoard(page)
@@ -130,11 +128,56 @@ test("a corrupt link opens a playable board instead of failing", async ({ page }
   expect((await readBoard(page)).length).toBe(52)
 })
 
-test("the share row is disabled on a scene with no game", async ({ page }) => {
+test("Share is disabled on a scene with no game", async ({ page }) => {
   // A demo scene publishes no history hooks, so there's nothing to encode and the
-  // row must say so rather than offering a link to a board that doesn't exist.
+  // button must say so rather than offering a link to a board that doesn't exist.
   await page.goto("/?scene=spinner")
-  const share = await openDebugScreen(page)
+  const share = await openMenu(page)
   await expect(share).toBeDisabled()
   await expect(page.getByText("No game on screen to share.")).toBeVisible()
+})
+
+test("Share says nothing about a real game while its link encodes", async ({ page }) => {
+  // The note under the buttons is for a link's fate or a scene that can't be shared —
+  // it must not flash the demo-scene explanation at a board that's merely mid-encode
+  // (`shareable` in the model exists precisely to tell those two apart).
+  //
+  // A plain `toHaveCount(0)` would be no test at all here: Playwright retries it, so
+  // a note that appears for one frame and then clears still passes. The claim is
+  // about a frame, so it needs a witness that was watching — a MutationObserver
+  // armed before the menu opens, whose callback runs on every batch of DOM changes
+  // the render makes.
+  await page.goto(MIDGAME)
+  await settleBoard(page)
+  await page.evaluate(() => {
+    // Only a *visible* note counts. The closed menu is `#menu-overlay[hidden]`, and
+    // its panel is still rendered underneath, note and all — the model sits at
+    // `shareable: false` at rest — so a plain text search would report a note nobody
+    // could see. `offsetParent === null` under a `display: none` ancestor is what
+    // separates the two. Attributes are observed as well as nodes, so dropping that
+    // `hidden` attribute is itself a moment the note gets checked at.
+    const showing = () => {
+      const note = document.querySelector(".menu-buttons__note")
+      return (
+        note !== null &&
+        note.offsetParent !== null &&
+        note.textContent.includes("No game on screen to share.")
+      )
+    }
+    window.__sawNoGameNote = showing()
+    new MutationObserver(() => {
+      window.__sawNoGameNote ||= showing()
+    }).observe(document.body, {
+      subtree: true,
+      childList: true,
+      characterData: true,
+      attributes: true,
+    })
+  })
+
+  const share = await openMenu(page)
+  // Waiting for the button to enable is waiting out the whole encode window — the
+  // one the note must have stayed quiet through.
+  await expect(share).toBeEnabled()
+  expect(await page.evaluate(() => window.__sawNoGameNote)).toBe(false)
 })

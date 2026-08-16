@@ -92,9 +92,9 @@ external makeShareData: (~title: string=?, ~text: string=?, ~url: string=?) => s
 // `navigator.share` requires transient activation, and Safari in particular
 // rejects it when it's reached after an `await` — so the *compression* has to have
 // happened already by the time a share is attempted. That's why `Main` encodes the
-// link when the Debug screen opens rather than when the button is pressed: the
-// board can't change while the menu is covering it, so the link is ready and this
-// function's first act can be the share itself.
+// link when the menu opens rather than when the button is pressed: the board can't
+// change while the menu is covering it, so the link is ready and this function's
+// first act can be the share itself.
 //
 // A rejected share falls through to the clipboard. That folds two cases together —
 // a genuine failure and a player who opened the sheet and thought better of it —

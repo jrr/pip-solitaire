@@ -671,16 +671,28 @@
         color: #64748b;
       }
 
-      /* The Game section's actions (#156): New Game and Restart, sitting side by
-         side so the pair reads as one control group. Each shares the width evenly. */
+      /* The Game section's actions (#156, #261): New Game, Restart and Share, sitting
+         side by side so the group reads as one control group. Each shares the width
+         evenly. */
       .menu-buttons {
         display: flex;
         gap: 0.4rem;
       }
 
+      /* The line under the button group (#261): where a shared link just went, or why
+         Share is greyed out. Rendered only when it has something to say, so the
+         section's own 0.4rem gap is all the separation it needs. */
+      .menu-buttons__note {
+        margin: 0;
+        font: 12px "Libre Franklin", sans-serif;
+        line-height: 1.35;
+        color: #94a3b8;
+      }
+
       /* A Game-section action button (#156), styled like the scene rows/toggle but
          centred, since it's a command rather than a labelled row. `flex: 1` so
-         New Game and Restart split the row evenly. */
+         New Game, Restart and Share split the row evenly. The Settings button at the
+         foot of the main menu borrows this class too. */
       .menu-button {
         flex: 1;
         text-align: center;
@@ -691,6 +703,13 @@
         border: 1px solid #22304a;
         border-radius: 8px;
         cursor: pointer;
+      }
+
+      /* Share, while there's no link to hand over: a scene with no game, or the
+         encode still in flight after the menu opened (#261). */
+      .menu-button:disabled {
+        opacity: 0.5;
+        cursor: default;
       }
 
       /* A settings toggle row (#139): a full-width control styled like the scene
@@ -736,29 +755,6 @@
         font-size: 12px;
         line-height: 1.35;
         color: #94a3b8;
-      }
-
-      /* An action row on the Debug screen ("Share game state"): the toggle row's box
-         and label/description stack, but with nothing on the right — it runs a
-         command rather than holding a state, so there's no switch to show. Disabled
-         while there's no link to hand over (no game on screen, or the encode still in
-         flight), which the muted styling and `cursor: default` announce. */
-      .menu-action-row {
-        display: flex;
-        align-items: center;
-        width: 100%;
-        padding: 10px 12px;
-        font: 14px "Libre Franklin", sans-serif;
-        color: #e2e8f0;
-        background: #16233b;
-        border: 1px solid #22304a;
-        border-radius: 8px;
-        cursor: pointer;
-      }
-
-      .menu-action-row:disabled {
-        opacity: 0.5;
-        cursor: default;
       }
 
       /* A nav row that opens a deeper screen: the Settings screen's "Debug"

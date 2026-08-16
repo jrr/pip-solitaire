@@ -13,11 +13,16 @@
 //
 // **Main screen** — top to bottom:
 //   - the **title** ("Pip"), moved here from the retired Home scene, beside the ✕;
-//   - a **"This game"** section (#156): **New Game** (re-deals a fresh seed) and
-//     **Restart** (re-deals the *same* seed to replay the current deal). New Game
-//     moved here from the top bar; both call the scene's re-deal hooks and close
-//     the menu so the board is visible again. On a scene with no game (a demo)
-//     the handlers are wired to no-op hooks;
+//   - a **"This game"** section (#156, #261): **New Game** (re-deals a fresh seed),
+//     **Restart** (re-deals the *same* seed to replay the current deal) and
+//     **Share** (#261 — hands the position out as a link, `ShareLink`). New Game
+//     moved here from the top bar; it and Restart call the scene's re-deal hooks and
+//     close the menu so the board is visible again. On a scene with no game (a demo)
+//     those two are wired to no-op hooks, while Share — which would have to produce
+//     a link to a board that doesn't exist — is the one that renders *disabled*, with
+//     `shareNote` under the group saying why. That note is also where a completed
+//     share reports itself ("Link copied to clipboard."), which is why it's one line
+//     serving both jobs rather than a permanent description per button;
 //   - a **"Games"** section — SceneSwitcher's primary game row(s), spliced in as the
 //     `games` node: FreeCell (the game) as a top-level row (#135);
 //   - --- the space between top and bottom grows here (`menu-section--bottom`) ---
@@ -115,14 +120,15 @@ type props = {
   onToggleCutoutDebug: unit => unit,
   debugLog: bool,
   onToggleDebugLog: unit => unit,
-  // "Share game state" (`ShareLink`): the Debug screen's action row. `shareEnabled`
-  // is whether a link has been encoded for the board behind this screen — false on a
-  // scene with no game, and for the moment between opening the screen and the encode
-  // resolving, which is what the disabled state covers. `shareStatus` is the
-  // transient line reporting where the link went; it replaces the row's description
-  // while it's up, so the row doesn't change height as it comes and goes.
+  // "Share" (`ShareLink`): the third button in the main screen's "This game" group.
+  // `shareEnabled` is whether a link has been encoded for the board behind the menu —
+  // false on a scene with no game, and for the moment between the menu opening and
+  // the encode resolving, which is what the disabled state covers. `shareNote` is the
+  // single line under the button group: the transient report of where the link went,
+  // or the standing explanation on a scene with nothing to share. `None` renders no
+  // line at all, which is the ordinary case — the buttons say what they do.
   shareEnabled: bool,
-  shareStatus: option<string>,
+  shareNote: option<string>,
   onShareGame: unit => unit,
   autoCollect: bool,
   onToggleAutoCollect: unit => unit,
@@ -166,25 +172,32 @@ let toggleRow = (~label, ~desc, ~on, ~onToggle) =>
     <span className="menu-toggle__switch" />
   </button>
 
-// An action row: the same box and label/description stack as `toggleRow`, but it
-// *does* something once rather than flipping a setting, so it carries no switch and
-// stays a plain `<button>`. `enabled` drives the real `disabled` attribute — a
-// disabled button emits no click at all, so the handler guard below is belt and
-// braces — and the muted styling that goes with it.
-let actionRow = (~label, ~desc, ~enabled, ~onClick) =>
+// A "This game" action button: New Game, Restart, Share. `enabled` drives the real
+// `disabled` attribute — a disabled button emits no click at all, so the handler
+// guard is belt and braces — and the muted styling that goes with it. Only Share is
+// ever disabled; the other two are no-ops on a scene without a game rather than
+// unavailable, which is the behaviour they've always had.
+let gameButton = (~label, ~enabled=true, ~onClick) =>
   <button
-    className="menu-action-row"
+    className="menu-button"
     onClick={_ =>
       if enabled {
         onClick()
       }}
     attrs={enabled ? [("type", "button")] : [("type", "button"), ("disabled", "")]}
   >
-    <span className="menu-toggle__text">
-      <span className="menu-toggle__label"> {Html.string(label)} </span>
-      <span className="menu-toggle__desc"> {Html.string(desc)} </span>
-    </span>
+    {Html.string(label)}
   </button>
+
+// The line under the "This game" buttons, when there is one: where a link just went
+// ("Link copied to clipboard."), or why Share is greyed out. `None` renders nothing
+// at all rather than an empty box, so the ordinary menu carries no explanatory
+// clutter and the group doesn't reserve height it isn't using.
+let gameNote = (note: option<string>) =>
+  switch note {
+  | Some(line) => <p className="menu-buttons__note"> {Html.string(line)} </p>
+  | None => Html.array([])
+  }
 
 // The "Wiggle Waggle" row (#235): the shake-to-jostle switch. Unlike the plain
 // `toggleRow`, its label is title-cased and it deliberately carries *no* description
@@ -230,7 +243,7 @@ let make = ({
   debugLog,
   onToggleDebugLog,
   shareEnabled,
-  shareStatus,
+  shareNote,
   onShareGame,
   autoCollect,
   onToggleAutoCollect,
@@ -368,26 +381,6 @@ let make = ({
                 ~on=debugLog,
                 ~onToggle=onToggleDebugLog,
               )}
-              {
-                // "Share game state" (`ShareLink`): encode the board behind this
-                // screen into a link and hand it to the OS share sheet, or failing
-                // that the clipboard. The status line takes over the description
-                // while it's up, so reporting where the link went doesn't reflow the
-                // rows around it.
-                let desc = switch shareStatus {
-                | Some(status) => status
-                | None =>
-                  shareEnabled
-                    ? "Copy a link that reopens this exact game, undo history and all."
-                    : "No game on screen to share."
-                }
-                actionRow(
-                  ~label="Share game state",
-                  ~desc,
-                  ~enabled=shareEnabled,
-                  ~onClick=onShareGame,
-                )
-              }
               {Html.node(debugScenes)}
               {Html.node(debugStates)}
             </nav>
@@ -403,17 +396,11 @@ let make = ({
           <div className="menu-section" attrs={[("aria-label", "This game")]}>
             <h2 className="menu-section__heading"> {Html.string("This game")} </h2>
             <div className="menu-buttons">
-              <button
-                className="menu-button" onClick={_ => onNewGame()} attrs={[("type", "button")]}
-              >
-                {Html.string("New Game")}
-              </button>
-              <button
-                className="menu-button" onClick={_ => onRestart()} attrs={[("type", "button")]}
-              >
-                {Html.string("Restart")}
-              </button>
+              {gameButton(~label="New Game", ~onClick=onNewGame)}
+              {gameButton(~label="Restart", ~onClick=onRestart)}
+              {gameButton(~label="Share", ~enabled=shareEnabled, ~onClick=onShareGame)}
             </div>
+            {gameNote(shareNote)}
           </div>
           <nav className="menu-section" attrs={[("aria-label", "Games")]}>
             <h2 className="menu-section__heading"> {Html.string("Games")} </h2>
