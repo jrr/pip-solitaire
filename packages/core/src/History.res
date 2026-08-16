@@ -38,6 +38,16 @@ let present = (h: t<'a>): 'a => h.present
 let canUndo = (h: t<'a>): bool => Array.length(h.past) > 0
 let canRedo = (h: t<'a>): bool => Array.length(h.future) > 0
 
+// How many recorded steps lie behind the present — the length of the line of play
+// that reached it, which is what a victory share reports as "moves".
+//
+// It counts the *current* line, not every state ever recorded, because undo pops
+// `past`: a move undone and replayed differently counts once, and a move undone and
+// abandoned doesn't count at all. That's the honest reading of "how long did this
+// take" — the line you actually ended on — and it's the only one available without
+// the history growing a counter that `undo` would then have to lie to.
+let steps = (h: t<'a>): int => Array.length(h.past)
+
 // Record a new present reached from the current one: the old present is pushed
 // onto `past`, `next` becomes the present, and `future` is cleared — a fresh
 // action after an undo abandons the redo branch, the standard undo-stack

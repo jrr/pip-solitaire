@@ -60,3 +60,32 @@ describe("History", () => {
     expect(History.present(History.undo(branched)))->toBe(2)
   })
 })
+
+// `steps` counts the line of play behind the present — what the web app's victory
+// share reports as the number of moves it took (`ShareLink.victoryMessage`). The
+// interesting cases are the ones where undo has been at it, since undo pops `past`
+// and so *shortens* the count.
+describe("History.steps", () => {
+  test("a fresh history has no steps behind it", () => {
+    expect(History.steps(History.make(1)))->toBe(0)
+  })
+
+  test("counts one step per recorded state", () => {
+    let h = History.make(1)->History.record(_, 2)->History.record(_, 3)
+    expect(History.steps(h))->toBe(2)
+  })
+
+  test("undo shortens the count; redo restores it", () => {
+    let h = History.make(1)->History.record(_, 2)->History.record(_, 3)
+    expect(History.steps(History.undo(h)))->toBe(1)
+    expect(History.steps(h->History.undo->History.redo))->toBe(2)
+  })
+
+  test("an abandoned branch doesn't count toward the line that replaced it", () => {
+    // Two moves, both undone, then one different move played instead: the line that
+    // reached the present is one step long, not three.
+    let h = History.make(1)->History.record(_, 2)->History.record(_, 3)
+    let branched = h->History.undo->History.undo->History.record(_, 9)
+    expect(History.steps(branched))->toBe(1)
+  })
+})

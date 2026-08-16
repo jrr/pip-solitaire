@@ -227,6 +227,23 @@ let initialDealSeed: ref<option<int>> = ref(None)
 // reset to `None` on each scene change so a demo scene offers nothing to share.
 let reportDeal: ref<option<int> => unit> = ref(seed => initialDealSeed := seed)
 
+// The deal number on the table right now, mirrored out of the reports below. The
+// menu's Share Seed button renders from the *model* (through `DealChanged`), but the
+// win overlay's Share button (#264) is built by the board itself, outside the loop,
+// and asks at the moment the overlay goes up — so it needs the live value rather
+// than a dispatched copy of it.
+let liveDealSeed: ref<option<int>> = ref(None)
+
+// Report the deal now on the table: record it for the imperative reader above, then
+// hand it to whichever dispatcher is installed. Every report goes through here, which
+// is what keeps the two from drifting — a board whose number the menu knows and the
+// win overlay doesn't (or vice versa) would be a share button lying about which deal
+// it's offering.
+let publishDeal = (seed: option<int>): unit => {
+  liveDealSeed := seed
+  reportDeal.contents(seed)
+}
+
 // Closing the menu means dispatching into the loop, but a scene row is an
 // imperative listener built before `dispatch` exists (like `updateSW`). It
 // reaches the loop through this ref, filled in just after mount.
@@ -617,7 +634,7 @@ let gameScene = (game: Game.t) => {
     // game) there's genuinely no deal to name and the Share button stays dark rather
     // than offering a board nobody is looking at.
     ~onDeal=seed =>
-      reportDeal.contents(
+      publishDeal(
         switch seed {
         | Some(n) =>
           if plainOpen || (sharedOpen && shareLanded.contents) {
@@ -627,6 +644,35 @@ let gameScene = (game: Game.t) => {
         | None => plainOpen ? SavedGame.loadSeed(game.id) : None
         },
       ),
+    // The win overlay's Share button (#264): the same deal number the menu's Share
+    // Seed offers, wrapped in a message and handed over when the player wins. It's
+    // resolved here rather than in the board for the reason spelled out on `~onDeal`
+    // above — a resumed game's number lives in this driver's storage, not in the
+    // board — so `liveDealSeed` is the one place that knows, and both buttons read it.
+    //
+    // No deal number, no button: a posed `?state=` board or a game landed from a `#g=`
+    // link has nothing truthful to offer, so the overlay is New Game alone rather than
+    // a button that shares someone else's deal. (Those are the cases worth revisiting
+    // — a shared game *does* descend from a deal, it just doesn't carry the number.)
+    //
+    // `deliver` is called with the click's transient activation intact: `urlForDeal`
+    // is a string built from an int, so nothing is awaited between the tap and the
+    // share sheet.
+    ~winShare={
+      available: () => liveDealSeed.contents->Option.isSome,
+      share: (~moves) =>
+        switch liveDealSeed.contents {
+        | Some(seed) =>
+          ShareLink.deliver(
+            ~text=ShareLink.victoryMessage(~seed, ~moves),
+            ShareLink.urlForDeal(seed),
+          )->Promise.thenResolve(ShareLink.message)
+        // Unreachable: the button is only built when `available` says yes, and nothing
+        // can re-deal the board while the overlay covers it. Reporting the failure
+        // line rather than throwing keeps that an honest dead end instead of a crash.
+        | None => Promise.resolve(ShareLink.message(ShareLink.Failed))
+        },
+    },
     ~options,
     ~tiltEnabled,
     // Skip the opening-deal fly-in when the URL asks for `?animate=off`, so the
@@ -660,9 +706,9 @@ let switcher = SceneSwitcher.render(
     // the mounting scene republishes and reports its own history (#85).
     undoHook := None
     reportHistory.contents(false)
-    // …and clear the deal number with it (#98), so the Share button is dark for the
+    // …and clear the deal number with it (#98), so the Share buttons are dark for the
     // moment between scenes; the mounting scene reports its own (a demo reports none).
-    reportDeal.contents(None)
+    publishDeal(None)
     closeMenu.contents()
   },
   // A tap on the row for the game already showing: nothing mounts, so none of the
