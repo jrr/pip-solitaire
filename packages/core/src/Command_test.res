@@ -130,6 +130,14 @@ describe("Command.parse", () => {
       "new is deal with nothing to deal",
       () => expect(Command.parse("new"))->toEqual(Command.Deal({game: None, scenario: None})),
     )
+
+    test(
+      "redeal, and restart as its alias",
+      () => {
+        expect(Command.parse("redeal"))->toEqual(Command.Redeal)
+        expect(Command.parse("restart"))->toEqual(Command.Redeal)
+      },
+    )
   })
 
   describe("malformed input answers rather than failing", () => {
@@ -215,6 +223,74 @@ describe("Command.parse", () => {
         | _ => expect("not a usage")->toBe("usage")
         },
     )
+  })
+})
+
+// One reading of a `deal` argument for both front ends (the CLI's session and the web
+// console's board): the resolver is what stopped `deal 12345` meaning a board in the
+// browser and an unknown game in the terminal.
+describe("Command.resolveDeal", () => {
+  let resolve = (~game=?, ~scenario=?, ()) => Command.resolveDeal(~game, ~scenario)
+
+  test("no argument asks for something fresh", () => expect(resolve())->toEqual(Command.Fresh))
+
+  test("an all-digits argument is a deal number", () => {
+    expect(resolve(~game="12345", ()))->toEqual(Command.Numbered({seed: 12345}))
+    expect(resolve(~game="1", ()))->toEqual(Command.Numbered({seed: 1}))
+  })
+
+  // `Int.fromString` would read this as 12 and open a board nobody asked for, so the
+  // resolver insists on the whole token being digits.
+  test("a number with something stuck to it is not a deal number", () =>
+    expect(resolve(~game="12abc", ()))->toEqual(Command.NoSuchGame({id: "12abc"}))
+  )
+
+  test("a game id names that game, at its opening layout", () =>
+    switch resolve(~game="stacking", ()) {
+    | Command.Named({game, position: None}) => expect(game.id)->toBe("stacking")
+    | _ => expect("not a named game")->toBe("named game")
+    }
+  )
+
+  test("a second token names one of that game's positions", () =>
+    switch resolve(~game="freecell", ~scenario="midgame", ()) {
+    | Command.Named({game, position: Some(position)}) =>
+      expect(game.id)->toBe("freecell")
+      expect(position.name)->toBe("midgame")
+      // A layout assembled rather than played to, so it points at no deal (`Scenario`).
+      expect(position.seed)->toEqual(None)
+    | _ => expect("not a posed game")->toBe("posed game")
+    }
+  )
+
+  // The whole `Scenario.named` comes through rather than just the state it builds, so a
+  // caller can also read the deal a posed board descends from — which is what the web
+  // app's Share buttons need after a `deal freecell almost-won`.
+  test("a position that descends from a deal carries its number", () =>
+    switch resolve(~game="freecell", ~scenario="almost-won", ()) {
+    | Command.Named({position: Some(position)}) => expect(position.seed)->toEqual(Some(264))
+    | _ => expect("not a posed game")->toBe("posed game")
+    }
+  )
+
+  test("a game we don't have, and a position that game doesn't have", () => {
+    expect(resolve(~game="nope", ()))->toEqual(Command.NoSuchGame({id: "nope"}))
+    switch resolve(~game="freecell", ~scenario="nonesuch", ()) {
+    | Command.NoSuchScenario({game, name}) =>
+      expect(game.id)->toBe("freecell")
+      expect(name)->toBe("nonesuch")
+    | _ => expect("not a missing position")->toBe("missing position")
+    }
+  })
+
+  // Each refusal ends with what *would* have worked.
+  test("the refusals list the way out", () => {
+    expect(Command.describeNoSuchGame("nope")->String.includes("freecell"))->toBe(true)
+    expect(
+      Command.describeNoSuchScenario(~game=Game.freecell, ~name="nonesuch")->String.includes(
+        "midgame",
+      ),
+    )->toBe(true)
   })
 })
 

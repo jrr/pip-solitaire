@@ -257,21 +257,15 @@ let submit = (): unit => {
   }
 }
 
-// The console's own half of the help listing, composed around the shared board verbs
-// (`Command.boardHelp`) so the two front ends can't drift on what `moverun` does while
-// still each describing their own surface: a terminal has `print` and `games`, the
-// panel has `clear`, and `deal` takes a game id there and a deal number here.
+// The console's own half of the help listing, composed around the shared verbs
+// (`Command.dealHelp`, `Command.boardHelp`) so the two front ends can't drift on what
+// `moverun` — or now `deal` — does, while each still describes its own surface: a terminal
+// has `print` and `games`, the panel has `clear`.
 let helpText = () =>
   "Commands:\n" ++
   Command.renderHelp(
     Array.concat(
-      Array.concat(
-        [
-          ("deal <n>", "deal FreeCell game number <n> (e.g. deal 12345)"),
-          ("new", "deal a fresh game"),
-        ],
-        Command.boardHelp,
-      ),
+      Array.concat(Command.dealHelp, Command.boardHelp),
       [("clear", "empty this scrollback"), ("help", "show this help")],
     ),
   ) ++

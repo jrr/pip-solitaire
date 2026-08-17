@@ -19,7 +19,10 @@
 // undo over, the board to print, and the house rules to consult.
 //
 // The command surface, deliberately small:
-//   deal <game>          start (or restart) a game — GameState.initial
+//   deal <n>             deal FreeCell game number <n>
+//   deal <game> [pos]    a game `core` knows, at one of its named positions if given
+//   new                  a fresh board, from a seed the driver invents
+//   redeal / restart     play the current deal again from its opening layout
 //   move <card> <pile>   dispatch a Move onto pile <index>, printing the result
 //   move <card> table    dispatch a Move loose onto the table (free games only)
 //   movecol <from> <to>  reorder the cascade columns — insert-and-shift (#159)
@@ -58,10 +61,7 @@ let help = () =>
   `Commands:
 ${Command.renderHelp(
       Array.concat(
-        Array.concat(
-          [("deal <game> [scenario]", "start (or restart) a game, optionally at a named position")],
-          Command.boardHelp,
-        ),
+        Array.concat(Command.dealHelp, Command.boardHelp),
         [
           ("print", "re-print the current board"),
           ("games", "list the available games"),
@@ -116,30 +116,52 @@ let boardText = (s: session): string => {
     : board
 }
 
-// Start (or restart) a game by id, printed. With an optional scenario name, open
-// that named starting position (`Scenario.forName`) instead of the fresh deal —
-// the same vocabulary the web app's `?state=` exposes, so a mid-game position (a
-// movable run, a near-won board) is reachable from the CLI too (#123). An unknown
-// scenario for the game is reported rather than silently ignored.
-let deal = (id: string, scenario: option<string>): (option<session>, string) =>
-  switch Game.all->Array.find(g => g.id == id) {
-  | Some(game) =>
-    // A fresh deal starts a clean history — nothing before the opening position
-    // to undo back to (#85).
-    switch scenario {
-    | None =>
-      let s = {game, history: History.make(GameState.initial(game))}
-      (Some(s), renderBoard(s))
-    | Some(name) =>
-      switch Scenario.forName(game, name) {
-      | Some(state) =>
-        let s = {game, history: History.make(state)}
-        (Some(s), renderBoard(s))
-      | None => (None, `Unknown scenario "${name}" for ${id}.`)
-      }
-    }
-  | None => (None, `Unknown game: ${id}\n\n${help()}`)
+// Open a session on a state, printed. A deal starts a clean history — there's nothing
+// before the opening position to undo back to (#85).
+let session = (game: Game.t, state: GameState.t): (option<session>, string) => {
+  let s = {game, history: History.make(state)}
+  (Some(s), renderBoard(s))
+}
+
+// Act on a `deal` argument the shared resolver has already read (`Command.resolveDeal`),
+// so the terminal and the panel agree on what the words mean and differ only in what
+// they *do* about them. All four readings land somewhere here:
+//
+//   deal                     a fresh board, from the seed the caller supplies
+//   deal 12345               that FreeCell deal, by number
+//   deal freecell [midgame]  a game `core` knows, at a named position if asked
+//
+// The named positions are the same vocabulary the web app's `?state=` exposes (#123), so
+// a mid-game board — a movable run, a near-won position — is one command away here too.
+// A game or position we don't have is reported, with the list of what we do.
+let deal = (
+  ~newSeed: unit => int,
+  ~current: option<session>,
+  game: option<string>,
+  scenario: option<string>,
+): (option<session>, string) =>
+  switch Command.resolveDeal(~game, ~scenario) {
+  | Command.Fresh =>
+    let dealt = Game.freecellDeal(~seed=newSeed())
+    session(dealt, GameState.initial(dealt))
+  | Command.Numbered({seed}) =>
+    let dealt = Game.freecellDeal(~seed)
+    session(dealt, GameState.initial(dealt))
+  | Command.Named({game, position: None}) => session(game, GameState.initial(game))
+  | Command.Named({game, position: Some(position)}) => session(game, position.build(game))
+  // A refusal hands `current` straight back, so a mistyped `deal` doesn't cost you the
+  // game you were playing — it just says what it couldn't read. (It used to drop the
+  // session, which made a typo the most destructive thing you could enter.)
+  | Command.NoSuchGame({id}) => (current, Command.describeNoSuchGame(id))
+  | Command.NoSuchScenario({game, name}) => (current, Command.describeNoSuchScenario(~game, ~name))
   }
+
+// Play the current deal again from its opening layout (`redeal`/`restart`), printed. The
+// web menu's Restart button, verbatim: it rebuilds the game *now on the table*, so the
+// board is the same one and the history starts clean — and a session opened at a posed
+// position restarts to that game's real deal rather than the pose, which is exactly what
+// the button does (see `TableScene`'s `publishRestart`).
+let redeal = (s: session): (option<session>, string) => session(s.game, GameState.initial(s.game))
 
 // Dispatch one parsed `Reducer.action` — a `Move`, a `MoveRun` (#123) or a
 // `MoveColumn` (#159) — against the current session, printing the new board on `Ok`
@@ -245,6 +267,8 @@ let dealFirstHint = (command: Command.t): option<string> =>
     Some("freecell")
   | Command.Usage({verb: "move"}) => Some("stacking")
   | Command.Usage(_) => Some("freecell")
+  // There's no "current deal" to play again before one has been dealt.
+  | Command.Redeal => Some("freecell")
   | _ => None
   }
 
@@ -252,10 +276,17 @@ let dealFirstHint = (command: Command.t): option<string> =>
 // updated session and the text to show. Pure: no I/O — the caller prints the text and
 // carries the session forward. Unknown or malformed lines answer with guidance rather
 // than failing, so a scrolling session never dead-ends.
-let stepCommand = (~options: Options.t, session: option<session>, command: Command.t): (
-  option<session>,
-  string,
-) => {
+// `~newSeed` is where a *fresh* deal's number comes from: `deal`/`new` names no board, so
+// something has to invent one, and inventing is not the interpreter's to do. The default
+// keeps a driver (and every test) deterministic; `Cli.res` overrides it with a random one,
+// which is the same split the web app draws — `Main.randomSeed` lives in the impure view
+// layer, not in `core`'s deal path.
+let stepCommand = (
+  ~options: Options.t,
+  ~newSeed: unit => int=() => Game.freecellSeed,
+  session: option<session>,
+  command: Command.t,
+): (option<session>, string) => {
   // Every board verb funnels through here so the "deal a game first" answer is
   // written once rather than once per verb.
   let onBoard = run =>
@@ -281,12 +312,14 @@ let stepCommand = (~options: Options.t, session: option<session>, command: Comma
   // interpreter with no loop to stop can give.
   | Command.Quit => (session, "")
   | Command.Unknown({verb}) => (session, Command.describeUnknown(verb))
-  | Command.Deal({game: Some(id), scenario}) => deal(id, scenario)
-  | Command.Deal({game: None}) => (session, "Usage: deal <game> [scenario]\n\n" ++ gamesList())
+  // Every shape of `deal` — bare, numbered, named, at a position — reads the same here as
+  // it does in the panel, because the reading is `core`'s (see `Command.resolveDeal`).
+  | Command.Deal({game, scenario}) => deal(~newSeed, ~current=session, game, scenario)
   | Command.Usage({message}) => onBoard(_ => (session, message))
   | Command.Print => onBoard(s => (session, renderBoard(s)))
   | Command.Undo => onBoard(undo)
   | Command.Redo => onBoard(redo)
+  | Command.Redeal => onBoard(redeal)
   | Command.Finish => onBoard(finish)
   | Command.Home({card}) => onBoard(s => home(~options, s, card))
   | Command.Dispatch(action) => onBoard(s => dispatch(~options, s, action))
@@ -295,10 +328,12 @@ let stepCommand = (~options: Options.t, session: option<session>, command: Comma
 
 // The same, from raw text: parse the line, then run it. The line-based entry point
 // most callers (and every test) want.
-let step = (~options: Options.t, session: option<session>, line: string): (
-  option<session>,
-  string,
-) => stepCommand(~options, session, Command.parse(line))
+let step = (
+  ~options: Options.t,
+  ~newSeed: unit => int=() => Game.freecellSeed,
+  session: option<session>,
+  line: string,
+): (option<session>, string) => stepCommand(~options, ~newSeed, session, Command.parse(line))
 
 // The prompt, in one place: written *before* the read in an interactive session and
 // *behind* the line in a batch transcript. Same string either way — that's what makes
@@ -320,7 +355,12 @@ type outcome =
 // comment isn't part of the grammar at all (`# note` would otherwise read as an
 // unknown verb) — which is what lets a piped example script annotate itself, and what
 // lets a whole such script be pasted into a live prompt and simply play.
-let consider = (~options: Options.t, session: option<session>, line: string): outcome => {
+let consider = (
+  ~options: Options.t,
+  ~newSeed: unit => int=() => Game.freecellSeed,
+  session: option<session>,
+  line: string,
+): outcome => {
   let trimmed = String.trim(line)
   if trimmed == "" || String.startsWith(trimmed, "#") {
     Skipped
@@ -328,7 +368,7 @@ let consider = (~options: Options.t, session: option<session>, line: string): ou
     switch Command.parse(line) {
     | Command.Quit => Ended
     | command =>
-      let (next, output) = stepCommand(~options, session, command)
+      let (next, output) = stepCommand(~options, ~newSeed, session, command)
       Ran({session: next, output})
     }
   }
@@ -342,13 +382,17 @@ let consider = (~options: Options.t, session: option<session>, line: string): ou
 // `quit` ends the transcript where it appears, the way `exit` ends a shell script:
 // it's echoed (a transcript should say why it stopped) and the rest of the input is
 // left unread.
-let run = (~options: Options.t=Options.default, lines: array<string>): string => {
+let run = (
+  ~options: Options.t=Options.default,
+  ~newSeed: unit => int=() => Game.freecellSeed,
+  lines: array<string>,
+): string => {
   let session = ref(None)
   let out = []
   let ended = ref(false)
   lines->Array.forEach(line =>
     if !ended.contents {
-      switch consider(~options, session.contents, line) {
+      switch consider(~options, ~newSeed, session.contents, line) {
       | Skipped => ()
       | Ended =>
         out->Array.push(prompt ++ String.trim(line))

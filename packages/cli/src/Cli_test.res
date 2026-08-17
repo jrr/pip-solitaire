@@ -335,6 +335,46 @@ describe("Repl.run", () => {
     expect(has(transcript, "pip> print"))->toBe(true)
   })
 
+  // The `deal` family, now read by `core`'s shared resolver so a terminal and the web
+  // console agree on what the argument means.
+  test("deals by number, and the same number twice is the same board", () => {
+    let board = Repl.run(["deal 12345"])
+    expect(has(board, "FreeCell"))->toBe(true)
+    expect(Repl.run(["deal 12345"]))->toBe(board)
+    // A *different* number is a different board — the number is really the deal.
+    expect(Repl.run(["deal 24680"]) == board)->toBe(false)
+  })
+
+  // `new` invents a deal number, and inventing is the driver's job — so the interpreter
+  // takes a `~newSeed` and its default is deterministic (`Cli.res` passes a random one).
+  // That makes the three ways of asking for the canonical board provably the same board.
+  // Compared board-only: the echoed command line differs by construction.
+  test("a fresh deal, a numbered one and a named one agree on deal #1", () => {
+    let board = t => t->String.split("\n\n")->Array.sliceToEnd(~start=1)->Array.join("\n\n")
+    let fresh = board(Repl.run(["new"]))
+    expect(fresh)->toBe(board(Repl.run([`deal ${Game.freecellSeed->Int.toString}`])))
+    expect(fresh)->toBe(board(Repl.run(["deal freecell"])))
+  })
+
+  // The named positions (`Scenario`) reach the board through the shared resolver too —
+  // the same vocabulary the browser's `?state=` opens. What each *position* does is
+  // covered by the scenario tests above (`sendhome`, `finish`); this is the wiring.
+  test("a named position deals a different board from the plain deal", () => {
+    let posed = Repl.run(["deal freecell almost-won"])
+    expect(has(posed, "FreeCell"))->toBe(true)
+    expect(posed == Repl.run(["deal freecell"]))->toBe(false)
+  })
+
+  // A mistyped deal used to drop the session — the most destructive thing you could
+  // enter. It now says what it couldn't read and leaves the game alone.
+  test("a deal it can't read keeps the game already in play", () => {
+    let transcript = Repl.run(["deal stacking", "deal nope", "print"])
+    expect(has(transcript, "Unknown game: nope"))->toBe(true)
+    // The board is still there to print — no "Deal a game first".
+    expect(has(transcript, "Deal a game first"))->toBe(false)
+    expect(has(transcript, "Stacking"))->toBe(true)
+  })
+
   // `quit` ends the transcript where it appears, the way `exit` ends a shell script.
   test("quit ends the transcript and leaves the rest of the script unread", () => {
     let transcript = Repl.run(["deal stacking", "quit", "games", "print"])
@@ -344,6 +384,61 @@ describe("Repl.run", () => {
     expect(has(transcript, "pip> games"))->toBe(false)
     expect(has(transcript, "pip> print"))->toBe(false)
   })
+})
+
+// `redeal`/`restart`: the web menu's Restart button as a verb (#156), and held to the
+// same contract — replay the deal on the table from its opening layout, with a clean
+// history, and from a posed position go to the game's *real* deal rather than the pose
+// (see `TableScene`'s `publishRestart`).
+describe("Repl redeal", () => {
+  let runToSession = (cmds: array<string>): option<Repl.session> =>
+    cmds->Array.reduce(None, (acc, cmd) => {
+      let (next, _) = Repl.step(~options=Options.default, acc, cmd)
+      next
+    })
+
+  test("puts the cards back and leaves nothing to undo", () => {
+    let as_ = {suit: Spades, rank: Ace}
+    let played = runToSession(["deal stacking", "move AS 0"])
+    expect(played->Option.flatMap(s => GameState.locationOf(Repl.present(s), as_)))->toEqual(
+      Some(GameState.InPile(0, 0)),
+    )
+    let (restarted, _) = Repl.step(~options=Options.default, played, "redeal")
+    // Back where the deal put it…
+    expect(restarted->Option.flatMap(s => GameState.locationOf(Repl.present(s), as_)))->toEqual(
+      Some(GameState.Loose),
+    )
+    // …and the history starts here: a restart isn't an undo you can step back through.
+    let (_, text) = Repl.step(~options=Options.default, restarted, "undo")
+    expect(has(text, "Nothing to undo"))->toBe(true)
+  })
+
+  test("replays the same deal, not a new one", () => {
+    let dealt = Repl.run(["deal 12345"])
+    // The board after a restart is the board the number deals — byte for byte.
+    expect(
+      Repl.run(["deal 12345", "move AS 0", "redeal"])->String.endsWith(
+        dealt->String.split("pip> deal 12345\n\n")->Array.getUnsafe(1),
+      ),
+    )->toBe(true)
+  })
+
+  test("from a posed position it restarts to the game's real deal", () => {
+    // `almost-won` poses a board one move from victory; the real deal #1 is not that.
+    let posed = runToSession(["deal freecell almost-won"])
+    let (restarted, _) = Repl.step(~options=Options.default, posed, "redeal")
+    switch (posed, restarted) {
+    | (Some(before), Some(after)) =>
+      expect(GameState.equal(Repl.present(before), Repl.present(after)))->toBe(false)
+      // It's the opening layout of the very game that was on the table.
+      expect(GameState.equal(Repl.present(after), GameState.initial(before.game)))->toBe(true)
+    | _ => expect("no session")->toBe("session")
+    }
+  })
+
+  test("there's nothing to replay before a game is dealt", () =>
+    expect(has(Repl.run(["redeal"]), "Deal a game first"))->toBe(true)
+  )
 })
 
 // The per-line decision both shapes of `cli play` share (a live prompt and the batch
