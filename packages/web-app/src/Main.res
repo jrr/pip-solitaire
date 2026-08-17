@@ -932,6 +932,42 @@ let debugStates = DebugStates.render(
   }),
 )
 
+// Open a named game — and optionally one of its named positions — on the board: what the
+// console's `deal <game> [position]` does now that a game id means the same thing here as
+// it does in the CLI. These are the debug-states row's own two steps (surface the game's
+// scene, then force the position onto it), reused rather than reimplemented, so a typed
+// `deal freecell midgame` and a tapped "Mid-game" land on the very same board.
+let openNamedDeal = (~game: Game.t, ~position: option<Scenario.named>): string => {
+  // Scene ids *are* game ids (`TableScene`'s `id: game.id`), so this is how a demo game
+  // gets on screen — and it's a no-op when that game is already showing.
+  switcher.ensureActive(game.id)
+  switch position {
+  | Some(p) =>
+    switch loadStateHook.contents {
+    | Some(load) =>
+      load(p.build(game))
+      // Say which deal the posed board descends from, for the same reason the menu row
+      // does it (#264): the rebuild reports `None` on its way past, and leaving it there
+      // would point the Share buttons at the deal the player was on a moment ago.
+      publishDeal(p.seed)
+      ""
+    | None => `Can't pose a position on ${game.id} here.`
+    }
+  | None =>
+    // No position named, so the scene now showing *is* the answer. For a seeded game
+    // that still leaves which deal: pin its canonical one, so `deal freecell` means
+    // `deal 1` here exactly as it does in the CLI, rather than whatever random board the
+    // mount happened to invent. A fixed-layout demo has no seed and needs nothing more —
+    // mounting its scene dealt it.
+    switch (game.seed, loadGameHook.contents) {
+    | (Some(_), Some(load)) =>
+      load(game)
+      ""
+    | _ => ""
+    }
+  }
+}
+
 let view = (model, dispatch) => <>
   <main id="app">
     <TopBar
@@ -1214,25 +1250,42 @@ DebugConsole.setRunner(line => {
   | Command.Quit => "Nothing to quit — press ` or esc to close the console."
   | Command.Unknown({verb}) => Command.describeUnknown(verb)
   | Command.Usage({message}) => message
-  // Bare `deal`/`new` is the menu's New Game, reached the same way the button reaches
-  // it, so a typed one is saved and reported like any other fresh deal.
-  | Command.Deal({game: None}) =>
-    switch newGameHook.contents {
-    | Some(newGame) =>
-      newGame()
-      ""
-    | None => "Nothing to deal on this scene."
+  // Every shape of `deal` reads the same here as in the terminal, because the *reading*
+  // is `core`'s (`Command.resolveDeal`) and only the acting is ours. What the panel used
+  // to do was refuse anything that wasn't a number — including the games its own `games`
+  // command listed — so this is where that stops.
+  | Command.Deal({game, scenario}) =>
+    switch Command.resolveDeal(~game, ~scenario) {
+    // Bare `deal`/`new` is the menu's New Game, reached the same way the button reaches
+    // it, so a typed one is saved and reported like any other fresh deal.
+    | Command.Fresh =>
+      switch newGameHook.contents {
+      | Some(newGame) =>
+        newGame()
+        ""
+      | None => "Nothing to deal on this scene."
+      }
+    // `deal <n>` opens a *chosen* deal number. Turning the number into a board stays out
+    // here, because only the driver knows a deal number is a seeded FreeCell shuffle.
+    | Command.Numbered({seed}) =>
+      switch loadGameHook.contents {
+      | Some(load) =>
+        load(Game.freecellDeal(~seed))
+        ""
+      | None => "This scene doesn't play a numbered deal."
+      }
+    | Command.Named({game, position}) => openNamedDeal(~game, ~position)
+    | Command.NoSuchGame({id}) => Command.describeNoSuchGame(id)
+    | Command.NoSuchScenario({game, name}) => Command.describeNoSuchScenario(~game, ~name)
     }
-  // `deal <n>` opens a *chosen* deal number. Turning the number into a board is the
-  // driver's job — only out here is it known that a deal is a seeded FreeCell shuffle
-  // — so the number is resolved here and the resulting game handed to the board.
-  | Command.Deal({game: Some(token)}) =>
-    switch (Int.fromString(token), loadGameHook.contents) {
-    | (Some(seed), Some(load)) =>
-      load(Game.freecellDeal(~seed))
+  // `redeal`/`restart` is the menu's Restart button as a verb — the same hook, so it
+  // replays the deal on the table with a clean history exactly as the button does.
+  | Command.Redeal =>
+    switch restartHook.contents {
+    | Some(restart) =>
+      restart()
       ""
-    | (Some(_), None) => "This scene doesn't play a numbered deal."
-    | (None, _) => `Not a deal number: "${token}" (try a number, e.g. deal 12345).`
+    | None => "Nothing to restart on this scene."
     }
   | board =>
     switch consoleHook.contents {

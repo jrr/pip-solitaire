@@ -59,6 +59,11 @@ type t =
   | Finish
   | Undo
   | Redo
+  // `redeal`/`restart`: play the *current* deal again from its opening layout — the web
+  // menu's Restart button, as a verb. Not a re-shuffle (that's `new`) and not an undo to
+  // the start: like the button, it rebuilds the game now on the table, so a session
+  // opened at a posed position restarts to that game's real deal rather than the pose.
+  | Redeal
   | Unknown({verb: string}) // no such verb
   | Usage({verb: string, message: string}) // this verb, arguments we can't read
 
@@ -94,6 +99,7 @@ let parse = (line: string): t => {
   | Some("quit") | Some("exit") => Quit
   | Some("undo") => Undo
   | Some("redo") => Redo
+  | Some("redeal") | Some("restart") => Redeal
   | Some("finish") => Finish
   | Some("deal") | Some("new") => Deal({game: arg(1), scenario: arg(2)})
   | Some("move") =>
@@ -163,6 +169,58 @@ let parse = (line: string): t => {
 let describeUnknown = (verb: string): string =>
   `Unknown command: ${verb}. Type "help" for the commands.`
 
+// --- What a `deal` argument names --------------------------------------------
+// `parse` above hands the argument through untouched, because *acting* on a deal needs a
+// front end (a terminal builds a session, the panel rebuilds a board). Reading it does
+// not — "is that a deal number, a game, a posed position, or nothing we know?" is
+// answered by `Game.all` and `Scenario`, both of which live here. So it's answered here,
+// once, and the two front ends act on the same verdict.
+//
+// That's the whole point: before this, `deal 12345` opened a board in the browser and
+// was an unknown game in the terminal, while `deal freecell midgame` did the reverse.
+// One resolver means one vocabulary — and it's the reason the panel now deals the games
+// its own `games` command has always listed.
+type dealt =
+  | Fresh // `deal` / `new`: something new, dealt from a seed the caller invents
+  | Numbered({seed: int}) // `deal 12345`: a FreeCell deal by number
+  // `deal <game> [position]`: a game `core` knows, at its opening layout or at one of
+  // its named positions. The `Scenario.named` comes through whole rather than as the
+  // state it builds, because a caller may want its `seed` too (the web app reports which
+  // deal a posed board descends from).
+  | Named({game: Game.t, position: option<Scenario.named>})
+  | NoSuchGame({id: string})
+  | NoSuchScenario({game: Game.t, name: string})
+
+// A deal number is *all* digits. `Int.fromString` alone would read "12abc" as 12 and
+// open a board nobody asked for, so the token has to be nothing but digits to be one.
+let dealNumber = (token: string): option<int> =>
+  token != "" && token->String.split("")->Array.every(c => c >= "0" && c <= "9")
+    ? Int.fromString(token)
+    : None
+
+let resolveDeal = (~game: option<string>, ~scenario: option<string>): dealt =>
+  switch game {
+  | None => Fresh
+  | Some(token) =>
+    switch dealNumber(token) {
+    | Some(seed) => Numbered({seed: seed})
+    | None =>
+      // A game id, then — the numbers are taken, so nothing else can be one.
+      switch Game.all->Array.find(g => g.id == token) {
+      | None => NoSuchGame({id: token})
+      | Some(game) =>
+        switch scenario {
+        | None => Named({game, position: None})
+        | Some(name) =>
+          switch Scenario.scenariosFor(game)->Array.find(s => s.name == name) {
+          | Some(position) => Named({game, position: Some(position)})
+          | None => NoSuchScenario({game, name})
+          }
+        }
+      }
+    }
+  }
+
 // --- Rejection prose ----------------------------------------------------------
 // Why a move bounced, in words, so someone typing learns the *reason* rather than
 // watching a card refuse to go — the whole point of the reducer returning a typed
@@ -219,6 +277,16 @@ let boardHelp: array<helpRow> = [
   ("finish", "sweep every card home to win, when the board is drainable (#132)"),
   ("undo", "step back one move (works even from a win)"),
   ("redo", "replay a move you undid"),
+  ("redeal", "play the current deal again from the start (the same board)"),
+]
+
+// The `deal` family. Shared rows now that both front ends read the argument the same way
+// (see `resolveDeal`) — before, each listed its own half of the same verb, which is
+// exactly the drift a shared grammar is supposed to prevent.
+let dealHelp: array<helpRow> = [
+  ("deal <n>", "deal FreeCell game number <n> (e.g. deal 12345)"),
+  ("deal <game> [position]", "deal a named game, at a named position if given"),
+  ("new", "deal a fresh game"),
 ]
 
 // How a card is addressed, said once for both listings.
@@ -241,3 +309,20 @@ let renderHelp = (rows: array<helpRow>): string => {
 // id is answered with.
 let gamesList = (): string =>
   Game.all->Array.map(g => `  ${g.id}  —  ${g.name}`)->Array.join("\n")
+
+// The named positions a game has, one per line (`Scenario`) — the `games` listing's
+// sibling, for the second half of a `deal <game> <position>`.
+let positionsList = (game: Game.t): string =>
+  switch Scenario.scenariosFor(game) {
+  | [] => `  (${game.id} has no named positions)`
+  | positions => positions->Array.map(p => `  ${p.name}  —  ${p.label}`)->Array.join("\n")
+  }
+
+// What to say when a `deal` argument names nothing we know. One sentence for each case,
+// said the same way in a terminal and in the panel — and each ends with what *would*
+// have worked, because a refusal that only says "no" sends the reader to the source.
+let describeNoSuchGame = (id: string): string =>
+  `Unknown game: ${id}. Try a deal number (e.g. deal 12345), or one of:\n${gamesList()}`
+
+let describeNoSuchScenario = (~game: Game.t, ~name: string): string =>
+  `Unknown position "${name}" for ${game.id}. Named positions:\n${positionsList(game)}`

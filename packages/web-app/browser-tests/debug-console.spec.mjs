@@ -429,6 +429,66 @@ test("deal <n> opens that deal number", async ({ page }) => {
   await expect(page.getByRole("button", { name: /^Share Seed/ })).toHaveText("Share Seed 24680")
 })
 
+// The panel used to refuse any `deal` argument that wasn't a number — including the games
+// its own `games` command listed. A game id now means here what it means in the CLI: that
+// game's board, on screen. Scene ids are game ids, so this is the switcher's job.
+test("deal <game> brings up that game's board", async ({ page }) => {
+  await page.goto(FREECELL)
+  await settleBoard(page)
+  await openConsole(page)
+
+  await runCommand(page, "deal four-fans")
+  // Four fans, so four piles — a board FreeCell's sixteen zones can't be mistaken for —
+  // and the demo's own caption under it.
+  await expect(page.locator(".drop-zone")).toHaveCount(4)
+  await expect(page.locator(".stacking-caption")).toContainText("they can only rest in a pile")
+
+  // …and back, by name. FreeCell's canonical board is deal #1 in both front ends, so a
+  // bare `deal freecell` is `deal 1` — which is what the chrome should now be offering.
+  await runCommand(page, "deal freecell")
+  await settleBoard(page)
+  await page.getByRole("button", { name: "Open menu" }).click()
+  await expect(page.getByRole("button", { name: /^Share Seed/ })).toHaveText("Share Seed 1")
+})
+
+// The second token is a named `Scenario` position — the same vocabulary `?state=` and the
+// menu's debug-states rows use, and the same two steps behind them.
+test("deal <game> <position> poses the board", async ({ page }) => {
+  await page.goto(FREECELL)
+  await settleBoard(page)
+  await openConsole(page)
+
+  await runCommand(page, "deal freecell almost-won")
+  await settleBoard(page)
+
+  // One move from won: the pending King is parked in the first free cell.
+  const cell = await page.locator(".drop-zone").nth(0).boundingBox()
+  expect(encloses(cell, await cardBox(page, PENDING_KING))).toBe(true)
+  // And the deal it descends from is reported, exactly as the menu row reports it (#264).
+  await page.getByRole("button", { name: "Open menu" }).click()
+  await expect(page.getByRole("button", { name: /^Share Seed/ })).toHaveText("Share Seed 264")
+})
+
+// `redeal` is the menu's Restart button as a verb — same hook, so the same board comes
+// back with a clean history.
+test("redeal replays the deal on the table", async ({ page }) => {
+  await page.goto(ALMOST_WON)
+  await settleBoard(page)
+  await openConsole(page)
+
+  // Play the winning move, then restart: the King is back in its cell and the board is
+  // no longer won.
+  await runCommand(page, "move KC 7")
+  await expect(page.locator(".win-overlay")).toHaveCount(1)
+
+  await runCommand(page, "redeal")
+  await settleBoard(page)
+  await expect(page.locator(".win-overlay")).toHaveCount(0)
+  // A restart goes to the *game's* deal, not back to the forced position — the rule the
+  // Restart button already follows (`TableScene`'s `publishRestart`).
+  await expect(page.getByRole("button", { name: "Undo" })).toBeDisabled()
+})
+
 test("the backtick still closes the console from inside the prompt", async ({ page }) => {
   await page.goto(FREECELL)
   await settleBoard(page)

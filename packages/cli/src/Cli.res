@@ -29,8 +29,9 @@
 // risk `cli play` sitting at a prompt nobody is going to type into.
 //
 // An optional `[game]` argument deals that game first in either shape, so
-// `cli play stacking` opens straight onto the board. See packages/cli/README.md and
-// examples/ for more.
+// `cli play stacking` opens straight onto the board. It's the `deal` argument, so a deal
+// number works too (`cli play 12345`) — see `Command.resolveDeal`. More in
+// packages/cli/README.md and examples/.
 
 @val @scope("process") external argv: array<string> = "argv"
 
@@ -63,12 +64,18 @@ type readlineOptions = {input: stream, output: stream, prompt: string}
 @send external onClose: (readline, @as("close") _, unit => unit) => unit = "on"
 @send external close: readline => unit = "close"
 
+// Where a fresh `deal`/`new` gets its deal number. `Math.random` belongs out here at the
+// impure edge, not in the interpreter — the same line the web app draws with
+// `Main.randomSeed`, and the reason `Repl`'s own default is deterministic: a test folds a
+// script and gets the same board every time, while a real session gets a new one.
+let randomSeed = () => (Math.random() *. 1_000_000.)->Float.toInt
+
 let usage = () => {
   let ids = Game.all->Array.map(g => g.id)->Array.join(", ")
   `Usage:
   cli show <game>   Show a game's opening layout
   cli list          List the available games
-  cli play [game]   Play: a prompt on a terminal, a script when piped
+  cli play [game|n] Play: a prompt on a terminal, a script when piped
                     (--script forces the piped shape)
 
 Games: ${ids}`
@@ -92,7 +99,7 @@ let script = (start: option<string>): string => {
   | Some(id) => Array.concat([`deal ${id}`], commandLines)
   | None => commandLines
   }
-  Repl.run(lines)
+  Repl.run(~newSeed=randomSeed, lines)
 }
 
 // --- The interactive shape ----------------------------------------------------
@@ -120,7 +127,7 @@ let interactive = (start: option<string>): unit => {
     }
 
   let play = (line: string): unit =>
-    switch Repl.consider(~options=Options.default, session.contents, line) {
+    switch Repl.consider(~options=Options.default, ~newSeed=randomSeed, session.contents, line) {
     | Repl.Skipped => ()
     | Repl.Ended =>
       alive := false

@@ -85,7 +85,10 @@ Typed at the prompt, or fed to `play` on stdin, one per line — `help` prints t
 same listing:
 
 ```
-deal <game> [scenario]   start (or restart) a game, optionally at a named position
+deal <n>                 deal FreeCell game number <n>  (e.g. deal 12345)
+deal <game> [position]   deal a named game, at a named position if given
+new                      deal a fresh game
+redeal / restart         play the current deal again from the start (same board)
 move <card> <pile>       move a card onto pile <index>   (e.g. move AS 0)
 move <card> table        move a card loose onto the table (free games only)
 moverun <card>… <pile>   supermove an ordered run, cards bottom-first
@@ -98,6 +101,17 @@ games                    list the available games
 help                     show the command surface
 quit / exit              end an interactive session (Ctrl-D does it too)
 ```
+
+- **`deal` reads the same here as in the web app's debug console**, because the
+  reading is `core`'s (`Command.resolveDeal`): a number is a deal number, a word is
+  a game id, a second word is one of that game's named positions (`games` lists the
+  games; a refusal lists the positions). Only the *acting* differs — a terminal
+  opens a session, the panel rebuilds the board on screen.
+- **`deal freecell` is `deal 1`**: a game id names that game's canonical board, so
+  it's the same deal in both front ends. `new` is the one that invents a board.
+- **`redeal`** is the menu's Restart button as a verb: the same deal from its
+  opening layout, with a clean history. From a posed position it goes to the
+  game's real deal, not back to the pose — exactly what the button does.
 
 - **Cards** are named by a compact identity: a rank (`A 2-9 T J Q K`, or the
   two-digit `10`) followed by a suit letter (`S H D C`) — `AS`, `TH`/`10H`,
