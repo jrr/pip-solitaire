@@ -29,6 +29,12 @@ reads *all* of stdin to EOF, runs the whole script through the pure `Repl`
 interpreter, and prints the entire transcript at once. There is no per-command
 prompt: nothing is echoed until the input stream closes.
 
+The *grammar* isn't the CLI's own: it lives in `core` (`Command.res`) and is
+shared with the web app's debug console (#273), which types the same commands at
+the same reducer. `Repl` is the half that needs a session — the game in play, the
+history to undo over, the board to print — and the transcripts in `examples/` are
+the regression net for both.
+
 That means the two ways to use it are:
 
 **Pipe a script** (the primary mode) — a file or a `printf`:
@@ -61,7 +67,7 @@ help                 show the command surface
 
 - **Cards** are named by a compact identity: a rank (`A 2-9 T J Q K`, or the
   two-digit `10`) followed by a suit letter (`S H D C`) — `AS`, `TH`/`10H`,
-  `KD`. Case-insensitive. See `CardText.res`.
+  `KD`. Case-insensitive. See `core`'s `CardText.res`.
 - **Piles** are addressed by index (`0`, `1`, …); the table by the word `table`.
 - **Comments**: a line whose first non-space character is `#` is skipped
   entirely (not echoed, not run), so a piped script can document itself. Blank

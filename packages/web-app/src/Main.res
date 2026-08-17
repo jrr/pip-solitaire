@@ -213,6 +213,18 @@ let shareLanded = ref(false)
 // publishes none, so the button is a harmless no-op there.
 let undoHook: ref<option<unit => unit>> = ref(None)
 
+// The active board's console command runner (#273), sibling of `undoHook` and
+// published on every build for the same reason: a `Command.t => string` that plays one
+// parsed command against the board actually on the table. `None` on a scene with no
+// board, which is what lets the console answer "no board here" instead of silently
+// doing nothing.
+let consoleHook: ref<option<Command.t => string>> = ref(None)
+
+// …and the addressed re-deal behind the console's `deal <n>` (#273): open *this* game.
+// Only the re-dealable scene publishes one (the same gate as `newGameHook`), since a
+// fixed-layout demo has no deal number to name.
+let loadGameHook: ref<option<Game.t => unit>> = ref(None)
+
 // The undo availability the board reports during its *opening* mount, captured to
 // seed the model below (#177). That first report fires while the switcher mounts
 // the initial scene (see `switcher` below) — which happens during module init,
@@ -712,6 +724,11 @@ let gameScene = (game: Game.t) => {
     ~publishLoadHistory=hook => loadHistoryHook := Some(hook),
     ~publishReadHistory=hook => readHistoryHook := Some(hook),
     ~publishUndo=hook => undoHook := Some(hook),
+    ~publishConsole=hook => consoleHook := Some(hook),
+    // `deal <n>` only means something where a number names a board, so this rides the
+    // same gate as New Game: the re-dealable (seeded) game publishes it, the
+    // fixed-layout demos don't.
+    ~publishLoadGame=?isFreecell ? Some(hook => loadGameHook := Some(hook)) : None,
     ~publishRelayout=hook => relayoutHook := Some(hook),
     ~publishDockFit=hook => dockFitHook := Some(hook),
     // Adopt the board's shake control (#235) and, if Wiggle Waggle is already on,
@@ -823,6 +840,10 @@ let switcher = SceneSwitcher.render(
     // Drop the outgoing board's undo and reset the top bar's button to disabled;
     // the mounting scene republishes and reports its own history (#85).
     undoHook := None
+    // …and its console hooks (#273), so a command typed on a scene with no board is
+    // told so rather than reaching the board that scene replaced.
+    consoleHook := None
+    loadGameHook := None
     reportHistory.contents(false)
     // …and clear the deal number with it (#98), so the Share buttons are dark for the
     // moment between scenes; the mounting scene reports its own (a demo reports none).
@@ -1166,6 +1187,58 @@ DebugConsole.installKeys(
   // come from inside the loop's pure update.
   ~onDock=() => dispatch(ToggleConsoleDock(dockFits())),
 )
+
+// …and wire what the console's input line *does* with a typed line (#273). The grammar
+// is shared with the CLI (`Command.parse`), and the split of who answers what follows
+// the app's own shape: the chrome owns the verbs about the session and the panel (help,
+// clear, dealing a new board — the things that live out here in `Main`), and everything
+// board-shaped is forwarded to the live board's runner, which plays it through the very
+// `dispatch` a pointer drop uses. So a typed `move 8H 5` and a dragged one are the same
+// move, down to auto-collect, the undo step and the save.
+//
+// A reply of `""` means "the log already said it": `DebugLog` narrates the dispatch and
+// core's answer either way, so an accepted move adds no line of its own and only the
+// things the instrumentation can't say get one.
+DebugConsole.setRunner(line => {
+  let reply = switch Command.parse(line) {
+  | Command.Blank => ""
+  | Command.Help => DebugConsole.helpText()
+  | Command.Clear =>
+    DebugConsole.clear()
+    ""
+  | Command.Games => Command.gamesList()
+  | Command.Unknown({verb}) => Command.describeUnknown(verb)
+  | Command.Usage({message}) => message
+  // Bare `deal`/`new` is the menu's New Game, reached the same way the button reaches
+  // it, so a typed one is saved and reported like any other fresh deal.
+  | Command.Deal({game: None}) =>
+    switch newGameHook.contents {
+    | Some(newGame) =>
+      newGame()
+      ""
+    | None => "Nothing to deal on this scene."
+    }
+  // `deal <n>` opens a *chosen* deal number. Turning the number into a board is the
+  // driver's job — only out here is it known that a deal is a seeded FreeCell shuffle
+  // — so the number is resolved here and the resulting game handed to the board.
+  | Command.Deal({game: Some(token)}) =>
+    switch (Int.fromString(token), loadGameHook.contents) {
+    | (Some(seed), Some(load)) =>
+      load(Game.freecellDeal(~seed))
+      ""
+    | (Some(_), None) => "This scene doesn't play a numbered deal."
+    | (None, _) => `Not a deal number: "${token}" (try a number, e.g. deal 12345).`
+    }
+  | board =>
+    switch consoleHook.contents {
+    | Some(run) => run(board)
+    | None => "No board on this scene."
+    }
+  }
+  if reply != "" {
+    DebugConsole.say(reply)
+  }
+})
 
 // Resume the shake grant on the first tap (#235). With `wantsShake` set, the switch
 // opened optimistically `On`, but iOS may require transient activation to (re)confirm

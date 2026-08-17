@@ -20,6 +20,21 @@ const ALMOST_WON = "/?scene=freecell&state=almost-won&animate=off"
 
 const consolePanel = (page) => page.locator("#debug-console")
 const consoleLines = (page) => page.locator("#debug-console-lines li")
+const consoleInput = (page) => page.locator("#debug-console-input")
+
+// Open the console and wait for the prompt to have taken the keyboard — focus follows
+// the panel (#273), so this is also the premise for every `type` below.
+async function openConsole(page) {
+  await page.keyboard.press("Backquote")
+  await expect(consolePanel(page)).toBeVisible()
+  await expect(consoleInput(page)).toBeFocused()
+}
+
+// Type a command and run it, exactly as a person would: into whatever has focus.
+async function runCommand(page, line) {
+  await page.keyboard.type(line)
+  await page.keyboard.press("Enter")
+}
 
 // ⇧` docks the console beside the board, or puts it back over it (#275). The console is
 // keyboard-only, so its mode is too — same physical key as the toggle, shifted.
@@ -194,6 +209,226 @@ test("an open console takes no input away from the board", async ({ page }) => {
   // And the whole move goes through, drag and all, with the panel up.
   await playTheWinningMove(page)
   await expect(page.locator(".win-overlay")).toHaveCount(1)
+})
+
+// --- The input line (#273) ---------------------------------------------------------
+//
+// The claim under test is that a typed command *plays the game* — not that it prints
+// something plausible. So the assertions are about the board: a card ends up somewhere
+// new, the win the move completes is raised, undo puts it back. All of it is browser-
+// only for the same reasons the panel is: a physical key opens it, focus is a real
+// focus, and "did the card move" is a rect.
+//
+// `KC` is the Clubs King the `almost-won` scenario parks in the first free cell, one
+// move from a win — the same card the drag tests above pick up, addressed by name here
+// instead of by pointer.
+const PENDING_KING = "king of clubs"
+
+// Where a named card's wrapper is sitting right now.
+const cardBox = (page, name) =>
+  page.locator(`.stacking-card:has([aria-label="${name}"])`).boundingBox()
+
+// Is `inner` inside `outer` (with a pixel of slack for sub-pixel layout)?
+const encloses = (outer, inner) =>
+  inner.x >= outer.x - 1 &&
+  inner.y >= outer.y - 1 &&
+  inner.x + inner.width <= outer.x + outer.width + 1 &&
+  inner.y + inner.height <= outer.y + outer.height + 1
+
+test("a typed command moves the card, and the board ends where a drag would leave it", async ({
+  page,
+}) => {
+  await page.goto(ALMOST_WON)
+  await settleBoard(page)
+  await openConsole(page)
+
+  // The premise: the King is in the free cell, not on its foundation.
+  const cell = await page.locator(".drop-zone").nth(0).boundingBox()
+  const foundation = await page.locator(".drop-zone").nth(7).boundingBox()
+  expect(encloses(cell, await cardBox(page, PENDING_KING))).toBe(true)
+
+  await runCommand(page, "move KC 7")
+
+  // The card is on the foundation…
+  await expect
+    .poll(async () => encloses(foundation, await cardBox(page, PENDING_KING)))
+    .toBe(true)
+  // …and because the command went through the same `dispatch` a drop does, the move
+  // that completes every foundation raises the win exactly as a dragged one would.
+  await expect(page.locator(".win-overlay")).toHaveCount(1)
+
+  // The command echoed above its result, and the result is the ordinary instrumentation
+  // — a typed move is narrated as the `Move` it is, not as a separate kind of event.
+  const shown = await labels(page)
+  expect(shown).toContain("> move KC 7")
+  expect(shown).toContain("dispatch")
+  expect(shown).toContain("win")
+  const dispatched = await page
+    .locator("#debug-console-lines li", { hasText: "dispatch" })
+    .first()
+    .locator(".debug-console__value")
+    .textContent()
+  expect(dispatched).toContain("Move")
+})
+
+test("home finds the foundation itself, and undo/redo walk the same history", async ({ page }) => {
+  await page.goto(ALMOST_WON)
+  await settleBoard(page)
+  await openConsole(page)
+
+  // `home` names no destination — the board resolves one, through the very `validMoves`
+  // the double-tap send-home uses.
+  await runCommand(page, "home KC")
+  await expect(page.locator(".win-overlay")).toHaveCount(1)
+
+  // Undo is the top bar's undo, reached from the prompt: it steps back out of the
+  // victory and puts the King back in its cell.
+  const cell = await page.locator(".drop-zone").nth(0).boundingBox()
+  await runCommand(page, "undo")
+  await expect(page.locator(".win-overlay")).toHaveCount(0)
+  await expect.poll(async () => encloses(cell, await cardBox(page, PENDING_KING))).toBe(true)
+
+  // …and redo — which the web app has never surfaced anywhere else — steps forward into
+  // the move again, win overlay and all.
+  await runCommand(page, "redo")
+  await expect(page.locator(".win-overlay")).toHaveCount(1)
+
+  // Nothing left to redo, and the console says so rather than silently doing nothing.
+  await runCommand(page, "redo")
+  await expect(consoleLines(page).filter({ hasText: "Nothing to redo." })).toHaveCount(1)
+})
+
+test("a rejected command explains itself in the same words the CLI uses", async ({ page }) => {
+  await page.goto(ALMOST_WON)
+  await settleBoard(page)
+  await openConsole(page)
+
+  // The shared parser's prose, verbatim: this is the point of #273's split, checked from
+  // the far side of it.
+  await runCommand(page, "move XX 0")
+  await expect(
+    consoleLines(page).filter({ hasText: `Not a card: "XX" (try AS, TH, KD).` }),
+  ).toHaveCount(1)
+
+  await runCommand(page, "frobnicate")
+  await expect(
+    consoleLines(page).filter({ hasText: "Unknown command: frobnicate" }),
+  ).toHaveCount(1)
+
+  // A legal-looking move the rules refuse comes back with the reducer's reason, not a
+  // shrug — the Clubs King has no business on a full foundation.
+  await runCommand(page, "move KC 4")
+  await expect(consoleLines(page).filter({ hasText: "Rejected:" })).toHaveCount(1)
+  // …and the board hasn't moved: a rejection is not a move.
+  const cell = await page.locator(".drop-zone").nth(0).boundingBox()
+  expect(encloses(cell, await cardBox(page, PENDING_KING))).toBe(true)
+})
+
+test("the prompt remembers what was typed, and clear empties the log", async ({ page }) => {
+  await page.goto(FREECELL)
+  await settleBoard(page)
+  await openConsole(page)
+
+  await runCommand(page, "help")
+  await runCommand(page, "frobnicate")
+  await expect(consoleInput(page)).toHaveValue("")
+
+  // ↑ walks back through what was run, newest first; ↓ walks forward again and off the
+  // end, back to the empty line you were typing.
+  await page.keyboard.press("ArrowUp")
+  await expect(consoleInput(page)).toHaveValue("frobnicate")
+  await page.keyboard.press("ArrowUp")
+  await expect(consoleInput(page)).toHaveValue("help")
+  await page.keyboard.press("ArrowDown")
+  await expect(consoleInput(page)).toHaveValue("frobnicate")
+  await page.keyboard.press("ArrowDown")
+  await expect(consoleInput(page)).toHaveValue("")
+
+  // `help` listed the shared verbs, so the panel documents the same grammar the CLI does.
+  const shown = await labels(page)
+  expect(shown.some((line) => line.includes("moverun"))).toBe(true)
+
+  // `clear` empties the scrollback — and the recall history is not the scrollback, so
+  // ↑ still reaches what was run before it.
+  expect(await consoleLines(page).count()).toBeGreaterThan(0)
+  await runCommand(page, "clear")
+  await expect(consoleLines(page)).toHaveCount(0)
+  await page.keyboard.press("ArrowUp")
+  await expect(consoleInput(page)).toHaveValue("clear")
+})
+
+// The flight itself (#273). A card moved by a command must *fly* — over the fan it's
+// leaving, not under it — rather than take the plain left/top slide `.stacking-card`
+// would give it for free, because `reflowAll` relayers every pile the instant it runs
+// and would drop the departing card behind cards it's still on top of.
+//
+// Asserted by recording the animations the move creates rather than by catching them
+// mid-flight: `Element.animate` is patched before the command, so what's checked is
+// what the code asked the compositor for, with no dependence on how fast the sample
+// lands. This is the one console test without `animate=off` — that flag is exactly what
+// suppresses the flight (see `flyCards`).
+test("a commanded card flies to its new home, over the fan it leaves", async ({ page }) => {
+  await page.goto("/?scene=freecell&state=almost-won")
+  await settleBoard(page)
+  await openConsole(page)
+
+  await page.evaluate(() => {
+    window.__flights = []
+    const original = Element.prototype.animate
+    Element.prototype.animate = function (frames, options) {
+      if (this.classList?.contains("stacking-card")) {
+        window.__flights.push(JSON.stringify(frames))
+      }
+      return original.call(this, frames, options)
+    }
+  })
+
+  await runCommand(page, "move KC 7")
+  const flights = await page.evaluate(() => window.__flights)
+
+  // The travel: a transform animated from an offset back to zero — the inverse-offset
+  // trick the deal and the finish sweep already fly on.
+  expect(flights.some((f) => f.includes("translate3d"))).toBe(true)
+  // …and the z-hold that carries it *above* the board for the trip. `finishFlightZBase`
+  // is 100000; anything resting is a slot index.
+  expect(flights.some((f) => f.includes("zIndex") && f.includes("100000"))).toBe(true)
+
+  // And it did land: the flight is a visual catch-up over a model that already moved.
+  const foundation = await page.locator(".drop-zone").nth(7).boundingBox()
+  await expect
+    .poll(async () => encloses(foundation, await cardBox(page, PENDING_KING)))
+    .toBe(true)
+})
+
+test("deal <n> opens that deal number", async ({ page }) => {
+  await page.goto(FREECELL)
+  await settleBoard(page)
+  await openConsole(page)
+
+  await runCommand(page, "deal 24680")
+  await settleBoard(page)
+
+  // The board on the table really is deal 24680 — asked of the chrome that has to know,
+  // the same place a Share would read it from.
+  await page.getByRole("button", { name: "Open menu" }).click()
+  await expect(page.getByRole("button", { name: /^Share Seed/ })).toHaveText("Share Seed 24680")
+})
+
+test("the backtick still closes the console from inside the prompt", async ({ page }) => {
+  await page.goto(FREECELL)
+  await settleBoard(page)
+  await openConsole(page)
+
+  // Typed at a focused text field, the key that opens the panel has to keep closing it
+  // — and must not land in the field as a character on its way out.
+  await page.keyboard.press("Backquote")
+  await expect(consolePanel(page)).toBeHidden()
+  await page.keyboard.press("Backquote")
+  await expect(consoleInput(page)).toHaveValue("")
+
+  // Escape is the other way out, from in here too.
+  await page.keyboard.press("Escape")
+  await expect(consolePanel(page)).toBeHidden()
 })
 
 // --- Docked beside the board (#275) -----------------------------------------------

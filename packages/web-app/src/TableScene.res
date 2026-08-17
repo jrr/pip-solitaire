@@ -384,6 +384,16 @@ let dealPerCardMs = 67.
 let finishMaxInFlight = 5
 let finishPerCardMs = 90.
 
+// …and a third set for a move played by a *typed command* (#273), which shares the
+// same flight path (`flyCards`) and so the same C/P → Δ/flight derivation. The knobs
+// differ because the job does: a sweep is fifty-odd cards on their way to a win, while
+// a console move is one card — or a short `moverun` — that has to be followable by
+// someone reading the log to see what the command did. So each card flies slower, and
+// at most two are in the air at once, which is what makes a run read as cards moving
+// in order rather than as one undifferentiated blob.
+let commandMaxInFlight = 2
+let commandPerCardMs = 170.
+
 // A flying card is lifted onto this z base — well above any resting slot layer —
 // so it rides over the source fan it's leaving and lands on top of the foundation
 // cards already home. A per-card `+ i` (its launch index) preserves arrival-order
@@ -613,6 +623,16 @@ let make = (
   // (never in practice — the opening build happens during this same mount).
   ~publishReadHistory: option<(unit => option<History.t<GameState.t>>) => unit>=?,
   ~publishUndo: option<(unit => unit) => unit>=?,
+  // `~publishConsole` is the debug console's way in (#273), and the sibling of
+  // `~publishUndo` in every respect: on every build the board hands the chrome a
+  // `Command.t => string` that plays one parsed command against *this* board and
+  // answers with whatever `DebugLog` won't already have said. What it deliberately
+  // isn't is a second reducer loop — each command goes through the same `dispatch` a
+  // pointer drop does, so a typed move is the move a drag would have made.
+  ~publishConsole: option<(Command.t => string) => unit>=?,
+  // `~publishLoadGame` re-deals onto a *named* game (#273) — the addressed twin of
+  // `~publishNewGame`, which invents its own. The console's `deal <n>` uses it.
+  ~publishLoadGame: option<(Game.t => unit) => unit>=?,
   ~publishRelayout: option<(unit => unit) => unit>=?,
   // `~publishDockFit` (#275) hands the chrome the board's answer to one question: could
   // you give up this many px of stage width and still deal cards above `minScale`? It's
@@ -643,9 +663,12 @@ let make = (
   // `~skipDealAnimation` drops the cards straight into their resting places instead
   // of flying them in — the URL's `?animate=off` (see `AppUrl`), for a screenshot of
   // the *already-dealt* board rather than a frame mid-deal. The board is laid out at
-  // its rest positions either way; this only suppresses the cosmetic fly-in, exactly
+  // its rest positions either way; this only suppresses the cosmetic flight, exactly
   // as the OS "reduce motion" preference already does. Applies to every deal this
-  // scene runs, re-deals included.
+  // scene runs, re-deals included — and, since #273 gave the two flight paths one
+  // implementation (`flyCards`), to the finish sweep and a commanded move as well.
+  // The name is the flag's origin rather than its scope: what it means is "this board
+  // isn't animating", which is what a screenshot or a deterministic test wants.
   ~skipDealAnimation: bool=false,
   game: Game.t,
 ): Scene.t => {
@@ -1189,7 +1212,11 @@ let make = (
       // "Finish" button owns the end-game sweep — otherwise safe auto-collect
       // would often cascade to the win on its own and rob the player of the
       // trigger.
-      let autoCollectIfEnabled = () =>
+      // Hands back the cards it sent home (empty when the option is off or nothing was
+      // safe), which is what a caller animating the move needs: a typed command (#273)
+      // flies the cards it displaced *and* whatever the collection swept up behind
+      // them, so the two read as one gesture rather than a move and a jump.
+      let autoCollectIfEnabled = (): array<Deck.card> =>
         if options.contents.autoCollect && !Reducer.canFinish(~game, state.contents) {
           let (collected, moved) = Reducer.autoCollect(~game, state.contents)
 
@@ -1199,6 +1226,9 @@ let make = (
             DebugLog.log("auto-collect", moved)
           }
           state := collected
+          moved
+        } else {
+          []
         }
 
       // Dispatch an action into core's reducer (#213-instrumented), narrating the
@@ -1348,61 +1378,71 @@ let make = (
         persistCurrent()
       }
 
-      // Fly the finishing sweep home (#160): with the final `settled` state already
-      // committed (so the model and undo are correct and robust to interruption),
-      // play a pure *visual* catch-up over `movedCards` — each card flying from where
-      // it was resting to its foundation slot, staggered by the finish knobs. Same
-      // inverse-offset trick as `animateDeal`: capture each card's current spot, let
-      // `reflowAll` snap every node onto its foundation, then animate the transform
-      // back from (start − end) to zero. `onDone` fires once the last card lands (it
-      // raises the win overlay), so the victory reads as the payoff of the sweep. With
-      // the OS asking for reduced motion — or nothing to move — the sweep collapses to
-      // today's instant `reflowAll`, `onDone` firing immediately.
-      let animateFinish = (movedCards: array<Deck.card>, ~onDone) => {
+      // Fly a set of cards to wherever the *already-committed* `state` says they now
+      // rest — the shared flight path (#273), extracted from the finish sweep (#160)
+      // that first needed it. With the model already settled (so undo and persistence
+      // are correct and robust to interruption), this is a pure *visual* catch-up over
+      // `movedCards`: each card travels from where it was resting to its new slot,
+      // `stagger` ms apart, over `flight` ms each. `onDone` fires once the last card
+      // lands.
+      //
+      // The mechanism is the inverse-offset trick `animateDeal` uses: capture each
+      // card's current spot, let `reflowAll` snap every node onto its new home, then
+      // animate the transform back from (start − end) to zero. Two things ride along
+      // with it, and they're the reason a console move goes through here rather than
+      // leaning on `.stacking-card`'s plain left/top transition:
+      //
+      //   - the **z-hold**, so a card doesn't slide *under* the fan it's leaving.
+      //     `reflowAll` relayers every pile by slot the instant it runs, which would
+      //     drop a departing card behind cards it's still visually on top of;
+      //   - the **tilt timing** (#241), so the hand-placed angle (#65) turns *over the
+      //     move* instead of swinging in place before anything has moved.
+      //
+      // With the OS asking for reduced motion, with `?animate=off` (the same URL flag
+      // that skips the opening fly-in), or with nothing to move, this collapses to an
+      // instant `reflowAll` and fires `onDone` straight away.
+      let flyCards = (movedCards: array<Deck.card>, ~flight: float, ~stagger: float, ~onDone) => {
         let reduceMotion = matchMedia("(prefers-reduced-motion: reduce)")["matches"]
         let cards = movedCards->Array.filterMap(nodeFor)
         let n = Array.length(cards)
-        if reduceMotion || n == 0 {
+        if reduceMotion || skipDealAnimation || n == 0 {
           reflowAll()
           onDone()
         } else {
           // Reflow-and-launch with the left/top snap transition suppressed: the
-          // inverse-offset trick needs `reflowAll` to move each node onto its
-          // foundation *instantly*, or the snap transition fights the flight (see
+          // inverse-offset trick needs `reflowAll` to move each node onto its new
+          // slot *instantly*, or the snap transition fights the flight (see
           // `withSnapSuppressed`). The transform flights run on past that window.
           withSnapSuppressed(() => {
-            // Each card's resting spot *and resting layer* before the sweep, captured
-            // before `reflowAll` moves its node onto its foundation and relayers every
-            // pile by foundation slot. The z-index matters as much as the position: a
-            // card holds at its start (via `fill: "backwards"`) until its staggered
-            // turn, so a still-resting source fan must keep its own slot order until
-            // then — restoring `sz` below stops the foundation-slot relayer from
-            // inverting those fans the instant the sweep starts.
+            // Each card's resting spot *and resting layer* before the flight, captured
+            // before `reflowAll` moves its node to its destination and relayers every
+            // pile by slot. The z-index matters as much as the position: a card holds
+            // at its start (via `fill: "backwards"`) until its staggered turn, so a
+            // still-resting source fan must keep its own slot order until then —
+            // restoring `sz` below stops the relayer from inverting those fans (or
+            // dropping a departing card behind the fan it's leaving) the instant the
+            // flight starts.
             let starts =
               cards->Array.map(c => (c, c.x.contents, c.y.contents, style(c.wrapper)->zIndex))
-            // The stagger (Δ) and per-card flight time. Derived *before* the reflow,
-            // because each card's tilt timing below has to be in place by the time
-            // `reflowAll` re-tilts it.
-            let (delta, flight) = staggerTiming(
-              ~maxInFlight=finishMaxInFlight,
-              ~perCardMs=finishPerCardMs,
-              ~n,
-            )
+            // The caller's stagger, under the name the loops below use. Both timings
+            // have to be in hand *before* the reflow, because each card's tilt timing
+            // has to be in place by the time `reflowAll` re-tilts it.
+            let delta = stagger
             // Hold each card at its *source* angle until it launches, then turn it to
-            // its foundation angle over the flight (#241) — otherwise the re-tilt that
+            // its destination angle over the flight (#241) — otherwise the re-tilt that
             // `reflowAll` is about to apply would swing every card in place, in unison,
-            // before the sweep had moved anything. Same index as the flight loop below,
-            // so a card's rotation and its flight start together.
+            // before anything had moved. Same index as the flight loop below, so a
+            // card's rotation and its flight start together.
             cards->Array.forEachWithIndex((c, i) =>
               setTiltTiming(c.wrapper, ~delay=Int.toFloat(i) *. delta, ~duration=flight)
             )
-            // Snap every node to its foundation slot; the flights below are a visual
+            // Snap every node to its new slot; the flights below are a visual
             // catch-up over nodes that already "belong" there.
             reflowAll()
             starts->Array.forEachWithIndex(((c, sx, sy, sz), i) => {
               // Hold this node at its *resting* layer for now: `reflowAll` above
-              // relayered it by its foundation slot, which would scramble the source
-              // fan it hasn't left yet. It waits at `sz` (via the z animation's absent
+              // relayered it by its new slot, which would scramble the source fan it
+              // hasn't left yet. It waits at `sz` (via the z animation's absent
               // before-phase) until its staggered turn, then that animation lifts it
               // above the board for the flight and landing (see `animateZ`).
               style(c.wrapper)->setZIndex(sz)
@@ -1416,10 +1456,12 @@ let make = (
               )
               outstandingAnimations.contents->Array.push(anim)
               // Lift the card above the board the moment it launches, and land it on
-              // top of whatever is already home: an ascending `+ i` so cards in flight
-              // together (and the piles they land on) stack in arrival order — King
-              // last. `fill: "forwards"` keeps this out of the pre-launch wait, so the
-              // resting `sz` above shows until this card's turn.
+              // top of whatever is already there: an ascending `+ i` so cards in flight
+              // together (and the piles they land on) stack in arrival order — in a
+              // sweep, King last. `fill: "forwards"` keeps this out of the pre-launch
+              // wait, so the resting `sz` above shows until this card's turn. This is
+              // also what carries a card *over* the fan it's leaving rather than under
+              // it, which is the whole reason a one-card console move comes here.
               let flightZ = Int.toString(finishFlightZBase + i)
               let zAnim =
                 c.wrapper->animateZ(
@@ -1429,17 +1471,16 @@ let make = (
               outstandingAnimations.contents->Array.push(zAnim)
 
               // The last card to launch is the last to land (every flight is the same
-              // length), so its finish is the whole sweep's finish. Drop the raised
+              // length), so its finish is the whole batch's finish. Drop the raised
               // flight layers (cancelling reverts each node to its inline z) and settle
-              // every foundation to slot order (King on top), then hand to the win
-              // overlay.
+              // every pile to slot order, then hand back to the caller.
               if i == n - 1 {
                 anim->setOnFinish(
                   () => {
                     cancelOutstanding()
-                    // Every card is home and at its landing angle, so the sweep's
-                    // deferred tilt timing has served its purpose (#241); the settling
-                    // reflow below re-applies the same angles, so this drops nothing.
+                    // Every card has landed at its final angle, so the deferred tilt
+                    // timing has served its purpose (#241); the settling reflow below
+                    // re-applies the same angles, so this drops nothing.
                     clearTiltTimings()
                     reflowAll()
                     onDone()
@@ -1449,6 +1490,33 @@ let make = (
             })
           })
         }
+      }
+
+      // The finishing sweep's flight (#160): the shared path above, timed by the finish
+      // knobs — cards flying home one at a time from wherever they rest, with `onDone`
+      // raising the win overlay so the victory reads as the sweep's payoff.
+      let animateFinish = (movedCards: array<Deck.card>, ~onDone) => {
+        let (stagger, flight) = staggerTiming(
+          ~maxInFlight=finishMaxInFlight,
+          ~perCardMs=finishPerCardMs,
+          ~n=Array.length(movedCards),
+        )
+        flyCards(movedCards, ~flight, ~stagger, ~onDone)
+      }
+
+      // The same flight for a move nobody dragged — a command typed into the debug
+      // console (#273). Its own knobs, because the two are different beasts: a sweep is
+      // fifty-odd cards and wants to move along, while a typed move is one card (or a
+      // short run) that has to be *followable* — you're reading the log to see what the
+      // command did. Hence a slower flight and at most a couple in the air at once, so a
+      // `moverun` reads as cards moving in order rather than as one blob.
+      let animateCommand = (movedCards: array<Deck.card>, ~onDone) => {
+        let (stagger, flight) = staggerTiming(
+          ~maxInFlight=commandMaxInFlight,
+          ~perCardMs=commandPerCardMs,
+          ~n=Array.length(movedCards),
+        )
+        flyCards(movedCards, ~flight, ~stagger, ~onDone)
       }
 
       // The end-game "Finish" button (#132): a conditional control — the same
@@ -1468,6 +1536,28 @@ let make = (
           finishButton := None
         | None => ()
         }
+
+      // Play the finishing sweep, whoever asked for it — the button below, or the
+      // console's `finish` verb (#273). Written once so the two can't drift on what
+      // "finish" does to the model: the sweep is committed *immediately* as one
+      // undoable step (#85), so undo after a finish steps back to the position it
+      // started from regardless of what the animation is doing.
+      let playFinish = () => {
+        let (settled, moved) = Reducer.finishSequence(~game, state.contents)
+        DebugLog.log("finish", moved)
+        state := settled
+        recordHistory()
+        removeFinishButton()
+        // Deliver the sweep as a staggered flight (#160) rather than an instant
+        // jump; the win overlay lands only once the last card has arrived.
+        animateFinish(moved, ~onDone=() =>
+          if GameState.hasWon(game, state.contents) {
+            showWin()
+          }
+        )
+        moved
+      }
+
       let updateFinishButton = () =>
         if winShown.contents || !Reducer.canFinish(~game, state.contents) {
           removeFinishButton()
@@ -1479,52 +1569,158 @@ let make = (
             btn->WebDom.setAttribute("type", "button")
             btn->WebDom.setAttribute("class", "finish-button")
             btn->WebDom.setTextContent("Finish")
-            btn->WebDom.addEventListener("click", () => {
-              let (settled, moved) = Reducer.finishSequence(~game, state.contents)
-              DebugLog.log("finish", moved)
-              state := settled
-              // The whole sweep is one undoable step (#85): the model transition and
-              // its single `recordHistory` commit immediately, so undo after a finish
-              // steps back to the position it started from regardless of the animation.
-              recordHistory()
-              removeFinishButton()
-              // Deliver the sweep as a staggered flight (#160) rather than an instant
-              // jump; the win overlay lands only once the last card has arrived.
-              animateFinish(moved, ~onDone=() =>
-                if GameState.hasWon(game, state.contents) {
-                  showWin()
-                }
-              )
-            })
+            btn->WebDom.addEventListener("click", () => playFinish()->ignore)
             boardHost->WebDom.appendChild(btn)->ignore
             finishButton := Some(btn)
           }
         }
 
+      // Adopt whatever `history` now points at as the board's position — the shared
+      // tail of undo and redo (#85). It re-derives the layout from the restored state
+      // rather than animating: a step through history isn't a *move*, and easing cards
+      // along a path they never took would misreport what happened.
+      let adoptHistoryPresent = () => {
+        // Stop any finish sweep still in flight before laying out the restored
+        // position, so its cards don't keep flying toward foundations the step has
+        // just emptied (the state is already committed, so nothing corrupts).
+        cancelOutstanding()
+        // …including the tilt timing a cut-short sweep left on its cards (#241), or
+        // the restored position's angles would arrive on the dead sweep's schedule.
+        clearTiltTimings()
+        state := History.present(history.contents)
+        reflowAll()
+        updateFinishButton()
+        reportHistory()
+        // Save the stepped position (#177), redo stack and all, so a reload resumes
+        // exactly where the step left the board.
+        persistCurrent()
+      }
+
       // Step the board's history back (#85), re-deriving the layout from the
       // restored state. Undo doesn't re-run auto-collect — it restores the prior
       // *settled* state exactly. It tears down the win overlay first, so it steps
-      // cleanly back out of a victory. (Redo is still in `core`'s `History`, but the
-      // web app no longer exposes it — see the top bar.)
+      // cleanly back out of a victory.
       let undo = () =>
         if History.canUndo(history.contents) {
           DebugLog.message("undo")
-          // Stop any finish sweep still in flight before laying out the restored
-          // position, so its cards don't keep flying toward foundations the undo has
-          // just emptied (the state is already committed, so nothing corrupts).
-          cancelOutstanding()
-          // …including the tilt timing a cut-short sweep left on its cards (#241), or
-          // the restored position's angles would arrive on the dead sweep's schedule.
-          clearTiltTimings()
           history := History.undo(history.contents)
-          state := History.present(history.contents)
           removeWinOverlay()
-          reflowAll()
-          updateFinishButton()
-          reportHistory()
-          // Save the stepped-back position (#177), redo stack and all, so a reload
-          // resumes exactly where the undo left the board.
-          persistCurrent()
+          adoptHistoryPresent()
+        }
+
+      // …and forward again (#273). `core`'s `History` has always carried the redo
+      // side; the top bar simply doesn't surface it, so until now nothing in the web
+      // app could step back *into* a move it had undone. The console's `redo` verb is
+      // that hand, and it's the mirror of `undo` down to the win overlay: redoing into
+      // the move that won the game raises the victory the undo took down.
+      let redo = () =>
+        if History.canRedo(history.contents) {
+          DebugLog.message("redo")
+          history := History.redo(history.contents)
+          adoptHistoryPresent()
+          if GameState.hasWon(game, state.contents) {
+            showWin()
+          }
+        }
+
+      // --- Typed commands (#273) ---------------------------------------------------
+      // What the debug console's input line does with a parsed command. The whole point
+      // is that it does **not** rebuild the board from a folded `Repl` state: it pushes
+      // the action through the same `dispatch` a pointer drop uses, so auto-collect, the
+      // undo history, the win check and persistence all behave exactly as they do for a
+      // drag — one code path, not two that have to be kept in step.
+      //
+      // Each of these returns the line to show *in addition to* what `DebugLog` already
+      // narrates. Since `dispatch` logs the action and core's answer either way, an
+      // accepted move adds nothing (`""`) and only the things the instrumentation
+      // can't say — why a move bounced, that there was nothing to undo — get a line.
+
+      // Play one action and fly the cards it displaced. `~movers` are the cards the
+      // command names; anything auto-collect sweeps up behind them joins the same
+      // flight, so a move and its collection read as one gesture rather than a move
+      // followed by a jump. `~collect` is off for a column reorder, which is
+      // organizational rather than played — matching the CLI driver (#159).
+      let playAction = (~movers: array<Deck.card>, ~collect: bool=true, action): string => {
+        let before = state.contents
+        switch dispatch(action) {
+        | Ok(next) =>
+          state := next
+          let collected = collect ? autoCollectIfEnabled() : []
+
+          // Record the settled position as one undoable step (#85) — unless nothing
+          // changed (a lawful no-op, #215), which isn't undoable.
+          if !GameState.equal(state.contents, before) {
+            recordHistory()
+          }
+          animateCommand(Array.concat(movers, collected), ~onDone=() => {
+            // A move that completes every foundation ends the game (#121). Raised once
+            // the cards have landed, so the overlay is the payoff of the flight rather
+            // than something that beats it to the board.
+            if GameState.hasWon(game, state.contents) {
+              showWin()
+            }
+            updateFinishButton()
+          })
+          ""
+        // The reducer's typed rejection, in words — the one thing `result: rejected`
+        // doesn't say. Shared with the CLI, so the same refusal reads the same in a
+        // terminal and in the panel.
+        | Error(err) => Command.describeRejection(err, ~action)
+        }
+      }
+
+      let runCommand = (command: Command.t): string =>
+        switch command {
+        | Command.Dispatch(action) =>
+          switch action {
+          // The column-reorder house rule (#159), gated before the reducer exactly as
+          // the CLI gates it: with it off nothing is dispatched at all.
+          | Reducer.MoveColumn(_)
+            if !options.contents.allowColumnReorder => "Column reordering is off for this game."
+          | Reducer.Move({card}) => playAction(~movers=[card], action)
+          | Reducer.MoveRun({cards}) => playAction(~movers=cards, action)
+          // A reorder moves whole columns rather than named cards, so there's nothing
+          // to fly: `reflowAll` (inside the flight path) simply re-lays the board.
+          | Reducer.MoveColumn(_) => playAction(~movers=[], ~collect=false, action)
+          }
+        // `home <card>` names no destination, so resolve one here — through the very
+        // `validMoves` the double-tap send-home uses (#196), which is what makes a typed
+        // `home AS` and a double-tapped one the same move.
+        | Command.Home({card}) =>
+          switch Reducer.validMoves(~game, state.contents, card)->Array.find(m =>
+            m.role == Game.Foundation
+          ) {
+          | Some({to: i}) => playAction(~movers=[card], Reducer.Move({card, to: Reducer.ToPile(i)}))
+          | None => `No foundation is ready for ${CardText.format(card)}.`
+          }
+        | Command.Finish =>
+          if Reducer.canFinish(~game, state.contents) {
+            playFinish()->ignore
+            ""
+          } else {
+            "Not finishable yet — some cards still need a tableau move first."
+          }
+        | Command.Undo =>
+          if History.canUndo(history.contents) {
+            undo()
+            ""
+          } else {
+            "Nothing to undo."
+          }
+        | Command.Redo =>
+          if History.canRedo(history.contents) {
+            redo()
+            ""
+          } else {
+            "Nothing to redo."
+          }
+        // The CLI prints a board because it has no other way to show one. Here the
+        // board *is* the screen, so there's nothing to print — a real state dump is a
+        // follow-up (#273 leaves it out of scope).
+        | Command.Print => "The board is on screen."
+        // Everything else — help, clear, dealing a board — belongs to the chrome (see
+        // `Main`), which answers those itself and never forwards them here.
+        | _ => "That isn't something the board can do."
         }
 
       // Build one draggable card and wire its pointer loop. It starts at 0,0 and is
@@ -1690,7 +1886,7 @@ let make = (
             switch dispatch(Reducer.Move({card: self.data, to: Reducer.ToPile(i)})) {
             | Ok(next) =>
               state := next
-              autoCollectIfEnabled()
+              autoCollectIfEnabled()->ignore
 
               // Record the settled position as one undoable step (#85), unless the
               // move changed nothing (a lawful no-op, #215) — a no-op isn't undoable.
@@ -1811,7 +2007,7 @@ let make = (
               state := next
               // Auto-collect any now-safe cards (#125) before the reflow, so the
               // whole cascade settles in one pass; gated by the option.
-              autoCollectIfEnabled()
+              autoCollectIfEnabled()->ignore
 
               // Record the settled position as one undoable step (#85), so a move
               // and the auto-collection it triggered undo together — unless nothing
@@ -2109,6 +2305,13 @@ let make = (
       | Some(publish) => publish(undo)
       | None => ()
       }
+      // …and this build's console command runner (#273), for the same reason: every
+      // command closes over the build it was published from, so a re-deal has to hand
+      // over the fresh board's or a typed `move` would address the torn-down one.
+      switch publishConsole {
+      | Some(publish) => publish(runCommand)
+      | None => ()
+      }
       // Publish the relayout hook (#65): re-lay every resting card — the piles
       // (`reflowAll`) and the loose cluster (`dealFree`) — reading `tiltEnabled`
       // live, so the menu's tilt switch re-tilts or squares the whole board in
@@ -2154,6 +2357,17 @@ let make = (
     switch (newDeal, publishNewGame) {
     | (Some(freshDeal), Some(publish)) => publish(() => buildBoard(freshDeal()))
     | _ => ()
+    }
+
+    // Publish the *addressed* re-deal (#273): the same rebuild, but onto a game the
+    // caller names rather than one the scene invents. It's how the console's
+    // `deal <n>` opens a chosen deal number — the driver turns the number into a
+    // `Game.t` (only it knows the deal is a seeded FreeCell shuffle) and this opens
+    // it, so a typed deal lands on exactly the board a New Game would have, saved and
+    // reported the same way.
+    switch publishLoadGame {
+    | Some(publish) => publish(chosen => buildBoard(chosen))
+    | None => ()
     }
 
     // Publish Restart (#156): rebuild the board from the deal currently showing
