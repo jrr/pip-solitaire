@@ -1,13 +1,17 @@
-// A compact *text identity* for a card, so the reducer-driver CLI can name a
-// specific card in one short token — `AS` for the Ace of Spades, `TH` for the
-// Ten of Hearts, `KD` for the King of Diamonds. This is the terminal's answer to
-// the web-app's pointer plumbing: with no cursor to pick a card, the driver
-// addresses one by typing its identity.
+// A compact *text identity* for a card, so a command line can name a specific card
+// in one short token — `AS` for the Ace of Spades, `TH` for the Ten of Hearts, `KD`
+// for the King of Diamonds. This is what a keyboard has instead of a pointer: with
+// no cursor to pick a card, a typed command addresses one by its identity.
 //
-// `core` keeps display concerns out of the model (see `Card.res`), so the glyphs
-// and the parsing both live here in the frontend. The grammar is deliberately
-// tiny and case-insensitive: a rank character (`A 2-9 T J Q K`, or the two-digit
-// `10`) followed by a suit letter (`S H D C`).
+// It lives in `core` beside the parser that consumes it (`Command`), because both
+// front ends that take typed commands need it and neither owns it: the CLI's
+// reducer driver (#84) and the web app's debug console (#273) name cards the same
+// way, so a transcript reads the same in a terminal and in the panel. `Card.res`
+// keeps *display* concerns out of the model, and this is display of the narrowest
+// kind — a name, not a glyph.
+//
+// The grammar is deliberately tiny and case-insensitive: a rank character
+// (`A 2-9 T J Q K`, or the two-digit `10`) followed by a suit letter (`S H D C`).
 
 open Card
 
