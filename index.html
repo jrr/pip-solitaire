@@ -599,14 +599,16 @@
         border-bottom: 1px solid #2b3b58;
         box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
         font: 12px/1.45 ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
-        /* **Pointer-transparent**, and that's the whole trick: the panel is a
-           read-only HUD, so it takes no input at all. A console covering the top of
-           the board would otherwise cover the free cells, the foundations *and* the
-           top bar's Menu button — you couldn't play the game the log is narrating,
-           which is exactly what an open console is for. Nothing here swallows a drag
-           aimed at the board underneath. The scrollback is still scrollable: with no
-           element to receive them, wheel events are forwarded to it by hand while the
-           panel is open (see `DebugConsole.res`).
+        /* **Pointer-transparent**, and that's the whole trick: overlaid, the panel
+           takes no pointer input. A console covering the top of the board would
+           otherwise cover the free cells, the foundations *and* the top bar's Menu
+           button — you couldn't play the game the log is narrating, which is exactly
+           what an open console is for. Nothing here swallows a drag aimed at the board
+           underneath. The scrollback is still scrollable: with no element to receive
+           them, wheel events are forwarded to it by hand while the panel is open (see
+           `DebugConsole.res`). The one deliberate exception is the prompt line at the
+           foot (#273), which takes events back for its own single row — see
+           `.debug-console__prompt` below.
 
            `touch-action`/`overscroll-behavior` say the same thing to the touch and
            scroll-chaining machinery — belt to that brace, and what would keep the
@@ -700,8 +702,53 @@
         width: calc(100% - env(safe-area-inset-left) - var(--console-dock-inset, 0px));
       }
 
-      /* The status line at the foot: what this panel is, and the keys that work it.
-         Also the seam for a typed-command prompt later (#91/#92). */
+      /* The prompt (#273): the caret glyph and the command field, in a row between the
+         scrollback and the status line. `flex: none` so it keeps exactly its own line
+         while the log above takes all the slack. */
+      .debug-console__prompt {
+        display: flex;
+        flex: none;
+        align-items: baseline;
+        gap: 0.45rem;
+        padding-top: 0.25rem;
+        border-top: 1px solid #223148;
+        /* The one part of an *overlaid* panel that takes pointer events — and it has
+           to, because a field you can't click into isn't a field. The carve-out is
+           deliberately one line at the foot of the band rather than the whole panel:
+           what it costs the board underneath is a single row, and the way in is a
+           keypress that focuses it anyway, so this is for the mouse that wants to fix
+           a typo. Docked (#275) the whole panel already takes events and this adds
+           nothing. */
+        pointer-events: auto;
+      }
+
+      .debug-console__caret {
+        flex: none;
+        color: #7fd6a2;
+      }
+
+      /* `font: inherit` is what makes a typed command read like the log lines it joins
+         — same monospace, same size — instead of like a form control. The focus ring is
+         dropped because the field is focused for as long as the panel is open (focus
+         follows the panel, see `DebugConsole.apply`), so a permanent ring would be
+         noise; the caret is the indicator. */
+      .debug-console__input {
+        flex: 1 1 auto;
+        min-width: 0;
+        padding: 0;
+        font: inherit;
+        color: #e8f0fb;
+        background: transparent;
+        border: none;
+        outline: none;
+        caret-color: #7fd6a2;
+      }
+
+      .debug-console__input::placeholder {
+        color: #4d6183;
+      }
+
+      /* The status line at the foot: what this panel is, and the keys that work it. */
       .debug-console__status {
         display: flex;
         align-items: baseline;
@@ -739,7 +786,15 @@
       }
 
       /* Label and payload styled apart — the reason DebugLog publishes structured
-         entries rather than finished strings. */
+         entries rather than finished strings.
+
+         `flex: none` keeps a long payload from squashing the tag beside it. It also
+         means a line wider than the panel is clipped rather than wrapped, which is the
+         right trade for both kinds of line this now carries: a JSON payload wraps into
+         an unreadable block, and a console reply (#273) is an aligned two-column help
+         table that only reads as one while its columns hold. Both are legible in the
+         overlay shape, which is full-width; the narrow dock is where you'd scroll or
+         undock to read them. */
       .debug-console__label {
         flex: none;
         color: #7fd6a2;
@@ -1900,7 +1955,7 @@
         }
       }
     </style>
-    <script type="module" crossorigin src="./assets/index-BWatExxR.js"></script>
+    <script type="module" crossorigin src="./assets/index-Buenkuej.js"></script>
   <link rel="manifest" href="./manifest.webmanifest"></head>
   <body>
     <!-- Vite resolves the bare `core/…` specifier the compiled entry imports
