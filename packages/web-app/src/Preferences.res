@@ -24,6 +24,7 @@ let wantsShakeKey = "pip.wantsShake"
 let notchDisplayKey = "pip.notchDisplay"
 let debugLogKey = "pip.debugLog"
 let revealHiddenKey = "pip.revealHidden"
+let consoleDockKey = "pip.consoleDock"
 
 // Read a boolean flag from storage: an explicit "true"/"false" wins, and anything
 // else — missing, garbage, or unreadable — keeps `fallback`. This is the shared
@@ -105,3 +106,25 @@ let saveDebugLog = (enabled: bool) => saveFlag(debugLogKey, enabled)
 // more taps hides the rows again, without turning off whatever they switched on.
 let loadRevealHidden = (): bool => loadFlag(revealHiddenKey, ~fallback=false)
 let saveRevealHidden = (revealed: bool) => saveFlag(revealHiddenKey, revealed)
+
+// Where the debug console sits (#275): overlaid across the top of the board, or docked
+// into the width beside it (`ConsoleDock`). Persisted like `debugLog` rather than left
+// as session state, because the whole point of a mode you flip by hand — rather than an
+// automatic breakpoint — is that it stays flipped. It defaults to the overlay, which is
+// what every window that's too narrow to dock gets anyway.
+//
+// Not a flag, so it doesn't go through `loadFlag`/`saveFlag`: the value is the mode's
+// own name, which leaves room for a third mode later without a stored-shape migration.
+// Everything unreadable — missing key, garbage, storage that throws — resolves to the
+// shipped default, exactly as the flags do.
+let loadConsoleDock = (): ConsoleDock.t => {
+  let stored = try getItem(consoleDockKey)->Nullable.toOption catch {
+  | _ => None
+  }
+  stored->Option.flatMap(ConsoleDock.fromString)->Option.getOr(ConsoleDock.Overlay)
+}
+
+let saveConsoleDock = (mode: ConsoleDock.t) =>
+  try setItem(consoleDockKey, ConsoleDock.toString(mode)) catch {
+  | _ => ()
+  }
