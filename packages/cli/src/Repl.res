@@ -1,9 +1,16 @@
-// The reducer driver, as a *pure* command interpreter (#84). This is the CLI's
+// The reducer driver, as a *pure command interpreter* (#84). This is the CLI's
 // brain: it holds a `GameState.t` and folds text commands into the very same
 // `core` reducer the web app dispatches into — dealing a game, moving a card,
 // printing the board — with no stdin/stdout or pointer plumbing of its own. That
 // keeps the whole loop headless and scriptable: `Cli.res` wires it to a terminal
 // (see there), while tests drive `run` over a canned script and assert the echo.
+//
+// The *grammar* isn't here any more (#273): `Command.parse` in `core` turns a line
+// into a `Command.t`, and this module is what runs one against a session. The split
+// is the point — the web app's debug console types the same commands at the same
+// reducer, so `move 8H 5` had better mean one thing rather than two. What's left
+// here is everything that needs a session: which game is in play, the history to
+// undo over, the board to print, and the house rules to consult.
 //
 // The command surface, deliberately small:
 //   deal <game>          start (or restart) a game — GameState.initial
@@ -34,55 +41,29 @@ type session = {game: Game.t, history: History.t<GameState.t>}
 // source of truth for "where every card rests right now".
 let present = (s: session): GameState.t => History.present(s.history)
 
-// Split a command line into whitespace-separated tokens, dropping the empties
-// that repeated or trailing spaces would leave.
-let tokenize = (line: string): array<string> =>
-  line->String.trim->String.split(" ")->Array.filter(t => t != "")
+// Prose for a rejected move, so a driver user learns *why* the card bounced. Shared
+// with the web console (#273), which says the same thing to the same rejection.
+let describeError = Command.describeError
 
-// A move target from its text: a pile index, or the table by name.
-let parseTarget = (token: string): option<Reducer.target> =>
-  switch token->String.toLowerCase {
-  | "table" | "loose" | "t" => Some(Reducer.ToTable)
-  | s =>
-    switch Int.fromString(s) {
-    | Some(i) => Some(Reducer.ToPile(i))
-    | None => None
-    }
-  }
-
-// Prose for a rejected move, so a driver user learns *why* the card bounced —
-// the whole point of the reducer returning a typed `moveError` rather than a
-// swallowed no-op.
-let describeError = (err: Reducer.moveError, card: card): string =>
-  switch err {
-  | Reducer.Rejected => `Rejected: ${CardText.format(card)} can't stack there.`
-  | Reducer.PileFull => `Rejected: that pile is full.`
-  | Reducer.LooseNotAllowed => `Rejected: this game keeps cards in piles — no loose drops.`
-  | Reducer.NoSuchPile => `Rejected: no such pile.`
-  | Reducer.CardNotFound => `Rejected: ${CardText.format(card)} isn't in play.`
-  | Reducer.NotARun => `Rejected: those cards aren't an ordered run.`
-  | Reducer.RunTooLong => `Rejected: that run is longer than the free cells and empty columns allow.`
-  | Reducer.NotAColumn => `Rejected: that pile isn't a cascade column.`
-  }
-
-let gamesList = () => Game.all->Array.map(g => `  ${g.id}  —  ${g.name}`)->Array.join("\n")
+let gamesList = Command.gamesList
 
 let help = () =>
   `Commands:
-  deal <game> [scenario]  start (or restart) a game, optionally at a named position
-  move <card> <pile>   move a card onto pile <index> (e.g. move AS 0)
-  move <card> table    move a card loose onto the table (free games only)
-  moverun <card>… <pile>  supermove an ordered run, cards bottom-first (e.g. moverun 8H 7S 6H 5)
-  home <card>          send a card to its foundation, if one will take it (e.g. home AS)
-  movecol <from> <to>  reorder cascade columns: pull column <from> and drop it at <to> (e.g. movecol 8 15)
-  finish               sweep every card home to win, when the board is drainable (#132)
-  undo                 step back one move (works even from a win)
-  redo                 replay a move you undid
-  print                re-print the current board
-  games                list the available games
-  help                 show this help
+${Command.renderHelp(
+      Array.concat(
+        Array.concat(
+          [("deal <game> [scenario]", "start (or restart) a game, optionally at a named position")],
+          Command.boardHelp,
+        ),
+        [
+          ("print", "re-print the current board"),
+          ("games", "list the available games"),
+          ("help", "show this help"),
+        ],
+      ),
+    )}
 
-Cards are named by identity (AS, TH, KD); piles by index.
+${Command.cardNote}
 
 Games:
 ${gamesList()}`
@@ -93,8 +74,8 @@ let renderBoard = (s: session): string => Render.stateBoard(~game=s.game, presen
 // Settle an accepted move: run safe auto-collect (#125) when the option is on,
 // returning the settled state; `autoCollect: false` (or a finishable board)
 // leaves the state exactly as the reducer returned it — the exact no-op path.
-// Shared by `move` and `moveRun`, and applied *before* the win check so a
-// collection that plays the final cards still trips the win line (#121).
+// Applied *before* the win check so a collection that plays the final cards still
+// trips the win line (#121).
 // Once the board is finishable (#132) safe auto-collect steps aside — the
 // `finish` verb owns the end-game sweep, so auto-collect doesn't race it to the
 // win and rob the player of the trigger.
@@ -152,69 +133,52 @@ let deal = (id: string, scenario: option<string>): (option<session>, string) =>
   | None => (None, `Unknown game: ${id}\n\n${help()}`)
   }
 
-// Dispatch one `move card target` against the current session, printing the new
-// board on `Ok` or the reason on `Error`. The reducer is the sole judge of
-// legality — this only translates text to an `action` and back.
-let move = (~options: Options.t, s: session, cardTok: string, targetTok: string): (
+// Dispatch one parsed `Reducer.action` — a `Move`, a `MoveRun` (#123) or a
+// `MoveColumn` (#159) — against the current session, printing the new board on `Ok`
+// or the reason on `Error`. The reducer is the sole judge of legality; `Command`
+// already turned the text into the action, so all that's left here is the house-rule
+// gate, settling the accepted result, and rendering the outcome.
+let dispatch = (~options: Options.t, s: session, action: Reducer.action): (
   option<session>,
   string,
 ) =>
-  switch (CardText.parse(cardTok), parseTarget(targetTok)) {
-  | (None, _) => (Some(s), `Not a card: "${cardTok}" (try AS, TH, KD).`)
-  | (_, None) => (Some(s), `Not a pile: "${targetTok}" (an index, or "table").`)
-  | (Some(card), Some(target)) =>
-    switch Reducer.reduce(~game=s.game, present(s), Move({card, to: target})) {
+  switch action {
+  // The column-reorder house rule (#159) is gated *before* the reducer: with it off
+  // the driver never dispatches, so the command is an exact no-op that only reports
+  // the rule is disabled — no `MoveColumn` reaches the reducer, no history step
+  // recorded.
+  | Reducer.MoveColumn(_) if !options.allowColumnReorder => (
+      Some(s),
+      "Column reordering is off for this game.",
+    )
+  | _ =>
+    switch Reducer.reduce(~game=s.game, present(s), action) {
     | Ok(next) =>
       // Settle (auto-collect) then record the settled state as one undoable step,
-      // so a move and its collection undo together (#85).
-      let settled = afterMove(~game=s.game, ~options, next)
+      // so a move and its collection undo together (#85). A reorder is purely
+      // organizational — nothing has been played anywhere new — so it skips the
+      // collection and commits as it stands.
+      let settled = switch action {
+      | Reducer.MoveColumn(_) => next
+      | _ => afterMove(~game=s.game, ~options, next)
+      }
       let s' = commit(s, settled)
       (Some(s'), boardText(s'))
-    | Error(err) => (Some(s), describeError(err, card))
+    | Error(err) => (Some(s), Command.describeRejection(err, ~action))
     }
   }
-
-// Dispatch one `moverun card… target` against the current session: an ordered run
-// (the cards named bottom-first, deepest first) supermoved onto pile `target`. The
-// reducer alone rules on whether the run is legal and within the free-cell/empty-
-// column limit (#123) — this only parses the tokens into a `MoveRun` and renders
-// the outcome, exactly as `move` does for a single card.
-let moveRun = (~options: Options.t, s: session, cardToks: array<string>, targetTok: string): (
-  option<session>,
-  string,
-) => {
-  let parsed = cardToks->Array.map(CardText.parse)
-  switch (parsed->Array.some(Option.isNone), parseTarget(targetTok)) {
-  | (true, _) => (Some(s), `Not all of those are cards (try AS, TH, KD).`)
-  | (_, None) => (Some(s), `Not a pile: "${targetTok}" (an index, or "table").`)
-  | (false, Some(target)) =>
-    let cards = parsed->Array.filterMap(c => c)
-    switch Reducer.reduce(~game=s.game, present(s), MoveRun({cards, to: target})) {
-    | Ok(next) =>
-      let settled = afterMove(~game=s.game, ~options, next)
-      let s' = commit(s, settled)
-      (Some(s'), boardText(s'))
-    // The bottom card names the run in any card-specific error prose.
-    | Error(err) => (Some(s), describeError(err, cards->Array.getUnsafe(0)))
-    }
-  }
-}
 
 // Dispatch one `home card` against the current session: send the named card to
 // the foundation that will take it, if any (#122). The target foundation is found
 // by `Reducer.foundationTarget` — the same shared legality the web double-click
-// uses — and the send-home itself routes through `move`, so it's the ordinary
+// uses — and the send-home itself routes through `dispatch`, so it's the ordinary
 // `Move` onto that pile: a card that completes the board still wins exactly as a
 // dragged one would, and a named card that isn't in play still reports so. A card
 // no foundation is ready for is reported rather than moved.
-let home = (~options: Options.t, s: session, cardTok: string): (option<session>, string) =>
-  switch CardText.parse(cardTok) {
-  | None => (Some(s), `Not a card: "${cardTok}" (try AS, TH, KD).`)
-  | Some(card) =>
-    switch Reducer.foundationTarget(~game=s.game, present(s), card) {
-    | Some(i) => move(~options, s, cardTok, Int.toString(i))
-    | None => (Some(s), `No foundation is ready for ${CardText.format(card)}.`)
-    }
+let home = (~options: Options.t, s: session, card: card): (option<session>, string) =>
+  switch Reducer.foundationTarget(~game=s.game, present(s), card) {
+  | Some(i) => dispatch(~options, s, Reducer.Move({card, to: Reducer.ToPile(i)}))
+  | None => (Some(s), `No foundation is ready for ${CardText.format(card)}.`)
   }
 
 // Dispatch `finish` against the current session (#132): when the board can be
@@ -233,37 +197,6 @@ let finish = (s: session): (option<session>, string) =>
     (Some(s'), boardText(s'))
   } else {
     (Some(s), "Not finishable yet — some cards still need a tableau move first.")
-  }
-
-// Dispatch one `movecol from to` against the current session (#159): reorder the
-// cascade columns by pulling the column at pile index `from` out and dropping it at
-// `to`, the rest sliding over — one clean undoable step. The house-rule gate lives
-// here (`options.allowColumnReorder`, the seam the driver already threads): when
-// it's off the driver never dispatches, so the command is an exact no-op that only
-// reports the rule is disabled — no `MoveColumn` reaches the reducer, no history
-// step recorded. When on, the reducer alone rules on legality (both indices in
-// range and addressing cascades), and its typed rejection is rendered like any
-// other. A reorder is purely organizational, so there's no auto-collect to settle.
-let moveColumn = (~options: Options.t, s: session, fromTok: string, toTok: string): (
-  option<session>,
-  string,
-) =>
-  if !options.allowColumnReorder {
-    (Some(s), "Column reordering is off for this game.")
-  } else {
-    switch (Int.fromString(fromTok), Int.fromString(toTok)) {
-    | (Some(from), Some(to)) =>
-      switch Reducer.reduce(~game=s.game, present(s), MoveColumn({from, to})) {
-      | Ok(next) =>
-        let s' = commit(s, next)
-        (Some(s'), boardText(s'))
-      // A `MoveColumn` carries no card, so render its typed rejection directly
-      // rather than through the card-centric `describeError`.
-      | Error(Reducer.NotAColumn) => (Some(s), "Rejected: that pile isn't a cascade column.")
-      | Error(_) => (Some(s), "Rejected: no such pile.")
-      }
-    | _ => (Some(s), `Not a pile index (try two indices, e.g. movecol 8 15).`)
-    }
   }
 
 // Step back one move (#85): pop the history to the prior state and re-print the
@@ -289,6 +222,24 @@ let redo = (s: session): (option<session>, string) =>
     (Some(s), "Nothing to redo.")
   }
 
+// Which commands address a *dealt board*, and which game each suggests dealing when
+// there isn't one yet. Asked before the command runs, so "deal a game first" is
+// answered ahead of any complaint about the arguments — that ordering is why
+// `Command.Usage` carries the verb it choked on rather than just the prose.
+let dealFirstHint = (command: Command.t): option<string> =>
+  switch command {
+  | Command.Undo | Command.Redo | Command.Print | Command.Dispatch(Reducer.Move(_)) =>
+    Some("stacking")
+  | Command.Dispatch(Reducer.MoveRun(_))
+  | Command.Dispatch(Reducer.MoveColumn(_))
+  | Command.Home(_)
+  | Command.Finish =>
+    Some("freecell")
+  | Command.Usage({verb: "move"}) => Some("stacking")
+  | Command.Usage(_) => Some("freecell")
+  | _ => None
+  }
+
 // Interpret one command line against the current session, returning the updated
 // session and the text to show. Pure: no I/O — `Cli.res` prints the text and
 // carries the session forward. Unknown or malformed lines answer with guidance
@@ -297,63 +248,35 @@ let step = (~options: Options.t, session: option<session>, line: string): (
   option<session>,
   string,
 ) => {
-  let toks = tokenize(line)
-  let verb = toks->Array.get(0)->Option.map(String.toLowerCase)
-  switch (verb, session) {
-  | (None, _) => (session, "") // blank line: nothing to do
-  | (Some("help"), _) => (session, help())
-  | (Some("games"), _) | (Some("list"), _) => (session, gamesList())
-  | (Some("deal"), _) | (Some("new"), _) =>
-    switch toks->Array.get(1) {
-    | Some(id) => deal(id, toks->Array.get(2))
-    | None => (session, "Usage: deal <game> [scenario]\n\n" ++ gamesList())
+  let command = Command.parse(line)
+  // Every board verb funnels through here so the "deal a game first" answer is
+  // written once rather than once per verb.
+  let onBoard = run =>
+    switch session {
+    | Some(s) => run(s)
+    | None => (
+        session,
+        `Deal a game first (try \`deal ${dealFirstHint(command)->Option.getOr("stacking")}\`).`,
+      )
     }
-  // Undo/redo step over the history of accepted moves (#85). Before a game is
-  // dealt there's nothing to step over — guide the user to deal first.
-  | (Some("undo"), None) => (session, "Deal a game first (try `deal stacking`).")
-  | (Some("undo"), Some(s)) => undo(s)
-  | (Some("redo"), None) => (session, "Deal a game first (try `deal stacking`).")
-  | (Some("redo"), Some(s)) => redo(s)
-  | (Some("print"), Some(s)) | (Some("board"), Some(s)) | (Some("show"), Some(s)) => (
-      session,
-      renderBoard(s),
-    )
-  | (Some("print"), None) | (Some("board"), None) | (Some("show"), None) => (
-      session,
-      "Deal a game first (try `deal stacking`).",
-    )
-  | (Some("move"), None) => (session, "Deal a game first (try `deal stacking`).")
-  | (Some("move"), Some(s)) =>
-    switch (toks->Array.get(1), toks->Array.get(2)) {
-    | (Some(cardTok), Some(targetTok)) => move(~options, s, cardTok, targetTok)
-    | _ => (session, "Usage: move <card> <pile>   (e.g. move AS 0, or move AS table)")
-    }
-  | (Some("home"), None) => (session, "Deal a game first (try `deal freecell`).")
-  | (Some("home"), Some(s)) =>
-    switch toks->Array.get(1) {
-    | Some(cardTok) => home(~options, s, cardTok)
-    | None => (session, "Usage: home <card>   (e.g. home AS)")
-    }
-  | (Some("finish"), None) => (session, "Deal a game first (try `deal freecell`).")
-  | (Some("finish"), Some(s)) => finish(s)
-  | (Some("movecol"), None) => (session, "Deal a game first (try `deal freecell`).")
-  | (Some("movecol"), Some(s)) =>
-    switch (toks->Array.get(1), toks->Array.get(2)) {
-    | (Some(fromTok), Some(toTok)) => moveColumn(~options, s, fromTok, toTok)
-    | _ => (session, "Usage: movecol <from> <to>   (pile indices, e.g. movecol 8 15)")
-    }
-  | (Some("moverun"), None) => (session, "Deal a game first (try `deal freecell`).")
-  | (Some("moverun"), Some(s)) =>
-    // Everything after the verb is the run's cards, bottom-first, then the target.
-    let rest = toks->Array.slice(~start=1, ~end=Array.length(toks))
-    if Array.length(rest) >= 2 {
-      let targetTok = rest->Array.getUnsafe(Array.length(rest) - 1)
-      let cardToks = rest->Array.slice(~start=0, ~end=Array.length(rest) - 1)
-      moveRun(~options, s, cardToks, targetTok)
-    } else {
-      (session, "Usage: moverun <card>… <pile>   (e.g. moverun 8H 7S 6H 5)")
-    }
-  | (Some(other), _) => (session, `Unknown command: ${other}. Type "help" for the commands.`)
+  switch command {
+  | Command.Blank => (session, "") // blank line: nothing to do
+  | Command.Help => (session, help())
+  | Command.Games => (session, gamesList())
+  // The panel's scrollback verb (#273). A scrolling transcript has no screen to
+  // wipe, so the CLI takes it as a well-formed no-op rather than an unknown verb —
+  // the grammar is shared even where the effect isn't.
+  | Command.Clear => (session, "")
+  | Command.Unknown({verb}) => (session, Command.describeUnknown(verb))
+  | Command.Deal({game: Some(id), scenario}) => deal(id, scenario)
+  | Command.Deal({game: None}) => (session, "Usage: deal <game> [scenario]\n\n" ++ gamesList())
+  | Command.Usage({message}) => onBoard(_ => (session, message))
+  | Command.Print => onBoard(s => (session, renderBoard(s)))
+  | Command.Undo => onBoard(undo)
+  | Command.Redo => onBoard(redo)
+  | Command.Finish => onBoard(finish)
+  | Command.Home({card}) => onBoard(s => home(~options, s, card))
+  | Command.Dispatch(action) => onBoard(s => dispatch(~options, s, action))
   }
 }
 

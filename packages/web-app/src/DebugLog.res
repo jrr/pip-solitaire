@@ -139,4 +139,11 @@ module Ring = {
 
   let entries = (ring: t): array<entry> => ring.entries->Array.copy
   let length = (ring: t): int => Array.length(ring.entries)
+
+  // Drop everything, keeping the ring itself — what the console's `clear` verb (#273)
+  // does to the scrollback. In place rather than by handing back a fresh ring, because
+  // the panel holds this one and a view rendering a ring it no longer shares would
+  // start trimming against the wrong length.
+  let clear = (ring: t): unit =>
+    ring.entries->Array.splice(~start=0, ~remove=Array.length(ring.entries), ~insert=[])
 }

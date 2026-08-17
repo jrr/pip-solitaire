@@ -5,10 +5,17 @@
 // docked, which rules out the installed PWA, a phone on the desk, and a screen-share.
 // A key and a panel put it everywhere the game runs.
 //
-// Read-only, and desktop-only on purpose: a keypress is the only way in (see the
-// issue — a touch affordance would need its own Debug-screen row or hidden gesture),
-// and there's no command input yet. The seam for one is the panel's flex column: an
-// input line would go in under the scrollback.
+// Desktop-only on purpose: a keypress is the only way in (see the issue — a touch
+// affordance would need its own Debug-screen row or hidden gesture).
+//
+// It isn't read-only any more (#273). Under the scrollback is an **input line**, and a
+// command typed into it plays the game: the line is parsed by the grammar `core` shares
+// with the CLI (`Command.parse`) and the result is pushed through the very `dispatch` a
+// pointer drop uses, so a typed `move 8H 5` is the move a drag would have made — same
+// auto-collect, same undo step, same save. This module owns the field, the echo and the
+// ↑/↓ history; who *runs* a line is installed from outside (`setRunner`, see `Main`),
+// because running one means reaching the board and the chrome, which the panel has no
+// business knowing about.
 //
 // It has a second shape (#275): ⇧` **docks** it into the discarded width beside the
 // board instead of overlaying the top of it. Docking is a persisted mode rather than an
@@ -56,6 +63,21 @@ type wheelEvent
 @get external deltaY: wheelEvent => float = "deltaY"
 @get external clientX: wheelEvent => float = "clientX"
 @get external clientY: wheelEvent => float = "clientY"
+
+// The input line's side: what was typed, where the caret goes, and the keys that work
+// it. Matched on `event.code` for the same reason the panel's own toggle is (see
+// `installKeys` below) — the physical key, whatever the layout calls it.
+type keyEvent
+@get external code: keyEvent => string = "code"
+@get external repeat: keyEvent => bool = "repeat"
+@get external shiftKey: keyEvent => bool = "shiftKey"
+@send external preventDefault: keyEvent => unit = "preventDefault"
+@send
+external addKeyListener: (WebDom.element, string, keyEvent => unit) => unit = "addEventListener"
+@get external value: WebDom.element => string = "value"
+@set external setValue: (WebDom.element, string) => unit = "value"
+@send external focus: WebDom.element => unit = "focus"
+@send external blur: WebDom.element => unit = "blur"
 
 // --- The scrollback list ------------------------------------------------------
 // Built once at module init and never rebuilt: the shell splices this exact node, and
@@ -138,6 +160,140 @@ let append = (entry: DebugLog.entry): unit => {
   }
 }
 
+// Empty the scrollback — the console's own `clear` verb (#273). Both halves go
+// together, the ring and the `<ol>`, for the same reason `append` keeps them the same
+// length: the DOM *is* the ring's view, and a view that outlived its model would start
+// dropping the wrong lines.
+let clear = (): unit => {
+  DebugLog.Ring.clear(scrollback)
+  WebDom.clear(lines)
+  stickToBottom := true
+}
+
+// --- The input line (#273) --------------------------------------------------------
+// A real `<input>` this module owns and splices into the shell, exactly like the
+// scrollback above and for the same reason: `Html`'s reconciler does a positional diff
+// with no keys (#45), and a re-created input is an input that loses its caret, its
+// selection and whatever was half-typed in it every time a line arrives in the log.
+//
+// The panel is *keyboard* chrome — a physical key is the only way in — so this is
+// wired to keys rather than to a submit button: Enter runs the line, ↑/↓ walk what's
+// been run before, and the panel's own `` ` ``/Escape still close it from in here
+// (they're bound on the window, and swallow the key before it can be typed).
+let input = WebDom.createElement("input")
+input->WebDom.setAttribute("id", "debug-console-input")
+input->WebDom.setAttribute("class", "debug-console__input")
+input->WebDom.setAttribute("type", "text")
+input->WebDom.setAttribute("aria-label", "Debug console command")
+input->WebDom.setAttribute("placeholder", "move 8H 5 · help")
+// A console line is not prose: nothing here should be autocorrected, capitalised or
+// completed from the browser's memory of other forms on other sites.
+input->WebDom.setAttribute("autocomplete", "off")
+input->WebDom.setAttribute("autocapitalize", "off")
+input->WebDom.setAttribute("autocorrect", "off")
+input->WebDom.setAttribute("spellcheck", "false")
+
+// What's been run, oldest first, and where ↑/↓ currently sit in it. The cursor rests
+// *past the end* while a fresh line is being typed, so the first ↑ recalls the last
+// command rather than the one before it.
+let recallCapacity = 100
+let recalled: ref<array<string>> = ref([])
+let recallCursor = ref(0)
+
+let remember = (line: string): unit => {
+  // A command repeated straight away isn't worth a second slot — ↑ should step back
+  // through what was *done*, not through how many times the same key was pressed.
+  let isRepeat = recalled.contents->Array.at(-1) == Some(line)
+  if !isRepeat {
+    recalled := Array.concat(recalled.contents, [line])
+    if Array.length(recalled.contents) > recallCapacity {
+      recalled.contents->Array.shift->ignore
+    }
+  }
+  recallCursor := Array.length(recalled.contents)
+}
+
+// Step ↑ (`-1`) or ↓ (`+1`) through the recalled commands, putting the one landed on
+// into the input. Walking off the end lands on an empty line — back where you were
+// before you started reaching backwards — rather than sticking on the newest command.
+let recall = (step: int): unit => {
+  let count = Array.length(recalled.contents)
+  if count > 0 {
+    let next = recallCursor.contents + step
+    let clamped = next < 0 ? 0 : next > count ? count : next
+    recallCursor := clamped
+    input->setValue(recalled.contents->Array.get(clamped)->Option.getOr(""))
+  }
+}
+
+// Who actually runs a line. `Main` installs this at startup (see `setRunner`), because
+// running a command means reaching the board's dispatch and the chrome's hooks — things
+// this module has no business knowing about. Until then, and on a page where nothing
+// installed one, Enter is inert.
+let runner: ref<option<string => unit>> = ref(None)
+let setRunner = (run: string => unit): unit => runner := Some(run)
+
+// Put a line into the scrollback by publishing it, rather than by appending a node:
+// the panel is a `DebugLog` subscriber, so this keeps the echo and its result in the
+// same stream — and in the same order — as the `dispatch`/`result` lines the command
+// itself provokes. (It also means the JS console sees a typed command, which is right:
+// it's an interaction like any other.)
+let say = (text: string): unit =>
+  // A reply can be several lines (help is); each becomes its own entry, so the
+  // scrollback's one-node-per-line bookkeeping holds.
+  text->String.split("\n")->Array.forEach(DebugLog.message)
+
+// Run whatever is in the input: echo it above its result — that's what makes the log
+// readable afterwards, since the result on its own doesn't say what was asked — then
+// hand it to the runner and clear the field for the next one. A blank line is ignored
+// entirely rather than echoed as an empty prompt.
+let submit = (): unit => {
+  let line = input->value->String.trim
+  input->setValue("")
+  if line != "" {
+    remember(line)
+    say("> " ++ line)
+    runner.contents->Option.forEach(run => run(line))
+  }
+}
+
+// The console's own half of the help listing, composed around the shared board verbs
+// (`Command.boardHelp`) so the two front ends can't drift on what `moverun` does while
+// still each describing their own surface: a terminal has `print` and `games`, the
+// panel has `clear`, and `deal` takes a game id there and a deal number here.
+let helpText = () =>
+  "Commands:\n" ++
+  Command.renderHelp(
+    Array.concat(
+      Array.concat(
+        [
+          ("deal <n>", "deal FreeCell game number <n> (e.g. deal 12345)"),
+          ("new", "deal a fresh game"),
+        ],
+        Command.boardHelp,
+      ),
+      [("clear", "empty this scrollback"), ("help", "show this help")],
+    ),
+  ) ++
+  "\n\n" ++
+  Command.cardNote
+
+input->addKeyListener("keydown", event =>
+  switch code(event) {
+  | "Enter" | "NumpadEnter" =>
+    preventDefault(event)
+    submit()
+  | "ArrowUp" =>
+    // Swallowed, or the caret would jump to the start of the line we just recalled.
+    preventDefault(event)
+    recall(-1)
+  | "ArrowDown" =>
+    preventDefault(event)
+    recall(1)
+  | _ => ()
+  }
+)
+
 // --- Open / closed, overlaid / docked --------------------------------------------
 // The subscription *is* the open state as far as `DebugLog` is concerned; `Main`'s
 // model owns both flags and calls this as its post-update effect. Idempotent in every
@@ -165,6 +321,13 @@ let apply = (~open_: bool, ~dock: ConsoleDock.t): unit => {
     subscription := None
   | (true, Some(_)) | (false, None) => ()
   }
+  // Focus follows the panel (#273). Opening it means you want to type at it — there's
+  // no other reason to press the key — and closing it must hand the keyboard back to
+  // the page rather than leaving a hidden field holding it, which would swallow every
+  // keystroke aimed at the game. Called on every apply, not just on the transitions
+  // above, so a dock toggle (which arrives with the panel already open) leaves the
+  // caret where it was rather than dropping it.
+  open_ ? focus(input) : blur(input)
   // The hand-forwarded wheel is the overlay's crutch alone (see `onWheel`): a docked
   // panel scrolls itself.
   switch (open_ && !ConsoleDock.isDocked(dock), wheelBound.contents) {
@@ -179,12 +342,6 @@ let apply = (~open_: bool, ~dock: ConsoleDock.t): unit => {
 }
 
 // --- The key that opens it ------------------------------------------------------
-type keyEvent
-@get external code: keyEvent => string = "code"
-@get external repeat: keyEvent => bool = "repeat"
-@get external shiftKey: keyEvent => bool = "shiftKey"
-@send external preventDefault: keyEvent => unit = "preventDefault"
-
 // `` ` `` toggles, ⇧` docks or undocks (#275), Escape closes. Matched on `event.code`
 // rather than `event.key` because backtick is a dead key on several layouts (and
 // shifted into `~` on all of them): `code` names the physical key regardless, so the
@@ -222,14 +379,23 @@ let make = ({open_, body}) =>
     attrs={[("aria-label", "Debug console"), ("aria-hidden", open_ ? "false" : "true")]}
   >
     {Html.node(body)}
-    // The status line sits at the *foot*, under the scrollback: up top it would land
-    // on the top bar's Menu button, which the panel drops over. It's also where a
-    // typed-command prompt would go if one ever arrives (#91/#92) — the seam this
-    // issue deliberately leaves open.
+    // The prompt, under the scrollback (#273) — the seam #271 left open here. Spliced
+    // like the scrollback rather than rendered as JSX, so the reconciler never touches
+    // the live field (see `input` above). The `>` is a plain sibling: a `::before` on
+    // the input itself isn't possible, and putting the caret behind a padded background
+    // image is more machinery than a span.
+    <div className="debug-console__prompt">
+      <span className="debug-console__caret" attrs={[("aria-hidden", "true")]}>
+        {Html.string(">")}
+      </span>
+      {Html.node(input)}
+    </div>
+    // The status line sits at the *foot*, under the prompt: up top it would land on the
+    // top bar's Menu button, which the panel drops over.
     <footer className="debug-console__status">
       <span className="debug-console__title"> {Html.string("debug console")} </span>
       <span className="debug-console__hint">
-        {Html.string("` toggle · ⇧` dock · esc close")}
+        {Html.string("enter run · ↑↓ history · ` toggle · ⇧` dock · esc close")}
       </span>
     </footer>
   </section>
