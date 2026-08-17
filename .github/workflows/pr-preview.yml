@@ -9,10 +9,13 @@ on:
     types: [opened, reopened, synchronize, closed]
 
 # `contents: write` pushes commits to `gh-pages` to deploy/remove the preview;
-# `pull-requests: write` lets the actions post/update the preview-link comments.
+# `pull-requests: write` lets the actions post/update the preview-link comments;
+# `deployments: write` records the preview in GitHub's deployments API so the
+# PR's merge box links to it (see "Start deployment" below).
 permissions:
   contents: write
   pull-requests: write
+  deployments: write
 
 # Share the `gh-pages` group with the main deploy so all writers of that
 # branch are serialized and can't race.
@@ -29,6 +32,48 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
+
+      # `pr-preview-action` only pushes to `gh-pages` and comments a link — it
+      # never touches the deployments API, which is why the PR reads "This branch
+      # has not been deployed" even though the preview is live. Opening a
+      # deployment here (and closing it below) is what lights up the merge box's
+      # "View deployment" button and the repo's Environments page.
+      #
+      # Created before the build so the box shows the preview as in progress
+      # while it runs; the SHA-keyed `ref` is what ties it to this PR.
+      - name: Start deployment
+        id: deployment
+        if: github.event.action != 'closed'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          LOG_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          # `required_contexts: []` and `auto_merge: false` are load-bearing:
+          # without them the API answers with a merge commit or a "waiting on
+          # checks" message instead of a deployment, leaving no id to report
+          # against. The body goes through `jq` because `gh api -f` has no way
+          # to express an empty array.
+          #
+          # One environment per PR, so deploying one preview never marks another
+          # PR's still-live preview inactive. `transient` tells GitHub to retire
+          # it once the branch goes away.
+          id="$(jq -n \
+            --arg ref "$HEAD_SHA" \
+            --arg environment "pr-preview-$PR_NUMBER" \
+            --arg description "Preview for PR #$PR_NUMBER" \
+            '{$ref, $environment, $description,
+              required_contexts: [], auto_merge: false,
+              transient_environment: true, production_environment: false}' \
+            | gh api "repos/$GITHUB_REPOSITORY/deployments" --input - --jq .id)"
+          echo "id=$id" >> "$GITHUB_OUTPUT"
+          # A deployment carries no state until its first status, so without
+          # this the box sits on "pending" for the whole build instead of
+          # showing it as deploying.
+          gh api "repos/$GITHUB_REPOSITORY/deployments/$id/statuses" \
+            -f state=in_progress -f log_url="$LOG_URL" --silent
 
       # The build is only needed for deploy actions, not cleanup. On close the
       # action just removes the preview dir, so skip the build to save time.
@@ -50,9 +95,56 @@ jobs:
       # it on close, commenting the preview URL on the PR. `source-dir` is
       # ignored for the cleanup action.
       - name: Deploy preview
+        id: preview
         uses: rossjrw/pr-preview-action@v1
         with:
           source-dir: packages/web-app/dist
+
+      # Reports either outcome: skipping the failure case would leave a broken
+      # build's deployment stuck in progress forever, which reads worse than no
+      # deployment at all. Guarded on the id so the `closed` path — where the
+      # deployment step never ran — falls through to the cleanup below.
+      #
+      # `environment_url` is what the merge box's "View deployment" button opens.
+      # Taken from the action's own `preview-url` output rather than rebuilt by
+      # hand: the related `pages-base-url` output carries no scheme, so
+      # assembling the URL from parts silently yields a broken link.
+      - name: Finish deployment
+        if: ${{ !cancelled() && steps.deployment.outputs.id }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DEPLOYMENT_ID: ${{ steps.deployment.outputs.id }}
+          STATE: ${{ job.status == 'success' && 'success' || 'failure' }}
+          PREVIEW_URL: ${{ steps.preview.outputs.preview-url }}
+          LOG_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          gh api "repos/$GITHUB_REPOSITORY/deployments/$DEPLOYMENT_ID/statuses" \
+            -f state="$STATE" \
+            -f environment_url="$PREVIEW_URL" \
+            -f log_url="$LOG_URL" --silent
+
+      # The preview dir is gone by now, so retire the deployment to match —
+      # otherwise the closed PR keeps advertising a URL that 404s.
+      - name: Deactivate deployment
+        if: github.event.action == 'closed'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ENVIRONMENT: pr-preview-${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          gh api --paginate "repos/$GITHUB_REPOSITORY/deployments?environment=$ENVIRONMENT" \
+            --jq '.[].id' |
+            while read -r id; do
+              gh api "repos/$GITHUB_REPOSITORY/deployments/$id/statuses" \
+                -f state=inactive --silent
+            done
+          # Tidy-up only: one environment per PR would otherwise pile up in
+          # Settings -> Environments forever. Deleting one needs repo-admin
+          # rights that `GITHUB_TOKEN` may not have, and the deployments are
+          # already inactive above, so a refusal here isn't worth failing on.
+          gh api -X DELETE "repos/$GITHUB_REPOSITORY/environments/$ENVIRONMENT" --silent \
+            || echo "Left environment $ENVIRONMENT in place (deleting it needs admin rights)"
 
   # Render the screenshot report and publish it as a *latest-only* per-PR preview:
   # the same pr-preview-action deploys it to its own umbrella `screenshots/pr/pr-<N>/`
