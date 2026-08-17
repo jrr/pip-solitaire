@@ -92,7 +92,7 @@ let listGames = () => Game.all->Array.map(g => `  ${g.id}  —  ${g.name}`)->Arr
 
 let showGame = id =>
   switch Game.all->Array.find(g => g.id == id) {
-  | Some(game) => Render.board(game)
+  | Some(game) => Render.board(~color=true, game)
   | None => `Unknown game: ${id}\n\n${usage()}`
   }
 

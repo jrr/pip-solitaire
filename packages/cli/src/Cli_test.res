@@ -33,24 +33,15 @@ describe("CardText", () => {
   })
 })
 
-// The board rendered from a live snapshot, not just the opening deal.
-describe("Render.stateBoard", () => {
-  test("shows a card after the reducer has moved it onto a pile", () => {
-    let game = Game.stacking
-    let state = GameState.initial(game)
-    // Found pile 0 with the Ace of Spades via the reducer.
-    let moved = switch Reducer.reduce(
-      ~game,
-      state,
-      Move({card: {suit: Spades, rank: Ace}, to: ToPile(0)}),
-    ) {
-    | Ok(next) => next
-    | Error(_) => state
-    }
-    let board = Render.stateBoard(~game, moved)
-    expect(has(board, game.name))->toBe(true)
-    expect(has(board, `A♠`))->toBe(true)
-  })
+// The renderer itself is `core`'s now (see `Render_test` there) — it draws the board the
+// web console prints as well as the one this driver does. What's left to check here is
+// the driver's *use* of it: that a session's boards come out in colour, since this end of
+// it is going to a terminal.
+describe("Render, from the driver", () => {
+  test("a printed board is coloured for the terminal", () =>
+    // The escape byte, by value — the same one `Render` builds its SGR codes from.
+    expect(has(Repl.run(["deal freecell"]), String.fromCharCode(27)))->toBe(true)
+  )
 })
 
 // The reducer driver end to end: a scripted sequence of commands folded through
