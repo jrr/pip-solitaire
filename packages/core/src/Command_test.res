@@ -294,6 +294,94 @@ describe("Command.resolveDeal", () => {
   })
 })
 
+// The driver's flags, addressed by name (`Options.setting`). The settings are a closed
+// set `core` knows, so the parser hands over a typed one rather than a string each front
+// end re-checks.
+describe("Command.parse — set", () => {
+  test("a bare set asks to see them", () => expect(Command.parse("set"))->toEqual(Command.Settings))
+
+  test("set <setting> on|off names a typed setting and a value", () => {
+    expect(Command.parse("set autocollect off"))->toEqual(
+      Command.Set({setting: Options.AutoCollect, on: false}),
+    )
+    expect(Command.parse("set reorder on"))->toEqual(
+      Command.Set({setting: Options.ColumnReorder, on: true}),
+    )
+  })
+
+  // Generous about spelling on both halves: a flag refused over `true` vs `on` teaches
+  // nothing, and the settings answer to the names they're known by elsewhere.
+  test("the aliases people will actually type", () => {
+    expect(Command.parse("SET Auto-Collect TRUE"))->toEqual(
+      Command.Set({setting: Options.AutoCollect, on: true}),
+    )
+    expect(Command.parse("set movecol no"))->toEqual(
+      Command.Set({setting: Options.ColumnReorder, on: false}),
+    )
+  })
+
+  test("a setting we don't have, and a value that isn't on or off", () => {
+    switch Command.parse("set frobnicate on") {
+    | Command.Usage({verb, message}) =>
+      expect(verb)->toBe("set")
+      expect(message)->toBe(`Not a setting: "frobnicate" (autocollect, reorder).`)
+    | _ => expect("not a usage")->toBe("usage")
+    }
+    switch Command.parse("set autocollect maybe") {
+    | Command.Usage({message}) => expect(message)->toBe(`Not on or off: "maybe".`)
+    | _ => expect("not a usage")->toBe("usage")
+    }
+  })
+
+  // Arity before content, as everywhere else in this grammar.
+  test("a setting with no value asks for the usage line", () =>
+    switch Command.parse("set autocollect") {
+    | Command.Usage({verb, message}) =>
+      expect(verb)->toBe("set")
+      expect(message->String.startsWith("Usage: set"))->toBe(true)
+    | _ => expect("not a usage")->toBe("usage")
+    }
+  )
+
+  test("the listing shows every flag and its value", () => {
+    let shown = Command.describeSettings(Options.default)
+    expect(shown->String.includes("autocollect  on"))->toBe(true)
+    expect(shown->String.includes("reorder      on"))->toBe(true)
+    expect(
+      Command.describeSettings(
+        Options.apply(Options.default, ~setting=Options.AutoCollect, ~on=false),
+      )->String.includes("autocollect  off"),
+    )->toBe(true)
+  })
+})
+
+describe("Options", () => {
+  test("apply changes one flag and leaves the other", () => {
+    let off = Options.apply(Options.default, ~setting=Options.ColumnReorder, ~on=false)
+    expect(off.allowColumnReorder)->toBe(false)
+    expect(off.autoCollect)->toBe(Options.default.autoCollect)
+  })
+
+  test("read is apply's inverse, for both settings", () =>
+    Options.all->Array.forEach(
+      setting => {
+        expect(Options.read(Options.apply(Options.default, ~setting, ~on=false), setting))->toBe(
+          false,
+        )
+        expect(Options.read(Options.apply(Options.default, ~setting, ~on=true), setting))->toBe(
+          true,
+        )
+      },
+    )
+  )
+
+  test("every setting parses back from the name it's listed under", () =>
+    Options.all->Array.forEach(
+      setting => expect(Options.parse(Options.name(setting)))->toEqual(Some(setting)),
+    )
+  )
+})
+
 describe("Command.parseTarget", () => {
   test("an index is a pile", () =>
     expect(Command.parseTarget("7"))->toEqual(Some(Reducer.ToPile(7)))

@@ -244,10 +244,27 @@ let assemble = (
   sections->Array.map(lines => lines->Array.join("\n"))->Array.join("\n\n")
 }
 
-// The whole opening layout for a game, straight from its board definition.
+// The board's title: the game's name, and — when the caller knows one — the deal number
+// that laid it out. That number is the one fact you need to open this exact board again,
+// and it means the same thing in both front ends now (`deal 12345`), so a board played in
+// a terminal can be handed to the browser and back. Without it a dealt board is
+// unreproducible the moment you close the session.
+//
+// The caller supplies it rather than it being read off `game.seed`, because the two can
+// differ: a posed position (`Scenario`) descends from the deal it has been *proved* to,
+// which is usually none at all — the same rule the web app follows before offering a
+// Share (#264).
+let titleFor = (~game: Game.t, ~deal: option<int>): string =>
+  switch deal {
+  | Some(n) => `${game.name} — deal #${Int.toString(n)}`
+  | None => game.name
+  }
+
+// The whole opening layout for a game, straight from its board definition. A game with a
+// seed of its own names it (FreeCell's canonical board is deal #1).
 let board = (game: Game.t) =>
   assemble(
-    ~title=game.name,
+    ~title=titleFor(~game, ~deal=game.seed),
     ~columns=game.piles->Array.map(pileColumn),
     ~freeCards=game.loose->Array.map(c => fullCard(free, c)),
   )
@@ -256,9 +273,9 @@ let board = (game: Game.t) =>
 // the reducer produces, not just the opening deal. The stacking behaviour still
 // comes from the board definition (`GameState` carries only where cards rest),
 // while every card comes from the snapshot.
-let stateBoard = (~game: Game.t, state: GameState.t) =>
+let stateBoard = (~game: Game.t, ~deal: option<int>=?, state: GameState.t) =>
   assemble(
-    ~title=game.name,
+    ~title=titleFor(~game, ~deal),
     ~columns=game.piles->Array.mapWithIndex((pile, i) =>
       columnFor(pile.stacking, GameState.cardsInPile(state, i))
     ),

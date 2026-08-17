@@ -441,6 +441,95 @@ describe("Repl redeal", () => {
   )
 })
 
+// The deal number on the board. It's the one fact you need to open the same board again
+// — and it means the same thing in both front ends — so the board says it rather than
+// making you remember what you typed.
+describe("Render deal number", () => {
+  test("a numbered deal, and the canonical board, name themselves", () => {
+    expect(has(Repl.run(["deal 12345"]), "deal #12345"))->toBe(true)
+    expect(has(Repl.run(["deal freecell"]), "deal #1"))->toBe(true)
+  })
+
+  // The rule the web app follows before offering a Share (#264): a posed position names
+  // only the deal it's been *proved* to descend from, and stays quiet otherwise.
+  test("a posed position names only a deal it descends from", () => {
+    expect(has(Repl.run(["deal freecell almost-won"]), "deal #264"))->toBe(true)
+    expect(has(Repl.run(["deal freecell midgame"]), "deal #"))->toBe(false)
+  })
+
+  test("a game with no seed behind it names none", () =>
+    expect(has(Repl.run(["deal stacking"]), "deal #"))->toBe(false)
+  )
+
+  test("a redeal keeps naming the board it replays", () =>
+    expect(has(Repl.run(["deal 777", "move AS 0", "redeal"]), "deal #777"))->toBe(true)
+  )
+})
+
+// The driver's flags, typed (`set`). They're the *loop's* state rather than the
+// interpreter's — a `~options` passed per call couldn't outlive the call that changed it
+// — so these drive the state the way a real loop does, carrying both halves forward.
+describe("Repl set", () => {
+  let drive = (cmds: array<string>): (option<Repl.session>, Options.t) => {
+    let session = ref(None)
+    let flags = ref(Options.default)
+    cmds->Array.forEach(line =>
+      switch Repl.consider(~options=flags.contents, session.contents, line) {
+      | Repl.Ran({session: next, options: flags', _}) =>
+        session := next
+        flags := flags'
+      | Repl.Skipped | Repl.Cleared | Repl.Ended => ()
+      }
+    )
+    (session.contents, flags.contents)
+  }
+
+  test("a set sticks, and leaves the other flags alone", () => {
+    let (_, flags) = drive(["set autocollect off"])
+    expect(flags.autoCollect)->toBe(false)
+    expect(flags.allowColumnReorder)->toBe(true)
+  })
+
+  // The point of the verb: not that the value reads back, but that the *next move*
+  // behaves differently. With auto-collect on, playing one Three home sweeps the other
+  // safe Threes after it (the auto-collect tests above); switched off by hand, they stay.
+  test("and the very next move honours it", () => {
+    let (session, _) = drive(["deal freecell sendhome", "set autocollect off", "home 3S"])
+    switch session->Option.flatMap(
+      s => GameState.locationOf(Repl.present(s), {suit: Hearts, rank: Three}),
+    ) {
+    // The free cells are piles 0–3; the hearts foundation is 5. Still in its cell.
+    | Some(GameState.InPile(pile, _)) => expect(pile < 4)->toBe(true)
+    | _ => expect("nowhere")->toBe("in a free cell")
+    }
+  })
+
+  // The house rule (#159) had no control anywhere before this — not a switch in the web
+  // menu, not a flag on the CLI. Typing it off is now the only way to reach that branch.
+  test("reorder off gates the reducer, and back on ungates it", () => {
+    let off = Repl.run(["deal freecell", "set reorder off", "movecol 8 9"])
+    expect(has(off, "Column reordering is off"))->toBe(true)
+    let on = Repl.run(["deal freecell", "set reorder off", "set reorder on", "movecol 8 9"])
+    expect(has(on, "Column reordering is off"))->toBe(false)
+  })
+
+  test("a bare set shows both flags", () => {
+    let shown = Repl.run(["set"])
+    expect(has(shown, "autocollect  on"))->toBe(true)
+    expect(has(shown, "reorder      on"))->toBe(true)
+  })
+
+  // A malformed `set` is about the driver, not the board, so it answers with what it
+  // couldn't read — not "deal a game first", which is what every other usage failure
+  // rightly says when nothing has been dealt.
+  test("a malformed set answers about the setting, dealt or not", () => {
+    expect(has(Repl.run(["set frob on"]), `Not a setting: "frob"`))->toBe(true)
+    expect(has(Repl.run(["set reorder nope"]), `Not on or off: "nope"`))->toBe(true)
+    expect(has(Repl.run(["set autocollect"]), "Usage: set"))->toBe(true)
+    expect(has(Repl.run(["set frob on"]), "Deal a game first"))->toBe(false)
+  })
+})
+
 // The per-line decision both shapes of `cli play` share (a live prompt and the batch
 // fold above). Everything that decides anything lives here, on the pure side, which is
 // what keeps the interactive loop — untestable without a pty — down to plumbing.
@@ -457,6 +546,15 @@ describe("Repl.consider", () => {
   test("quit and exit end the session", () => {
     expect(consider("quit"))->toEqual(Repl.Ended)
     expect(consider("exit"))->toEqual(Repl.Ended)
+  })
+
+  // `clear` is the screen's business, and only one of the two shapes has a screen: a live
+  // prompt wipes the terminal, a transcript echoes the line and prints nothing.
+  test("clear is handed to the loop rather than answered here", () => {
+    expect(consider("clear"))->toEqual(Repl.Cleared)
+    let transcript = Repl.run(["deal stacking", "clear", "print"])
+    expect(has(transcript, "pip> clear"))->toBe(true)
+    expect(has(transcript, "Stacking"))->toBe(true)
   })
 
   test("anything else runs, carrying the session and the text to show", () =>

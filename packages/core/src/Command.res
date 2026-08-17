@@ -64,6 +64,12 @@ type t =
   // the start: like the button, it rebuilds the game now on the table, so a session
   // opened at a posed position restarts to that game's real deal rather than the pose.
   | Redeal
+  // The driver's own flags (`Options`), read and written: bare `set` shows them, `set
+  // <setting> on|off` changes one. A *driver* preference rather than board state, so
+  // neither reaches the reducer — but both front ends have the same two flags, so the
+  // vocabulary is shared like the rest.
+  | Settings
+  | Set({setting: Options.setting, on: bool})
   | Unknown({verb: string}) // no such verb
   | Usage({verb: string, message: string}) // this verb, arguments we can't read
 
@@ -85,6 +91,10 @@ let parseTarget = (token: string): option<Reducer.target> =>
 
 let notACard = (token: string) => `Not a card: "${token}" (try AS, TH, KD).`
 let notAPile = (token: string) => `Not a pile: "${token}" (an index, or "table").`
+
+let settingNames = () => Options.all->Array.map(Options.name)->Array.join(", ")
+let notASetting = (token: string) => `Not a setting: "${token}" (${settingNames()}).`
+let notAFlag = (token: string) => `Not on or off: "${token}".`
 
 // Parse one command line. Total: every line yields a `t`, malformed ones included.
 let parse = (line: string): t => {
@@ -116,6 +126,24 @@ let parse = (line: string): t => {
       Usage({
         verb: "move",
         message: "Usage: move <card> <pile>   (e.g. move AS 0, or move AS table)",
+      })
+    }
+  // Bare `set` shows the flags; `set <setting> on|off` changes one. Arity before content
+  // here too, so `set autocollect` asks for the usage line rather than complaining about
+  // a value that isn't there.
+  | Some("set") =>
+    switch (arg(1), arg(2)) {
+    | (None, _) => Settings
+    | (Some(settingTok), Some(valueTok)) =>
+      switch (Options.parse(settingTok), Options.parseFlag(valueTok)) {
+      | (None, _) => Usage({verb: "set", message: notASetting(settingTok)})
+      | (_, None) => Usage({verb: "set", message: notAFlag(valueTok)})
+      | (Some(setting), Some(on)) => Set({setting, on})
+      }
+    | (Some(_), None) =>
+      Usage({
+        verb: "set",
+        message: `Usage: set <setting> on|off   (e.g. set autocollect off; ${settingNames()})`,
       })
     }
   | Some("home") =>
@@ -283,6 +311,14 @@ let boardHelp: array<helpRow> = [
 // The `deal` family. Shared rows now that both front ends read the argument the same way
 // (see `resolveDeal`) — before, each listed its own half of the same verb, which is
 // exactly the drift a shared grammar is supposed to prevent.
+// The driver's flags (`Options`). Shared for the same reason the board verbs are: the
+// two front ends have the same two settings, and one of them — the column-reorder house
+// rule — has no other control anywhere.
+let driverHelp: array<helpRow> = [
+  ("set", "show the driver settings"),
+  ("set <setting> on|off", "change one (autocollect, reorder)"),
+]
+
 let dealHelp: array<helpRow> = [
   ("deal <n>", "deal FreeCell game number <n> (e.g. deal 12345)"),
   ("deal <game> [position]", "deal a named game, at a named position if given"),
@@ -304,6 +340,15 @@ let renderHelp = (rows: array<helpRow>): string => {
   })
   rows->Array.map(((verb, what)) => `  ${padTo(verb, width)}  ${what}`)->Array.join("\n")
 }
+
+// The driver's flags and their values, aligned by the same renderer the help listing
+// uses — what a bare `set` shows, in both front ends.
+let describeSettings = (options: Options.t): string =>
+  `Settings:\n${renderHelp(Options.rows(options))}`
+
+// One changed flag, acknowledged. Short on purpose: it's a confirmation, not a report.
+let describeSet = (~setting: Options.setting, ~on: bool): string =>
+  `${Options.name(setting)} ${on ? "on" : "off"}`
 
 // The available games, one per line — what `games` prints, and what an unknown game
 // id is answered with.
