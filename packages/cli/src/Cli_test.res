@@ -334,6 +334,42 @@ describe("Repl.run", () => {
     expect(has(transcript, "pip> deal stacking"))->toBe(true)
     expect(has(transcript, "pip> print"))->toBe(true)
   })
+
+  // `quit` ends the transcript where it appears, the way `exit` ends a shell script.
+  test("quit ends the transcript and leaves the rest of the script unread", () => {
+    let transcript = Repl.run(["deal stacking", "quit", "games", "print"])
+    // The quit itself is echoed — a transcript should say why it stopped…
+    expect(has(transcript, "pip> quit"))->toBe(true)
+    // …and nothing after it ran or echoed.
+    expect(has(transcript, "pip> games"))->toBe(false)
+    expect(has(transcript, "pip> print"))->toBe(false)
+  })
+})
+
+// The per-line decision both shapes of `cli play` share (a live prompt and the batch
+// fold above). Everything that decides anything lives here, on the pure side, which is
+// what keeps the interactive loop — untestable without a pty — down to plumbing.
+describe("Repl.consider", () => {
+  let consider = line => Repl.consider(~options=Options.default, None, line)
+
+  test("a blank line and a `#` comment are skipped, unparsed", () => {
+    expect(consider(""))->toEqual(Repl.Skipped)
+    expect(consider("   "))->toEqual(Repl.Skipped)
+    expect(consider("# a note"))->toEqual(Repl.Skipped)
+    expect(consider("   # an indented note"))->toEqual(Repl.Skipped)
+  })
+
+  test("quit and exit end the session", () => {
+    expect(consider("quit"))->toEqual(Repl.Ended)
+    expect(consider("exit"))->toEqual(Repl.Ended)
+  })
+
+  test("anything else runs, carrying the session and the text to show", () =>
+    switch consider("games") {
+    | Repl.Ran({output}) => expect(has(output, "freecell"))->toBe(true)
+    | Repl.Skipped | Repl.Ended => expect(true)->toBe(false)
+    }
+  )
 })
 
 // Undo/redo over the GameState history (#85): the CLI loop steps back and forth

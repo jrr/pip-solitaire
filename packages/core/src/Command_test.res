@@ -90,6 +90,15 @@ describe("Command.parse", () => {
     test("finish", () => expect(Command.parse("finish"))->toEqual(Command.Finish))
     test("help", () => expect(Command.parse("help"))->toEqual(Command.Help))
     test("clear", () => expect(Command.parse("clear"))->toEqual(Command.Clear))
+    // Shared vocabulary even though only the CLI can act on it, exactly as `clear` is
+    // shared even though only the panel can.
+    test(
+      "quit, and exit as its alias",
+      () => {
+        expect(Command.parse("quit"))->toEqual(Command.Quit)
+        expect(Command.parse("exit"))->toEqual(Command.Quit)
+      },
+    )
     test(
       "print, and its aliases",
       () => {
