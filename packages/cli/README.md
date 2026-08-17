@@ -5,6 +5,10 @@ It draws a game's board with box-drawing characters, and — via `play` — lets
 deal a game and dispatch moves into the pure `Reducer.reduce`, printing the
 resulting board (or a typed rejection) after each command.
 
+The box-drawn board isn't this package's own any more: `core`'s `Render` draws it,
+because the web app's debug console prints the same one. What's left here is the
+terminal end of it — stdin, stdout, and asking for ANSI colour.
+
 ## Commands
 
 ```
@@ -67,11 +71,16 @@ is going to type into.
 
 ### Where the code lives
 
-The *grammar* isn't the CLI's own: it lives in `core` (`Command.res`) and is
-shared with the web app's debug console (#273), which types the same commands at
-the same reducer. `Repl` is the half that needs a session — the game in play, the
-history to undo over, the board to print — and the transcripts in `examples/` are
-the regression net for both.
+Neither the *grammar* nor the *board drawing* is the CLI's own: `Command.res` and
+`Render.res` both live in `core`, shared with the web app's debug console (#273),
+which types the same commands at the same reducer and prints the same board.
+`Repl` is the half that needs a session — the game in play, the history to undo
+over, the board to print — and the transcripts in `examples/` are the regression
+net for both.
+
+Colour is the one thing the two ask for differently: `Render` writes it as ANSI
+escapes, which a terminal paints and a browser panel would show as garbage, so
+it's off by default and this driver passes `~color=true`.
 
 Both shapes run over one pure decision, `Repl.consider` ("what does this line
 ask for?"), so the interactive loop in `Cli.res` is nothing but readline

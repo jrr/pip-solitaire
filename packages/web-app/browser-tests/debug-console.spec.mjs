@@ -489,6 +489,45 @@ test("redeal replays the deal on the table", async ({ page }) => {
   await expect(page.getByRole("button", { name: "Undo" })).toBeDisabled()
 })
 
+// `print` draws the board into the log — the same text board the CLI prints, from `core`'s
+// renderer, minus the ANSI colour a browser can't paint. It used to answer "the board is
+// on screen", which was true and useless: the point is a snapshot you can read back.
+test("print draws the board into the log", async ({ page }) => {
+  await page.goto("/?scene=freecell&seed=24680&animate=off")
+  await settleBoard(page)
+  await openConsole(page)
+
+  await runCommand(page, "print")
+
+  const lines = await consoleLines(page).allTextContents()
+  // The title names the deal the chrome resolved — the number both Share buttons offer.
+  expect(lines.some((l) => l.includes("FreeCell — deal #24680"))).toBe(true)
+  // A board, drawn with the box characters and holding real cards.
+  expect(lines.some((l) => l.includes("┌────┐"))).toBe(true)
+  expect(lines.some((l) => /[♠♥♦♣]/.test(l))).toBe(true)
+  // No escape codes: the panel would show them as garbage, so the renderer is asked for a
+  // plain board here and a coloured one in the terminal. Built from its char code, the way
+  // `Render` builds it, rather than pasted into the source as a control character.
+  const esc = String.fromCharCode(27)
+  expect(lines.some((l) => l.includes(esc))).toBe(false)
+
+  // A board is ~150 columns, so in this viewport it's wider than the panel — the log has
+  // to be able to scroll sideways or the right-hand cascades are unreachable.
+  const geometry = await page.evaluate(() => {
+    const ol = document.getElementById("debug-console-lines")
+    return { scrollWidth: ol.scrollWidth, clientWidth: ol.clientWidth }
+  })
+  expect(geometry.scrollWidth).toBeGreaterThan(geometry.clientWidth)
+
+  // …and in the overlay shape the panel takes no pointer events, so the sideways wheel is
+  // hand-forwarded exactly as the vertical one already was.
+  await page.mouse.move(400, 200)
+  await page.mouse.wheel(200, 0)
+  await expect
+    .poll(() => page.evaluate(() => document.getElementById("debug-console-lines").scrollLeft))
+    .toBeGreaterThan(0)
+})
+
 // The driver's flags, typed. Auto-collect has a menu switch; the column-reorder house
 // rule (#159) has no control anywhere, so the console is the only way to reach it.
 test("set changes the driver's flags, through the app's own switch", async ({ page }) => {

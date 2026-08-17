@@ -52,6 +52,8 @@ let scrollback = DebugLog.Ring.make(~capacity)
 @get external scrollTop: WebDom.element => float = "scrollTop"
 @set external setScrollTop: (WebDom.element, float) => unit = "scrollTop"
 @get external scrollHeight: WebDom.element => float = "scrollHeight"
+@get external scrollLeft: WebDom.element => float = "scrollLeft"
+@set external setScrollLeft: (WebDom.element, float) => unit = "scrollLeft"
 @get external clientHeight: WebDom.element => float = "clientHeight"
 
 // Where the panel is on screen, and what a wheel turn over it means — an *overlaid*
@@ -61,6 +63,7 @@ type box = {"top": float, "bottom": float, "left": float, "right": float}
 
 type wheelEvent
 @get external deltaY: wheelEvent => float = "deltaY"
+@get external deltaX: wheelEvent => float = "deltaX"
 @get external clientX: wheelEvent => float = "clientX"
 @get external clientY: wheelEvent => float = "clientY"
 
@@ -109,12 +112,18 @@ lines->WebDom.addEventListener("scroll", () => stickToBottom := atBottom(lines))
 // follows from the `scroll` listener above. Docked (#275) the panel covers nothing and
 // takes pointer events natively, so this is unbound there — left on, every turn would
 // scroll the log twice.
+//
+// Both axes, because the log now carries lines wider than the panel: `print` draws a text
+// board (#273) about 150 columns across, and the overlay is the shape that can't scroll
+// itself. Forwarding only `deltaY` would leave the right-hand cascades of a printed board
+// unreachable in the very shape the panel opens in.
 let onWheel = (event: wheelEvent): unit => {
   let box = boxOf(lines)
   let x = clientX(event)
   let y = clientY(event)
   if x >= box["left"] && x <= box["right"] && y >= box["top"] && y <= box["bottom"] {
     setScrollTop(lines, scrollTop(lines) +. deltaY(event))
+    setScrollLeft(lines, scrollLeft(lines) +. deltaX(event))
   }
 }
 

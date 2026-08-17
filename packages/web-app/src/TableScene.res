@@ -654,6 +654,14 @@ let make = (
   // this scene first mounted with. Reported rather than read for the same reason
   // `~onHistory` is: the chrome renders from it, so it can't reach into the board.
   ~onDeal: option<option<int> => unit>=?,
+  // …and its read side, for the one thing the board draws rather than reports: the
+  // console's `print` (#273) renders a text board, and a board names the deal it's
+  // showing. The number can't come from `game.seed` — a posed position sits on a game
+  // whose own seed didn't produce it, and a resumed game's number lives in the driver's
+  // storage — so the chrome, which resolves all of that for the Share buttons, hands
+  // back whatever it resolved. Defaults to "no number", which is the truthful answer for
+  // a board built by a test or a demo.
+  ~currentDeal: unit => option<int>=() => None,
   // The victory share (#264): what the win overlay's Share button calls, and whether
   // it's offered at all. Omitted by the demos and the tests that don't care, in which
   // case the overlay is the New Game button alone, exactly as before.
@@ -1714,10 +1722,12 @@ let make = (
           } else {
             "Nothing to redo."
           }
-        // The CLI prints a board because it has no other way to show one. Here the
-        // board *is* the screen, so there's nothing to print — a real state dump is a
-        // follow-up (#273 leaves it out of scope).
-        | Command.Print => "The board is on screen."
+        // The board, drawn in text. It used to answer "the board is on screen" — true,
+        // but useless: the point of `print` is a *snapshot* you can read back later in
+        // the log, compare against the one above it, or paste somewhere. Now that the
+        // renderer lives in `core` it's the very board the CLI prints, from the very
+        // same state, minus the ANSI colour a browser can't paint.
+        | Command.Print => Render.stateBoard(~game, ~deal=?currentDeal(), state.contents)
         // Everything else — help, clear, dealing a board — belongs to the chrome (see
         // `Main`), which answers those itself and never forwards them here.
         | _ => "That isn't something the board can do."

@@ -773,7 +773,13 @@
         flex: 1 1 auto;
         margin: 0;
         padding: 0 0 0.3rem 0;
-        overflow-y: auto;
+        /* Both axes. Vertical is the log itself; horizontal is for the lines wider than
+           the panel — the aligned help table, and now the text board `print` draws
+           (#273), which is ~150 columns and has to stay aligned to be a board at all.
+           Before this they were simply clipped at the right edge with no way to reach
+           the rest. Scrolling the list moves every line together, which is what keeps a
+           printed board readable as one picture. */
+        overflow: auto;
         list-style: none;
       }
 
@@ -783,18 +789,23 @@
         padding: 1px 0;
         white-space: pre-wrap;
         word-break: break-word;
+        /* Sized to its content, but never narrower than the panel: `max-content` is what
+           puts a wide line into the scroller's reach (a plain block line box would stop
+           at the panel edge and let its content spill unscrollably), and `min-width`
+           keeps ordinary lines filling the width as before. */
+        width: max-content;
+        min-width: 100%;
       }
 
       /* Label and payload styled apart — the reason DebugLog publishes structured
          entries rather than finished strings.
 
          `flex: none` keeps a long payload from squashing the tag beside it. It also
-         means a line wider than the panel is clipped rather than wrapped, which is the
-         right trade for both kinds of line this now carries: a JSON payload wraps into
-         an unreadable block, and a console reply (#273) is an aligned two-column help
-         table that only reads as one while its columns hold. Both are legible in the
-         overlay shape, which is full-width; the narrow dock is where you'd scroll or
-         undock to read them. */
+         means a line wider than the panel extends rather than wrapping, which is the
+         right trade for every kind of line this carries: a JSON payload wraps into an
+         unreadable block, a console reply is an aligned two-column help table that only
+         reads as one while its columns hold, and a printed board is a picture that
+         wrapping would tear in half. Where it extends *to* is the scroller above. */
       .debug-console__label {
         flex: none;
         color: #7fd6a2;

@@ -82,8 +82,11 @@ ${Command.cardNote}
 Games:
 ${gamesList()}`
 
-// The board for a live session — the shared renderer over its present snapshot.
-let renderBoard = (s: session): string => Render.stateBoard(~game=s.game, ~deal=?s.seed, present(s))
+// The board for a live session — `core`'s text renderer over its present snapshot, in
+// colour, because this one is going to a terminal (the web console asks the same
+// renderer for the same board without it).
+let renderBoard = (s: session): string =>
+  Render.stateBoard(~game=s.game, ~deal=?s.seed, ~color=true, present(s))
 
 // Settle an accepted move: run safe auto-collect (#125) when the option is on,
 // returning the settled state; `autoCollect: false` (or a finishable board)

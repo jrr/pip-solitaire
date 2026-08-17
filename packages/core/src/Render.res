@@ -1,9 +1,13 @@
-// A plain-stdout view of a `Game`'s opening layout: box-drawn cards printed to
-// the terminal. This is the CLI's presentation layer — the counterpart to the
-// web-app's `Deck`/`CardArt`. `core` deliberately keeps display concerns out of
-// the model (see `Card.res`), so each frontend brings its own glyphs; here that
-// is a Unicode suit pip and a short rank label rendered inside a box-drawing
-// frame, the terminal analogue of `CardArt`'s SVG face.
+// A **text** view of a board: box-drawn cards, as a string. The counterpart to the
+// web-app's `Deck`/`CardArt`, and — since it draws with characters rather than pixels
+// — the one view both front ends can show. `Card.res` keeps display concerns out of
+// the *model*; this is a renderer over the model, which is a different thing, and it
+// lives here because two callers now want it:
+//
+//   - the **CLI**, which prints it to a terminal after every command;
+//   - the **web app's debug console** (#273), whose `print` used to answer "the board
+//     is on screen" for want of any way to draw one — the panel is a monospace log,
+//     which is exactly the medium this renders for.
 //
 // Three visual conventions carry the model's state, mirroring how the web-app's
 // styling distinguishes cards:
@@ -11,7 +15,11 @@
 //     gets a heavy frame (┏━┓); a card placed in a pile gets a light one (┌─┐);
 //     an empty pile shows a double frame (╔═╗) where its cards would land.
 //   - Colour tells suit: hearts and diamonds are drawn red, spades and clubs
-//     plain, the terminal analogue of the red/black pips on a real deck.
+//     plain, the terminal analogue of the red/black pips on a real deck. This is the
+//     one convention that isn't universal — it's written as ANSI escapes, which a
+//     terminal paints and a browser would show as garbage — so it's **off by default**
+//     and the CLI asks for it (`~color=true`). The suit is still legible without it:
+//     the pip glyphs differ.
 //   - A fanned pile is drawn as an overlapping vertical column — each lower card
 //     peeks a single face line above the next, and the top card (last in the
 //     model's bottom-first order) is shown in full at the foot of the fan.
@@ -113,16 +121,23 @@ let topBorder = f => `${f.topLeft}${repeat(f.horizontal, cellWidth)}${f.topRight
 let bottomBorder = f => `${f.bottomLeft}${repeat(f.horizontal, cellWidth)}${f.bottomRight}`
 let blankLine = f => `${f.vertical}${repeat(" ", cellWidth)}${f.vertical}`
 
-// The face line: the rank and suit, left-aligned and padded to the cell width,
-// coloured red for the red suits.
-let faceLine = (f, card: card) => {
+// The face line: the rank and suit, left-aligned and padded to the cell width, and
+// coloured red for the red suits when the caller paints in colour. `~color` is threaded
+// from the entry points rather than read from anywhere ambient, so one renderer serves a
+// terminal and a browser panel in the same call shape.
+let faceLine = (~color: bool, f, card: card) => {
   let text = `${rankLabel(card.rank)}${suitSymbol(card.suit)}`->String.padEnd(cellWidth, " ")
-  let face = isRed(card.suit) ? colorize(text, red) : text
+  let face = color && isRed(card.suit) ? colorize(text, red) : text
   `${f.vertical}${face}${f.vertical}`
 }
 
 // A full, four-line card in the given frame style.
-let fullCard = (f, card) => [topBorder(f), faceLine(f, card), blankLine(f), bottomBorder(f)]
+let fullCard = (~color: bool, f, card) => [
+  topBorder(f),
+  faceLine(~color, f, card),
+  blankLine(f),
+  bottomBorder(f),
+]
 
 // A double-framed empty slot, so an empty pile still shows where its cards land.
 let emptySlot = () => [topBorder(empty), blankLine(empty), blankLine(empty), bottomBorder(empty)]
@@ -130,23 +145,25 @@ let emptySlot = () => [topBorder(empty), blankLine(empty), blankLine(empty), bot
 // A fanned pile as an overlapping vertical column: every card contributes its
 // top border and one face line, and the top of the pile (last in bottom-first
 // order) closes the fan with its full body. An empty pile shows a slot.
-let fannedColumn = (cards: array<card>) =>
+let fannedColumn = (~color: bool, cards: array<card>) =>
   if Array.length(cards) == 0 {
     emptySlot()
   } else {
     let lastIndex = Array.length(cards) - 1
     cards
     ->Array.mapWithIndex((card, i) =>
-      i == lastIndex ? fullCard(placed, card) : [topBorder(placed), faceLine(placed, card)]
+      i == lastIndex
+        ? fullCard(~color, placed, card)
+        : [topBorder(placed), faceLine(~color, placed, card)]
     )
     ->Array.flat
   }
 
 // A squared pile keeps a single card's footprint, so only its top card shows;
 // an empty pile shows a slot.
-let squaredColumn = (cards: array<card>) =>
+let squaredColumn = (~color: bool, cards: array<card>) =>
   switch cards[Array.length(cards) - 1] {
-  | Some(card) => fullCard(placed, card)
+  | Some(card) => fullCard(~color, placed, card)
   | None => emptySlot()
   }
 
@@ -154,13 +171,13 @@ let squaredColumn = (cards: array<card>) =>
 // cards come from wherever the caller has them — the board's opening deal
 // (`board`) or a live snapshot (`stateBoard`) — so the two renderers share one
 // notion of how a pile looks.
-let columnFor = (stacking: Game.stacking, cards: array<card>) =>
+let columnFor = (~color: bool, stacking: Game.stacking, cards: array<card>) =>
   switch stacking {
-  | Game.Fanned => fannedColumn(cards)
-  | Game.Squared => squaredColumn(cards)
+  | Game.Fanned => fannedColumn(~color, cards)
+  | Game.Squared => squaredColumn(~color, cards)
   }
 
-let pileColumn = (pile: Game.pile) => columnFor(pile.stacking, pile.cards)
+let pileColumn = (~color: bool, pile: Game.pile) => columnFor(~color, pile.stacking, pile.cards)
 
 // A column of card lines is `colWidth` visible columns wide (a cell plus its two
 // borders); the gap that separates neighbouring piles / loose cards.
@@ -262,22 +279,22 @@ let titleFor = (~game: Game.t, ~deal: option<int>): string =>
 
 // The whole opening layout for a game, straight from its board definition. A game with a
 // seed of its own names it (FreeCell's canonical board is deal #1).
-let board = (game: Game.t) =>
+let board = (~color: bool=false, game: Game.t) =>
   assemble(
     ~title=titleFor(~game, ~deal=game.seed),
-    ~columns=game.piles->Array.map(pileColumn),
-    ~freeCards=game.loose->Array.map(c => fullCard(free, c)),
+    ~columns=game.piles->Array.map(pile => pileColumn(~color, pile)),
+    ~freeCards=game.loose->Array.map(c => fullCard(~color, free, c)),
   )
 
 // The same layout over a *live* `GameState.t` — so the renderer shows any state
 // the reducer produces, not just the opening deal. The stacking behaviour still
 // comes from the board definition (`GameState` carries only where cards rest),
 // while every card comes from the snapshot.
-let stateBoard = (~game: Game.t, ~deal: option<int>=?, state: GameState.t) =>
+let stateBoard = (~game: Game.t, ~deal: option<int>=?, ~color: bool=false, state: GameState.t) =>
   assemble(
     ~title=titleFor(~game, ~deal),
     ~columns=game.piles->Array.mapWithIndex((pile, i) =>
-      columnFor(pile.stacking, GameState.cardsInPile(state, i))
+      columnFor(~color, pile.stacking, GameState.cardsInPile(state, i))
     ),
-    ~freeCards=state.loose->Array.map(c => fullCard(free, c)),
+    ~freeCards=state.loose->Array.map(c => fullCard(~color, free, c)),
   )

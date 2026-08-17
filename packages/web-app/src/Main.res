@@ -741,6 +741,11 @@ let gameScene = (game: Game.t) => {
       }
     },
     ~onHistory=canUndo => reportHistory.contents(canUndo),
+    // The read side of `~onDeal`: what the console's printed board titles itself with.
+    // `liveDealSeed` is the resolved number — the same one both Share buttons offer — so
+    // a printed board names the deal the app would share, rather than re-deriving it from
+    // a `game.seed` that a posed or resumed board would make a liar of.
+    ~currentDeal=() => liveDealSeed.contents,
     // The deal number behind the board, resolved from what the scene can see to what
     // is actually true of the game on screen (#98).
     //
