@@ -105,6 +105,13 @@ export default defineConfig({
         // offline launch — without it the fonts aren't in the precache manifest
         // and the app would fall back to an OS font offline.
         globPatterns: ["**/*.{js,css,html,png,svg,woff2,webmanifest}"],
+        // …minus the link-preview image. `og-image.png` is a half-megabyte 2400×1260
+        // shot of the board (see scripts/generate/og-image.mjs) that only ever gets
+        // fetched by an unfurler's crawler, server-side, from the `og:image` tag —
+        // never by the app. Left in the manifest it lands in every visitor's cache
+        // on install, tripling the precache for a picture they can't see, and offline
+        // has nothing to gain: nobody unfurls a link from inside the running game.
+        globIgnores: ["og-image.png"],
         // SPA-style navigation fallback so a launch of the standalone app (or
         // an offline reload) always resolves to the shell.
         navigateFallback: "index.html",
