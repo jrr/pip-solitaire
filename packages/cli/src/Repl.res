@@ -5,6 +5,12 @@
 // keeps the whole loop headless and scriptable: `Cli.res` wires it to a terminal
 // (see there), while tests drive `run` over a canned script and assert the echo.
 //
+// There are *two* loops over this module now, because `cli play` reads a terminal and
+// a pipe alike: a live prompt line-at-a-time, and the batch fold `run` below. They
+// share `consider` — one pure "what does this line ask for" — so the only thing the
+// interactive shape adds is readline plumbing, and the shape that can't be tested
+// without a pty decides nothing.
+//
 // The *grammar* isn't here any more (#273): `Command.parse` in `core` turns a line
 // into a `Command.t`, and this module is what runs one against a session. The split
 // is the point — the web app's debug console types the same commands at the same
@@ -21,6 +27,7 @@
 //   print                re-print the current board
 //   games                list the available games
 //   help                 show this command surface
+//   quit / exit          end an interactive session (Ctrl-D does it too)
 //
 // A card is addressed by its compact identity (`AS`, `TH`, `KD` — see
 // `CardText`), a pile by its index, and the table by the word `table`.
@@ -59,6 +66,7 @@ ${Command.renderHelp(
           ("print", "re-print the current board"),
           ("games", "list the available games"),
           ("help", "show this help"),
+          ("quit", "end an interactive session (Ctrl-D does it too)"),
         ],
       ),
     )}
@@ -240,15 +248,14 @@ let dealFirstHint = (command: Command.t): option<string> =>
   | _ => None
   }
 
-// Interpret one command line against the current session, returning the updated
-// session and the text to show. Pure: no I/O — `Cli.res` prints the text and
-// carries the session forward. Unknown or malformed lines answer with guidance
-// rather than failing, so a scrolling session never dead-ends.
-let step = (~options: Options.t, session: option<session>, line: string): (
+// Interpret one already-parsed command against the current session, returning the
+// updated session and the text to show. Pure: no I/O — the caller prints the text and
+// carries the session forward. Unknown or malformed lines answer with guidance rather
+// than failing, so a scrolling session never dead-ends.
+let stepCommand = (~options: Options.t, session: option<session>, command: Command.t): (
   option<session>,
   string,
 ) => {
-  let command = Command.parse(line)
   // Every board verb funnels through here so the "deal a game first" answer is
   // written once rather than once per verb.
   let onBoard = run =>
@@ -267,6 +274,12 @@ let step = (~options: Options.t, session: option<session>, line: string): (
   // wipe, so the CLI takes it as a well-formed no-op rather than an unknown verb —
   // the grammar is shared even where the effect isn't.
   | Command.Clear => (session, "")
+  // Leaving a session is the *loop's* business, not the interpreter's: `consider`
+  // below intercepts this before it ever reaches here, and both drivers act on the
+  // `Ended` it returns. A line that arrives here anyway (a caller stepping a parsed
+  // command straight in) changes nothing, which is the only sound answer an
+  // interpreter with no loop to stop can give.
+  | Command.Quit => (session, "")
   | Command.Unknown({verb}) => (session, Command.describeUnknown(verb))
   | Command.Deal({game: Some(id), scenario}) => deal(id, scenario)
   | Command.Deal({game: None}) => (session, "Usage: deal <game> [scenario]\n\n" ++ gamesList())
@@ -280,24 +293,74 @@ let step = (~options: Options.t, session: option<session>, line: string): (
   }
 }
 
+// The same, from raw text: parse the line, then run it. The line-based entry point
+// most callers (and every test) want.
+let step = (~options: Options.t, session: option<session>, line: string): (
+  option<session>,
+  string,
+) => stepCommand(~options, session, Command.parse(line))
+
+// The prompt, in one place: written *before* the read in an interactive session and
+// *behind* the line in a batch transcript. Same string either way — that's what makes
+// the two shapes of `cli play` print the same thing, so a session on screen and a
+// piped transcript of the same commands are indistinguishable (and `examples/*.txt`
+// stays readable as a session log).
+let prompt = "pip> "
+
+// What a line asks the driver to *do*, decided once for both of them. The two loops
+// differ only in when they learn the answer — a terminal a line at a time, a pipe all
+// at once — so everything that decides anything lives here, on the pure side, and the
+// loops are left holding nothing but I/O.
+type outcome =
+  | Skipped // a blank line or a `#` comment: neither echoed nor run
+  | Ran({session: option<session>, output: string})
+  | Ended // `quit`/`exit`: the session is over
+
+// Decide one line. `#` comments and blanks are dropped *before* parsing, because a
+// comment isn't part of the grammar at all (`# note` would otherwise read as an
+// unknown verb) — which is what lets a piped example script annotate itself, and what
+// lets a whole such script be pasted into a live prompt and simply play.
+let consider = (~options: Options.t, session: option<session>, line: string): outcome => {
+  let trimmed = String.trim(line)
+  if trimmed == "" || String.startsWith(trimmed, "#") {
+    Skipped
+  } else {
+    switch Command.parse(line) {
+    | Command.Quit => Ended
+    | command =>
+      let (next, output) = stepCommand(~options, session, command)
+      Ran({session: next, output})
+    }
+  }
+}
+
 // Fold a whole script of command lines into a single transcript: each non-blank,
-// non-comment line is echoed behind a prompt, followed by its output. This is
-// what tests assert against — the reducer loop exercised end-to-end with no
-// terminal. Blank lines and `#` comments are skipped so a piped example script
-// can annotate itself without cluttering the transcript.
+// non-comment line is echoed behind the prompt, followed by its output. This is what
+// tests assert against — the reducer loop exercised end-to-end with no terminal — and
+// what a piped `cli play` prints.
+//
+// `quit` ends the transcript where it appears, the way `exit` ends a shell script:
+// it's echoed (a transcript should say why it stopped) and the rest of the input is
+// left unread.
 let run = (~options: Options.t=Options.default, lines: array<string>): string => {
   let session = ref(None)
   let out = []
-  lines->Array.forEach(line => {
-    let trimmed = String.trim(line)
-    if trimmed != "" && !String.startsWith(trimmed, "#") {
-      let (next, text) = step(~options, session.contents, line)
-      session := next
-      out->Array.push(`pip> ${trimmed}`)
-      if text != "" {
-        out->Array.push(text)
+  let ended = ref(false)
+  lines->Array.forEach(line =>
+    if !ended.contents {
+      switch consider(~options, session.contents, line) {
+      | Skipped => ()
+      | Ended =>
+        out->Array.push(prompt ++ String.trim(line))
+        ended := true
+      | Ran({session: next, output}) =>
+        session := next
+        out->Array.push(prompt ++ String.trim(line))
+        if output != "" {
+          out->Array.push(output)
+        }
       }
     }
-  })
+  )
   out->Array.join("\n\n")
 }

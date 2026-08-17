@@ -1207,6 +1207,11 @@ DebugConsole.setRunner(line => {
     DebugConsole.clear()
     ""
   | Command.Games => Command.gamesList()
+  // The CLI's session verb, answered here rather than forwarded: a panel isn't a
+  // session you leave, it's chrome you close, and the keys that close it are on the
+  // status line. This is the mirror image of the CLI accepting `clear` as a no-op —
+  // both front ends know every verb, even the ones only one of them can act on.
+  | Command.Quit => "Nothing to quit — press ` or esc to close the console."
   | Command.Unknown({verb}) => Command.describeUnknown(verb)
   | Command.Usage({message}) => message
   // Bare `deal`/`new` is the menu's New Game, reached the same way the button reaches

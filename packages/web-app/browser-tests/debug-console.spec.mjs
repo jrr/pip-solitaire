@@ -324,6 +324,21 @@ test("a rejected command explains itself in the same words the CLI uses", async 
   expect(encloses(cell, await cardBox(page, PENDING_KING))).toBe(true)
 })
 
+// The mirror image of the CLI accepting `clear` as a no-op: the panel knows the
+// terminal's session verb and answers it rather than forwarding it to the board, which
+// would have said only "that isn't something the board can do".
+test("quit is answered here, not forwarded to the board", async ({ page }) => {
+  await page.goto(FREECELL)
+  await settleBoard(page)
+  await openConsole(page)
+
+  await runCommand(page, "quit")
+  await expect(consoleLines(page).filter({ hasText: "Nothing to quit" })).toHaveCount(1)
+  // A panel is closed, not left: the console is still up and still holding the keyboard.
+  await expect(consolePanel(page)).toBeVisible()
+  await expect(consoleInput(page)).toBeFocused()
+})
+
 test("the prompt remembers what was typed, and clear empties the log", async ({ page }) => {
   await page.goto(FREECELL)
   await settleBoard(page)

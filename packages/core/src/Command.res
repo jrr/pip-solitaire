@@ -43,6 +43,11 @@ type t =
   | Games
   | Print
   | Clear // console-only: wipe the scrollback (#273); a scrolling CLI has none
+  // The mirror image of `Clear`: CLI-only, because only an interactive session is
+  // something you can *leave*. The panel is closed by the keys on its status line, so
+  // it answers this rather than acting on it — and, like `clear` in a terminal, a verb
+  // one front end can't act on is still a verb both front ends know.
+  | Quit
   // `deal`/`new`. What the argument *means* is the interpreter's: the CLI reads it
   // as a game id (with an optional `Scenario` name after it), the web console as a
   // FreeCell deal number. Absent, it's "deal me something fresh".
@@ -86,6 +91,7 @@ let parse = (line: string): t => {
   | Some("games") | Some("list") => Games
   | Some("print") | Some("board") | Some("show") => Print
   | Some("clear") | Some("cls") => Clear
+  | Some("quit") | Some("exit") => Quit
   | Some("undo") => Undo
   | Some("redo") => Redo
   | Some("finish") => Finish
