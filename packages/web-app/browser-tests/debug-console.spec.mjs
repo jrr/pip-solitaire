@@ -21,6 +21,23 @@ const ALMOST_WON = "/?scene=freecell&state=almost-won&animate=off"
 const consolePanel = (page) => page.locator("#debug-console")
 const consoleLines = (page) => page.locator("#debug-console-lines li")
 
+// ⇧` docks the console beside the board, or puts it back over it (#275). The console is
+// keyboard-only, so its mode is too — same physical key as the toggle, shifted.
+const pressDock = (page) => page.keyboard.press("Shift+Backquote")
+
+// The card footprint the layout has settled on, straight off the custom property
+// `applyScale` publishes. What "the board reflowed into the remaining width" means in a
+// number: docking narrows the observed box, the `ResizeObserver` re-runs the layout, and
+// the cards come out smaller.
+const cardWidth = (page) =>
+  page.evaluate(() =>
+    parseFloat(
+      getComputedStyle(document.querySelector(".stacking-playfield")).getPropertyValue(
+        "--card-w",
+      ),
+    ),
+  )
+
 // Every label showing in the scrollback, in order — what the panel is actually
 // narrating.
 const labels = (page) =>
@@ -177,4 +194,197 @@ test("an open console takes no input away from the board", async ({ page }) => {
   // And the whole move goes through, drag and all, with the panel up.
   await playTheWinningMove(page)
   await expect(page.locator(".win-overlay")).toHaveCount(1)
+})
+
+// --- Docked beside the board (#275) -----------------------------------------------
+//
+// The overlay is the wrong axis for FreeCell in a desktop window: `TableScene` fits the
+// tallest cascade fan plus the top row into the available *height*, so a band across the
+// top eats the scarce dimension and shrinks every card, while past a point the layout
+// throws surplus *width* away as equal left/right margins. Docked, the console is built
+// out of that discard — and the board is told about it in exactly one way: `.table-board`,
+// the box its `ResizeObserver` watches (#172), gets narrower.
+//
+// All of which is a layout claim, so all of which is measured here rather than in jsdom:
+// the board's rect, the panel's rect, and the card footprint the two produce between them.
+test.describe("docked beside the board", () => {
+  // Wide enough to clear the refusal test with room over: an eight-column board needs
+  // ~427px to keep cards above `minScale`, and the dock takes 340.
+  test.use({ viewport: { width: 1440, height: 900 } })
+
+  test("docking narrows the board rather than covering it", async ({ page }) => {
+    await page.goto(FREECELL)
+    await settleBoard(page)
+
+    const board = page.locator(".table-board")
+    const undocked = await board.boundingBox()
+    const undockedCard = await cardWidth(page)
+
+    await page.keyboard.press("Backquote")
+    await expect(consolePanel(page)).toBeVisible()
+    // The premise: overlaid, the panel lies *over* an untouched board.
+    expect((await board.boundingBox()).width).toBeCloseTo(undocked.width, 0)
+
+    await pressDock(page)
+    await expect(page.locator("html")).toHaveAttribute("data-console-dock", "on")
+
+    // The board gives up the dock's width and reflows into what's left — cards and all.
+    await expect
+      .poll(async () => (await board.boundingBox()).width)
+      .toBeLessThan(undocked.width)
+    const docked = await board.boundingBox()
+    const panel = await consolePanel(page).boundingBox()
+    expect(docked.width).toBeCloseTo(undocked.width - panel.width, 0)
+    // In *this* window the cards don't move at all, and that's the point of the whole
+    // exercise: the board is already ceiling-bound (`maxScale`), so the width the dock
+    // takes is width `applyScale` was discarding as equal left/right margins anyway. The
+    // console arrives for free. (The narrower window below is where the reflow shows.)
+    expect(await cardWidth(page)).toBeCloseTo(undockedCard, 1)
+
+    // …and nothing is hidden under anything: the two rects don't intersect, so every
+    // zone on the board is somewhere the console isn't.
+    expect(docked.x + docked.width).toBeLessThanOrEqual(panel.x + 0.5)
+    const zonesClear = await page.evaluate(() => {
+      const panelLeft = document.getElementById("debug-console").getBoundingClientRect().left
+      return [...document.querySelectorAll(".drop-zone")].every(
+        (zone) => zone.getBoundingClientRect().right <= panelLeft + 0.5,
+      )
+    })
+    expect(zonesClear).toBe(true)
+
+    // Undocking hands the width straight back.
+    await pressDock(page)
+    await expect(page.locator("html")).not.toHaveAttribute("data-console-dock", "on")
+    await expect
+      .poll(async () => (await board.boundingBox()).width)
+      .toBeCloseTo(undocked.width, 0)
+  })
+
+  test("a closed console stops holding the board's width", async ({ page }) => {
+    await page.goto(FREECELL)
+    await settleBoard(page)
+    const board = page.locator(".table-board")
+    const undocked = (await board.boundingBox()).width
+
+    await pressDock(page)
+    await expect(consolePanel(page)).toBeVisible()
+    await expect.poll(async () => (await board.boundingBox()).width).toBeLessThan(undocked)
+
+    // Closing puts the strip back: the mode is remembered, but a console nobody is
+    // looking at must not go on taking a slice of the playfield with it.
+    await page.keyboard.press("Escape")
+    await expect(consolePanel(page)).toBeHidden()
+    await expect(page.locator("html")).not.toHaveAttribute("data-console-dock", "on")
+    await expect.poll(async () => (await board.boundingBox()).width).toBeCloseTo(undocked, 0)
+  })
+
+  test("the dock mode survives a reload", async ({ page }) => {
+    await page.goto(FREECELL)
+    await settleBoard(page)
+    await pressDock(page)
+    await expect(page.locator("html")).toHaveAttribute("data-console-dock", "on")
+
+    await page.reload()
+    await settleBoard(page)
+    // Closed on load as always — the mode is remembered, the panel isn't.
+    await expect(consolePanel(page)).toBeHidden()
+    await expect(page.locator("html")).not.toHaveAttribute("data-console-dock", "on")
+
+    // …and the plain toggle brings it back docked, without having to say so again.
+    await page.keyboard.press("Backquote")
+    await expect(consolePanel(page)).toBeVisible()
+    await expect(page.locator("html")).toHaveAttribute("data-console-dock", "on")
+  })
+
+  test("the menu and a docked console are up together", async ({ page }) => {
+    await page.goto(FREECELL)
+    await settleBoard(page)
+    await pressDock(page)
+    await expect(consolePanel(page)).toBeVisible()
+
+    // The overlay's exclusion doesn't apply here — it exists because a band across the
+    // top covers the Menu button — so the log stays up beside the open menu.
+    await page.getByRole("button", { name: "Open menu" }).click()
+    await expect(page.locator("#menu-overlay")).toBeVisible()
+    await expect(consolePanel(page)).toBeVisible()
+
+    // Readable, not merely present: the dimming backdrop stops at the dock edge rather
+    // than washing over the log.
+    const rects = await page.evaluate(() => {
+      const box = (el) => {
+        const r = el.getBoundingClientRect()
+        return { left: r.left, right: r.right, top: r.top, height: r.height, width: r.width }
+      }
+      return {
+        backdrop: box(document.querySelector(".menu-overlay__backdrop")),
+        panel: box(document.getElementById("debug-console")),
+      }
+    })
+    expect(rects.backdrop.right).toBeLessThanOrEqual(rects.panel.left + 0.5)
+
+    // And the console is still just a panel: a click in it doesn't dismiss the menu.
+    await page.mouse.click(
+      rects.panel.left + rects.panel.width / 2,
+      rects.panel.top + rects.panel.height / 2,
+    )
+    await expect(page.locator("#menu-overlay")).toBeVisible()
+  })
+})
+
+test.describe("docked into a window with nothing to spare", () => {
+  // Wide enough to dock, but not wide enough to do it out of discarded margin: the board
+  // is at its `maxScale` ceiling undocked and drops below it once the dock is taken, so
+  // here the cards really do rescale — the `ResizeObserver` path (#172) doing its work.
+  test.use({ viewport: { width: 1000, height: 900 } })
+
+  test("the board reflows into the remaining width", async ({ page }) => {
+    await page.goto(FREECELL)
+    await settleBoard(page)
+    const before = await cardWidth(page)
+
+    await pressDock(page)
+    await expect(page.locator("html")).toHaveAttribute("data-console-dock", "on")
+    await expect.poll(() => cardWidth(page)).toBeLessThan(before)
+
+    // The cards shrank, and they shrank *into* the board — the whole row still clears
+    // the dock rather than sliding under it.
+    const clear = await page.evaluate(() => {
+      const panelLeft = document.getElementById("debug-console").getBoundingClientRect().left
+      return [...document.querySelectorAll(".stacking-card, .drop-zone")].every(
+        (el) => el.getBoundingClientRect().right <= panelLeft + 0.5,
+      )
+    })
+    expect(clear).toBe(true)
+
+    // …and back up again when the dock is given up.
+    await pressDock(page)
+    await expect.poll(() => cardWidth(page)).toBeCloseTo(before, 1)
+  })
+})
+
+test.describe("too narrow to dock", () => {
+  // Below the width at which the board would still clear `minScale` after giving up the
+  // dock (`TableScene.minStageWidth` is ~284px for eight columns, and the dock takes
+  // 340), so the toggle has to refuse rather than squeeze.
+  test.use({ viewport: { width: 500, height: 900 } })
+
+  test("the toggle refuses and the console stays an overlay", async ({ page }) => {
+    await page.goto(FREECELL)
+    await settleBoard(page)
+    const board = page.locator(".table-board")
+    const before = (await board.boundingBox()).width
+
+    await pressDock(page)
+    // The console comes up regardless — a refusal you can't see is indistinguishable
+    // from a key that did nothing — but it comes up as an overlay, and says why.
+    await expect(consolePanel(page)).toBeVisible()
+    await expect(page.locator("html")).not.toHaveAttribute("data-console-dock", "on")
+    expect((await board.boundingBox()).width).toBeCloseTo(before, 0)
+    await expect(consoleLines(page).filter({ hasText: "too narrow to dock" })).toHaveCount(1)
+
+    // …and it's still refused on the next press, rather than toggling into a mode it
+    // just declined.
+    await pressDock(page)
+    await expect(page.locator("html")).not.toHaveAttribute("data-console-dock", "on")
+  })
 })

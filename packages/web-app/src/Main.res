@@ -69,6 +69,11 @@ type model = {
   // state, deliberately unpersisted: the panel is always closed on load, so a
   // rendered screenshot or OG image can never carry one.
   consoleOpen: bool,
+  // Where that console sits when it's up (#275): overlaid across the top of the board,
+  // or docked into the discarded width beside it (`ConsoleDock`). Unlike `consoleOpen`
+  // this *is* persisted — a mode you flip by hand rather than an automatic breakpoint
+  // has to stay flipped — and it mirrors the `Preferences` value like `debugLog` does.
+  consoleDock: ConsoleDock.t,
   autoCollect: bool,
   cardTilt: bool,
   // "Wiggle Waggle" (#235): the shake-to-jostle switch, a state machine rather than a
@@ -126,6 +131,11 @@ type msg =
   | CloseMenu // backdrop / close button / a scene row was tapped
   | ToggleConsole // the ` key — drop the debug console over the board, or put it away (#271)
   | CloseConsole // Escape while the console is showing (#271)
+  // ⇧` — dock the console beside the board, or put it back over it (#275). The flag is
+  // the *live board's* verdict on whether it can spare the dock's width, read at the
+  // keypress and carried in (like `RefreshDetected`) so `update` stays a pure function
+  // of the model rather than reaching into the layout.
+  | ToggleConsoleDock(bool)
   | OpenSettings // the main menu's Settings button — swap to the Settings screen (#191)
   | BackToMenu // the Settings screen's back button — swap back to the main menu (#191)
   | OpenDebug // the Settings screen's Debug row — swap to the Debug screen
@@ -284,11 +294,32 @@ let notchDisplayEnabled = Preferences.loadNotchDisplay()
 let debugLogEnabled = Preferences.loadDebugLog()
 DebugLog.setConsoleEnabled(debugLogEnabled)
 
+// The persisted console dock mode (#275, defaults to the overlay). Unlike the flag
+// above there's nothing to apply at startup: the console is always closed on load, so
+// the dock only reaches the document root once one is opened (see `ConsoleDock.reflect`
+// — the attribute means docked *and* showing).
+let consoleDockMode = Preferences.loadConsoleDock()
+
 // The active board's "relayout" action (#65), sibling of `undoHook`: the mounted
 // `TableScene` publishes a thunk that re-lays every resting card, so a tilt toggle
 // can re-tilt the board in place at once. Cleared on each scene change and a no-op
 // until the next board republishes.
 let relayoutHook: ref<option<unit => unit>> = ref(None)
+
+// The live board's dock-refusal test (#275), sibling of `relayoutHook`: "could you give
+// up this many px of stage width and still deal cards above `minScale`?" (see
+// `TableScene`'s `~publishDockFit`). `None` on a scene with no board, which refuses —
+// there's nothing to dock beside.
+let dockFitHook: ref<option<float => bool>> = ref(None)
+
+// Whether the console may dock right now, asked of the stage as it actually stands.
+// Read at the keypress rather than inside `update`: the answer comes off live layout,
+// and the loop's update stays a pure function of the model.
+let dockFits = () =>
+  switch dockFitHook.contents {
+  | Some(fits) => fits(ConsoleDock.width)
+  | None => false
+  }
 
 // The persisted Wiggle Waggle *intent* (#235), read once at startup. It's intent, not
 // permission — the OS can revoke the grant behind us — so on relaunch the first board
@@ -322,11 +353,14 @@ let update = (msg, model) =>
   // Every screen change also abandons a part-finished run of reveal taps
   // (`HiddenOptions.reset`), here and in the five branches below: the counter only
   // ever spans one uninterrupted visit to the Settings screen.
-  // Opening the menu also puts the debug console away (#271): the menu is the modal
-  // chrome and takes the screen for itself, and the console's twin rule below closes
-  // the menu on the way in. Only ever one of the two is up.
+  // Opening the menu also puts an *overlaid* debug console away (#271): the menu is the
+  // modal chrome and takes the screen for itself, and the console's twin rule below
+  // closes the menu on the way in. A **docked** console is exempt (#275) — it's beside
+  // the board rather than over the Menu button, so nothing is in anything's way, and
+  // leaving the log up is the point: flip a debug setting and watch the line it emits.
   | ToggleMenu =>
     let menuOpen = !model.menuOpen
+    let putConsoleAway = menuOpen && !ConsoleDock.isDocked(model.consoleDock)
     (
       {
         ...model,
@@ -334,27 +368,65 @@ let update = (msg, model) =>
         menuScreen: Menu.Main,
         refreshBusy: false,
         hidden: HiddenOptions.reset(model.hidden),
-        consoleOpen: menuOpen ? false : model.consoleOpen,
+        consoleOpen: putConsoleAway ? false : model.consoleOpen,
       },
-      menuOpen ? () => DebugConsole.setOpen(false) : Html.noEffect,
+      putConsoleAway
+        ? () => DebugConsole.apply(~open_=false, ~dock=model.consoleDock)
+        : Html.noEffect,
     )
   // The ` key (#271). Opening subscribes the panel to `DebugLog` — a closed console
-  // isn't listening, so it costs nothing — and closes the menu if it was showing.
+  // isn't listening, so it costs nothing — and closes the menu if it was showing, unless
+  // it's opening docked, in which case the two coexist (see `ToggleMenu` above).
   | ToggleConsole =>
     let consoleOpen = !model.consoleOpen
+    let putMenuAway = consoleOpen && !ConsoleDock.isDocked(model.consoleDock)
     (
       {
         ...model,
         consoleOpen,
-        menuOpen: consoleOpen ? false : model.menuOpen,
-        menuScreen: consoleOpen ? Menu.Main : model.menuScreen,
+        menuOpen: putMenuAway ? false : model.menuOpen,
+        menuScreen: putMenuAway ? Menu.Main : model.menuScreen,
       },
-      () => DebugConsole.setOpen(consoleOpen),
+      () => DebugConsole.apply(~open_=consoleOpen, ~dock=model.consoleDock),
     )
   | CloseConsole =>
     model.consoleOpen
-      ? ({...model, consoleOpen: false}, () => DebugConsole.setOpen(false))
+      ? (
+          {...model, consoleOpen: false},
+          () => DebugConsole.apply(~open_=false, ~dock=model.consoleDock),
+        )
       : (model, Html.noEffect)
+  // ⇧` flips the dock (#275). `fits` is the live board's verdict on whether it can spare
+  // the width: a window too narrow keeps the mode it had and says so in the log rather
+  // than silently docking into a board that would then deal cards below `minScale`.
+  // Undocking is never refused — the overlay fits any window by construction.
+  //
+  // The console comes up either way, refusal included: a mode you can't see change isn't
+  // a mode, and the refusal is only legible in the panel it's about.
+  | ToggleConsoleDock(fits) =>
+    let wanted = ConsoleDock.isDocked(model.consoleDock) ? ConsoleDock.Overlay : ConsoleDock.Docked
+    let refused = ConsoleDock.isDocked(wanted) && !fits
+    let consoleDock = refused ? model.consoleDock : wanted
+    // Landing on the overlay while the menu is up is the exclusive case again, so it
+    // takes the same exit `ToggleConsole` does.
+    let putMenuAway = !ConsoleDock.isDocked(consoleDock)
+    (
+      {
+        ...model,
+        consoleDock,
+        consoleOpen: true,
+        menuOpen: putMenuAway ? false : model.menuOpen,
+        menuScreen: putMenuAway ? Menu.Main : model.menuScreen,
+      },
+      () => {
+        // Open first: `DebugLog` only publishes to subscribers, so a refusal announced
+        // before the panel subscribes would be announced to nobody.
+        DebugConsole.apply(~open_=true, ~dock=consoleDock)
+        refused
+          ? DebugLog.log("console", "too narrow to dock")
+          : Preferences.saveConsoleDock(consoleDock)
+      },
+    )
   | HistoryChanged(canUndo) =>
     canUndo == model.canUndo ? (model, Html.noEffect) : ({...model, canUndo}, Html.noEffect) // no change — don't re-render
   | CloseMenu =>
@@ -641,6 +713,7 @@ let gameScene = (game: Game.t) => {
     ~publishReadHistory=hook => readHistoryHook := Some(hook),
     ~publishUndo=hook => undoHook := Some(hook),
     ~publishRelayout=hook => relayoutHook := Some(hook),
+    ~publishDockFit=hook => dockFitHook := Some(hook),
     // Adopt the board's shake control (#235) and, if Wiggle Waggle is already on,
     // start it listening straight away — this is what re-applies an active shake to a
     // board that mounts (or re-deals) after the switch was flipped.
@@ -740,6 +813,9 @@ let switcher = SceneSwitcher.render(
     readHistoryHook := None
     loadHistoryHook := None
     relayoutHook := None
+    // …and its dock-refusal test (#275), so the console refuses to dock on a scene with
+    // no board to dock beside until the mounting one publishes its own.
+    dockFitHook := None
     // Drop the outgoing board's shake control (#235); its teardown already detached
     // the `devicemotion` listener. The mounting scene republishes its own, and the
     // `~publishShake` handler re-applies `shakeActive` to it.
@@ -1025,6 +1101,10 @@ let dispatch = Html.mount(
     // The debug console is closed on every load (#271) — it's opened by a keypress and
     // never remembered, so a rendered screenshot or link-preview image can't show one.
     consoleOpen: false,
+    // …but *where* it opens is remembered (#275): the mode is a deliberate choice, so
+    // it survives a reload. Nothing shows until a keypress opens the panel, so a
+    // screenshot taken on a load with `docked` saved still sees an untouched board.
+    consoleDock: consoleDockMode,
     // Mirror the persisted preferences so the menu's switches open in the right
     // position (the board reads the `options` and `tiltEnabled` refs directly).
     autoCollect: options.contents.autoCollect,
@@ -1075,12 +1155,16 @@ let dispatch = Html.mount(
 // Now that `dispatch` exists, let a scene row close the menu through it.
 closeMenu := (() => dispatch(CloseMenu))
 
-// …and arm the debug console's key (#271): ` drops it over the board, ` or Escape puts
+// …and arm the debug console's keys (#271): ` drops it over the board, ` or Escape puts
 // it away. A window listener, so it works wherever the focus happens to be — the board
 // is plain DOM with nothing focusable in the way.
 DebugConsole.installKeys(
   ~onToggle=() => dispatch(ToggleConsole),
   ~onClose=() => dispatch(CloseConsole),
+  // ⇧` docks it beside the board instead (#275). The board is asked *here*, at the
+  // keypress, whether it can spare the width — the answer is live layout, so it can't
+  // come from inside the loop's pure update.
+  ~onDock=() => dispatch(ToggleConsoleDock(dockFits())),
 )
 
 // Resume the shake grant on the first tap (#235). With `wantsShake` set, the switch

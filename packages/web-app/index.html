@@ -568,8 +568,10 @@
 
          `z-index: 15` puts it above the board (which isolates its own large numbers;
          see `.table-board`) and **below the menu** at 20: the menu is the modal chrome
-         and wins. The chrome model keeps the two from being up at once anyway, so this
-         is the belt to that pair of braces.
+         and wins. In this shape the chrome model keeps the two from being up at once
+         anyway, so this is the belt to that pair of braces — but docked (#275) the two
+         *do* coexist, and then the ordering is load-bearing rather than belt-and-braces
+         (see the backdrop inset that goes with it, further down).
 
          `hidden` (set by the chrome model) collapses it entirely when closed — needed
          explicitly because the `display: flex` here would otherwise out-specify the
@@ -616,6 +618,86 @@
 
       #debug-console[hidden] {
         display: none;
+      }
+
+      /* --- Docked (#275) ---------------------------------------------------------
+         The same panel, turned through 90°: a full-height column down the edge
+         *beside* the board rather than a band across the top of it. The axis is the
+         whole argument — `TableScene` fits the tallest cascade fan plus the top row
+         into the available height, so an overlay eats the scarce dimension and shrinks
+         every card, while past a point (`--rows-max-w`) the layout throws surplus
+         *width* away as equal left/right margins. This dock is built out of that
+         discard.
+
+         `--console-dock-inset` is the dock's width, published by `ConsoleDock` (in px,
+         the way `applyScale` publishes `--card-w`) so the one number is stated once in
+         ReScript: the CSS lays the panel out in it here, and the refusal test subtracts
+         it from the stage there. `data-console-dock="on"` means docked *and showing* —
+         a closed console must not go on holding a strip of the board.
+
+         The side is opposite the menu, which enters from the left and mirrors right
+         under `html[data-cutout="right"]` — hence the mirror block below keyed off that
+         same attribute. It never fires in practice (that regime is phone-only, and
+         docking is refused at those widths); it's here so the invariant holds if the
+         menu ever moves for another reason. */
+      html[data-console-dock="on"] #debug-console {
+        top: 0;
+        bottom: 0;
+        left: auto;
+        right: 0;
+        height: auto;
+        width: calc(env(safe-area-inset-right) + var(--console-dock-inset, 0px));
+        /* No 3rem top inset here: docked, the panel is nowhere near the top bar's Menu
+           button (both controls sit at the bar's left end), so the log starts at the
+           top of the screen. */
+        padding: calc(env(safe-area-inset-top) + 0.6rem) calc(env(safe-area-inset-right) + 0.6rem)
+          calc(env(safe-area-inset-bottom) + 0.35rem) 0.6rem;
+        border-bottom: none;
+        border-left: 1px solid #2b3b58;
+        box-shadow: -8px 0 24px rgba(0, 0, 0, 0.45);
+        /* **Takes pointer events**, the exact inverse of the overlay's trick above and
+           the reason this had to land before the input line (#273). The overlay is
+           pointer-transparent because it covers the free cells, the foundations and the
+           Menu button; docked it covers none of them — the board has been narrowed out
+           of the way — so nothing is gained by refusing input and a great deal is lost:
+           the log can be clicked, selected and scrolled natively instead of through
+           `DebugConsole`'s hand-forwarded wheel events (which unbind themselves in this
+           mode, or every turn would scroll twice). */
+        pointer-events: auto;
+      }
+
+      /* The mirror: the menu enters from the right in this regime, so the console docks
+         left. */
+      html[data-cutout="right"][data-console-dock="on"] #debug-console {
+        right: auto;
+        left: 0;
+        width: calc(env(safe-area-inset-left) + var(--console-dock-inset, 0px));
+        padding-right: 0.6rem;
+        padding-left: calc(env(safe-area-inset-left) + 0.6rem);
+        border-left: none;
+        border-right: 1px solid #2b3b58;
+        box-shadow: 8px 0 24px rgba(0, 0, 0, 0.45);
+      }
+
+      /* The other half of docking, and the only thing the board is ever told about it:
+         narrow `.table-board`. That box is what `TableScene`'s `ResizeObserver` watches
+         (#172), so shrinking it re-runs the layout the resize path already runs —
+         `applyScale` resizes the cards, `reflowAll` moves the piles, loose cards scale
+         by the width ratio — and the board simply reflows into what's left. Every other
+         scene is untouched, which a flex-sibling restructure of the chrome would not
+         have managed.
+
+         `align-self` is what keeps the board flush against the far edge instead of
+         being re-centred by `#scene-container`'s `align-items: center` — with the base
+         `width: 100%` the two are indistinguishable, so this only ever matters here. */
+      html[data-console-dock="on"] .table-board {
+        align-self: flex-start;
+        width: calc(100% - env(safe-area-inset-right) - var(--console-dock-inset, 0px));
+      }
+
+      html[data-cutout="right"][data-console-dock="on"] .table-board {
+        align-self: flex-end;
+        width: calc(100% - env(safe-area-inset-left) - var(--console-dock-inset, 0px));
       }
 
       /* The status line at the foot: what this panel is, and the keys that work it.
@@ -686,6 +768,25 @@
         position: absolute;
         inset: 0;
         background: rgba(2, 6, 16, 0.6);
+      }
+
+      /* …but it stops at the dock edge while a docked console is showing (#275), so the
+         two can be up together: the board dims and the log stays readable beside it,
+         which is the whole point of dropping the menu/console exclusion in that mode
+         (open the menu, flip a debug setting, watch the line it emits).
+
+         Insetting the *backdrop* rather than raising the console above the menu's
+         `z-index: 20` is deliberate on three counts: the menu panel still wins any
+         overlap the two could ever have, a click in the console isn't a click on the
+         backdrop and so doesn't dismiss the menu, and the layering stays the simple
+         "chrome is modal" rule it has always been. */
+      html[data-console-dock="on"] .menu-overlay__backdrop {
+        right: calc(env(safe-area-inset-right) + var(--console-dock-inset, 0px));
+      }
+
+      html[data-cutout="right"][data-console-dock="on"] .menu-overlay__backdrop {
+        right: 0;
+        left: calc(env(safe-area-inset-left) + var(--console-dock-inset, 0px));
       }
 
       /* The panel itself: a column that slides in from the left, tall enough to

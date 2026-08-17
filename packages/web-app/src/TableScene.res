@@ -316,6 +316,23 @@ let maxScale = 1.35
 // rather than the columns butting card-to-card.
 let fillFraction = 0.9
 
+// The narrowest stage a row of `columns` piles can be laid into with the cards still
+// clearing the `minScale` floor: `applyScale`'s width target (`fillFraction · avail /
+// columns / cardW`) solved for the floor instead of for the scale.
+//
+// Docking the debug console (#275) takes a strip of that width away from the board, and
+// is *refused* when what's left falls below this — the layout's own arithmetic rather
+// than a guessed pixel breakpoint. Below the floor `applyScale` clamps rather than
+// clipping, so a docked board would still render; it would just render at cards the
+// width fit no longer sized, which is precisely the outcome the refusal exists to
+// prevent.
+//
+// Note what this is and isn't: it's the *width* term of the clamp, so it says nothing
+// about the height term that binds on a short screen. A landscape phone is wide enough
+// on paper to clear this — it just has nothing worth docking beside. Docking there stays
+// out of scope by being keyboard-only rather than by being refused here.
+let minStageWidth = (~columns: int) => minScale *. Int.toFloat(columns) *. cardW /. fillFraction
+
 // The widest each `space-evenly` gap between columns is allowed to open before
 // the row stops spreading (#173). Past the point where the cards have hit their
 // ceiling (`scale` capped at `maxScale`), a wider stage keeps pouring its extra
@@ -597,6 +614,11 @@ let make = (
   ~publishReadHistory: option<(unit => option<History.t<GameState.t>>) => unit>=?,
   ~publishUndo: option<(unit => unit) => unit>=?,
   ~publishRelayout: option<(unit => unit) => unit>=?,
+  // `~publishDockFit` (#275) hands the chrome the board's answer to one question: could
+  // you give up this many px of stage width and still deal cards above `minScale`? It's
+  // what the debug console's dock toggle consults before agreeing to dock, so the
+  // refusal is the layout's own verdict rather than a breakpoint guessed on its behalf.
+  ~publishDockFit: option<(float => bool) => unit>=?,
   // `~publishShake` (#235) hands the chrome the board's shake control (start/stop
   // listening). Published once per mount, since the control drives the *live* board
   // through the mount-scope `boardOps` ref rather than closing over one build.
@@ -662,6 +684,12 @@ let make = (
     // Game reflows the fresh board rather than the torn-down one whose closure the
     // observer would otherwise still hold. Starts a no-op until the first build.
     let resizeRelayout = ref(() => ())
+
+    // The live board's answer to the debug console's dock-refusal test (#275), held at
+    // mount scope for the same reason as `resizeRelayout` above: the column count it
+    // measures against belongs to a *build*, so each `buildBoard` repoints this at its
+    // own. Until the first build there's no board to ask, so nothing may be docked.
+    let dockFit: ref<float => bool> = ref(_ => false)
 
     // The live board's shake operations (#235), held at mount scope so the single
     // shake subscription below always jostles — or squares up — the *current* board:
@@ -974,6 +1002,25 @@ let make = (
           px(Int.toFloat(widestRow) *. zoneWidth +. Int.toFloat(widestRow + 1) *. maxColumnGap),
         )
       }
+
+      // The dock-refusal test for *this* board (#275): could it give up `inset` px of
+      // stage width and still deal cards above `minScale`? Same two terms `applyScale`
+      // works from — the stage, less the display cutaway `.drop-rows` is pinned inside
+      // (#179) — against the floor solved for width (`minStageWidth`).
+      //
+      // Measured off `container`, the scene box the board is laid into, rather than off
+      // `playfield`: the playfield is exactly what docking narrows, so reading it would
+      // ask whether an *already docked* board could dock again, and undocking-then-
+      // redocking would ratchet the board away. The container's width doesn't move.
+      dockFit :=
+        (
+          inset => {
+            let stage = boundingRect(container).width
+            let cs = getComputedStyle(rows)
+            let cutaway = parseFloat(cs["left"]) +. parseFloat(cs["right"])
+            stage -. cutaway -. inset >= minStageWidth(~columns=widestRow)
+          }
+        )
 
       // The zone the dragged card's rect hits, if any — the shared primitive for
       // both the live hover highlight and the snap-on-drop decision. Horizontally
@@ -2148,6 +2195,13 @@ let make = (
     // each build repoints at its own history.
     switch publishReadHistory {
     | Some(publish) => publish(() => readHistory.contents())
+    | None => ()
+    }
+
+    // …and the dock-refusal test (#275), the same way: published once per mount, the
+    // thunk deferring to the mount-scope ref so it always asks the board on the table.
+    switch publishDockFit {
+    | Some(publish) => publish(inset => dockFit.contents(inset))
     | None => ()
     }
     container->WebDom.appendChild(boardHost)->ignore
