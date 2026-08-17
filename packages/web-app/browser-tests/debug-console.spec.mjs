@@ -489,6 +489,44 @@ test("redeal replays the deal on the table", async ({ page }) => {
   await expect(page.getByRole("button", { name: "Undo" })).toBeDisabled()
 })
 
+// The driver's flags, typed. Auto-collect has a menu switch; the column-reorder house
+// rule (#159) has no control anywhere, so the console is the only way to reach it.
+test("set changes the driver's flags, through the app's own switch", async ({ page }) => {
+  await page.goto(FREECELL)
+  await settleBoard(page)
+  await openConsole(page)
+
+  // The two rows a `set` listing ends with — read off the foot of the scrollback, since
+  // the echoed command and the one-line acknowledgement say the same words as the row.
+  const settingsShown = async () =>
+    (await consoleLines(page).allTextContents())
+      .slice(-2)
+      .map((line) => line.trim().replace(/\s+/g, " "))
+
+  await runCommand(page, "set")
+  expect(await settingsShown()).toEqual(["autocollect on", "reorder on"])
+
+  // A typed auto-collect goes through the very action the Settings switch dispatches,
+  // rather than writing the shared ref behind the UI's back. The tell is the *saved
+  // preference*: the action persists it, a bare ref write wouldn't.
+  await runCommand(page, "set autocollect off")
+  await expect
+    .poll(() => page.evaluate(() => localStorage.getItem("pip.autoCollect")))
+    .toBe("false")
+
+  // The house rule has no switch to keep in step, so it goes straight to the ref the
+  // board reads at each move.
+  await runCommand(page, "set reorder off")
+  await runCommand(page, "set")
+  expect(await settingsShown()).toEqual(["autocollect off", "reorder off"])
+
+  // And a setting we don't have is refused in the words the CLI uses.
+  await runCommand(page, "set frobnicate on")
+  await expect(
+    consoleLines(page).filter({ hasText: `Not a setting: "frobnicate"` }),
+  ).toHaveCount(1)
+})
+
 test("the backtick still closes the console from inside the prompt", async ({ page }) => {
   await page.goto(FREECELL)
   await settleBoard(page)

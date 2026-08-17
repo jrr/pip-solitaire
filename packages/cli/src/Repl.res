@@ -28,6 +28,7 @@
 //   movecol <from> <to>  reorder the cascade columns — insert-and-shift (#159)
 //   undo / redo          step back and forth over the history of accepted moves (#85)
 //   print                re-print the current board
+//   set [<setting> on|off]  show the driver's flags, or change one
 //   games                list the available games
 //   help                 show this command surface
 //   quit / exit          end an interactive session (Ctrl-D does it too)
@@ -44,7 +45,12 @@ open Card
 // What the driver is doing right now: which game is in play and the *history* of
 // states it has passed through (#85), so `undo`/`redo` can step over them. The
 // live position is `History.present(history)`; `None` before the first `deal`.
-type session = {game: Game.t, history: History.t<GameState.t>}
+//
+// `seed` is the deal number this board is showing, kept beside the game because the two
+// can disagree: a posed position (`Scenario`) sits on a game whose own seed didn't
+// produce it, so it reports the deal it has been *proved* to descend from — usually
+// none. It's the same fact, and the same rule, the web app reports through `~onDeal`.
+type session = {game: Game.t, seed: option<int>, history: History.t<GameState.t>}
 
 // The live snapshot for a session — the present of its history. Every read below
 // goes through this rather than a stored field, so the history stays the single
@@ -61,7 +67,7 @@ let help = () =>
   `Commands:
 ${Command.renderHelp(
       Array.concat(
-        Array.concat(Command.dealHelp, Command.boardHelp),
+        Array.concat(Array.concat(Command.dealHelp, Command.boardHelp), Command.driverHelp),
         [
           ("print", "re-print the current board"),
           ("games", "list the available games"),
@@ -77,7 +83,7 @@ Games:
 ${gamesList()}`
 
 // The board for a live session — the shared renderer over its present snapshot.
-let renderBoard = (s: session): string => Render.stateBoard(~game=s.game, present(s))
+let renderBoard = (s: session): string => Render.stateBoard(~game=s.game, ~deal=?s.seed, present(s))
 
 // Settle an accepted move: run safe auto-collect (#125) when the option is on,
 // returning the settled state; `autoCollect: false` (or a finishable board)
@@ -118,8 +124,8 @@ let boardText = (s: session): string => {
 
 // Open a session on a state, printed. A deal starts a clean history — there's nothing
 // before the opening position to undo back to (#85).
-let session = (game: Game.t, state: GameState.t): (option<session>, string) => {
-  let s = {game, history: History.make(state)}
+let session = (~seed: option<int>, game: Game.t, state: GameState.t): (option<session>, string) => {
+  let s = {game, seed, history: History.make(state)}
   (Some(s), renderBoard(s))
 }
 
@@ -141,14 +147,19 @@ let deal = (
   scenario: option<string>,
 ): (option<session>, string) =>
   switch Command.resolveDeal(~game, ~scenario) {
+  // A dealt board reports the number that dealt it (`Game.freecellDeal` records it), a
+  // named game its own, and a posed position the deal it descends from — which for all
+  // but `almost-won` is none, so the board says nothing rather than naming a deal it
+  // didn't come from.
   | Command.Fresh =>
     let dealt = Game.freecellDeal(~seed=newSeed())
-    session(dealt, GameState.initial(dealt))
+    session(~seed=dealt.seed, dealt, GameState.initial(dealt))
   | Command.Numbered({seed}) =>
     let dealt = Game.freecellDeal(~seed)
-    session(dealt, GameState.initial(dealt))
-  | Command.Named({game, position: None}) => session(game, GameState.initial(game))
-  | Command.Named({game, position: Some(position)}) => session(game, position.build(game))
+    session(~seed=dealt.seed, dealt, GameState.initial(dealt))
+  | Command.Named({game, position: None}) => session(~seed=game.seed, game, GameState.initial(game))
+  | Command.Named({game, position: Some(position)}) =>
+    session(~seed=position.seed, game, position.build(game))
   // A refusal hands `current` straight back, so a mistyped `deal` doesn't cost you the
   // game you were playing — it just says what it couldn't read. (It used to drop the
   // session, which made a typo the most destructive thing you could enter.)
@@ -161,7 +172,10 @@ let deal = (
 // board is the same one and the history starts clean — and a session opened at a posed
 // position restarts to that game's real deal rather than the pose, which is exactly what
 // the button does (see `TableScene`'s `publishRestart`).
-let redeal = (s: session): (option<session>, string) => session(s.game, GameState.initial(s.game))
+// The board it rebuilds is the game's opening deal, so the number it reports is the
+// game's own — a restart from a posed position lands on a board that really is that deal.
+let redeal = (s: session): (option<session>, string) =>
+  session(~seed=s.game.seed, s.game, GameState.initial(s.game))
 
 // Dispatch one parsed `Reducer.action` — a `Move`, a `MoveRun` (#123) or a
 // `MoveColumn` (#159) — against the current session, printing the new board on `Ok`
@@ -311,10 +325,20 @@ let stepCommand = (
   // command straight in) changes nothing, which is the only sound answer an
   // interpreter with no loop to stop can give.
   | Command.Quit => (session, "")
+  // The driver's flags are the *loop's* state too, for exactly the reason quitting is:
+  // `~options` here is one call's value, so a change made through it couldn't outlive the
+  // command that made it. `consider` answers both before they reach here; a caller
+  // stepping one in directly can still read them, but setting one changes nothing.
+  | Command.Settings => (session, Command.describeSettings(options))
+  | Command.Set(_) => (session, "")
   | Command.Unknown({verb}) => (session, Command.describeUnknown(verb))
   // Every shape of `deal` — bare, numbered, named, at a position — reads the same here as
   // it does in the panel, because the reading is `core`'s (see `Command.resolveDeal`).
   | Command.Deal({game, scenario}) => deal(~newSeed, ~current=session, game, scenario)
+  // A malformed *board* verb is answered "deal a game first" when there's no game, since
+  // that's the more useful complaint — but a malformed `set` is about the driver's own
+  // flags, which exist whether or not a board does, so it says what it couldn't read.
+  | Command.Usage({verb: "set", message}) => (session, message)
   | Command.Usage({message}) => onBoard(_ => (session, message))
   | Command.Print => onBoard(s => (session, renderBoard(s)))
   | Command.Undo => onBoard(undo)
@@ -348,7 +372,14 @@ let prompt = "pip> "
 // loops are left holding nothing but I/O.
 type outcome =
   | Skipped // a blank line or a `#` comment: neither echoed nor run
-  | Ran({session: option<session>, output: string})
+  // Everything that ran: the driver's state after it (the session *and* the flags, since
+  // `set` changes those) and the text to show. Both come back on every line, changed or
+  // not, so a loop adopts the pair rather than deciding which half moved.
+  | Ran({session: option<session>, options: Options.t, output: string})
+  // `clear`: wipe the screen, if this driver has one. Nothing else changes — which is why
+  // it carries no state. A batch fold has no screen and treats it as a well-formed line
+  // that prints nothing, exactly as it always did.
+  | Cleared
   | Ended // `quit`/`exit`: the session is over
 
 // Decide one line. `#` comments and blanks are dropped *before* parsing, because a
@@ -367,9 +398,20 @@ let consider = (
   } else {
     switch Command.parse(line) {
     | Command.Quit => Ended
+    | Command.Clear => Cleared
+    | Command.Settings => Ran({session, options, output: Command.describeSettings(options)})
+    // The one command that changes the *driver* rather than the board. Handed back as
+    // part of the state so the loop carries it into the next line — which is what makes
+    // a setting stick for the rest of the session.
+    | Command.Set({setting, on}) =>
+      Ran({
+        session,
+        options: Options.apply(options, ~setting, ~on),
+        output: Command.describeSet(~setting, ~on),
+      })
     | command =>
       let (next, output) = stepCommand(~options, ~newSeed, session, command)
-      Ran({session: next, output})
+      Ran({session: next, options, output})
     }
   }
 }
@@ -388,17 +430,23 @@ let run = (
   lines: array<string>,
 ): string => {
   let session = ref(None)
+  // `~options` is where the fold *starts*; a `set` line moves it from there.
+  let flags = ref(options)
   let out = []
   let ended = ref(false)
   lines->Array.forEach(line =>
     if !ended.contents {
-      switch consider(~options, ~newSeed, session.contents, line) {
+      switch consider(~options=flags.contents, ~newSeed, session.contents, line) {
       | Skipped => ()
       | Ended =>
         out->Array.push(prompt ++ String.trim(line))
         ended := true
-      | Ran({session: next, output}) =>
+      // Nothing to wipe in a transcript, so the line is echoed and says nothing — the
+      // shape `clear` has always had here.
+      | Cleared => out->Array.push(prompt ++ String.trim(line))
+      | Ran({session: next, options: flags', output}) =>
         session := next
+        flags := flags'
         out->Array.push(prompt ++ String.trim(line))
         if output != "" {
           out->Array.push(output)

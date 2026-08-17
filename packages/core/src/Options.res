@@ -22,7 +22,60 @@
 type t = {autoCollect: bool, allowColumnReorder: bool}
 
 // The shipped default: auto-collect on and column reordering allowed (our
-// variant's house rule). Both drivers read this today; no UI control is exposed
-// yet, so this is the only value in play until a settings toggle (#112) is wired
-// to set the fields.
+// variant's house rule).
 let default = {autoCollect: true, allowColumnReorder: true}
+
+// --- Addressing a flag by name -----------------------------------------------
+// The fields above, as a value a *command* can name: what `set autocollect off` sets.
+// The settings are a closed set, and which ones exist is knowable from the text alone,
+// so this lives here beside the record rather than in either front end — and the shared
+// parser can hand over a typed setting instead of a string each driver re-checks.
+//
+// It's also the only way to reach `allowColumnReorder` at all: the menu has a switch for
+// auto-collect and none for the house rule, so before this the flag could only be
+// changed by editing `default`.
+type setting =
+  | AutoCollect
+  | ColumnReorder
+
+let all = [AutoCollect, ColumnReorder]
+
+// The canonical name of a setting — what `set` takes and what a listing shows.
+let name = (s: setting): string =>
+  switch s {
+  | AutoCollect => "autocollect"
+  | ColumnReorder => "reorder"
+  }
+
+let parse = (token: string): option<setting> =>
+  switch token->String.toLowerCase {
+  | "autocollect" | "auto-collect" | "collect" => Some(AutoCollect)
+  | "reorder" | "columnreorder" | "movecol" => Some(ColumnReorder)
+  | _ => None
+  }
+
+// The value half: what counts as on and off. Generous about spelling, because a flag
+// refused over `true` vs `on` teaches nothing.
+let parseFlag = (token: string): option<bool> =>
+  switch token->String.toLowerCase {
+  | "on" | "true" | "yes" | "1" => Some(true)
+  | "off" | "false" | "no" | "0" => Some(false)
+  | _ => None
+  }
+
+let read = (o: t, s: setting): bool =>
+  switch s {
+  | AutoCollect => o.autoCollect
+  | ColumnReorder => o.allowColumnReorder
+  }
+
+let apply = (o: t, ~setting: setting, ~on: bool): t =>
+  switch setting {
+  | AutoCollect => {...o, autoCollect: on}
+  | ColumnReorder => {...o, allowColumnReorder: on}
+  }
+
+// Every setting and its value, as rows for a front end to render (`Command.renderHelp`
+// aligns them, the same way it aligns the help listing).
+let rows = (o: t): array<(string, string)> =>
+  all->Array.map(s => (name(s), read(o, s) ? "on" : "off"))

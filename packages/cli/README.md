@@ -96,6 +96,9 @@ home <card>              send a card to its foundation, if one will take it
 movecol <from> <to>      reorder cascade columns: pull <from>, drop it at <to>
 finish                   sweep every card home to win, when the board is drainable
 undo / redo              step back and forth over the accepted moves
+set                      show the driver settings
+set <setting> on|off     change one (autocollect, reorder)
+clear                    wipe the screen (a live prompt only)
 print                    re-print the current board
 games                    list the available games
 help                     show the command surface
@@ -112,7 +115,17 @@ quit / exit              end an interactive session (Ctrl-D does it too)
 - **`redeal`** is the menu's Restart button as a verb: the same deal from its
   opening layout, with a clean history. From a posed position it goes to the
   game's real deal, not back to the pose — exactly what the button does.
-
+- **The board names its deal**: a dealt FreeCell board prints `FreeCell — deal
+  #12345`, so the number you'd need to open it again (here or in the browser) is
+  on screen rather than only in what you typed. A posed position names only a
+  deal it has been *proved* to descend from, and a fixed-layout demo names none.
+- **`set` changes the driver's flags** (`Options`) for the rest of the session —
+  `set autocollect off`, `set reorder on`. It's shared with the web console,
+  where it's the only way to reach the column-reorder house rule at all: that one
+  has no switch in the menu.
+- **`clear`** wipes the terminal at a live prompt. In a piped script there's no
+  screen, so it's a well-formed line that prints nothing — the shape it has
+  always had.
 - **Cards** are named by a compact identity: a rank (`A 2-9 T J Q K`, or the
   two-digit `10`) followed by a suit letter (`S H D C`) — `AS`, `TH`/`10H`,
   `KD`. Case-insensitive. See `core`'s `CardText.res`.

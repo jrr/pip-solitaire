@@ -64,6 +64,13 @@ type readlineOptions = {input: stream, output: stream, prompt: string}
 @send external onClose: (readline, @as("close") _, unit => unit) => unit = "on"
 @send external close: readline => unit = "close"
 
+// Wipe the terminal: the visible screen (`2J`), the scrollback behind it (`3J` — what
+// makes this the panel's `clear` rather than a screenful of blank lines), and the cursor
+// home (`H`). Built from the escape character rather than written as a literal so the
+// bytes are unambiguous.
+let escape = String.fromCharCode(27)
+let clearScreen = () => Console.log(`${escape}[2J${escape}[3J${escape}[H`)
+
 // Where a fresh `deal`/`new` gets its deal number. `Math.random` belongs out here at the
 // impure edge, not in the interpreter — the same line the web app draws with
 // `Main.randomSeed`, and the reason `Repl`'s own default is deterministic: a test folds a
@@ -110,6 +117,9 @@ let script = (start: option<string>): string => {
 // down to plumbing with no decisions in it.
 let interactive = (start: option<string>): unit => {
   let session = ref(None)
+  // The driver's flags, carried across lines so a `set` sticks for the session. The batch
+  // fold keeps its own for the length of a script; here it's the length of the sitting.
+  let flags = ref(Options.default)
   let rl = createInterface({input: stdin, output: stdout, prompt: Repl.prompt})
   // Whether the session is still going. `quit` clears it, which both suppresses the
   // next prompt and tells the close handler the newline below isn't wanted.
@@ -127,13 +137,20 @@ let interactive = (start: option<string>): unit => {
     }
 
   let play = (line: string): unit =>
-    switch Repl.consider(~options=Options.default, ~newSeed=randomSeed, session.contents, line) {
+    switch Repl.consider(~options=flags.contents, ~newSeed=randomSeed, session.contents, line) {
     | Repl.Skipped => ()
     | Repl.Ended =>
       alive := false
       close(rl)
-    | Repl.Ran({session: next, output}) =>
+    // `clear` finally means something: an interactive session *has* a screen, which is
+    // what the panel's version wipes. Both halves go, the visible screen and the
+    // scrollback above it, because the panel's `clear` empties its whole ring rather
+    // than just the lines on show. Reachable only here — a redirected stdin takes the
+    // batch fold, which has no screen to write escapes at.
+    | Repl.Cleared => clearScreen()
+    | Repl.Ran({session: next, options: flags', output}) =>
       session := next
+      flags := flags'
       show(output)
     }
 

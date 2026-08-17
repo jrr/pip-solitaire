@@ -265,7 +265,7 @@ let helpText = () =>
   "Commands:\n" ++
   Command.renderHelp(
     Array.concat(
-      Array.concat(Command.dealHelp, Command.boardHelp),
+      Array.concat(Array.concat(Command.dealHelp, Command.boardHelp), Command.driverHelp),
       [("clear", "empty this scrollback"), ("help", "show this help")],
     ),
   ) ++
