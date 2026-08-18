@@ -1693,14 +1693,19 @@ let make = (
           // to fly: `reflowAll` (inside the flight path) simply re-lays the board.
           | Reducer.MoveColumn(_) => playAction(~movers=[], ~collect=false, action)
           }
-        // A destination named as a card or a column label (`move 8H 9S`, `move 8H T3`),
-        // resolved against this board by the shared reader — so the panel picks the same
-        // pile the CLI would, and the move that follows is an ordinary dispatched one
-        // with the ordinary flight.
-        | Command.MoveTo({cards, where}) =>
-          switch Command.resolveWhere(~game, state.contents, where) {
-          | Ok(to) => playAction(~movers=cards, Command.moveAction(~cards, ~to))
-          | Error(message) => Render.text(message)
+        // A move with a half only a board can read — a destination named as a card or a
+        // column label (`move 8H 9S`, `move 8H T3`), a source named as the place it's
+        // showing in (`move C1 F1`, `moverun T6 T2`), or both — resolved against this
+        // board by the shared readers, so the panel lifts and lands on the same piles the
+        // CLI would and the move that follows is an ordinary dispatched one with the
+        // ordinary flight.
+        | Command.MoveTo({from, where}) =>
+          switch (
+            Command.resolveFrom(~game, state.contents, from),
+            Command.resolveWhere(~game, state.contents, where),
+          ) {
+          | (Ok(cards), Ok(to)) => playAction(~movers=cards, Command.moveAction(~cards, ~to))
+          | (Error(message), _) | (_, Error(message)) => Render.text(message)
           }
         // `home <card>` names no destination, so resolve one here — through the very
         // `validMoves` the double-tap send-home uses (#196), which is what makes a typed

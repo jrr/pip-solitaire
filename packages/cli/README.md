@@ -102,9 +102,10 @@ deal <n>                 deal FreeCell game number <n>  (e.g. deal 12345)
 deal <game> [position]   deal a named game, at a named position if given
 new                      deal a fresh game
 redeal / restart         play the current deal again from the start (same board)
-move <card> <where>      move a card   (e.g. move AS T3, mv 2H 3C, m AS 0)
+move <what> <where>      move a card   (e.g. move AS T3, mv 2H 3C, m C1 F1)
 move <card> table        move a card loose onto the table (free games only)
-moverun <card>… <where>  supermove an ordered run, cards bottom-first
+moverun <what> <where>   supermove an ordered run: its cards bottom-first, or
+                         the column it's showing in (moverun T6 T2)
 home <card>              send a card to its foundation, if one will take it
 movecol <from> <to>      reorder cascade columns: pull <from>, drop it at <to>
 finish                   sweep every card home to win, when the board is drainable
@@ -142,6 +143,12 @@ quit / exit              end an interactive session (Ctrl-D does it too)
 - **Cards** are named by a compact identity: a rank (`A 2-9 T J Q K`, or the
   two-digit `10`) followed by a suit letter (`S H D C`) — `AS`, `TH`/`10H`,
   `KD`. Case-insensitive. See `core`'s `CardText.res`.
+- **Any verb may be shortened to an unambiguous prefix.** `p` prints, `u` undoes,
+  `de 12345` deals — the table of verbs is in `core`'s `Command.res`. A whole word
+  always wins over a prefix of a longer verb, and a prefix that fits two verbs is
+  refused by name (`h` says it could be `help` or `home`) rather than resolved to
+  whichever came first. `m`, `mv`, `new`, `list`, `board`, `cls`, `exit` and
+  `restart` are pinned spellings on top of that.
 - **`move` has three shorthands and three destinations.** The verb is `move`, `mv`
   or `m` — it's the line you type most — and where it sends the card can be said
   any of these ways:
@@ -157,6 +164,15 @@ quit / exit              end an interactive session (Ctrl-D does it too)
     reducer itself speaks, and unchanged.
 
   The same three work for `moverun`'s destination. The table is the word `table`.
+- **What to move can be said as a place, too.** A card names itself (`move 8H T3`),
+  but the board prints `C1` over the cell and prints nothing over "the Ten of Clubs
+  currently in it" — so a slot name or a pile index in the *first* position means
+  whatever is showing there: `move C1 F1` sends the card in the first free cell
+  home, `move T6 C2` parks the card showing on the sixth column. `moverun` reads a
+  place at the length it moves: `moverun T6 T2` lifts the whole ordered run showing
+  on T6 — as deep as the run goes, which is what you'd take hold of by hand — and
+  the reducer still judges whether it will fit. An empty place is reported by name
+  rather than played.
 - **The board says its own slot names**: each column is drawn under its label, so
   the move you can see is the move you can type.
 - **Comments**: a line whose first non-space character is `#` is skipped

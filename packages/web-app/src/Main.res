@@ -1278,6 +1278,10 @@ DebugConsole.setRunner(line => {
   // both front ends know every verb, even the ones only one of them can act on.
   | Command.Quit => Render.text("Nothing to quit — press ` or esc to close the console.")
   | Command.Unknown({verb}) => Render.text(Command.describeUnknown(verb))
+  // A shorthand that fit more than one verb — refused by name rather than guessed at
+  // (see `Command.resolveVerb`), and refused out here for the same reason an unknown
+  // verb is: nothing about it is a question for the board.
+  | Command.Ambiguous({verb, matches}) => Render.text(Command.describeAmbiguous(~verb, ~matches))
   | Command.Usage({message}) => Render.text(message)
   // Every shape of `deal` reads the same here as in the terminal, because the *reading*
   // is `core`'s (`Command.resolveDeal`) and only the acting is ours. What the panel used

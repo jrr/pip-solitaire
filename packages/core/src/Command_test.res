@@ -83,7 +83,7 @@ describe("Command.parse", () => {
       () =>
         expect(Command.parse("move 2H 3C"))->toEqual(
           Command.MoveTo({
-            cards: [{suit: Hearts, rank: Two}],
+            from: Command.Cards([{suit: Hearts, rank: Two}]),
             where: Command.Onto({suit: Clubs, rank: Three}),
           }),
         ),
@@ -94,19 +94,19 @@ describe("Command.parse", () => {
       () => {
         expect(Command.parse("move AS T3"))->toEqual(
           Command.MoveTo({
-            cards: [ace(Spades)],
+            from: Command.Cards([ace(Spades)]),
             where: Command.Slot({role: Game.Cascade, ordinal: 3}),
           }),
         )
         expect(Command.parse("move AS c1"))->toEqual(
           Command.MoveTo({
-            cards: [ace(Spades)],
+            from: Command.Cards([ace(Spades)]),
             where: Command.Slot({role: Game.FreeCell, ordinal: 1}),
           }),
         )
         expect(Command.parse("move AS F4"))->toEqual(
           Command.MoveTo({
-            cards: [ace(Spades)],
+            from: Command.Cards([ace(Spades)]),
             where: Command.Slot({role: Game.Foundation, ordinal: 4}),
           }),
         )
@@ -120,7 +120,10 @@ describe("Command.parse", () => {
       "a card destination is never mistaken for a slot label",
       () =>
         expect(Command.parse("move AS 3C"))->toEqual(
-          Command.MoveTo({cards: [ace(Spades)], where: Command.Onto({suit: Clubs, rank: Three})}),
+          Command.MoveTo({
+            from: Command.Cards([ace(Spades)]),
+            where: Command.Onto({suit: Clubs, rank: Three}),
+          }),
         ),
     )
 
@@ -131,7 +134,10 @@ describe("Command.parse", () => {
       "a numeric destination is all digits or it isn't a pile index",
       () => {
         expect(Command.parse("move AS 4D"))->toEqual(
-          Command.MoveTo({cards: [ace(Spades)], where: Command.Onto({suit: Diamonds, rank: Four})}),
+          Command.MoveTo({
+            from: Command.Cards([ace(Spades)]),
+            where: Command.Onto({suit: Diamonds, rank: Four}),
+          }),
         )
         switch Command.parse("move AS 12abc") {
         | Command.Usage({verb}) => expect(verb)->toBe("move")
@@ -161,10 +167,64 @@ describe("Command.parse", () => {
       () =>
         expect(Command.parse("moverun 8H 7S T3"))->toEqual(
           Command.MoveTo({
-            cards: [{suit: Hearts, rank: Eight}, {suit: Spades, rank: Seven}],
+            from: Command.Cards([{suit: Hearts, rank: Eight}, {suit: Spades, rank: Seven}]),
             where: Command.Slot({role: Game.Cascade, ordinal: 3}),
           }),
         ),
+    )
+
+    // The source half, which used to be a card and nothing else. Like the two
+    // board-shaped destinations it stops short of an action: "what is showing in C1"
+    // is not a property of the line.
+    test(
+      "a slot names what to move, not just where to move it",
+      () => {
+        expect(Command.parse("move C1 F1"))->toEqual(
+          Command.MoveTo({
+            from: Command.Top(Command.InSlot({role: Game.FreeCell, ordinal: 1})),
+            where: Command.Slot({role: Game.Foundation, ordinal: 1}),
+          }),
+        )
+        // A pile index says the same thing the absolute way, exactly as it does on the
+        // destination side.
+        expect(Command.parse("move 11 F1"))->toEqual(
+          Command.MoveTo({
+            from: Command.Top(Command.AtPile(11)),
+            where: Command.Slot({role: Game.Foundation, ordinal: 1}),
+          }),
+        )
+      },
+    )
+
+    // The same collision the destination grammar is shaped around, from the other end:
+    // `TC` is the Ten of Clubs and `C1` is the first free cell, and neither can be read
+    // as the other.
+    test(
+      "a card source is never mistaken for a slot label",
+      () =>
+        expect(Command.parse("move TC 0"))->toEqual(
+          Command.Dispatch(Reducer.Move({card: {suit: Clubs, rank: Ten}, to: Reducer.ToPile(0)})),
+        ),
+    )
+
+    // A run named by the place it's showing in: one token where the cards would be
+    // several, which is the whole point — nobody wants to type five card names for the
+    // run they can see.
+    test(
+      "moverun takes the column a run is showing in",
+      () => {
+        expect(Command.parse("moverun T6 T2"))->toEqual(
+          Command.MoveTo({
+            from: Command.Run(Command.InSlot({role: Game.Cascade, ordinal: 6})),
+            where: Command.Slot({role: Game.Cascade, ordinal: 2}),
+          }),
+        )
+        // Two places name two runs and no move, so it asks rather than guessing which.
+        switch Command.parse("moverun T6 T7 T2") {
+        | Command.Usage({verb}) => expect(verb)->toBe("moverun")
+        | _ => expect("not a usage")->toBe("usage")
+        }
+      },
     )
 
     // `home` deliberately stops at the card: which foundation will take it is a
@@ -251,13 +311,19 @@ describe("Command.parse", () => {
         },
     )
 
+    // A source that's none of the three things a source can be. It lists them for the
+    // reason the destination complaint below does: a refusal that only says "no" sends
+    // the reader to the source code.
     test(
-      "a token that isn't a card is reported as such",
+      "a token that names nothing to move is reported as such, listing what does",
       () =>
         switch Command.parse("move XX 0") {
         | Command.Usage({verb, message}) =>
           expect(verb)->toBe("move")
-          expect(message)->toBe(`Not a card: "XX" (try AS, TH, KD).`)
+          expect(message->String.includes(`"XX"`))->toBe(true)
+          expect(message->String.includes("AS"))->toBe(true)
+          expect(message->String.includes("T3"))->toBe(true)
+          expect(message->String.includes("pile index"))->toBe(true)
         | _ => expect("not a usage")->toBe("usage")
         },
     )
@@ -284,7 +350,7 @@ describe("Command.parse", () => {
         switch Command.parse("moverun 8H XX 5") {
         | Command.Usage({verb, message}) =>
           expect(verb)->toBe("moverun")
-          expect(message)->toBe(`Not all of those are cards (try AS, TH, KD).`)
+          expect(message->String.startsWith("Not all of those are cards"))->toBe(true)
         | _ => expect("not a usage")->toBe("usage")
         },
     )
@@ -547,6 +613,60 @@ describe("Command.renderHelp", () => {
   })
 })
 
+// --- Verbs, and how little of one you have to type -----------------------------
+// The table and its prefix rule (`Command.resolveVerb`). What's being pinned down is
+// less the shorthands than the two rules that keep them trustworthy: a whole word is
+// never shadowed by a longer verb, and a prefix that fits two verbs is refused by name
+// rather than resolved to whichever the table happens to list first.
+describe("Command.parse, abbreviated", () => {
+  test("an unambiguous prefix is the verb", () => {
+    expect(Command.parse("p"))->toEqual(Command.Print)
+    expect(Command.parse("u"))->toEqual(Command.Undo)
+    expect(Command.parse("f"))->toEqual(Command.Finish)
+    expect(Command.parse("de 12345"))->toEqual(Command.Deal({game: Some("12345"), scenario: None}))
+  })
+
+  test("a whole word wins over any prefix of a longer one", () => {
+    // `set` is a verb *and* the start of nothing else; `redo` and `redeal` are each
+    // other's neighbours, and typing either in full says which.
+    expect(Command.parse("set"))->toEqual(Command.Settings)
+    expect(Command.parse("redo"))->toEqual(Command.Redo)
+    expect(Command.parse("redeal"))->toEqual(Command.Redeal)
+  })
+
+  test("a prefix that fits two verbs is refused by name", () => {
+    switch Command.parse("h") {
+    | Command.Ambiguous({verb, matches}) =>
+      expect(verb)->toBe("h")
+      expect(matches)->toEqual(["help", "home"])
+    | _ => expect("not ambiguous")->toBe("ambiguous")
+    }
+    // …and the refusal says both, so the next keystroke is obvious.
+    switch Command.parse("r") {
+    | Command.Ambiguous({verb, matches}) =>
+      let message = Command.describeAmbiguous(~verb, ~matches)
+      expect(message->String.includes("redo"))->toBe(true)
+      expect(message->String.includes("redeal"))->toBe(true)
+    | _ => expect("not ambiguous")->toBe("ambiguous")
+    }
+  })
+
+  test("the pinned aliases still win, and fill the gaps the canonical names leave", () => {
+    // `m` fits three verbs and is pinned to one of them.
+    expect(Command.parse("m AS 0"))->toEqual(
+      Command.Dispatch(Reducer.Move({card: ace(Spades), to: Reducer.ToPile(0)})),
+    )
+    // `s` is `set` because a canonical name outranks the `show` alias…
+    expect(Command.parse("s"))->toEqual(Command.Settings)
+    // …while `n` is free for `new`, which nothing canonical claims.
+    expect(Command.parse("n"))->toEqual(Command.Deal({game: None, scenario: None}))
+  })
+
+  test("a prefix of nothing is still an unknown verb", () =>
+    expect(Command.parse("zz"))->toEqual(Command.Unknown({verb: "zz"}))
+  )
+})
+
 // --- Resolving a destination against a board ----------------------------------
 // The other half of the two board-shaped destinations: `parse` read the words, and
 // `resolveWhere` reads the board they were said about. It lives in `core` so a
@@ -689,6 +809,137 @@ describe("Command.resolveWhere", () => {
     )
     expect(Command.moveAction(~cards=[eight, seven], ~to=Reducer.ToPile(9)))->toEqual(
       Reducer.MoveRun({cards: [eight, seven], to: Reducer.ToPile(9)}),
+    )
+  })
+})
+
+// --- Resolving a source against a board ----------------------------------------
+// The other half of the same job (`Command.resolveFrom`): the words named a *place*,
+// and only the board knows which card is lying there. Shared for the same reason the
+// destination reader is — `move C1 F1` has to lift the same card in a terminal and in
+// the panel.
+describe("Command.resolveFrom", () => {
+  let game = Game.freecell
+  let state = GameState.initial(game)
+  // Deal #1's layout: four free cells, four foundations, then the eight cascades — so
+  // `T1` is pile 8 and `C1` is pile 0.
+  let firstCascade = 8
+
+  let topOfFirstCascade = switch GameState.topOf(state, firstCascade) {
+  | Some(card) => card
+  | None => ace(Spades) // unreachable: a freshly dealt cascade is never empty
+  }
+
+  test("cards named outright are handed straight back", () =>
+    expect(Command.resolveFrom(~game, state, Command.Cards([ace(Spades)])))->toEqual(
+      Ok([ace(Spades)]),
+    )
+  )
+
+  test("a slot lifts the card showing there", () => {
+    expect(
+      Command.resolveFrom(
+        ~game,
+        state,
+        Command.Top(Command.InSlot({role: Game.Cascade, ordinal: 1})),
+      ),
+    )->toEqual(Ok([topOfFirstCascade]))
+    // The same pile, said the absolute way.
+    expect(Command.resolveFrom(~game, state, Command.Top(Command.AtPile(firstCascade))))->toEqual(
+      Ok([topOfFirstCascade]),
+    )
+  })
+
+  // A place with nothing in it is a refusal rather than an empty move: the player named
+  // something they can see, and what they can see is that it's empty.
+  test("an empty place says so, by the name the board prints over it", () =>
+    switch Command.resolveFrom(
+      ~game,
+      state,
+      Command.Top(Command.InSlot({role: Game.FreeCell, ordinal: 1})),
+    ) {
+    | Ok(_) => expect("empty cell resolved")->toBe("refused")
+    | Error(message) => expect(message)->toBe("C1 is empty.")
+    }
+  )
+
+  // The refusals a destination gets, from the source side — one reader answers both, so
+  // an out-of-range label reads the same whichever end of a move it was said at.
+  test("a place this board hasn't got is refused the way a destination is", () => {
+    switch Command.resolveFrom(
+      ~game,
+      state,
+      Command.Top(Command.InSlot({role: Game.Cascade, ordinal: 9})),
+    ) {
+    | Ok(_) => expect("T9 resolved")->toBe("refused")
+    | Error(message) => expect(message->String.includes("T1–T8"))->toBe(true)
+    }
+    switch Command.resolveFrom(~game, state, Command.Top(Command.AtPile(99))) {
+    | Ok(_) => expect("pile 99 resolved")->toBe("refused")
+    | Error(message) => expect(message->String.includes("No such pile: 99"))->toBe(true)
+    }
+  })
+
+  // What `moverun T1 T8` means: the run a player would take hold of, not the pile.
+  describe("the run showing in a column", () => {
+    let supermove = switch Scenario.forName(game, "supermove") {
+    | Some(s) => s
+    | None => state // unreachable: the scenario is listed for freecell
+    }
+    let run = [
+      {suit: Spades, rank: Nine},
+      {suit: Hearts, rank: Eight},
+      {suit: Spades, rank: Seven},
+      {suit: Hearts, rank: Six},
+      {suit: Spades, rank: Five},
+    ]
+
+    test(
+      "a run showing in a column is lifted whole",
+      () =>
+        expect(
+          Command.resolveFrom(
+            ~game,
+            supermove,
+            Command.Run(Command.InSlot({role: Game.Cascade, ordinal: 1})),
+          ),
+        )->toEqual(Ok(run)),
+    )
+
+    // It stops where the run stops rather than taking the pile: a King dropped on top
+    // heads a run of one, because nothing outranks it.
+    test(
+      "it stops at the deepest card that still heads a run",
+      () => {
+        let capped = Reducer.placeOnPile(supermove, {suit: Spades, rank: King}, firstCascade)
+        expect(
+          Command.resolveFrom(
+            ~game,
+            capped,
+            Command.Run(Command.InSlot({role: Game.Cascade, ordinal: 1})),
+          ),
+        )->toEqual(Ok([{suit: Spades, rank: King}]))
+      },
+    )
+
+    // Length one is a run, so `moverun` off a column holding a single card is the
+    // ordinary `Move` — the same collapse `moveAction` makes for a one-card run.
+    test(
+      "a lone card is a run of one",
+      () => {
+        let lone = Reducer.placeOnPile(
+          {piles: game.piles->Array.map(_ => []), loose: []},
+          ace(Spades),
+          firstCascade,
+        )
+        expect(
+          Command.resolveFrom(
+            ~game,
+            lone,
+            Command.Run(Command.InSlot({role: Game.Cascade, ordinal: 1})),
+          ),
+        )->toEqual(Ok([ace(Spades)]))
+      },
     )
   })
 })
