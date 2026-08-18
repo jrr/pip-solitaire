@@ -621,6 +621,14 @@
         pointer-events: none;
         overscroll-behavior: contain;
         touch-action: pan-y;
+        /* The page centres its text (`body` above) because the board is a centred thing;
+           a log is not. It went unnoticed while every line was a flex row — flex items
+           don't take `text-align` — and showed up the moment a *rendered* line (#282,
+           `display: block`) was short enough to see it float: a one-line move sentence
+           sitting halfway across the panel while the echo above it started at the left.
+           Said once here rather than per line, so the prompt and the status row are
+           covered by the same statement. */
+        text-align: left;
       }
 
       #debug-console[hidden] {
@@ -875,6 +883,21 @@
          `max-content` width that keep a ~150-column board aligned and scrollable. */
       .debug-console__line--rendered {
         display: block;
+        /* A board drawn in box-drawing characters is only a *box* if the rows touch.
+           `│` and `─` are drawn to fill their glyph cell edge to edge, so what breaks a
+           frame into dashes is never the characters — it's the space the CSS puts around
+           them: the panel's 1.45 line-height (right for prose, ~5px of air per row here)
+           and the 1px of padding every log line carries. Both go for a rendered row, so
+           one row's cell ends exactly where the next one's begins and the verticals join
+           up. Prose lines keep their leading.
+
+           The remainder is the font's: the stack has to resolve to one whose box-drawing
+           glyphs really do span the full cell (the ui-monospace/SF Mono/Menlo/Consolas
+           faces at the head of it all do). A fallback that draws them short would leave
+           hairlines this can't close — bundling a face is the only way to guarantee it
+           everywhere, which is more weight than a debug panel has earned so far. */
+        line-height: 1;
+        padding: 0;
       }
 
       /* The ink roles `Render` names, painted for *this* medium. `core` says which run of
@@ -2056,7 +2079,7 @@
         }
       }
     </style>
-    <script type="module" crossorigin src="./assets/index-D_8GFmbP.js"></script>
+    <script type="module" crossorigin src="./assets/index-D82JYGUj.js"></script>
   <link rel="manifest" href="./manifest.webmanifest"></head>
   <body>
     <!-- Vite resolves the bare `core/…` specifier the compiled entry imports
