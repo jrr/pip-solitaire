@@ -107,24 +107,26 @@ let saveDebugLog = (enabled: bool) => saveFlag(debugLogKey, enabled)
 let loadRevealHidden = (): bool => loadFlag(revealHiddenKey, ~fallback=false)
 let saveRevealHidden = (revealed: bool) => saveFlag(revealHiddenKey, revealed)
 
-// Where the debug console sits (#275): overlaid across the top of the board, or docked
-// into the width beside it (`ConsoleDock`). Persisted like `debugLog` rather than left
-// as session state, because the whole point of a mode you flip by hand — rather than an
-// automatic breakpoint — is that it stays flipped. It defaults to the overlay, which is
-// what every window that's too narrow to dock gets anyway.
+// Where the debug console sits (#275): over the top of the board, docked into the width
+// beside it, along the bottom, or over the whole window (`ConsoleDock`). Persisted like
+// `debugLog` rather than left as session state, because the whole point of a placement
+// you flip by hand — rather than an automatic breakpoint — is that it stays flipped. It
+// defaults to the top overlay, which is the shape every window can show, including the
+// ones too narrow to dock.
 //
-// Not a flag, so it doesn't go through `loadFlag`/`saveFlag`: the value is the mode's
-// own name, which leaves room for a third mode later without a stored-shape migration.
-// Everything unreadable — missing key, garbage, storage that throws — resolves to the
-// shipped default, exactly as the flags do.
+// Not a flag, so it doesn't go through `loadFlag`/`saveFlag`: the value is the
+// placement's own name, which is what let the bottom band and the full window join the
+// original two without a stored-shape migration (`ConsoleDock.fromString` still reads
+// the two older spellings). Everything unreadable — missing key, garbage, storage that
+// throws — resolves to the shipped default, exactly as the flags do.
 let loadConsoleDock = (): ConsoleDock.t => {
   let stored = try getItem(consoleDockKey)->Nullable.toOption catch {
   | _ => None
   }
-  stored->Option.flatMap(ConsoleDock.fromString)->Option.getOr(ConsoleDock.Overlay)
+  stored->Option.flatMap(ConsoleDock.fromString)->Option.getOr(ConsoleDock.Top)
 }
 
-let saveConsoleDock = (mode: ConsoleDock.t) =>
-  try setItem(consoleDockKey, ConsoleDock.toString(mode)) catch {
+let saveConsoleDock = (placement: ConsoleDock.t) =>
+  try setItem(consoleDockKey, ConsoleDock.toString(placement)) catch {
   | _ => ()
   }

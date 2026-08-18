@@ -69,10 +69,11 @@ type model = {
   // state, deliberately unpersisted: the panel is always closed on load, so a
   // rendered screenshot or OG image can never carry one.
   consoleOpen: bool,
-  // Where that console sits when it's up (#275): overlaid across the top of the board,
-  // or docked into the discarded width beside it (`ConsoleDock`). Unlike `consoleOpen`
-  // this *is* persisted — a mode you flip by hand rather than an automatic breakpoint
-  // has to stay flipped — and it mirrors the `Preferences` value like `debugLog` does.
+  // Where that console sits when it's up (#275): over the top of the board, docked into
+  // the discarded width beside it, along the bottom, or over the whole window
+  // (`ConsoleDock`). Unlike `consoleOpen` this *is* persisted — a placement you flip by
+  // hand rather than an automatic breakpoint has to stay flipped — and it mirrors the
+  // `Preferences` value like `debugLog` does.
   consoleDock: ConsoleDock.t,
   autoCollect: bool,
   cardTilt: bool,
@@ -131,10 +132,10 @@ type msg =
   | CloseMenu // backdrop / close button / a scene row was tapped
   | ToggleConsole // the ` key — drop the debug console over the board, or put it away (#271)
   | CloseConsole // Escape while the console is showing (#271)
-  // ⇧` — dock the console beside the board, or put it back over it (#275). The flag is
-  // the *live board's* verdict on whether it can spare the dock's width, read at the
-  // keypress and carried in (like `RefreshDetected`) so `update` stays a pure function
-  // of the model rather than reaching into the layout.
+  // ⇧` — step the console round its four placements (#275): top, side, bottom, full. The
+  // flag is the *live board's* verdict on whether it can spare the side dock's width,
+  // read at the keypress and carried in (like `RefreshDetected`) so `update` stays a pure
+  // function of the model rather than reaching into the layout.
   | ToggleConsoleDock(bool)
   | OpenSettings // the main menu's Settings button — swap to the Settings screen (#191)
   | BackToMenu // the Settings screen's back button — swap back to the main menu (#191)
@@ -306,10 +307,10 @@ let notchDisplayEnabled = Preferences.loadNotchDisplay()
 let debugLogEnabled = Preferences.loadDebugLog()
 DebugLog.setConsoleEnabled(debugLogEnabled)
 
-// The persisted console dock mode (#275, defaults to the overlay). Unlike the flag
+// The persisted console placement (#275, defaults to the top overlay). Unlike the flag
 // above there's nothing to apply at startup: the console is always closed on load, so
-// the dock only reaches the document root once one is opened (see `ConsoleDock.reflect`
-// — the attribute means docked *and* showing).
+// the placement only reaches the document root once one is opened (see
+// `ConsoleDock.reflect` — the attribute is published only while the panel shows).
 let consoleDockMode = Preferences.loadConsoleDock()
 
 // The active board's "relayout" action (#65), sibling of `undoHook`: the mounted
@@ -321,7 +322,8 @@ let relayoutHook: ref<option<unit => unit>> = ref(None)
 // The live board's dock-refusal test (#275), sibling of `relayoutHook`: "could you give
 // up this many px of stage width and still deal cards above `minScale`?" (see
 // `TableScene`'s `~publishDockFit`). `None` on a scene with no board, which refuses —
-// there's nothing to dock beside.
+// there's nothing to dock beside. Only the side dock ever asks; the other three
+// placements cover the board rather than displacing it.
 let dockFitHook: ref<option<float => bool>> = ref(None)
 
 // Whether the console may dock right now, asked of the stage as it actually stands.
@@ -365,14 +367,15 @@ let update = (msg, model) =>
   // Every screen change also abandons a part-finished run of reveal taps
   // (`HiddenOptions.reset`), here and in the five branches below: the counter only
   // ever spans one uninterrupted visit to the Settings screen.
-  // Opening the menu also puts an *overlaid* debug console away (#271): the menu is the
-  // modal chrome and takes the screen for itself, and the console's twin rule below
-  // closes the menu on the way in. A **docked** console is exempt (#275) — it's beside
-  // the board rather than over the Menu button, so nothing is in anything's way, and
-  // leaving the log up is the point: flip a debug setting and watch the line it emits.
+  // Opening the menu also puts an *overlapping* debug console away (#271): the menu is
+  // the modal chrome and takes the screen for itself, and the console's twin rule below
+  // closes the menu on the way in. A **side-docked** console is exempt (#275) — it's
+  // beside the board rather than over the Menu button or under the menu's own panel, so
+  // nothing is in anything's way, and leaving the log up is the point: flip a debug
+  // setting and watch the line it emits.
   | ToggleMenu =>
     let menuOpen = !model.menuOpen
-    let putConsoleAway = menuOpen && !ConsoleDock.isDocked(model.consoleDock)
+    let putConsoleAway = menuOpen && !ConsoleDock.isSide(model.consoleDock)
     (
       {
         ...model,
@@ -391,7 +394,7 @@ let update = (msg, model) =>
   // it's opening docked, in which case the two coexist (see `ToggleMenu` above).
   | ToggleConsole =>
     let consoleOpen = !model.consoleOpen
-    let putMenuAway = consoleOpen && !ConsoleDock.isDocked(model.consoleDock)
+    let putMenuAway = consoleOpen && !ConsoleDock.isSide(model.consoleDock)
     (
       {
         ...model,
@@ -408,20 +411,21 @@ let update = (msg, model) =>
           () => DebugConsole.apply(~open_=false, ~dock=model.consoleDock),
         )
       : (model, Html.noEffect)
-  // ⇧` flips the dock (#275). `fits` is the live board's verdict on whether it can spare
-  // the width: a window too narrow keeps the mode it had and says so in the log rather
-  // than silently docking into a board that would then deal cards below `minScale`.
-  // Undocking is never refused — the overlay fits any window by construction.
+  // ⇧` steps to the next placement (#275). `fits` is the live board's verdict on whether
+  // it can spare the side dock's width: a window too narrow *steps over* that placement
+  // rather than landing on it — and says so in the log — instead of silently docking into
+  // a board that would then deal cards below `minScale`. The three placements that cover
+  // the board rather than displacing it are never refused; they fit any window by
+  // construction, which is what keeps the key useful on a phone.
   //
-  // The console comes up either way, refusal included: a mode you can't see change isn't
-  // a mode, and the refusal is only legible in the panel it's about.
+  // The console comes up either way, skipped dock included: a placement you can't see
+  // change isn't a placement, and the refusal is only legible in the panel it's about.
   | ToggleConsoleDock(fits) =>
-    let wanted = ConsoleDock.isDocked(model.consoleDock) ? ConsoleDock.Overlay : ConsoleDock.Docked
-    let refused = ConsoleDock.isDocked(wanted) && !fits
-    let consoleDock = refused ? model.consoleDock : wanted
-    // Landing on the overlay while the menu is up is the exclusive case again, so it
-    // takes the same exit `ToggleConsole` does.
-    let putMenuAway = !ConsoleDock.isDocked(consoleDock)
+    let consoleDock = ConsoleDock.nextFitting(model.consoleDock, ~roomToDock=fits)
+    let refused = consoleDock != ConsoleDock.next(model.consoleDock)
+    // Landing anywhere but the side dock while the menu is up is the exclusive case
+    // again, so it takes the same exit `ToggleConsole` does.
+    let putMenuAway = !ConsoleDock.isSide(consoleDock)
     (
       {
         ...model,
@@ -434,9 +438,14 @@ let update = (msg, model) =>
         // Open first: `DebugLog` only publishes to subscribers, so a refusal announced
         // before the panel subscribes would be announced to nobody.
         DebugConsole.apply(~open_=true, ~dock=consoleDock)
-        refused
-          ? DebugLog.log("console", "too narrow to dock")
-          : Preferences.saveConsoleDock(consoleDock)
+
+        // Both lines, when the dock was stepped over: why the placement you expected
+        // didn't come up, and which one did instead.
+        if refused {
+          DebugLog.log("console", "too narrow to dock")
+        }
+        DebugLog.log("console", ConsoleDock.toString(consoleDock))
+        Preferences.saveConsoleDock(consoleDock)
       },
     )
   | HistoryChanged(canUndo) =>
@@ -1223,7 +1232,7 @@ closeMenu := (() => dispatch(CloseMenu))
 DebugConsole.installKeys(
   ~onToggle=() => dispatch(ToggleConsole),
   ~onClose=() => dispatch(CloseConsole),
-  // ⇧` docks it beside the board instead (#275). The board is asked *here*, at the
+  // ⇧` steps it round its four placements instead (#275). The board is asked *here*, at the
   // keypress, whether it can spare the width — the answer is live layout, so it can't
   // come from inside the loop's pure update.
   ~onDock=() => dispatch(ToggleConsoleDock(dockFits())),

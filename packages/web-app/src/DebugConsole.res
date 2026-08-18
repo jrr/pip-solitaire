@@ -17,13 +17,16 @@
 // because running one means reaching the board and the chrome, which the panel has no
 // business knowing about.
 //
-// It has a second shape (#275): ⇧` **docks** it into the discarded width beside the
-// board instead of overlaying the top of it. Docking is a persisted mode rather than an
+// It has more shapes than one (#275): ⇧` steps the panel through four placements — over
+// the top of the board, **docked** into the discarded width beside it, along the bottom,
+// and over the whole window. The placement is persisted rather than derived from an
 // automatic breakpoint — resize the window and a silent reversal would undo the choice
-// you just made — and it's *refused* in a window too narrow for the board to give up the
-// width (`ConsoleDock`, `TableScene.minStageWidth`). The layout of both shapes lives in
-// the stylesheet; what this module does with the mode is take pointer events natively
-// when docked rather than forwarding wheel turns by hand (see `apply` below).
+// you just made — and the side dock alone is *refused* in a window too narrow for the
+// board to give up the width, which the cycle steps over rather than sticking on
+// (`ConsoleDock`, `TableScene.minStageWidth`). The layout of all four lives in the
+// stylesheet; what this module does with the placement is take pointer events natively
+// where the panel isn't covering a playable board, rather than forwarding wheel turns by
+// hand (see `apply` below).
 //
 // Two halves, split the way `Main` splits its own chrome:
 //
@@ -109,9 +112,9 @@ lines->WebDom.addEventListener("scroll", () => stickToBottom := atBottom(lines))
 // instead of scrolling the log. Nothing on the board reads `wheel`, so the panel picks
 // it up from the window while it's overlaid and scrolls itself — reading back through
 // history without the console ever taking input away from the game. `stickToBottom`
-// follows from the `scroll` listener above. Docked (#275) the panel covers nothing and
-// takes pointer events natively, so this is unbound there — left on, every turn would
-// scroll the log twice.
+// follows from the `scroll` listener above. Docked or full-window (#275) the panel takes
+// pointer events natively — it covers nothing, or it covers everything — so this is
+// unbound in those placements: left on, every turn would scroll the log twice.
 //
 // Both axes, because the log now carries lines wider than the panel: `print` draws a text
 // board (#273) about 150 columns across, and the overlay is the shape that can't scroll
@@ -357,7 +360,7 @@ input->addKeyListener("keydown", event =>
   }
 )
 
-// --- Open / closed, overlaid / docked --------------------------------------------
+// --- Open / closed, and where the panel sits --------------------------------------
 // The subscription *is* the open state as far as `DebugLog` is concerned; `Main`'s
 // model owns both flags and calls this as its post-update effect. Idempotent in every
 // direction, so it can be called on any state change without checking first — which is
@@ -367,9 +370,9 @@ let subscription: ref<option<unit => unit>> = ref(None)
 let wheelBound = ref(false)
 
 let apply = (~open_: bool, ~dock: ConsoleDock.t): unit => {
-  // The layout first, so the panel is already at its docked size when the scroll below
-  // reads its height — and so the board starts reflowing into (or back out of) the dock
-  // in the same frame the panel appears.
+  // The layout first, so the panel is already at its placement's size when the scroll
+  // below reads its height — and so the board starts reflowing into (or back out of) the
+  // side dock in the same frame the panel appears.
   ConsoleDock.reflect(~dock, ~open_)
   switch (open_, subscription.contents) {
   | (true, None) =>
@@ -388,12 +391,12 @@ let apply = (~open_: bool, ~dock: ConsoleDock.t): unit => {
   // no other reason to press the key — and closing it must hand the keyboard back to
   // the page rather than leaving a hidden field holding it, which would swallow every
   // keystroke aimed at the game. Called on every apply, not just on the transitions
-  // above, so a dock toggle (which arrives with the panel already open) leaves the
+  // above, so a placement change (which arrives with the panel already open) leaves the
   // caret where it was rather than dropping it.
   open_ ? focus(input) : blur(input)
-  // The hand-forwarded wheel is the overlay's crutch alone (see `onWheel`): a docked
-  // panel scrolls itself.
-  switch (open_ && !ConsoleDock.isDocked(dock), wheelBound.contents) {
+  // The hand-forwarded wheel is the overlays' crutch alone (see `onWheel`): a panel that
+  // takes pointer events scrolls itself.
+  switch (open_ && !ConsoleDock.takesPointerEvents(dock), wheelBound.contents) {
   | (true, false) =>
     WebDom.addWindowListener("wheel", onWheel)
     wheelBound := true
@@ -405,7 +408,8 @@ let apply = (~open_: bool, ~dock: ConsoleDock.t): unit => {
 }
 
 // --- The key that opens it ------------------------------------------------------
-// `` ` `` toggles, ⇧` docks or undocks (#275), Escape closes. Matched on `event.code`
+// `` ` `` toggles, ⇧` steps the panel round its four placements (#275), Escape closes.
+// Matched on `event.code`
 // rather than `event.key` because backtick is a dead key on several layouts (and
 // shifted into `~` on all of them): `code` names the physical key regardless, so the
 // same finger works everywhere — and it's also what makes the shifted variant a
@@ -456,9 +460,13 @@ let make = ({open_, body}) =>
     // The status line sits at the *foot*, under the prompt: up top it would land on the
     // top bar's Menu button, which the panel drops over.
     <footer className="debug-console__status">
+      // Just the panel's name: which of the four placements (#275) it's in is plain from
+      // where it is, and each change already names itself in the log as it happens (see
+      // `Main`'s ⇧` branch). A second copy here only crowded the status line — in the
+      // 340px dock, the placement with the least room for it.
       <span className="debug-console__title"> {Html.string("debug console")} </span>
       <span className="debug-console__hint">
-        {Html.string("enter run · ↑↓ history · ` toggle · ⇧` dock · esc close")}
+        {Html.string("enter run · ↑↓ history · ` toggle · ⇧` place · esc close")}
       </span>
     </footer>
   </section>
