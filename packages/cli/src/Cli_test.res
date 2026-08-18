@@ -59,6 +59,71 @@ describe("Repl.run", () => {
     expect(has(transcript, `2♥`))->toBe(true)
   })
 
+  // The three ways to say *where* (#the shared `Command.where`), through the driver.
+  // What matters isn't that each is understood — `Command_test` covers the words — but
+  // that they all end in the same dispatch: a board played by label, by card, or by
+  // index has to be the same board, or the shorthands are a second game.
+  describe("a move's destination, said three ways", () => {
+    // The supermove scenario is a known board: an ordered 9♠-to-5♠ run on the first
+    // cascade, four empty free cells, and an empty last column.
+    let deal = "deal freecell supermove"
+    // The board a transcript ends on: its last three sections — title, top row, bottom
+    // row — with the echoed command lines (which differ by construction) left behind.
+    let ending = lines => {
+      let sections = Repl.run(lines)->String.split("\n\n")
+      sections->Array.slice(~start=Array.length(sections) - 3, ~end=Array.length(sections))
+    }
+
+    test(
+      "a slot label plays the move its pile index plays",
+      () => {
+        // T8 is the empty last column — pile 15 on this board.
+        expect(ending([deal, "moverun 9S 8H 7S 6H 5S T8"]))->toEqual(
+          ending([deal, "moverun 9S 8H 7S 6H 5S 15"]),
+        )
+        // C1 is the first free cell — pile 0.
+        expect(ending([deal, "move 5S C1"]))->toEqual(ending([deal, "move 5S 0"]))
+      },
+    )
+
+    test(
+      "naming the card to land on plays the move its pile index plays",
+      () => {
+        // Park the Five in a cell, then bring it back by naming the card it goes on
+        // rather than the column it lives in.
+        expect(ending([deal, "move 5S C1", "move 5S 6H"]))->toEqual(
+          ending([deal, "move 5S C1", "move 5S 8"]),
+        )
+      },
+    )
+
+    test(
+      "mv and m are the same verb",
+      () => {
+        expect(ending([deal, "mv 5S C1"]))->toEqual(ending([deal, "move 5S C1"]))
+        expect(ending([deal, "m 5S C1"]))->toEqual(ending([deal, "move 5S C1"]))
+      },
+    )
+
+    // A destination the board can't read is reported like any other refusal — the
+    // session survives it, and the reason names the board rather than the grammar.
+    test(
+      "a destination this board hasn't got is reported, not played",
+      () => {
+        expect(has(Repl.run([deal, "mv 5S T9"]), "No such tableau column: T9"))->toBe(true)
+        expect(has(Repl.run([deal, "mv 5S 3D"]), "buried"))->toBe(true)
+        expect(has(Repl.run([deal, "mv 5S KH"]), "buried"))->toBe(true)
+      },
+    )
+
+    // The board-shaped destinations answer the same "deal a game first" the rest of the
+    // board verbs do, rather than complaining about a board that isn't there.
+    test(
+      "they guide the user before a game is dealt",
+      () => expect(has(Repl.run(["mv 5S T1"]), "Deal a game first"))->toBe(true),
+    )
+  })
+
   test("a loose drop is rejected when the game confines cards to piles", () => {
     // four-fans opens with cards in its piles and `free: false`.
     let transcript = Repl.run(["deal four-fans", "move 2C table"])

@@ -23,6 +23,15 @@
 //   - A fanned pile is drawn as an overlapping vertical column — each lower card
 //     peeks a single face line above the next, and the top card (last in the
 //     model's bottom-first order) is shown in full at the foot of the fan.
+//
+// The board is laid out in the same role-grouped rows the web table uses (#94): the
+// free cells and foundations across the top, the tableau columns below. Sixteen columns
+// in a single row is wider than a terminal, and the two halves aren't the same kind of
+// thing anyway — a board that carries only one of the groups keeps its single row.
+//
+// Every column is headed by the name that slot answers to (`T3`, `C1`, `F2` — see
+// `Slot`), which is also what a typed move can address it by, so the drawing tells you
+// how to play it.
 
 open Card
 
@@ -197,6 +206,26 @@ let padColumn = (col, height) =>
 // The natural width of a row of `n` equal columns separated by `gap`.
 let rowWidth = n => n <= 0 ? 0 : n * colWidth + (n - 1) * gap
 
+// A column's heading: the name that slot answers to (`T3`, `C1`, `F4` — see `Slot`),
+// centred over the column and padded out to its full width. The padding is the load-
+// bearing part: every line of a column has to measure exactly `colWidth`, or the gaps
+// `spaceBetween` inserts after it would drag the rest of that row leftward.
+//
+// It's a heading rather than a mark inside the empty slots because the name is most
+// wanted where it's least visible: an empty column shows you where a card lands, but a
+// seven-card fan is the one you have to count across to address.
+let headingLine = (label: string): string => {
+  let pad = (colWidth - String.length(label)) / 2
+  (repeat(" ", pad) ++ label)->String.padEnd(colWidth, " ")
+}
+
+// A column with its heading above it, when the board can name the slot.
+let headed = (~label: option<string>, column: array<string>): array<string> =>
+  switch label {
+  | Some(label) => [headingLine(label)]->Array.concat(column)
+  | None => column
+  }
+
 // Indent each line of a block so it sits centred within `width` (the loose
 // cards, dealt centred beneath the piles as they are on the web table).
 let center = (block, width) =>
@@ -241,23 +270,28 @@ let spaceBetween = (columns, width) => {
   }
 }
 
-// Lay a board out like the web table: a titled row of pile columns along the
-// top and the loose cards (already framed) centred beneath them. The board is as
-// wide as its widest row, so whichever row is narrower is centred within it.
-// Both the static-`Game` and live-`GameState` renderers assemble their columns
-// and loose cards then hand them here, so the layout lives in one place.
+// Lay a board out like the web table: the titled rows of pile columns stacked one
+// above the next, and the loose cards (already framed) centred beneath them. The board
+// is as wide as its widest row, so a narrower row is spread within that width rather
+// than setting its own. Both the static-`Game` and live-`GameState` renderers assemble
+// their rows and loose cards then hand them here, so the layout lives in one place.
 let assemble = (
   ~title: string,
-  ~columns: array<array<string>>,
+  ~rows: array<array<array<string>>>,
   ~freeCards: array<array<string>>,
 ) => {
-  let width = Math.Int.max(rowWidth(Array.length(columns)), rowWidth(Array.length(freeCards)))
+  // Every row is laid out to one width — the widest of them — so the rows line up with
+  // each other rather than each floating at its own scale.
+  let width =
+    rows->Array.reduce(rowWidth(Array.length(freeCards)), (w, row) =>
+      Math.Int.max(w, rowWidth(Array.length(row)))
+    )
 
-  let top = spaceBetween(columns, width)
-  let bottom = Array.length(freeCards) == 0 ? [] : center(joinBlocks(freeCards), width)
+  let cardRows =
+    rows->Array.filter(row => Array.length(row) > 0)->Array.map(row => spaceBetween(row, width))
+  let loose = Array.length(freeCards) == 0 ? [] : [center(joinBlocks(freeCards), width)]
 
-  let rows = Array.length(bottom) == 0 ? [top] : [top, bottom]
-  let sections = Array.concat([[title]], rows)
+  let sections = [[title]]->Array.concat(cardRows)->Array.concat(loose)
   sections->Array.map(lines => lines->Array.join("\n"))->Array.join("\n\n")
 }
 
@@ -277,12 +311,40 @@ let titleFor = (~game: Game.t, ~deal: option<int>): string =>
   | None => game.name
   }
 
+// Split a board's columns into the rows it's drawn in, the same role grouping the web
+// table lays out (#94): the free cells and foundations across the top, the tableau
+// columns below. It's what makes a sixteen-pile FreeCell board readable in a terminal —
+// sixteen columns in one row is wider than a window, and the two halves aren't the same
+// kind of thing anyway.
+//
+// A board carrying only one of the two groups — every card-table demo — keeps its single
+// row, laid out exactly as before.
+let roleRows = (~game: Game.t, columns: array<array<string>>): array<array<array<string>>> => {
+  let isCascade = i =>
+    switch game.piles->Array.get(i) {
+    | Some(pile) => pile.role == Game.Cascade
+    | None => false
+    }
+  let top = columns->Array.filterWithIndex((_, i) => !isCascade(i))
+  let bottom = columns->Array.filterWithIndex((_, i) => isCascade(i))
+  Array.length(top) == 0 || Array.length(bottom) == 0 ? [columns] : [top, bottom]
+}
+
+// Each pile's column, headed by the name that slot answers to (`Slot`) — so the board
+// says how to address every one of its piles, and `move 8H T3` can be read straight off
+// the drawing.
+let headedColumns = (~game: Game.t, columns: array<array<string>>): array<array<string>> =>
+  columns->Array.mapWithIndex((column, i) => headed(~label=Slot.labelAt(~game, i), column))
+
 // The whole opening layout for a game, straight from its board definition. A game with a
 // seed of its own names it (FreeCell's canonical board is deal #1).
 let board = (~color: bool=false, game: Game.t) =>
   assemble(
     ~title=titleFor(~game, ~deal=game.seed),
-    ~columns=game.piles->Array.map(pile => pileColumn(~color, pile)),
+    ~rows=roleRows(
+      ~game,
+      headedColumns(~game, game.piles->Array.map(pile => pileColumn(~color, pile))),
+    ),
     ~freeCards=game.loose->Array.map(c => fullCard(~color, free, c)),
   )
 
@@ -293,8 +355,14 @@ let board = (~color: bool=false, game: Game.t) =>
 let stateBoard = (~game: Game.t, ~deal: option<int>=?, ~color: bool=false, state: GameState.t) =>
   assemble(
     ~title=titleFor(~game, ~deal),
-    ~columns=game.piles->Array.mapWithIndex((pile, i) =>
-      columnFor(~color, pile.stacking, GameState.cardsInPile(state, i))
+    ~rows=roleRows(
+      ~game,
+      headedColumns(
+        ~game,
+        game.piles->Array.mapWithIndex((pile, i) =>
+          columnFor(~color, pile.stacking, GameState.cardsInPile(state, i))
+        ),
+      ),
     ),
     ~freeCards=state.loose->Array.map(c => fullCard(~color, free, c)),
   )

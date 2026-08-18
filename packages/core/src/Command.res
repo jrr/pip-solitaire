@@ -1,6 +1,6 @@
-// The typed-command grammar, as a *pure parser*: `string => Command.t`, and
-// nothing else. No session, no board, no I/O — feed it a line and it hands back
-// what that line asks for (#273).
+// The typed-command grammar: `string => Command.t` as a pure parser, plus the
+// board-side readers a parsed command needs before it can be run. No session and no
+// I/O — feed it a line and it hands back what that line asks for (#273).
 //
 // It lives in `core` because two front ends type the same commands at the same
 // reducer and neither owns the vocabulary:
@@ -17,13 +17,20 @@
 // separate game that merely looks like this one. (#148's TUI is the third caller
 // waiting on this.)
 //
-// **Where the split falls.** Everything decidable from the text alone is here;
-// everything that needs a board is the interpreter's. So `move 8H 5` parses all the
-// way to a `Reducer.action` — the reducer is the sole judge of whether it's *legal*,
-// but "is this a card, is that a pile" is pure text. `home AS` stops at the card:
-// which foundation will take it is a question about the board, so the interpreter
-// resolves it into the `Move` the reducer sees. And "deal a game first" never
-// appears here at all — whether a session exists is not a property of the line.
+// **Where the split falls.** `parse` decides everything decidable from the text
+// alone; everything that needs a board is answered after it. So `move 8H 5` parses
+// all the way to a `Reducer.action` — the reducer is the sole judge of whether it's
+// *legal*, but "is this a card, is that a pile" is pure text. `home AS` stops at the
+// card: which foundation will take it is a question about the board, so the
+// interpreter resolves it into the `Move` the reducer sees. And "deal a game first"
+// never appears here at all — whether a session exists is not a property of the line.
+//
+// Some of those board-shaped questions turn out to be *shared* rather than each front
+// end's own: `move 8H 9S` has to land on the same pile in a terminal and in the panel,
+// so "which pile is showing the Nine of Spades" is answered here too — by
+// `resolveWhere`, which takes the board as an argument rather than pretending to be
+// pure. The rule the module keeps is that `parse` never sees one: reading the words and
+// reading the board stay two steps, and only the second needs a game.
 //
 // Malformed input doesn't fail: it parses to `Usage` (a known verb, arguments the
 // parser couldn't make sense of) or `Unknown` (no such verb), each carrying prose
@@ -33,6 +40,29 @@
 // names the verb it choked on.
 
 open Card
+
+// Where a move sends its cards, as the *text* names it. Only the first shape is
+// decidable from the text alone; the other two are answers about a particular board,
+// which is why a `move` no longer always parses straight to a `Reducer.action` —
+// `resolveWhere` below finishes the job once there's a board to ask.
+//
+// The three ways to say where, in the order a player reaches for them:
+//
+//   move 8H 12    `At`   — a pile index (or `table`), the original and still the
+//                          only one that needs nothing but the line
+//   move 8H T3     `Slot` — the name printed above the column (see `Slot`)
+//   move 8H 9S     `Onto` — the card to land on, wherever it happens to be
+//
+// `Onto` is the one worth explaining. A player looking at the board is thinking "the
+// eight goes on the nine", not "the eight goes on pile 12" — the card is the thing
+// they can see, and the pile index is a fact about the model they have to count out.
+// Naming the card says the move they mean, and it's checked rather than guessed: the
+// card has to be the one showing at the top of exactly one pile, or the move is
+// refused rather than sent somewhere plausible.
+type where =
+  | At(Reducer.target)
+  | Onto(card)
+  | Slot({role: Game.role, ordinal: int})
 
 // What one command line asks for. `Dispatch` is the move-shaped half — the actions
 // the reducer takes verbatim — while the rest are session or front-end verbs the
@@ -54,6 +84,12 @@ type t =
   | Deal({game: option<string>, scenario: option<string>})
   // A move the reducer can take as-is: `Move`, `MoveRun` or `MoveColumn`.
   | Dispatch(Reducer.action)
+  // A move whose destination only a *board* can resolve — `move 8H 9S` (onto whichever
+  // pile is showing the Nine of Spades) or `move 8H T3` (the third tableau column). The
+  // cards are the ones a `Dispatch` would have carried: one for a `move`, the whole run
+  // for a `moverun`. `resolveWhere` and `moveAction` below turn the pair into that very
+  // action, so a resolved move is the same move, not a second kind of one.
+  | MoveTo({cards: array<card>, where: where})
   // `home <card>` names a card but no destination — see the module note above.
   | Home({card: card})
   | Finish
@@ -78,19 +114,44 @@ type t =
 let tokenize = (line: string): array<string> =>
   line->String.trim->String.split(" ")->Array.filter(t => t != "")
 
+// A whole number, and nothing else. `Int.fromString` is `parseInt` underneath, so it
+// reads "4D" as 4 and "12abc" as 12 — which is merely untidy while a number is the only
+// thing a token could be, and a bug the moment a card can be one too: `move 8H 4D` would
+// quietly aim at pile 4 rather than at the Four of Diamonds. Both readers of a numeric
+// token go through here (`dealNumber` below is the same rule for a deal).
+let digits = (token: string): option<int> =>
+  token != "" && token->String.split("")->Array.every(c => c >= "0" && c <= "9")
+    ? Int.fromString(token)
+    : None
+
 // A move target from its text: a pile index, or the table by name.
 let parseTarget = (token: string): option<Reducer.target> =>
   switch token->String.toLowerCase {
   | "table" | "loose" | "t" => Some(Reducer.ToTable)
   | s =>
-    switch Int.fromString(s) {
+    switch digits(s) {
     | Some(i) => Some(Reducer.ToPile(i))
     | None => None
     }
   }
 
+// Read a destination token. Indices first (a bare number has always been one), then a
+// slot label, then a card identity — the three grammars don't overlap, because a label
+// is letter-then-digits and a card is rank-then-suit with no suit letter that a role
+// letter shares (see `Slot`).
+let parseWhere = (token: string): option<where> =>
+  switch parseTarget(token) {
+  | Some(target) => Some(At(target))
+  | None =>
+    switch Slot.parse(token) {
+    | Some((role, ordinal)) => Some(Slot({role, ordinal}))
+    | None => CardText.parse(token)->Option.map(card => Onto(card))
+    }
+  }
+
 let notACard = (token: string) => `Not a card: "${token}" (try AS, TH, KD).`
-let notAPile = (token: string) => `Not a pile: "${token}" (an index, or "table").`
+let notAPile = (token: string) =>
+  `Not a place to move to: "${token}" (a pile index, a column like T3, the card to land on like 9S, or "table").`
 
 let settingNames = () => Options.all->Array.map(Options.name)->Array.join(", ")
 let notASetting = (token: string) => `Not a setting: "${token}" (${settingNames()}).`
@@ -112,20 +173,28 @@ let parse = (line: string): t => {
   | Some("redeal") | Some("restart") => Redeal
   | Some("finish") => Finish
   | Some("deal") | Some("new") => Deal({game: arg(1), scenario: arg(2)})
-  | Some("move") =>
+  // `mv` and `m` are the same verb: `move` is the one command typed over and over, and
+  // a player who has just read a board wants two keystrokes for it, not four. The
+  // aliases end here — everything downstream (the `Usage` complaints, the "deal a game
+  // first" hint that keys off the verb) still says `move`, so a shorthand can't drift
+  // into a second command with its own messages.
+  | Some("move") | Some("mv") | Some("m") =>
     // Arity before content, so `move AS` asks for the usage line rather than
     // complaining about a target that isn't there.
     switch (arg(1), arg(2)) {
-    | (Some(cardTok), Some(targetTok)) =>
-      switch (CardText.parse(cardTok), parseTarget(targetTok)) {
+    | (Some(cardTok), Some(whereTok)) =>
+      switch (CardText.parse(cardTok), parseWhere(whereTok)) {
       | (None, _) => Usage({verb: "move", message: notACard(cardTok)})
-      | (_, None) => Usage({verb: "move", message: notAPile(targetTok)})
-      | (Some(card), Some(to)) => Dispatch(Reducer.Move({card, to}))
+      | (_, None) => Usage({verb: "move", message: notAPile(whereTok)})
+      // A pile index needs no board, so it parses all the way to the action, exactly as
+      // it always has; the two board-shaped destinations wait for one.
+      | (Some(card), Some(At(to))) => Dispatch(Reducer.Move({card, to}))
+      | (Some(card), Some(where)) => MoveTo({cards: [card], where})
       }
     | _ =>
       Usage({
         verb: "move",
-        message: "Usage: move <card> <pile>   (e.g. move AS 0, or move AS table)",
+        message: "Usage: move <card> <where>   (e.g. move AS 0, move AS T3, move 2H 3C, or move AS table)",
       })
     }
   // Bare `set` shows the flags; `set <setting> on|off` changes one. Arity before content
@@ -162,11 +231,15 @@ let parse = (line: string): t => {
       let targetTok = rest->Array.getUnsafe(Array.length(rest) - 1)
       let parsed =
         rest->Array.slice(~start=0, ~end=Array.length(rest) - 1)->Array.map(CardText.parse)
-      switch (parsed->Array.some(Option.isNone), parseTarget(targetTok)) {
+      switch (parsed->Array.some(Option.isNone), parseWhere(targetTok)) {
       | (true, _) =>
         Usage({verb: "moverun", message: `Not all of those are cards (try AS, TH, KD).`})
       | (_, None) => Usage({verb: "moverun", message: notAPile(targetTok)})
-      | (false, Some(to)) => Dispatch(Reducer.MoveRun({cards: parsed->Array.filterMap(c => c), to}))
+      | (false, Some(At(to))) =>
+        Dispatch(Reducer.MoveRun({cards: parsed->Array.filterMap(c => c), to}))
+      // A run takes its destination the same three ways a single card does — there's no
+      // reason `moverun 8H 7S 6H T3` should be the one move you have to count piles for.
+      | (false, Some(where)) => MoveTo({cards: parsed->Array.filterMap(c => c), where})
       }
     } else {
       Usage({
@@ -177,7 +250,7 @@ let parse = (line: string): t => {
   | Some("movecol") =>
     switch (arg(1), arg(2)) {
     | (Some(fromTok), Some(toTok)) =>
-      switch (Int.fromString(fromTok), Int.fromString(toTok)) {
+      switch (digits(fromTok), digits(toTok)) {
       | (Some(from), Some(to)) => Dispatch(Reducer.MoveColumn({from, to}))
       | _ =>
         Usage({verb: "movecol", message: `Not a pile index (try two indices, e.g. movecol 8 15).`})
@@ -196,6 +269,93 @@ let parse = (line: string): t => {
 // to the same typo.
 let describeUnknown = (verb: string): string =>
   `Unknown command: ${verb}. Type "help" for the commands.`
+
+// --- Resolving a destination against a board ---------------------------------
+// The other half of `where`: `parse` reads the words, and this reads the *board* they
+// were said about. It lives here rather than in either front end for the reason the
+// grammar does — `move 8H 9S` has to pick the same pile in a terminal and in the
+// panel, and "which pile is showing the Nine of Spades" is one question with one
+// answer, not two implementations of it.
+
+// Every pile currently *showing* `card` — holding it as its top card, the card a
+// newcomer would land on. A buried card shows nothing: landing "on" it would really
+// land on whatever covers it, which is a different move from the one that was typed.
+let showing = (~game: Game.t, state: GameState.t, card: card): array<int> =>
+  game.piles
+  ->Array.mapWithIndex((_, i) => i)
+  ->Array.filter(i =>
+    switch GameState.topOf(state, i) {
+    | Some(top) => GameState.sameCard(top, card)
+    | None => false
+    }
+  )
+
+// The slot labels for a set of pile indices, for a message that has to point at them.
+let labelsOf = (~game: Game.t, indices: array<int>): string =>
+  indices->Array.filterMap(i => Slot.labelAt(~game, i))->Array.join(", ")
+
+// Turn a `where` into the target a `Reducer.action` carries, or say why it names no
+// single pile on this board. Every refusal is a sentence about the board the player is
+// looking at, because that's the only thing that could have made the destination
+// unreadable — the words themselves already parsed.
+let resolveWhere = (~game: Game.t, state: GameState.t, where: where): result<
+  Reducer.target,
+  string,
+> =>
+  switch where {
+  | At(target) => Ok(target)
+  | Slot({role, ordinal}) =>
+    switch Slot.indexOf(~game, ~role, ~ordinal) {
+    | Some(i) => Ok(Reducer.ToPile(i))
+    | None =>
+      let have = Slot.count(~game, role)
+      Error(
+        have == 0
+          ? `This board has no ${Slot.roleNamePlural(role)}.`
+          : `No such ${Slot.roleName(role)}: ${Slot.format(
+                ~role,
+                ~ordinal,
+              )} (this board has ${Int.toString(have)}, ${Slot.format(
+                ~role,
+                ~ordinal=1,
+              )}–${Slot.format(~role, ~ordinal=have)}).`,
+      )
+    }
+  // A named card resolves only when *exactly one* pile is showing it. Nought and more
+  // than one are both refusals rather than a guess: a move that lands somewhere the
+  // player didn't name is worse than one that doesn't happen. (A standard deck can't
+  // show the same card twice, so the ambiguous case is a guard on the games that could
+  // — but it's the guard that lets the rule be stated simply.)
+  | Onto(card) =>
+    switch showing(~game, state, card) {
+    | [i] => Ok(Reducer.ToPile(i))
+    | [] =>
+      Error(
+        switch GameState.locationOf(state, card) {
+        | None => `${CardText.format(card)} isn't in play.`
+        | Some(GameState.Loose) =>
+          `${CardText.format(card)} is lying loose on the table, not on a pile.`
+        | Some(GameState.InPile(_)) =>
+          `${CardText.format(card)} is buried — only the card on top of a pile can be moved onto.`
+        },
+      )
+    | many =>
+      Error(
+        `Ambiguous: ${CardText.format(card)} is showing on ${Int.toString(
+            Array.length(many),
+          )} piles (${labelsOf(~game, many)}). Name the column instead.`,
+      )
+    }
+  }
+
+// The action that moves `cards` onto a resolved target: one card is a `Move`, several
+// are the supermove `MoveRun`. Written once so a resolved `move`/`moverun` dispatches
+// the identical action its index-typed twin would have.
+let moveAction = (~cards: array<card>, ~to: Reducer.target): Reducer.action =>
+  switch cards {
+  | [card] => Reducer.Move({card, to})
+  | _ => Reducer.MoveRun({cards, to})
+  }
 
 // --- What a `deal` argument names --------------------------------------------
 // `parse` above hands the argument through untouched, because *acting* on a deal needs a
@@ -221,10 +381,7 @@ type dealt =
 
 // A deal number is *all* digits. `Int.fromString` alone would read "12abc" as 12 and
 // open a board nobody asked for, so the token has to be nothing but digits to be one.
-let dealNumber = (token: string): option<int> =>
-  token != "" && token->String.split("")->Array.every(c => c >= "0" && c <= "9")
-    ? Int.fromString(token)
-    : None
+let dealNumber = digits
 
 let resolveDeal = (~game: option<string>, ~scenario: option<string>): dealt =>
   switch game {
@@ -291,11 +448,11 @@ type helpRow = (string, string)
 
 // The board verbs both front ends offer, in the order they're worth learning.
 let boardHelp: array<helpRow> = [
-  ("move <card> <pile>", "move a card onto pile <index> (e.g. move AS 0)"),
+  ("move <card> <where>", "move a card (`mv`/`m` for short) — see the destinations below"),
   ("move <card> table", "move a card loose onto the table (free games only)"),
   (
-    "moverun <card>… <pile>",
-    "supermove an ordered run, cards bottom-first (e.g. moverun 8H 7S 6H 5)",
+    "moverun <card>… <where>",
+    "supermove an ordered run, cards bottom-first (e.g. moverun 8H 7S 6H T3)",
   ),
   ("home <card>", "send a card to its foundation, if one will take it (e.g. home AS)"),
   (
@@ -325,8 +482,16 @@ let dealHelp: array<helpRow> = [
   ("new", "deal a fresh game"),
 ]
 
-// How a card is addressed, said once for both listings.
-let cardNote = "Cards are named by identity (AS, TH, KD); piles by index."
+// How a card is addressed and how a destination is said, once for both listings. The
+// three ways to name a place are worth spelling out here rather than crowding the
+// `move` row: they're the same three for `move` and `moverun`, and two of them are new
+// enough that a player won't guess them.
+let cardNote = `Cards are named by identity (AS, TH, KD).
+A destination is one of:
+  a slot name    the label above the column — T3 (tableau), C1 (free cell), F2 (foundation)
+  a card         the card to land on, wherever it is — move 2H 3C
+  a pile index   the absolute position — move 2H 11
+  table          loose on the table (free games only)`
 
 let rec padTo = (s: string, width: int): string =>
   String.length(s) >= width ? s : padTo(s ++ " ", width)

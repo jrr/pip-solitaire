@@ -5,6 +5,10 @@ It draws a game's board with box-drawing characters, and — via `play` — lets
 deal a game and dispatch moves into the pure `Reducer.reduce`, printing the
 resulting board (or a typed rejection) after each command.
 
+The board is drawn in the same two role-grouped rows the web app lays out: free
+cells and foundations across the top, tableau columns below, each column headed by
+the name a typed move can address it by (`T3`, `C1`, `F2`).
+
 The box-drawn board isn't this package's own any more: `core`'s `Render` draws it,
 because the web app's debug console prints the same one. What's left here is the
 terminal end of it — stdin, stdout, and asking for ANSI colour.
@@ -98,9 +102,9 @@ deal <n>                 deal FreeCell game number <n>  (e.g. deal 12345)
 deal <game> [position]   deal a named game, at a named position if given
 new                      deal a fresh game
 redeal / restart         play the current deal again from the start (same board)
-move <card> <pile>       move a card onto pile <index>   (e.g. move AS 0)
+move <card> <where>      move a card   (e.g. move AS T3, mv 2H 3C, m AS 0)
 move <card> table        move a card loose onto the table (free games only)
-moverun <card>… <pile>   supermove an ordered run, cards bottom-first
+moverun <card>… <where>  supermove an ordered run, cards bottom-first
 home <card>              send a card to its foundation, if one will take it
 movecol <from> <to>      reorder cascade columns: pull <from>, drop it at <to>
 finish                   sweep every card home to win, when the board is drainable
@@ -138,7 +142,23 @@ quit / exit              end an interactive session (Ctrl-D does it too)
 - **Cards** are named by a compact identity: a rank (`A 2-9 T J Q K`, or the
   two-digit `10`) followed by a suit letter (`S H D C`) — `AS`, `TH`/`10H`,
   `KD`. Case-insensitive. See `core`'s `CardText.res`.
-- **Piles** are addressed by index (`0`, `1`, …); the table by the word `table`.
+- **`move` has three shorthands and three destinations.** The verb is `move`, `mv`
+  or `m` — it's the line you type most — and where it sends the card can be said
+  any of these ways:
+  - **a slot name**, the label printed above the column: `T1`…`T8` for the tableau
+    columns, `C1`…`C4` for the free cells, `F1`…`F4` for the foundations. Letter
+    first on purpose: a card is rank-then-suit, so a digit-first `3C` would be both
+    the Three of Clubs and a free cell in the one place both can appear.
+  - **the card to land on** — `mv 2H 3C` puts the Two of Hearts on the Three of
+    Clubs, wherever that is. It has to be the card *showing* at the top of exactly
+    one pile: a buried card, a card that isn't in play, or (on a board that could
+    show one card twice) an ambiguous match is refused rather than guessed at.
+  - **a pile index** (`0`, `1`, …), the absolute position in the model — what the
+    reducer itself speaks, and unchanged.
+
+  The same three work for `moverun`'s destination. The table is the word `table`.
+- **The board says its own slot names**: each column is drawn under its label, so
+  the move you can see is the move you can type.
 - **Comments**: a line whose first non-space character is `#` is skipped
   entirely (not echoed, not run), so a piped script can document itself. Blank
   lines are skipped too. Both hold at a live prompt as well, which is why a whole

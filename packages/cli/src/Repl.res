@@ -23,7 +23,8 @@
 //   deal <game> [pos]    a game `core` knows, at one of its named positions if given
 //   new                  a fresh board, from a seed the driver invents
 //   redeal / restart     play the current deal again from its opening layout
-//   move <card> <pile>   dispatch a Move onto pile <index>, printing the result
+//   move <card> <where>  dispatch a Move onto a slot, a card, or a pile index
+//   mv / m               the same verb, for the command you type most
 //   move <card> table    dispatch a Move loose onto the table (free games only)
 //   movecol <from> <to>  reorder the cascade columns — insert-and-shift (#159)
 //   undo / redo          step back and forth over the history of accepted moves (#85)
@@ -33,8 +34,10 @@
 //   help                 show this command surface
 //   quit / exit          end an interactive session (Ctrl-D does it too)
 //
-// A card is addressed by its compact identity (`AS`, `TH`, `KD` — see
-// `CardText`), a pile by its index, and the table by the word `table`.
+// A card is addressed by its compact identity (`AS`, `TH`, `KD` — see `CardText`).
+// A *destination* is said three ways (see `Command.where`): the slot name printed above
+// the column (`T3`, `C1`, `F2` — see `Slot`), the card to land on (`move 2H 3C`), or the
+// absolute pile index. The table is the word `table`.
 //
 // A line whose first non-space character is `#` is a comment: it's skipped
 // entirely (not echoed, not run), so a piped script can document itself — see
@@ -275,10 +278,15 @@ let redo = (s: session): (option<session>, string) =>
 // `Command.Usage` carries the verb it choked on rather than just the prose.
 let dealFirstHint = (command: Command.t): option<string> =>
   switch command {
-  | Command.Undo | Command.Redo | Command.Print | Command.Dispatch(Reducer.Move(_)) =>
+  | Command.Undo
+  | Command.Redo
+  | Command.Print
+  | Command.Dispatch(Reducer.Move(_))
+  | Command.MoveTo({cards: [_]}) =>
     Some("stacking")
   | Command.Dispatch(Reducer.MoveRun(_))
   | Command.Dispatch(Reducer.MoveColumn(_))
+  | Command.MoveTo(_)
   | Command.Home(_)
   | Command.Finish =>
     Some("freecell")
@@ -350,6 +358,17 @@ let stepCommand = (
   | Command.Finish => onBoard(finish)
   | Command.Home({card}) => onBoard(s => home(~options, s, card))
   | Command.Dispatch(action) => onBoard(s => dispatch(~options, s, action))
+  // A destination named as a card or a column label (`move 8H 9S`, `move 8H T3`) — the
+  // half of a move only a board can read. `Command.resolveWhere` reads it against this
+  // session's board, and what comes back is dispatched through the very path an index
+  // typed by hand takes, so the three ways of saying where are one move underneath.
+  | Command.MoveTo({cards, where}) =>
+    onBoard(s =>
+      switch Command.resolveWhere(~game=s.game, present(s), where) {
+      | Ok(to) => dispatch(~options, s, Command.moveAction(~cards, ~to))
+      | Error(message) => (Some(s), message)
+      }
+    )
   }
 }
 

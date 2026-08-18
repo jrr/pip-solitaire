@@ -1691,6 +1691,15 @@ let make = (
           // to fly: `reflowAll` (inside the flight path) simply re-lays the board.
           | Reducer.MoveColumn(_) => playAction(~movers=[], ~collect=false, action)
           }
+        // A destination named as a card or a column label (`move 8H 9S`, `move 8H T3`),
+        // resolved against this board by the shared reader — so the panel picks the same
+        // pile the CLI would, and the move that follows is an ordinary dispatched one
+        // with the ordinary flight.
+        | Command.MoveTo({cards, where}) =>
+          switch Command.resolveWhere(~game, state.contents, where) {
+          | Ok(to) => playAction(~movers=cards, Command.moveAction(~cards, ~to))
+          | Error(message) => message
+          }
         // `home <card>` names no destination, so resolve one here — through the very
         // `validMoves` the double-tap send-home uses (#196), which is what makes a typed
         // `home AS` and a double-tapped one the same move.
