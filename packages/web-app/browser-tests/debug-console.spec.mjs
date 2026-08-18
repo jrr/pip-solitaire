@@ -124,19 +124,12 @@ test("a real move shows up in the console as it is played", async ({ page }) => 
   // The move the UI asked core to make, what core said back, and the win it reached —
   // the interactions `DebugLog` narrates, now readable without devtools.
   await expect(consoleLines(page).first()).toBeVisible()
-  const shown = await labels(page)
-  expect(shown).toContain("dispatch")
-  expect(shown.some((label) => label.startsWith("result:"))).toBe(true)
-  expect(shown).toContain("win")
+  expect(await labels(page)).toContain("win")
 
-  // The action's payload rides beside its label as JSON, which is what makes the line
-  // worth reading at all.
-  const dispatched = await page
-    .locator("#debug-console-lines li", { hasText: "dispatch" })
-    .first()
-    .locator(".debug-console__value")
-    .textContent()
-  expect(dispatched).toContain("Move")
+  // One line for the move, in the board's own words: the card's face, the label printed
+  // over the pile it went to, and the outcome on the end of it. (It used to be two — the
+  // reducer's action as JSON, then `result: accepted` under it.)
+  await expect(consoleLines(page).filter({ hasText: "move K♣ → F4 ✓" })).toHaveCount(1)
 
   // The scrollback survives a close: reopening resumes the log rather than wiping it.
   const count = await consoleLines(page).count()
@@ -265,17 +258,12 @@ test("a typed command moves the card, and the board ends where a drag would leav
   await expect(page.locator(".win-overlay")).toHaveCount(1)
 
   // The command echoed above its result, and the result is the ordinary instrumentation
-  // — a typed move is narrated as the `Move` it is, not as a separate kind of event.
+  // — a typed move is narrated as the `Move` it is, not as a separate kind of event. The
+  // narration names the pile `F4`, the label the board prints, though `7` was typed.
   const shown = await labels(page)
   expect(shown).toContain("> move KC 7")
-  expect(shown).toContain("dispatch")
   expect(shown).toContain("win")
-  const dispatched = await page
-    .locator("#debug-console-lines li", { hasText: "dispatch" })
-    .first()
-    .locator(".debug-console__value")
-    .textContent()
-  expect(dispatched).toContain("Move")
+  await expect(consoleLines(page).filter({ hasText: "move K♣ → F4 ✓" })).toHaveCount(1)
 })
 
 // The two destinations a *board* has to read, in the browser: the slot name printed
@@ -349,7 +337,7 @@ test("a rejected command explains itself in the same words the CLI uses", async 
   // the far side of it.
   await runCommand(page, "move XX 0")
   await expect(
-    consoleLines(page).filter({ hasText: `Not a card: "XX" (try AS, TH, KD).` }),
+    consoleLines(page).filter({ hasText: `Not a card or a place to move from: "XX"` }),
   ).toHaveCount(1)
 
   await runCommand(page, "frobnicate")
@@ -358,9 +346,12 @@ test("a rejected command explains itself in the same words the CLI uses", async 
   ).toHaveCount(1)
 
   // A legal-looking move the rules refuse comes back with the reducer's reason, not a
-  // shrug — the Clubs King has no business on a full foundation.
+  // shrug — the Clubs King has no business on a full foundation. Two lines, and only
+  // for a rejection: the mark says it bounced and the line under it says why, in the
+  // phrase `core` gives the terminal's sentence (`Command.reason`).
   await runCommand(page, "move KC 4")
-  await expect(consoleLines(page).filter({ hasText: "Rejected:" })).toHaveCount(1)
+  await expect(consoleLines(page).filter({ hasText: "move K♣ → F1 ✗" })).toHaveCount(1)
+  await expect(consoleLines(page).filter({ hasText: "can't stack there" })).toHaveCount(1)
   // …and the board hasn't moved: a rejection is not a move.
   const cell = await page.locator(".drop-zone").nth(0).boundingBox()
   expect(encloses(cell, await cardBox(page, PENDING_KING))).toBe(true)
