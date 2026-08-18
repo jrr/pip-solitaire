@@ -1,8 +1,8 @@
-// A **text** view of a board: box-drawn cards, as a string. The counterpart to the
-// web-app's `Deck`/`CardArt`, and — since it draws with characters rather than pixels
-// — the one view both front ends can show. `Card.res` keeps display concerns out of
-// the *model*; this is a renderer over the model, which is a different thing, and it
-// lives here because two callers now want it:
+// A **text** view of a board: box-drawn cards. The counterpart to the web-app's
+// `Deck`/`CardArt`, and — since it draws with characters rather than pixels — the one
+// view both front ends can show. `Card.res` keeps display concerns out of the *model*;
+// this is a renderer over the model, which is a different thing, and it lives here
+// because two callers now want it:
 //
 //   - the **CLI**, which prints it to a terminal after every command;
 //   - the **web app's debug console** (#273), whose `print` used to answer "the board
@@ -15,16 +15,96 @@
 //     gets a heavy frame (┏━┓); a card placed in a pile gets a light one (┌─┐);
 //     an empty pile shows a double frame (╔═╗) where its cards would land.
 //   - Colour tells suit: hearts and diamonds are drawn red, spades and clubs
-//     plain, the terminal analogue of the red/black pips on a real deck. This is the
-//     one convention that isn't universal — it's written as ANSI escapes, which a
-//     terminal paints and a browser would show as garbage — so it's **off by default**
-//     and the CLI asks for it (`~color=true`). The suit is still legible without it:
-//     the pip glyphs differ.
+//     plain, the terminal analogue of the red/black pips on a real deck. The suit is
+//     still legible without it: the pip glyphs differ.
 //   - A fanned pile is drawn as an overlapping vertical column — each lower card
 //     peeks a single face line above the next, and the top card (last in the
 //     model's bottom-first order) is shown in full at the foot of the fan.
+//
+// **What crosses the boundary is a document, not a painted string.** A board renders to
+// `array<line>`, where a line is a run of `span`s each tagged with the *role* its
+// characters play (`ink`) — "this is a red suit's face", not "this is SGR 31" and not
+// "this is #991b1b". Painting is a front end's job, and each one does it in its own
+// alphabet: the terminal wraps red faces in ANSI escapes (`toAnsi`), the web console
+// hands each span to a `<span>` and lets the stylesheet colour it. Neither alphabet is
+// intelligible to the other, which is why the thing they share is the one that's in
+// neither.
+//
+// `toPlain`/`toAnsi` are the two adapters shipped here, and `board`/`stateBoard` are
+// kept as the string-returning entry points they always were, so a caller that only
+// wants text (the CLI, every test that predates this) never learns about spans at all.
+//
+// The other thing structure buys is alignment. Colour used to be baked into the
+// characters, so every width the layout measured had to discount escapes it couldn't
+// see (`visibleWidth` was a regex strip). A span knows its own text, so a line's width
+// is a sum — and a coloured board can't drift out of alignment with a plain one,
+// because they're the same document painted twice.
 
 open Card
+
+// --- What a rendered board is made of -----------------------------------------
+
+// The role a run of characters plays. This is as far as `core` goes towards colour:
+// naming what something *is*, and leaving what it looks like to whoever is drawing.
+// Deliberately small — it grows a case when a front end has something new to say, and
+// an unknown case can always be painted as plain text.
+type ink =
+  | Plain // frames, gaps, padding: the board's furniture
+  | Suit(Rules.color) // a card's face, in the model's own red/black
+  | Title // the heading naming the game and its deal
+
+// A run of characters under one ink, and a row of them. A line carries no newline of
+// its own — `toPlain` and friends join them — so a line is always exactly one row.
+type span = {text: string, ink: ink}
+type line = array<span>
+
+let plain = (text: string): span => {text, ink: Plain}
+
+let sameInk = (a: ink, b: ink): bool =>
+  switch (a, b) {
+  | (Plain, Plain) | (Title, Title) => true
+  | (Suit(x), Suit(y)) => x == y
+  | (Plain | Suit(_) | Title, _) => false
+  }
+
+// Fold neighbouring spans of the same ink into one and drop the empty ones. Purely an
+// economy: it changes no output, but a board line is assembled from ~16 cards' worth of
+// borders and gaps, and a front end rendering one node per span would otherwise build
+// several dozen where three or four will do.
+let compact = (line: line): line => {
+  let out: array<span> = []
+  line->Array.forEach(span =>
+    if span.text != "" {
+      switch out->Array.at(-1) {
+      | Some(last) if sameInk(last.ink, span.ink) =>
+        out->Array.set(Array.length(out) - 1, {...last, text: last.text ++ span.text})
+      | _ => out->Array.push(span)
+      }
+    }
+  )
+  out
+}
+
+// Lay spans end to end. Every line in this module is built through here, so nothing
+// escapes `compact`.
+let concat = (parts: array<line>): line => parts->Array.flat->compact
+
+// Lay lines side by side with `separator` between them — `Array.join` for spans.
+let joinLines = (parts: array<line>, separator: line): line =>
+  parts->Array.mapWithIndex((part, i) => i == 0 ? part : Array.concat(separator, part))->concat
+
+// The visible width of a line: the characters it will actually put on screen. A sum
+// now that colour lives in the ink rather than in the text — there is nothing invisible
+// in a line to discount.
+let visibleWidth = (line: line): int =>
+  line->Array.reduce(0, (n, span) => n + String.length(span.text))
+
+let repeat = (s, n) => Array.make(~length=n, s)->Array.join("")
+
+// `n` columns of blank, as a line. Empty below 1 so a zero-width pad contributes no span.
+let pad = (n: int): line => n > 0 ? [plain(repeat(" ", n))] : []
+
+// --- Glyphs -------------------------------------------------------------------
 
 // The Unicode pip glyph for each suit (the same characters the web-app draws).
 let suitSymbol = suit =>
@@ -33,13 +113,6 @@ let suitSymbol = suit =>
   | Hearts => `♥`
   | Diamonds => `♦`
   | Clubs => `♣`
-  }
-
-// Hearts and diamonds are the red suits; spades and clubs are drawn plain.
-let isRed = suit =>
-  switch suit {
-  | Hearts | Diamonds => true
-  | Spades | Clubs => false
   }
 
 // The short corner label: a single character, or "10" for the ten.
@@ -59,19 +132,6 @@ let rankLabel = rank =>
   | Queen => "Q"
   | King => "K"
   }
-
-// ANSI colour: wrap `s` in a SGR colour code and a reset. The escape byte is
-// built from its char code so the source needs no literal control character.
-let esc = String.fromCharCode(27)
-let colorize = (s, code) => `${esc}[${code}m${s}${esc}[0m`
-let red = "31"
-
-// The visible width of a line: its length once the zero-width ANSI colour codes
-// are stripped, so coloured and plain cards measure the same and columns align.
-// The escape byte is removed first (matched by value, so no literal control
-// character in the source), then the `[..m` SGR remnant it introduced.
-let ansi = /\[[0-9;]*m/g
-let visibleWidth = s => s->String.replaceAll(esc, "")->String.replaceRegExp(ansi, "")->String.length
 
 // A box-drawing frame: the six characters that draw a card's border. Swapping
 // the style is how a card's state (free / placed / empty) changes its outline.
@@ -114,56 +174,59 @@ let empty = {
 // pip, and a trailing space so the glyph never crowds the right border.
 let cellWidth = 4
 
-let repeat = (s, n) => Array.make(~length=n, s)->Array.join("")
+// --- Cards --------------------------------------------------------------------
 
 // The three kinds of line that make up a card, each `cellWidth` wide inside.
-let topBorder = f => `${f.topLeft}${repeat(f.horizontal, cellWidth)}${f.topRight}`
-let bottomBorder = f => `${f.bottomLeft}${repeat(f.horizontal, cellWidth)}${f.bottomRight}`
-let blankLine = f => `${f.vertical}${repeat(" ", cellWidth)}${f.vertical}`
+let topBorder = f => [plain(`${f.topLeft}${repeat(f.horizontal, cellWidth)}${f.topRight}`)]
+let bottomBorder = f => [plain(`${f.bottomLeft}${repeat(f.horizontal, cellWidth)}${f.bottomRight}`)]
+let blankLine = f => [plain(`${f.vertical}${repeat(" ", cellWidth)}${f.vertical}`)]
 
-// The face line: the rank and suit, left-aligned and padded to the cell width, and
-// coloured red for the red suits when the caller paints in colour. `~color` is threaded
-// from the entry points rather than read from anywhere ambient, so one renderer serves a
-// terminal and a browser panel in the same call shape.
-let faceLine = (~color: bool, f, card: card) => {
+// The face line: the rank and suit, left-aligned and padded to the cell width, between
+// the frame's two verticals. The face is the one span on a board that isn't `Plain`,
+// and it's inked with `Rules.color` — the model's own notion of a red or black card,
+// the same one the alternating-colour stacking rule is written against — rather than a
+// second opinion about which suits are red.
+let faceLine = (f, card: card): line => {
   let text = `${rankLabel(card.rank)}${suitSymbol(card.suit)}`->String.padEnd(cellWidth, " ")
-  let face = color && isRed(card.suit) ? colorize(text, red) : text
-  `${f.vertical}${face}${f.vertical}`
+  concat([[plain(f.vertical)], [{text, ink: Suit(Rules.color(card.suit))}], [plain(f.vertical)]])
 }
 
 // A full, four-line card in the given frame style.
-let fullCard = (~color: bool, f, card) => [
+let fullCard = (f, card): array<line> => [
   topBorder(f),
-  faceLine(~color, f, card),
+  faceLine(f, card),
   blankLine(f),
   bottomBorder(f),
 ]
 
 // A double-framed empty slot, so an empty pile still shows where its cards land.
-let emptySlot = () => [topBorder(empty), blankLine(empty), blankLine(empty), bottomBorder(empty)]
+let emptySlot = (): array<line> => [
+  topBorder(empty),
+  blankLine(empty),
+  blankLine(empty),
+  bottomBorder(empty),
+]
 
 // A fanned pile as an overlapping vertical column: every card contributes its
 // top border and one face line, and the top of the pile (last in bottom-first
 // order) closes the fan with its full body. An empty pile shows a slot.
-let fannedColumn = (~color: bool, cards: array<card>) =>
+let fannedColumn = (cards: array<card>): array<line> =>
   if Array.length(cards) == 0 {
     emptySlot()
   } else {
     let lastIndex = Array.length(cards) - 1
     cards
     ->Array.mapWithIndex((card, i) =>
-      i == lastIndex
-        ? fullCard(~color, placed, card)
-        : [topBorder(placed), faceLine(~color, placed, card)]
+      i == lastIndex ? fullCard(placed, card) : [topBorder(placed), faceLine(placed, card)]
     )
     ->Array.flat
   }
 
 // A squared pile keeps a single card's footprint, so only its top card shows;
 // an empty pile shows a slot.
-let squaredColumn = (~color: bool, cards: array<card>) =>
+let squaredColumn = (cards: array<card>): array<line> =>
   switch cards[Array.length(cards) - 1] {
-  | Some(card) => fullCard(~color, placed, card)
+  | Some(card) => fullCard(placed, card)
   | None => emptySlot()
   }
 
@@ -171,13 +234,15 @@ let squaredColumn = (~color: bool, cards: array<card>) =>
 // cards come from wherever the caller has them — the board's opening deal
 // (`board`) or a live snapshot (`stateBoard`) — so the two renderers share one
 // notion of how a pile looks.
-let columnFor = (~color: bool, stacking: Game.stacking, cards: array<card>) =>
+let columnFor = (stacking: Game.stacking, cards: array<card>): array<line> =>
   switch stacking {
-  | Game.Fanned => fannedColumn(~color, cards)
-  | Game.Squared => squaredColumn(~color, cards)
+  | Game.Fanned => fannedColumn(cards)
+  | Game.Squared => squaredColumn(cards)
   }
 
-let pileColumn = (~color: bool, pile: Game.pile) => columnFor(~color, pile.stacking, pile.cards)
+let pileColumn = (pile: Game.pile): array<line> => columnFor(pile.stacking, pile.cards)
+
+// --- Layout -------------------------------------------------------------------
 
 // A column of card lines is `colWidth` visible columns wide (a cell plus its two
 // borders); the gap that separates neighbouring piles / loose cards.
@@ -191,27 +256,26 @@ let maxHeight = blocks =>
 
 // Pad a column with blank rows at its foot so every pile in a row shares a
 // height and the shorter ones don't drag the cards beside them upward.
-let padColumn = (col, height) =>
-  col->Array.concat(Array.make(~length=height - Array.length(col), repeat(" ", colWidth)))
+let padColumn = (col: array<line>, height): array<line> =>
+  col->Array.concat(
+    Array.make(~length=height - Array.length(col), ())->Array.map(() => pad(colWidth)),
+  )
 
 // The natural width of a row of `n` equal columns separated by `gap`.
 let rowWidth = n => n <= 0 ? 0 : n * colWidth + (n - 1) * gap
 
 // Indent each line of a block so it sits centred within `width` (the loose
 // cards, dealt centred beneath the piles as they are on the web table).
-let center = (block, width) =>
-  block->Array.map(line => {
-    let pad = (width - visibleWidth(line)) / 2
-    pad > 0 ? repeat(" ", pad) ++ line : line
-  })
+let center = (block: array<line>, width): array<line> =>
+  block->Array.map(line => concat([pad((width - visibleWidth(line)) / 2), line]))
 
 // Lay equal-height card blocks side by side with a fixed gap (the loose cards).
-let joinBlocks = blocks =>
+let joinBlocks = (blocks: array<array<line>>): array<line> =>
   switch blocks[0] {
   | None => []
   | Some(first) =>
     first->Array.mapWithIndex((_, row) =>
-      blocks->Array.map(b => b->Array.getUnsafe(row))->Array.join(repeat(" ", gap))
+      blocks->Array.map(b => b->Array.getUnsafe(row))->joinLines(pad(gap))
     )
   }
 
@@ -219,7 +283,7 @@ let joinBlocks = blocks =>
 // `space-between` — the first pile hugs the left edge, the last the right, and
 // the rest are evenly spaced between (any leftover column padding falls in the
 // leftmost gaps). A lone pile is simply centred.
-let spaceBetween = (columns, width) => {
+let spaceBetween = (columns: array<array<line>>, width): array<line> => {
   let n = Array.length(columns)
   let height = maxHeight(columns)
   let cols = columns->Array.map(c => padColumn(c, height))
@@ -234,12 +298,15 @@ let spaceBetween = (columns, width) => {
       cols
       ->Array.mapWithIndex((col, i) => {
         let cell = col->Array.getUnsafe(row)
-        i < n - 1 ? cell ++ repeat(" ", base + (i < extra ? 1 : 0)) : cell
+        i < n - 1 ? concat([cell, pad(base + (i < extra ? 1 : 0))]) : cell
       })
-      ->Array.join("")
+      ->concat
     )
   }
 }
+
+// A row of nothing, which is what separates the board's sections.
+let blankRow: line = []
 
 // Lay a board out like the web table: a titled row of pile columns along the
 // top and the loose cards (already framed) centred beneath them. The board is as
@@ -248,17 +315,20 @@ let spaceBetween = (columns, width) => {
 // and loose cards then hand them here, so the layout lives in one place.
 let assemble = (
   ~title: string,
-  ~columns: array<array<string>>,
-  ~freeCards: array<array<string>>,
-) => {
+  ~columns: array<array<line>>,
+  ~freeCards: array<array<line>>,
+): array<line> => {
   let width = Math.Int.max(rowWidth(Array.length(columns)), rowWidth(Array.length(freeCards)))
 
   let top = spaceBetween(columns, width)
   let bottom = Array.length(freeCards) == 0 ? [] : center(joinBlocks(freeCards), width)
 
   let rows = Array.length(bottom) == 0 ? [top] : [top, bottom]
-  let sections = Array.concat([[title]], rows)
-  sections->Array.map(lines => lines->Array.join("\n"))->Array.join("\n\n")
+  let sections = Array.concat([[[{text: title, ink: Title}]]], rows)
+  // One blank row between sections; none before the first.
+  sections
+  ->Array.mapWithIndex((section, i) => i == 0 ? section : Array.concat([blankRow], section))
+  ->Array.flat
 }
 
 // The board's title: the game's name, and — when the caller knows one — the deal number
@@ -277,24 +347,76 @@ let titleFor = (~game: Game.t, ~deal: option<int>): string =>
   | None => game.name
   }
 
+// --- The boards ---------------------------------------------------------------
+
 // The whole opening layout for a game, straight from its board definition. A game with a
 // seed of its own names it (FreeCell's canonical board is deal #1).
-let board = (~color: bool=false, game: Game.t) =>
+let boardLines = (game: Game.t): array<line> =>
   assemble(
     ~title=titleFor(~game, ~deal=game.seed),
-    ~columns=game.piles->Array.map(pile => pileColumn(~color, pile)),
-    ~freeCards=game.loose->Array.map(c => fullCard(~color, free, c)),
+    ~columns=game.piles->Array.map(pileColumn),
+    ~freeCards=game.loose->Array.map(c => fullCard(free, c)),
   )
 
 // The same layout over a *live* `GameState.t` — so the renderer shows any state
 // the reducer produces, not just the opening deal. The stacking behaviour still
 // comes from the board definition (`GameState` carries only where cards rest),
 // while every card comes from the snapshot.
-let stateBoard = (~game: Game.t, ~deal: option<int>=?, ~color: bool=false, state: GameState.t) =>
+let stateLines = (~game: Game.t, ~deal: option<int>=?, state: GameState.t): array<line> =>
   assemble(
     ~title=titleFor(~game, ~deal),
     ~columns=game.piles->Array.mapWithIndex((pile, i) =>
-      columnFor(~color, pile.stacking, GameState.cardsInPile(state, i))
+      columnFor(pile.stacking, GameState.cardsInPile(state, i))
     ),
-    ~freeCards=state.loose->Array.map(c => fullCard(~color, free, c)),
+    ~freeCards=state.loose->Array.map(c => fullCard(free, c)),
   )
+
+// --- Painting -----------------------------------------------------------------
+// Two adapters over the document above, one per alphabet. A third — the web console's
+// spans — isn't here, because it doesn't produce a string: it walks `line` itself and
+// hands each span to the DOM.
+
+// Ink dropped: the characters alone. What a browser panel, a test, or a pipe wants.
+let toPlain = (lines: array<line>): string =>
+  lines
+  ->Array.map(line => line->Array.map(span => span.text)->Array.join(""))
+  ->Array.join("\n")
+
+// ANSI colour, for a terminal: wrap the red faces in an SGR colour code and a reset.
+// The escape byte is built from its char code so the source needs no literal control
+// character. Black faces, frames and the title are left alone — this renderer has only
+// ever painted the one thing.
+let esc = String.fromCharCode(27)
+let colorize = (s, code) => `${esc}[${code}m${s}${esc}[0m`
+let red = "31"
+
+let paintAnsi = (span: span): string =>
+  switch span.ink {
+  | Suit(Rules.Red) => colorize(span.text, red)
+  | Suit(Rules.Black) | Plain | Title => span.text
+  }
+
+let toAnsi = (lines: array<line>): string =>
+  lines
+  ->Array.map(line => line->Array.map(paintAnsi)->Array.join(""))
+  ->Array.join("\n")
+
+// --- The string entry points --------------------------------------------------
+// What every caller before the document existed asked for, unchanged: a board as text,
+// plain by default and coloured when the caller knows it's talking to a terminal.
+// `core` doesn't assume it is.
+
+let board = (~color: bool=false, game: Game.t): string => {
+  let lines = boardLines(game)
+  color ? toAnsi(lines) : toPlain(lines)
+}
+
+let stateBoard = (
+  ~game: Game.t,
+  ~deal: option<int>=?,
+  ~color: bool=false,
+  state: GameState.t,
+): string => {
+  let lines = stateLines(~game, ~deal?, state)
+  color ? toAnsi(lines) : toPlain(lines)
+}
