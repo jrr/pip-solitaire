@@ -47,10 +47,18 @@ jobs:
   # from the site deploy and its status reads on its own. `needs: deploy` serializes
   # the two gh-pages writers within the run; the whole job is `continue-on-error` so
   # a render hiccup never marks the deploy run failed.
+  #
+  # `timeout-minutes` matters more here than it looks: this run holds the
+  # `gh-pages` concurrency group, and the group never cancels in progress, so a
+  # job hung on the runner's 6h default would queue every later `main` deploy and
+  # every PR preview behind it for the rest of the day. A ~3min job capped at 15
+  # bounds that to something survivable, and `continue-on-error` means the cap
+  # firing just costs this run its screenshot snapshot.
   screenshots:
     needs: deploy
     runs-on: ubuntu-latest
     continue-on-error: true
+    timeout-minutes: 15
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
@@ -58,8 +66,15 @@ jobs:
       - name: Install mise
         uses: jdx/mise-action@v4
 
+      # `playwright install --with-deps` reaches the network twice — the browser
+      # download, and an `apt-get` for the system libraries — and either can stall
+      # indefinitely on a bad mirror or CDN edge rather than erroring out. The
+      # step is a ~30s job normally, so cap it: a stall then fails fast instead of
+      # sitting until the runner's 6h default, which (see the job cap below) is
+      # what actually hurts.
       - name: Install headless Chromium
         run: mise run playwright-install
+        timeout-minutes: 5
 
       - name: Render screenshot report
         run: mise run screenshots
