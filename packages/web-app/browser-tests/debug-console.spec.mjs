@@ -357,6 +357,51 @@ test("a rejected command explains itself in the same words the CLI uses", async 
   expect(encloses(cell, await cardBox(page, PENDING_KING))).toBe(true)
 })
 
+// The one refusal the panel can provoke and a pointer can't. A drag picks a card up by
+// *touching* it, so it can only ever take what's showing — the reflow marks every other
+// card unliftable, and the span a grab gathers is the tail of one pile by construction.
+// A typed command names a card instead, and a name reaches under the cards resting on
+// it. That reach is the reducer's to refuse (`Reducer.isFree`/`isSpan`), and this is the
+// front end where a person could actually make the request.
+test("a typed move can't lift a card out from under the pile resting on it", async ({
+  page,
+}) => {
+  // The supermove scenario: 9♠-8♥-7♠-6♥-5♠ down the first cascade with only the 5♠
+  // showing, and an empty last column that would take any card in the game.
+  await page.goto("/?scene=freecell&state=supermove&animate=off")
+  await settleBoard(page)
+  await openConsole(page)
+
+  const nineBefore = await cardBox(page, "nine of spades")
+  const eightBefore = await cardBox(page, "eight of hearts")
+
+  // The 9♠ is at the bottom of that run, under four cards. The empty column would
+  // have it, so the destination is not what refuses this.
+  await runCommand(page, "move 9S T8")
+  await expect(consoleLines(page).filter({ hasText: "move 9♠ → T8 ✗" })).toHaveCount(1)
+  await expect(consoleLines(page).filter({ hasText: "that card is buried" })).toHaveCount(1)
+  // Neither the card named nor the one under it has stirred — a rejection is not a
+  // move, and the run is still a run.
+  expect(await cardBox(page, "nine of spades")).toEqual(nineBefore)
+  expect(await cardBox(page, "eight of hearts")).toEqual(eightBefore)
+
+  // Naming several cards doesn't get round it: 9♠-8♥ read as a run, but the three
+  // cards on top mean no hand could take hold of just those two.
+  await runCommand(page, "moverun 9S 8H T8")
+  await expect(
+    consoleLines(page).filter({ hasText: "aren't lying together at the top of one pile" }),
+  ).toHaveCount(1)
+  expect(await cardBox(page, "nine of spades")).toEqual(nineBefore)
+
+  // What *is* showing still goes, as one gesture: the whole five-card run onto the
+  // empty column — the move this scenario exists to demonstrate.
+  await runCommand(page, "moverun T1 T8")
+  const column = await page.locator(".drop-zone").nth(11).boundingBox()
+  await expect
+    .poll(async () => (await cardBox(page, "nine of spades")).x)
+    .toBeGreaterThan(column.x - 1)
+})
+
 // The mirror image of the CLI accepting `clear` as a no-op: the panel knows the
 // terminal's session verb and answers it rather than forwarding it to the board, which
 // would have said only "that isn't something the board can do".
