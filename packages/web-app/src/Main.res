@@ -122,6 +122,15 @@ type model = {
   // (`ShareLink.urlForDeal`), so only the number has to be to hand.
   dealSeed: option<int>,
   shareDealStatus: option<string>,
+  // The deal-number dialog (`DealDialog`): the app's one modal, opened from the main
+  // menu's Play Seed… button. Only whether it's showing and the line under its field
+  // live here — **what's typed in it does not**. The field is a real DOM node the
+  // dialog module owns (the reconciler has no keys, so a vnode input loses its caret on
+  // every re-render), so the text is read off the element when Play is pressed rather
+  // than mirrored into the model on every keystroke. The same split the console lives
+  // with, and for the same reason.
+  dealDialogOpen: bool,
+  dealDialogStatus: option<string>,
 }
 
 type msg =
@@ -156,6 +165,9 @@ type msg =
   | ShareStatus(option<string>) // the share row's transient status line; `None` clears it
   | DealChanged(option<int>) // the board reported which deal it's showing (#98)
   | ShareDealStatus(option<string>) // the Share button's transient status line; `None` clears it
+  | OpenDealDialog // the main menu's Play Seed… button — ask which deal to lay out
+  | CloseDealDialog // the dialog's Cancel, its backdrop, or Escape
+  | SubmitDeal(string) // Play (or Enter) with this raw text in the dialog's field
 
 // `updateSW` only exists once registerSW has run, which needs `dispatch`, which
 // needs the loop to be mounted — so the Reload effect reaches it through a ref
@@ -277,6 +289,13 @@ let publishDeal = (seed: option<int>): unit => {
 // imperative listener built before `dispatch` exists (like `updateSW`). It
 // reaches the loop through this ref, filled in just after mount.
 let closeMenu: ref<unit => unit> = ref(() => ())
+
+// Surface the game, mounting it if a debug/demo scene is showing — the way back to
+// FreeCell for chrome that acts on *the game* rather than on whatever happens to be on
+// screen (the deal-number dialog does; so does the debug-states menu, which calls the
+// switcher directly because it's defined after it). `update` is defined above the
+// switcher, so like `closeMenu` this is how it reaches forward to one.
+let ensureFreecell: ref<unit => unit> = ref(() => ())
 
 // The live driver preferences (#139), seeded from the persisted settings (#134's
 // auto-collect defaults on). This is the same ref the board reads at each
@@ -623,6 +642,71 @@ let update = (msg, model) =>
       ? (model, Html.noEffect) // no change — don't re-render
       : ({...model, dealSeed, shareDealStatus: None}, Html.noEffect)
   | ShareDealStatus(shareDealStatus) => ({...model, shareDealStatus}, Html.noEffect)
+  // --- The deal-number dialog (`DealDialog`) ---------------------------------------
+  // Opening it hands the field the deal on the table, which it opens prefilled and
+  // selected with (see `DealDialog.apply`) — so the field says what shape of thing goes
+  // in it, and the first keystroke of a number a player was given replaces it.
+  //
+  // **The menu deliberately stays open behind it.** The dialog was opened from the
+  // menu's game section and Cancel returns you there, to the group you were reading,
+  // rather than dumping you on the board and making you find your way back. That's the
+  // opposite of the console's rule (the two chrome surfaces are exclusive — see
+  // `ToggleMenu`), and the difference is that this one is the menu's *own* question,
+  // not a second surface competing with it for the screen.
+  | OpenDealDialog => (
+      {...model, dealDialogOpen: true, dealDialogStatus: None},
+      () => DealDialog.apply(~open_=true, ~seed=model.dealSeed),
+    )
+  | CloseDealDialog =>
+    model.dealDialogOpen
+      ? (
+          {...model, dealDialogOpen: false, dealDialogStatus: None},
+          () => DealDialog.apply(~open_=false, ~seed=model.dealSeed),
+        )
+      : (model, Html.noEffect)
+  // Play. The raw text arrives here rather than a parsed number because `readSeed`'s
+  // verdict decides both what happens and what the status line says, and only out here
+  // is either known.
+  //
+  // A rejected entry keeps the dialog up with its reason underneath: the field still
+  // holds what was typed, so a mistyped digit is one keystroke from right, and closing
+  // over the mistake would make the player start again. Only a real deal number closes
+  // anything — and then it closes the *whole* chrome, dialog and menu together, because
+  // the board it just dealt is the thing you asked to see.
+  | SubmitDeal(text) =>
+    switch DealDialog.readSeed(text) {
+    // Both messages are deliberately short, and that's a layout constraint rather than a
+    // style preference: the status slot reserves *one* line (`.deal-dialog__status`), so
+    // a message that wraps is a message that shoves the Cancel/Play row down the panel
+    // as it lands — under the thumb already reaching for Play, which is exactly when a
+    // refusal is most likely to be on screen. `deal-dialog.spec.mjs` measures the slot
+    // across both states and fails if one of these grows enough to wrap.
+    | DealDialog.Blank => ({...model, dealDialogStatus: Some("Type a deal number.")}, Html.noEffect)
+    | DealDialog.Invalid => (
+        {...model, dealDialogStatus: Some("Not a deal number.")},
+        Html.noEffect,
+      )
+    | DealDialog.Seed(seed) => (
+        {
+          ...model,
+          dealDialogOpen: false,
+          dealDialogStatus: None,
+          menuOpen: false,
+          menuScreen: Menu.Main,
+          hidden: HiddenOptions.reset(model.hidden),
+        },
+        () => {
+          DealDialog.apply(~open_=false, ~seed=model.dealSeed)
+          // Surface the game first, so the re-deal hook this reaches for is FreeCell's
+          // and not a demo scene's (or nothing at all) — the same order the debug-states
+          // menu takes for `loadStateHook`. Turning the number into a board is this
+          // layer's job, exactly as it is for the console's `deal <n>`: only out here is
+          // it known that a deal is a seeded FreeCell shuffle.
+          ensureFreecell.contents()
+          loadGameHook.contents->Option.forEach(load => load(Game.freecellDeal(~seed)))
+        },
+      )
+    }
   }
 
 // The scene area (switcher + demos) is built imperatively and owns its own
@@ -990,6 +1074,10 @@ let view = (model, dispatch) => <>
       restartHook.contents->Option.forEach(restart => restart())
       dispatch(CloseMenu)
     }}
+    // Play Seed… — the only game button that leaves the menu standing: it opens the
+    // dialog *over* it, and Cancel puts the player back in the section they pressed it
+    // from (see `OpenDealDialog`).
+    onPlayDeal={() => dispatch(OpenDealDialog)}
     shareDealSeed={model.dealSeed}
     shareDealStatus={model.shareDealStatus}
     onShareDeal={() =>
@@ -1082,6 +1170,11 @@ let view = (model, dispatch) => <>
     updateVisible={model.updateAvailable}
     onReload={() => dispatch(Reload)}
   />
+  // The deal-number dialog, last in the view and top of the chrome (`z-index: 30`, over
+  // the menu's 20). Only its shell is JSX — the field itself is a real node the module
+  // owns and splices in, the same arrangement as the console's scrollback and prompt
+  // above, and for the same reason.
+  <DealDialog open_={model.dealDialogOpen} status={model.dealDialogStatus} />
 </>
 
 // --- Wire it up --------------------------------------------------------------
@@ -1168,6 +1261,10 @@ let dispatch = Html.mount(
     // first menu open rather than only after a re-deal.
     dealSeed: initialDealSeed.contents,
     shareDealStatus: None,
+    // The dialog is always closed on load — session chrome, like the console, so a
+    // rendered screenshot or OG image can never carry one open.
+    dealDialogOpen: false,
+    dealDialogStatus: None,
   },
   ~update,
   ~view,
@@ -1175,6 +1272,20 @@ let dispatch = Html.mount(
 
 // Now that `dispatch` exists, let a scene row close the menu through it.
 closeMenu := (() => dispatch(CloseMenu))
+
+// …and let `update` reach the switcher it's defined above (see `ensureFreecell`), so a
+// deal number typed while a demo scene is showing brings the game back before dealing
+// it — rather than finding no board to deal onto and refusing.
+ensureFreecell := (() => switcher.ensureActive("freecell"))
+
+// …and wire the deal-number dialog's Play/Enter and Cancel/Escape (`DealDialog`). Like
+// the console's runner these are installed rather than passed as props: the keys are
+// bound to the field at module init, long before any props exist, so the buttons route
+// through the same pair instead of a second path that can drift from it.
+DealDialog.setHandlers(
+  ~onSubmit=text => dispatch(SubmitDeal(text)),
+  ~onCancel=() => dispatch(CloseDealDialog),
+)
 
 // …and arm the debug console's keys (#271): ` drops it over the board, ` or Escape puts
 // it away. A window listener, so it works wherever the focus happens to be — the board

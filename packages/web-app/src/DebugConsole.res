@@ -78,6 +78,8 @@ external addKeyListener: (WebDom.element, string, keyEvent => unit) => unit = "a
 @set external setValue: (WebDom.element, string) => unit = "value"
 @send external focus: WebDom.element => unit = "focus"
 @send external blur: WebDom.element => unit = "blur"
+@get external target: keyEvent => Nullable.t<WebDom.element> = "target"
+@get external tagName: WebDom.element => string = "tagName"
 
 // --- The scrollback list ------------------------------------------------------
 // Built once at module init and never rebuilt: the shell splices this exact node, and
@@ -348,9 +350,26 @@ let apply = (~open_: bool, ~dock: ConsoleDock.t): unit => {
 // same finger works everywhere — and it's also what makes the shifted variant a
 // *reading* of the same key rather than a second binding to keep in step. A held key
 // repeats, which would strobe the panel — hence the `repeat` guard.
+//
+// The guard below is what keeps those bindings from reaching into *someone else's*
+// field. Both keys are bound on the window so they work wherever focus happens to be —
+// which was free while the console's own input was the only field in the app, and stops
+// being free the moment a second one exists (the deal-number dialog, `DealDialog`).
+// Left ungarded, typing a backtick into that dialog would toggle this panel behind it,
+// and Escape would close a console nobody could see instead of the dialog in front of
+// it. The test is deliberately "a text field that isn't ours" rather than "a text
+// field": the console's *own* prompt relies on these window bindings to close the panel
+// from inside it (see the input line above), so excluding it too would break the one
+// case this listener was written for.
+let inForeignField = (event: keyEvent): bool =>
+  switch target(event)->Nullable.toOption {
+  | Some(el) => el !== input && (tagName(el) == "INPUT" || tagName(el) == "TEXTAREA")
+  | None => false
+  }
+
 let installKeys = (~onToggle: unit => unit, ~onClose: unit => unit, ~onDock: unit => unit): unit =>
   WebDom.addWindowListener("keydown", (event: keyEvent) =>
-    if !repeat(event) {
+    if !repeat(event) && !inForeignField(event) {
       switch code(event) {
       | "Backquote" =>
         // Nothing else in the app wants this key, and swallowing it keeps a

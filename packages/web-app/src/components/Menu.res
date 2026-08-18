@@ -14,14 +14,16 @@
 // **Main screen** — top to bottom:
 //   - the **title** ("Pip"), moved here from the retired Home scene, beside the ✕;
 //   - a **"game"** section (#156, #98): **New** (re-deals a fresh seed),
-//     **Restart** (re-deals the *same* seed to replay the current deal) and
-//     **Share Seed** (#98, hands over a `?seed=` link to the deal on the table). New
-//     moved here from the top bar; it and Restart call the scene's re-deal hooks and
-//     close the menu so the board is visible again. On a scene with no game (a demo)
-//     those two are wired to no-op hooks. Share Seed is the odd one of the three: it
-//     *keeps* the menu open, because the line under the buttons reporting where the
-//     link went is the only confirmation there is, and it's the only one that ever
-//     renders *disabled* — on a board with no seed to name;
+//     **Restart** (re-deals the *same* seed to replay the current deal), **Play
+//     Seed…** (opens the deal-number dialog) and **Share Seed** (#98, hands over a
+//     `?seed=` link to the deal on the table). New moved here from the top bar; it and
+//     Restart call the scene's re-deal hooks and close the menu so the board is visible
+//     again. On a scene with no game (a demo) those two are wired to no-op hooks. Share
+//     Seed is the odd one of the four: it *keeps* the menu open, because the line under
+//     the buttons reporting where the link went is the only confirmation there is, and
+//     it's the only one that ever renders *disabled* — on a board with no seed to name.
+//     Play Seed… is the group's only button that doesn't act on the press: it asks for
+//     a number first (`DealDialog`), which is what the trailing ellipsis says;
 //   - a **"Games"** section — SceneSwitcher's primary game row(s), spliced in as the
 //     `games` node: FreeCell (the game) as a top-level row (#135);
 //   - --- the space between top and bottom grows here (`menu-section--bottom`) ---
@@ -112,6 +114,13 @@ type props = {
   onBackToSettings: unit => unit,
   onNewGame: unit => unit,
   onRestart: unit => unit,
+  // "Play Seed…": open the deal-number dialog (`DealDialog`), the inbound twin of
+  // Share Seed below. It sits with New and Restart because it answers their question —
+  // which board goes on the table — rather than Share's, and it's the one button here
+  // that opens something instead of doing something, hence the ellipsis. Never
+  // disabled: the dialog itself is where "this scene doesn't play a numbered deal" gets
+  // said, and it can say it in a sentence where a greyed-out button can only imply it.
+  onPlayDeal: unit => unit,
   // "Share Seed" (#98): the main menu's third game button, handing over a link to the
   // *deal* on the table (`ShareLink.urlForDeal`) — which board to lay out, not the
   // position it's in. That's the share a player reaches for mid-game, so it sits with
@@ -292,6 +301,7 @@ let make = ({
   onBackToSettings,
   onNewGame,
   onRestart,
+  onPlayDeal,
   shareDealSeed,
   shareDealStatus,
   onShareDeal,
@@ -478,6 +488,11 @@ let make = ({
             <div className="menu-buttons">
               {gameButton(~label="New", ~onClick=onNewGame)}
               {gameButton(~label="Restart", ~onClick=onRestart)}
+              {// Play Seed… — kept next to New and Restart, the three buttons that put
+              // a board on the table, and ahead of Share Seed, which takes one off it.
+              // The ellipsis is load-bearing: every other control in this pane acts on
+              // the press, and this one opens a dialog to ask which deal.
+              gameButton(~label="Play Seed…", ~onClick=onPlayDeal)}
               {// Share Seed (#98). The only one of the three that ever goes
               // `disabled` — the real attribute, so no click is emitted at all, with
               // the handler guard behind it as belt and braces — because a board

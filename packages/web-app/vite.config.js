@@ -83,6 +83,16 @@ export default defineConfig({
         scope: "./",
         start_url: "./",
         display: "standalone",
+        // What an in-scope link does when the app is already installed and running
+        // (Chromium; iOS ignores it along with most of this manifest). "navigate-existing"
+        // steers the *open* window to the link's URL instead of spawning a second one —
+        // so a `?seed=` link that the OS does hand to the installed app lands on the deal
+        // in the game you already had open. It does not, and cannot, make the OS hand the
+        // link over in the first place: that's platform-side link capturing (an Android
+        // WebAPK's intent filters plus the user's "Open supported links" setting), with no
+        // equivalent on iOS at all. The in-app answer to a link that opens a browser
+        // instead is the menu's Play Seed… dialog.
+        launch_handler: { client_mode: "navigate-existing" },
         orientation: "portrait",
         theme_color: "#166534",
         background_color: "#0b1220",

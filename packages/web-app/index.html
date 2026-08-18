@@ -1225,6 +1225,154 @@
         gap: 0.4rem;
       }
 
+      /* The deal-number dialog (`DealDialog.res`) — the app's one modal, opened from the
+         main menu's Play Seed… button to ask which board to lay out.
+
+         Its *shape* is the win overlay's (`.win-overlay`/`.win-panel` further down):
+         scrim, centred panel, a status line whose height is reserved, an action row.
+         Its *palette* is the menu's, and deliberately not the win panel's — that panel's
+         gold border (#eab308) means victory, and wearing it to ask a question would say
+         something untrue. Slate on slate, `.menu-button` actions, menu family.
+
+         `z-index: 30` puts it over the menu at 20 and the console at 15. The chrome's
+         numbers stay small and readable like this precisely because the board isolates
+         its own (900/1000/100000) — see `.table-board`. The menu is left standing
+         *behind* the dialog on purpose (see `OpenDealDialog` in Main.res): Cancel puts
+         the player back in the section they pressed the button from.
+
+         `hidden` (set by the chrome model) collapses it when closed — needed explicitly,
+         since the `display: flex` here would otherwise out-specify the UA's
+         `[hidden] { display: none }`, exactly as `#menu-overlay` needs it. */
+      #deal-dialog {
+        position: fixed;
+        inset: 0;
+        z-index: 30;
+        display: flex;
+        /* Anchored in the upper part of the screen rather than dead centre, and that's
+           about the on-screen keyboard: a focused field raises one over the bottom of
+           the screen, but a `position: fixed` layer is laid out against the *layout*
+           viewport, which doesn't shrink to match. A vertically centred panel therefore
+           sits partly under the keyboard it just summoned. Holding it high clears that
+           on a phone and reads as ordinary dialog placement everywhere else. */
+        align-items: flex-start;
+        justify-content: center;
+        padding: calc(env(safe-area-inset-top) + 12vh)
+          calc(env(safe-area-inset-right) + 1rem) 1rem
+          calc(env(safe-area-inset-left) + 1rem);
+      }
+
+      #deal-dialog[hidden] {
+        display: none;
+      }
+
+      /* A dim scrim; clicking it cancels. It's a sibling of the panel rather than its
+         parent so a click *inside* the panel never lands on it. The menu's own backdrop
+         is often up behind this one and the two compound — which is right: the dialog
+         should dim the menu as well as the board. */
+      .deal-dialog__backdrop {
+        position: absolute;
+        inset: 0;
+        background: rgba(2, 6, 16, 0.6);
+      }
+
+      .deal-dialog__panel {
+        position: relative;
+        display: flex;
+        flex-direction: column;
+        gap: 0.75rem;
+        width: min(19rem, 84vw);
+        padding: 1.15rem 1.25rem 1.25rem;
+        background: #0f1a2e;
+        border: 1px solid #22304a;
+        border-radius: 14px;
+        box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+        text-align: left;
+        animation: win-overlay-in 0.2s ease-out;
+      }
+
+      .deal-dialog__title {
+        margin: 0;
+        font: 600 17px "Libre Franklin", sans-serif;
+        color: #e2e8f0;
+      }
+
+      /* The field's box. The `#` and the input sit in one bordered row so the pair reads
+         as a single control — the sigil belongs to the number, not to the label above
+         it. Same arrangement as the console prompt's `>` and for the same reason: a
+         `::before` on an `<input>` isn't possible, and the marker must not become part
+         of the value. */
+      .deal-dialog__field {
+        display: flex;
+        align-items: baseline;
+        gap: 0.4rem;
+        padding: 0.6rem 0.7rem;
+        background: #0b1220;
+        border: 1px solid #22304a;
+        border-radius: 8px;
+      }
+
+      .deal-dialog__hash {
+        flex: none;
+        font: 16px ui-monospace, "SF Mono", Menlo, monospace;
+        color: #64748b;
+      }
+
+      /* Mono, to match the seed on the Share Seed button (`.menu-button__value`) — the
+         number a player is transcribing wants unambiguous 0/O and 1/l at both ends of
+         the trip.
+
+         **16px is a floor, not a taste.** iOS Safari zooms the page in when a field
+         smaller than 16px takes focus, and this app keeps pinch-zoom deliberately (see
+         the viewport tag at the top of this file), so there's no `maximum-scale` to stop
+         it — the board would be left scrolled and magnified behind the dialog.
+
+         `user-select: text` opts back in from the app-wide lock on `html, body`: this is
+         a value a player may well want to select, and the one other place that's true
+         (`#version-badge`) opts back in the same way. */
+      .deal-dialog__input {
+        flex: 1 1 auto;
+        min-width: 0;
+        padding: 0;
+        font: 16px ui-monospace, "SF Mono", Menlo, monospace;
+        color: #e8f0fb;
+        background: transparent;
+        border: none;
+        outline: none;
+        caret-color: #7fd6a2;
+        -webkit-user-select: text;
+        user-select: text;
+      }
+
+      .deal-dialog__input::placeholder {
+        color: #4d6183;
+      }
+
+      /* Why a deal wasn't dealt, and empty the rest of the time. The
+         `line-height`/`min-height` pair is the menu share line's (see
+         `.menu-share-line` for why the two have to be stated together and agree
+         exactly): the slot holds its height, so a refusal appearing under the field
+         can't shove the buttons out from under the thumb about to press them. */
+      .deal-dialog__status {
+        margin: 0;
+        line-height: 1.35;
+        min-height: 1.35em;
+        font: 12px "Libre Franklin", sans-serif;
+        color: #94a3b8;
+      }
+
+      .deal-dialog__actions {
+        display: flex;
+        gap: 0.5rem;
+      }
+
+      /* Play is the primary action of the two, so it takes the accent green the win
+         panel's New Game does while Cancel keeps the plain `.menu-button` slate. */
+      .deal-dialog__play {
+        background: #166534;
+        border-color: #22c55e;
+        color: #f0fdf4;
+      }
+
       /* Fills the scene band (`flex: 1`) and centers its scene within it, so a
          scene that wants to grow — the stacking playfield — can stretch into the
          whole area rather than shrink-wrapping to a fixed box. Scenes that don't

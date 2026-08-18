@@ -40,6 +40,7 @@ let render = (~seed, ~status): Html.element =>
       onBackToSettings: () => (),
       onNewGame: () => (),
       onRestart: () => (),
+      onPlayDeal: () => (),
       // The three under test.
       shareDealSeed: seed,
       shareDealStatus: status,
@@ -73,9 +74,13 @@ let render = (~seed, ~status): Html.element =>
     }),
   )
 
-// The Share Seed button — the third of the "game" buttons.
+// The Share Seed button — the last of the "game" buttons: New, Restart, Play Seed…,
+// Share Seed. Positional, so adding a button to the group moves it; keep this last, or
+// move this selector with it. (It is deliberately not matched on its label — the
+// disabled case renders a *different* label, and that difference is one of the things
+// under test.)
 let shareButton = (menu): option<Html.element> =>
-  menu->querySelector(".menu-buttons button:nth-child(3)")->Nullable.toOption
+  menu->querySelector(".menu-buttons button:nth-child(4)")->Nullable.toOption
 
 // The line beneath the buttons: where a link just went, or why the button is dark.
 let line = (menu): string =>
