@@ -39,6 +39,12 @@ type entry = {
   time: float,
   label: string,
   value: option<string>,
+  // A line `core` rendered as a document rather than as text (#282): the ink-tagged
+  // spans a board's row is made of, for a subscriber that can paint them. `None` for
+  // every ordinary line, and *additional* to `label` rather than instead of it —
+  // `label` always carries the plain text, so a subscriber that doesn't understand
+  // spans (the JS console, and any test) still shows the row.
+  spans: option<Render.line>,
 }
 
 // Every console line carries this prefix so the app's own logs stand out from a page's
@@ -71,9 +77,9 @@ let enabled = (): bool => Array.length(subscribers.contents) > 0
 // --- Publishing --------------------------------------------------------------
 let seq = ref(0)
 
-let publish = (~label: string, ~value: option<string>): unit => {
+let publish = (~label: string, ~value: option<string>, ~spans: option<Render.line>=?): unit => {
   seq := seq.contents + 1
-  let entry = {seq: seq.contents, time: Date.now(), label, value}
+  let entry = {seq: seq.contents, time: Date.now(), label, value, spans}
   // Iterate a snapshot: a subscriber that unsubscribes (or subscribes) while being
   // notified must not disturb the walk over the list it was called from.
   subscribers.contents->Array.forEach(s => s.notify(entry))
@@ -92,6 +98,16 @@ let log = (label: string, value: 'a): unit =>
 let message = (label: string): unit =>
   if enabled() {
     publish(~label, ~value=None)
+  }
+
+// One row of a document `core` rendered (#282) — a board's line, or a line of ordinary
+// reply text, which is the same thing with everything inked plain. The row's plain text
+// goes in `label` as usual, so this is a `message` that happens to carry the spans it was
+// flattened from: every existing subscriber keeps working, and one that can paint them
+// picks them up.
+let line = (spans: Render.line): unit =>
+  if enabled() {
+    publish(~label=Render.toPlain([spans]), ~value=None, ~spans)
   }
 
 // --- Rendering ---------------------------------------------------------------

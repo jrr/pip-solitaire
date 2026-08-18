@@ -127,10 +127,40 @@ let onWheel = (event: wheelEvent): unit => {
   }
 }
 
-// One entry as a list item: the label and its JSON payload in separate spans, which is
-// the whole reason `DebugLog` publishes structured entries rather than finished
-// strings — the panel styles them apart (and could filter on the label later).
-let lineFor = (entry: DebugLog.entry): WebDom.element => {
+// The class a span's ink is painted with. `core` names the *role* a run of characters
+// plays and stops there (see `Render.ink`), which is what lets the terminal answer it in
+// ANSI and this panel answer it in CSS — with colours picked for a dark log rather than
+// for a terminal or for the light card faces the table draws (`Deck.suitColor`).
+let inkClass = (ink: Render.ink): string =>
+  switch ink {
+  | Render.Plain => "debug-console__ink--plain"
+  | Render.Suit(Rules.Red) => "debug-console__ink--red"
+  | Render.Suit(Rules.Black) => "debug-console__ink--black"
+  | Render.Title => "debug-console__ink--title"
+  }
+
+// A row `core` rendered as spans: one node per span, each classed by its ink. The line
+// gets a modifier class of its own because the ordinary two-part line is a flex row with
+// a gap between label and payload — a gap between *every* span of a board would put
+// 0.5rem between each card and its frame and tear the drawing apart.
+let renderedLine = (spans: Render.line): WebDom.element => {
+  let item = WebDom.createElement("li")
+  item->WebDom.setAttribute("class", "debug-console__line debug-console__line--rendered")
+  spans->Array.forEach(span => {
+    let node = WebDom.createElement("span")
+    node->WebDom.setAttribute("class", inkClass(span.ink))
+    // `textContent`, for the same reason the payload below uses it: a rendered board is
+    // game data, not markup.
+    node->WebDom.setTextContent(span.text)
+    item->WebDom.appendChild(node)->ignore
+  })
+  item
+}
+
+// An ordinary entry: the label and its JSON payload in separate spans, which is the
+// reason `DebugLog` publishes structured entries rather than finished strings — the
+// panel styles them apart (and could filter on the label later).
+let plainLineFor = (entry: DebugLog.entry): WebDom.element => {
   let item = WebDom.createElement("li")
   item->WebDom.setAttribute("class", "debug-console__line")
 
@@ -150,6 +180,13 @@ let lineFor = (entry: DebugLog.entry): WebDom.element => {
 
   item
 }
+
+// One entry as a list item, in whichever of the two shapes it arrived in.
+let lineFor = (entry: DebugLog.entry): WebDom.element =>
+  switch entry.spans {
+  | Some(spans) => renderedLine(spans)
+  | None => plainLineFor(entry)
+  }
 
 // The subscriber itself: append the new line, drop the front one if the ring just
 // overflowed (so the DOM stays exactly as long as the ring), and follow the foot when
@@ -247,10 +284,33 @@ let setRunner = (run: string => unit): unit => runner := Some(run)
 // same stream — and in the same order — as the `dispatch`/`result` lines the command
 // itself provokes. (It also means the JS console sees a typed command, which is right:
 // it's an interaction like any other.)
-let say = (text: string): unit =>
-  // A reply can be several lines (help is); each becomes its own entry, so the
-  // scrollback's one-node-per-line bookkeeping holds.
-  text->String.split("\n")->Array.forEach(DebugLog.message)
+// `reply` is a *document* now (#282), not a string: `core` renders one for a board and
+// `Render.text` makes a trivial one out of ordinary prose, so a printed board and a
+// rejection travel one channel rather than two. A reply can be several rows (help is, a
+// board very much is); each becomes its own entry, so the scrollback's one-node-per-line
+// bookkeeping holds. An empty document says nothing, which is how a command whose result
+// `DebugLog` already narrates stays quiet.
+//
+// Whether the rows are *painted* is decided for the document as a whole, not row by row.
+// A document `core` inked — a board, which always carries at least its title's ink — is
+// painted span by span; a document that is only words is published as plain messages,
+// exactly as every reply was before this existed, so help listings and rejections keep
+// the log's own voice rather than turning into furniture. Per-document rather than
+// per-row because a board's blank separators and its row of empty foundation slots carry
+// no ink of their own: judged individually they'd come out styled as prose, striping the
+// drawing they belong to.
+let inked = (reply: array<Render.line>): bool =>
+  reply->Array.some(line =>
+    line->Array.some((span: Render.span) => !Render.sameInk(span.ink, Render.Plain))
+  )
+
+let say = (reply: array<Render.line>): unit =>
+  inked(reply)
+    ? reply->Array.forEach(DebugLog.line)
+    : reply->Array.forEach(line => DebugLog.message(Render.toPlain([line])))
+
+// The same, for a line this module writes itself rather than one core rendered.
+let sayText = (text: string): unit => say(Render.text(text))
 
 // Run whatever is in the input: echo it above its result — that's what makes the log
 // readable afterwards, since the result on its own doesn't say what was asked — then
@@ -261,7 +321,7 @@ let submit = (): unit => {
   input->setValue("")
   if line != "" {
     remember(line)
-    say("> " ++ line)
+    sayText("> " ++ line)
     runner.contents->Option.forEach(run => run(line))
   }
 }

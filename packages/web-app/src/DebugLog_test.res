@@ -21,7 +21,13 @@ let withSubscriber = body => {
   unsubscribe()
 }
 
-let entry = (~seq=1, ~label, ~value=None): DebugLog.entry => {seq, time: 0., label, value}
+let entry = (~seq=1, ~label, ~value=None, ~spans=None): DebugLog.entry => {
+  seq,
+  time: 0.,
+  label,
+  value,
+  spans,
+}
 
 describe("DebugLog gate (#213)", () => {
   test("publishes nothing while nobody is listening", () => {
@@ -101,6 +107,59 @@ describe("DebugLog entries (#271)", () => {
       DebugLog.format(entry(~label="result", ~value=Some(`"accepted"`))),
     )->toBe(`[pip] result "accepted"`)
     expect(DebugLog.format(entry(~label="undo")))->toBe("[pip] undo")
+  })
+})
+
+// The seam that carries a rendered board to the panel (#282). The property worth pinning
+// is *graceful degradation*: spans are additional to the plain text, never instead of it,
+// so the subscriber that can paint them does, and every other subscriber — the JS console,
+// and any test — keeps showing exactly what it showed before.
+describe("DebugLog.line (#282)", () => {
+  let row: Render.line = [
+    {text: "│", ink: Render.Plain},
+    {text: `K♥  `, ink: Render.Suit(Rules.Red)},
+    {text: "│", ink: Render.Plain},
+  ]
+
+  test("publishes the spans and the plain text of the same row", () => {
+    withSubscriber(
+      (entries, _) => {
+        DebugLog.line(row)
+        let published = entries->Array.getUnsafe(0)
+        expect(published.spans)->toEqual(Some(row))
+        // The label is the row flattened — what a subscriber that can't paint shows.
+        expect(published.label)->toBe(`│K♥  │`)
+        expect(published.value)->toEqual(None)
+      },
+    )
+  })
+
+  // The JS console subscriber is unchanged by any of this: it formats the label and never
+  // looks at the spans, so a printed board reads there exactly as it always did.
+  test("format ignores the spans and prints the flattened row", () =>
+    expect(
+      DebugLog.format(entry(~label=`│K♥  │`, ~spans=Some(row))),
+    )->toBe(`[pip] │K♥  │`)
+  )
+
+  // An ordinary line still carries no spans, so nothing that isn't a rendered row goes
+  // down the painted path by accident.
+  test("an ordinary message carries no spans", () => {
+    withSubscriber(
+      (entries, _) => {
+        DebugLog.message("undo")
+        DebugLog.log("dispatch", "x")
+        expect(entries->Array.every(e => e.spans == None))->toBe(true)
+      },
+    )
+  })
+
+  // The gate still holds: a rendered board costs nothing with nobody listening, which
+  // matters more here than for a one-line message — `print` publishes ~18 rows.
+  test("publishes nothing while nobody is listening", () => {
+    expect(DebugLog.enabled())->toBe(false)
+    DebugLog.line(row)
+    expect(DebugLog.enabled())->toBe(false)
   })
 })
 
