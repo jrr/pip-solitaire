@@ -489,9 +489,10 @@ test("redeal replays the deal on the table", async ({ page }) => {
   await expect(page.getByRole("button", { name: "Undo" })).toBeDisabled()
 })
 
-// `print` draws the board into the log — the same text board the CLI prints, from `core`'s
-// renderer, minus the ANSI colour a browser can't paint. It used to answer "the board is
-// on screen", which was true and useless: the point is a snapshot you can read back.
+// `print` draws the board into the log — the same board the CLI prints, from `core`'s
+// renderer. It used to answer "the board is on screen", which was true and useless: the
+// point is a snapshot you can read back. The colour it arrives in is the panel's own (see
+// the ink test below); what `core` hands over is a document, not a painted string.
 test("print draws the board into the log", async ({ page }) => {
   await page.goto("/?scene=freecell&seed=24680&animate=off")
   await settleBoard(page)
@@ -505,9 +506,9 @@ test("print draws the board into the log", async ({ page }) => {
   // A board, drawn with the box characters and holding real cards.
   expect(lines.some((l) => l.includes("┌────┐"))).toBe(true)
   expect(lines.some((l) => /[♠♥♦♣]/.test(l))).toBe(true)
-  // No escape codes: the panel would show them as garbage, so the renderer is asked for a
-  // plain board here and a coloured one in the terminal. Built from its char code, the way
-  // `Render` builds it, rather than pasted into the source as a control character.
+  // No escape codes, still: colour reaches this panel as CSS classes on spans, never as
+  // the terminal's escapes, which it would show as garbage. Built from its char code, the
+  // way `Render` builds it, rather than pasted into the source as a control character.
   const esc = String.fromCharCode(27)
   expect(lines.some((l) => l.includes(esc))).toBe(false)
 
@@ -774,4 +775,102 @@ test.describe("too narrow to dock", () => {
     await pressDock(page)
     await expect(page.locator("html")).not.toHaveAttribute("data-console-dock", "on")
   })
+})
+
+// The panel paints the board itself (#282). `core` names the *role* each run of characters
+// plays — a red suit's face, a title, the board's furniture — and each front end answers in
+// its own alphabet: ANSI escapes in the terminal, these classes here. So the check is that
+// the roles arrive intact and reach the right glyphs, not that any particular colour was
+// used; the stylesheet owns that, and its choices are the panel's rather than the card
+// table's or the terminal's.
+test("print paints the board in the panel's own colours", async ({ page }) => {
+  await page.goto("/?scene=freecell&seed=24680&animate=off")
+  await settleBoard(page)
+  await openConsole(page)
+
+  await runCommand(page, "print")
+
+  // Every red-inked span holds a red suit's face, and every black-inked one a black
+  // suit's — the model's own notion of card colour, carried through untouched.
+  const reds = await page.locator("#debug-console-lines .debug-console__ink--red").allTextContents()
+  const blacks = await page
+    .locator("#debug-console-lines .debug-console__ink--black")
+    .allTextContents()
+  expect(reds.length).toBeGreaterThan(0)
+  expect(blacks.length).toBeGreaterThan(0)
+  expect(reds.every((t) => /[♥♦]/.test(t))).toBe(true)
+  expect(blacks.every((t) => /[♠♣]/.test(t))).toBe(true)
+  // A full FreeCell deal shows all 52 faces at once, half of each colour.
+  expect(reds.length).toBe(26)
+  expect(blacks.length).toBe(26)
+
+  // The heading is inked apart from the cards, so the panel can style it without parsing
+  // the text back out of the row.
+  const title = await page
+    .locator("#debug-console-lines .debug-console__ink--title")
+    .allTextContents()
+  expect(title).toEqual(["FreeCell — deal #24680"])
+
+  // The frames are furniture and stay plain — nothing but the faces is inked as a suit.
+  const plain = await page
+    .locator("#debug-console-lines .debug-console__ink--plain")
+    .allTextContents()
+  expect(plain.length).toBeGreaterThan(0)
+  expect(plain.some((t) => /[♠♥♦♣]/.test(t))).toBe(false)
+
+  // …and the roles actually resolve to different paint. Reading computed colour rather
+  // than asserting a hex keeps the stylesheet free to retune the palette.
+  const colours = await page.evaluate(() => {
+    const colourOf = (cls) => {
+      const el = document.querySelector(`#debug-console-lines .${cls}`)
+      return el ? getComputedStyle(el).color : null
+    }
+    return {
+      red: colourOf("debug-console__ink--red"),
+      black: colourOf("debug-console__ink--black"),
+      plain: colourOf("debug-console__ink--plain"),
+    }
+  })
+  expect(colours.red).not.toBe(colours.black)
+  expect(colours.plain).not.toBe(colours.black)
+
+  // Only what `core` inked is painted. An ordinary reply is words, not a drawing, so it
+  // stays in the log's own voice — the label styling every reply had before the panel
+  // could paint anything — rather than being restyled as board furniture.
+  await runCommand(page, "help")
+  const helpIsPainted = await page.evaluate(() => {
+    const rows = [...document.querySelectorAll("#debug-console-lines li")]
+    const help = rows.filter((li) => li.textContent.includes("moverun"))
+    return {
+      found: help.length,
+      painted: help.some((li) => li.classList.contains("debug-console__line--rendered")),
+      labelled: help.every((li) => li.querySelector(".debug-console__label") !== null),
+    }
+  })
+  expect(helpIsPainted.found).toBeGreaterThan(0)
+  expect(helpIsPainted.painted).toBe(false)
+  expect(helpIsPainted.labelled).toBe(true)
+
+  // The drawing survives being cut into spans. A board row is one continuous run of
+  // characters, so the line must not be a flex row — its 0.5rem gap between children
+  // would land between every card and its frame and pull the columns out of true.
+  const rowGap = await page.evaluate(() => {
+    const li = document.querySelector("#debug-console-lines .debug-console__line--rendered")
+    const style = getComputedStyle(li)
+    return { display: style.display, gap: style.columnGap }
+  })
+  expect(rowGap.display).toBe("block")
+
+  // The proof that alignment held: the board's rows still measure as `core` laid them out,
+  // so the frames line up column for column exactly as they do in the terminal.
+  const aligned = await page.evaluate(() => {
+    const rows = [...document.querySelectorAll("#debug-console-lines .debug-console__line--rendered")]
+      .map((li) => li.textContent)
+      .filter((t) => t.includes("┌────┐"))
+    // Every pile row starts its first frame at the same column…
+    const firstFrame = rows.map((t) => t.indexOf("┌"))
+    return { rows: rows.length, distinctStarts: new Set(firstFrame).size }
+  })
+  expect(aligned.rows).toBeGreaterThan(1)
+  expect(aligned.distinctStarts).toBe(1)
 })

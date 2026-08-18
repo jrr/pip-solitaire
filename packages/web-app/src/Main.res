@@ -214,11 +214,11 @@ let shareLanded = ref(false)
 let undoHook: ref<option<unit => unit>> = ref(None)
 
 // The active board's console command runner (#273), sibling of `undoHook` and
-// published on every build for the same reason: a `Command.t => string` that plays one
+// published on every build for the same reason: a `Command.t => array<Render.line>` that plays one
 // parsed command against the board actually on the table. `None` on a scene with no
 // board, which is what lets the console answer "no board here" instead of silently
 // doing nothing.
-let consoleHook: ref<option<Command.t => string>> = ref(None)
+let consoleHook: ref<option<Command.t => array<Render.line>>> = ref(None)
 
 // …and the addressed re-deal behind the console's `deal <n>` (#273): open *this* game.
 // Only the re-dealable scene publishes one (the same gate as `newGameHook`), since a
@@ -1242,13 +1242,13 @@ DebugConsole.installKeys(
 // things the instrumentation can't say get one.
 DebugConsole.setRunner(line => {
   let reply = switch Command.parse(line) {
-  | Command.Blank => ""
-  | Command.Help => DebugConsole.helpText()
+  | Command.Blank => []
+  | Command.Help => Render.text(DebugConsole.helpText())
   | Command.Clear =>
     DebugConsole.clear()
-    ""
-  | Command.Games => Command.gamesList()
-  | Command.Settings => Command.describeSettings(options.contents)
+    []
+  | Command.Games => Render.text(Command.gamesList())
+  | Command.Settings => Render.text(Command.describeSettings(options.contents))
   // The driver's flags, typed rather than switched. Auto-collect goes through the menu's
   // own action rather than straight to the ref, so the switch and the saved preference
   // stay in step with a typed change — it *toggles*, hence the guard. The column-reorder
@@ -1262,14 +1262,14 @@ DebugConsole.setRunner(line => {
       }
     | Options.ColumnReorder => options := Options.apply(options.contents, ~setting, ~on)
     }
-    Command.describeSet(~setting, ~on)
+    Render.text(Command.describeSet(~setting, ~on))
   // The CLI's session verb, answered here rather than forwarded: a panel isn't a
   // session you leave, it's chrome you close, and the keys that close it are on the
   // status line. This is the mirror image of the CLI accepting `clear` as a no-op —
   // both front ends know every verb, even the ones only one of them can act on.
-  | Command.Quit => "Nothing to quit — press ` or esc to close the console."
-  | Command.Unknown({verb}) => Command.describeUnknown(verb)
-  | Command.Usage({message}) => message
+  | Command.Quit => Render.text("Nothing to quit — press ` or esc to close the console.")
+  | Command.Unknown({verb}) => Render.text(Command.describeUnknown(verb))
+  | Command.Usage({message}) => Render.text(message)
   // Every shape of `deal` reads the same here as in the terminal, because the *reading*
   // is `core`'s (`Command.resolveDeal`) and only the acting is ours. What the panel used
   // to do was refuse anything that wasn't a number — including the games its own `games`
@@ -1282,8 +1282,8 @@ DebugConsole.setRunner(line => {
       switch newGameHook.contents {
       | Some(newGame) =>
         newGame()
-        ""
-      | None => "Nothing to deal on this scene."
+        []
+      | None => Render.text("Nothing to deal on this scene.")
       }
     // `deal <n>` opens a *chosen* deal number. Turning the number into a board stays out
     // here, because only the driver knows a deal number is a seeded FreeCell shuffle.
@@ -1291,12 +1291,13 @@ DebugConsole.setRunner(line => {
       switch loadGameHook.contents {
       | Some(load) =>
         load(Game.freecellDeal(~seed))
-        ""
-      | None => "This scene doesn't play a numbered deal."
+        []
+      | None => Render.text("This scene doesn't play a numbered deal.")
       }
-    | Command.Named({game, position}) => openNamedDeal(~game, ~position)
-    | Command.NoSuchGame({id}) => Command.describeNoSuchGame(id)
-    | Command.NoSuchScenario({game, name}) => Command.describeNoSuchScenario(~game, ~name)
+    | Command.Named({game, position}) => Render.text(openNamedDeal(~game, ~position))
+    | Command.NoSuchGame({id}) => Render.text(Command.describeNoSuchGame(id))
+    | Command.NoSuchScenario({game, name}) =>
+      Render.text(Command.describeNoSuchScenario(~game, ~name))
     }
   // `redeal`/`restart` is the menu's Restart button as a verb — the same hook, so it
   // replays the deal on the table with a clean history exactly as the button does.
@@ -1304,18 +1305,18 @@ DebugConsole.setRunner(line => {
     switch restartHook.contents {
     | Some(restart) =>
       restart()
-      ""
-    | None => "Nothing to restart on this scene."
+      []
+    | None => Render.text("Nothing to restart on this scene.")
     }
   | board =>
     switch consoleHook.contents {
     | Some(run) => run(board)
-    | None => "No board on this scene."
+    | None => Render.text("No board on this scene.")
     }
   }
-  if reply != "" {
-    DebugConsole.say(reply)
-  }
+  // An empty document says nothing, which is how a command whose result `DebugLog`
+  // already narrates stays quiet — no guard needed out here any more.
+  DebugConsole.say(reply)
 })
 
 // Resume the shake grant on the first tap (#235). With `wantsShake` set, the switch
