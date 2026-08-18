@@ -271,6 +271,41 @@ test("a typed command moves the card, and the board ends where a drag would leav
   expect(dispatched).toContain("Move")
 })
 
+// The two destinations a *board* has to read, in the browser: the slot name printed
+// above the column and the card to land on. `Command.resolveWhere` is shared with the
+// CLI, so what's browser-only here is that the panel resolves against *its* board and
+// the resolved move flies like any other — the same rect, the same win.
+test("a slot name and a named card reach the same foundation a pile index does", async ({
+  page,
+}) => {
+  await page.goto(ALMOST_WON)
+  await settleBoard(page)
+  await openConsole(page)
+
+  const foundation = await page.locator(".drop-zone").nth(7).boundingBox()
+
+  // `F4` is the fourth foundation — pile 7 on this board, the index the test above
+  // types. `mv` is the same verb as `move`.
+  await runCommand(page, "mv KC F4")
+  await expect
+    .poll(async () => encloses(foundation, await cardBox(page, PENDING_KING)))
+    .toBe(true)
+  await expect(page.locator(".win-overlay")).toHaveCount(1)
+
+  // Step back out of the win and play it again by naming the card it lands on: the
+  // Queen of Clubs is what that foundation is showing.
+  await runCommand(page, "undo")
+  await expect(page.locator(".win-overlay")).toHaveCount(0)
+  await runCommand(page, "m KC QC")
+  await expect(page.locator(".win-overlay")).toHaveCount(1)
+
+  // A destination the board can't read is reported rather than played — and the panel
+  // says the same sentence the terminal does.
+  await runCommand(page, "undo")
+  await runCommand(page, "mv KC T9")
+  await expect(consoleLines(page).filter({ hasText: "No such tableau column: T9" })).toHaveCount(1)
+})
+
 test("home finds the foundation itself, and undo/redo walk the same history", async ({ page }) => {
   await page.goto(ALMOST_WON)
   await settleBoard(page)
@@ -512,21 +547,49 @@ test("print draws the board into the log", async ({ page }) => {
   const esc = String.fromCharCode(27)
   expect(lines.some((l) => l.includes(esc))).toBe(false)
 
-  // A board is ~150 columns, so in this viewport it's wider than the panel — the log has
-  // to be able to scroll sideways or the right-hand cascades are unreachable.
+  // Every column is headed by the name a typed move can address it by, so the board in
+  // the log says how to play itself: `move 8H T3` is readable straight off the drawing.
+  expect(lines.some((l) => l.includes("T1") && l.includes("T8"))).toBe(true)
+  expect(lines.some((l) => l.includes("C1") && l.includes("F4"))).toBe(true)
+
+  // The board is drawn in two role-grouped rows now — cells and foundations above the
+  // tableau — which halves its width: ~70 columns rather than the ~150 of one long row,
+  // so at this viewport it fits the panel outright instead of running off the side.
   const geometry = await page.evaluate(() => {
     const ol = document.getElementById("debug-console-lines")
     return { scrollWidth: ol.scrollWidth, clientWidth: ol.clientWidth }
   })
-  expect(geometry.scrollWidth).toBeGreaterThan(geometry.clientWidth)
+  expect(geometry.scrollWidth).toBeLessThanOrEqual(geometry.clientWidth)
+})
 
-  // …and in the overlay shape the panel takes no pointer events, so the sideways wheel is
-  // hand-forwarded exactly as the vertical one already was.
-  await page.mouse.move(400, 200)
-  await page.mouse.wheel(200, 0)
-  await expect
-    .poll(() => page.evaluate(() => document.getElementById("debug-console-lines").scrollLeft))
-    .toBeGreaterThan(0)
+// A narrower window than the board fits in — the log still has to be able to scroll
+// sideways, or the right-hand columns are unreachable. Its own viewport rather than the
+// file's, because the two-row board fits an 800px panel and this is the behaviour for
+// when something doesn't.
+test.describe("a log line wider than the panel", () => {
+  test.use({ viewport: { width: 380, height: 900 } })
+
+  test("scrolls sideways, wheel and all", async ({ page }) => {
+    await page.goto("/?scene=freecell&seed=24680&animate=off")
+    await settleBoard(page)
+    await openConsole(page)
+
+    await runCommand(page, "print")
+
+    const geometry = await page.evaluate(() => {
+      const ol = document.getElementById("debug-console-lines")
+      return { scrollWidth: ol.scrollWidth, clientWidth: ol.clientWidth }
+    })
+    expect(geometry.scrollWidth).toBeGreaterThan(geometry.clientWidth)
+
+    // In the overlay shape the panel takes no pointer events, so the sideways wheel is
+    // hand-forwarded exactly as the vertical one already was.
+    await page.mouse.move(190, 200)
+    await page.mouse.wheel(200, 0)
+    await expect
+      .poll(() => page.evaluate(() => document.getElementById("debug-console-lines").scrollLeft))
+      .toBeGreaterThan(0)
+  })
 })
 
 // The driver's flags, typed. Auto-collect has a menu switch; the column-reorder house
