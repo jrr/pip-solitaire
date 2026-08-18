@@ -75,6 +75,98 @@ describe("Command.parse", () => {
         ),
     )
 
+    // The two destinations a *board* has to read stop short of an action, for the same
+    // reason `home` does: "which pile is showing the Three of Clubs" isn't a property
+    // of the line. What the parser locks in is that the words were understood.
+    test(
+      "a card destination parses to the card to land on",
+      () =>
+        expect(Command.parse("move 2H 3C"))->toEqual(
+          Command.MoveTo({
+            cards: [{suit: Hearts, rank: Two}],
+            where: Command.Onto({suit: Clubs, rank: Three}),
+          }),
+        ),
+    )
+
+    test(
+      "a slot label parses to its role and 1-based ordinal",
+      () => {
+        expect(Command.parse("move AS T3"))->toEqual(
+          Command.MoveTo({
+            cards: [ace(Spades)],
+            where: Command.Slot({role: Game.Cascade, ordinal: 3}),
+          }),
+        )
+        expect(Command.parse("move AS c1"))->toEqual(
+          Command.MoveTo({
+            cards: [ace(Spades)],
+            where: Command.Slot({role: Game.FreeCell, ordinal: 1}),
+          }),
+        )
+        expect(Command.parse("move AS F4"))->toEqual(
+          Command.MoveTo({
+            cards: [ace(Spades)],
+            where: Command.Slot({role: Game.Foundation, ordinal: 4}),
+          }),
+        )
+      },
+    )
+
+    // The collision the label scheme is shaped around: a card is rank-then-suit, so
+    // `3C` is the Three of Clubs and can never be read as the third free cell — the
+    // label for that is `C3`, letter first.
+    test(
+      "a card destination is never mistaken for a slot label",
+      () =>
+        expect(Command.parse("move AS 3C"))->toEqual(
+          Command.MoveTo({cards: [ace(Spades)], where: Command.Onto({suit: Clubs, rank: Three})}),
+        ),
+    )
+
+    // `Int.fromString` is `parseInt` underneath, which reads "4D" as 4. That was merely
+    // untidy while a number was the only thing a destination could be; with cards in the
+    // same position it would aim a move at pile 4 instead of at the Four of Diamonds.
+    test(
+      "a numeric destination is all digits or it isn't a pile index",
+      () => {
+        expect(Command.parse("move AS 4D"))->toEqual(
+          Command.MoveTo({cards: [ace(Spades)], where: Command.Onto({suit: Diamonds, rank: Four})}),
+        )
+        switch Command.parse("move AS 12abc") {
+        | Command.Usage({verb}) => expect(verb)->toBe("move")
+        | _ => expect(true)->toBe(false)
+        }
+      },
+    )
+
+    test(
+      "mv and m are the same verb, still complaining as move",
+      () => {
+        let asMove = Command.Dispatch(Reducer.Move({card: ace(Spades), to: Reducer.ToPile(0)}))
+        expect(Command.parse("mv AS 0"))->toEqual(asMove)
+        expect(Command.parse("m AS 0"))->toEqual(asMove)
+        expect(Command.parse("MV AS 0"))->toEqual(asMove)
+        // The shorthand doesn't grow messages of its own: an interpreter keys the
+        // "deal a game first" hint off the verb, and there's still only one.
+        switch Command.parse("m ZZ 0") {
+        | Command.Usage({verb}) => expect(verb)->toBe("move")
+        | _ => expect(true)->toBe(false)
+        }
+      },
+    )
+
+    test(
+      "a run takes the same three destinations",
+      () =>
+        expect(Command.parse("moverun 8H 7S T3"))->toEqual(
+          Command.MoveTo({
+            cards: [{suit: Hearts, rank: Eight}, {suit: Spades, rank: Seven}],
+            where: Command.Slot({role: Game.Cascade, ordinal: 3}),
+          }),
+        ),
+    )
+
     // `home` deliberately stops at the card: which foundation will take it is a
     // question about the board, so the interpreter resolves it (see the module note).
     test(
@@ -170,12 +262,18 @@ describe("Command.parse", () => {
         },
     )
 
+    // A destination that's none of the four things a destination can be. The complaint
+    // lists them, because a refusal that only says "no" sends the reader to the source.
     test(
-      "a token that isn't a pile is reported as such",
+      "a token that names no place to move to is reported as such, listing what does",
       () =>
         switch Command.parse("move AS nowhere") {
         | Command.Usage({message}) =>
-          expect(message)->toBe(`Not a pile: "nowhere" (an index, or "table").`)
+          expect(message->String.includes(`"nowhere"`))->toBe(true)
+          expect(message->String.includes("pile index"))->toBe(true)
+          expect(message->String.includes("T3"))->toBe(true)
+          expect(message->String.includes("9S"))->toBe(true)
+          expect(message->String.includes(`"table"`))->toBe(true)
         | _ => expect("not a usage")->toBe("usage")
         },
     )
@@ -445,6 +543,152 @@ describe("Command.renderHelp", () => {
     let listed = Command.boardHelp->Array.map(((verb, _)) => verb)->Array.join(" ")
     ["move", "moverun", "home", "movecol", "finish", "undo", "redo"]->Array.forEach(
       verb => expect(listed->String.includes(verb))->toBe(true),
+    )
+  })
+})
+
+// --- Resolving a destination against a board ----------------------------------
+// The other half of the two board-shaped destinations: `parse` read the words, and
+// `resolveWhere` reads the board they were said about. It lives in `core` so a
+// terminal and the browser console pick the same pile from the same words.
+describe("Command.resolveWhere", () => {
+  let game = Game.freecell
+  let state = GameState.initial(game)
+
+  // `Game.freecell` is deal #1: four free cells, four foundations, then the eight
+  // dealt cascades — so `T1` is pile 8 and `C1` is pile 0.
+  test("a slot label resolves to the pile index that role's ordinal names", () => {
+    expect(
+      Command.resolveWhere(~game, state, Command.Slot({role: Game.Cascade, ordinal: 1})),
+    )->toEqual(Ok(Reducer.ToPile(8)))
+    expect(
+      Command.resolveWhere(~game, state, Command.Slot({role: Game.FreeCell, ordinal: 1})),
+    )->toEqual(Ok(Reducer.ToPile(0)))
+    expect(
+      Command.resolveWhere(~game, state, Command.Slot({role: Game.Foundation, ordinal: 4})),
+    )->toEqual(Ok(Reducer.ToPile(7)))
+  })
+
+  // The label the board prints and the label the parser takes are the same string —
+  // the property `Slot` exists to hold, checked here against a real board.
+  test("every label the board prints resolves to the pile it was printed over", () =>
+    game.piles->Array.forEachWithIndex(
+      (_, i) =>
+        switch Slot.labelAt(~game, i) {
+        | None => expect(true)->toBe(false)
+        | Some(label) =>
+          switch Command.parseWhere(label) {
+          | Some(where) =>
+            expect(Command.resolveWhere(~game, state, where))->toEqual(Ok(Reducer.ToPile(i)))
+          | None => expect(true)->toBe(false)
+          }
+        },
+    )
+  )
+
+  test("an ordinal past the board's slots is refused, saying what it has", () =>
+    switch Command.resolveWhere(~game, state, Command.Slot({role: Game.Cascade, ordinal: 9})) {
+    | Ok(_) => expect(true)->toBe(false)
+    | Error(message) =>
+      expect(message->String.includes("T9"))->toBe(true)
+      expect(message->String.includes("T1–T8"))->toBe(true)
+    }
+  )
+
+  test("a board with none of a role says so rather than counting to zero", () =>
+    switch Command.resolveWhere(
+      ~game=Game.stacking,
+      GameState.initial(Game.stacking),
+      Command.Slot({role: Game.FreeCell, ordinal: 1}),
+    ) {
+    | Ok(_) => expect(true)->toBe(false)
+    | Error(message) => expect(message->String.includes("no free cells"))->toBe(true)
+    }
+  )
+
+  // The point of the card destination: name what you can see, not the index you'd
+  // have to count out. Deal #1's cascades each show their last dealt card.
+  test("a card destination resolves to the pile showing it", () => {
+    let top = i =>
+      switch GameState.topOf(state, i) {
+      | Some(card) => card
+      | None => {suit: Spades, rank: Ace}
+      }
+    expect(Command.resolveWhere(~game, state, Command.Onto(top(8))))->toEqual(Ok(Reducer.ToPile(8)))
+    expect(Command.resolveWhere(~game, state, Command.Onto(top(15))))->toEqual(
+      Ok(Reducer.ToPile(15)),
+    )
+  })
+
+  // A buried card is refused rather than resolved to its pile: landing "on" it would
+  // really land on whatever covers it — a different move from the one that was typed,
+  // and one the rules might happily accept.
+  test("a buried card is refused, not read as its pile", () => {
+    let buried = GameState.cardsInPile(state, 8)->Array.getUnsafe(0)
+    switch Command.resolveWhere(~game, state, Command.Onto(buried)) {
+    | Ok(_) => expect(true)->toBe(false)
+    | Error(message) => expect(message->String.includes("buried"))->toBe(true)
+    }
+  })
+
+  // An empty foundation shows nothing, so no card names it — that's what the labels
+  // are for, and what the refusal should send the reader to.
+  test("a card that isn't showing anywhere is refused", () => {
+    // Every card is dealt into a cascade on a fresh FreeCell board, so this asks about
+    // a card that exists but is covered — the "isn't in play" arm needs a board that
+    // doesn't hold it at all.
+    let missing = GameState.initial(Game.freeCells)
+    switch Command.resolveWhere(
+      ~game=Game.freeCells,
+      missing,
+      Command.Onto({suit: Hearts, rank: Two}),
+    ) {
+    | Ok(_) => expect(true)->toBe(false)
+    | Error(message) => expect(message->String.includes("isn't in play"))->toBe(true)
+    }
+  })
+
+  // The guard that lets the rule stay simple ("the pile showing that card"): if a board
+  // ever *could* show one card twice, the move is refused rather than sent to whichever
+  // pile happened to be first. A standard deck can't produce this, so the state is built
+  // by hand — the rule is about the model, not about FreeCell.
+  test("a card showing on more than one pile is ambiguous, and says which", () => {
+    let twice = {suit: Clubs, rank: Three}
+    let doubled: GameState.t = {
+      piles: Game.freeCells.piles->Array.mapWithIndex((_, i) => i < 2 ? [twice] : []),
+      loose: [],
+    }
+    switch Command.resolveWhere(~game=Game.freeCells, doubled, Command.Onto(twice)) {
+    | Ok(_) => expect(true)->toBe(false)
+    | Error(message) =>
+      expect(message->String.includes("Ambiguous"))->toBe(true)
+      // …and it points at the two, by the names the board prints over them.
+      expect(message->String.includes("C1, C2"))->toBe(true)
+    }
+  })
+
+  // The one destination that needs no board still passes through unchanged, so a
+  // resolved move and an index-typed one are the same dispatch.
+  test("an index or the table passes straight through", () => {
+    expect(Command.resolveWhere(~game, state, Command.At(Reducer.ToPile(3))))->toEqual(
+      Ok(Reducer.ToPile(3)),
+    )
+    expect(Command.resolveWhere(~game, state, Command.At(Reducer.ToTable)))->toEqual(
+      Ok(Reducer.ToTable),
+    )
+  })
+
+  // One card is a `Move`, several are the supermove — the same actions the index-typed
+  // commands parse to, which is what makes a resolved destination not a second kind of
+  // move.
+  test("the resolved action is the ordinary Move / MoveRun", () => {
+    let eight: card = {suit: Hearts, rank: Eight}
+    let seven: card = {suit: Spades, rank: Seven}
+    expect(Command.moveAction(~cards=[eight], ~to=Reducer.ToPile(9)))->toEqual(
+      Reducer.Move({card: eight, to: Reducer.ToPile(9)}),
+    )
+    expect(Command.moveAction(~cards=[eight, seven], ~to=Reducer.ToPile(9)))->toEqual(
+      Reducer.MoveRun({cards: [eight, seven], to: Reducer.ToPile(9)}),
     )
   })
 })

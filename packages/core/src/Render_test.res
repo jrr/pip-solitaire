@@ -93,6 +93,80 @@ describe("Render colour", () => {
   })
 })
 
+// The board's *shape*: two role-grouped rows, each column headed by the name a typed
+// move can address it by. Both are how the drawing tells you how to play it — a label
+// that doesn't line up over its column, or one the parser wouldn't take, is worse than
+// no label at all (the parser end is checked in `Command_test`).
+describe("Render layout", () => {
+  let game = Game.freecell
+  let state = GameState.initial(game)
+  let board = Render.stateBoard(~game, state)
+  let sections = board->String.split("\n\n")
+
+  // Sixteen columns in one row is wider than a terminal, and the two halves aren't the
+  // same kind of thing: the free cells and foundations sit above the tableau, the way
+  // the web table lays them out (#94).
+  test("a FreeCell board is drawn in two rows, cells and foundations above", () => {
+    // Title, top row, bottom row — no loose cards on a FreeCell board.
+    expect(Array.length(sections))->toBe(3)
+    let top = sections->Array.getUnsafe(1)
+    let bottom = sections->Array.getUnsafe(2)
+    expect(has(top, "C1"))->toBe(true)
+    expect(has(top, "F4"))->toBe(true)
+    expect(has(top, "T1"))->toBe(false)
+    expect(has(bottom, "T1"))->toBe(true)
+    expect(has(bottom, "T8"))->toBe(true)
+    // The dealt cards are all in the cascades, so the top row holds only empty slots.
+    expect(has(bottom, `♠`) || has(bottom, `♥`))->toBe(true)
+  })
+
+  // A board carrying only one of the two groups keeps its single row, laid out exactly
+  // as it always was.
+  test("a board with one group of piles keeps its single row", () => {
+    let demo = Game.stacking
+    let rows = Render.stateBoard(~game=demo, GameState.initial(demo))->String.split("\n\n")
+    // Title, the one pile row, and the loose cards dealt beneath it.
+    expect(Array.length(rows))->toBe(3)
+    expect(has(rows->Array.getUnsafe(1), "T1"))->toBe(true)
+    expect(has(rows->Array.getUnsafe(1), "T2"))->toBe(true)
+  })
+
+  // Every column is headed by the name that slot answers to, and every name is there
+  // exactly once — the labels and the piles are the same set.
+  test("every pile is headed by its slot name", () =>
+    Slot.labels(~game)->Array.forEach(
+      label => {
+        let heading = board->String.split("\n")->Array.filter(line => has(line, label))
+        expect(Array.length(heading))->toBe(1)
+      },
+    )
+  )
+
+  // The headings are padded to the column width on *both* sides rather than merely
+  // indented, which is what keeps the cards beneath them aligned: every line of a row —
+  // the heading included — measures the same.
+  test("a heading line is exactly as wide as the row it heads", () =>
+    sections
+    ->Array.slice(~start=1, ~end=Array.length(sections))
+    ->Array.forEach(
+      section => {
+        let rows = section->String.split("\n")
+        let width = String.length(rows->Array.getUnsafe(0))
+        rows->Array.forEach(row => expect(String.length(row))->toBe(width))
+      },
+    )
+  )
+
+  // The label a board prints and the pile it's printed over are one fact (`Slot`), so
+  // a player reading `T3` off the screen addresses the third cascade — pile 10 here.
+  test("the printed labels are the ones the model answers to", () => {
+    expect(Slot.labelAt(~game, 0))->toEqual(Some("C1"))
+    expect(Slot.labelAt(~game, 7))->toEqual(Some("F4"))
+    expect(Slot.labelAt(~game, 10))->toEqual(Some("T3"))
+    expect(Slot.indexOf(~game, ~role=Game.Cascade, ~ordinal=3))->toEqual(Some(10))
+  })
+})
+
 // --- The document ---------------------------------------------------------------
 // What a front end that paints for itself actually receives.
 describe("Render document", () => {

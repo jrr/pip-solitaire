@@ -4,6 +4,14 @@
 //
 // If maintaining these bindings by hand becomes too burdensome, we could switch
 // to https://github.com/cometkim/rescript-vitest instead.
+//
+// **The only copy.** `cli` and `web-app` both depend on `core`, so both reach these
+// bindings from here — and neither may keep a second `Vitest.res` of its own. Module
+// names are global across a ReScript build graph (no namespace is configured), so two
+// packages defining `Vitest` collide: the dependent's build drops the dependency's
+// copy, and any `core` file that then needs recompiling in that build can't find the
+// module it opens. web-app carried such a duplicate; it built for months and then
+// failed the moment a `core` test happened to need rebuilding mid-dependency-build.
 
 type assertion<'a>
 
