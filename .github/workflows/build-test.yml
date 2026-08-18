@@ -19,8 +19,11 @@ jobs:
       - name: Run CI
         run: mise run ci
 
+  # Capped so a hung browser download can't leave a PR's check spinning until the
+  # runner's 6h default; the suite itself runs in a couple of minutes.
   browser-tests:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
@@ -28,8 +31,14 @@ jobs:
       - name: Install mise
         uses: jdx/mise-action@v4
 
+      # `-browser` skips `--with-deps`, whose `apt-get` was the thing that hung
+      # (see mise.toml). The browser download that remains is still a network
+      # reach that could stall, so keep a cap on it too — belt and braces, since
+      # a stall here has no timeout of its own and would otherwise sit until the
+      # runner's 6h default.
       - name: Install headless Chromium
-        run: mise run playwright-install
+        run: mise run playwright-install-browser
+        timeout-minutes: 5
 
       - name: Run the browser test suite
         run: mise run browsertest

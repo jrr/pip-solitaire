@@ -60,10 +60,16 @@ jobs:
   # hand-rolled git. A separate job (isolated build, own status); `needs: preview`
   # serializes the two gh-pages writers in the run; `continue-on-error` so a render
   # hiccup never fails the preview. Fork PRs are skipped with `preview`.
+  #
+  # Capped like the `main` deploy's twin job: this workflow shares the `gh-pages`
+  # concurrency group (which never cancels in progress), so a job left hanging on
+  # the runner's 6h default would block every other writer of that branch behind
+  # it. `continue-on-error` makes the cap firing cost only this push's report.
   screenshots:
     needs: preview
     runs-on: ubuntu-latest
     continue-on-error: true
+    timeout-minutes: 15
     if: github.event.pull_request.head.repo.full_name == github.repository
     steps:
       - name: Checkout repository
@@ -73,9 +79,15 @@ jobs:
         if: github.event.action != 'closed'
         uses: jdx/mise-action@v4
 
+      # `-browser` skips `--with-deps`, whose `apt-get` was the thing that hung
+      # (see mise.toml). The browser download that remains is still a network
+      # reach that could stall, so keep a cap on it too — belt and braces, since
+      # a stall here has no timeout of its own and would otherwise sit until the
+      # runner's 6h default.
       - name: Install headless Chromium
         if: github.event.action != 'closed'
-        run: mise run playwright-install
+        run: mise run playwright-install-browser
+        timeout-minutes: 5
 
       - name: Render screenshot report
         if: github.event.action != 'closed'

@@ -95,11 +95,27 @@ description = "Run the Playwright CLI: `mise run playwright -- test --headed -g 
 run = "pnpm --filter web-app exec playwright"
 
 # Split out from the browser tasks so a machine that already has a Chromium skips
-# the download; CI runs it once before each.
+# the download. `--with-deps` also apt-installs Chromium's shared libraries, which
+# is what a bare Linux box needs and a macOS box ignores.
 [tasks.playwright-install]
 description = "Install the headless Chromium Playwright uses for the browser tasks"
 depends = ["install"]
 run = "pnpm --filter web-app exec playwright install --with-deps chromium"
+
+# The same download *without* the apt half — what CI runs. The GitHub runner image
+# already ships Chromium's shared libraries (it installs Google Chrome from its own
+# apt source), so `--with-deps` there installs nothing new; all it buys is a round
+# trip to Ubuntu's mirrors on every single run. And those mirrors stall: apt spends
+# ~30s giving up on `azure.archive.ubuntu.com` (`Ign`), falls back to
+# `archive.ubuntu.com`, starts fetching InRelease — and then hangs there with no
+# output and no timeout of its own, which is what wedged the screenshot job for 55
+# minutes on 2026-08-18. Skipping the apt step removes that failure mode outright;
+# if the image ever does drop a library, Chromium fails to launch loudly and fast
+# instead of hanging, and this task goes back to `playwright-install`.
+[tasks.playwright-install-browser]
+description = "Install headless Chromium only, skipping the apt system-library step"
+depends = ["install"]
+run = "pnpm --filter web-app exec playwright install chromium"
 
 # Outputs are committed, so this only needs re-running when the source faces or
 # the subset change (#114).
