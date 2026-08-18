@@ -621,6 +621,14 @@
         pointer-events: none;
         overscroll-behavior: contain;
         touch-action: pan-y;
+        /* The page centres its text (`body` above) because the board is a centred thing;
+           a log is not. It went unnoticed while every line was a flex row — flex items
+           don't take `text-align` — and showed up the moment a *rendered* line (#282,
+           `display: block`) was short enough to see it float: a one-line move sentence
+           sitting halfway across the panel while the echo above it started at the left.
+           Said once here rather than per line, so the prompt and the status row are
+           covered by the same statement. */
+        text-align: left;
       }
 
       #debug-console[hidden] {

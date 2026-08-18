@@ -342,3 +342,65 @@ describe("Render portability", () => {
     expect(painted->String.replaceRegExp(tags, ""))->toBe(Render.board(game))
   })
 })
+
+// --- A move, in words ----------------------------------------------------------
+// The line the debug console narrates a dispatched move with (#213). It replaced the
+// reducer's own action, stringified, so what's being pinned down is that it says the move
+// the way the *board* says it: the verb you would type, the card's face, and the label
+// printed over the pile rather than the index underneath it.
+describe("Render.action", () => {
+  let game = Game.freecell
+  // Deal #1's layout: four free cells, four foundations, then the cascades — `C1` is
+  // pile 0 and `T1` is pile 8.
+  let say = action => Render.toPlain([Render.action(~game, action)])
+
+  test("a move names its card and the label over its destination", () =>
+    expect(say(Reducer.Move({card: {suit: Clubs, rank: Ten}, to: Reducer.ToPile(12)})))->toBe(
+      "move 10♣ → T5",
+    )
+  )
+
+  test("a run names every card it lifts", () =>
+    expect(
+      say(
+        Reducer.MoveRun({
+          cards: [{suit: Spades, rank: Nine}, {suit: Hearts, rank: Eight}],
+          to: Reducer.ToPile(15),
+        }),
+      ),
+    )->toBe("moverun 9♠ 8♥ → T8")
+  )
+
+  test("a column reorder names both columns", () =>
+    expect(say(Reducer.MoveColumn({from: 9, to: 11})))->toBe("movecol T2 → T4")
+  )
+
+  test("the table is named as the table", () =>
+    expect(say(Reducer.Move({card: {suit: Hearts, rank: Two}, to: Reducer.ToTable})))->toBe(
+      "move 2♥ → table",
+    )
+  )
+
+  // A pile the board prints no label over falls back to its index rather than to
+  // nothing — the log still points somewhere.
+  test("a pile with no label is named by its index", () =>
+    expect(Render.pileName(~game, 99))->toBe("pile 99")
+  )
+
+  // The card is inked like its face on the board, which is the reason this is a document
+  // and not a string: a log that paints a printed board can paint the move too.
+  test("the card is inked by suit, and the rest is furniture", () => {
+    let spans = Render.action(
+      ~game,
+      Reducer.Move({card: {suit: Hearts, rank: Two}, to: Reducer.ToPile(8)}),
+    )
+    expect(
+      spans->Array.some((span: Render.span) => Render.sameInk(span.ink, Render.Suit(Rules.Red))),
+    )->toBe(true)
+    expect(
+      spans
+      ->Array.filter((span: Render.span) => !Render.sameInk(span.ink, Render.Plain))
+      ->Array.map((span: Render.span) => span.text),
+    )->toEqual(["2♥"])
+  })
+})

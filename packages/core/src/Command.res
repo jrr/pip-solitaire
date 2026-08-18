@@ -671,16 +671,31 @@ let resolveDeal = (~game: option<string>, ~scenario: option<string>): dealt =>
 // Why a move bounced, in words, so someone typing learns the *reason* rather than
 // watching a card refuse to go — the whole point of the reducer returning a typed
 // `moveError` instead of a swallowed no-op.
+// The reason alone: a phrase with no subject and no full stop, for a caller whose line
+// above already said *which* move this is. The web console's rejection is two lines —
+// `move 10♣ → F1 ✗` and then the reason — and repeating the move in the second one would
+// say the card twice, in two spellings, one line apart.
+let reason = (err: Reducer.moveError): string =>
+  switch err {
+  | Reducer.Rejected => "can't stack there"
+  | Reducer.PileFull => "that pile is full"
+  | Reducer.LooseNotAllowed => "this game keeps cards in piles — no loose drops"
+  | Reducer.NoSuchPile => "no such pile"
+  | Reducer.CardNotFound => "that card isn't in play"
+  | Reducer.NotARun => "those cards aren't an ordered run"
+  | Reducer.RunTooLong => "that run is longer than the free cells and empty columns allow"
+  | Reducer.NotAColumn => "that pile isn't a cascade column"
+  }
+
+// The same, as a sentence that stands on its own: the phrase, prefixed, and naming the
+// card in the two cases that read better for it. What a terminal says, where there's no
+// line above to lean on — and, being built from `reason`, a refusal the two front ends
+// can't drift apart on.
 let describeError = (err: Reducer.moveError, card: card): string =>
   switch err {
   | Reducer.Rejected => `Rejected: ${CardText.format(card)} can't stack there.`
-  | Reducer.PileFull => `Rejected: that pile is full.`
-  | Reducer.LooseNotAllowed => `Rejected: this game keeps cards in piles — no loose drops.`
-  | Reducer.NoSuchPile => `Rejected: no such pile.`
   | Reducer.CardNotFound => `Rejected: ${CardText.format(card)} isn't in play.`
-  | Reducer.NotARun => `Rejected: those cards aren't an ordered run.`
-  | Reducer.RunTooLong => `Rejected: that run is longer than the free cells and empty columns allow.`
-  | Reducer.NotAColumn => `Rejected: that pile isn't a cascade column.`
+  | _ => `Rejected: ${reason(err)}.`
   }
 
 // The same, for a rejection reported against the *action* that was dispatched: a

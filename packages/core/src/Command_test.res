@@ -943,3 +943,47 @@ describe("Command.resolveFrom", () => {
     )
   })
 })
+
+// --- Why a move bounced --------------------------------------------------------
+// Two shapes of the same refusal: the phrase alone, for a caller whose line above already
+// named the move (the console's two-line rejection), and the standalone sentence a
+// terminal prints. The second is built from the first, so they can't drift.
+describe("Command.reason", () => {
+  test("the phrase has no subject and no full stop", () => {
+    expect(Command.reason(Reducer.Rejected))->toBe("can't stack there")
+    expect(Command.reason(Reducer.PileFull))->toBe("that pile is full")
+    expect(Command.reason(Reducer.RunTooLong))->toBe(
+      "that run is longer than the free cells and empty columns allow",
+    )
+  })
+
+  // The sentence a terminal has always printed, unchanged by the split: prefixed, ended,
+  // and naming the card in the two cases that read better for it.
+  test("the standalone sentence still says what it always said", () => {
+    let three: card = {suit: Clubs, rank: Three}
+    expect(Command.describeError(Reducer.Rejected, three))->toBe("Rejected: 3C can't stack there.")
+    expect(Command.describeError(Reducer.CardNotFound, three))->toBe("Rejected: 3C isn't in play.")
+    expect(Command.describeError(Reducer.PileFull, three))->toBe("Rejected: that pile is full.")
+  })
+
+  // Every error answers both ways — a phrase that reads as one, and a sentence that ends.
+  test("every rejection has both shapes", () =>
+    [
+      Reducer.Rejected,
+      Reducer.PileFull,
+      Reducer.LooseNotAllowed,
+      Reducer.NoSuchPile,
+      Reducer.CardNotFound,
+      Reducer.NotARun,
+      Reducer.RunTooLong,
+      Reducer.NotAColumn,
+    ]->Array.forEach(
+      err => {
+        let phrase = Command.reason(err)
+        expect(phrase == "")->toBe(false)
+        expect(phrase->String.endsWith("."))->toBe(false)
+        expect(Command.describeError(err, ace(Spades))->String.startsWith("Rejected: "))->toBe(true)
+      },
+    )
+  )
+})
