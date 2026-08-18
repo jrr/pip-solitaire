@@ -59,6 +59,47 @@ type moveError =
   | NotARun // a `MoveRun`'s cards aren't a legal ordered run (#123)
   | RunTooLong // a `MoveRun`'s run exceeds the supermove limit (#123)
   | NotAColumn // a `MoveColumn` addressed a pile that isn't a `Cascade` (#159)
+  | CardBuried // a `Move`'s card has other cards resting on it (see `isFree`)
+  | NotASpan // a `MoveRun`'s cards aren't one liftable span (see `isSpan`)
+
+// --- What a hand can lift ------------------------------------------------------
+// The half of legality that isn't about the *destination* at all: a move can only
+// pick up what's actually loose in the player's reach. A pile is a stack — the
+// cards resting on a card hold it down — so naming a buried card names a move no
+// hand could make, and the reducer has to say so. The view enforces this by only
+// making liftable cards draggable; a typed command (`move QH KC`, the CLI and the
+// web console alike) arrives with no such gesture behind it, so the rule has to
+// live where both front ends already agree to be judged.
+
+// Is `card` free to be lifted — nothing resting on top of it? True for a loose
+// card and for the card topping its pile; false for a buried one. A card that
+// isn't in play is not free either, though `CardNotFound` reports that first.
+let isFree = (state: GameState.t, card: card): bool =>
+  switch GameState.locationOf(state, card) {
+  | Some(InPile(i, slot)) => slot == Array.length(GameState.cardsInPile(state, i)) - 1
+  | Some(Loose) => true
+  | None => false
+  }
+
+// Are `cards` (bottom-first) the *span* a hand would lift — the tail of one pile,
+// in the pile's own order, running all the way to its top? The multi-card reading
+// of `isFree`, and the same rule: the run has to be lying on the board the way the
+// move claims to lift it. A run gathered from two piles, or one taken out of the
+// middle of a pile, is not a supermove — it's a stack of cards being teleported.
+// (Loose cards are never a span: a run only ever moves between piles.)
+let isSpan = (state: GameState.t, cards: array<card>): bool =>
+  switch cards->Array.get(0) {
+  | None => false
+  | Some(bottom) =>
+    switch GameState.locationOf(state, bottom) {
+    | Some(InPile(i, slot)) =>
+      let pile = GameState.cardsInPile(state, i)
+      let tail = pile->Array.slice(~start=slot, ~end=Array.length(pile))
+      Array.length(tail) == Array.length(cards) &&
+        tail->Array.everyWithIndex((c, k) => GameState.sameCard(c, cards->Array.getUnsafe(k)))
+    | _ => false
+    }
+  }
 
 // Is pile `onto` already full — holding as many cards as its `capacity` allows
 // (#93)? A pile with `capacity: None` is unbounded and never full; a `Some(cap)`
@@ -136,9 +177,10 @@ type move = {to: int, role: Game.role}
 // `isSafeToCollect`/`autoCollect`.
 let validMoves = (~game: Game.t, state: GameState.t, card: card): array<move> =>
   switch GameState.locationOf(state, card) {
-  // A buried card (not the top of its pile) can't move at all.
-  | Some(InPile(i, slot)) if slot != Array.length(GameState.cardsInPile(state, i)) - 1 => []
   | None => [] // not in play
+  // A buried card (something resting on it) can't move at all — the same `isFree`
+  // the reducer refuses one with, so what's listed is what `reduce` will accept.
+  | Some(_) if !isFree(state, card) => []
   | Some(location) =>
     // The card's own pile — excluded below, since re-dropping where it rests isn't a
     // move. A loose card has no such pile, so nothing is excluded for it.
@@ -189,6 +231,7 @@ let canMoveRun = (~game: Game.t, state: GameState.t, cards: array<card>, ~onto: 
   | None => false
   | Some(pile) =>
     Array.length(cards) > 0 &&
+    isSpan(state, cards) &&
     Rules.isRun(pile.rule, cards) &&
     Rules.accepts(pile.rule, cards->Array.getUnsafe(0), GameState.topOf(state, onto)) &&
     hasRoomFor(~game, state, ~onto, ~adding=Array.length(cards)) &&
@@ -257,6 +300,10 @@ let reduce = (~game: Game.t, state: GameState.t, action: action): result<GameSta
   | Move({card, to: ToPile(i)}) =>
     switch GameState.locationOf(state, card) {
     | None => Error(CardNotFound)
+    // A card with others resting on it isn't the player's to move: lifting it would
+    // pull it out from under them and leave them behind. Refused before the
+    // destination is weighed at all, since no pile makes a buried card liftable.
+    | Some(_) if !isFree(state, card) => Error(CardBuried)
     | Some(_) =>
       switch GameState.topOf(state, i) {
       // Re-dropping a card onto the pile it already tops is an identity `Ok`
@@ -289,6 +336,8 @@ let reduce = (~game: Game.t, state: GameState.t, action: action): result<GameSta
       switch GameState.locationOf(state, card) {
       | None => Error(CardNotFound)
       | Some(Loose) => Ok(state) // already loose: identity re-drop
+      // Buried is buried wherever the card was headed — the table included.
+      | Some(InPile(_, _)) if !isFree(state, card) => Error(CardBuried)
       | Some(InPile(_, _)) =>
         let lifted = liftCard(state, card)
         Ok({...lifted, loose: Array.concat(lifted.loose, [card])})
@@ -308,6 +357,12 @@ let reduce = (~game: Game.t, state: GameState.t, action: action): result<GameSta
         Error(CardNotFound)
       } else if Array.length(cards) == 0 || !Rules.isRun(pile.rule, cards) {
         Error(NotARun)
+      } else if !isSpan(state, cards) {
+        // The cards read as a run, but they aren't *lying* as one: gathered from
+        // several piles, or lifted from under the cards covering them. A supermove
+        // relays a span a hand could take hold of, so this is refused as a move
+        // rather than performed as a teleport.
+        Error(NotASpan)
       } else if !Rules.accepts(pile.rule, cards->Array.getUnsafe(0), GameState.topOf(state, i)) {
         Error(Rejected)
       } else if !hasRoomFor(~game, state, ~onto=i, ~adding=Array.length(cards)) {

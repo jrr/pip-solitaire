@@ -955,6 +955,9 @@ describe("Command.reason", () => {
     expect(Command.reason(Reducer.RunTooLong))->toBe(
       "that run is longer than the free cells and empty columns allow",
     )
+    expect(Command.reason(Reducer.NotASpan))->toBe(
+      "those cards aren't lying together at the top of one pile",
+    )
   })
 
   // The sentence a terminal has always printed, unchanged by the split: prefixed, ended,
@@ -964,6 +967,11 @@ describe("Command.reason", () => {
     expect(Command.describeError(Reducer.Rejected, three))->toBe("Rejected: 3C can't stack there.")
     expect(Command.describeError(Reducer.CardNotFound, three))->toBe("Rejected: 3C isn't in play.")
     expect(Command.describeError(Reducer.PileFull, three))->toBe("Rejected: that pile is full.")
+    // A card refused for being *buried* is named too, and in the words `resolveWhere`
+    // already refuses a buried destination with — one move, one sense of "buried".
+    expect(Command.describeError(Reducer.CardBuried, three))->toBe(
+      "Rejected: 3C is buried — only the card on top of a pile can be moved.",
+    )
   })
 
   // Every error answers both ways — a phrase that reads as one, and a sentence that ends.
@@ -977,6 +985,8 @@ describe("Command.reason", () => {
       Reducer.NotARun,
       Reducer.RunTooLong,
       Reducer.NotAColumn,
+      Reducer.CardBuried,
+      Reducer.NotASpan,
     ]->Array.forEach(
       err => {
         let phrase = Command.reason(err)

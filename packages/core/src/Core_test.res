@@ -366,11 +366,26 @@ describe("Game", () => {
         let board = Game.freecell
         let cell = Game.pileIndices(board, Game.FreeCell)->Array.getUnsafe(0)
         let foundation = Game.pileIndices(board, Game.Foundation)->Array.getUnsafe(0)
-        let state = GameState.initial(board)
+        let cascades = Game.pileIndices(board, Game.Cascade)
+        // A move lifts only what a hand could lift — the card nothing rests on
+        // (`Reducer.isFree`) — so the script poses each card it names on top of a
+        // cascade of its own first, wherever the shuffle dealt it. `placeOnPile` is
+        // the posing primitive: it brings a card to a pile's top. Every `reduce`
+        // below then plays a card that's genuinely showing, which is the whole point
+        // of the script — the rules being tested are the *destination's*.
+        let showing = (s, card, ~on) => Reducer.placeOnPile(s, card, on)
+        let state =
+          GameState.initial(board)
+          ->showing({suit: Spades, rank: King}, ~on=cascades->Array.getUnsafe(0))
+          ->showing({suit: Hearts, rank: King}, ~on=cascades->Array.getUnsafe(1))
+          ->showing({suit: Hearts, rank: Two}, ~on=cascades->Array.getUnsafe(2))
+          ->showing({suit: Spades, rank: Ace}, ~on=cascades->Array.getUnsafe(3))
+          ->showing({suit: Spades, rank: Two}, ~on=cascades->Array.getUnsafe(4))
+          ->showing({suit: Hearts, rank: Three}, ~on=cascades->Array.getUnsafe(5))
+          ->showing({suit: Clubs, rank: Five}, ~on=cascades->Array.getUnsafe(6))
 
         // Park a card in an empty free cell — a `Free`, capacity-1 slot takes any
-        // single card. (The reducer reaches a card wherever it rests, so the
-        // script is robust to the shuffle.)
+        // single card.
         let afterPark = switch Reducer.reduce(
           ~game=board,
           state,
@@ -447,7 +462,7 @@ describe("Game", () => {
         // The cascade rule builds *down* in alternating colour: derive a legal
         // follow-up (and an illegal same-colour one) from a cascade's own top
         // card, so the check holds for whatever the shuffle dealt.
-        let cascade = Game.pileIndices(board, Game.Cascade)->Array.getUnsafe(0)
+        let cascade = cascades->Array.getUnsafe(0)
         switch GameState.topOf(state, cascade) {
         | Some(top) if Rules.rankValue(top.rank) > 1 =>
           // One rank lower, opposite colour — a legal descending step.
@@ -1277,14 +1292,10 @@ describe("Reducer", () => {
         expect(Reducer.foundationTarget(~game=board, state, {suit: Spades, rank: Ace}))->toEqual(
           Some(first),
         )
-        let afterAce = switch Reducer.reduce(
-          ~game=board,
-          state,
-          Move({card: {suit: Spades, rank: Ace}, to: ToPile(first)}),
-        ) {
-        | Ok(s) => s
-        | Error(_) => state
-        }
+        // The Ace is buried in the deal, and a buried card doesn't move (`isFree`) —
+        // so pose it home directly rather than scripting a move no hand could make.
+        // What's under test is which foundation *takes* a card, not how it got there.
+        let afterAce = Reducer.placeOnPile(state, {suit: Spades, rank: Ace}, first)
         // The Two of Spades follows its Ace home to the very same foundation…
         expect(Reducer.foundationTarget(~game=board, afterAce, {suit: Spades, rank: Two}))->toEqual(
           Some(first),
@@ -1928,6 +1939,143 @@ describe("Reducer", () => {
             )->toEqual(Error(Reducer.LooseNotAllowed))
           },
         )
+      },
+    )
+  })
+
+  // What a move may *lift*. Every other check in the reducer is about where a card is
+  // going; these are about whether it was the player's to pick up in the first place.
+  // A pile is a stack, so the cards resting on a card hold it down — naming a buried
+  // card names a move no hand could make, and a run has to be lying on the board the
+  // way the move claims to lift it. The view enforces this by only making liftable
+  // cards draggable; a typed command (`move QH KC`) has no gesture behind it, so the
+  // reducer is where the rule has to hold for both front ends.
+  describe("lifting", () => {
+    let qs = {suit: Spades, rank: Queen}
+    let jh = {suit: Hearts, rank: Jack}
+    let ts = {suit: Spades, rank: Ten}
+    let kh = {suit: Hearts, rank: King}
+    let qc = {suit: Clubs, rank: Queen}
+    let fc = {suit: Clubs, rank: Four}
+    // Two free cells then four cascades, and `free` so a loose drop is reachable —
+    // enough empties that the supermove limit is never the reason a run bounces.
+    let liftGame: Game.t = {
+      id: "lift",
+      name: "Lift",
+      piles: [
+        {role: FreeCell, stacking: Squared, rule: Rules.Free, capacity: Some(1), cards: []},
+        {role: FreeCell, stacking: Squared, rule: Rules.Free, capacity: Some(1), cards: []},
+        {role: Cascade, stacking: Fanned, rule: Rules.cascade, capacity: None, cards: []},
+        {role: Cascade, stacking: Fanned, rule: Rules.cascade, capacity: None, cards: []},
+        {role: Cascade, stacking: Fanned, rule: Rules.cascade, capacity: None, cards: []},
+        {role: Cascade, stacking: Fanned, rule: Rules.cascade, capacity: None, cards: []},
+      ],
+      free: true,
+      loose: [],
+      caption: None,
+      seed: None,
+    }
+    let stateOf = (piles): GameState.t => {GameState.piles, loose: []}
+
+    test(
+      "a buried card is refused — the cards on it hold it down",
+      () => {
+        // Q♠ lies under the J♥ built onto it; K♥ tops another cascade and would take
+        // the Q♠ gladly. The *destination* is willing, so buriedness is the only
+        // thing refusing the move — and `canDrop` agreeing proves it.
+        let buried = stateOf([[], [], [qs, jh], [kh], [], []])
+        expect(Reducer.canDrop(~game=liftGame, buried, qs, ~onto=3))->toBe(true)
+        expect(Reducer.reduce(~game=liftGame, buried, Move({card: qs, to: ToPile(3)})))->toEqual(
+          Error(Reducer.CardBuried),
+        )
+        // …and nothing was pulled out from under the J♥.
+        expect(GameState.cardsInPile(buried, 2))->toEqual([qs, jh])
+
+        // Uncover the Q♠ and the very same move plays.
+        let free = stateOf([[], [], [qs], [kh], [], []])
+        switch Reducer.reduce(~game=liftGame, free, Move({card: qs, to: ToPile(3)})) {
+        | Ok(next) =>
+          expect(GameState.cardsInPile(next, 3))->toEqual([kh, qs])
+          expect(GameState.cardsInPile(next, 2))->toEqual([])
+        | Error(_) => expect(true)->toBe(false)
+        }
+      },
+    )
+
+    test(
+      "a buried card can't be sent loose either",
+      () => {
+        // Buried is buried wherever the card was headed: this game *is* `free`, so
+        // the table would take it, and the card still can't be pulled out.
+        let buried = stateOf([[], [], [qs, jh], [], [], []])
+        expect(Reducer.reduce(~game=liftGame, buried, Move({card: qs, to: ToTable})))->toEqual(
+          Error(Reducer.CardBuried),
+        )
+        // The card on top of it is free, and goes.
+        switch Reducer.reduce(~game=liftGame, buried, Move({card: jh, to: ToTable})) {
+        | Ok(next) => expect(next.loose)->toEqual([jh])
+        | Error(_) => expect(true)->toBe(false)
+        }
+      },
+    )
+
+    test(
+      "a loose card is always free to move",
+      () => {
+        // Nothing can rest on a card lying on the table, so `isFree` holds for it.
+        let state: GameState.t = {piles: [[], [], [], [kh], [], []], loose: [qs]}
+        switch Reducer.reduce(~game=liftGame, state, Move({card: qs, to: ToPile(3)})) {
+        | Ok(next) =>
+          expect(GameState.cardsInPile(next, 3))->toEqual([kh, qs])
+          expect(next.loose)->toEqual([])
+        | Error(_) => expect(true)->toBe(false)
+        }
+      },
+    )
+
+    test(
+      "a run gathered from two piles isn't a supermove",
+      () => {
+        // J♥ tops one cascade and 10♠ another. Read as a sequence they're a perfect
+        // run, and the Q♣ would take them — but they aren't lying together, so
+        // moving them would be a teleport rather than a supermove.
+        let scattered = stateOf([[], [], [jh], [ts], [qc], []])
+        expect(Rules.isRun(Rules.cascade, [jh, ts]))->toBe(true)
+        expect(Reducer.maxSupermove(~game=liftGame, scattered, ~ignoring=4) >= 2)->toBe(true)
+        expect(
+          Reducer.reduce(~game=liftGame, scattered, MoveRun({cards: [jh, ts], to: ToPile(4)})),
+        )->toEqual(Error(Reducer.NotASpan))
+        // The view's hover highlight reads the same query, so it refuses too.
+        expect(Reducer.canMoveRun(~game=liftGame, scattered, [jh, ts], ~onto=4))->toBe(false)
+      },
+    )
+
+    test(
+      "a run taken from under the cards covering it isn't a supermove",
+      () => {
+        // The J♥-10♠ run sits in the middle of its pile, with a 4♣ parked on top of
+        // it. Lifting the run would leave the 4♣ hanging in mid-air.
+        let covered = stateOf([[], [], [jh, ts, fc], [], [qc], []])
+        expect(
+          Reducer.reduce(~game=liftGame, covered, MoveRun({cards: [jh, ts], to: ToPile(4)})),
+        )->toEqual(Error(Reducer.NotASpan))
+        expect(Reducer.canMoveRun(~game=liftGame, covered, [jh, ts], ~onto=4))->toBe(false)
+      },
+    )
+
+    test(
+      "the run showing at the top of a pile still moves as one",
+      () => {
+        // The same two cards, now the tail of their pile with nothing on them: the
+        // ordinary supermove, unaffected by the span check.
+        let span = stateOf([[], [], [fc, jh, ts], [], [qc], []])
+        expect(Reducer.canMoveRun(~game=liftGame, span, [jh, ts], ~onto=4))->toBe(true)
+        switch Reducer.reduce(~game=liftGame, span, MoveRun({cards: [jh, ts], to: ToPile(4)})) {
+        | Ok(next) =>
+          expect(GameState.cardsInPile(next, 4))->toEqual([qc, jh, ts])
+          expect(GameState.cardsInPile(next, 2))->toEqual([fc])
+        | Error(_) => expect(true)->toBe(false)
+        }
       },
     )
   })
