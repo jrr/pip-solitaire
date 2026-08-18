@@ -36,9 +36,16 @@ async function runCommand(page, line) {
   await page.keyboard.press("Enter")
 }
 
-// ⇧` docks the console beside the board, or puts it back over it (#275). The console is
-// keyboard-only, so its mode is too — same physical key as the toggle, shifted.
-const pressDock = (page) => page.keyboard.press("Shift+Backquote")
+// ⇧` steps the console round its four placements (#275) — top, side, bottom, full. The
+// console is keyboard-only, so its placement is too: same physical key as the toggle,
+// shifted.
+const pressPlace = (page) => page.keyboard.press("Shift+Backquote")
+
+// Where the panel says it is, straight off the root attribute `ConsoleDock.reflect`
+// publishes — absent (`null`) whenever the console is closed, which is the same fact as
+// "a closed console holds no strip of the board".
+const placement = (page) =>
+  page.evaluate(() => document.documentElement.getAttribute("data-console-dock"))
 
 // The card footprint the layout has settled on, straight off the custom property
 // `applyScale` publishes. What "the board reflowed into the remaining width" means in a
@@ -584,14 +591,18 @@ test("the backtick still closes the console from inside the prompt", async ({ pa
   await expect(consolePanel(page)).toBeHidden()
 })
 
-// --- Docked beside the board (#275) -----------------------------------------------
+// --- The four placements (#275) ---------------------------------------------------
 //
-// The overlay is the wrong axis for FreeCell in a desktop window: `TableScene` fits the
-// tallest cascade fan plus the top row into the available *height*, so a band across the
-// top eats the scarce dimension and shrinks every card, while past a point the layout
-// throws surplus *width* away as equal left/right margins. Docked, the console is built
-// out of that discard — and the board is told about it in exactly one way: `.table-board`,
-// the box its `ResizeObserver` watches (#172), gets narrower.
+// ⇧` steps the panel through top → side → bottom → full and round again. The side dock is
+// the one with an argument behind it: the top overlay is the wrong axis for FreeCell in a
+// desktop window, because `TableScene` fits the tallest cascade fan plus the top row into
+// the available *height*, so a band across the top eats the scarce dimension and shrinks
+// every card, while past a point the layout throws surplus *width* away as equal
+// left/right margins. Docked, the console is built out of that discard — and the board is
+// told about it in exactly one way: `.table-board`, the box its `ResizeObserver` watches
+// (#172), gets narrower. The other three cover the board rather than displacing it, so
+// what they have to prove is what they cover and whether the game underneath is still
+// reachable through them.
 //
 // All of which is a layout claim, so all of which is measured here rather than in jsdom:
 // the board's rect, the panel's rect, and the card footprint the two produce between them.
@@ -601,6 +612,7 @@ test.describe("docked beside the board", () => {
   test.use({ viewport: { width: 1440, height: 900 } })
 
   test("docking narrows the board rather than covering it", async ({ page }) => {
+    // The first ⇧` from the shipped placement, so this is also the cycle's first step.
     await page.goto(FREECELL)
     await settleBoard(page)
 
@@ -610,11 +622,12 @@ test.describe("docked beside the board", () => {
 
     await page.keyboard.press("Backquote")
     await expect(consolePanel(page)).toBeVisible()
-    // The premise: overlaid, the panel lies *over* an untouched board.
+    // The premise: overlaid across the top, the panel lies *over* an untouched board.
+    expect(await placement(page)).toBe("top")
     expect((await board.boundingBox()).width).toBeCloseTo(undocked.width, 0)
 
-    await pressDock(page)
-    await expect(page.locator("html")).toHaveAttribute("data-console-dock", "on")
+    await pressPlace(page)
+    await expect(page.locator("html")).toHaveAttribute("data-console-dock", "side")
 
     // The board gives up the dock's width and reflows into what's left — cards and all.
     await expect
@@ -640,9 +653,10 @@ test.describe("docked beside the board", () => {
     })
     expect(zonesClear).toBe(true)
 
-    // Undocking hands the width straight back.
-    await pressDock(page)
-    await expect(page.locator("html")).not.toHaveAttribute("data-console-dock", "on")
+    // Stepping on hands the width straight back: the next placement is an overlay again,
+    // and the board is never told it exists.
+    await pressPlace(page)
+    await expect(page.locator("html")).toHaveAttribute("data-console-dock", "bottom")
     await expect
       .poll(async () => (await board.boundingBox()).width)
       .toBeCloseTo(undocked.width, 0)
@@ -654,40 +668,40 @@ test.describe("docked beside the board", () => {
     const board = page.locator(".table-board")
     const undocked = (await board.boundingBox()).width
 
-    await pressDock(page)
+    await pressPlace(page)
     await expect(consolePanel(page)).toBeVisible()
     await expect.poll(async () => (await board.boundingBox()).width).toBeLessThan(undocked)
 
-    // Closing puts the strip back: the mode is remembered, but a console nobody is
+    // Closing puts the strip back: the placement is remembered, but a console nobody is
     // looking at must not go on taking a slice of the playfield with it.
     await page.keyboard.press("Escape")
     await expect(consolePanel(page)).toBeHidden()
-    await expect(page.locator("html")).not.toHaveAttribute("data-console-dock", "on")
+    expect(await placement(page)).toBe(null)
     await expect.poll(async () => (await board.boundingBox()).width).toBeCloseTo(undocked, 0)
   })
 
-  test("the dock mode survives a reload", async ({ page }) => {
+  test("the placement survives a reload", async ({ page }) => {
     await page.goto(FREECELL)
     await settleBoard(page)
-    await pressDock(page)
-    await expect(page.locator("html")).toHaveAttribute("data-console-dock", "on")
+    await pressPlace(page)
+    await expect(page.locator("html")).toHaveAttribute("data-console-dock", "side")
 
     await page.reload()
     await settleBoard(page)
-    // Closed on load as always — the mode is remembered, the panel isn't.
+    // Closed on load as always — the placement is remembered, the panel isn't.
     await expect(consolePanel(page)).toBeHidden()
-    await expect(page.locator("html")).not.toHaveAttribute("data-console-dock", "on")
+    expect(await placement(page)).toBe(null)
 
     // …and the plain toggle brings it back docked, without having to say so again.
     await page.keyboard.press("Backquote")
     await expect(consolePanel(page)).toBeVisible()
-    await expect(page.locator("html")).toHaveAttribute("data-console-dock", "on")
+    await expect(page.locator("html")).toHaveAttribute("data-console-dock", "side")
   })
 
   test("the menu and a docked console are up together", async ({ page }) => {
     await page.goto(FREECELL)
     await settleBoard(page)
-    await pressDock(page)
+    await pressPlace(page)
     await expect(consolePanel(page)).toBeVisible()
 
     // The overlay's exclusion doesn't apply here — it exists because a band across the
@@ -730,8 +744,8 @@ test.describe("docked into a window with nothing to spare", () => {
     await settleBoard(page)
     const before = await cardWidth(page)
 
-    await pressDock(page)
-    await expect(page.locator("html")).toHaveAttribute("data-console-dock", "on")
+    await pressPlace(page)
+    await expect(page.locator("html")).toHaveAttribute("data-console-dock", "side")
     await expect.poll(() => cardWidth(page)).toBeLessThan(before)
 
     // The cards shrank, and they shrank *into* the board — the whole row still clears
@@ -744,8 +758,8 @@ test.describe("docked into a window with nothing to spare", () => {
     })
     expect(clear).toBe(true)
 
-    // …and back up again when the dock is given up.
-    await pressDock(page)
+    // …and back up again when the dock is given up for the next placement.
+    await pressPlace(page)
     await expect.poll(() => cardWidth(page)).toBeCloseTo(before, 1)
   })
 })
@@ -753,27 +767,167 @@ test.describe("docked into a window with nothing to spare", () => {
 test.describe("too narrow to dock", () => {
   // Below the width at which the board would still clear `minScale` after giving up the
   // dock (`TableScene.minStageWidth` is ~284px for eight columns, and the dock takes
-  // 340), so the toggle has to refuse rather than squeeze.
+  // 340), so the cycle has to step over that placement rather than squeeze into it.
   test.use({ viewport: { width: 500, height: 900 } })
 
-  test("the toggle refuses and the console stays an overlay", async ({ page }) => {
+  test("the cycle steps over the dock and says why", async ({ page }) => {
     await page.goto(FREECELL)
     await settleBoard(page)
     const board = page.locator(".table-board")
     const before = (await board.boundingBox()).width
 
-    await pressDock(page)
+    await pressPlace(page)
     // The console comes up regardless — a refusal you can't see is indistinguishable
-    // from a key that did nothing — but it comes up as an overlay, and says why.
+    // from a key that did nothing — and it comes up in the placement *past* the dock,
+    // having said why it isn't in the dock.
     await expect(consolePanel(page)).toBeVisible()
-    await expect(page.locator("html")).not.toHaveAttribute("data-console-dock", "on")
+    expect(await placement(page)).toBe("bottom")
     expect((await board.boundingBox()).width).toBeCloseTo(before, 0)
     await expect(consoleLines(page).filter({ hasText: "too narrow to dock" })).toHaveCount(1)
 
-    // …and it's still refused on the next press, rather than toggling into a mode it
-    // just declined.
-    await pressDock(page)
-    await expect(page.locator("html")).not.toHaveAttribute("data-console-dock", "on")
+    // …and the rest of the cycle is still reachable, which is the point of stepping over
+    // rather than sticking: a key that went inert here would strand the two placements
+    // beyond the dock as well.
+    await pressPlace(page)
+    expect(await placement(page)).toBe("full")
+    await pressPlace(page)
+    expect(await placement(page)).toBe("top")
+    // Round again, and the dock is skipped again — never landed on in this window.
+    await pressPlace(page)
+    expect(await placement(page)).toBe("bottom")
+    expect((await board.boundingBox()).width).toBeCloseTo(before, 0)
+  })
+})
+
+// The bottom band: the top overlay's mirror, and the placement for watching the row the
+// top band hides — the free cells and the foundations, which is the state most `dispatch`
+// lines are about. Same bargain as the top band, so the same two things have to hold: the
+// board doesn't move, and a drag aimed through the panel still reaches the game.
+test.describe("along the bottom", () => {
+  test.use({ viewport: { width: 1440, height: 900 } })
+
+  // Two steps from the shipped placement: top → side → bottom.
+  async function placeAtBottom(page) {
+    await pressPlace(page)
+    await pressPlace(page)
+    await expect(page.locator("html")).toHaveAttribute("data-console-dock", "bottom")
+  }
+
+  test("the band sits at the foot of the window over an untouched board", async ({ page }) => {
+    await page.goto(FREECELL)
+    await settleBoard(page)
+    const board = page.locator(".table-board")
+    const before = await board.boundingBox()
+
+    await placeAtBottom(page)
+    const panel = await consolePanel(page).boundingBox()
+    const viewport = page.viewportSize()
+
+    // At the bottom edge, not the top one — the whole difference between this placement
+    // and the one the console opens in.
+    expect(panel.y + panel.height).toBeCloseTo(viewport.height, 0)
+    expect(panel.y).toBeGreaterThan(viewport.height / 2)
+
+    // The board is never told about an overlay: same box, same cards as before.
+    const after = await board.boundingBox()
+    expect(after.width).toBeCloseTo(before.width, 0)
+    expect(after.height).toBeCloseTo(before.height, 0)
+
+    // And the row it was moved off is clear: the free cells and foundations along the top
+    // are nowhere near it.
+    const topRowClear = await page.evaluate(() => {
+      const panelTop = document.getElementById("debug-console").getBoundingClientRect().top
+      return [...document.querySelectorAll(".drop-zone")]
+        .slice(0, 8)
+        .every((zone) => zone.getBoundingClientRect().bottom <= panelTop + 0.5)
+    })
+    expect(topRowClear).toBe(true)
+  })
+
+  test("the game stays playable through the band", async ({ page }) => {
+    await page.goto(ALMOST_WON)
+    await settleBoard(page)
+    await placeAtBottom(page)
+
+    // Pointer-transparent, exactly like the top band: what lies under the panel is
+    // whatever the board put there, so a drag aimed at a card reaches the card.
+    const overBoard = await page.evaluate(() => {
+      const panel = document.getElementById("debug-console").getBoundingClientRect()
+      const hit = document.elementFromPoint(panel.left + panel.width / 2, panel.top + 4)
+      return hit?.closest("#debug-console") === null
+    })
+    expect(overBoard).toBe(true)
+
+    // The proof of it: the winning move still plays, and the panel narrates it from down
+    // there.
+    await playTheWinningMove(page)
+    await expect(page.locator(".win-overlay")).toHaveCount(1)
+    expect(await labels(page)).toContain("win")
+  })
+})
+
+// The full window: for the times the board isn't what you're reading. `print` draws a
+// ~150-column text board and `help` an aligned table, and neither fits a 340px dock or a
+// 40vh band without a scroller in each axis.
+test.describe("over the whole window", () => {
+  test.use({ viewport: { width: 1440, height: 900 } })
+
+  // Three steps from the shipped placement: top → side → bottom → full.
+  async function placeFull(page) {
+    await pressPlace(page)
+    await pressPlace(page)
+    await pressPlace(page)
+    await expect(page.locator("html")).toHaveAttribute("data-console-dock", "full")
+  }
+
+  test("the panel takes the window, and takes its pointer events", async ({ page }) => {
+    await page.goto(FREECELL)
+    await settleBoard(page)
+    const board = page.locator(".table-board")
+    const before = await board.boundingBox()
+
+    await placeFull(page)
+    const panel = await consolePanel(page).boundingBox()
+    const viewport = page.viewportSize()
+    expect(panel.x).toBeCloseTo(0, 0)
+    expect(panel.y).toBeCloseTo(0, 0)
+    expect(panel.width).toBeCloseTo(viewport.width, 0)
+    expect(panel.height).toBeCloseTo(viewport.height, 0)
+
+    // Still an overlay as far as the board is concerned — covering is not displacing, so
+    // stepping back round the cycle finds the board exactly as it was.
+    const after = await board.boundingBox()
+    expect(after.width).toBeCloseTo(before.width, 0)
+    expect(after.height).toBeCloseTo(before.height, 0)
+
+    // The inverse of the overlays' trick: there's no visible board left to protect, so
+    // the log takes pointer events and can be clicked, selected and scrolled natively.
+    const hitsConsole = await page.evaluate(() => {
+      const hit = document.elementFromPoint(window.innerWidth / 2, window.innerHeight / 2)
+      return hit?.closest("#debug-console") !== null
+    })
+    expect(hitsConsole).toBe(true)
+  })
+
+  test("a printed board fits the window the band cropped it in", async ({ page }) => {
+    await page.goto("/?scene=freecell&seed=24680&animate=off")
+    await settleBoard(page)
+    await openConsole(page)
+
+    // The reason this placement exists, measured: a printed board is some 20 rows deep,
+    // which the 40vh band reads through a letterbox…
+    await runCommand(page, "print")
+    await expect(consoleLines(page).filter({ hasText: "FreeCell" }).first()).toBeVisible()
+    const overflow = () =>
+      page.evaluate(() => {
+        const lines = document.getElementById("debug-console-lines")
+        return lines.scrollHeight - lines.clientHeight
+      })
+    expect(await overflow()).toBeGreaterThan(0)
+
+    // …and the whole window doesn't. Same scrollback, same board, no scroller.
+    await placeFull(page)
+    await expect.poll(overflow).toBeLessThanOrEqual(1)
   })
 })
 
