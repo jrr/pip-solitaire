@@ -282,7 +282,8 @@ let dealFirstHint = (command: Command.t): option<string> =>
   | Command.Redo
   | Command.Print
   | Command.Dispatch(Reducer.Move(_))
-  | Command.MoveTo({cards: [_]}) =>
+  | Command.MoveTo({from: Command.Cards([_])})
+  | Command.MoveTo({from: Command.Top(_)}) =>
     Some("stacking")
   | Command.Dispatch(Reducer.MoveRun(_))
   | Command.Dispatch(Reducer.MoveColumn(_))
@@ -343,6 +344,9 @@ let stepCommand = (
   | Command.Settings => (session, Command.describeSettings(options))
   | Command.Set(_) => (session, "")
   | Command.Unknown({verb}) => (session, Command.describeUnknown(verb))
+  // A prefix that fit more than one verb (#286-era shorthands): text-level, like an
+  // unknown verb, so it's answered before any question about a board.
+  | Command.Ambiguous({verb, matches}) => (session, Command.describeAmbiguous(~verb, ~matches))
   // Every shape of `deal` — bare, numbered, named, at a position — reads the same here as
   // it does in the panel, because the reading is `core`'s (see `Command.resolveDeal`).
   | Command.Deal({game, scenario}) => deal(~newSeed, ~current=session, game, scenario)
@@ -358,15 +362,21 @@ let stepCommand = (
   | Command.Finish => onBoard(finish)
   | Command.Home({card}) => onBoard(s => home(~options, s, card))
   | Command.Dispatch(action) => onBoard(s => dispatch(~options, s, action))
-  // A destination named as a card or a column label (`move 8H 9S`, `move 8H T3`) — the
-  // half of a move only a board can read. `Command.resolveWhere` reads it against this
-  // session's board, and what comes back is dispatched through the very path an index
-  // typed by hand takes, so the three ways of saying where are one move underneath.
-  | Command.MoveTo({cards, where}) =>
+  // A move with a half only a board can read: a destination named as a card or a column
+  // label (`move 8H 9S`, `move 8H T3`), a source named as the place it's showing in
+  // (`move C1 F1`, `moverun T6 T2`), or both. `Command`'s readers answer each against
+  // this session's board, and what comes back is dispatched through the very path an
+  // index typed by hand takes, so every way of saying a move is one move underneath.
+  | Command.MoveTo({from, where}) =>
     onBoard(s =>
-      switch Command.resolveWhere(~game=s.game, present(s), where) {
-      | Ok(to) => dispatch(~options, s, Command.moveAction(~cards, ~to))
-      | Error(message) => (Some(s), message)
+      switch (
+        Command.resolveFrom(~game=s.game, present(s), from),
+        Command.resolveWhere(~game=s.game, present(s), where),
+      ) {
+      | (Ok(cards), Ok(to)) => dispatch(~options, s, Command.moveAction(~cards, ~to))
+      // The source first: it's the half that was typed first, and a complaint about
+      // where a move lands is beside the point when there's nothing to pick up.
+      | (Error(message), _) | (_, Error(message)) => (Some(s), message)
       }
     )
   }

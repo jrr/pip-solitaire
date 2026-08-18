@@ -189,6 +189,55 @@ let empty = {
 // pip, and a trailing space so the glyph never crowds the right border.
 let cellWidth = 4
 
+// --- A move, in words ----------------------------------------------------------
+// One dispatched action as a single line of the same document a board is drawn in. The
+// debug console (#213) used to narrate a move as the reducer's own `action`, stringified:
+// `{"TAG":"Move","card":{"suit":"Clubs","rank":"Ten"},"to":{"TAG":"ToPile","_0":12}}` —
+// every fact about the move present and not one of them legible, with the destination
+// named as the index a player would have to count out rather than by the label printed
+// over it. This is the same move said the way the board says it: `move 10♣ → T5`.
+//
+// A document rather than a string, for the reason a board is one: the card is inked by
+// suit, so it reads as the card it is in a log that already paints a printed board that
+// way — and the front end that can't paint still gets the words (`Render.toPlain`).
+
+// A card's face as one inked span: the glyphs `faceLine` puts inside a frame, without the
+// frame.
+let cardSpan = (card: card): span => {
+  text: `${rankLabel(card.rank)}${suitSymbol(card.suit)}`,
+  ink: Suit(Rules.color(card.suit)),
+}
+
+// A run of cards, space-separated — a supermove's cards, or the cards a sweep sent home.
+let cardSpans = (cards: array<card>): line =>
+  cards->Array.map(card => [cardSpan(card)])->joinLines([plain(" ")])
+
+// What to call a pile: the label printed over it (`T5`), or its bare index on a board
+// that prints none. The same answer `Slot` gives the parser, so the place a log names is
+// the place a typed move can address.
+let pileName = (~game: Game.t, i: int): string =>
+  Slot.labelAt(~game, i)->Option.getOr(`pile ${Int.toString(i)}`)
+
+// Where a move sends its cards, as the board names the place.
+let placeName = (~game: Game.t, target: Reducer.target): string =>
+  switch target {
+  | Reducer.ToTable => "table"
+  | Reducer.ToPile(i) => pileName(~game, i)
+  }
+
+// The verb each action answers to is the one you would type for it (`Command`'s), so a
+// logged move and a typed one are recognisably the same move.
+let action = (~game: Game.t, action: Reducer.action): line =>
+  switch action {
+  | Reducer.Move({card, to}) =>
+    concat([[plain("move ")], [cardSpan(card)], [plain(` → ${placeName(~game, to)}`)]])
+  | Reducer.MoveRun({cards, to}) =>
+    concat([[plain("moverun ")], cardSpans(cards), [plain(` → ${placeName(~game, to)}`)]])
+  | Reducer.MoveColumn({from, to}) => [
+      plain(`movecol ${pileName(~game, from)} → ${pileName(~game, to)}`),
+    ]
+  }
+
 // --- Cards --------------------------------------------------------------------
 
 // The three kinds of line that make up a card, each `cellWidth` wide inside.

@@ -124,6 +124,79 @@ describe("Repl.run", () => {
     )
   })
 
+  // And the same for a move's *source*, which used to be a card and nothing else. What
+  // matters here is the same thing: naming the place a card is showing has to end in the
+  // move naming the card would have made, or a shorthand is a second game.
+  describe("a move's source, said two ways", () => {
+    let deal = "deal freecell supermove"
+    let ending = lines => {
+      let sections = Repl.run(lines)->String.split("\n\n")
+      sections->Array.slice(~start=Array.length(sections) - 3, ~end=Array.length(sections))
+    }
+
+    test(
+      "the slot a card is showing in plays the move naming the card plays",
+      () => {
+        // Park the Five in the first cell, then send it home from the cell — once by
+        // name, once by the label printed over it.
+        expect(ending([deal, "move 5S C1", "move C1 T8"]))->toEqual(
+          ending([deal, "move 5S C1", "move 5S T8"]),
+        )
+        // T1 is the first cascade — pile 8 — and the Five is showing on it to start.
+        expect(ending([deal, "move T1 C1"]))->toEqual(ending([deal, "move 5S C1"]))
+        expect(ending([deal, "move 8 C1"]))->toEqual(ending([deal, "move 5S C1"]))
+      },
+    )
+
+    test(
+      "the column a run is showing in supermoves the run naming every card supermoves",
+      () =>
+        // The scenario's whole point: a ready-to-lift 9♠→5♠ run on T1 and an empty T8.
+        expect(ending([deal, "moverun T1 T8"]))->toEqual(
+          ending([deal, "moverun 9S 8H 7S 6H 5S T8"]),
+        ),
+    )
+
+    test(
+      "an empty place is reported by name, not played",
+      () => expect(has(Repl.run([deal, "move C1 T8"]), "C1 is empty."))->toBe(true),
+    )
+  })
+
+  // The verb table's prefix rule (`Command.resolveVerb`), through the driver: a
+  // shorthand has to run the very command it abbreviates, and an ambiguous one has to
+  // refuse rather than pick.
+  describe("verbs, abbreviated", () => {
+    // The boards either transcript ends on, since the echoed command lines differ by
+    // construction — `pip> p` is not `pip> print`, and that's the only difference there
+    // should be.
+    let ending = lines => {
+      let sections = Repl.run(lines)->String.split("\n\n")
+      sections->Array.slice(~start=Array.length(sections) - 3, ~end=Array.length(sections))
+    }
+
+    test(
+      "an unambiguous prefix runs the verb it abbreviates",
+      () => {
+        expect(ending(["deal freecell supermove", "p"]))->toEqual(
+          ending(["deal freecell supermove", "print"]),
+        )
+        expect(ending(["deal freecell supermove", "move 5S C1", "u"]))->toEqual(
+          ending(["deal freecell supermove", "move 5S C1", "undo"]),
+        )
+      },
+    )
+
+    test(
+      "a prefix that fits two verbs says which two",
+      () => {
+        let transcript = Repl.run(["deal freecell", "r"])
+        expect(has(transcript, "redo"))->toBe(true)
+        expect(has(transcript, "redeal"))->toBe(true)
+      },
+    )
+  })
+
   test("a loose drop is rejected when the game confines cards to piles", () => {
     // four-fans opens with cards in its piles and `free: false`.
     let transcript = Repl.run(["deal four-fans", "move 2C table"])

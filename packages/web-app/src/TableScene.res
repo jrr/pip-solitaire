@@ -1231,7 +1231,7 @@ let make = (
           // Narrate the collection to the debug console (#213) when it actually sent
           // cards home; an empty sweep is the common no-op and isn't worth a line.
           if Array.length(moved) > 0 {
-            DebugLog.log("auto-collect", moved)
+            DebugLog.line(Render.concat([[Render.plain("auto-collect ")], Render.cardSpans(moved)]))
           }
           state := collected
           moved
@@ -1240,29 +1240,41 @@ let make = (
         }
 
       // Dispatch an action into core's reducer (#213-instrumented), narrating the
-      // interaction to the debug console when logging is on: the action the UI sends
-      // in, then the outcome core hands back. Both live move sites — a drop
-      // (`endDrag`) and the double-tap send-home — funnel through here, so the log
-      // captures every move the UI asks core to make. Logging is gated inside
-      // `DebugLog`, so with the toggle off this is a plain `Reducer.reduce`.
+      // interaction to the debug console when logging is on. Both live move sites — a
+      // drop (`endDrag`) and the double-tap send-home — funnel through here, so the log
+      // captures every move the UI asks core to make.
+      //
+      // **One line per move**, not two. The old pair said the action and then its
+      // outcome, which meant the commonest thing in the log — a move that worked — cost
+      // two lines to say one thing, and the second of them said it in the reducer's
+      // vocabulary (`result: accepted`) rather than the board's. Now the move is a
+      // sentence (`Render.action`) with a ✓ on the end of it, and only a *rejection*
+      // spends a second line: the mark says it bounced, the line under it says why, in
+      // `core`'s own words (`Command.reason`) so a refusal reads the same in a terminal.
+      //
+      // Built only when something is listening: `DebugLog`'s own calls short-circuit on
+      // that, and this composes a document before it calls one, so it checks first.
       let dispatch = (action: Reducer.action): result<GameState.t, Reducer.moveError> => {
-        DebugLog.log("dispatch", action)
-        let result = Reducer.reduce(~game, state.contents, action)
-        let outcome = switch result {
-        // A lawful no-op (#215) — an identity re-drop onto the pile a card already
-        // tops — reduces to `Ok` with the board untouched. Distinguished from a real
-        // move so it neither reads as "accepted" here nor records an undo step below.
-        | Ok(next) => GameState.equal(next, state.contents) ? "no-op" : "accepted"
-        | Error(Rejected) => "rejected"
-        | Error(PileFull) => "pile full"
-        | Error(LooseNotAllowed) => "loose not allowed"
-        | Error(NoSuchPile) => "no such pile"
-        | Error(CardNotFound) => "card not found"
-        | Error(NotARun) => "not a run"
-        | Error(RunTooLong) => "run too long"
-        | Error(NotAColumn) => "not a column"
+        let before = state.contents
+        let result = Reducer.reduce(~game, before, action)
+        if DebugLog.enabled() {
+          let accepted: Render.span = {text: " ✓", ink: Render.Title}
+          let refused: Render.span = {text: " ✗", ink: Render.Plain}
+          // A lawful no-op (#215) — an identity re-drop onto the pile a card already
+          // tops — reduces to `Ok` with the board untouched. It's accepted, so it keeps
+          // the ✓; saying nothing changed is what stops the log reading as a move that
+          // did something (it records no undo step below either).
+          let noChange: Render.span = {text: " (no change)", ink: Render.Plain}
+          let outcome = switch result {
+          | Ok(next) => GameState.equal(next, before) ? [accepted, noChange] : [accepted]
+          | Error(_) => [refused]
+          }
+          DebugLog.line(Array.concat(Render.action(~game, action), outcome))
+          switch result {
+          | Error(err) => DebugLog.line([Render.plain(`  ${Command.reason(err)}`)])
+          | Ok(_) => ()
+          }
         }
-        DebugLog.message("result: " ++ outcome)
         result
       }
 
@@ -1552,7 +1564,7 @@ let make = (
       // started from regardless of what the animation is doing.
       let playFinish = () => {
         let (settled, moved) = Reducer.finishSequence(~game, state.contents)
-        DebugLog.log("finish", moved)
+        DebugLog.line(Render.concat([[Render.plain("finish ")], Render.cardSpans(moved)]))
         state := settled
         recordHistory()
         removeFinishButton()
@@ -1672,10 +1684,10 @@ let make = (
             updateFinishButton()
           })
           []
-        // The reducer's typed rejection, in words — the one thing `result: rejected`
-        // doesn't say. Shared with the CLI, so the same refusal reads the same in a
-        // terminal and in the panel.
-        | Error(err) => Render.text(Command.describeRejection(err, ~action))
+        // Nothing to add on a rejection either: `dispatch` above has already put the
+        // move and the reason it bounced into the log, and a reply here would say the
+        // same thing a second time under it.
+        | Error(_) => []
         }
       }
 
@@ -1693,14 +1705,19 @@ let make = (
           // to fly: `reflowAll` (inside the flight path) simply re-lays the board.
           | Reducer.MoveColumn(_) => playAction(~movers=[], ~collect=false, action)
           }
-        // A destination named as a card or a column label (`move 8H 9S`, `move 8H T3`),
-        // resolved against this board by the shared reader — so the panel picks the same
-        // pile the CLI would, and the move that follows is an ordinary dispatched one
-        // with the ordinary flight.
-        | Command.MoveTo({cards, where}) =>
-          switch Command.resolveWhere(~game, state.contents, where) {
-          | Ok(to) => playAction(~movers=cards, Command.moveAction(~cards, ~to))
-          | Error(message) => Render.text(message)
+        // A move with a half only a board can read — a destination named as a card or a
+        // column label (`move 8H 9S`, `move 8H T3`), a source named as the place it's
+        // showing in (`move C1 F1`, `moverun T6 T2`), or both — resolved against this
+        // board by the shared readers, so the panel lifts and lands on the same piles the
+        // CLI would and the move that follows is an ordinary dispatched one with the
+        // ordinary flight.
+        | Command.MoveTo({from, where}) =>
+          switch (
+            Command.resolveFrom(~game, state.contents, from),
+            Command.resolveWhere(~game, state.contents, where),
+          ) {
+          | (Ok(cards), Ok(to)) => playAction(~movers=cards, Command.moveAction(~cards, ~to))
+          | (Error(message), _) | (_, Error(message)) => Render.text(message)
           }
         // `home <card>` names no destination, so resolve one here — through the very
         // `validMoves` the double-tap send-home uses (#196), which is what makes a typed

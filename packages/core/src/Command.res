@@ -64,6 +64,28 @@ type where =
   | Onto(card)
   | Slot({role: Game.role, ordinal: int})
 
+// Which pile a move picks its cards *up* from, as the text names it. The mirror of the
+// two board-shaped `where`s above, and board-shaped for the same reason: a label names
+// a place, and only a board knows what is lying there.
+type place =
+  | AtPile(int) // `move 12 F1` — the absolute index, as `where` takes one
+  | InSlot({role: Game.role, ordinal: int}) // `move C1 F1` — the label above the column
+
+// What a move lifts. Naming the cards is the original grammar and still the precise one;
+// naming the *place* is the one a player looking at the board reaches for, because the
+// board prints `C1` over the cell and prints nothing at all over "the Ten of Clubs, which
+// is the card currently in it".
+//
+// `Top` and `Run` are the same reading at two lengths, one per verb: `move C1 F1` takes
+// the single card showing there, `moverun T6 T2` takes the whole ordered run showing
+// there. Neither guesses at *more* than the verb asked for — a `move` never lifts a run
+// behind the player's back, and a `moverun` off a slot lifts what a player would grab if
+// they took hold of the deepest card that still heads a run.
+type from =
+  | Cards(array<card>) // named by identity: move 8H 9S, moverun 8H 7S 6H T3
+  | Top(place) // the card showing there: move C1 F1
+  | Run(place) // the run showing there: moverun T6 T2
+
 // What one command line asks for. `Dispatch` is the move-shaped half — the actions
 // the reducer takes verbatim — while the rest are session or front-end verbs the
 // interpreter answers itself.
@@ -84,12 +106,12 @@ type t =
   | Deal({game: option<string>, scenario: option<string>})
   // A move the reducer can take as-is: `Move`, `MoveRun` or `MoveColumn`.
   | Dispatch(Reducer.action)
-  // A move whose destination only a *board* can resolve — `move 8H 9S` (onto whichever
-  // pile is showing the Nine of Spades) or `move 8H T3` (the third tableau column). The
-  // cards are the ones a `Dispatch` would have carried: one for a `move`, the whole run
-  // for a `moverun`. `resolveWhere` and `moveAction` below turn the pair into that very
-  // action, so a resolved move is the same move, not a second kind of one.
-  | MoveTo({cards: array<card>, where: where})
+  // A move with a half only a *board* can resolve: a destination said as a card or a
+  // label (`move 8H 9S`, `move 8H T3`), a source said as a place (`move C1 F1`), or
+  // both. `resolveFrom`/`resolveWhere` read the pair against a board and `moveAction`
+  // turns what comes back into the action a `Dispatch` would have carried, so a resolved
+  // move is the same move, not a second kind of one.
+  | MoveTo({from: from, where: where})
   // `home <card>` names a card but no destination — see the module note above.
   | Home({card: card})
   | Finish
@@ -107,6 +129,9 @@ type t =
   | Settings
   | Set({setting: Options.setting, on: bool})
   | Unknown({verb: string}) // no such verb
+  // A prefix that fits more than one verb (`h` is `help` and `home`) — refused by name
+  // rather than resolved to whichever came first in the table. See `resolveVerb`.
+  | Ambiguous({verb: string, matches: array<string>})
   | Usage({verb: string, message: string}) // this verb, arguments we can't read
 
 // Split a command line into whitespace-separated tokens, dropping the empties
@@ -149,7 +174,28 @@ let parseWhere = (token: string): option<where> =>
     }
   }
 
+// A source token: a pile index, a slot label, or a card named outright. Indices and
+// labels first, in `parseWhere`'s order and for its reason — the three grammars don't
+// overlap (a card is rank-then-suit, a label is letter-then-digits, an index is neither),
+// so the order is only ever a matter of which test is cheapest.
+let parsePlace = (token: string): option<place> =>
+  switch digits(token) {
+  | Some(i) => Some(AtPile(i))
+  | None => Slot.parse(token)->Option.map(((role, ordinal)) => InSlot({role, ordinal}))
+  }
+
+// Read a move's source. `~run` is the verb asking: `move` lifts the card showing at a
+// place, `moverun` the run showing there — the same place, read at the length its verb
+// moves.
+let parseFrom = (~run: bool, token: string): option<from> =>
+  switch CardText.parse(token) {
+  | Some(card) => Some(Cards([card]))
+  | None => parsePlace(token)->Option.map(place => run ? Run(place) : Top(place))
+  }
+
 let notACard = (token: string) => `Not a card: "${token}" (try AS, TH, KD).`
+let notASource = (token: string) =>
+  `Not a card or a place to move from: "${token}" (a card like AS, a column like T3 or C1, or a pile index).`
 let notAPile = (token: string) =>
   `Not a place to move to: "${token}" (a pile index, a column like T3, the card to land on like 9S, or "table").`
 
@@ -157,111 +203,225 @@ let settingNames = () => Options.all->Array.map(Options.name)->Array.join(", ")
 let notASetting = (token: string) => `Not a setting: "${token}" (${settingNames()}).`
 let notAFlag = (token: string) => `Not on or off: "${token}".`
 
+// --- Verbs, and how little of one you have to type ----------------------------
+// A console is typed at over and over, and what gets typed is nearly always the same
+// handful of words. `move` earned its `m` early (see the `move` branch below) and
+// nothing else did, which left `p` an unknown command in a panel where `m` worked — a
+// half-rule you have to memorise rather than guess.
+//
+// So the verbs are a table, and **any unambiguous prefix of one is that verb**: `p`
+// prints, `u` undoes, `de 12345` deals. Two rules keep that honest:
+//
+//   - a whole word always wins over a prefix, so no verb can be shadowed by a longer
+//     one that happens to begin the same way (`set` is `set`, never `settings`-ish);
+//   - a prefix that fits two verbs is **refused by name** — `h` says it could be `help`
+//     or `home` — rather than resolved to whichever sits first in the table. A console
+//     that guesses is one you can't trust a one-letter command with, and the refusal
+//     teaches the next letter to type.
+//
+// The pinned aliases are a second tier, consulted only when nothing canonical matched:
+// `m` stays `move` though three verbs begin with it, `new`/`list`/`board` keep working,
+// and so does `n`, which no canonical verb claims. Canonical names having first say is
+// what keeps `s` on `set` rather than on `show`.
+let verbs = [
+  "help",
+  "games",
+  "print",
+  "clear",
+  "quit",
+  "undo",
+  "redo",
+  "redeal",
+  "finish",
+  "deal",
+  "move",
+  "moverun",
+  "movecol",
+  "home",
+  "set",
+]
+
+// The pinned spellings, each with the verb it *is*. Two kinds live here: the shorthands
+// a prefix rule can't give (`m` fits three verbs) and the second names a verb has always
+// answered to (`new`, `restart`, `board`).
+let aliases = [
+  ("m", "move"),
+  ("mv", "move"),
+  ("list", "games"),
+  ("board", "print"),
+  ("show", "print"),
+  ("cls", "clear"),
+  ("exit", "quit"),
+  ("new", "deal"),
+  ("restart", "redeal"),
+]
+
+type resolvedVerb =
+  | Verb(string) // the canonical name, whatever was typed
+  | AmbiguousVerb(array<string>) // the verbs a prefix fit, in table order
+  | NoSuchVerb
+
+// The distinct verbs a token is a prefix of, in table order — `moverun` and `mv` both
+// answering "move" is one match, not two.
+let prefixMatches = (table: array<(string, string)>, token: string): array<string> =>
+  table
+  ->Array.filter(((name, _)) => name->String.startsWith(token))
+  ->Array.reduce([], (found, (_, verb)) =>
+    found->Array.includes(verb) ? found : Array.concat(found, [verb])
+  )
+
+let resolveVerb = (token: string): resolvedVerb => {
+  let t = token->String.toLowerCase
+  let canonical = verbs->Array.map(v => (v, v))
+  switch (verbs->Array.find(v => v == t), aliases->Array.find(((a, _)) => a == t)) {
+  | (Some(v), _) => Verb(v)
+  | (None, Some((_, v))) => Verb(v)
+  | (None, None) =>
+    switch prefixMatches(canonical, t) {
+    | [v] => Verb(v)
+    | [] =>
+      switch prefixMatches(aliases, t) {
+      | [v] => Verb(v)
+      | [] => NoSuchVerb
+      | many => AmbiguousVerb(many)
+      }
+    | many => AmbiguousVerb(many)
+    }
+  }
+}
+
 // Parse one command line. Total: every line yields a `t`, malformed ones included.
 let parse = (line: string): t => {
   let toks = tokenize(line)
   let arg = i => toks->Array.get(i)
-  switch toks->Array.get(0)->Option.map(String.toLowerCase) {
+  switch toks->Array.get(0) {
   | None => Blank
-  | Some("help") => Help
-  | Some("games") | Some("list") => Games
-  | Some("print") | Some("board") | Some("show") => Print
-  | Some("clear") | Some("cls") => Clear
-  | Some("quit") | Some("exit") => Quit
-  | Some("undo") => Undo
-  | Some("redo") => Redo
-  | Some("redeal") | Some("restart") => Redeal
-  | Some("finish") => Finish
-  | Some("deal") | Some("new") => Deal({game: arg(1), scenario: arg(2)})
-  // `mv` and `m` are the same verb: `move` is the one command typed over and over, and
-  // a player who has just read a board wants two keystrokes for it, not four. The
-  // aliases end here — everything downstream (the `Usage` complaints, the "deal a game
-  // first" hint that keys off the verb) still says `move`, so a shorthand can't drift
-  // into a second command with its own messages.
-  | Some("move") | Some("mv") | Some("m") =>
-    // Arity before content, so `move AS` asks for the usage line rather than
-    // complaining about a target that isn't there.
-    switch (arg(1), arg(2)) {
-    | (Some(cardTok), Some(whereTok)) =>
-      switch (CardText.parse(cardTok), parseWhere(whereTok)) {
-      | (None, _) => Usage({verb: "move", message: notACard(cardTok)})
-      | (_, None) => Usage({verb: "move", message: notAPile(whereTok)})
-      // A pile index needs no board, so it parses all the way to the action, exactly as
-      // it always has; the two board-shaped destinations wait for one.
-      | (Some(card), Some(At(to))) => Dispatch(Reducer.Move({card, to}))
-      | (Some(card), Some(where)) => MoveTo({cards: [card], where})
+  | Some(token) =>
+    switch resolveVerb(token) {
+    | NoSuchVerb => Unknown({verb: token->String.toLowerCase})
+    | AmbiguousVerb(matches) => Ambiguous({verb: token->String.toLowerCase, matches})
+    | Verb(verb) =>
+      switch verb {
+      | "help" => Help
+      | "games" => Games
+      | "print" => Print
+      | "clear" => Clear
+      | "quit" => Quit
+      | "undo" => Undo
+      | "redo" => Redo
+      | "redeal" => Redeal
+      | "finish" => Finish
+      | "deal" => Deal({game: arg(1), scenario: arg(2)})
+      // Everything downstream of the verb table says `move`, whichever of `move`/`mv`/`m`
+      // was typed (see `resolveVerb`): the `Usage` complaints and the "deal a game first"
+      // hint that keys off the verb all name the canonical one, so a shorthand can't drift
+      // into a second command with its own messages.
+      | "move" =>
+        // Arity before content, so `move AS` asks for the usage line rather than
+        // complaining about a target that isn't there.
+        switch (arg(1), arg(2)) {
+        | (Some(fromTok), Some(whereTok)) =>
+          switch (parseFrom(~run=false, fromTok), parseWhere(whereTok)) {
+          | (None, _) => Usage({verb: "move", message: notASource(fromTok)})
+          | (_, None) => Usage({verb: "move", message: notAPile(whereTok)})
+          // A named card sent to a pile index needs no board, so it parses all the way to
+          // the action, exactly as it always has; every other combination names something
+          // only a board can point at and waits for one.
+          | (Some(Cards([card])), Some(At(to))) => Dispatch(Reducer.Move({card, to}))
+          | (Some(from), Some(where)) => MoveTo({from, where})
+          }
+        | _ =>
+          Usage({
+            verb: "move",
+            message: "Usage: move <card|place> <where>   (e.g. move AS 0, move AS T3, move 2H 3C, move C1 F1, or move AS table)",
+          })
+        }
+      // Bare `set` shows the flags; `set <setting> on|off` changes one. Arity before content
+      // here too, so `set autocollect` asks for the usage line rather than complaining about
+      // a value that isn't there.
+      | "set" =>
+        switch (arg(1), arg(2)) {
+        | (None, _) => Settings
+        | (Some(settingTok), Some(valueTok)) =>
+          switch (Options.parse(settingTok), Options.parseFlag(valueTok)) {
+          | (None, _) => Usage({verb: "set", message: notASetting(settingTok)})
+          | (_, None) => Usage({verb: "set", message: notAFlag(valueTok)})
+          | (Some(setting), Some(on)) => Set({setting, on})
+          }
+        | (Some(_), None) =>
+          Usage({
+            verb: "set",
+            message: `Usage: set <setting> on|off   (e.g. set autocollect off; ${settingNames()})`,
+          })
+        }
+      | "home" =>
+        switch arg(1) {
+        | Some(cardTok) =>
+          switch CardText.parse(cardTok) {
+          | Some(card) => Home({card: card})
+          | None => Usage({verb: "home", message: notACard(cardTok)})
+          }
+        | None => Usage({verb: "home", message: "Usage: home <card>   (e.g. home AS)"})
+        }
+      | "moverun" =>
+        // Everything after the verb is the run's cards, bottom-first, then the target —
+        // unless the run is named by the *place* it's showing (`moverun T6 T2`), which is one
+        // token where the cards would be several.
+        let rest = toks->Array.slice(~start=1, ~end=Array.length(toks))
+        if Array.length(rest) >= 2 {
+          let targetTok = rest->Array.getUnsafe(Array.length(rest) - 1)
+          let sourceToks = rest->Array.slice(~start=0, ~end=Array.length(rest) - 1)
+          // A lone source token that isn't a card is the place the run is showing in. Only a
+          // lone one: `moverun T6 T7 T2` names two places and no run, which is a `Usage`
+          // rather than a guess about which of them was meant.
+          let place = switch sourceToks {
+          | [only] => CardText.parse(only)->Option.isNone ? parsePlace(only) : None
+          | _ => None
+          }
+          let parsed = sourceToks->Array.map(CardText.parse)
+          switch (place, parsed->Array.some(Option.isNone), parseWhere(targetTok)) {
+          | (Some(_), _, None) | (None, false, None) =>
+            Usage({verb: "moverun", message: notAPile(targetTok)})
+          | (Some(place), _, Some(where)) => MoveTo({from: Run(place), where})
+          | (None, true, _) =>
+            Usage({
+              verb: "moverun",
+              message: `Not all of those are cards or a place to move from (try AS, TH, KD, or a column like T6).`,
+            })
+          | (None, false, Some(At(to))) =>
+            Dispatch(Reducer.MoveRun({cards: parsed->Array.filterMap(c => c), to}))
+          // A run takes its destination the same three ways a single card does — there's no
+          // reason `moverun 8H 7S 6H T3` should be the one move you have to count piles for.
+          | (None, false, Some(where)) =>
+            MoveTo({from: Cards(parsed->Array.filterMap(c => c)), where})
+          }
+        } else {
+          Usage({
+            verb: "moverun",
+            message: "Usage: moverun <card>… <where>   (e.g. moverun 8H 7S 6H 5, or moverun T6 T2)",
+          })
+        }
+      | "movecol" =>
+        switch (arg(1), arg(2)) {
+        | (Some(fromTok), Some(toTok)) =>
+          switch (digits(fromTok), digits(toTok)) {
+          | (Some(from), Some(to)) => Dispatch(Reducer.MoveColumn({from, to}))
+          | _ =>
+            Usage({
+              verb: "movecol",
+              message: `Not a pile index (try two indices, e.g. movecol 8 15).`,
+            })
+          }
+        | _ =>
+          Usage({
+            verb: "movecol",
+            message: "Usage: movecol <from> <to>   (pile indices, e.g. movecol 8 15)",
+          })
+        }
+      // Unreachable: `resolveVerb` only ever answers with a name from the table above.
+      | _ => Unknown({verb: token->String.toLowerCase})
       }
-    | _ =>
-      Usage({
-        verb: "move",
-        message: "Usage: move <card> <where>   (e.g. move AS 0, move AS T3, move 2H 3C, or move AS table)",
-      })
     }
-  // Bare `set` shows the flags; `set <setting> on|off` changes one. Arity before content
-  // here too, so `set autocollect` asks for the usage line rather than complaining about
-  // a value that isn't there.
-  | Some("set") =>
-    switch (arg(1), arg(2)) {
-    | (None, _) => Settings
-    | (Some(settingTok), Some(valueTok)) =>
-      switch (Options.parse(settingTok), Options.parseFlag(valueTok)) {
-      | (None, _) => Usage({verb: "set", message: notASetting(settingTok)})
-      | (_, None) => Usage({verb: "set", message: notAFlag(valueTok)})
-      | (Some(setting), Some(on)) => Set({setting, on})
-      }
-    | (Some(_), None) =>
-      Usage({
-        verb: "set",
-        message: `Usage: set <setting> on|off   (e.g. set autocollect off; ${settingNames()})`,
-      })
-    }
-  | Some("home") =>
-    switch arg(1) {
-    | Some(cardTok) =>
-      switch CardText.parse(cardTok) {
-      | Some(card) => Home({card: card})
-      | None => Usage({verb: "home", message: notACard(cardTok)})
-      }
-    | None => Usage({verb: "home", message: "Usage: home <card>   (e.g. home AS)"})
-    }
-  | Some("moverun") =>
-    // Everything after the verb is the run's cards, bottom-first, then the target.
-    let rest = toks->Array.slice(~start=1, ~end=Array.length(toks))
-    if Array.length(rest) >= 2 {
-      let targetTok = rest->Array.getUnsafe(Array.length(rest) - 1)
-      let parsed =
-        rest->Array.slice(~start=0, ~end=Array.length(rest) - 1)->Array.map(CardText.parse)
-      switch (parsed->Array.some(Option.isNone), parseWhere(targetTok)) {
-      | (true, _) =>
-        Usage({verb: "moverun", message: `Not all of those are cards (try AS, TH, KD).`})
-      | (_, None) => Usage({verb: "moverun", message: notAPile(targetTok)})
-      | (false, Some(At(to))) =>
-        Dispatch(Reducer.MoveRun({cards: parsed->Array.filterMap(c => c), to}))
-      // A run takes its destination the same three ways a single card does — there's no
-      // reason `moverun 8H 7S 6H T3` should be the one move you have to count piles for.
-      | (false, Some(where)) => MoveTo({cards: parsed->Array.filterMap(c => c), where})
-      }
-    } else {
-      Usage({
-        verb: "moverun",
-        message: "Usage: moverun <card>… <pile>   (e.g. moverun 8H 7S 6H 5)",
-      })
-    }
-  | Some("movecol") =>
-    switch (arg(1), arg(2)) {
-    | (Some(fromTok), Some(toTok)) =>
-      switch (digits(fromTok), digits(toTok)) {
-      | (Some(from), Some(to)) => Dispatch(Reducer.MoveColumn({from, to}))
-      | _ =>
-        Usage({verb: "movecol", message: `Not a pile index (try two indices, e.g. movecol 8 15).`})
-      }
-    | _ =>
-      Usage({
-        verb: "movecol",
-        message: "Usage: movecol <from> <to>   (pile indices, e.g. movecol 8 15)",
-      })
-    }
-  | Some(other) => Unknown({verb: other})
   }
 }
 
@@ -269,6 +429,24 @@ let parse = (line: string): t => {
 // to the same typo.
 let describeUnknown = (verb: string): string =>
   `Unknown command: ${verb}. Type "help" for the commands.`
+
+// "a, b or c" — the tail of the refusal below, and the only place the grammar has to
+// say a list in prose.
+let orList = (items: array<string>): string =>
+  switch items {
+  | [] => ""
+  | [only] => only
+  | many =>
+    `${many
+      ->Array.slice(~start=0, ~end=Array.length(many) - 1)
+      ->Array.join(", ")} or ${many->Array.getUnsafe(Array.length(many) - 1)}`
+  }
+
+// A prefix that fit more than one verb, named rather than guessed at — see `resolveVerb`
+// for why refusing is the point. Shared prose, like every other complaint here, so the
+// same half-typed word reads the same in a terminal and in the panel.
+let describeAmbiguous = (~verb: string, ~matches: array<string>): string =>
+  `Ambiguous command: "${verb}" could be ${orList(matches)}. Type enough to tell them apart.`
 
 // --- Resolving a destination against a board ---------------------------------
 // The other half of `where`: `parse` reads the words, and this reads the *board* they
@@ -298,6 +476,27 @@ let labelsOf = (~game: Game.t, indices: array<int>): string =>
 // single pile on this board. Every refusal is a sentence about the board the player is
 // looking at, because that's the only thing that could have made the destination
 // unreadable — the words themselves already parsed.
+// The pile a slot label names on this board, or why it names none. Shared by the two
+// halves of a move, because `C1` has to mean the same cell whether cards are coming out
+// of it or going into it.
+let resolveSlot = (~game: Game.t, ~role: Game.role, ~ordinal: int): result<int, string> =>
+  switch Slot.indexOf(~game, ~role, ~ordinal) {
+  | Some(i) => Ok(i)
+  | None =>
+    let have = Slot.count(~game, role)
+    Error(
+      have == 0
+        ? `This board has no ${Slot.roleNamePlural(role)}.`
+        : `No such ${Slot.roleName(role)}: ${Slot.format(
+              ~role,
+              ~ordinal,
+            )} (this board has ${Int.toString(have)}, ${Slot.format(
+              ~role,
+              ~ordinal=1,
+            )}–${Slot.format(~role, ~ordinal=have)}).`,
+    )
+  }
+
 let resolveWhere = (~game: Game.t, state: GameState.t, where: where): result<
   Reducer.target,
   string,
@@ -305,21 +504,9 @@ let resolveWhere = (~game: Game.t, state: GameState.t, where: where): result<
   switch where {
   | At(target) => Ok(target)
   | Slot({role, ordinal}) =>
-    switch Slot.indexOf(~game, ~role, ~ordinal) {
-    | Some(i) => Ok(Reducer.ToPile(i))
-    | None =>
-      let have = Slot.count(~game, role)
-      Error(
-        have == 0
-          ? `This board has no ${Slot.roleNamePlural(role)}.`
-          : `No such ${Slot.roleName(role)}: ${Slot.format(
-                ~role,
-                ~ordinal,
-              )} (this board has ${Int.toString(have)}, ${Slot.format(
-                ~role,
-                ~ordinal=1,
-              )}–${Slot.format(~role, ~ordinal=have)}).`,
-      )
+    switch resolveSlot(~game, ~role, ~ordinal) {
+    | Ok(i) => Ok(Reducer.ToPile(i))
+    | Error(message) => Error(message)
     }
   // A named card resolves only when *exactly one* pile is showing it. Nought and more
   // than one are both refusals rather than a guess: a move that lands somewhere the
@@ -347,6 +534,80 @@ let resolveWhere = (~game: Game.t, state: GameState.t, where: where): result<
       )
     }
   }
+
+// --- Resolving a source against a board ---------------------------------------
+// The same job for the other half of a move. `move C1 F1` says which *place* to lift
+// from and lets the board say which card that is — the reading a player does for
+// themselves today, and the one thing on a printed board that is genuinely written down
+// (the label is over the column; the card's name is not).
+
+// What to call a place in a refusal: its label where the board prints one, and its bare
+// index where it doesn't (a loose-table game's piles have no slot names).
+let placeLabel = (~game: Game.t, place: place): string =>
+  switch place {
+  | InSlot({role, ordinal}) => Slot.format(~role, ~ordinal)
+  | AtPile(i) => Slot.labelAt(~game, i)->Option.getOr(`pile ${Int.toString(i)}`)
+  }
+
+// The pile a place names, or why it names none — `resolveSlot` for a label, a range
+// check for a bare index.
+let resolvePlace = (~game: Game.t, place: place): result<int, string> =>
+  switch place {
+  | InSlot({role, ordinal}) => resolveSlot(~game, ~role, ~ordinal)
+  | AtPile(i) =>
+    switch game.piles->Array.get(i) {
+    | Some(_) => Ok(i)
+    | None =>
+      Error(
+        `No such pile: ${Int.toString(i)} (this board has ${Int.toString(
+            Array.length(game.piles),
+          )}, 0–${Int.toString(Array.length(game.piles) - 1)}).`,
+      )
+    }
+  }
+
+// The longest run showing at the top of a pile: the cards a player would lift if they
+// took hold of the deepest card that still heads an ordered run — which is what
+// `moverun T6 T2` names. Read under that pile's *own* rule, so a game whose cascades
+// stack differently is answered in its own terms rather than in FreeCell's, and it stops
+// at what *is* a run rather than at what may legally move: whether the run is too long
+// for the free cells is the reducer's verdict (`RunTooLong`), not the reader's.
+let runShowing = (~game: Game.t, state: GameState.t, i: int): array<card> =>
+  switch game.piles->Array.get(i) {
+  | None => []
+  | Some(pile) =>
+    let cards = GameState.cardsInPile(state, i)
+    let count = Array.length(cards)
+    let rec longest = (start: int): array<card> =>
+      if start <= 0 {
+        cards
+      } else if Rules.isRun(pile.rule, cards->Array.slice(~start=start - 1, ~end=count)) {
+        longest(start - 1)
+      } else {
+        cards->Array.slice(~start, ~end=count)
+      }
+    count == 0 ? [] : longest(count - 1)
+  }
+
+// Turn a `from` into the cards a move lifts, or say why this board offers none there.
+// Cards named outright are handed straight back — the board has no say in what `8H`
+// means — which is what keeps the original grammar exactly as it was.
+let resolveFrom = (~game: Game.t, state: GameState.t, from: from): result<array<card>, string> => {
+  let lift = (place, pick) =>
+    switch resolvePlace(~game, place) {
+    | Error(message) => Error(message)
+    | Ok(i) =>
+      switch pick(i) {
+      | [] => Error(`${placeLabel(~game, place)} is empty.`)
+      | cards => Ok(cards)
+      }
+    }
+  switch from {
+  | Cards(cards) => Ok(cards)
+  | Top(place) => lift(place, i => GameState.topOf(state, i)->Option.mapOr([], card => [card]))
+  | Run(place) => lift(place, i => runShowing(~game, state, i))
+  }
+}
 
 // The action that moves `cards` onto a resolved target: one card is a `Move`, several
 // are the supermove `MoveRun`. Written once so a resolved `move`/`moverun` dispatches
@@ -410,16 +671,31 @@ let resolveDeal = (~game: option<string>, ~scenario: option<string>): dealt =>
 // Why a move bounced, in words, so someone typing learns the *reason* rather than
 // watching a card refuse to go — the whole point of the reducer returning a typed
 // `moveError` instead of a swallowed no-op.
+// The reason alone: a phrase with no subject and no full stop, for a caller whose line
+// above already said *which* move this is. The web console's rejection is two lines —
+// `move 10♣ → F1 ✗` and then the reason — and repeating the move in the second one would
+// say the card twice, in two spellings, one line apart.
+let reason = (err: Reducer.moveError): string =>
+  switch err {
+  | Reducer.Rejected => "can't stack there"
+  | Reducer.PileFull => "that pile is full"
+  | Reducer.LooseNotAllowed => "this game keeps cards in piles — no loose drops"
+  | Reducer.NoSuchPile => "no such pile"
+  | Reducer.CardNotFound => "that card isn't in play"
+  | Reducer.NotARun => "those cards aren't an ordered run"
+  | Reducer.RunTooLong => "that run is longer than the free cells and empty columns allow"
+  | Reducer.NotAColumn => "that pile isn't a cascade column"
+  }
+
+// The same, as a sentence that stands on its own: the phrase, prefixed, and naming the
+// card in the two cases that read better for it. What a terminal says, where there's no
+// line above to lean on — and, being built from `reason`, a refusal the two front ends
+// can't drift apart on.
 let describeError = (err: Reducer.moveError, card: card): string =>
   switch err {
   | Reducer.Rejected => `Rejected: ${CardText.format(card)} can't stack there.`
-  | Reducer.PileFull => `Rejected: that pile is full.`
-  | Reducer.LooseNotAllowed => `Rejected: this game keeps cards in piles — no loose drops.`
-  | Reducer.NoSuchPile => `Rejected: no such pile.`
   | Reducer.CardNotFound => `Rejected: ${CardText.format(card)} isn't in play.`
-  | Reducer.NotARun => `Rejected: those cards aren't an ordered run.`
-  | Reducer.RunTooLong => `Rejected: that run is longer than the free cells and empty columns allow.`
-  | Reducer.NotAColumn => `Rejected: that pile isn't a cascade column.`
+  | _ => `Rejected: ${reason(err)}.`
   }
 
 // The same, for a rejection reported against the *action* that was dispatched: a
@@ -448,11 +724,11 @@ type helpRow = (string, string)
 
 // The board verbs both front ends offer, in the order they're worth learning.
 let boardHelp: array<helpRow> = [
-  ("move <card> <where>", "move a card (`mv`/`m` for short) — see the destinations below"),
+  ("move <what> <where>", "move a card (`mv`/`m` for short) — see the two columns below"),
   ("move <card> table", "move a card loose onto the table (free games only)"),
   (
-    "moverun <card>… <where>",
-    "supermove an ordered run, cards bottom-first (e.g. moverun 8H 7S 6H T3)",
+    "moverun <what> <where>",
+    "supermove an ordered run: its cards bottom-first, or the column it's showing in (moverun T6 T2)",
   ),
   ("home <card>", "send a card to its foundation, if one will take it (e.g. home AS)"),
   (
@@ -487,11 +763,16 @@ let dealHelp: array<helpRow> = [
 // `move` row: they're the same three for `move` and `moverun`, and two of them are new
 // enough that a player won't guess them.
 let cardNote = `Cards are named by identity (AS, TH, KD).
+What to move is one of:
+  a card         the card itself, wherever it is — move 8H T3
+  a slot name    whatever is showing there — move C1 F1 (the card in the first free cell)
+  a pile index   the same, by absolute position — move 11 F1
 A destination is one of:
   a slot name    the label above the column — T3 (tableau), C1 (free cell), F2 (foundation)
   a card         the card to land on, wherever it is — move 2H 3C
   a pile index   the absolute position — move 2H 11
-  table          loose on the table (free games only)`
+  table          loose on the table (free games only)
+Any verb may be shortened to an unambiguous prefix: p prints, u undoes, de 12345 deals.`
 
 let rec padTo = (s: string, width: int): string =>
   String.length(s) >= width ? s : padTo(s ++ " ", width)
