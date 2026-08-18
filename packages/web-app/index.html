@@ -815,6 +815,41 @@
         color: #c8d6ea;
       }
 
+      /* A row `core` rendered as spans (#282) — a printed board, or any console reply,
+         which is the same document with everything inked plain. `display: block` rather
+         than the flex row above: the spans are a continuous run of text, and as flex
+         items they would take the 0.5rem `gap` between *every* card and its frame and
+         tear the drawing apart. As inline text they inherit the `pre-wrap` and the
+         `max-content` width that keep a ~150-column board aligned and scrollable. */
+      .debug-console__line--rendered {
+        display: block;
+      }
+
+      /* The ink roles `Render` names, painted for *this* medium. `core` says which run of
+         characters is a red suit's face and stops there, so these are the panel's own
+         choices — not the terminal's SGR red, and not `Deck.suitColor`'s #991b1b, which is
+         picked for a light card face and would be all but invisible on this dark ground.
+         The frames deliberately recede so the cards read first. */
+      .debug-console__ink--plain {
+        color: #8ea6c8;
+      }
+
+      .debug-console__ink--red {
+        color: #ff7b88;
+      }
+
+      /* Not black: on a dark log the *other* colour has to be the bright one. What the
+         ink means is "this card is not red", and near-white says that here. */
+      .debug-console__ink--black {
+        color: #dce6f5;
+      }
+
+      /* The board's heading, in the panel's own accent — the colour its labels and caret
+         already use. */
+      .debug-console__ink--title {
+        color: #7fd6a2;
+      }
+
       /* The slide-over menu (#109): the title, the debug/demo scene rows, and the
          version info. A full-screen overlay so it floats above the game; `hidden`
          (set by the chrome model) collapses it entirely when closed. */

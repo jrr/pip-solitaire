@@ -190,6 +190,43 @@ describe("Render document", () => {
   })
 })
 
+// --- Ordinary prose as a document --------------------------------------------------
+// `text` is what lets a front end keep *one* reply channel: a board is a document, and so
+// is "Nothing to undo." — the second just has nothing but furniture in it.
+describe("Render.text", () => {
+  test("round-trips through toPlain", () => {
+    expect(Render.toPlain(Render.text("Nothing to undo.")))->toBe("Nothing to undo.")
+    let help = "Commands:\n  move <card> <pile>\n  print"
+    expect(Render.toPlain(Render.text(help)))->toBe(help)
+  })
+
+  test("one row per line, all of it plain", () => {
+    let doc = Render.text("first\nsecond")
+    expect(Array.length(doc))->toBe(2)
+    expect(
+      doc->Array.every(
+        line => line->Array.every((s: Render.span) => Render.sameInk(s.ink, Render.Plain)),
+      ),
+    )->toBe(true)
+  })
+
+  // A blank row carries no span at all — the same thing `compact` does with empty text
+  // everywhere else, so a front end never makes a node that draws nothing.
+  test("a blank row is an empty line", () => {
+    let doc = Render.text("a\n\nb")
+    expect(doc->Array.map(Array.length))->toEqual([1, 0, 1])
+    expect(Render.toPlain(doc))->toBe("a\n\nb")
+  })
+
+  // The empty document is how a caller says nothing at all, which is distinct from a
+  // document holding one empty row.
+  test("an empty document renders as no rows", () => {
+    let none: array<Render.line> = []
+    expect(Array.length(none))->toBe(0)
+    expect(Render.toPlain(none))->toBe("")
+  })
+})
+
 // --- A third alphabet -------------------------------------------------------------
 // The point of the document: a front end `core` has never heard of can paint it. This is
 // the web console's painter in miniature — it inks by *role*, picking colours that suit

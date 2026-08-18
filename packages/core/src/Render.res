@@ -104,6 +104,14 @@ let repeat = (s, n) => Array.make(~length=n, s)->Array.join("")
 // `n` columns of blank, as a line. Empty below 1 so a zero-width pad contributes no span.
 let pad = (n: int): line => n > 0 ? [plain(repeat(" ", n))] : []
 
+// Plain text as a document: one row per newline-separated line, all of it furniture.
+// The trivial document — what a front end that speaks spans needs in order to carry an
+// ordinary reply (a rejection, a help listing, an echoed command) down the very channel
+// a board travels, instead of keeping a second one for strings. An empty row renders as
+// no spans at all, matching what `compact` does with empty text everywhere else.
+let text = (s: string): array<line> =>
+  s->String.split("\n")->Array.map(row => row == "" ? [] : [plain(row)])
+
 // --- Glyphs -------------------------------------------------------------------
 
 // The Unicode pip glyph for each suit (the same characters the web-app draws).

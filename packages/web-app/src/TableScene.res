@@ -625,11 +625,11 @@ let make = (
   ~publishUndo: option<(unit => unit) => unit>=?,
   // `~publishConsole` is the debug console's way in (#273), and the sibling of
   // `~publishUndo` in every respect: on every build the board hands the chrome a
-  // `Command.t => string` that plays one parsed command against *this* board and
+  // `Command.t => array<Render.line>` that plays one parsed command against *this* board and
   // answers with whatever `DebugLog` won't already have said. What it deliberately
   // isn't is a second reducer loop — each command goes through the same `dispatch` a
   // pointer drop does, so a typed move is the move a drag would have made.
-  ~publishConsole: option<(Command.t => string) => unit>=?,
+  ~publishConsole: option<(Command.t => array<Render.line>) => unit>=?,
   // `~publishLoadGame` re-deals onto a *named* game (#273) — the addressed twin of
   // `~publishNewGame`, which invents its own. The console's `deal <n>` uses it.
   ~publishLoadGame: option<(Game.t => unit) => unit>=?,
@@ -1648,7 +1648,9 @@ let make = (
       // flight, so a move and its collection read as one gesture rather than a move
       // followed by a jump. `~collect` is off for a column reorder, which is
       // organizational rather than played — matching the CLI driver (#159).
-      let playAction = (~movers: array<Deck.card>, ~collect: bool=true, action): string => {
+      let playAction = (~movers: array<Deck.card>, ~collect: bool=true, action): array<
+        Render.line,
+      > => {
         let before = state.contents
         switch dispatch(action) {
         | Ok(next) =>
@@ -1669,22 +1671,22 @@ let make = (
             }
             updateFinishButton()
           })
-          ""
+          []
         // The reducer's typed rejection, in words — the one thing `result: rejected`
         // doesn't say. Shared with the CLI, so the same refusal reads the same in a
         // terminal and in the panel.
-        | Error(err) => Command.describeRejection(err, ~action)
+        | Error(err) => Render.text(Command.describeRejection(err, ~action))
         }
       }
 
-      let runCommand = (command: Command.t): string =>
+      let runCommand = (command: Command.t): array<Render.line> =>
         switch command {
         | Command.Dispatch(action) =>
           switch action {
           // The column-reorder house rule (#159), gated before the reducer exactly as
           // the CLI gates it: with it off nothing is dispatched at all.
-          | Reducer.MoveColumn(_)
-            if !options.contents.allowColumnReorder => "Column reordering is off for this game."
+          | Reducer.MoveColumn(_) if !options.contents.allowColumnReorder =>
+            Render.text("Column reordering is off for this game.")
           | Reducer.Move({card}) => playAction(~movers=[card], action)
           | Reducer.MoveRun({cards}) => playAction(~movers=cards, action)
           // A reorder moves whole columns rather than named cards, so there's nothing
@@ -1699,38 +1701,41 @@ let make = (
             m.role == Game.Foundation
           ) {
           | Some({to: i}) => playAction(~movers=[card], Reducer.Move({card, to: Reducer.ToPile(i)}))
-          | None => `No foundation is ready for ${CardText.format(card)}.`
+          | None => Render.text(`No foundation is ready for ${CardText.format(card)}.`)
           }
         | Command.Finish =>
           if Reducer.canFinish(~game, state.contents) {
             playFinish()->ignore
-            ""
+            []
           } else {
-            "Not finishable yet — some cards still need a tableau move first."
+            Render.text("Not finishable yet — some cards still need a tableau move first.")
           }
         | Command.Undo =>
           if History.canUndo(history.contents) {
             undo()
-            ""
+            []
           } else {
-            "Nothing to undo."
+            Render.text("Nothing to undo.")
           }
         | Command.Redo =>
           if History.canRedo(history.contents) {
             redo()
-            ""
+            []
           } else {
-            "Nothing to redo."
+            Render.text("Nothing to redo.")
           }
         // The board, drawn in text. It used to answer "the board is on screen" — true,
         // but useless: the point of `print` is a *snapshot* you can read back later in
         // the log, compare against the one above it, or paste somewhere. Now that the
         // renderer lives in `core` it's the very board the CLI prints, from the very
-        // same state, minus the ANSI colour a browser can't paint.
-        | Command.Print => Render.stateBoard(~game, ~deal=?currentDeal(), state.contents)
+        // same state — and handed over as the *document* core rendered rather than
+        // flattened to text (#282), so the panel can paint the suits the terminal paints
+        // in ANSI. Nothing here chooses a colour; the ink says which cards are red and
+        // the stylesheet decides what red looks like in a log.
+        | Command.Print => Render.stateLines(~game, ~deal=?currentDeal(), state.contents)
         // Everything else — help, clear, dealing a board — belongs to the chrome (see
         // `Main`), which answers those itself and never forwards them here.
-        | _ => "That isn't something the board can do."
+        | _ => Render.text("That isn't something the board can do.")
         }
 
       // Build one draggable card and wire its pointer loop. It starts at 0,0 and is
