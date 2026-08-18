@@ -79,13 +79,14 @@ jobs:
         if: github.event.action != 'closed'
         uses: jdx/mise-action@v4
 
-      # `playwright install --with-deps` reaches the network twice — the browser
-      # download, and an `apt-get` for the system libraries — and either can stall
-      # indefinitely on a bad mirror or CDN edge rather than erroring out. A ~30s
-      # step, so cap it and let a stall fail fast instead of hanging the job.
+      # `-browser` skips `--with-deps`, whose `apt-get` was the thing that hung
+      # (see mise.toml). The browser download that remains is still a network
+      # reach that could stall, so keep a cap on it too — belt and braces, since
+      # a stall here has no timeout of its own and would otherwise sit until the
+      # runner's 6h default.
       - name: Install headless Chromium
         if: github.event.action != 'closed'
-        run: mise run playwright-install
+        run: mise run playwright-install-browser
         timeout-minutes: 5
 
       - name: Render screenshot report
