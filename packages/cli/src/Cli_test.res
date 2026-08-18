@@ -163,6 +163,45 @@ describe("Repl.run", () => {
     )
   })
 
+  // Naming a card is how a typed move picks one up, and a name reaches anywhere on the
+  // board — including under the cards resting on top of it. The reducer is what stops
+  // the reach at what a hand could lift; these check the terminal says so, since typing
+  // is the only way to ask for a move the view's drag never offers.
+  describe("a move only lifts what a hand could", () => {
+    // The supermove scenario again: 9♠-8♥-7♠-6♥-5♠ on T1, only the 5♠ showing, and T8
+    // an empty column that would take any of them.
+    let deal = "deal freecell supermove"
+    // The board a transcript ends on, so a refused move can be shown to have left the
+    // position exactly as it found it.
+    let ending = lines => {
+      let sections = Repl.run(Array.concat(lines, ["print"]))->String.split("\n\n")
+      sections->Array.slice(~start=Array.length(sections) - 3, ~end=Array.length(sections))
+    }
+
+    test(
+      "a buried card is refused rather than pulled out from under its pile",
+      () => {
+        expect(has(Repl.run([deal, "m 9S T8"]), "9S is buried"))->toBe(true)
+        // And the board is the one it was: the 9♠ still at the bottom of its run.
+        expect(ending([deal, "m 9S T8"]))->toEqual(ending([deal]))
+      },
+    )
+
+    test(
+      "a run that isn't showing at the top of its pile is refused too",
+      () => {
+        // 9♠-8♥ is a genuine run, but the 7♠-6♥-5♠ resting on it means no hand could
+        // take hold of just those two.
+        expect(
+          has(Repl.run([deal, "moverun 9S 8H T8"]), "aren't lying together at the top of one pile"),
+        )->toBe(true)
+        expect(ending([deal, "moverun 9S 8H T8"]))->toEqual(ending([deal]))
+        // The run that *is* showing — the whole tail — still moves as one.
+        expect(has(Repl.run([deal, "moverun 9S 8H 7S 6H 5S T8"]), "Rejected"))->toBe(false)
+      },
+    )
+  })
+
   // The verb table's prefix rule (`Command.resolveVerb`), through the driver: a
   // shorthand has to run the very command it abbreviates, and an ambiguous one has to
   // refuse rather than pick.

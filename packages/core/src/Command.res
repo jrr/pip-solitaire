@@ -685,6 +685,8 @@ let reason = (err: Reducer.moveError): string =>
   | Reducer.NotARun => "those cards aren't an ordered run"
   | Reducer.RunTooLong => "that run is longer than the free cells and empty columns allow"
   | Reducer.NotAColumn => "that pile isn't a cascade column"
+  | Reducer.CardBuried => "that card is buried — only the card on top of a pile can be moved"
+  | Reducer.NotASpan => "those cards aren't lying together at the top of one pile"
   }
 
 // The same, as a sentence that stands on its own: the phrase, prefixed, and naming the
@@ -695,6 +697,10 @@ let describeError = (err: Reducer.moveError, card: card): string =>
   switch err {
   | Reducer.Rejected => `Rejected: ${CardText.format(card)} can't stack there.`
   | Reducer.CardNotFound => `Rejected: ${CardText.format(card)} isn't in play.`
+  // The mirror of `resolveWhere`'s refusal for a buried *destination*, said about the
+  // card being lifted — so "buried" reads the same at either end of a move.
+  | Reducer.CardBuried =>
+    `Rejected: ${CardText.format(card)} is buried — only the card on top of a pile can be moved.`
   | _ => `Rejected: ${reason(err)}.`
   }
 
