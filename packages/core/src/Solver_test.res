@@ -195,6 +195,30 @@ describe("Solver", () => {
                   problems->Array.push(`step ${Int.toString(i)}: the state doesn't follow`)
                 }
               }
+              // …and each step says what it *moved*, which is what a driver animating
+              // the line flies (#291): the card the action named first, so the move
+              // leads and the collection follows it home, and every card in the list
+              // somewhere new by the time the step is over. A step that claimed a card
+              // that stayed put would fly it nowhere, in front of everything else.
+              switch (step.action, step.moved->Array.get(0)) {
+              | (Reducer.Move({card}), Some(first)) =>
+                if !GameState.sameCard(card, first) {
+                  problems->Array.push(`step ${Int.toString(i)}: the move doesn't lead`)
+                }
+              | (_, None) => problems->Array.push(`step ${Int.toString(i)}: it moved nothing`)
+              | _ => ()
+              }
+              step.moved->Array.forEach(
+                card =>
+                  if (
+                    GameState.locationOf(before.contents, card) ==
+                      GameState.locationOf(step.state, card)
+                  ) {
+                    problems->Array.push(
+                      `step ${Int.toString(i)}: ${CardText.format(card)} didn't move`,
+                    )
+                  },
+              )
               before := step.state
             },
           )

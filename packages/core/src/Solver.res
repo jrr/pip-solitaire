@@ -280,9 +280,16 @@ let hint = (~game: Game.t, state: GameState.t): option<Reducer.action> =>
 // settled board it leaves behind. Enough for a driver to record one undoable step per
 // move without re-deriving a position the plan already knows — and the `action` is
 // what lets it *say* what it played, in the same words a typed move is logged in.
+//
+// `moved` is what a driver that *animates* the line needs: the cards this step
+// displaces, in the order they moved — the ones the action names, then whatever the
+// settle swept up behind them. It's core's to report for the same reason the settling
+// is core's to do: the collection happens in here, so a driver reading only `state`
+// would have to re-derive which cards it took to get there.
 type played = {
   action: Reducer.action,
   state: GameState.t,
+  moved: array<Card.card>,
 }
 
 // What autoplay found. The two refusals are different questions and read as
@@ -297,12 +304,22 @@ type autoplayed =
 
 // The post-move settle the plan assumes: safe auto-collect, standing aside once the
 // board is finishable — `Position.applyMove`'s own rule, said against a real state.
-let settle = (~game: Game.t, state: GameState.t): GameState.t =>
+// Reports the cards it sent home along with the settled board, so a step can say
+// everything that moved and not just where the board ended up.
+let settle = (~game: Game.t, state: GameState.t): (GameState.t, array<Card.card>) =>
   if Reducer.canFinish(~game, state) {
-    state
+    (state, [])
   } else {
-    let (collected, _moved) = Reducer.autoCollect(~game, state)
-    collected
+    Reducer.autoCollect(~game, state)
+  }
+
+// The cards an action names, bottom-first, which is the order they'd be lifted in.
+// A column reorder names none — it moves whole piles rather than cards.
+let namedCards = (action: Reducer.action): array<Card.card> =>
+  switch action {
+  | Reducer.Move({card}) => [card]
+  | Reducer.MoveRun({cards}) => cards
+  | Reducer.MoveColumn(_) => []
   }
 
 let autoplay = (~game: Game.t, state: GameState.t): autoplayed =>
@@ -327,8 +344,12 @@ let autoplay = (~game: Game.t, state: GameState.t): autoplayed =>
           switch Reducer.reduce(~game, current.contents, action) {
           | Error(_) => stopped := true
           | Ok(next) =>
-            let settled = settle(~game, next)
-            steps->Array.push({action, state: settled})
+            let (settled, collected) = settle(~game, next)
+            steps->Array.push({
+              action,
+              state: settled,
+              moved: Array.concat(namedCards(action), collected),
+            })
             current := settled
           }
         }
