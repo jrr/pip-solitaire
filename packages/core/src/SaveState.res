@@ -15,7 +15,8 @@
 //
 // The format is deliberately small and self-describing:
 //
-//   {"v":1,"past":[S,…],"present":S,"future":[S,…],"stats":{"moves":n,"undos":n}}
+//   {"v":1,"past":[S,…],"present":S,"future":[S,…],
+//    "stats":{"moves":n,"undos":n,"autoplays":n}}
 //
 // where a state S is `{"piles":[[C,…],…],"loose":[C,…]}` and a card C is a
 // two-character code — rank char then suit char, e.g. "TS" (Ten of Spades),
@@ -31,6 +32,10 @@
 // version is for — every saved game on every device dropped, and every share link
 // already in a chat turned into "couldn't read that". Reserve the bump for a change
 // that genuinely can't be read both ways.
+//
+// `"autoplays"` (#291) joined `"stats"` on exactly those terms, one level down: a
+// blob without it decodes to a game the solver never touched, which is what a save
+// written before autoplay existed *is*.
 
 open Card
 
@@ -58,7 +63,7 @@ type t = {
 // to remember, and guessing high would be a worse lie than guessing zero.
 let ofHistory = (history: History.t<GameState.t>): t => {
   history,
-  stats: {moves: History.steps(history), undos: 0},
+  stats: {moves: History.steps(history), undos: 0, autoplays: 0},
 }
 
 // --- Card codes --------------------------------------------------------------
@@ -158,6 +163,7 @@ let encodeStats = (s: Stats.t): JSON.t => JSON.Object(
   Dict.fromArray([
     ("moves", JSON.Number(Int.toFloat(s.moves))),
     ("undos", JSON.Number(Int.toFloat(s.undos))),
+    ("autoplays", JSON.Number(Int.toFloat(s.autoplays))),
   ]),
 )
 
@@ -214,14 +220,26 @@ let decodeCount = (json: JSON.t): option<int> =>
   | _ => None
   }
 
+// `autoplays` (#291) is read the way the whole `stats` object is (see `decode`): a
+// *missing* one is a save written before the counter existed and reads as none — the
+// truthful answer, since a game played before autoplay could be reached for can't
+// have used it — while a present-but-malformed one fails the object like any other
+// field. Absence and nonsense stay different things.
+let decodeAutoplays = (dict: Dict.t<JSON.t>): option<int> =>
+  switch dict->Dict.get("autoplays") {
+  | None => Some(0)
+  | Some(json) => decodeCount(json)
+  }
+
 let decodeStats = (json: JSON.t): option<Stats.t> =>
   switch json {
   | JSON.Object(dict) =>
     switch (
       dict->Dict.get("moves")->Option.flatMap(decodeCount),
       dict->Dict.get("undos")->Option.flatMap(decodeCount),
+      decodeAutoplays(dict),
     ) {
-    | (Some(moves), Some(undos)) => Some({Stats.moves, undos})
+    | (Some(moves), Some(undos), Some(autoplays)) => Some({Stats.moves, undos, autoplays})
     | _ => None
     }
   | _ => None

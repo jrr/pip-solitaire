@@ -301,6 +301,102 @@ test("a slot name and a named card reach the same foundation a pile index does",
   await expect(consoleLines(page).filter({ hasText: "No such tableau column: T9" })).toHaveCount(1)
 })
 
+// Autoplay (#291), in the only place it can be seen doing what it's for: a real deal,
+// played out by the solver, ending on the real victory screen. The unit tests pin the
+// pieces — the line `core` finds (`Solver_test`), the steps the board records and the
+// button it withholds (`TableScene_test`) — but "type one word and the game plays
+// itself to a win" is a claim about the app, and this is where the app is.
+test("autoplay plays the deal out and wins it", async ({ page }) => {
+  // Watching a whole game get played takes longer than the suite's default patience:
+  // the deal flies in, the search thinks, forty-odd moves fly one after another, and
+  // the sweep comes home on top of that.
+  test.setTimeout(180_000)
+  // A named deal rather than whatever a fresh game invents: a solver test that picks
+  // its own board can't fail the same way twice. And *with* the animation on, unlike
+  // every other test in this file: the planned moves are flown one at a time, which is
+  // the whole behaviour under test here, and `?animate=off` would collapse the line to
+  // a single reflow and prove nothing about it.
+  await page.goto("/?scene=freecell&seed=24680")
+  await settleBoard(page)
+  await openConsole(page)
+
+  await runCommand(page, "autoplay")
+  // The line is *played*, a move at a time, so the victory is seconds of cards away
+  // rather than already on screen — the difference between watching a game and being
+  // handed its result.
+  await expect(page.locator(".win-overlay")).toHaveCount(0)
+  // The thinking is synchronous, the moves are flown one after another, and the sweep
+  // home is animated on top of that, so the win takes a while to arrive.
+  await expect(page.locator(".win-overlay")).toHaveCount(1, { timeout: 60_000 })
+
+  // It says how far it got, and the moves it played are in the log in the same words a
+  // dragged move is narrated in — a play-by-play, not a board that changed by itself.
+  await expect(consoleLines(page).filter({ hasText: /Autoplay played \d+ moves\./ })).toHaveCount(1)
+  expect(await consoleLines(page).filter({ hasText: "→" }).count()).toBeGreaterThan(10)
+
+  // …and the victory screen counts it: the moves are the game's real length, and the
+  // autoplay is the line that only shows on a game that used one.
+  await expect(page.locator(".win-panel__stats")).toContainText("autoplay")
+})
+
+// The other half of playing a line over time: the board can be taken back mid-line.
+// A run that kept stamping its precomputed states over a board the player had undone
+// would be the one way an animated autoplay is worse than the instant one, so an undo
+// (or a drag, or a New Game — all of them the same signal) ends it where it stands.
+test("taking the board back mid-line stops the solver (#291)", async ({ page }) => {
+  // The search runs before the first card moves, and it's the slow part here — the
+  // rest is a couple of moves and a deliberate wait.
+  test.setTimeout(180_000)
+  await page.goto("/?scene=freecell&seed=24680")
+  await settleBoard(page)
+  await openConsole(page)
+
+  const movesNarrated = () => consoleLines(page).filter({ hasText: "→" }).count()
+
+  await runCommand(page, "autoplay")
+  // Let a few of the planned moves play, then undo — the player asking for their board
+  // back, in the middle of a line that has plenty left to play.
+  await expect.poll(movesNarrated).toBeGreaterThan(2)
+  await runCommand(page, "undo")
+
+  // The line is over: nothing further narrates, and the win it was heading for never
+  // arrives on a board that is no longer the one it was planned for.
+  const stopped = await movesNarrated()
+  await page.waitForTimeout(2_000)
+  expect(await movesNarrated()).toBe(stopped)
+  await expect(page.locator(".win-overlay")).toHaveCount(0)
+})
+
+test("a win the solver played keeps its Share button to itself (#291)", async ({ page }) => {
+  // The almost-won position, won two ways on the same board. By hand it's shareable —
+  // that's `share-win.spec.mjs`'s whole subject — so the *only* difference here is who
+  // played the last move, which is exactly the claim being made.
+  await page.goto(ALMOST_WON)
+  await settleBoard(page)
+  await playTheWinningMove(page)
+  await expect(page.locator(".win-overlay")).toHaveCount(1)
+  await expect(page.locator(".win-panel__button--share")).toHaveCount(1)
+
+  await page.goto(ALMOST_WON)
+  await settleBoard(page)
+  await openConsole(page)
+  await runCommand(page, "autoplay")
+  await expect(page.locator(".win-overlay")).toHaveCount(1, { timeout: 60_000 })
+  await expect(page.locator(".win-panel__button--share")).toHaveCount(0)
+  // The board was already finishable, so there was nothing for the solver to think
+  // about — and reaching for it still counts, which is what withdrew the button.
+  await expect(consoleLines(page).filter({ hasText: "nothing left to think about" })).toHaveCount(1)
+  await expect(page.locator(".win-panel__stats")).toContainText("1 autoplay")
+
+  // Undo back out of the victory and win it again by hand: the button stays away,
+  // because "this game was autoplayed" is not a thing undo can take back.
+  await runCommand(page, "undo")
+  await expect(page.locator(".win-overlay")).toHaveCount(0)
+  await runCommand(page, "redo")
+  await expect(page.locator(".win-overlay")).toHaveCount(1)
+  await expect(page.locator(".win-panel__button--share")).toHaveCount(0)
+})
+
 test("home finds the foundation itself, and undo/redo walk the same history", async ({ page }) => {
   await page.goto(ALMOST_WON)
   await settleBoard(page)

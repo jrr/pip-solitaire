@@ -16,7 +16,7 @@ describe("SaveState", () => {
   // …and the game around it: two moves played and one undone, which is a tally no
   // fallback could invent (`History.steps` of this history is 1, not 2) — so a save
   // that dropped the counts would fail here rather than pass by looking plausible.
-  let saved: SaveState.t = {history, stats: {moves: 2, undos: 1}}
+  let saved: SaveState.t = {history, stats: {moves: 2, undos: 1, autoplays: 1}}
 
   test("a card round-trips through its two-character code", () => {
     Cards.all->Array.forEach(
@@ -41,9 +41,22 @@ describe("SaveState", () => {
     }
   })
 
-  test("the move and undo counts survive the round-trip (#289)", () => {
+  test("the move, undo and autoplay counts survive the round-trip (#289, #291)", () => {
     switch SaveState.decode(SaveState.encode(saved)) {
-    | Some(restored) => expect(restored.stats)->toEqual({Stats.moves: 2, undos: 1})
+    | Some(restored) => expect(restored.stats)->toEqual({Stats.moves: 2, undos: 1, autoplays: 1})
+    | None => expect("decoded")->toBe("but got None")
+    }
+  })
+
+  // `autoplays` joined the tally after the tally itself had shipped (#291), so a save
+  // written between the two has `stats` but no `autoplays` — and has to keep working
+  // for the same reason a pre-tally save does. A game saved before the solver could be
+  // reached for cannot have used it, so none is the truthful reading, not a guess.
+  test("a tally written before autoplay existed reads as never autoplayed", () => {
+    let earlier = SaveState.encode(saved)->String.replaceRegExp(/,"autoplays":\d+/, "")
+    expect(earlier->String.includes("autoplays"))->toBe(false) // the fixture really is older
+    switch SaveState.decode(earlier) {
+    | Some(restored) => expect(restored.stats)->toEqual({Stats.moves: 2, undos: 1, autoplays: 0})
     | None => expect("decoded")->toBe("but got None")
     }
   })
@@ -110,7 +123,11 @@ describe("SaveState", () => {
         // they read as none rather than as a guess.
         switch SaveState.decode(legacy) {
         | Some(restored) =>
-          expect(restored.stats)->toEqual({Stats.moves: History.steps(history), undos: 0})
+          expect(restored.stats)->toEqual({
+            Stats.moves: History.steps(history),
+            undos: 0,
+            autoplays: 0,
+          })
         | None => expect("decoded")->toBe("but got None")
         }
       },
@@ -126,5 +143,10 @@ describe("SaveState", () => {
     expect(SaveState.decode(`{"v":1,${states},"stats":{"moves":3}}`))->toEqual(None)
     expect(SaveState.decode(`{"v":1,${states},"stats":7}`))->toEqual(None)
     expect(SaveState.decode(`{"v":1,${states},"stats":{"moves":-1,"undos":0}}`))->toEqual(None)
+    // …including the field that's allowed to be *absent*: missing is an older save,
+    // nonsense is a stranger's JSON, and the two aren't the same thing.
+    expect(
+      SaveState.decode(`{"v":1,${states},"stats":{"moves":1,"undos":0,"autoplays":"lots"}}`),
+    )->toEqual(None)
   })
 })

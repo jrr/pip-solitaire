@@ -27,6 +27,7 @@
 //   mv / m               the same verb, for the command you type most
 //   move <card> table    dispatch a Move loose onto the table (free games only)
 //   movecol <from> <to>  reorder the cascade columns — insert-and-shift (#159)
+//   autoplay             let the solver play the rest of the game (#291)
 //   undo / redo          step back and forth over the history of accepted moves (#85)
 //   print                re-print the current board
 //   set [<setting> on|off]  show the driver's flags, or change one
@@ -249,6 +250,32 @@ let finish = (s: session): (option<session>, string) =>
     (Some(s), "Not finishable yet — some cards still need a tableau move first.")
   }
 
+// Hand the board to the solver (#291): play the line `core` finds from here, then
+// the finishing sweep it deliberately stops short of, so `autoplay` on a solvable
+// deal ends on a won board rather than on a board with the Finish button lit.
+//
+// Every planned move is committed as its own undoable step, exactly as a typed one
+// would be: a game the solver played is as long as it looks, and undo walks back
+// through it a move at a time rather than teleporting past the whole thing. The
+// moves themselves come from `Solver.autoplay`, which settles each one the way the
+// plan assumes — so this driver adopts the states rather than re-dispatching the
+// actions, and a session with `autocollect` off still plays the line the search
+// actually found.
+let autoplay = (s: session): (option<session>, string) =>
+  switch Solver.autoplay(~game=s.game, present(s)) {
+  | Solver.NotFreeCell => (Some(s), Command.autoplayNotFreeCell)
+  | Solver.NoLine => (Some(s), Command.autoplayNoLine)
+  | Solver.Played(steps) =>
+    let played =
+      steps->Array.reduce(s, (carried, step: Solver.played) => commit(carried, step.state))
+    // The sweep home is this driver's own `finish`, so an autoplayed win and a
+    // hand-played one end the same way — one further undoable step, and the win line
+    // beneath the board. A board it couldn't finish (a plan cut short) simply stays
+    // where the moves left it.
+    let swept = fst(finish(played))->Option.getOr(played)
+    (Some(swept), `${Command.describeAutoplay(~moves=Array.length(steps))}\n\n${boardText(swept)}`)
+  }
+
 // Step back one move (#85): pop the history to the prior state and re-print the
 // restored board, or report there's nothing to undo. Undo is available even from a
 // won position — a victory is just another recorded state — so a player can step
@@ -289,7 +316,8 @@ let dealFirstHint = (command: Command.t): option<string> =>
   | Command.Dispatch(Reducer.MoveColumn(_))
   | Command.MoveTo(_)
   | Command.Home(_)
-  | Command.Finish =>
+  | Command.Finish
+  | Command.Autoplay =>
     Some("freecell")
   | Command.Usage({verb: "move"}) => Some("stacking")
   | Command.Usage(_) => Some("freecell")
@@ -360,6 +388,7 @@ let stepCommand = (
   | Command.Redo => onBoard(redo)
   | Command.Redeal => onBoard(redeal)
   | Command.Finish => onBoard(finish)
+  | Command.Autoplay => onBoard(autoplay)
   | Command.Home({card}) => onBoard(s => home(~options, s, card))
   | Command.Dispatch(action) => onBoard(s => dispatch(~options, s, action))
   // A move with a half only a board can read: a destination named as a card or a column

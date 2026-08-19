@@ -168,6 +168,87 @@ describe("Solver", () => {
     }
   })
 
+  // Autoplay (#291): the plan, played. `plan` is tested above as a *line*; what's
+  // pinned here is that playing it is a real sequence of reducer moves ending on the
+  // board the search was aiming at — the thing both front ends' `autoplay` verb hands
+  // to their history, one recorded step at a time.
+  describe("autoplay", () => {
+    testWithin(
+      "plays deal #1 out to a board the Finish button wins",
+      () =>
+        switch Solver.autoplay(~game, opening) {
+        | Solver.NotFreeCell => expect("a FreeCell board")->toBe("but the solver didn't know it")
+        | Solver.NoLine => expect("deal 1 played")->toBe("but the ladder ran out")
+        | Solver.Played(steps) =>
+          expect(Array.length(steps) > 20)->toBe(true) // a real game, not a shortcut
+          // Every step's state is the one the step before it left, reduced by the
+          // action it carries — so a driver that adopts these states in order is
+          // playing the very moves it's recording, not two things that agree by luck.
+          let problems = []
+          let before = ref(opening)
+          steps->Array.forEachWithIndex(
+            (step: Solver.played, i) => {
+              switch Reducer.reduce(~game, before.contents, step.action) {
+              | Error(_) => problems->Array.push(`step ${Int.toString(i)}: the reducer refused it`)
+              | Ok(next) =>
+                if !GameState.equal(settle(~game, next), step.state) {
+                  problems->Array.push(`step ${Int.toString(i)}: the state doesn't follow`)
+                }
+              }
+              // …and each step says what it *moved*, which is what a driver animating
+              // the line flies (#291): the card the action named first, so the move
+              // leads and the collection follows it home, and every card in the list
+              // somewhere new by the time the step is over. A step that claimed a card
+              // that stayed put would fly it nowhere, in front of everything else.
+              switch (step.action, step.moved->Array.get(0)) {
+              | (Reducer.Move({card}), Some(first)) =>
+                if !GameState.sameCard(card, first) {
+                  problems->Array.push(`step ${Int.toString(i)}: the move doesn't lead`)
+                }
+              | (_, None) => problems->Array.push(`step ${Int.toString(i)}: it moved nothing`)
+              | _ => ()
+              }
+              step.moved->Array.forEach(
+                card =>
+                  if (
+                    GameState.locationOf(before.contents, card) ==
+                      GameState.locationOf(step.state, card)
+                  ) {
+                    problems->Array.push(
+                      `step ${Int.toString(i)}: ${CardText.format(card)} didn't move`,
+                    )
+                  },
+              )
+              before := step.state
+            },
+          )
+          expect(problems)->toEqual([])
+          // …and it stops where the search does: at the board the Finish sweep wins.
+          expect(Reducer.canFinish(~game, before.contents))->toBe(true)
+        },
+      ~timeout=60_000,
+    )
+
+    test(
+      "a board that's already finishable is played by doing nothing",
+      () => {
+        // `Played([])` and `NoLine` are different answers, and a driver treats them
+        // differently: one hands over to the finish sweep, the other says it couldn't.
+        let finishable = Scenario.freecellFinish(game)
+        expect(Solver.autoplay(~game, finishable))->toEqual(Solver.Played([]))
+      },
+    )
+
+    test(
+      "a board the model can't hold is refused, not searched",
+      () => {
+        expect(Solver.autoplay(~game=Game.stacking, GameState.initial(Game.stacking)))->toEqual(
+          Solver.NotFreeCell,
+        )
+      },
+    )
+  })
+
   test("the heuristic prefers the board that's closer to done", () => {
     // Not a number anyone should pin, but a direction: cards home are progress,
     // and a card parked in a free cell is a card in the way.
