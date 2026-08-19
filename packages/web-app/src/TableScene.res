@@ -1374,8 +1374,18 @@ let make = (
           // down by the very next thing the player does, so there's no stale state for
           // a timer to save us from. Its height is reserved in CSS so the line landing
           // doesn't jostle the buttons above it.
+          //
+          // …and withdrawn entirely from a game the solver had a hand in (#291). A
+          // shared victory is a claim about how you played, and "I typed `autoplay`"
+          // isn't one worth passing on — so the button is simply not built, rather
+          // than built and made to explain itself. The test is `Stats.usedAutoplay`,
+          // which is why the tally counts autoplays at all: it's the one fact about a
+          // game that has to survive every undo back past the solver's moves, and it
+          // does because the tally only ever counts up and is only ever reset by a
+          // board being replaced (a New Game or a Restart, both of which build afresh
+          // from `Stats.zero`).
           switch winShare {
-          | Some(offer) if offer.available() =>
+          | Some(offer) if offer.available() && !Stats.usedAutoplay(stats.contents) =>
             let status = WebDom.createElement("p")
             status->WebDom.setAttribute("class", "win-panel__status")
             status->WebDom.setAttribute("aria-live", "polite")
@@ -1739,6 +1749,66 @@ let make = (
         }
       }
 
+      // `autoplay` (#291): hand the board to `core`'s solver and play the line it
+      // finds, then let the sweep this board already has finish the job. The thinking
+      // is `Solver.autoplay`'s — including the settling after each move, so a session
+      // with auto-collect switched off still plays the line the search actually found
+      // — and what's left here is the three things only a *board* can do: record the
+      // steps, count the reach, and put the cards where they now belong.
+      //
+      // The planned moves are laid out rather than flown. A flight is how a *move*
+      // reads, and forty of them at the console's followable pace would be the better
+      // part of a minute of watching cards that aren't tracing the line anyway (each
+      // card would fly one hop, from where it started to where it ended, whatever it
+      // did in between). So the board catches up in one reflow and the animation
+      // budget goes where it pays: the finishing sweep below, which *is* the payoff
+      // and is a real cascade of cards going home.
+      let autoplay = (): array<Render.line> =>
+        switch Solver.autoplay(~game, state.contents) {
+        | Solver.NotFreeCell => Render.text(Command.autoplayNotFreeCell)
+        | Solver.NoLine => Render.text(Command.autoplayNoLine)
+        | Solver.Played(steps) =>
+          DebugLog.message("autoplay")
+          // Counted once for the reaching, not once per move (#291) — the moves the
+          // solver played are counted as moves by `recordHistory` below, like any
+          // other. Counted *before* the first step is recorded, so the very first
+          // save this writes already carries "this game was autoplayed".
+          stats := Stats.autoplay(stats.contents)
+          steps->Array.forEach((step: Solver.played) => {
+            // The play-by-play, in the very words a typed or dragged move is logged
+            // in (`Render.action`, see `dispatch`) — so what the solver did reads as
+            // moves rather than as a board that changed by itself. No outcome mark:
+            // these were played against `core` before they got here, and a move that
+            // didn't take never became a step.
+            if DebugLog.enabled() {
+              DebugLog.line(Render.action(~game, step.action))
+            }
+            state := step.state
+            // One recorded step per planned move, exactly as a typed move records
+            // one: the tally counts the game's true length, and undo walks back
+            // through the solver's line a move at a time rather than teleporting
+            // past the whole thing.
+            recordHistory()
+          })
+          // Any flight still in the air belongs to the position we've just played
+          // past (and the tilt timings with it — see `adoptHistoryPresent`).
+          cancelOutstanding()
+          clearTiltTimings()
+          reflowAll()
+          updateFinishButton()
+
+          // The solver stops where the Finish button lights up, so finishing is that
+          // button's own sweep — same flight, same win overlay, one further undoable
+          // step. A board it couldn't get all the way there stays where the line left
+          // it, with the reply below saying how far that was.
+          if Reducer.canFinish(~game, state.contents) {
+            playFinish()->ignore
+          } else if GameState.hasWon(game, state.contents) {
+            showWin()
+          }
+          Render.text(Command.describeAutoplay(~moves=Array.length(steps)))
+        }
+
       let runCommand = (command: Command.t): array<Render.line> =>
         switch command {
         | Command.Dispatch(action) =>
@@ -1784,6 +1854,7 @@ let make = (
           } else {
             Render.text("Not finishable yet — some cards still need a tableau move first.")
           }
+        | Command.Autoplay => autoplay()
         | Command.Undo =>
           if History.canUndo(history.contents) {
             undo()

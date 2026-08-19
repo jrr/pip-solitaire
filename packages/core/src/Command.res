@@ -115,6 +115,12 @@ type t =
   // `home <card>` names a card but no destination — see the module note above.
   | Home({card: card})
   | Finish
+  // `autoplay` (#291): hand the board to the solver and let it play the thinking part
+  // of the game out (`Solver.autoplay`). A verb rather than a button because it's the
+  // console's kind of power — and, like `finish`, it's the same verb in a terminal and
+  // in the panel, since what it means is a question about the board rather than about
+  // the front end.
+  | Autoplay
   | Undo
   | Redo
   // `redeal`/`restart`: play the *current* deal again from its opening layout — the web
@@ -233,6 +239,7 @@ let verbs = [
   "redo",
   "redeal",
   "finish",
+  "autoplay",
   "deal",
   "move",
   "moverun",
@@ -311,6 +318,7 @@ let parse = (line: string): t => {
       | "redo" => Redo
       | "redeal" => Redeal
       | "finish" => Finish
+      | "autoplay" => Autoplay
       | "deal" => Deal({game: arg(1), scenario: arg(2)})
       // Everything downstream of the verb table says `move`, whichever of `move`/`mv`/`m`
       // was typed (see `resolveVerb`): the `Usage` complaints and the "deal a game first"
@@ -720,6 +728,25 @@ let describeRejection = (err: Reducer.moveError, ~action: Reducer.action): strin
     }
   }
 
+// --- What autoplay had to say (#291) -----------------------------------------
+// The two ways `Solver.autoplay` can decline, in words. Here rather than in the
+// solver for the reason every other refusal in this module is: it's what a *front
+// end* says to someone who typed something, and a terminal and a panel saying it
+// differently would be two commands wearing one name.
+let autoplayNotFreeCell = "Autoplay only plays FreeCell — this board isn't one it knows."
+
+let autoplayNoLine = "Autoplay couldn't find a way to win from here."
+
+// What it says when it *did* play: how far it got, since the board it leaves behind
+// doesn't say by itself whether it played fifty moves or none (a board that was
+// already finishable needed no thinking at all).
+let describeAutoplay = (~moves: int): string =>
+  switch moves {
+  | 0 => "Autoplay: nothing left to think about — the board is already finishable."
+  | 1 => "Autoplay played 1 move."
+  | n => `Autoplay played ${Int.toString(n)} moves.`
+  }
+
 // --- Help ---------------------------------------------------------------------
 // The verbs are shared; the *listing* isn't quite, because each front end has a few
 // of its own (`print`/`games` in a terminal, `clear` in the panel) and reads the
@@ -742,6 +769,10 @@ let boardHelp: array<helpRow> = [
     "reorder cascade columns: pull column <from> and drop it at <to> (e.g. movecol 8 15)",
   ),
   ("finish", "sweep every card home to win, when the board is drainable (#132)"),
+  (
+    "autoplay",
+    "let the solver play the game out from here — counted, and it withdraws the win screen's Share",
+  ),
   ("undo", "step back one move (works even from a win)"),
   ("redo", "replay a move you undid"),
   ("redeal", "play the current deal again from the start (the same board)"),

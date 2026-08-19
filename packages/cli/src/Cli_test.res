@@ -402,6 +402,55 @@ describe("Repl.run", () => {
     )
   })
 
+  // Autoplay (#291): the `autoplay` verb hands the board to `core`'s solver, plays
+  // the line it finds a move at a time, and lets this driver's own `finish` sweep the
+  // rest home — so a solvable deal ends on the very win line a hand-played game does.
+  describe("autoplay", () => {
+    testWithin(
+      "plays a real deal all the way to the win, a step at a time",
+      () => {
+        let transcript = Repl.run(["deal freecell", "autoplay"])
+        expect(has(transcript, "Autoplay played"))->toBe(true)
+        expect(has(transcript, "You win!"))->toBe(true)
+        // Each planned move is committed as its own undoable step — the reason the
+        // states go in one at a time rather than as one jump. A game the solver played
+        // is as long as it looks, and undo walks back through it rather than
+        // teleporting past the lot.
+        let stepped = Repl.run(["deal freecell", "autoplay", "undo", "undo", "undo"])
+        expect(has(stepped, "Nothing to undo."))->toBe(false)
+      },
+      ~timeout=120_000,
+    )
+
+    test(
+      "says so when there was nothing left to think about",
+      () => {
+        // Already finishable: the solver plans no moves at all, and the sweep this
+        // driver hands over to does the rest. `Played([])` reads as a sentence rather
+        // than as silence, since the board alone doesn't say which of the two happened.
+        let transcript = Repl.run(["deal freecell finish", "autoplay"])
+        expect(has(transcript, "nothing left to think about"))->toBe(true)
+        expect(has(transcript, "You win!"))->toBe(true)
+      },
+    )
+
+    test(
+      "refuses a board it doesn't know how to play",
+      () => {
+        // The card-table demo isn't FreeCell, so there's no position to pack it into.
+        let transcript = Repl.run(["deal stacking", "autoplay"])
+        expect(has(transcript, "only plays FreeCell"))->toBe(true)
+      },
+    )
+
+    test(
+      "guides the user before a game is dealt",
+      () => {
+        expect(has(Repl.run(["autoplay"]), "Deal a game first"))->toBe(true)
+      },
+    )
+  })
+
   // Column reorder (#159): the `movecol` verb reorders two cascades in one undoable
   // step when the house-rule option is on, does nothing when it's off, and rejects a
   // non-cascade or out-of-range target — mirroring the `finish`/`home` verb style.

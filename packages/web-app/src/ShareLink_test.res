@@ -30,7 +30,7 @@ describe("ShareLink", () => {
   // A tally that the history alone couldn't produce (five moves and two undos behind
   // a two-step line), so a link that dropped the counts — or re-derived them from the
   // stack — fails rather than passing by looking close enough.
-  let saved: SaveState.t = {history, stats: {moves: 5, undos: 2}}
+  let saved: SaveState.t = {history, stats: {moves: 5, undos: 2, autoplays: 0}}
 
   testAsync("a link's blob restores the whole game", async () => {
     let url = (await ShareLink.urlFor(saved))->Option.getOrThrow
@@ -45,7 +45,7 @@ describe("ShareLink", () => {
     let url = (await ShareLink.urlFor(saved))->Option.getOrThrow
     let blob = url->String.split("#" ++ ShareLink.fragmentKey ++ "=")->Array.getUnsafe(1)
     switch await ShareLink.savedFrom(blob) {
-    | Some(restored) => expect(restored.stats)->toEqual({Stats.moves: 5, undos: 2})
+    | Some(restored) => expect(restored.stats)->toEqual({Stats.moves: 5, undos: 2, autoplays: 0})
     | None => expect("restored")->toBe("but got None")
     }
   })

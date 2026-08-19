@@ -240,6 +240,15 @@ describe("Command.parse", () => {
     test("undo", () => expect(Command.parse("undo"))->toEqual(Command.Undo))
     test("redo", () => expect(Command.parse("redo"))->toEqual(Command.Redo))
     test("finish", () => expect(Command.parse("finish"))->toEqual(Command.Finish))
+    // No arguments: what autoplay does is decided entirely by the board it's typed at
+    // (#291), so there's nothing about the line left to read.
+    test(
+      "autoplay, down to a bare a",
+      () => {
+        expect(Command.parse("autoplay"))->toEqual(Command.Autoplay)
+        expect(Command.parse("a"))->toEqual(Command.Autoplay)
+      },
+    )
     test("help", () => expect(Command.parse("help"))->toEqual(Command.Help))
     test("clear", () => expect(Command.parse("clear"))->toEqual(Command.Clear))
     // Shared vocabulary even though only the CLI can act on it, exactly as `clear` is
@@ -607,7 +616,7 @@ describe("Command.renderHelp", () => {
 
   test("every shared board verb is listed", () => {
     let listed = Command.boardHelp->Array.map(((verb, _)) => verb)->Array.join(" ")
-    ["move", "moverun", "home", "movecol", "finish", "undo", "redo"]->Array.forEach(
+    ["move", "moverun", "home", "movecol", "finish", "autoplay", "undo", "redo"]->Array.forEach(
       verb => expect(listed->String.includes(verb))->toBe(true),
     )
   })

@@ -32,7 +32,7 @@ describe("SavedGame (#177)", () => {
     ...GameState.initial(game),
     loose: [{suit: Spades, rank: Ace}],
   })
-  let saved: SaveState.t = {history, stats: {moves: 3, undos: 1}}
+  let saved: SaveState.t = {history, stats: {moves: 3, undos: 1, autoplays: 0}}
 
   test("save then load round-trips the whole game, tally included", () => {
     SavedGame.save(game.id, saved)

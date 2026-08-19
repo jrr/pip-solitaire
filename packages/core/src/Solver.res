@@ -256,6 +256,88 @@ let hint = (~game: Game.t, state: GameState.t): option<Reducer.action> =>
   ->Option.flatMap(moves => moves->Array.get(0))
   ->Option.flatMap(move => Position.toAction(~game, state, move))
 
+// --- Autoplay: the plan, played out (#291) ------------------------------------
+// `plan` says which moves win from here and `Position.toAction` says one of them in
+// the reducer's terms. What's left — running them one after another against a real
+// `GameState` and keeping the board in step — is the part *both* front ends would
+// otherwise write for themselves, so it's written here once and they play the same
+// game (the rule the shared `Command` grammar exists for).
+//
+// The settling is core's rather than the caller's, and that's the load-bearing bit:
+// a plan is a plan for a game played with auto-collect **on** (see
+// `Position.applyMove`), so a driver with the flag off would leave the board a card
+// behind the plan and every later move would bounce off a pile the plan thought was
+// empty. Playing the line here keeps it exactly the line the search found, whatever
+// the driver's own house rules say — the flag governs what the *player's* moves
+// trigger, not what the solver's plan means.
+//
+// It stops where the search stops: at the first position `Reducer.canFinish` clears,
+// which is where the app's own Finish button lights up. Sweeping the board home from
+// there is the finish both drivers already have, so autoplay doesn't grow a second
+// copy of it — it thinks, and hands over.
+
+// One planned move, played: the move said in the reducer's own vocabulary, and the
+// settled board it leaves behind. Enough for a driver to record one undoable step per
+// move without re-deriving a position the plan already knows — and the `action` is
+// what lets it *say* what it played, in the same words a typed move is logged in.
+type played = {
+  action: Reducer.action,
+  state: GameState.t,
+}
+
+// What autoplay found. The two refusals are different questions and read as
+// different sentences (`Command.autoplayNotFreeCell` / `autoplayNoLine`): one board
+// the solver doesn't understand, one it understands and can't win. `Played([])` is
+// neither — it's a board already finishable, where there was nothing left to think
+// about.
+type autoplayed =
+  | Played(array<played>)
+  | NotFreeCell // not the four-cell, four-foundation, eight-column board the solver models
+  | NoLine // the ladder ran out (which proves nothing about the deal — see `solve`)
+
+// The post-move settle the plan assumes: safe auto-collect, standing aside once the
+// board is finishable — `Position.applyMove`'s own rule, said against a real state.
+let settle = (~game: Game.t, state: GameState.t): GameState.t =>
+  if Reducer.canFinish(~game, state) {
+    state
+  } else {
+    let (collected, _moved) = Reducer.autoCollect(~game, state)
+    collected
+  }
+
+let autoplay = (~game: Game.t, state: GameState.t): autoplayed =>
+  switch Position.ofGameState(~game, state) {
+  | None => NotFreeCell
+  | Some(position) =>
+    switch solve(position) {
+    | None => NoLine
+    | Some(moves) =>
+      let steps = []
+      let current = ref(state)
+      // A plan generated from these very rules shouldn't come unstuck against them,
+      // but a driver handed half a plan and told it was whole would play a board
+      // nobody can explain. So a move that won't convert or won't reduce ends the
+      // line *here*, and what comes back is the prefix that really was played.
+      let stopped = ref(false)
+      let i = ref(0)
+      while !stopped.contents && i.contents < Array.length(moves) {
+        switch Position.toAction(~game, current.contents, moves->Array.getUnsafe(i.contents)) {
+        | None => stopped := true
+        | Some(action) =>
+          switch Reducer.reduce(~game, current.contents, action) {
+          | Error(_) => stopped := true
+          | Ok(next) =>
+            let settled = settle(~game, next)
+            steps->Array.push({action, state: settled})
+            current := settled
+          }
+        }
+        i := i.contents + 1
+      }
+      Played(steps)
+    }
+  }
+
 // --- The plan, in the terms a driver outside ReScript plays it in ------------
 // The browser autoplay harness (`web-app/scripts/autoplay/`) is JavaScript: it
 // reads the board off a rendered page and plays each move as a pointer drag. It

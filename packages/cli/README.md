@@ -109,6 +109,7 @@ moverun <what> <where>   supermove an ordered run: its cards bottom-first, or
 home <card>              send a card to its foundation, if one will take it
 movecol <from> <to>      reorder cascade columns: pull <from>, drop it at <to>
 finish                   sweep every card home to win, when the board is drainable
+autoplay                 let the solver play the rest of the game (and finish it)
 undo / redo              step back and forth over the accepted moves
 set                      show the driver settings
 set <setting> on|off     change one (autocollect, reorder)
@@ -175,6 +176,13 @@ quit / exit              end an interactive session (Ctrl-D does it too)
   rather than played.
 - **The board says its own slot names**: each column is drawn under its label, so
   the move you can see is the move you can type.
+- **`autoplay` hands the game to the solver** (`core`'s `Solver`, #291): it thinks
+  the deal through, plays its line here a move at a time, and then runs `finish`, so
+  a solvable board ends on the win line. Every move it plays is an ordinary undoable
+  step, so you can undo back into the game and take it over. A board the solver
+  doesn't model (anything that isn't FreeCell) and a deal it can't find a line for
+  are told apart, and each says so. In the web app the same verb also *counts* — a
+  game the solver had a hand in doesn't get a Share button on its victory screen.
 - **Comments**: a line whose first non-space character is `#` is skipped
   entirely (not echoed, not run), so a piped script can document itself. Blank
   lines are skipped too. Both hold at a live prompt as well, which is why a whole

@@ -257,10 +257,12 @@ describe("TableScene win share (#264)", () => {
   // A won board resumed with a tally already on it — three moves and one undo — so a
   // share that reported a hardcoded zero, or re-derived the count from the one-step
   // history, would fail rather than pass by looking plausible.
-  let wonHistory = game => {
+  // `~autoplays` is the #291 half: a game the solver had a hand in is a game whose
+  // victory isn't the player's to pass on, and the tally is where that fact lives.
+  let wonHistory = (~autoplays=0, game) => {
     let (won, _moved) = Reducer.finishSequence(~game, Scenario.freecellAlmostWon(game))
     let history = History.record(History.make(GameState.initial(game)), won)
-    {SaveState.history, stats: {moves: 3, undos: 1}}
+    {SaveState.history, stats: {moves: 3, undos: 1, autoplays}}
   }
 
   test("offers the button when the driver has a deal to share", () => {
@@ -288,6 +290,24 @@ describe("TableScene win share (#264)", () => {
     )
     let _teardown = scene.mount(container)
     expect(shareButton(container)->Option.isSome)->toBe(false)
+  })
+
+  test("withholds it from a game the solver played (#291)", () => {
+    // The driver has a deal and would happily share it; the *game* is the problem. A
+    // win reached by typing `autoplay` isn't a claim about how you played, so the
+    // button is never built — and the fact that it was autoplayed rides in on the
+    // saved tally, which is exactly how it survives a reload and every undo.
+    let game = Game.freecell
+    let container = createElement("div")
+    let scene = TableScene.make(
+      ~loadHistory=() => Some(wonHistory(~autoplays=1, game)),
+      ~winShare={available: () => true, share: (~moves as _, ~undos as _) => Promise.resolve("")},
+      game,
+    )
+    let _teardown = scene.mount(container)
+    expect(shareButton(container)->Option.isSome)->toBe(false)
+    // …and the overlay is otherwise the ordinary one: the game was still won.
+    expect(container->querySelector(".win-overlay")->Nullable.toOption->Option.isSome)->toBe(true)
   })
 
   test("a driver that offers no share at all still wins normally", () => {
@@ -395,7 +415,7 @@ describe("TableScene move/undo counts (#289)", () => {
     let saved = ref(
       Some({
         SaveState.history: History.make(GameState.initial(game)),
-        stats: {moves: 12, undos: 4},
+        stats: {moves: 12, undos: 4, autoplays: 0},
       }),
     )
     let container = createElement("div")
@@ -415,7 +435,7 @@ describe("TableScene move/undo counts (#289)", () => {
     let saved = ref(
       Some({
         SaveState.history: History.make(GameState.initial(game)),
-        stats: {moves: 12, undos: 4},
+        stats: {moves: 12, undos: 4, autoplays: 0},
       }),
     )
     let newGame = ref(None)
@@ -439,7 +459,10 @@ describe("TableScene move/undo counts (#289)", () => {
     let (won, _moved) = Reducer.finishSequence(~game, Scenario.freecellAlmostWon(game))
     let container = createElement("div")
     let scene = TableScene.make(
-      ~loadHistory=() => Some({SaveState.history: History.make(won), stats: {moves: 61, undos: 2}}),
+      ~loadHistory=() => Some({
+        SaveState.history: History.make(won),
+        stats: {moves: 61, undos: 2, autoplays: 0},
+      }),
       game,
     )
     let _teardown = scene.mount(container)
@@ -450,5 +473,78 @@ describe("TableScene move/undo counts (#289)", () => {
       ->Option.getOrThrow
       ->textContent
     expect(line)->toBe("61 moves · 2 undos")
+  })
+})
+
+// Autoplay, wired to the board (#291). The thinking is `core`'s and is tested there
+// (`Solver_test`); what's at stake here is the board's half — that the reach is
+// counted, that the moves it plays are recorded like any other, and that the counter
+// is the undo-proof thing the victory screen reads. The scenario is deliberately one
+// the solver has nothing left to think about (`freecellFinish` is already finishable),
+// so these run in milliseconds and still go through the whole path.
+describe("TableScene autoplay (#291)", () => {
+  let statsOf = (saved: ref<option<SaveState.t>>) => saved.contents->Option.map(s => s.stats)
+  let hasWinOverlay = (container): bool =>
+    container->querySelector(".win-overlay")->Nullable.toOption->Option.isSome
+
+  test("counts the reach for the solver, and finishes the game", () => {
+    let game = Game.freecell
+    let saved = ref(None)
+    let console = ref(_ => [])
+    let container = createElement("div")
+    let scene = TableScene.make(
+      ~initial=Scenario.freecellFinish(game),
+      ~persist=s => saved := Some(s),
+      ~publishConsole=run => console := run,
+      game,
+    )
+    let _teardown = scene.mount(container)
+    console.contents(Command.Autoplay)->ignore
+    switch statsOf(saved) {
+    | Some(stats) =>
+      expect(stats.autoplays)->toBe(1)
+      // The board was already finishable, so the solver played nothing and the sweep
+      // it handed over to is the one recorded move.
+      expect(stats.moves)->toBe(1)
+    | None => expect("persisted")->toBe("but nothing was saved")
+    }
+  })
+
+  test("an autoplayed win keeps its Share button to itself, undo or no undo", () => {
+    // The requirement, end to end: autoplay, undo back out of everything it did, win
+    // the game by hand from there — the victory is still not shareable, because the
+    // tally remembers.
+    let game = Game.freecell
+    let undo = ref(() => ())
+    let console = ref(_ => [])
+    let container = createElement("div")
+    let scene = TableScene.make(
+      ~initial=Scenario.freecellFinish(game),
+      ~publishUndo=u => undo := u,
+      ~publishConsole=run => console := run,
+      ~winShare={available: () => true, share: (~moves as _, ~undos as _) => Promise.resolve("")},
+      game,
+    )
+    let _teardown = scene.mount(container)
+    console.contents(Command.Autoplay)->ignore
+    undo.contents()
+    expect(hasWinOverlay(container))->toBe(false) // stepped back out of the victory
+    console.contents(Command.Redo)->ignore // …and won it again, by hand this time
+    expect(hasWinOverlay(container))->toBe(true)
+    expect(
+      container->querySelector(".win-panel__button--share")->Nullable.toOption->Option.isSome,
+    )->toBe(false)
+  })
+
+  test("a board the solver doesn't understand is told so", () => {
+    // The card-table demo isn't four cells, four foundations and eight columns, so
+    // there's no position to pack it into — an honest refusal rather than a wrong
+    // answer, in the words both front ends use.
+    let game = Game.stacking
+    let console = ref(_ => [])
+    let container = createElement("div")
+    let scene = TableScene.make(~publishConsole=run => console := run, game)
+    let _teardown = scene.mount(container)
+    expect(Render.toPlain(console.contents(Command.Autoplay)))->toBe(Command.autoplayNotFreeCell)
   })
 })
