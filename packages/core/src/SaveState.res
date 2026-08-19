@@ -1,8 +1,9 @@
 // Serialize a game's *progress* to a string and back (#177), so the web app can
 // persist an in-progress game to `localStorage` and resume it after a reload, a
-// closed tab, or a crash. The thing being saved is exactly the board's undo/redo
-// history — a `History.t<GameState.t>` — so restoring lands on the same board,
-// the same card positions, *and* the same Undo stack the player left.
+// closed tab, or a crash. The thing being saved is the board's undo/redo history —
+// a `History.t<GameState.t>` — plus the play tally beside it (`Stats.t`, #289), so
+// restoring lands on the same board, the same card positions, the same Undo stack
+// the player left, *and* the same move/undo counts.
 //
 // It lives in `core`, beside the state it serializes, for two reasons: the
 // encoding is pure (no `localStorage`, no `Math.random`) and so is unit-testable
@@ -14,13 +15,22 @@
 //
 // The format is deliberately small and self-describing:
 //
-//   {"v":1,"past":[S,…],"present":S,"future":[S,…]}
+//   {"v":1,"past":[S,…],"present":S,"future":[S,…],"stats":{"moves":n,"undos":n}}
 //
 // where a state S is `{"piles":[[C,…],…],"loose":[C,…]}` and a card C is a
 // two-character code — rank char then suit char, e.g. "TS" (Ten of Spades),
 // "AH" (Ace of Hearts). The `v` is a format version: a saved game from an older,
 // incompatible layout (or any corrupt/foreign string) fails to `decode` and is
 // ignored rather than crashing the board — the "never a broken board" guarantee.
+//
+// `"stats"` (#289) is **optional, and the version deliberately stays at 1.** It's
+// an additive field in both directions: a blob written before it existed decodes
+// here with the tally filled in by `ofHistory` below, and a blob written *with* it
+// still decodes in a build that predates it, which reads the fields it knows and
+// ignores the rest. Bumping `v` would have bought nothing and cost everything the
+// version is for — every saved game on every device dropped, and every share link
+// already in a chat turned into "couldn't read that". Reserve the bump for a change
+// that genuinely can't be read both ways.
 
 open Card
 
@@ -28,6 +38,28 @@ open Card
 // incompatibly; `decode` rejects any other version, so an old save is dropped and
 // the player gets a fresh deal instead of a misread board.
 let version = 1
+
+// What a save *is*: the line of play, and the tally of how much play it took. Two
+// fields rather than one because they answer to different rules — the history is
+// stepped by undo/redo, the tally only ever counts up (see `Stats`) — and keeping
+// them apart is what lets `undo` stay the plain pop it has always been.
+type t = {
+  history: History.t<GameState.t>,
+  stats: Stats.t,
+}
+
+// A save for a history with no tally recorded beside it: what a blob written before
+// #289 decodes to, and what any caller holding only a history starts from.
+//
+// `moves` falls back to `History.steps` — the length of the line behind the present,
+// which is the one thing such a save can still say about how it got there, and the
+// number the victory share reported before this existed. `undos` falls back to none:
+// an undo leaves no trace in a history, so a save that didn't count them has no way
+// to remember, and guessing high would be a worse lie than guessing zero.
+let ofHistory = (history: History.t<GameState.t>): t => {
+  history,
+  stats: {moves: History.steps(history), undos: 0},
+}
 
 // --- Card codes --------------------------------------------------------------
 // A card is two characters: its rank then its suit. Compact, human-legible in a
@@ -122,6 +154,13 @@ let encodeState = (s: GameState.t): JSON.t => JSON.Object(
   ]),
 )
 
+let encodeStats = (s: Stats.t): JSON.t => JSON.Object(
+  Dict.fromArray([
+    ("moves", JSON.Number(Int.toFloat(s.moves))),
+    ("undos", JSON.Number(Int.toFloat(s.undos))),
+  ]),
+)
+
 // --- Decoding from JSON ------------------------------------------------------
 
 let decodeCards = (json: JSON.t): option<array<card>> =>
@@ -163,27 +202,58 @@ let decodeStates = (json: JSON.t): option<array<GameState.t>> =>
   | _ => None
   }
 
+// A counter is a whole number and nothing else — a JSON string, a float, a missing
+// field all read as `None`, which fails the `stats` object and so the whole save.
+// That's the same all-or-nothing stance the card and pile decoders take: `stats`
+// being *absent* is a supported shape (an older blob — see `decode`), but `stats`
+// being *present and malformed* means this isn't a blob we wrote, and half-reading
+// a stranger's JSON is how a broken board gets built.
+let decodeCount = (json: JSON.t): option<int> =>
+  switch json {
+  | JSON.Number(n) if n >= 0.0 && n == Math.trunc(n) => Some(Int.fromFloat(n))
+  | _ => None
+  }
+
+let decodeStats = (json: JSON.t): option<Stats.t> =>
+  switch json {
+  | JSON.Object(dict) =>
+    switch (
+      dict->Dict.get("moves")->Option.flatMap(decodeCount),
+      dict->Dict.get("undos")->Option.flatMap(decodeCount),
+    ) {
+    | (Some(moves), Some(undos)) => Some({Stats.moves, undos})
+    | _ => None
+    }
+  | _ => None
+  }
+
 // --- The public seam ---------------------------------------------------------
 
-// Serialize a board's whole undo/redo history to a storable string.
-let encode = (h: History.t<GameState.t>): string =>
+// Serialize a saved game — the whole undo/redo history, and the tally beside it —
+// to a storable string.
+let encode = (s: t): string =>
   JSON.stringify(
     JSON.Object(
       Dict.fromArray([
         ("v", JSON.Number(Int.toFloat(version))),
-        ("past", JSON.Array(h.past->Array.map(encodeState))),
-        ("present", encodeState(h.present)),
-        ("future", JSON.Array(h.future->Array.map(encodeState))),
+        ("past", JSON.Array(s.history.past->Array.map(encodeState))),
+        ("present", encodeState(s.history.present)),
+        ("future", JSON.Array(s.history.future->Array.map(encodeState))),
+        ("stats", encodeStats(s.stats)),
       ]),
     ),
   )
 
-// Parse a stored string back into a history, or `None` when it can't be trusted:
+// Parse a stored string back into a saved game, or `None` when it can't be trusted:
 // not valid JSON, the wrong (or missing) format version, or any structural
 // mismatch — a card that isn't a real card, a field of the wrong JSON shape. The
 // caller treats `None` as "no saved game" and deals fresh, so a corrupt or
 // outdated blob degrades to a new board instead of an error (#177).
-let decode = (raw: string): option<History.t<GameState.t>> => {
+//
+// A blob with no `"stats"` at all is *not* one of those failures: it's a save
+// written before #289, and it decodes to a real game whose tally is inferred by
+// `ofHistory`. That's the whole reason the version didn't move.
+let decode = (raw: string): option<t> => {
   let parsed = try Some(JSON.parseOrThrow(raw)) catch {
   | _ => None
   }
@@ -196,7 +266,12 @@ let decode = (raw: string): option<History.t<GameState.t>> => {
         dict->Dict.get("present")->Option.flatMap(decodeState),
         dict->Dict.get("future")->Option.flatMap(decodeStates),
       ) {
-      | (Some(past), Some(present), Some(future)) => Some({History.past, present, future})
+      | (Some(past), Some(present), Some(future)) =>
+        let history = {History.past, present, future}
+        switch dict->Dict.get("stats") {
+        | None => Some(ofHistory(history))
+        | Some(json) => decodeStats(json)->Option.map((stats): t => {history, stats})
+        }
       | _ => None
       }
     | _ => None

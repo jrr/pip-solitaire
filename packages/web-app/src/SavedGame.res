@@ -1,6 +1,7 @@
 // Persist an in-progress game across sessions (#177): the browser-storage half of
 // save-and-resume, sibling to `Preferences`. The pure wire format — encoding a
-// board's undo/redo history to a string and back — lives in `core`'s `SaveState`;
+// board's undo/redo history, and the play tally beside it, to a string and back —
+// lives in `core`'s `SaveState`;
 // this module only owns the impure edges: which `localStorage` key holds a game,
 // and reading/writing it safely.
 //
@@ -23,21 +24,22 @@
 // `Preferences` keys so it won't collide with anything else the app persists.
 let key = (gameId: string): string => "pip.savedGame." ++ gameId
 
-// The saved history for `gameId`, or `None` when there's nothing saved, storage
-// is unreadable, or the stored blob can't be trusted (corrupt or an older format —
-// `SaveState.decode` rejects it). Any of these means "deal fresh" to the caller.
-let load = (gameId: string): option<History.t<GameState.t>> => {
+// The saved game for `gameId` — its history and its play tally (#289) — or `None`
+// when there's nothing saved, storage is unreadable, or the stored blob can't be
+// trusted (corrupt or an older format — `SaveState.decode` rejects it). Any of
+// these means "deal fresh" to the caller.
+let load = (gameId: string): option<SaveState.t> => {
   let stored = try getItem(key(gameId))->Nullable.toOption catch {
   | _ => None
   }
   stored->Option.flatMap(SaveState.decode)
 }
 
-// Persist `history` as `gameId`'s saved game, replacing any previous one. A write
+// Persist `saved` as `gameId`'s saved game, replacing any previous one. A write
 // failure (storage disabled or full) is swallowed — the game just won't survive
 // the session, no worse than before.
-let save = (gameId: string, history: History.t<GameState.t>): unit =>
-  try setItem(key(gameId), SaveState.encode(history)) catch {
+let save = (gameId: string, saved: SaveState.t): unit =>
+  try setItem(key(gameId), SaveState.encode(saved)) catch {
   | _ => ()
   }
 

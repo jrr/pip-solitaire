@@ -61,10 +61,11 @@ describe("History", () => {
   })
 })
 
-// `steps` counts the line of play behind the present — what the web app's victory
-// share reports as the number of moves it took (`ShareLink.victoryMessage`). The
-// interesting cases are the ones where undo has been at it, since undo pops `past`
-// and so *shortens* the count.
+// `steps` counts the line of play behind the present — deliberately *not* the count
+// of moves the player made, which only ever goes up and so lives outside the zipper
+// (`Stats`, #289). It's what a save written before that counter existed falls back
+// to (`SaveState.ofHistory`). The interesting cases are the ones where undo has been
+// at it, since undo pops `past` and so *shortens* the count.
 describe("History.steps", () => {
   test("a fresh history has no steps behind it", () => {
     expect(History.steps(History.make(1)))->toBe(0)

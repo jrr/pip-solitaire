@@ -1,11 +1,14 @@
-// "Share game state": turn the board's live undo/redo history into a link, and
-// turn that link back into a board.
+// "Share game state": turn the board's live saved game — its undo/redo history and
+// the play tally beside it — into a link, and turn that link back into a board.
 //
 // The payload is exactly what `SavedGame` writes to `localStorage` — `core`'s
 // `SaveState` JSON — run through `Compression` and hung off the URL. Reusing the
 // save format rather than inventing a share format means one versioned encoding to
 // keep honest, and `SaveState.decode`'s existing "reject anything I don't
-// recognise" guarantee covers a stale or corrupt link for free.
+// recognise" guarantee covers a stale or corrupt link for free. It's also why the
+// move/undo counts (#289) needed nothing of their own here: they went into the save
+// envelope, so they ride every link that envelope rides, and a link written before
+// they existed still opens (the version didn't move — see `SaveState`).
 //
 // **The blob rides in the fragment (`#g=…`), not the query string.** Two reasons,
 // both decisive:
@@ -58,16 +61,16 @@ let dealKey = "seed"
 
 // --- Building a link ---------------------------------------------------------
 
-// A shareable URL for `history`, or `None` if the platform can't compress (see
-// `Compression.supported`).
+// A shareable URL for `saved` — the board's history and its tally — or `None` if
+// the platform can't compress (see `Compression.supported`).
 //
 // The current page's *query* is deliberately dropped: whatever `?scene=`/`?seed=`
 // /`?state=` got this board onto the screen, the blob already carries the resulting
 // position in full, so a share link is the bare page plus the state. Keeping
 // `pathname` preserves the GitHub Pages subpath (and a PR preview's deeper one), so
 // a link shared from a preview build opens that preview.
-let urlFor = async (history: History.t<GameState.t>): option<string> =>
-  (await Compression.compress(SaveState.encode(history)))->Option.map(blob =>
+let urlFor = async (saved: SaveState.t): option<string> =>
+  (await Compression.compress(SaveState.encode(saved)))->Option.map(blob =>
     origin ++ pathname ++ "#" ++ fragmentKey ++ "=" ++ blob
   )
 
@@ -110,23 +113,31 @@ let urlForDeal = (seed: int): string =>
 // compress, so the share can be attempted straight out of the click handler with
 // the gesture's transient activation intact (see `deliver`).
 //
-// `moves` is the length of the winning line of play (`History.steps`), so an undone
-// move doesn't pad the number.
+// `moves` and `undos` are the game's tally (`Stats`, #289): every move the player
+// made, and every time they stepped one back. An undo doesn't pad the move count —
+// it shows up as an undo instead — and a redo counts as the move it replays.
+//
+// The undo count is named only when there *were* undos. Zero is the ordinary case
+// and the good one, so spelling out "(0 undos)" would spend a whole clause on
+// nothing having happened; leaving it out makes the clause's presence itself part
+// of what the message says. (The victory panel shows both numbers unconditionally —
+// it's a scoreboard, not a boast, and there the absence of a number would read as a
+// missing feature rather than a clean run.)
 //
 // The URL is deliberately *not* in this string: `deliver` adds it, once, on whichever
 // route it takes — as the share sheet's own `url` field, or appended for the
 // clipboard. Composing it here as well is how a link ends up in the message twice.
-let victoryMessage = (~seed: int, ~moves: int): string =>
+let victoryMessage = (~seed: int, ~moves: int, ~undos: int): string =>
   "♣️♥️♠️♦️ Pip FreeCell #" ++
   Int.toString(seed) ++
   "\nSolved in " ++
-  Int.toString(moves) ++ (moves == 1 ? " move" : " moves")
+  Stats.moveLabel(moves) ++ (undos > 0 ? " (" ++ Stats.undoLabel(undos) ++ ")" : "")
 
-// The history a shared blob carries, or `None` for anything that isn't one: a
+// The saved game a shared blob carries, or `None` for anything that isn't one: a
 // truncated paste, a link from an incompatible `SaveState` version, or a browser
 // that can't decompress. Every one of those means "ignore the link and deal
 // normally" to the caller — a bad link never takes the board down with it.
-let historyFrom = async (blob: string): option<History.t<GameState.t>> =>
+let savedFrom = async (blob: string): option<SaveState.t> =>
   (await Compression.decompress(blob))->Option.flatMap(SaveState.decode)
 
 // --- Handing the link to the player ------------------------------------------

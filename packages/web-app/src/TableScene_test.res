@@ -34,6 +34,7 @@ open Vitest
 external querySelector: (WebDom.element, string) => Nullable.t<WebDom.element> = "querySelector"
 @send external querySelectorAll: (WebDom.element, string) => {"length": int} = "querySelectorAll"
 @send external click: WebDom.element => unit = "click"
+@get external textContent: WebDom.element => string = "textContent"
 
 // How many nodes in the mounted board match a selector.
 let countOf = (container, selector) => (container->querySelectorAll(selector))["length"]
@@ -91,7 +92,10 @@ describe("TableScene squared-pile occlusion (#267)", () => {
     let game = Game.freecell
     let (won, _moved) = Reducer.finishSequence(~game, Scenario.freecellAlmostWon(game))
     let container = createElement("div")
-    let scene = TableScene.make(~loadHistory=() => Some(History.make(won)), game)
+    let scene = TableScene.make(
+      ~loadHistory=() => Some(SaveState.ofHistory(History.make(won))),
+      game,
+    )
     let _teardown = scene.mount(container)
     flushFrames()
     expect(cards(container))->toBe(52)
@@ -155,7 +159,10 @@ describe("TableScene save/resume (#177)", () => {
     let (won, _moved) = Reducer.finishSequence(~game, Scenario.freecellAlmostWon(game))
     expect(GameState.hasWon(game, won))->toBe(true) // the setup really is a win
     let container = createElement("div")
-    let scene = TableScene.make(~loadHistory=() => Some(History.make(won)), game)
+    let scene = TableScene.make(
+      ~loadHistory=() => Some(SaveState.ofHistory(History.make(won))),
+      game,
+    )
     let _teardown = scene.mount(container)
     expect(hasWinOverlay(container))->toBe(true)
   })
@@ -165,7 +172,7 @@ describe("TableScene save/resume (#177)", () => {
     let game = Game.freecell
     let container = createElement("div")
     let scene = TableScene.make(
-      ~loadHistory=() => Some(History.make(GameState.initial(game))),
+      ~loadHistory=() => Some(SaveState.ofHistory(History.make(GameState.initial(game)))),
       game,
     )
     let _teardown = scene.mount(container)
@@ -181,7 +188,7 @@ describe("TableScene save/resume (#177)", () => {
     let game = Game.freecell
     let initial = GameState.initial(game)
     // A two-state history: present reached from a prior state, so `canUndo` is true.
-    let resumed = History.record(History.make(initial), initial)
+    let resumed = SaveState.ofHistory(History.record(History.make(initial), initial))
     let lastCanUndo = ref(None)
     let container = createElement("div")
     let scene = TableScene.make(
@@ -210,7 +217,7 @@ describe("TableScene re-mount", () => {
   test("a second mount opens the live board, not the one saved at build time", () => {
     let game = Game.freecell
     let (won, _moved) = Reducer.finishSequence(~game, Scenario.freecellAlmostWon(game))
-    let saved = ref(Some(History.make(won)))
+    let saved = ref(Some(SaveState.ofHistory(History.make(won))))
     let container = createElement("div")
     let newGame = ref(None)
     let scene = TableScene.make(
@@ -247,12 +254,13 @@ describe("TableScene win share (#264)", () => {
   let shareButton = (container): option<WebDom.element> =>
     container->querySelector(".win-panel__button--share")->Nullable.toOption
 
-  // A won board reached by one recorded step, so the line of play behind the victory
-  // has a length worth reporting (and a bare `History.make(won)` — which has none —
-  // couldn't tell a working move count from a hardcoded zero).
+  // A won board resumed with a tally already on it — three moves and one undo — so a
+  // share that reported a hardcoded zero, or re-derived the count from the one-step
+  // history, would fail rather than pass by looking plausible.
   let wonHistory = game => {
     let (won, _moved) = Reducer.finishSequence(~game, Scenario.freecellAlmostWon(game))
-    History.record(History.make(GameState.initial(game)), won)
+    let history = History.record(History.make(GameState.initial(game)), won)
+    {SaveState.history, stats: {moves: 3, undos: 1}}
   }
 
   test("offers the button when the driver has a deal to share", () => {
@@ -260,7 +268,7 @@ describe("TableScene win share (#264)", () => {
     let container = createElement("div")
     let scene = TableScene.make(
       ~loadHistory=() => Some(wonHistory(game)),
-      ~winShare={available: () => true, share: (~moves as _) => Promise.resolve("")},
+      ~winShare={available: () => true, share: (~moves as _, ~undos as _) => Promise.resolve("")},
       game,
     )
     let _teardown = scene.mount(container)
@@ -275,7 +283,7 @@ describe("TableScene win share (#264)", () => {
     let container = createElement("div")
     let scene = TableScene.make(
       ~loadHistory=() => Some(wonHistory(game)),
-      ~winShare={available: () => false, share: (~moves as _) => Promise.resolve("")},
+      ~winShare={available: () => false, share: (~moves as _, ~undos as _) => Promise.resolve("")},
       game,
     )
     let _teardown = scene.mount(container)
@@ -293,9 +301,10 @@ describe("TableScene win share (#264)", () => {
     expect(shareButton(container)->Option.isSome)->toBe(false)
   })
 
-  test("shares the length of the line that reached the win", () => {
-    // The move count comes off the live history (`History.steps`), not the board's
-    // opening state — so a win resumed with a move behind it reports that move.
+  test("shares the tally the won game carried (#289)", () => {
+    // The counts come off the live game's `Stats`, not the board's opening state and
+    // not the shape of its history — so a win resumed mid-tally reports the numbers
+    // the player actually earned, undos included.
     let game = Game.freecell
     let shared = ref(None)
     let container = createElement("div")
@@ -303,8 +312,8 @@ describe("TableScene win share (#264)", () => {
       ~loadHistory=() => Some(wonHistory(game)),
       ~winShare={
         available: () => true,
-        share: (~moves) => {
-          shared := Some(moves)
+        share: (~moves, ~undos) => {
+          shared := Some((moves, undos))
           Promise.resolve("Link copied to clipboard.")
         },
       },
@@ -312,6 +321,134 @@ describe("TableScene win share (#264)", () => {
     )
     let _teardown = scene.mount(container)
     shareButton(container)->Option.getOrThrow->click
-    expect(shared.contents)->toEqual(Some(1))
+    expect(shared.contents)->toEqual(Some((3, 1)))
+  })
+})
+
+// Counting moves and undos (#289). The tally is the board's to keep — moves and
+// undos are things that happen *to* a board — so these drive the real scene and read
+// what it saved, rather than testing `Stats` again (that's `Stats_test`). What's at
+// stake is the wiring: that every countable thing is counted once, that the count
+// survives a resume, and that a fresh deal starts it over.
+describe("TableScene move/undo counts (#289)", () => {
+  // The tally as the board last persisted it — the same channel `Main` saves through.
+  let tallyOf = (saved: ref<option<SaveState.t>>) =>
+    saved.contents->Option.map(s => (s.stats.moves, s.stats.undos))
+
+  test("an opening deal starts at nothing played", () => {
+    let saved = ref(None)
+    let container = createElement("div")
+    let scene = TableScene.make(~persist=s => saved := Some(s), Game.freecell)
+    let _teardown = scene.mount(container)
+    expect(tallyOf(saved))->toEqual(Some((0, 0)))
+  })
+
+  test("a move counts, an undo doesn't take it back, and a redo counts again", () => {
+    // The Finish sweep is one recorded step, so it's one move — the same unit undo
+    // steps back over. Driving it (rather than a drag) keeps this jsdom-friendly while
+    // still going through `recordHistory`, which is where the counting happens.
+    let game = Game.freecell
+    let saved = ref(None)
+    let undo = ref(() => ())
+    let console = ref(_ => [])
+    let container = createElement("div")
+    let scene = TableScene.make(
+      ~initial=Scenario.freecellFinish(game),
+      ~persist=s => saved := Some(s),
+      ~publishUndo=u => undo := u,
+      ~publishConsole=run => console := run,
+      game,
+    )
+    let _teardown = scene.mount(container)
+    expect(tallyOf(saved))->toEqual(Some((0, 0)))
+
+    container->querySelector(".finish-button")->Nullable.toOption->Option.getOrThrow->click
+    expect(tallyOf(saved))->toEqual(Some((1, 0)))
+
+    undo.contents()
+    expect(tallyOf(saved))->toEqual(Some((1, 1))) // the move was still made
+
+    console.contents(Command.Redo)->ignore
+    expect(tallyOf(saved))->toEqual(Some((2, 1))) // …and making it again counts again
+  })
+
+  test("an undo with nothing behind it isn't counted", () => {
+    // The top bar's button can be pressed on a board with an empty past (it's the
+    // chrome's job to disable it, not a guarantee the board can rely on).
+    let saved = ref(None)
+    let undo = ref(() => ())
+    let container = createElement("div")
+    let scene = TableScene.make(
+      ~persist=s => saved := Some(s),
+      ~publishUndo=u => undo := u,
+      Game.freecell,
+    )
+    let _teardown = scene.mount(container)
+    undo.contents()
+    expect(tallyOf(saved))->toEqual(Some((0, 0)))
+  })
+
+  test("a resumed game picks the tally up where it left off", () => {
+    // The counts live outside the game state and outside the history, so the only way
+    // they survive a reload is by riding in the save — which is what this reads back.
+    let game = Game.freecell
+    let saved = ref(
+      Some({
+        SaveState.history: History.make(GameState.initial(game)),
+        stats: {moves: 12, undos: 4},
+      }),
+    )
+    let container = createElement("div")
+    let scene = TableScene.make(
+      ~loadHistory=() => saved.contents,
+      ~persist=s => saved := Some(s),
+      game,
+    )
+    let _teardown = scene.mount(container)
+    expect(tallyOf(saved))->toEqual(Some((12, 4)))
+  })
+
+  test("a new game starts a fresh tally", () => {
+    // A resumed game's counts belong to that game. Dealing another one is a new game
+    // in every sense, so the numbers start over rather than accumulating for life.
+    let game = Game.freecell
+    let saved = ref(
+      Some({
+        SaveState.history: History.make(GameState.initial(game)),
+        stats: {moves: 12, undos: 4},
+      }),
+    )
+    let newGame = ref(None)
+    let container = createElement("div")
+    let scene = TableScene.make(
+      ~loadHistory=() => saved.contents,
+      ~persist=s => saved := Some(s),
+      ~newDeal=() => Game.freecellDeal(~seed=7),
+      ~publishNewGame=hook => newGame := Some(hook),
+      game,
+    )
+    let _teardown = scene.mount(container)
+    (newGame.contents->Option.getOrThrow)()
+    expect(tallyOf(saved))->toEqual(Some((0, 0)))
+  })
+
+  test("the win overlay presents both numbers", () => {
+    // What the issue asked for, where the player sees it: the panel says how many
+    // moves the game took and how many undos it cost, on the board that was won.
+    let game = Game.freecell
+    let (won, _moved) = Reducer.finishSequence(~game, Scenario.freecellAlmostWon(game))
+    let container = createElement("div")
+    let scene = TableScene.make(
+      ~loadHistory=() => Some({SaveState.history: History.make(won), stats: {moves: 61, undos: 2}}),
+      game,
+    )
+    let _teardown = scene.mount(container)
+    let line =
+      container
+      ->querySelector(".win-panel__stats")
+      ->Nullable.toOption
+      ->Option.getOrThrow
+      ->textContent
+    expect(line)->toBe("61 moves · 2 undos")
   })
 })

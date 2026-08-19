@@ -2,9 +2,9 @@ open Vitest
 open Card
 
 // Serializing a game's progress (#177): the round-trip must be lossless — a saved
-// history decodes back to the *exact* board, positions and undo/redo stack — and
-// anything untrustworthy (corrupt, foreign, or an older format) must decode to
-// `None` so the app deals fresh rather than showing a misread board.
+// game decodes back to the *exact* board, positions, undo/redo stack and play tally
+// (#289) — and anything untrustworthy (corrupt, foreign, or an older format) must
+// decode to `None` so the app deals fresh rather than showing a misread board.
 describe("SaveState", () => {
   // A small, hand-built history over FreeCell states: an opening deal, a move to a
   // free cell, and one step undone away — so `past`, `present` and `future` are all
@@ -13,6 +13,10 @@ describe("SaveState", () => {
   let moved = {...opening, loose: [{suit: Spades, rank: Ace}]}
   let latest = {...opening, loose: [{suit: Spades, rank: Ace}, {suit: Hearts, rank: King}]}
   let history = History.make(opening)->History.record(moved)->History.record(latest)->History.undo
+  // …and the game around it: two moves played and one undone, which is a tally no
+  // fallback could invent (`History.steps` of this history is 1, not 2) — so a save
+  // that dropped the counts would fail here rather than pass by looking plausible.
+  let saved: SaveState.t = {history, stats: {moves: 2, undos: 1}}
 
   test("a card round-trips through its two-character code", () => {
     Cards.all->Array.forEach(
@@ -20,29 +24,36 @@ describe("SaveState", () => {
     )
   })
 
-  test("encode then decode restores the whole history exactly", () => {
-    switch SaveState.decode(SaveState.encode(history)) {
-    | Some(restored) => expect(restored)->toEqual(history)
+  test("encode then decode restores the whole saved game exactly", () => {
+    switch SaveState.decode(SaveState.encode(saved)) {
+    | Some(restored) => expect(restored)->toEqual(saved)
     | None => expect("decoded")->toBe("but got None")
     }
   })
 
   test("the present, past and future all survive the round-trip", () => {
-    switch SaveState.decode(SaveState.encode(history)) {
+    switch SaveState.decode(SaveState.encode(saved)) {
     | Some(restored) =>
-      expect(History.present(restored))->toEqual(moved) // undone from `latest` back to `moved`
-      expect(History.canUndo(restored))->toBe(true) // `opening` is still behind us
-      expect(History.canRedo(restored))->toBe(true) // `latest` is redoable
+      expect(History.present(restored.history))->toEqual(moved) // undone from `latest` back to `moved`
+      expect(History.canUndo(restored.history))->toBe(true) // `opening` is still behind us
+      expect(History.canRedo(restored.history))->toBe(true) // `latest` is redoable
     | None => expect("decoded")->toBe("but got None")
     }
   })
 
-  test("a fresh (no moves) history round-trips too", () => {
-    let fresh = History.make(opening)
+  test("the move and undo counts survive the round-trip (#289)", () => {
+    switch SaveState.decode(SaveState.encode(saved)) {
+    | Some(restored) => expect(restored.stats)->toEqual({Stats.moves: 2, undos: 1})
+    | None => expect("decoded")->toBe("but got None")
+    }
+  })
+
+  test("a fresh (no moves) game round-trips too", () => {
+    let fresh: SaveState.t = {history: History.make(opening), stats: Stats.zero}
     switch SaveState.decode(SaveState.encode(fresh)) {
     | Some(restored) =>
       expect(restored)->toEqual(fresh)
-      expect(History.canUndo(restored))->toBe(false)
+      expect(History.canUndo(restored.history))->toBe(false)
     | None => expect("decoded")->toBe("but got None")
     }
   })
@@ -70,5 +81,50 @@ describe("SaveState", () => {
 
   test("valid JSON of the wrong shape decodes to None", () => {
     expect(SaveState.decode(`{"v":1,"present":42}`))->toEqual(None)
+  })
+
+  // The tally arrived after the format did (#289), and the version deliberately
+  // didn't move for it — so a blob written by an older build has to keep working,
+  // both out of `localStorage` and out of a share link somebody already sent.
+  describe("a save written before the tally existed", () => {
+    // Exactly what a pre-#289 `encode` produced: two states behind the present, no
+    // `stats` key anywhere.
+    let legacy = SaveState.encode(saved)->String.replaceRegExp(/,"stats":\{[^}]*\}/, "")
+
+    test(
+      "still decodes to a real game",
+      () => {
+        expect(legacy->String.includes("stats"))->toBe(false) // the fixture really is legacy
+        switch SaveState.decode(legacy) {
+        | Some(restored) => expect(restored.history)->toEqual(history)
+        | None => expect("decoded")->toBe("but got None")
+        }
+      },
+    )
+
+    test(
+      "infers its move count from the line behind the present",
+      () => {
+        // The one thing such a save can still say about how it got here — and the number
+        // the victory share reported before the tally existed. Undos left no trace, so
+        // they read as none rather than as a guess.
+        switch SaveState.decode(legacy) {
+        | Some(restored) =>
+          expect(restored.stats)->toEqual({Stats.moves: History.steps(history), undos: 0})
+        | None => expect("decoded")->toBe("but got None")
+        }
+      },
+    )
+  })
+
+  test("a present-but-malformed tally is rejected like any other bad field", () => {
+    // Absent `stats` is a shape we support (above); `stats` of the wrong shape means
+    // this isn't a blob we wrote, and half-reading a stranger's JSON is how a broken
+    // board gets built.
+    let states = `"past":[],"present":{"piles":[],"loose":[]},"future":[]`
+    expect(SaveState.decode(`{"v":1,${states},"stats":{"moves":"lots","undos":0}}`))->toEqual(None)
+    expect(SaveState.decode(`{"v":1,${states},"stats":{"moves":3}}`))->toEqual(None)
+    expect(SaveState.decode(`{"v":1,${states},"stats":7}`))->toEqual(None)
+    expect(SaveState.decode(`{"v":1,${states},"stats":{"moves":-1,"undos":0}}`))->toEqual(None)
   })
 })

@@ -185,16 +185,17 @@ let restartHook: ref<option<unit => unit>> = ref(None)
 let loadStateHook: ref<option<GameState.t => unit>> = ref(None)
 
 // The active card-table scene's share-link hooks (`ShareLink`), siblings of
-// `loadStateHook`. `readHistoryHook` hands back the live board's undo/redo history
-// so the Debug screen can encode it into a link; `loadHistoryHook` is the way back
-// in, rebuilding the board onto a history a `#g=` link carried. Both are published
-// by every `TableScene` on mount and cleared on each scene change, so on a demo
-// scene there's nothing to share and nothing to restore into.
-let readHistoryHook: ref<option<unit => option<History.t<GameState.t>>>> = ref(None)
-let loadHistoryHook: ref<option<History.t<GameState.t> => unit>> = ref(None)
+// `loadStateHook`. `readHistoryHook` hands back the live board's saved game — its
+// undo/redo history and its play tally (#289) — so the Debug screen can encode it
+// into a link; `loadHistoryHook` is the way back in, rebuilding the board onto the
+// game a `#g=` link carried. Both are published by every `TableScene` on mount and
+// cleared on each scene change, so on a demo scene there's nothing to share and
+// nothing to restore into.
+let readHistoryHook: ref<option<unit => option<SaveState.t>>> = ref(None)
+let loadHistoryHook: ref<option<SaveState.t => unit>> = ref(None)
 
-// The live board's history, or `None` on a scene that has none (a demo) or before
-// a board has mounted. What the share button encodes.
+// The live board's saved game, or `None` on a scene that has none (a demo) or
+// before a board has mounted. What the share button encodes.
 let currentHistory = () => readHistoryHook.contents->Option.flatMap(read => read())
 
 // Whether a `#g=` link's game has actually reached the board. It gates saving on a
@@ -720,9 +721,9 @@ let gameScene = (game: Game.t) => {
     // game exactly as it was: nothing landed, so nothing is written.
     ~persist=?plainOpen || sharedOpen
       ? Some(
-          history =>
+          saved =>
             if plainOpen || shareLanded.contents {
-              SavedGame.save(game.id, history)
+              SavedGame.save(game.id, saved)
             },
         )
       : None,
@@ -806,11 +807,11 @@ let gameScene = (game: Game.t) => {
     // share sheet.
     ~winShare={
       available: () => liveDealSeed.contents->Option.isSome,
-      share: (~moves) =>
+      share: (~moves, ~undos) =>
         switch liveDealSeed.contents {
         | Some(seed) =>
           ShareLink.deliver(
-            ~text=ShareLink.victoryMessage(~seed, ~moves),
+            ~text=ShareLink.victoryMessage(~seed, ~moves, ~undos),
             ShareLink.urlForDeal(seed),
           )->Promise.thenResolve(ShareLink.message)
         // Unreachable: the button is only built when `available` says yes, and nothing
@@ -904,7 +905,7 @@ switch url.shared {
 | Some(blob) =>
   (
     async () =>
-      switch await ShareLink.historyFrom(blob) {
+      switch await ShareLink.savedFrom(blob) {
       | Some(restored) =>
         shareLanded := true
         // The shared game takes over storage, so the previous game's deal number must
@@ -1026,7 +1027,7 @@ let view = (model, dispatch) => <>
       (
         async () =>
           switch currentHistory() {
-          | Some(history) => dispatch(ShareLinkReady(await ShareLink.urlFor(history)))
+          | Some(saved) => dispatch(ShareLinkReady(await ShareLink.urlFor(saved)))
           | None => dispatch(ShareLinkReady(None))
           }
       )()->ignore

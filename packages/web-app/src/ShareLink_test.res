@@ -1,7 +1,8 @@
-// The share link end to end (`ShareLink`): a board's undo/redo history becomes a
-// URL, and that URL's blob becomes the same history again. The interesting property
-// is that nothing is lost in the middle — the recipient gets the *whole* stack, not
-// just the position — since that's what "share game state" promises.
+// The share link end to end (`ShareLink`): a board's saved game becomes a URL, and
+// that URL's blob becomes the same game again. The interesting property is that
+// nothing is lost in the middle — the recipient gets the *whole* stack, not just the
+// position, and (since #289) the move and undo counts with it — since that's what
+// "share game state" promises.
 //
 // The module's other link — `urlForDeal` (#98), which shares a *deal number* rather
 // than a position — is pinned here too, on the shape of the URL it builds. It has no
@@ -26,17 +27,33 @@ describe("ShareLink", () => {
       ...GameState.initial(game),
       loose: [{suit: Spades, rank: Ace}, {suit: Hearts, rank: King}],
     })
+  // A tally that the history alone couldn't produce (five moves and two undos behind
+  // a two-step line), so a link that dropped the counts — or re-derived them from the
+  // stack — fails rather than passing by looking close enough.
+  let saved: SaveState.t = {history, stats: {moves: 5, undos: 2}}
 
-  testAsync("a link's blob restores the whole history", async () => {
-    let url = (await ShareLink.urlFor(history))->Option.getOrThrow
+  testAsync("a link's blob restores the whole game", async () => {
+    let url = (await ShareLink.urlFor(saved))->Option.getOrThrow
     let blob = url->String.split("#" ++ ShareLink.fragmentKey ++ "=")->Array.getUnsafe(1)
-    expect(await ShareLink.historyFrom(blob))->toEqual(Some(history))
+    expect(await ShareLink.savedFrom(blob))->toEqual(Some(saved))
+  })
+
+  testAsync("the move and undo counts ride along in the link (#289)", async () => {
+    // The counts live outside the game state, so nothing about a position implies
+    // them: they make it into a share link only because they're in the save envelope
+    // the link carries.
+    let url = (await ShareLink.urlFor(saved))->Option.getOrThrow
+    let blob = url->String.split("#" ++ ShareLink.fragmentKey ++ "=")->Array.getUnsafe(1)
+    switch await ShareLink.savedFrom(blob) {
+    | Some(restored) => expect(restored.stats)->toEqual({Stats.moves: 5, undos: 2})
+    | None => expect("restored")->toBe("but got None")
+    }
   })
 
   testAsync("the state rides in the fragment, not the query", async () => {
     // The reason there's no length ceiling to design around: a fragment never
     // reaches the server, so none of the ~8 KB request-line limits apply to it.
-    let url = (await ShareLink.urlFor(history))->Option.getOrThrow
+    let url = (await ShareLink.urlFor(saved))->Option.getOrThrow
     expect(url->String.includes("#" ++ ShareLink.fragmentKey ++ "="))->toBe(true)
     expect(url->String.includes("?"))->toBe(false)
   })
@@ -60,7 +77,7 @@ describe("ShareLink", () => {
   })
 
   testAsync("a corrupt blob restores nothing", async () => {
-    expect(await ShareLink.historyFrom("not-a-real-blob"))->toEqual(None)
+    expect(await ShareLink.savedFrom("not-a-real-blob"))->toEqual(None)
   })
 
   testAsync("a blob carrying valid but non-SaveState JSON restores nothing", async () => {
@@ -68,19 +85,31 @@ describe("ShareLink", () => {
     // the codec: a link that decompresses cleanly can still be one this build can't
     // read, and that must read as "no game" rather than a half-built board.
     let blob = (await Compression.compress(`{"v":99,"past":[],"present":null}`))->Option.getOrThrow
-    expect(await ShareLink.historyFrom(blob))->toEqual(None)
+    expect(await ShareLink.savedFrom(blob))->toEqual(None)
+  })
+
+  testAsync("a link written before the tally existed still opens (#289)", async () => {
+    // The counts were added to the save envelope without moving its version, so a
+    // link already sitting in somebody's chat has to keep working. It comes back as a
+    // real game whose tally was inferred rather than as "couldn't read that".
+    let legacy = SaveState.encode(saved)->String.replaceRegExp(/,"stats":\{[^}]*\}/, "")
+    let blob = (await Compression.compress(legacy))->Option.getOrThrow
+    switch await ShareLink.savedFrom(blob) {
+    | Some(restored) => expect(restored.history)->toEqual(history)
+    | None => expect("restored")->toBe("but got None")
+    }
   })
 })
 
 // The victory message (#264): what the win overlay hands over when a player wins.
 // It's a *string* the recipient reads, so what's pinned here is what it says — the
-// deal number they need to play the same board, and the length of the winning line —
-// and, just as load-bearing, what it doesn't say: the message carries no URL of its
+// deal number they need to play the same board, and what the win cost in moves and
+// undos (#289) — and, just as load-bearing, what it doesn't say: no URL of its
 // own, because `deliver` adds the link on whichever route it takes and a message
 // that composed one too would deliver it twice.
 describe("ShareLink.victoryMessage (#264)", () => {
-  test("names the deal and the length of the winning line", () => {
-    let message = ShareLink.victoryMessage(~seed=847213, ~moves=94)
+  test("names the deal and how many moves it took", () => {
+    let message = ShareLink.victoryMessage(~seed=847213, ~moves=94, ~undos=0)
     expect(message->String.includes("847213"))->toBe(true)
     expect(message->String.includes("94 moves"))->toBe(true)
     // The suits lead the message — the thing that makes it recognisable in a chat.
@@ -88,12 +117,32 @@ describe("ShareLink.victoryMessage (#264)", () => {
   })
 
   test("counts a one-move win in the singular", () => {
-    expect(ShareLink.victoryMessage(~seed=1, ~moves=1)->String.includes("1 move"))->toBe(true)
-    expect(ShareLink.victoryMessage(~seed=1, ~moves=1)->String.includes("moves"))->toBe(false)
+    let message = ShareLink.victoryMessage(~seed=1, ~moves=1, ~undos=0)
+    expect(message->String.includes("1 move"))->toBe(true)
+    expect(message->String.includes("moves"))->toBe(false)
+  })
+
+  // The undo count (#289) is the message's one conditional clause: a clean run says
+  // nothing about undos, so the clause being there at all is part of what's reported.
+  test("names the undos when there were any", () => {
+    let message = ShareLink.victoryMessage(~seed=847213, ~moves=94, ~undos=3)
+    expect(message->String.includes("94 moves"))->toBe(true)
+    expect(message->String.includes("3 undos"))->toBe(true)
+  })
+
+  test("says nothing about undos when there weren't any", () => {
+    let message = ShareLink.victoryMessage(~seed=847213, ~moves=94, ~undos=0)
+    expect(message->String.includes("undo"))->toBe(false)
+  })
+
+  test("counts a single undo in the singular too", () => {
+    let message = ShareLink.victoryMessage(~seed=1, ~moves=40, ~undos=1)
+    expect(message->String.includes("1 undo"))->toBe(true)
+    expect(message->String.includes("undos"))->toBe(false)
   })
 
   test("carries no link of its own — `deliver` owns the URL", () => {
-    let message = ShareLink.victoryMessage(~seed=847213, ~moves=94)
+    let message = ShareLink.victoryMessage(~seed=847213, ~moves=94, ~undos=0)
     expect(message->String.includes("http"))->toBe(false)
     expect(message->String.includes(ShareLink.dealKey ++ "="))->toBe(false)
   })

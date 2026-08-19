@@ -39,13 +39,19 @@ let canUndo = (h: t<'a>): bool => Array.length(h.past) > 0
 let canRedo = (h: t<'a>): bool => Array.length(h.future) > 0
 
 // How many recorded steps lie behind the present — the length of the line of play
-// that reached it, which is what a victory share reports as "moves".
+// that reached it.
 //
 // It counts the *current* line, not every state ever recorded, because undo pops
 // `past`: a move undone and replayed differently counts once, and a move undone and
-// abandoned doesn't count at all. That's the honest reading of "how long did this
-// take" — the line you actually ended on — and it's the only one available without
-// the history growing a counter that `undo` would then have to lie to.
+// abandoned doesn't count at all. That's the honest reading of "how long is this
+// line" — and it's the only one available without the history growing a counter that
+// `undo` would then have to lie to.
+//
+// Which is exactly why the count of moves the player *made* isn't here (#289): that
+// number only goes up, so it lives outside the zipper, in `Stats`. The two agree
+// until the first undo and answer different questions after it. This one still has a
+// job: it's the best a save written before `Stats` existed can say about how it got
+// where it is (see `SaveState.ofHistory`).
 let steps = (h: t<'a>): int => Array.length(h.past)
 
 // Record a new present reached from the current one: the old present is pushed
