@@ -443,6 +443,12 @@ let applyMove = (s: t, move: move): t => {
 // A canonical key for a search's visited set: two positions that differ only in
 // *which* free cell or *which* column holds what are the same position, so the
 // cells and the columns are both sorted before they're spelled out.
+//
+// Spelling them out is expensive: this is about a third of `Solver`'s runtime on
+// its own — nine strings built and sorted for every position the search generates —
+// and the largest single thing the collector is cleaning up after. It's the first
+// thing to change if the solver is ever wanted faster; see the note under
+// `Solver.solve` for what that measured and why it hasn't been done.
 let key = (s: t): string => {
   let cells = s.cells->Array.filter(c => c >= 0)
   cells->Array.sort(Int.compare)

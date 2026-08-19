@@ -270,6 +270,45 @@ let solveWithEffort = (start: Position.t, ~ladder: array<attempt>=ladder): (
 let solve = (start: Position.t, ~ladder: array<attempt>=ladder): option<array<Position.move>> =>
   fst(solveWithEffort(start, ~ladder))
 
+// --- On making this faster (measured, then deferred) -------------------------
+// Asked in passing: would a WASM module be significantly faster? Profiled rather
+// than guessed — `node --cpu-prof` over deals 1–60 plus 1848, about thirty seconds
+// of solving — and the answer is "yes, but that isn't where the time is". Self-time
+// as this stands:
+//
+//   24.8%  the garbage collector
+//   19.2%  `search` itself — the loop, the visited map, the path array per node
+//   31.3%  `Position.key` — nine strings built and sorted per generated position
+//   ~15%   the game: `legalMoves`, `applyMove`, `canFinish`, `autoCollect`, `heuristic`
+//
+// So the arithmetic a rewrite in another language makes faster is about a seventh
+// of the runtime. The rest is how a position is *represented*: string keys, a fresh
+// path array per node (`Array.concat`), and the allocation those two imply.
+//
+// Changing only those two — an FNV-1a-per-column numeric key, and parent pointers
+// instead of copied paths — measured ~1.9× over deals 1–60, finding the identical
+// line on every one of them. Re-profiled after that, the collector is still ~23%,
+// now behind `applyMove`'s `copy`; make/unmake against one mutable board would take
+// most of that too. Call it 3–4× available without leaving the language, and the
+// rules untouched by any of it.
+//
+// What WASM adds on top is the usual 1.2–2× of integer loops over an optimising
+// JIT — and it costs the thing #290 bought. The search asks `legalMoves` /
+// `applyMove` / `canFinish` millions of times a deal, so the boundary can't sit
+// between the search and the rules: the rules move into the module too, in whatever
+// language it's written in, and `Position` becomes a mirror no unit test can pin
+// (`Position_test` holds it against `Reducer` precisely because both sides are one
+// build). It would also put a second toolchain in `mise.toml`, and make
+// `Solver.autoplay` async — browsers cap synchronous WebAssembly compilation at 4KB
+// on the main thread, and both front ends call it from inside a command that
+// answers synchronously.
+//
+// Deferred deliberately: nothing is waiting on it. A deal averages under 100ms and
+// the worst of five hundred is under three seconds. If the budget is ever wanted,
+// spend it at the cheap end of that list first — and note that the reason to want
+// it is more likely a *shorter line* than a faster one, which is the trade `weight`
+// above already makes.
+
 // --- Playing the plan on a real board ----------------------------------------
 
 // The moves to a finishable board from a real `GameState` — the game-facing entry
