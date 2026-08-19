@@ -153,9 +153,12 @@ module Heap = {
 type attempt = {weight: float, maxNodes: int}
 
 // What a pass came back with: the moves to a finishable board, or `None` if it
-// ran out of budget — and how many nodes that took, which is what makes the
-// weights measurable.
-type outcome = {path: option<array<Position.move>>, nodes: int}
+// ran out of budget — and what it cost to get there, which is what makes the
+// weights measurable. `nodes` counts the positions taken off the frontier and grown;
+// `applied` the moves played out to see where they led, which is the bigger number
+// and the one most of the time goes into (every one of them is an `applyMove`, a
+// `key` and a `canFinish`).
+type outcome = {path: option<array<Position.move>>, nodes: int, applied: int}
 
 // One node of the open list: a position and the moves that reached it.
 type node = {position: Position.t, path: array<Position.move>}
@@ -164,7 +167,7 @@ type node = {position: Position.t, path: array<Position.move>}
 // `Position.canFinish`.
 let search = (start: Position.t, attempt: attempt, ~weights: weights=defaultWeights): outcome =>
   if Position.canFinish(start) {
-    {path: Some([]), nodes: 0}
+    {path: Some([]), nodes: 0, applied: 0}
   } else {
     let frontier = Heap.make()
     let seen = Map.make()
@@ -174,6 +177,7 @@ let search = (start: Position.t, attempt: attempt, ~weights: weights=defaultWeig
       ~priority=Int.toFloat(heuristic(start, weights)) *. attempt.weight,
     )
     let nodes = ref(0)
+    let applied = ref(0)
     let found = ref(None)
     while (
       Option.isNone(found.contents) && Heap.size(frontier) > 0 && nodes.contents < attempt.maxNodes
@@ -187,6 +191,7 @@ let search = (start: Position.t, attempt: attempt, ~weights: weights=defaultWeig
         while Option.isNone(found.contents) && i.contents < Array.length(moves) {
           let move = moves->Array.getUnsafe(i.contents)
           let next = Position.applyMove(position, move)
+          applied := applied.contents + 1
           let key = Position.key(next)
           let g = Array.length(path) + 1
           // A position reached no more cheaply than before teaches nothing new.
@@ -208,7 +213,7 @@ let search = (start: Position.t, attempt: attempt, ~weights: weights=defaultWeig
         }
       }
     }
-    {path: found.contents, nodes: nodes.contents}
+    {path: found.contents, nodes: nodes.contents, applied: applied.contents}
   }
 
 // The escalation ladder: a mildly greedy pass first, since almost every deal falls
@@ -222,19 +227,48 @@ let ladder = [
   {weight: 0.5, maxNodes: 400_000},
 ]
 
+// What a solve cost, totalled over every rung it climbed — for a front end that
+// wants to say how hard the answer was to find, and not only what it was.
+//
+//   `positions` — boards taken off the frontier and grown.
+//   `moves`     — moves played out to see where they led (the "and then what?"
+//                 count; several per position, and the bigger number by far).
+//   `passes`    — rungs of the ladder it took. One is an ordinary deal; more than
+//                 one means the greedy pass gave up and a wider search found it.
+//
+// Deliberately no clock: how *long* it took is the caller's own measurement, taken
+// around a call it made (`solve.mjs` already does exactly that, and both front ends
+// now do). Keeping the number out of here is what lets a plan stay a value two runs
+// can be expected to agree on — an ordinary `toEqual` in a test, rather than a
+// timing-shaped hole in one.
+type effort = {positions: int, moves: int, passes: int}
+
 // Solve to the finishable position, escalating effort until it gives — or `None`
 // when the whole ladder runs out, which is all this can honestly say about a deal
-// (a rung that fails proves nothing about solvability).
-let solve = (start: Position.t, ~ladder: array<attempt>=ladder): option<array<Position.move>> => {
+// (a rung that fails proves nothing about solvability). Reports what the climb cost
+// alongside the line, since a rung that failed still spent its budget and a caller
+// saying "found in 65ms" is describing all of them.
+let solveWithEffort = (start: Position.t, ~ladder: array<attempt>=ladder): (
+  option<array<Position.move>>,
+  effort,
+) => {
   let plan = ref(None)
   let rung = ref(0)
+  let positions = ref(0)
+  let moves = ref(0)
   while Option.isNone(plan.contents) && rung.contents < Array.length(ladder) {
-    let {path} = search(start, ladder->Array.getUnsafe(rung.contents))
+    let {path, nodes, applied} = search(start, ladder->Array.getUnsafe(rung.contents))
+    positions := positions.contents + nodes
+    moves := moves.contents + applied
     plan := path
     rung := rung.contents + 1
   }
-  plan.contents
+  (plan.contents, {positions: positions.contents, moves: moves.contents, passes: rung.contents})
 }
+
+// The line alone, for the callers that only ever wanted that.
+let solve = (start: Position.t, ~ladder: array<attempt>=ladder): option<array<Position.move>> =>
+  fst(solveWithEffort(start, ~ladder))
 
 // --- Playing the plan on a real board ----------------------------------------
 
@@ -294,11 +328,16 @@ type played = {
 
 // What autoplay found. The two refusals are different questions and read as
 // different sentences (`Command.autoplayNotFreeCell` / `autoplayNoLine`): one board
-// the solver doesn't understand, one it understands and can't win. `Played([])` is
-// neither — it's a board already finishable, where there was nothing left to think
-// about.
+// the solver doesn't understand, one it understands and can't win. A `Played` with no
+// steps is neither — it's a board already finishable, where there was nothing left to
+// think about.
+//
+// `Played` carries what the search cost alongside the line it found (`effort`), so a
+// front end can say how hard the answer was to come by. It travels with the steps
+// rather than being asked for separately because it's a fact about *this* answer —
+// ask again and you'd be timing a second search.
 type autoplayed =
-  | Played(array<played>)
+  | Played({steps: array<played>, effort: effort})
   | NotFreeCell // not the four-cell, four-foundation, eight-column board the solver models
   | NoLine // the ladder ran out (which proves nothing about the deal — see `solve`)
 
@@ -326,7 +365,8 @@ let autoplay = (~game: Game.t, state: GameState.t): autoplayed =>
   switch Position.ofGameState(~game, state) {
   | None => NotFreeCell
   | Some(position) =>
-    switch solve(position) {
+    let (line, effort) = solveWithEffort(position)
+    switch line {
     | None => NoLine
     | Some(moves) =>
       let steps = []
@@ -355,7 +395,7 @@ let autoplay = (~game: Game.t, state: GameState.t): autoplayed =>
         }
         i := i.contents + 1
       }
-      Played(steps)
+      Played({steps, effort})
     }
   }
 

@@ -179,8 +179,14 @@ describe("Solver", () => {
         switch Solver.autoplay(~game, opening) {
         | Solver.NotFreeCell => expect("a FreeCell board")->toBe("but the solver didn't know it")
         | Solver.NoLine => expect("deal 1 played")->toBe("but the ladder ran out")
-        | Solver.Played(steps) =>
+        | Solver.Played({steps, effort}) =>
           expect(Array.length(steps) > 20)->toBe(true) // a real game, not a shortcut
+          // …and it says what the thinking cost, which is a fact about the search
+          // rather than about the clock: a deal takes positions off the frontier, and
+          // several moves out of each, on at least one rung of the ladder.
+          expect(effort.positions > 0)->toBe(true)
+          expect(effort.moves > effort.positions)->toBe(true)
+          expect(effort.passes >= 1)->toBe(true)
           // Every step's state is the one the step before it left, reduced by the
           // action it carries — so a driver that adopts these states in order is
           // playing the very moves it's recording, not two things that agree by luck.
@@ -232,10 +238,16 @@ describe("Solver", () => {
     test(
       "a board that's already finishable is played by doing nothing",
       () => {
-        // `Played([])` and `NoLine` are different answers, and a driver treats them
-        // differently: one hands over to the finish sweep, the other says it couldn't.
+        // A `Played` with no steps and `NoLine` are different answers, and a driver
+        // treats them differently: one hands over to the finish sweep, the other says
+        // it couldn't. Spelled out in full because the effort is part of the answer,
+        // and because it's the one board where every number in it is knowable: the
+        // search recognises a finishable position before it grows anything, so the
+        // first pass returns having spent nothing.
         let finishable = Scenario.freecellFinish(game)
-        expect(Solver.autoplay(~game, finishable))->toEqual(Solver.Played([]))
+        expect(Solver.autoplay(~game, finishable))->toEqual(
+          Solver.Played({steps: [], effort: {positions: 0, moves: 0, passes: 1}}),
+        )
       },
     )
 

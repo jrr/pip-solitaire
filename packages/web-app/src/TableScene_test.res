@@ -27,6 +27,18 @@ let flushFrames: unit => unit = %raw(`() => {
   globalThis.__frames.splice(0).forEach((cb) => cb(0))
 }`)
 
+// An autoplay run starts on the tick *after* the command that asked for it, so the
+// console's reply heads the play-by-play instead of landing a move down it (see
+// `TableScene`'s `autoplay`). That's the one thing in this scene a synchronous test
+// body can't see the end of, so the tests that ask for one wait a tick.
+//
+// A real timer here rather than a queued stub like `requestAnimationFrame` above:
+// `setTimeout` is the test runner's own too, and swapping it out from under vitest
+// costs more than the tick these tests can simply await.
+@val external setTimeout: (unit => unit, int) => int = "setTimeout"
+let nextTick = (): promise<unit> =>
+  Promise.make((resolve, _) => setTimeout(() => resolve(), 0)->ignore)
+
 open Vitest
 
 @val @scope("document") external createElement: string => WebDom.element = "createElement"
@@ -487,7 +499,7 @@ describe("TableScene autoplay (#291)", () => {
   let hasWinOverlay = (container): bool =>
     container->querySelector(".win-overlay")->Nullable.toOption->Option.isSome
 
-  test("counts the reach for the solver, and finishes the game", () => {
+  testAsync("counts the reach for the solver, and finishes the game", async () => {
     let game = Game.freecell
     let saved = ref(None)
     let console = ref(_ => [])
@@ -500,6 +512,7 @@ describe("TableScene autoplay (#291)", () => {
     )
     let _teardown = scene.mount(container)
     console.contents(Command.Autoplay)->ignore
+    await nextTick()
     switch statsOf(saved) {
     | Some(stats) =>
       expect(stats.autoplays)->toBe(1)
@@ -510,7 +523,7 @@ describe("TableScene autoplay (#291)", () => {
     }
   })
 
-  test("an autoplayed win keeps its Share button to itself, undo or no undo", () => {
+  testAsync("an autoplayed win keeps its Share button to itself, undo or no undo", async () => {
     // The requirement, end to end: autoplay, undo back out of everything it did, win
     // the game by hand from there — the victory is still not shareable, because the
     // tally remembers.
@@ -527,6 +540,7 @@ describe("TableScene autoplay (#291)", () => {
     )
     let _teardown = scene.mount(container)
     console.contents(Command.Autoplay)->ignore
+    await nextTick()
     undo.contents()
     expect(hasWinOverlay(container))->toBe(false) // stepped back out of the victory
     console.contents(Command.Redo)->ignore // …and won it again, by hand this time

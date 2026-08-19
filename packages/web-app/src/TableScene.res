@@ -52,6 +52,11 @@ external onPointer: (WebDom.element, string, pointerEvent => unit) => unit = "ad
 // before the first paint — hence this binding.
 @val external requestAnimationFrame: (unit => unit) => int = "requestAnimationFrame"
 
+// An autoplay run starts on the *next* tick rather than inside the command that asked
+// for it, so the console's reply — the one sentence that describes the whole run — is
+// printed above the play-by-play instead of one move down it. See `autoplay` below.
+@val external setTimeout: (unit => unit, int) => int = "setTimeout"
+
 // The card layout is pixel-positioned in JS from the stage's live size, so unlike
 // the pure-CSS drop zones it doesn't reflow itself when the stage resizes (#172).
 // A `ResizeObserver` on the board host is the trigger to re-run the layout: it
@@ -1825,11 +1830,18 @@ let make = (
       // player's own, a New Game, a second `autoplay` — any of those and the run stops
       // where it stands, leaving a real position with a real history behind it rather
       // than stamping the rest of a stale line over the board.
-      let autoplay = (): array<Render.line> =>
+      let autoplay = (): array<Render.line> => {
+        // The clock is this driver's, not the solver's (see `Solver.effort`): what it
+        // times is the whole call — the search, plus playing the line it found through
+        // the reducer. The second part is fifty reductions against a search that
+        // generated tens of thousands of positions, so the number describes the
+        // thinking, which is the part worth reporting.
+        let started = Date.now()
         switch Solver.autoplay(~game, state.contents) {
         | Solver.NotFreeCell => Render.text(Command.autoplayNotFreeCell)
         | Solver.NoLine => Render.text(Command.autoplayNoLine)
-        | Solver.Played(steps) =>
+        | Solver.Played({steps, effort}) =>
+          let ms = Date.now() -. started
           DebugLog.message("autoplay")
           // Counted once for the reaching, not once per move (#291) — the moves the
           // solver plays are counted as moves by `recordHistory` below, like any
@@ -1886,9 +1898,31 @@ let make = (
                 animateAutoplayStep(step.moved, ~onDone=() => playFrom(i + 1))
               }
             }
-          playFrom(0)
-          Render.text(Command.describeAutoplay(~moves=Array.length(steps)))
+          // Started on the next tick, not here. Everything above is bookkeeping the
+          // command has to do before it answers — the tally, the cancellations, the
+          // token — but the first *move* is the first line of a play-by-play, and this
+          // function's reply is the sentence that heads it. Played inline, that reply
+          // came back to the console after the run had already narrated a move into it
+          // (the console prints a command's answer once the command returns), so the
+          // summary landed a line down its own play-by-play. A tick's delay is invisible
+          // next to a move's flight, and it puts the sentence back on top.
+          //
+          // Safe to defer for the same reason the run is safe to interrupt: `playFrom`
+          // re-checks `token` before every step, and anything that happens in between —
+          // a drag, an undo, a re-deal, a second `autoplay` — bumps it, so a run whose
+          // board has moved on never plays its first move at all.
+          setTimeout(() => playFrom(0), 0)->ignore
+          Render.text(
+            Command.describeAutoplay(
+              ~moves=Array.length(steps),
+              ~ms,
+              ~positions=effort.positions,
+              ~tried=effort.moves,
+              ~passes=effort.passes,
+            ),
+          )
         }
+      }
 
       let runCommand = (command: Command.t): array<Render.line> =>
         switch command {

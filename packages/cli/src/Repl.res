@@ -261,11 +261,17 @@ let finish = (s: session): (option<session>, string) =>
 // plan assumes — so this driver adopts the states rather than re-dispatching the
 // actions, and a session with `autocollect` off still plays the line the search
 // actually found.
-let autoplay = (s: session): (option<session>, string) =>
+let autoplay = (s: session): (option<session>, string) => {
+  // The clock is the caller's, not the solver's (see `Solver.effort`): what it times
+  // is the whole `autoplay` call — the search, plus playing the line it found through
+  // the reducer. The second part is fifty reductions against a search that generated
+  // tens of thousands of positions, so what the number describes is the thinking.
+  let started = Date.now()
   switch Solver.autoplay(~game=s.game, present(s)) {
   | Solver.NotFreeCell => (Some(s), Command.autoplayNotFreeCell)
   | Solver.NoLine => (Some(s), Command.autoplayNoLine)
-  | Solver.Played(steps) =>
+  | Solver.Played({steps, effort}) =>
+    let ms = Date.now() -. started
     let played =
       steps->Array.reduce(s, (carried, step: Solver.played) => commit(carried, step.state))
     // The sweep home is this driver's own `finish`, so an autoplayed win and a
@@ -273,8 +279,16 @@ let autoplay = (s: session): (option<session>, string) =>
     // beneath the board. A board it couldn't finish (a plan cut short) simply stays
     // where the moves left it.
     let swept = fst(finish(played))->Option.getOr(played)
-    (Some(swept), `${Command.describeAutoplay(~moves=Array.length(steps))}\n\n${boardText(swept)}`)
+    let said = Command.describeAutoplay(
+      ~moves=Array.length(steps),
+      ~ms,
+      ~positions=effort.positions,
+      ~tried=effort.moves,
+      ~passes=effort.passes,
+    )
+    (Some(swept), `${said}\n\n${boardText(swept)}`)
   }
+}
 
 // Step back one move (#85): pop the history to the prior state and re-print the
 // restored board, or report there's nothing to undo. Undo is available even from a
