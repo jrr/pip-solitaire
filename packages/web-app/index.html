@@ -1610,9 +1610,21 @@
       /* Where the share reports what it did ("Link copied to clipboard."). Its
          height is reserved by the same line-height/min-height pair the menu's share
          line uses, so the text landing doesn't push the buttons up the screen —
-         see `.menu-share-line` for why the two values have to be stated this way. */
+         see `.menu-share-line` for why the two values have to be stated this way.
+
+         The negative margins are what keep that reserved height from *reading* as
+         padding. The line is empty until you tap Share, and an empty line under the
+         buttons is indistinguishable from whitespace: left alone it stacked the
+         panel's `gap` (16) and its own height (~18) on top of the 28px bottom
+         padding, so the panel sat with roughly twice as much space below the buttons
+         as above the title. Pulling it up by 8 and letting it eat 22 of the padding
+         leaves ~34px under the buttons against 30 above the title — even to the eye —
+         while the text, when it lands, still clears both the buttons and the border.
+         They live here rather than on `.win-panel` because a panel with no deal to
+         share has no status line at all, and its plain 28/28 padding is already
+         balanced. */
       .win-panel__status {
-        margin: 0;
+        margin: -8px 0 -22px;
         line-height: 1.35;
         min-height: 1.35em;
         font: 13px "Libre Franklin", sans-serif;

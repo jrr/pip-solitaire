@@ -102,6 +102,21 @@ for (const input of inputs) {
       // can show is that a real drag on a real board reaches the counter at all.
       await expect(page.locator(".win-panel__stats")).toHaveText("1 move · 0 undos")
 
+      // The panel's top and bottom breathing room have to match. They don't come
+      // from the same place: above the title it's plain padding, while below the
+      // buttons it's padding *minus* what the reserved-but-empty share status line
+      // claws back (see `.win-panel__status`). Left uncompensated the bottom ran to
+      // roughly twice the top, which is visible as a lopsided panel — and it's
+      // arithmetic across two rules, so only a real layout can check it.
+      const room = await page.evaluate(() => {
+        const panel = document.querySelector(".win-panel")
+        const box = panel.getBoundingClientRect()
+        const first = panel.firstElementChild.getBoundingClientRect()
+        const buttons = panel.querySelector(".win-panel__actions").getBoundingClientRect()
+        return { above: first.top - box.top, below: box.bottom - buttons.bottom }
+      })
+      expect(Math.abs(room.above - room.below)).toBeLessThan(8)
+
       // By name, not by class: the panel grew a second button when the victory share
       // landed (#264), and this scenario carries a deal number so both are on offer
       // here. `share-win.spec.mjs` covers the other one.
