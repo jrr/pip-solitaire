@@ -239,16 +239,59 @@ let home = (~options: Options.t, s: session, card: card): (option<session>, stri
 // that's offered always completes — and, like a hand-played final card, trips the
 // win line (#121). It never blocks manual play: `home`/`move` still work
 // card-by-card, this is only the shortcut.
+//
+// The sweep itself, without the reply that wraps it: the settled session, and the
+// cards it sent home. Split out because `autoplay` hands over to this same sweep and
+// wants to *say* what it did, which needs the cards — and running the sequence twice
+// to find them out would be a second answer to a question already answered.
+let sweepHome = (s: session): (session, array<card>) => {
+  let (settled, moved) = Reducer.finishSequence(~game=s.game, present(s))
+  // The whole sweep is one undoable step (#85): undo after a `finish` steps back
+  // to the position the sweep started from.
+  (commit(s, settled), moved)
+}
+
 let finish = (s: session): (option<session>, string) =>
   if Reducer.canFinish(~game=s.game, present(s)) {
-    let (settled, _moved) = Reducer.finishSequence(~game=s.game, present(s))
-    // The whole sweep is one undoable step (#85): undo after a `finish` steps back
-    // to the position the sweep started from.
-    let s' = commit(s, settled)
+    let (s', _moved) = sweepHome(s)
     (Some(s'), boardText(s'))
   } else {
     (Some(s), "Not finishable yet — some cards still need a tableau move first.")
   }
+
+// The line the solver played, one move to a row, in the very words a typed or a
+// dragged move is logged in (`Render.action`) — the same document the web console
+// narrates a run with, so a played move reads the same in a terminal and in the panel.
+// It's what the board alone can't tell you: the board says where the game ended up,
+// and this says how it got there.
+//
+// The finishing sweep is the last row, said the way the web says it too (`finish `
+// and the cards it sent home): the sweep is part of what a run did, and a list that
+// stopped at the last planned move would stop a dozen cards short of the win printed
+// under it.
+//
+// Numbered, unlike the panel's. The panel narrates a run as it plays it, a move at a
+// time, where a number would be noise beside the card that's moving; a terminal prints
+// the whole line at once, where a number is how you find the move you meant.
+let playByPlay = (~game: Game.t, ~swept: array<card>, steps: array<Solver.played>): string => {
+  let moves =
+    steps->Array.mapWithIndex((step: Solver.played, i) =>
+      Render.concat([
+        [Render.plain(`${Int.toString(i + 1)->String.padStart(4, " ")}. `)],
+        Render.action(~game, step.action),
+      ])
+    )
+  // Indented under the numbers when there are any to line up with, and flush when the
+  // board was already finishable and the sweep is the only thing that happened.
+  let sweepRow = Render.concat([
+    [Render.plain(Array.length(moves) == 0 ? "finish " : "      finish ")],
+    Render.cardSpans(swept),
+  ])
+  let rows = Array.length(swept) == 0 ? moves : moves->Array.concat([sweepRow])
+  // Coloured, like the board above it: this is going to a terminal, and a card's face
+  // is the one thing `core` inks.
+  Render.toAnsi(rows)
+}
 
 // Hand the board to the solver (#291): play the line `core` finds from here, then
 // the finishing sweep it deliberately stops short of, so `autoplay` on a solvable
@@ -277,8 +320,10 @@ let autoplay = (s: session): (option<session>, string) => {
     // The sweep home is this driver's own `finish`, so an autoplayed win and a
     // hand-played one end the same way — one further undoable step, and the win line
     // beneath the board. A board it couldn't finish (a plan cut short) simply stays
-    // where the moves left it.
-    let swept = fst(finish(played))->Option.getOr(played)
+    // where the moves left it, with nothing swept to report.
+    let (finished, swept) = Reducer.canFinish(~game=played.game, present(played))
+      ? sweepHome(played)
+      : (played, [])
     let said = Command.describeAutoplay(
       ~moves=Array.length(steps),
       ~ms,
@@ -286,7 +331,13 @@ let autoplay = (s: session): (option<session>, string) => {
       ~tried=effort.moves,
       ~passes=effort.passes,
     )
-    (Some(swept), `${said}\n\n${boardText(swept)}`)
+    // Three paragraphs — what it found, how it played it, where that left the board —
+    // and any of them that has nothing to say is left out rather than printed as a gap.
+    let reply =
+      [said, playByPlay(~game=finished.game, ~swept, steps), boardText(finished)]
+      ->Array.filter(part => part != "")
+      ->Array.join("\n\n")
+    (Some(finished), reply)
   }
 }
 
