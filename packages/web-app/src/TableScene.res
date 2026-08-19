@@ -240,7 +240,11 @@ type shakeControl = {
 // convention two call sites have to keep.
 type winShare = {
   available: unit => bool,
-  share: (~moves: int) => promise<string>,
+  // `~moves`/`~undos` are the won game's tally (`Stats`, #289), read off the live
+  // board as the button is pressed. The board counts them because it's the thing
+  // moves and undos happen to; what the driver does with them — a message, nothing —
+  // is its own business.
+  share: (~moves: int, ~undos: int) => promise<string>,
 }
 
 // The design footprints, at scale 1. Everything the layout measures in pixels —
@@ -586,8 +590,10 @@ let looseTiltPile = 1000
 // not just its present position — so a resumed game comes back with Undo still
 // walking back through the moves played before the player left. It applies only to
 // the opening build of each mount (a re-deal starts a clean history); when it
-// yields a history, that history's present state seeds the board and `~initial` is
-// ignored.
+// yields a save, that save's present state seeds the board and `~initial` is
+// ignored. It carries the play tally too (`SaveState.t`, #289), so a resumed game's
+// move and undo counts pick up where they left off rather than restarting at zero
+// on a game that's half played.
 //
 // It's a *thunk*, read afresh on every mount, and that matters: a scene can be
 // mounted more than once (the switcher re-mounts on a scene change), and a value
@@ -604,8 +610,8 @@ let looseTiltPile = 1000
 // save-and-resume attaches only to a plain FreeCell game.
 let make = (
   ~initial: option<GameState.t>=?,
-  ~loadHistory: unit => option<History.t<GameState.t>>=() => None,
-  ~persist: option<History.t<GameState.t> => unit>=?,
+  ~loadHistory: unit => option<SaveState.t>=() => None,
+  ~persist: option<SaveState.t => unit>=?,
   ~newDeal: option<unit => Game.t>=?,
   ~publishNewGame: option<(unit => unit) => unit>=?,
   ~publishRestart: option<(unit => unit) => unit>=?,
@@ -616,12 +622,12 @@ let make = (
   // intact and the recipient can undo back through it. *Unlike* a forced state, the
   // rebuilt board persists like any other — a shared game is adopted as this
   // device's saved game rather than borrowed.
-  ~publishLoadHistory: option<(History.t<GameState.t> => unit) => unit>=?,
+  ~publishLoadHistory: option<(SaveState.t => unit) => unit>=?,
   // `~publishReadHistory` is the read side the share button needs: a thunk handing
   // back the *live* board's history, whatever build is currently on the table. It's
   // `option` because it's called before the first `buildBoard` has run in principle
   // (never in practice — the opening build happens during this same mount).
-  ~publishReadHistory: option<(unit => option<History.t<GameState.t>>) => unit>=?,
+  ~publishReadHistory: option<(unit => option<SaveState.t>) => unit>=?,
   ~publishUndo: option<(unit => unit) => unit>=?,
   // `~publishConsole` is the debug console's way in (#273), and the sibling of
   // `~publishUndo` in every respect: on every build the board hands the chrome a
@@ -734,7 +740,7 @@ let make = (
     // after a New Game. Each build repoints this at its own; the share button
     // (`ShareLink`, via `~publishReadHistory`) reads through it and so always
     // encodes what's actually on the table. `None` until the first build.
-    let readHistory: ref<unit => option<History.t<GameState.t>>> = ref(() => None)
+    let readHistory: ref<unit => option<SaveState.t>> = ref(() => None)
 
     // The active `devicemotion` shake subscription, `Some` while Wiggle Waggle is on
     // and permission granted (#235). `Motion.subscribeShake` already parks the
@@ -780,7 +786,7 @@ let make = (
     // clobbers a real saved game (matching the URL's `?state=`).
     let rec buildBoard = (
       ~initial: option<GameState.t>=?,
-      ~history as seedHistory: option<History.t<GameState.t>>=?,
+      ~history as seedHistory: option<SaveState.t>=?,
       ~persistThis: bool=true,
       game: Game.t,
     ) => {
@@ -898,7 +904,7 @@ let make = (
       // the view keeps only transient geometry (below).
       let state = ref(
         switch seedHistory {
-        | Some(h) => History.present(h)
+        | Some(s) => History.present(s.history)
         | None => initial->Option.getOr(GameState.initial(game))
         },
       )
@@ -911,22 +917,41 @@ let make = (
       // clean history from the opening position.
       let history = ref(
         switch seedHistory {
-        | Some(h) => h
+        | Some(s) => s.history
         | None => History.make(state.contents)
         },
       )
 
-      // Point the mount-scope reader at *this* build's history, so the share button
-      // encodes the board on the table rather than one a re-deal has since replaced.
-      readHistory := (() => Some(history.contents))
+      // How much play this game has taken (#289): the move and undo counts the win
+      // overlay reports. It sits *beside* `history` rather than inside it for the
+      // reason `Stats` spells out — undo pops the history but must not un-count a
+      // move — and it's per-build like the history is, so a New Game or a Restart
+      // starts from `zero` while a resumed or shared game picks up the tally its save
+      // carried. Stepped by `recordHistory`/`undo`/`redo` below, which are the three
+      // places anything countable happens.
+      let stats = ref(
+        switch seedHistory {
+        | Some(s) => s.stats
+        | None => Stats.zero
+        },
+      )
 
-      // Persist the board's whole undo/redo history after any change (#177), when the
-      // driver wired a `~persist` sink. A no-op otherwise — the demos, and any board
-      // opened from a `?state=`/`?seed=` link, pass none — so saving attaches only to a
-      // plain FreeCell game. Called from `recordHistory`, `undo`, and each fresh build.
+      // What this build would save: the live history and the live tally, read at call
+      // time so a caller always gets the board as it now stands.
+      let currentSave = (): SaveState.t => {history: history.contents, stats: stats.contents}
+
+      // Point the mount-scope reader at *this* build's save, so the share button
+      // encodes the board on the table rather than one a re-deal has since replaced.
+      readHistory := (() => Some(currentSave()))
+
+      // Persist the board's whole undo/redo history and tally after any change (#177,
+      // #289), when the driver wired a `~persist` sink. A no-op otherwise — the demos,
+      // and any board opened from a `?state=`/`?seed=` link, pass none — so saving
+      // attaches only to a plain FreeCell game. Called from `recordHistory`, `undo`,
+      // and each fresh build.
       let persistCurrent = () =>
         switch persist {
-        | Some(save) => save(history.contents)
+        | Some(save) => save(currentSave())
         | None => ()
         }
 
@@ -1304,6 +1329,14 @@ let make = (
           title->WebDom.setAttribute("class", "win-panel__title")
           title->WebDom.setTextContent("You win!")
 
+          // What the game cost (#289), under the title: every move made and every undo
+          // taken. Read now, as the overlay goes up, so it describes the game that was
+          // just won — and re-read on each win, since undoing back out of a victory and
+          // playing on raises a fresh panel with the larger numbers it earned.
+          let tally = WebDom.createElement("p")
+          tally->WebDom.setAttribute("class", "win-panel__stats")
+          tally->WebDom.setTextContent(Stats.summary(stats.contents))
+
           // The buttons sit in a row of their own, so a second one lands beside New
           // Game rather than under it and the panel stays as wide as its widest line.
           let actions = WebDom.createElement("div")
@@ -1322,6 +1355,7 @@ let make = (
           actions->WebDom.appendChild(button)->ignore
 
           panel->WebDom.appendChild(title)->ignore
+          panel->WebDom.appendChild(tally)->ignore
           panel->WebDom.appendChild(actions)->ignore
 
           // The victory share (#264), offered only when the driver has a deal to hand
@@ -1351,7 +1385,7 @@ let make = (
             shareButton->WebDom.setAttribute("class", "win-panel__button win-panel__button--share")
             shareButton->WebDom.setTextContent("Share")
             shareButton->WebDom.addEventListener("click", () =>
-              offer.share(~moves=History.steps(history.contents))
+              offer.share(~moves=stats.contents.moves, ~undos=stats.contents.undos)
               // Writing into the panel is safe even if it's been torn down by the time
               // the share resolves (an undo out of the win, a New Game): the node is
               // detached by then, and setting text on it changes nothing anyone sees.
@@ -1393,6 +1427,12 @@ let make = (
       // settled — so a move and the collection it triggered undo as a unit.
       let recordHistory = () => {
         history := History.record(history.contents, state.contents)
+        // One recorded step is one move made (#289). Counting here rather than at each
+        // drop/command means the two ways to play a move — and the finish sweep, which
+        // records itself as a single step — agree by construction, and a move that
+        // changed nothing (a lawful no-op, #215) doesn't reach this and so doesn't
+        // count. The tally is exactly "recorded steps", plus the redos below.
+        stats := Stats.move(stats.contents)
         reportHistory()
         // Save the new position (#177) so a reload resumes here, mid-game.
         persistCurrent()
@@ -1624,6 +1664,10 @@ let make = (
         if History.canUndo(history.contents) {
           DebugLog.message("undo")
           history := History.undo(history.contents)
+          // Counted as an undo, never as a move, and it never takes a move back off the
+          // tally (#289): the move was still made. Inside the `canUndo` guard, so a
+          // press with nothing behind the present isn't counted as one.
+          stats := Stats.undo(stats.contents)
           removeWinOverlay()
           adoptHistoryPresent()
         }
@@ -1637,6 +1681,10 @@ let make = (
         if History.canRedo(history.contents) {
           DebugLog.message("redo")
           history := History.redo(history.contents)
+          // A redo puts a move back on the board, so it counts as one (#289) — the
+          // issue's rule, and the only one that keeps undo-then-redo from being a way
+          // to play for free.
+          stats := Stats.redo(stats.contents)
           adoptHistoryPresent()
           if GameState.hasWon(game, state.contents) {
             showWin()

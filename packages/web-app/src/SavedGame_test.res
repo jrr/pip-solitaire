@@ -1,8 +1,8 @@
 // The `localStorage` edge of save-and-resume (#177): `SavedGame` writes a game's
-// history under a per-game-type key and reads it back, delegating the actual
-// encoding to `core`'s `SaveState` (round-tripped in `SaveState_test`). These
-// exercise the storage path end to end — save→load, the no-save-yet case, and
-// `clear`.
+// history — and, since #289, the play tally beside it — under a per-game-type key
+// and reads it back, delegating the actual encoding to `core`'s `SaveState`
+// (round-tripped in `SaveState_test`). These exercise the storage path end to end —
+// save→load, the no-save-yet case, and `clear`.
 //
 // jsdom on an opaque origin exposes no `localStorage`, so — exactly as
 // `TableScene_test` stubs `matchMedia` — a minimal in-memory Storage is installed
@@ -25,16 +25,19 @@ open Vitest
 
 describe("SavedGame (#177)", () => {
   let game = Game.freecell
-  // A history with a move recorded, so a lossy save would show up as an inequality.
+  // A history with a move recorded, and a tally that doesn't match its shape (three
+  // moves and an undo behind a one-step line), so a save that dropped either — or
+  // re-derived the counts from the history — would show up as an inequality.
   let history = History.make(GameState.initial(game))->History.record({
     ...GameState.initial(game),
     loose: [{suit: Spades, rank: Ace}],
   })
+  let saved: SaveState.t = {history, stats: {moves: 3, undos: 1}}
 
-  test("save then load round-trips the whole history", () => {
-    SavedGame.save(game.id, history)
+  test("save then load round-trips the whole game, tally included", () => {
+    SavedGame.save(game.id, saved)
     switch SavedGame.load(game.id) {
-    | Some(loaded) => expect(loaded)->toEqual(history)
+    | Some(loaded) => expect(loaded)->toEqual(saved)
     | None => expect("loaded")->toBe("but got None")
     }
   })
@@ -45,7 +48,7 @@ describe("SavedGame (#177)", () => {
   })
 
   test("clear removes the saved game", () => {
-    SavedGame.save(game.id, history)
+    SavedGame.save(game.id, saved)
     SavedGame.clear(game.id)
     expect(SavedGame.load(game.id))->toEqual(None)
   })
@@ -63,7 +66,7 @@ describe("SavedGame (#177)", () => {
     // number" is the right answer for it, and the Share button greys out rather than
     // offering a board nobody has seen.
     SavedGame.clearSeed("legacy-game")
-    SavedGame.save("legacy-game", history)
+    SavedGame.save("legacy-game", saved)
     expect(SavedGame.loadSeed("legacy-game"))->toEqual(None)
   })
 
@@ -71,7 +74,7 @@ describe("SavedGame (#177)", () => {
     // The shared-game case: the save is taken over by a position that was never dealt
     // from a number here, so the previous deal's number must not stay behind to be
     // read as its own.
-    SavedGame.save(game.id, history)
+    SavedGame.save(game.id, saved)
     SavedGame.saveSeed(game.id, 13579)
     SavedGame.clearSeed(game.id)
     expect(SavedGame.loadSeed(game.id))->toEqual(None)
@@ -79,7 +82,7 @@ describe("SavedGame (#177)", () => {
   })
 
   test("clear drops the deal number along with the game", () => {
-    SavedGame.save(game.id, history)
+    SavedGame.save(game.id, saved)
     SavedGame.saveSeed(game.id, 13579)
     SavedGame.clear(game.id)
     expect(SavedGame.loadSeed(game.id))->toEqual(None)
@@ -94,7 +97,7 @@ describe("SavedGame (#177)", () => {
 
   test("saves are namespaced per game type", () => {
     // A save under one game id doesn't leak into another — one saved game per type.
-    SavedGame.save("freecell", history)
+    SavedGame.save("freecell", saved)
     SavedGame.clear("other")
     expect(SavedGame.load("other"))->toEqual(None)
     expect(SavedGame.load("freecell")->Option.isSome)->toBe(true)

@@ -96,6 +96,12 @@ for (const input of inputs) {
       await expect(page.locator(".win-panel__title")).toBeVisible()
       await expect(page.locator(".win-panel__title")).not.toHaveText("")
 
+      // …and what the game cost (#289). A `?state=` board starts a fresh tally, so the
+      // single drag above is the whole game: one move, no undos. The counting rules
+      // are `Stats_test`'s and the wiring is `TableScene_test`'s — what only a browser
+      // can show is that a real drag on a real board reaches the counter at all.
+      await expect(page.locator(".win-panel__stats")).toHaveText("1 move · 0 undos")
+
       // By name, not by class: the panel grew a second button when the victory share
       // landed (#264), and this scenario carries a deal number so both are on offer
       // here. `share-win.spec.mjs` covers the other one.

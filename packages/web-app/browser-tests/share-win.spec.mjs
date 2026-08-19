@@ -92,10 +92,11 @@ test("a won game shares the deal it came from, and that link deals it", async ({
   const shared = await page.evaluate(() => navigator.clipboard.readText())
 
   // The message: the suits that make it recognisable in a chat, the deal that was
-  // beaten, and the length of the winning line — one move, since a forced position
-  // starts a fresh history.
+  // beaten, and what it cost — one move, since a forced position starts a fresh tally
+  // (#289). No undos were used, so the message says nothing about them.
   expect(shared).toContain(`♣️♥️♠️♦️ Pip FreeCell #${ALMOST_WON_DEAL}`)
   expect(shared).toContain("Solved in 1 move")
+  expect(shared).not.toContain("undo")
 
   // …and the link. It has to be the *deal*, not the position: a link to the board as
   // it stands would hand the recipient a solved game, which is the one thing this share
