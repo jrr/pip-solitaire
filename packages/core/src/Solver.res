@@ -1,0 +1,313 @@
+// A best-first FreeCell solver over `Position` — the "brain" a driver plays with.
+//
+// The goal isn't a completed board but `Position.canFinish`: the point where the
+// app's own Finish button lights up and everything left is a foundation-only
+// drain. That's the real end of the *thinking* part of a game, and stopping there
+// keeps the search shallow.
+//
+// Good enough, not optimal: it looks for a line that wins, not the shortest one.
+// Soaked over deals 1–1000 (dealt by `Game.freecellDeal`, so core's own shuffle)
+// it solved all 1000, averaging ~160ms of thinking per deal and ~54 moves to the
+// finishable board — but with a long tail, the worst deal taking ~13s. Nothing
+// here promises a solution: FreeCell has unsolvable deals, and `solve` returns
+// `None` when the ladder runs out rather than pretending otherwise.
+//
+// Ported from the JavaScript solver the autoplay harness carried (#269 → #290),
+// so the search and the rules it searches are now one language in one package:
+// the browser harness, the test suite and the game itself all reach it from here.
+
+// --- The heuristic -----------------------------------------------------------
+
+// Heuristic term weights, kept nameable so they can be measured rather than
+// guessed — `search` takes them, which is how these were chosen.
+//
+// The two that earned their keep are the mobility terms: charging for a loaded
+// free cell (`cell`) and paying for an empty column (`emptyColumn`). Without them
+// the search cheerfully plays itself into positions with nowhere to move, and the
+// stubborn deals cost tens of seconds instead of under one.
+type weights = {
+  remaining: int,
+  buried: int,
+  seam: int,
+  cell: int,
+  emptyColumn: int,
+}
+
+let defaultWeights = {remaining: 2, buried: 2, seam: 1, cell: 3, emptyColumn: 3}
+
+// Distance-to-go estimate. Four things make a position bad: cards still off the
+// foundations, cards sitting on top of one a foundation is waiting for, columns
+// whose descending runs are broken, and a board with nowhere to put anything.
+let heuristic = (s: Position.t, w: weights): int => {
+  let h = ref((52 - Position.foundationTotal(s)) * w.remaining)
+  for col in 0 to Array.length(s.casc) - 1 {
+    let pile = s.casc->Array.getUnsafe(col)
+    let depth = Array.length(pile)
+    if depth == 0 {
+      h := h.contents - w.emptyColumn // room to manoeuvre
+    }
+    for i in 0 to depth - 1 {
+      let card = pile->Array.getUnsafe(i)
+
+      // Buried where a foundation wants it: every card above it must move first.
+      if s.found->Array.getUnsafe(Position.suitOf(card)) == Position.rankOf(card) - 1 {
+        h := h.contents + (depth - 1 - i) * w.buried
+      }
+
+      // A break in the descending alternating run is a seam that has to be undone.
+      if i > 0 {
+        let below = pile->Array.getUnsafe(i - 1)
+        if (
+          !(
+            Position.rankOf(below) == Position.rankOf(card) + 1 &&
+              Position.isRed(below) != Position.isRed(card)
+          )
+        ) {
+          h := h.contents + w.seam
+        }
+      }
+    }
+  }
+  // A card parked in a cell is a card in the way.
+  h.contents + (Position.cellCount - Position.emptyCells(s)) * w.cell
+}
+
+// --- A tiny binary heap, keyed by numeric priority ---------------------------
+// Its own little module rather than a sorted array: the open list is pushed and
+// popped hundreds of thousands of times per deal, and re-sorting it that often is
+// the whole cost of the search.
+
+module Heap = {
+  type entry<'a> = {item: 'a, priority: float}
+  type t<'a> = array<entry<'a>>
+
+  let make = (): t<'a> => []
+  let size = (heap: t<'a>): int => Array.length(heap)
+
+  let swap = (heap: t<'a>, i: int, j: int) => {
+    let atI = heap->Array.getUnsafe(i)
+    heap->Array.setUnsafe(i, heap->Array.getUnsafe(j))
+    heap->Array.setUnsafe(j, atI)
+  }
+
+  let push = (heap: t<'a>, item: 'a, ~priority: float) => {
+    heap->Array.push({item, priority})
+    let i = ref(Array.length(heap) - 1)
+    let sifting = ref(true)
+    while sifting.contents && i.contents > 0 {
+      let parent = (i.contents - 1) / 2
+      if (heap->Array.getUnsafe(parent)).priority <= (heap->Array.getUnsafe(i.contents)).priority {
+        sifting := false
+      } else {
+        swap(heap, parent, i.contents)
+        i := parent
+      }
+    }
+  }
+
+  let pop = (heap: t<'a>): option<'a> =>
+    switch heap->Array.get(0) {
+    | None => None
+    | Some(top) =>
+      switch heap->Array.pop {
+      | Some(last) if Array.length(heap) > 0 =>
+        heap->Array.setUnsafe(0, last)
+        let i = ref(0)
+        let sifting = ref(true)
+        while sifting.contents {
+          let left = 2 * i.contents + 1
+          let right = left + 1
+          let smallest = ref(i.contents)
+          if (
+            left < Array.length(heap) &&
+              (heap->Array.getUnsafe(left)).priority <
+              (heap->Array.getUnsafe(smallest.contents)).priority
+          ) {
+            smallest := left
+          }
+          if (
+            right < Array.length(heap) &&
+              (heap->Array.getUnsafe(right)).priority <
+              (heap->Array.getUnsafe(smallest.contents)).priority
+          ) {
+            smallest := right
+          }
+          if smallest.contents == i.contents {
+            sifting := false
+          } else {
+            swap(heap, smallest.contents, i.contents)
+            i := smallest.contents
+          }
+        }
+      | _ => () // the heap held one entry, and popping it emptied the array
+      }
+      Some(top.item)
+    }
+}
+
+// --- The search --------------------------------------------------------------
+
+// How hard one pass tries. `weight` scales the heuristic against depth: a high
+// weight is greedy and dives, a low one searches wider and costs more per answer.
+// `maxNodes` is the budget it gives up at.
+type attempt = {weight: float, maxNodes: int}
+
+// What a pass came back with: the moves to a finishable board, or `None` if it
+// ran out of budget — and how many nodes that took, which is what makes the
+// weights measurable.
+type outcome = {path: option<array<Position.move>>, nodes: int}
+
+// One node of the open list: a position and the moves that reached it.
+type node = {position: Position.t, path: array<Position.move>}
+
+// Weighted best-first search from `start` to the first position that
+// `Position.canFinish`.
+let search = (start: Position.t, attempt: attempt, ~weights: weights=defaultWeights): outcome =>
+  if Position.canFinish(start) {
+    {path: Some([]), nodes: 0}
+  } else {
+    let frontier = Heap.make()
+    let seen = Map.make()
+    seen->Map.set(Position.key(start), 0)
+    frontier->Heap.push(
+      {position: start, path: []},
+      ~priority=Int.toFloat(heuristic(start, weights)) *. attempt.weight,
+    )
+    let nodes = ref(0)
+    let found = ref(None)
+    while (
+      Option.isNone(found.contents) && Heap.size(frontier) > 0 && nodes.contents < attempt.maxNodes
+    ) {
+      switch Heap.pop(frontier) {
+      | None => ()
+      | Some({position, path}) =>
+        nodes := nodes.contents + 1
+        let moves = Position.legalMoves(position)
+        let i = ref(0)
+        while Option.isNone(found.contents) && i.contents < Array.length(moves) {
+          let move = moves->Array.getUnsafe(i.contents)
+          let next = Position.applyMove(position, move)
+          let key = Position.key(next)
+          let g = Array.length(path) + 1
+          // A position reached no more cheaply than before teaches nothing new.
+          switch seen->Map.get(key) {
+          | Some(prior) if prior <= g => ()
+          | _ =>
+            seen->Map.set(key, g)
+            let nextPath = Array.concat(path, [move])
+            if Position.canFinish(next) {
+              found := Some(nextPath)
+            } else {
+              frontier->Heap.push(
+                {position: next, path: nextPath},
+                ~priority=Int.toFloat(g) +. Int.toFloat(heuristic(next, weights)) *. attempt.weight,
+              )
+            }
+          }
+          i := i.contents + 1
+        }
+      }
+    }
+    {path: found.contents, nodes: nodes.contents}
+  }
+
+// The escalation ladder: a mildly greedy pass first, since almost every deal falls
+// to it, then wider searches for the ones that don't. The rungs are capped
+// deliberately — a rung that can't find it in its budget is usually a rung that
+// never will, and the wasted nodes were most of the old worst case.
+let ladder = [
+  {weight: 2., maxNodes: 60_000},
+  {weight: 1., maxNodes: 150_000},
+  {weight: 4., maxNodes: 150_000},
+  {weight: 0.5, maxNodes: 400_000},
+]
+
+// Solve to the finishable position, escalating effort until it gives — or `None`
+// when the whole ladder runs out, which is all this can honestly say about a deal
+// (a rung that fails proves nothing about solvability).
+let solve = (start: Position.t, ~ladder: array<attempt>=ladder): option<array<Position.move>> => {
+  let plan = ref(None)
+  let rung = ref(0)
+  while Option.isNone(plan.contents) && rung.contents < Array.length(ladder) {
+    let {path} = search(start, ladder->Array.getUnsafe(rung.contents))
+    plan := path
+    rung := rung.contents + 1
+  }
+  plan.contents
+}
+
+// --- Playing the plan on a real board ----------------------------------------
+
+// The moves to a finishable board from a real `GameState` — the game-facing entry
+// point (a hint button, a demo that plays itself, a test that needs a game played
+// through). `None` when the board isn't a FreeCell one or no rung of the ladder
+// found a line.
+//
+// The plan is a plan for a game played with auto-collect *on* (`Options.default`,
+// see `Position.applyMove`): with it off the moves stay legal, but the board after
+// each one won't be the one the plan predicted.
+let plan = (~game: Game.t, state: GameState.t): option<array<Position.move>> =>
+  Position.ofGameState(~game, state)->Option.flatMap(position => solve(position))
+
+// The next move to play, as the action a driver dispatches — the smallest useful
+// thing to ask the solver, and the one the game itself will want first.
+let hint = (~game: Game.t, state: GameState.t): option<Reducer.action> =>
+  plan(~game, state)
+  ->Option.flatMap(moves => moves->Array.get(0))
+  ->Option.flatMap(move => Position.toAction(~game, state, move))
+
+// --- The plan, in the terms a driver outside ReScript plays it in ------------
+// The browser autoplay harness (`web-app/scripts/autoplay/`) is JavaScript: it
+// reads the board off a rendered page and plays each move as a pointer drag. It
+// has no business unpacking a `Position.move`, so a plan is handed to it already
+// said in its terms — which card to grab, what that grab should raise, where to
+// drop it, and the board the move should leave behind.
+
+// One planned move, ready to drag.
+//   `card`        — the card to grab, as a `CardText` code.
+//   `lifts`       — every card that grab should raise, bottom-first, so a driver
+//                   can check that the board lifted what the plan meant.
+//   `target`      — where it lands: "foundation", "cell" or "column".
+//   `column`      — the destination column 0–7, or `-1` for the other targets.
+//   `description` — the move in words, for a play-by-play.
+//   `after`       — the position this move should leave behind, for a driver that
+//                   re-reads the board and checks (`Position.key`).
+type step = {
+  card: string,
+  lifts: array<string>,
+  target: string,
+  column: int,
+  description: string,
+  after: Position.t,
+}
+
+// One move said that way, against the position it's played from — for a driver
+// that picked the move itself (playing a single move by hand, see the
+// `play-in-browser` skill) rather than taking a whole plan.
+let stepFor = (position: Position.t, move: Position.move): step => {
+  card: Position.code(move.card),
+  lifts: Position.lifted(position, move)->Array.map(Position.code),
+  target: switch move.destination {
+  | Position.ToFoundation => "foundation"
+  | Position.ToCell(_) => "cell"
+  | Position.ToColumn(_) => "column"
+  },
+  column: switch move.destination {
+  | Position.ToColumn(col) => col
+  | _ => -1
+  },
+  description: Position.describeMove(move),
+  after: Position.applyMove(position, move),
+}
+
+// The plan from `start` as steps: `None` when the ladder ran out, and `Some([])`
+// when the board is already finishable and there's nothing left to think about.
+let planSteps = (start: Position.t): option<array<step>> =>
+  solve(start)->Option.map(moves => {
+    let position = ref(start)
+    moves->Array.map(move => {
+      let step = stepFor(position.contents, move)
+      position := step.after
+      step
+    })
+  })

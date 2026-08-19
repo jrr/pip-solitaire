@@ -20,6 +20,12 @@ type assertion<'a>
 // returned promise. A separate binding rather than a variant of the one above
 // because ReScript won't let one external have two return shapes.
 @module("vitest") external testAsync: (string, unit => promise<unit>) => unit = "test"
+// The same `test` again, with Vitest's per-test timeout (milliseconds) instead of
+// its 5-second default — for a body that legitimately takes longer, like the
+// solver soak in `Solver_test`, which would otherwise flake on a slow machine
+// rather than fail for a reason worth reading.
+@module("vitest")
+external testWithin: (string, unit => unit, ~timeout: int) => unit = "test"
 @module("vitest") external describe: (string, unit => unit) => unit = "describe"
 @module("vitest") external expect: 'a => assertion<'a> = "expect"
 

@@ -8,13 +8,22 @@
 // name as the `aria-label` `Deck.cardName` writes — and works out the rest from
 // where things sit. That's what makes a game played through this harness evidence
 // about the *app* rather than about the harness.
+//
+// The last thing it does is hand what it read to `core` as a `Position` — the
+// board the solver thinks with (#290). Everything about *cards* below therefore
+// speaks core's vocabulary: `CardText`'s two-character codes, and the card numbers
+// `Position` packs them into.
+
+import * as Position from "core/src/Position.res.mjs"
 
 /** Pile indices by role, matching `Game.freecellDeal`'s board order. */
 export const CELLS = [0, 1, 2, 3]
 export const FOUNDATIONS = [4, 5, 6, 7]
 export const CASCADES = [8, 9, 10, 11, 12, 13, 14, 15]
 
-const RANKS = ["A", "2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K"]
+// `CardText`'s alphabet, so a code read off the page is one core can parse back
+// (`T` for the Ten, not `10`).
+const RANKS = ["A", "2", "3", "4", "5", "6", "7", "8", "9", "T", "J", "Q", "K"]
 const RANK_WORDS = {
   ace: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7,
   eight: 8, nine: 9, ten: 10, jack: 11, queen: 12, king: 13,
@@ -28,6 +37,13 @@ export function parseCardName(name) {
   const suit = m && SUIT_LETTERS[m[2]]
   if (!rank || !suit) throw new Error(`unparseable card name: ${name}`)
   return RANKS[rank - 1] + suit
+}
+
+/** A code as the card number `Position` packs it into (`Position.idOfCode`). */
+export function cardId(code) {
+  const id = Position.idOfCode(code)
+  if (id === undefined) throw new Error(`bad card code: ${code}`)
+  return id
 }
 
 /** Every drop zone and every card, in page coordinates. */
@@ -72,7 +88,7 @@ export async function readGeometry(page) {
  * `Squared` piles stack every card at identical coordinates, so their order is
  * *not* recoverable from geometry — but since #267 the board says which card is
  * the live one by leaving only that one in the accessible tree. See
- * `foundationTop` in rules.mjs.
+ * `foundationTop` below.
  */
 export function assignPiles(geom) {
   const piles = geom.zones.map(() => [])
@@ -84,6 +100,78 @@ export function assignPiles(geom) {
     piles[over.reduce((a, b) => (b.y > a.y ? b : a)).i].push(card)
   }
   return piles.map((cards) => cards.sort((a, b) => a.y - b.y))
+}
+
+/**
+ * The live card of a foundation, read two independent ways that must agree.
+ *
+ * A foundation is `Squared` — every card at identical coordinates, DOM order is
+ * z-order — so its order can't be read from geometry, and it once came back as
+ * `3H AH 4H 2H`. What can be read is which card the board *shows*: since #267
+ * reflow leaves only the top card of a squared pile in the accessible tree, so
+ * exactly one card here is announced, and that one is the top.
+ *
+ * That's the first reading. The second is the pile's contents, which under
+ * `Rules.foundation` must be an ascending same-suit run from the Ace up to that
+ * top card. Checking them against each other is the point: this used to *infer*
+ * the top as the pile's highest rank, which is sound only because core's rule
+ * says so — so a foundation that had somehow gone wrong would have been read as
+ * a tidy, plausible, wrong board, and the harness would have laundered the bug
+ * into a pass. Now the app says which card is live and the harness checks that
+ * claim, so a disagreement is loud.
+ *
+ * Returns the card number, or `-1` for an empty foundation.
+ */
+export function foundationTop(pile) {
+  if (!pile.length) return -1
+  const announced = pile.filter((c) => c.announced)
+  if (announced.length !== 1) {
+    throw new Error(
+      `a foundation holding ${pile.length} cards announces ${announced.length} of them ` +
+        `(expected exactly one): ${pile.map((c) => c.code).join(" ")}`,
+    )
+  }
+  const top = cardId(announced[0].code)
+  const held = pile.map((c) => cardId(c.code)).sort((a, b) => a - b)
+  const run = Array.from({ length: Position.rankOf(top) }, (_, i) => Position.suitOf(top) * 13 + i)
+  if (held.join() !== run.join()) {
+    throw new Error(
+      `a foundation shows ${Position.code(top)} but holds ${held.map(Position.code).join(" ")} — ` +
+        `not the ascending same-suit run from the Ace that Rules.foundation builds`,
+    )
+  }
+  return top
+}
+
+/**
+ * Build the `Position` the solver thinks with from the sixteen piles `assignPiles`
+ * returns, each a list of `{ code, announced }` bottom-first.
+ *
+ * A `Position` is a plain record of arrays — `cells` (4 slots, `-1` when empty),
+ * `found` (the rank each suit's foundation has climbed to, indexed by
+ * `Position.suitOf`), `casc` (8 columns, bottom-first like `GameState.cardsInPile`)
+ * — so a driver outside ReScript can build one; see `core/src/Position.res`.
+ *
+ * Cascades are `Fanned`, so the reader's geometric order is the pile order.
+ * Foundations go through `foundationTop` above. Free cells hold one card by
+ * capacity, so there's nothing to disambiguate — but a second card in one would
+ * mean the board had broken its own rule, so say so rather than quietly taking
+ * the first.
+ */
+export function stateFromPiles(piles) {
+  const cells = CELLS.map((i) => {
+    const pile = piles[i]
+    if (!pile.length) return -1
+    if (pile.length > 1)
+      throw new Error(`a free cell holds ${pile.length} cards: ${pile.map((c) => c.code).join(" ")}`)
+    return cardId(pile[0].code)
+  })
+  const found = [0, 0, 0, 0]
+  for (const i of FOUNDATIONS) {
+    const top = foundationTop(piles[i])
+    if (top >= 0) found[Position.suitOf(top)] = Position.rankOf(top)
+  }
+  return { cells, found, casc: CASCADES.map((i) => piles[i].map((c) => cardId(c.code))) }
 }
 
 /**

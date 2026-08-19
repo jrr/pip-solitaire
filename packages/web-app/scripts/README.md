@@ -54,14 +54,20 @@ way evidence about the *app*. Three parts:
 
 | module | what it is |
 | --- | --- |
-| `read-board.mjs` | the eyes — the board read off the DOM (zone boxes, card `aria-label`s), plus the `settle()` wait |
-| `rules.mjs` | a JS **mirror** of `core`'s rules, to plan against. Not a second source of truth; see its header |
-| `solver.mjs` | best-first search to a `canFinish` board, where the Finish button takes over |
+| `read-board.mjs` | the eyes — the board read off the DOM (zone boxes, card `aria-label`s), the `settle()` wait, and the `Position` it all adds up to |
 | `autoplay.mjs` | the hands — `playGame()` / `dragMove()`: plan a move, drag it, look at the board again |
 | `play.mjs` | the `mise run autoplay` CLI over the above |
 
+The **brain** isn't here: the rules and the solver live in `core`
+(`Position.res`, `Solver.res`) and this imports them like any other consumer
+(#290). They used to be a JavaScript mirror of `core` kept in this directory,
+which meant two copies of the rules and only a browser run to catch a drift
+between them; now there is one copy, and `core`'s own tests hold the packed
+search position against `Reducer` move for move. `mise run solve -- <deal>` runs
+that brain with no browser attached.
+
 `autoplay.mjs` is imported from outside `scripts/` too:
 `browser-tests/autoplay.spec.mjs` plays a fixed deal end to end as a test, and
-asserts that the mirror and `core` never once disagreed over a whole game.
+asserts that the app never once did something other than what `core` predicted.
 Driving the app by hand for anything else is documented as a skill, in
 `.claude/skills/play-in-browser/`.

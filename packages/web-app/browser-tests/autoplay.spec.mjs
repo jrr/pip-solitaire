@@ -19,15 +19,16 @@
 //   1. **The app says you won.** The overlay is up and all 52 cards are home.
 //   2. **It took real play to get there.** A win with no drags would mean the
 //      harness found some shortcut, so the move count has to be substantial.
-//   3. **`core` and the harness's mirror of it never disagreed.** After every
-//      single drag the harness re-reads the board and compares it against what
-//      `scripts/autoplay/rules.mjs` predicted; `replans` counts the times they
-//      differed. Zero means the mirror — cascade and foundation rules, the
-//      supermove limit, the auto-collect fixpoint, the point where `canFinish`
-//      suppresses it — matched the real reducer's behaviour for a whole game.
-//      A non-zero count here is the interesting failure: either the app's
-//      behaviour changed, or the mirror has drifted from it (in which case the
-//      fix is in `scripts/autoplay/rules.mjs`, not here).
+//   3. **The app never once surprised `core`.** After every single drag the
+//      harness re-reads the board and compares it against the board `core` said
+//      the move would leave behind (`Solver.planSteps`, planned over
+//      `Position`); `replans` counts the times they differed. Zero means the
+//      running app — its pointer loop, its supermove limit, its auto-collect,
+//      the point where `canFinish` suppresses it — behaved for a whole game
+//      exactly as the pure rules say it should. A non-zero count here is the
+//      interesting failure: the *app* is doing something its own core doesn't
+//      predict. (The rules themselves are checked against the reducer in
+//      `core`'s `Position_test`, which needs no browser.)
 //
 // A fixed deal, not a random one: this has to fail the same way twice.
 
@@ -56,7 +57,7 @@ test("plays deal 7 from the opening layout to the win overlay", async ({ page })
   expect(result.played).toBeGreaterThan(20)
   expect(result.played).toBe(result.planned)
 
-  // The board never once did something other than what core's rules, mirrored,
-  // said it would.
+  // The board never once did something other than what core's rules said it
+  // would.
   expect(result.replans).toBe(0)
 })
