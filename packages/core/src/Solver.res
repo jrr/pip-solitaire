@@ -9,8 +9,11 @@
 // Soaked over deals 1–1000 (dealt by `Game.freecellDeal`, so core's own shuffle)
 // it solved all 1000, averaging ~160ms of thinking per deal and ~54 moves to the
 // finishable board — but with a long tail, the worst deal taking ~13s. Nothing
-// here promises a solution: FreeCell has unsolvable deals, and `solve` returns
-// `None` when the ladder runs out rather than pretending otherwise.
+// here promises a solution: FreeCell has unsolvable deals, and boards a player can
+// make unwinnable in a move. When the search *proves* that — its frontier empties
+// with nothing found, so there is no line to find — it says so (`Unwinnable`); when
+// it merely runs out of budget it says only that (`Unknown`), and never dresses one
+// up as the other.
 //
 // Ported from the JavaScript solver the autoplay harness carried (#269 → #290),
 // so the search and the rules it searches are now one language in one package:
@@ -152,13 +155,23 @@ module Heap = {
 // `maxNodes` is the budget it gives up at.
 type attempt = {weight: float, maxNodes: int}
 
-// What a pass came back with: the moves to a finishable board, or `None` if it
-// ran out of budget — and what it cost to get there, which is what makes the
-// weights measurable. `nodes` counts the positions taken off the frontier and grown;
-// `applied` the moves played out to see where they led, which is the bigger number
-// and the one most of the time goes into (every one of them is an `applyMove`, a
-// `key` and a `canFinish`).
-type outcome = {path: option<array<Position.move>>, nodes: int, applied: int}
+// Why a pass stopped. The loop below has two ways to end without a line, and they
+// are not the same news: a pass that spends its budget has learned nothing about
+// the board, while a pass whose *frontier empties* has generated every position
+// this board can still reach and found none of them finishable — which is a proof
+// that the game is lost, not a shrug. Telling them apart costs one comparison, and
+// used to be thrown away.
+type finding =
+  | Line(array<Position.move>) // a way through to a finishable board
+  | Exhausted // the frontier emptied: there is no way through, from here
+  | Budget // the node budget ran out: this pass has no opinion
+
+// What a pass came back with, and what it cost to get there — which is what makes
+// the weights measurable. `nodes` counts the positions taken off the frontier and
+// grown; `applied` the moves played out to see where they led, which is the bigger
+// number and the one most of the time goes into (every one of them is an
+// `applyMove`, a `key` and a `canFinish`).
+type outcome = {finding: finding, nodes: int, applied: int}
 
 // One node of the open list: a position and the moves that reached it.
 type node = {position: Position.t, path: array<Position.move>}
@@ -167,7 +180,7 @@ type node = {position: Position.t, path: array<Position.move>}
 // `Position.canFinish`.
 let search = (start: Position.t, attempt: attempt, ~weights: weights=defaultWeights): outcome =>
   if Position.canFinish(start) {
-    {path: Some([]), nodes: 0, applied: 0}
+    {finding: Line([]), nodes: 0, applied: 0}
   } else {
     let frontier = Heap.make()
     let seen = Map.make()
@@ -213,7 +226,15 @@ let search = (start: Position.t, attempt: attempt, ~weights: weights=defaultWeig
         }
       }
     }
-    {path: found.contents, nodes: nodes.contents, applied: applied.contents}
+    // An empty frontier is the proof, and it outranks the budget: everything this
+    // position can reach has been generated and grown, so there is nothing left to
+    // find however many nodes were left to spend. A frontier with anything still on
+    // it means the budget ended the pass, and all that says is "not within that".
+    let finding = switch found.contents {
+    | Some(path) => Line(path)
+    | None => Heap.size(frontier) == 0 ? Exhausted : Budget
+    }
+    {finding, nodes: nodes.contents, applied: applied.contents}
   }
 
 // The escalation ladder: a mildly greedy pass first, since almost every deal falls
@@ -243,32 +264,58 @@ let ladder = [
 // timing-shaped hole in one.
 type effort = {positions: int, moves: int, passes: int}
 
-// Solve to the finishable position, escalating effort until it gives — or `None`
-// when the whole ladder runs out, which is all this can honestly say about a deal
-// (a rung that fails proves nothing about solvability). Reports what the climb cost
-// alongside the line, since a rung that failed still spent its budget and a caller
-// saying "found in 65ms" is describing all of them.
-let solveWithEffort = (start: Position.t, ~ladder: array<attempt>=ladder): (
-  option<array<Position.move>>,
-  effort,
-) => {
-  let plan = ref(None)
+// What the ladder concluded about a board. The two ways of not having a line are
+// worth different sentences to whoever asked: one is the search admitting defeat,
+// the other is the board being genuinely lost.
+type verdict =
+  | Solved(array<Position.move>) // the moves to a finishable board
+  | Unwinnable // proved: every position still reachable was searched, and none wins
+  | Unknown // the ladder ran out of budget, which says nothing either way
+
+// Solve to the finishable position, escalating effort until a rung gives — or until
+// one *proves* there's nothing to find. Reports what the climb cost alongside the
+// verdict, since a rung that failed still spent its budget and a caller saying
+// "found in 65ms" is describing all of them.
+//
+// A rung whose frontier emptied ends the climb: it has already generated every
+// position reachable from `start`, and the rungs above it search the same graph in
+// a different order, so they would empty the same frontier and charge for it again.
+// (They did, until this told them apart — four proofs of one thing, and on a board
+// with a wide dead space that is most of the wait.)
+let solveWithEffort = (start: Position.t, ~ladder: array<attempt>=ladder): (verdict, effort) => {
+  let verdict = ref(Unknown)
+  let climbing = ref(true)
   let rung = ref(0)
   let positions = ref(0)
   let moves = ref(0)
-  while Option.isNone(plan.contents) && rung.contents < Array.length(ladder) {
-    let {path, nodes, applied} = search(start, ladder->Array.getUnsafe(rung.contents))
+  while climbing.contents && rung.contents < Array.length(ladder) {
+    let {finding, nodes, applied} = search(start, ladder->Array.getUnsafe(rung.contents))
     positions := positions.contents + nodes
     moves := moves.contents + applied
-    plan := path
     rung := rung.contents + 1
+    switch finding {
+    | Line(path) =>
+      verdict := Solved(path)
+      climbing := false
+    | Exhausted =>
+      verdict := Unwinnable
+      climbing := false
+    | Budget => ()
+    }
   }
-  (plan.contents, {positions: positions.contents, moves: moves.contents, passes: rung.contents})
+  (verdict.contents, {positions: positions.contents, moves: moves.contents, passes: rung.contents})
 }
 
-// The line alone, for the callers that only ever wanted that.
-let solve = (start: Position.t, ~ladder: array<attempt>=ladder): option<array<Position.move>> =>
-  fst(solveWithEffort(start, ~ladder))
+// The line alone, for the callers that only ever wanted that — a board with no line
+// is `None` whether that was proved or merely unfound, which is all a caller looking
+// for moves to play can do with either.
+let solve = (start: Position.t, ~ladder: array<attempt>=ladder): option<array<Position.move>> => {
+  let (verdict, _effort) = solveWithEffort(start, ~ladder)
+  switch verdict {
+  | Solved(moves) => Some(moves)
+  | Unwinnable | Unknown => None
+  }
+}
 
 // --- On making this faster (measured, then deferred) -------------------------
 // Asked in passing: would a WASM module be significantly faster? Profiled rather
@@ -365,11 +412,12 @@ type played = {
   moved: array<Card.card>,
 }
 
-// What autoplay found. The two refusals are different questions and read as
-// different sentences (`Command.autoplayNotFreeCell` / `autoplayNoLine`): one board
-// the solver doesn't understand, one it understands and can't win. A `Played` with no
-// steps is neither — it's a board already finishable, where there was nothing left to
-// think about.
+// What autoplay found. The three refusals are different questions and read as
+// different sentences (`Command.autoplayNotFreeCell` / `autoplayLost` /
+// `autoplayNoLine`): a board the solver doesn't understand, a board it understands
+// and has *proved* nobody can win, and a board it simply couldn't crack in the
+// budget it had. A `Played` with no steps is none of them — it's a board already
+// finishable, where there was nothing left to think about.
 //
 // `Played` carries what the search cost alongside the line it found (`effort`), so a
 // front end can say how hard the answer was to come by. It travels with the steps
@@ -378,7 +426,8 @@ type played = {
 type autoplayed =
   | Played({steps: array<played>, effort: effort})
   | NotFreeCell // not the four-cell, four-foundation, eight-column board the solver models
-  | NoLine // the ladder ran out (which proves nothing about the deal — see `solve`)
+  | Lost // searched out: no position this board can still reach wins (see `verdict`)
+  | NoLine // the ladder ran out of budget, which proves nothing about the board
 
 // The post-move settle the plan assumes: safe auto-collect, standing aside once the
 // board is finishable — `Position.applyMove`'s own rule, said against a real state.
@@ -404,10 +453,11 @@ let autoplay = (~game: Game.t, state: GameState.t): autoplayed =>
   switch Position.ofGameState(~game, state) {
   | None => NotFreeCell
   | Some(position) =>
-    let (line, effort) = solveWithEffort(position)
-    switch line {
-    | None => NoLine
-    | Some(moves) =>
+    let (verdict, effort) = solveWithEffort(position)
+    switch verdict {
+    | Unwinnable => Lost
+    | Unknown => NoLine
+    | Solved(moves) =>
       let steps = []
       let current = ref(state)
       // A plan generated from these very rules shouldn't come unstuck against them,

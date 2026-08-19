@@ -1839,6 +1839,7 @@ let make = (
         let started = Date.now()
         switch Solver.autoplay(~game, state.contents) {
         | Solver.NotFreeCell => Render.text(Command.autoplayNotFreeCell)
+        | Solver.Lost => Render.text(Command.autoplayLost)
         | Solver.NoLine => Render.text(Command.autoplayNoLine)
         | Solver.Played({steps, effort}) =>
           let ms = Date.now() -. started

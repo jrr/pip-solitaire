@@ -1,4 +1,5 @@
 open Vitest
+open Card
 
 // The solver (#290, ported from #269's JavaScript). `Position_test` pins the rules
 // it searches against the real reducer; what's left for here is the search itself:
@@ -39,6 +40,62 @@ describe("Solver", () => {
         }
       }
     )
+
+  // A board with nowhere left to go — the position a player hands the solver after
+  // one careless move, and the one this suite needs *proved* lost rather than merely
+  // unsolved. Built so its deadness can be read off the description instead of taken
+  // on trust from a search:
+  //
+  //   - Three Kings sit in free cells. A King has nowhere to go with no column empty
+  //     and no foundation near a Queen, so all three are stuck where they are.
+  //   - Every cascade wears two red cards on top, the Hearts under the Diamonds. Two
+  //     reds in a row are never an ordered run, so only a pile's top card can be
+  //     lifted at all; a red card can only land on a black one, and no pile shows
+  //     one; and no top is an Ace, so no foundation will take one either.
+  //
+  // That leaves exactly one kind of move — a top card into the one free cell — and
+  // after any of them the cells are full and the board is red-topped again, with
+  // nothing at all to play. Nine positions in the whole of the game's remaining
+  // future, and the search grows every one of them.
+  //
+  // Dealt from the whole deck the way `Scenario`'s boards are, so the 52-card
+  // invariant holds by construction rather than by counting.
+  let deadBoard = (game: Game.t): GameState.t => {
+    let cellPiles = [Spades, Hearts, Diamonds]->Array.map(suit => [{suit, rank: King}])
+    let tops =
+      [Two, Three, Four, Five, Six, Seven, Eight, Nine]->Array.map(rank => [
+        {suit: Hearts, rank},
+        {suit: Diamonds, rank},
+      ])
+    let spokenFor = card =>
+      cellPiles
+      ->Array.concat(tops)
+      ->Array.some(pile => pile->Array.some(c => GameState.sameCard(c, card)))
+    let cascadeCount = Game.pileIndices(game, Game.Cascade)->Array.length
+    // Everything not already placed, spread underneath — whatever lands there is
+    // buried under a red pair and never surfaces.
+    let cascadePiles =
+      Cards.all
+      ->Array.filter(card => !spokenFor(card))
+      ->Cards.deal(~piles=cascadeCount)
+      ->Array.mapWithIndex((pile, i) => pile->Array.concat(tops->Array.get(i)->Option.getOr([])))
+
+    let cellIdx = ref(0)
+    let cascadeIdx = ref(0)
+    let next = (queue, cursor) => {
+      let value = queue->Array.get(cursor.contents)->Option.getOr([])
+      cursor := cursor.contents + 1
+      value
+    }
+    let piles = game.piles->Array.map((pile: Game.pile) =>
+      switch pile.role {
+      | Game.FreeCell => next(cellPiles, cellIdx)
+      | Game.Cascade => next(cascadePiles, cascadeIdx)
+      | Game.Foundation => []
+      }
+    )
+    {GameState.piles, loose: []}
+  }
 
   testWithin(
     "plays deal #1 to a board the Finish button wins",
@@ -178,6 +235,7 @@ describe("Solver", () => {
       () =>
         switch Solver.autoplay(~game, opening) {
         | Solver.NotFreeCell => expect("a FreeCell board")->toBe("but the solver didn't know it")
+        | Solver.Lost => expect("deal 1 played")->toBe("but the board was searched out")
         | Solver.NoLine => expect("deal 1 played")->toBe("but the ladder ran out")
         | Solver.Played({steps, effort}) =>
           expect(Array.length(steps) > 20)->toBe(true) // a real game, not a shortcut
@@ -257,6 +315,47 @@ describe("Solver", () => {
         expect(Solver.autoplay(~game=Game.stacking, GameState.initial(Game.stacking)))->toEqual(
           Solver.NotFreeCell,
         )
+      },
+    )
+
+    test(
+      "a board with nowhere left to go is reported lost, not merely unsolved",
+      () => {
+        // The whole point of the `Lost` / `NoLine` split: this board's dead space is
+        // nine positions wide, so the first rung generates all of it and empties its
+        // frontier, which is a *proof* rather than a budget running out. Every number
+        // is knowable, so they're all pinned: one position grown to find the eight
+        // moves out of it, then those eight grown to find none — and one pass, because
+        // a proof ends the climb instead of being re-proved on every rung above it.
+        expect(Solver.autoplay(~game, deadBoard(game)))->toEqual(Solver.Lost)
+        switch Position.ofGameState(~game, deadBoard(game)) {
+        | None => expect("a packed board")->toBe("but got None")
+        | Some(position) =>
+          expect(Solver.solveWithEffort(position))->toEqual((
+            Solver.Unwinnable,
+            {Solver.positions: 9, moves: 8, passes: 1},
+          ))
+        }
+      },
+    )
+
+    test(
+      "a search that only ran out of budget says so, and doesn't call the board lost",
+      () => {
+        // Deal 1 is winnable, and this ladder is far too small to find out — the one
+        // rung stops with a frontier still full of positions it never grew. That's the
+        // other half of the distinction: `NoLine` is the search's own limit, and
+        // claiming a board is lost on the strength of it would be a lie a player would
+        // believe.
+        switch Position.ofGameState(~game, opening) {
+        | None => expect("a packed board")->toBe("but got None")
+        | Some(position) =>
+          let (verdict, _effort) = Solver.solveWithEffort(
+            position,
+            ~ladder=[{Solver.weight: 2., maxNodes: 5}],
+          )
+          expect(verdict)->toEqual(Solver.Unknown)
+        }
       },
     )
   })

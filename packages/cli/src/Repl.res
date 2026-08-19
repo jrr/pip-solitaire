@@ -312,6 +312,7 @@ let autoplay = (s: session): (option<session>, string) => {
   let started = Date.now()
   switch Solver.autoplay(~game=s.game, present(s)) {
   | Solver.NotFreeCell => (Some(s), Command.autoplayNotFreeCell)
+  | Solver.Lost => (Some(s), Command.autoplayLost)
   | Solver.NoLine => (Some(s), Command.autoplayNoLine)
   | Solver.Played({steps, effort}) =>
     let ms = Date.now() -. started

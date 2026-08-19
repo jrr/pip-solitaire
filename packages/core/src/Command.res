@@ -729,11 +729,18 @@ let describeRejection = (err: Reducer.moveError, ~action: Reducer.action): strin
   }
 
 // --- What autoplay had to say (#291) -----------------------------------------
-// The two ways `Solver.autoplay` can decline, in words. Here rather than in the
+// The three ways `Solver.autoplay` can decline, in words. Here rather than in the
 // solver for the reason every other refusal in this module is: it's what a *front
 // end* says to someone who typed something, and a terminal and a panel saying it
 // differently would be two commands wearing one name.
 let autoplayNotFreeCell = "Autoplay only plays FreeCell — this board isn't one it knows."
+
+// The two "no" answers are deliberately different sentences, because they are
+// different facts. `Lost` is a proof: the search generated every position this board
+// can still reach and none of them wins, so no amount of play from here can — only
+// taking a move back can. `NoLine` is the search giving up inside its budget, which
+// says nothing about the board and mustn't be read as a verdict on it.
+let autoplayLost = "No solution — this game is lost. Every position the board can still reach was searched, and none of them wins; only an undo can change that."
 
 let autoplayNoLine = "Autoplay couldn't find a way to win from here."
 
