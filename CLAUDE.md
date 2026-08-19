@@ -108,6 +108,11 @@ change in the actual game rather than only in tests. Driving the board by hand
 `.claude/skills/play-in-browser/`; the harness itself is
 `packages/web-app/scripts/autoplay/`.
 
+The thinking behind it lives in `core` — `Position.res` (a FreeCell board packed
+for search) and `Solver.res` (the search itself). `mise run solve -- <deal>` runs
+that alone, with no browser: seconds instead of a minute, so it's what you
+measure a solver change with before playing one for real.
+
 ## Formatting
 
 Code is formatted by ReScript's own formatter. **Run `mise run format` before

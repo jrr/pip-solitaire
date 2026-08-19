@@ -9,13 +9,20 @@ The web app is playable by an agent. Every move is a real pointer drag on the
 rendered board — no reaching into game state, no calling `core` directly — so
 whatever you observe this way is evidence about the app a player uses.
 
-The machinery lives in `packages/web-app/scripts/autoplay/`, in three parts:
+The machinery is in three parts. Two of them live in
+`packages/web-app/scripts/autoplay/`; the third is in `core`:
 
-| part | file | what it does |
+| part | where | what it does |
 | --- | --- | --- |
-| eyes | `read-board.mjs` | reads the board off the DOM: zone boxes, card `aria-label`s, and `settle()` |
-| brain | `rules.mjs`, `solver.mjs` | a mirror of `core`'s rules, and a solver that plans to a finishable board |
-| hands | `autoplay.mjs` | `playGame()` and `dragMove()` — a planned move as a real drag, then look again |
+| eyes | `autoplay/read-board.mjs` | reads the board off the DOM: zone boxes, card `aria-label`s, `settle()`, and the `Position` it all adds up to |
+| brain | `core`'s `Position` + `Solver` | the rules, and a solver that plans to a finishable board — in core, not here (#290) |
+| hands | `autoplay/autoplay.mjs` | `playGame()` and `dragMove()` — a planned move as a real drag, then look again |
+
+The brain used to be a JavaScript mirror of core's rules kept beside the other
+two. It isn't any more: there is one set of rules, in ReScript, and the harness
+imports them like any other consumer. `mise run solve -- <deal>` runs that brain
+with no browser attached — seconds instead of a minute — which is the faster way
+to answer anything about *planning* rather than about the app.
 
 ## Just play a game
 
@@ -37,11 +44,16 @@ For anything that isn't "play a whole game" — trying one move, checking a
 highlight, reproducing a position — write a throwaway script in your scratchpad
 and run it with `node` from `packages/web-app`. The pieces are exported for this:
 
+Import everything by **absolute path**, core included: a script outside the repo
+has no `node_modules` above it, so the bare `core/...` specifier that
+`read-board.mjs` uses won't resolve from your scratchpad.
+
 ```js
 import { startPreview, launchChromium } from "/abs/path/packages/web-app/scripts/lib/preview-app.mjs"
 import { look, dragMove } from "/abs/path/packages/web-app/scripts/autoplay/autoplay.mjs"
-import { settle } from "/abs/path/packages/web-app/scripts/autoplay/read-board.mjs"
-import { cardId, legalMoves, describeMove } from "/abs/path/packages/web-app/scripts/autoplay/rules.mjs"
+import { settle, cardId } from "/abs/path/packages/web-app/scripts/autoplay/read-board.mjs"
+import * as Position from "/abs/path/packages/core/src/Position.res.mjs"
+import * as Solver from "/abs/path/packages/core/src/Solver.res.mjs"
 
 const { base, close } = await startPreview()          // serves the built dist/
 const browser = await launchChromium()
@@ -52,21 +64,30 @@ await settle(page)
 
 let view = await look(page)                            // { geom, piles, cards, codes, state }
 console.log(view.codes.slice(8))                       // the eight cascades, bottom-first
-console.log(legalMoves(view.state).map(describeMove))  // what's playable right now
+
+// `view.state` is a `Position` — the packed board core plans with.
+const moves = Position.legalMoves(view.state)
+console.log(moves.map(Position.describeMove))          // what's playable right now
 
 // Play the first move on offer (on an opening board, usually an Ace going home).
-await dragMove(page, view, legalMoves(view.state)[0])  // settles before returning
+// `dragMove` takes a *step* — which card to grab, what that grab should raise,
+// where it lands — and `Solver.stepFor` makes one from any move.
+await dragMove(page, view, Solver.stepFor(view.state, moves[0]))  // settles before returning
 view = await look(page)                                // always re-read after a drag
 
 // Or aim at one card. `legalMoves` only lists *movable* cards — the top of a pile
 // or the head of a run — so a buried card simply isn't in the list, and `find`
 // gives you `undefined` rather than a move that would bounce.
-const move = legalMoves(view.state).find((m) => m.card === cardId("QS"))
-if (move) await dragMove(page, view, move)
+const move = Position.legalMoves(view.state).find((m) => m.card === cardId("QS"))
+if (move) await dragMove(page, view, Solver.stepFor(view.state, move))
 
 await page.screenshot({ path: "/tmp/board.png" })
 await browser.close(); await close()
 ```
+
+`Solver.planSteps(view.state)` gives a whole plan of those steps to a finishable
+board — that's what `playGame()` plays. Every card in a move is a small int; use
+`Position.code(id)` to print one and `cardId("QS")` to name one.
 
 `mise run bundle` first — `startPreview` serves `dist/`, and `assertBundled()`
 will tell you if it's stale. (The `autoplay` task carries that `depends`; a
@@ -128,6 +149,10 @@ Query parameters, all documented in `src/AppUrl.res`:
 - **Don't reach into game state to make something work.** The value of playing
   this way is that it can't lie about the app. If a move can't be made by
   dragging, that's a finding, not an obstacle to route around.
-- **If the mirror in `rules.mjs` disagrees with `core`, `core` is right.** Fix
-  the mirror; `autoplay.spec.mjs` asserts the two never disagree over a whole
-  game, so a drift shows up there.
+- **If the app disagrees with `core`, that's a finding about the app.** There's
+  no mirror to fix any more — the harness plans with core's own rules, so a
+  board that doesn't match what core predicted means the running app did
+  something its own rules don't. `autoplay.spec.mjs` asserts the two never
+  disagree over a whole game, so a drift shows up there. (The rules themselves
+  are held against `Reducer` by `core`'s `Position_test`, which needs no
+  browser.)
