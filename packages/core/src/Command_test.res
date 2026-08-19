@@ -1006,3 +1006,54 @@ describe("Command.reason", () => {
     )
   )
 })
+
+// What autoplay says when it played (#291, revised): the line's length, the time it
+// took to find, and what the search spent — the numbers that were missing from
+// "Autoplay played 58 moves.", which said the least interesting of the three.
+describe("Command.describeAutoplay", () => {
+  test("says the length, the time and the cost", () =>
+    expect(
+      Command.describeAutoplay(~moves=58, ~ms=65., ~positions=1204, ~tried=18332, ~passes=1),
+    )->toBe("58-move solution found in 65ms — 1,204 positions, 18,332 moves tried.")
+  )
+
+  // A stubborn deal climbed the ladder, and that's worth saying — but only then, since
+  // one pass is what almost every deal takes and a sentence that says so every time is
+  // saying nothing.
+  test("mentions the extra passes only when there were some", () =>
+    expect(
+      Command.describeAutoplay(~moves=61, ~ms=1449., ~positions=312004, ~tried=4100211, ~passes=3),
+    )->toBe(
+      "61-move solution found in 1.4s — 312,004 positions, 4,100,211 moves tried over 3 passes.",
+    )
+  )
+
+  // A board that was already finishable needed no thinking at all, so there's no time
+  // and no cost to report — only that there was nothing to do.
+  test("a board with nothing left to think about says so instead", () =>
+    expect(Command.describeAutoplay(~moves=0, ~ms=0., ~positions=0, ~tried=0, ~passes=1))->toBe(
+      "Autoplay: nothing left to think about — the board is already finishable.",
+    )
+  )
+
+  // Milliseconds while the answer is still a moment, tenths of a second once it isn't
+  // — and never more precision than a `Date.now()` difference actually has.
+  test("an elapsed time reads in the unit it belongs in", () => {
+    expect(Command.duration(0.))->toBe("0ms")
+    expect(Command.duration(65.4))->toBe("65ms")
+    expect(Command.duration(999.))->toBe("999ms")
+    expect(Command.duration(1000.))->toBe("1s")
+    expect(Command.duration(1449.))->toBe("1.4s")
+    expect(Command.duration(13200.))->toBe("13.2s")
+  })
+
+  // Separators every three digits, from the right, and none where there's nothing to
+  // separate.
+  test("a count reads in threes", () => {
+    expect(Command.thousands(0))->toBe("0")
+    expect(Command.thousands(999))->toBe("999")
+    expect(Command.thousands(1000))->toBe("1,000")
+    expect(Command.thousands(1204))->toBe("1,204")
+    expect(Command.thousands(4100211))->toBe("4,100,211")
+  })
+})

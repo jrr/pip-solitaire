@@ -737,14 +737,54 @@ let autoplayNotFreeCell = "Autoplay only plays FreeCell — this board isn't one
 
 let autoplayNoLine = "Autoplay couldn't find a way to win from here."
 
-// What it says when it *did* play: how far it got, since the board it leaves behind
-// doesn't say by itself whether it played fifty moves or none (a board that was
-// already finishable needed no thinking at all).
-let describeAutoplay = (~moves: int): string =>
+// An elapsed time in the unit a reader can hold: whole milliseconds while the answer
+// still arrives in a moment, tenths of a second once it doesn't. Rounded rather than
+// truncated, and never spelled to more precision than the measurement has — a
+// `Date.now()` difference is whole milliseconds to begin with.
+let duration = (ms: float): string =>
+  ms < 1000.
+    ? `${Math.round(ms)->Float.toString}ms`
+    : `${(Math.round(ms /. 100.) /. 10.)->Float.toString}s`
+
+// A count with thousands separators, because the numbers a search reports run to six
+// figures and `312004` doesn't read as anything at a glance.
+let thousands = (n: int): string => {
+  let digits = Int.toString(n)
+  let length = String.length(digits)
+  let out = ref("")
+  for i in 0 to length - 1 {
+    out := out.contents ++ String.charAt(digits, i)
+    let left = length - 1 - i
+    if left > 0 && mod(left, 3) == 0 {
+      out := out.contents ++ ","
+    }
+  }
+  out.contents
+}
+
+// What it says when it *did* play: how long the answer was, how long it took to find,
+// and what the finding cost. The length alone was the old sentence, and it left the
+// two most interesting things unsaid — the board it leaves behind doesn't say whether
+// the line took a moment or ten seconds to think of, and a board that was already
+// finishable needed no thinking at all.
+//
+// `ms` is the caller's own measurement around its `Solver.autoplay` call (the solver
+// keeps no clock); `positions` and `tried` are that search's `Solver.effort`, and
+// `passes` the rungs of the ladder it climbed — mentioned only when it took more than
+// one, since one is the ordinary case and saying so every time would be noise.
+let describeAutoplay = (
+  ~moves: int,
+  ~ms: float,
+  ~positions: int,
+  ~tried: int,
+  ~passes: int,
+): string =>
   switch moves {
   | 0 => "Autoplay: nothing left to think about — the board is already finishable."
-  | 1 => "Autoplay played 1 move."
-  | n => `Autoplay played ${Int.toString(n)} moves.`
+  | n =>
+    let over = passes > 1 ? ` over ${Int.toString(passes)} passes` : ""
+    `${Int.toString(n)}-move solution found in ${duration(ms)} — ` ++
+    `${thousands(positions)} positions, ${thousands(tried)} moves tried${over}.`
   }
 
 // --- Help ---------------------------------------------------------------------

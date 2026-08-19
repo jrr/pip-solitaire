@@ -410,8 +410,18 @@ describe("Repl.run", () => {
       "plays a real deal all the way to the win, a step at a time",
       () => {
         let transcript = Repl.run(["deal freecell", "autoplay"])
-        expect(has(transcript, "Autoplay played"))->toBe(true)
+        // The reply says how long the line was, how long it took to find, and what the
+        // search spent finding it — the timing is a real measurement, so what's pinned
+        // here is the sentence's shape rather than any of its numbers.
+        expect(has(transcript, "-move solution found in"))->toBe(true)
+        expect(has(transcript, "moves tried"))->toBe(true)
         expect(has(transcript, "You win!"))->toBe(true)
+        // …and it lists the line it played, in the words a typed move is echoed in —
+        // the same document the web console narrates a run with (`Render.action`) —
+        // ending with the sweep it handed over to. Numbered, so the rows a terminal
+        // prints all at once can be pointed at.
+        expect(has(transcript, "   1. move "))->toBe(true)
+        expect(has(transcript, "finish "))->toBe(true)
         // Each planned move is committed as its own undoable step — the reason the
         // states go in one at a time rather than as one jump. A game the solver played
         // is as long as it looks, and undo walks back through it rather than
@@ -426,11 +436,16 @@ describe("Repl.run", () => {
       "says so when there was nothing left to think about",
       () => {
         // Already finishable: the solver plans no moves at all, and the sweep this
-        // driver hands over to does the rest. `Played([])` reads as a sentence rather
+        // driver hands over to does the rest. A `Played` with no steps reads as a sentence rather
         // than as silence, since the board alone doesn't say which of the two happened.
         let transcript = Repl.run(["deal freecell finish", "autoplay"])
         expect(has(transcript, "nothing left to think about"))->toBe(true)
         expect(has(transcript, "You win!"))->toBe(true)
+        // No moves to number, so the sweep it handed straight over to is the whole
+        // play-by-play — and stands flush rather than indented under numbers that
+        // aren't there.
+        expect(has(transcript, "   1. move "))->toBe(false)
+        expect(has(transcript, "\nfinish "))->toBe(true)
       },
     )
 

@@ -329,10 +329,26 @@ test("autoplay plays the deal out and wins it", async ({ page }) => {
   // home is animated on top of that, so the win takes a while to arrive.
   await expect(page.locator(".win-overlay")).toHaveCount(1, { timeout: 60_000 })
 
-  // It says how far it got, and the moves it played are in the log in the same words a
-  // dragged move is narrated in — a play-by-play, not a board that changed by itself.
-  await expect(consoleLines(page).filter({ hasText: /Autoplay played \d+ moves\./ })).toHaveCount(1)
+  // It says how long the line was, how long it took to find and what the search spent
+  // finding it, and the moves it played are in the log in the same words a dragged move
+  // is narrated in — a play-by-play, not a board that changed by itself. The numbers
+  // are real measurements, so what's pinned is the sentence's shape — and not its end,
+  // since this deal is one of the few that takes a second rung of the ladder and says
+  // so ("… 415,966 moves tried over 2 passes.").
+  await expect(
+    consoleLines(page).filter({ hasText: /\d+-move solution found in .*moves tried/ }),
+  ).toHaveCount(1)
   expect(await consoleLines(page).filter({ hasText: "→" }).count()).toBeGreaterThan(10)
+
+  // …and that sentence *heads* the play-by-play instead of sitting a line inside it.
+  // The console prints a command's answer once the command returns, so a run that
+  // played its first move on the way to returning narrated that move first; the run
+  // starts a tick later than the answer precisely so this holds.
+  const printed = await consoleLines(page).allTextContents()
+  const summary = printed.findIndex((line) => /-move solution found in/.test(line))
+  const firstMove = printed.findIndex((line) => line.includes("→"))
+  expect(summary).toBeGreaterThanOrEqual(0)
+  expect(firstMove).toBeGreaterThan(summary)
 
   // …and the victory screen counts it: the moves are the game's real length, and the
   // autoplay is the line that only shows on a game that used one.
