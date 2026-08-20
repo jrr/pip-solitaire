@@ -35,8 +35,8 @@ let fan = [
 
 // One fanned card: just the real card face, nested and placed. There's no green
 // mat anymore — instead each card carries the same soft drop-shadow the app
-// gives `.card-art` on screen (see index.html), so overlapping cards separate
-// the way they do in-game and the icon reads as the actual playfield.
+// gives a card on the board (`.stacking-card` in index.html), so overlapping cards
+// separate the way they do in-game and the icon reads as the actual playfield.
 let placedCard = ((card, angle)) => {
   let w = 120. *. cardScale
   let h = 168. *. cardScale
@@ -66,7 +66,7 @@ let placedCard = ((card, angle)) => {
 
 // Shared <defs>: the background gradient and the card drop-shadow filter. The
 // gradient is anchored top-center like the page's, fading to the darker outer
-// color; the shadow mirrors `.card-art`'s `drop-shadow(0 … rgba(0,0,0,…))`,
+// color; the shadow mirrors the board card's `drop-shadow(0 … rgba(…))`,
 // scaled up for the icon so the fan lifts off the background.
 let defs = () => {
   let f = Float.toString
