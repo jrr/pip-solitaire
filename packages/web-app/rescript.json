@@ -1,5 +1,6 @@
 {
   "name": "web-app",
+  "namespace": true,
   "sources": [
     {
       "dir": "src",

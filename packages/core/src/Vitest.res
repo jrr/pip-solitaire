@@ -5,13 +5,16 @@
 // If maintaining these bindings by hand becomes too burdensome, we could switch
 // to https://github.com/cometkim/rescript-vitest instead.
 //
-// **The only copy.** `cli` and `web-app` both depend on `core`, so both reach these
-// bindings from here — and neither may keep a second `Vitest.res` of its own. Module
-// names are global across a ReScript build graph (no namespace is configured), so two
-// packages defining `Vitest` collide: the dependent's build drops the dependency's
-// copy, and any `core` file that then needs recompiling in that build can't find the
-// module it opens. web-app carried such a duplicate; it built for months and then
+// **The copy worth extending.** `cli` and `web-app` both depend on `core`, so both
+// reach these bindings from here; add what you need here rather than starting a second
+// `Vitest.res` in a dependent. That's a preference now, not a prohibition. It used to
+// be one: module names are global across a ReScript build graph, so before `cli` and
+// `web-app` were namespaced (#299) a second `Vitest` there displaced `core`'s copy in
+// `core`'s own build — web-app carried such a duplicate; it built for months and then
 // failed the moment a `core` test happened to need rebuilding mid-dependency-build.
+// With `"namespace": true` on both leaf packages, a duplicate now shadows this module
+// only inside the package that defines it, which is a local decision with a local
+// error message rather than a spooky one in `core`.
 
 type assertion<'a>
 
