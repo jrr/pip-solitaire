@@ -16,7 +16,15 @@ describe("SaveState", () => {
   // …and the game around it: two moves played and one undone, which is a tally no
   // fallback could invent (`History.steps` of this history is 1, not 2) — so a save
   // that dropped the counts would fail here rather than pass by looking plausible.
-  let saved: SaveState.t = {history, stats: {moves: 2, undos: 1, autoplays: 1}}
+  // …and the clock beside it (#302): a deal and a win, far enough apart that a
+  // dropped or rounded stamp would show up as a different elapsed time rather than
+  // as the same one.
+  let dealtAt = 1_700_000_000_000.
+  let saved: SaveState.t = {
+    history,
+    stats: {moves: 2, undos: 1, autoplays: 1},
+    timing: {dealtAt: Some(dealtAt), wonAt: Some(dealtAt +. 247_000.)},
+  }
 
   test("a card round-trips through its two-character code", () => {
     Cards.all->Array.forEach(
@@ -62,7 +70,11 @@ describe("SaveState", () => {
   })
 
   test("a fresh (no moves) game round-trips too", () => {
-    let fresh: SaveState.t = {history: History.make(opening), stats: Stats.zero}
+    let fresh: SaveState.t = {
+      history: History.make(opening),
+      stats: Stats.zero,
+      timing: Timing.dealt(~at=dealtAt),
+    }
     switch SaveState.decode(SaveState.encode(fresh)) {
     | Some(restored) =>
       expect(restored)->toEqual(fresh)
@@ -100,9 +112,12 @@ describe("SaveState", () => {
   // didn't move for it — so a blob written by an older build has to keep working,
   // both out of `localStorage` and out of a share link somebody already sent.
   describe("a save written before the tally existed", () => {
-    // Exactly what a pre-#289 `encode` produced: two states behind the present, no
-    // `stats` key anywhere.
-    let legacy = SaveState.encode(saved)->String.replaceRegExp(/,"stats":\{[^}]*\}/, "")
+    // Exactly what a pre-#289 `encode` produced: two states behind the present, and
+    // neither the `stats` key nor the `timing` key that came after it.
+    let legacy =
+      SaveState.encode(saved)
+      ->String.replaceRegExp(/,"stats":\{[^}]*\}/, "")
+      ->String.replaceRegExp(/,"timing":\{[^}]*\}/, "")
 
     test(
       "still decodes to a real game",
@@ -130,6 +145,75 @@ describe("SaveState", () => {
           })
         | None => expect("decoded")->toBe("but got None")
         }
+      },
+    )
+
+    test(
+      "reports no time at all, rather than inventing one (#302)",
+      () => {
+        // Unlike the move count, nothing in a history hints at when it was dealt. A
+        // save from before the clock existed is a game whose length is simply not
+        // known, and the win panel shows no time for it.
+        switch SaveState.decode(legacy) {
+        | Some(restored) =>
+          expect(restored.timing)->toEqual(Timing.unknown)
+          expect(Timing.summary(restored.timing))->toEqual(None)
+        | None => expect("decoded")->toBe("but got None")
+        }
+      },
+    )
+  })
+
+  // The clock (#302) rides in the envelope on the same additive terms the tally does,
+  // one level further down: `timing` may be absent, and either stamp inside it may be
+  // absent, but a stamp that's present and isn't a timestamp fails the save.
+  describe("the clock", () => {
+    test(
+      "both stamps survive the round-trip",
+      () => {
+        switch SaveState.decode(SaveState.encode(saved)) {
+        | Some(restored) =>
+          expect(restored.timing)->toEqual(saved.timing)
+          expect(Timing.summary(restored.timing))->toEqual(Some("4:07"))
+        | None => expect("decoded")->toBe("but got None")
+        }
+      },
+    )
+
+    test(
+      "an unfinished game round-trips with a deal and no win",
+      () => {
+        // What every mid-game save on the table is: the clock is running, and the blob
+        // says so by carrying `dealtAt` and no `wonAt` at all.
+        let playing: SaveState.t = {...saved, timing: Timing.dealt(~at=dealtAt)}
+        let blob = SaveState.encode(playing)
+        expect(blob->String.includes("wonAt"))->toBe(false) // absent, not null or zero
+        switch SaveState.decode(blob) {
+        | Some(restored) => expect(restored.timing)->toEqual(playing.timing)
+        | None => expect("decoded")->toBe("but got None")
+        }
+      },
+    )
+
+    test(
+      "a game with no clock at all round-trips as one",
+      () => {
+        let untimed: SaveState.t = {...saved, timing: Timing.unknown}
+        switch SaveState.decode(SaveState.encode(untimed)) {
+        | Some(restored) => expect(restored.timing)->toEqual(Timing.unknown)
+        | None => expect("decoded")->toBe("but got None")
+        }
+      },
+    )
+
+    test(
+      "a present-but-malformed stamp is rejected like any other bad field",
+      () => {
+        let states = `"past":[],"present":{"piles":[],"loose":[]},"future":[]`
+        expect(SaveState.decode(`{"v":1,${states},"timing":{"dealtAt":"noon"}}`))->toEqual(None)
+        expect(SaveState.decode(`{"v":1,${states},"timing":{"dealtAt":-1}}`))->toEqual(None)
+        expect(SaveState.decode(`{"v":1,${states},"timing":{"wonAt":null}}`))->toEqual(None)
+        expect(SaveState.decode(`{"v":1,${states},"timing":7}`))->toEqual(None)
       },
     )
   })

@@ -1564,6 +1564,19 @@
         color: #eab308;
       }
 
+      /* How long the game took (#302): "4:07", between the title and the tally. The
+         second thing you read and the one you'd say out loud, so it's a size up on the
+         tally and keeps the panel's light ink, with tabular figures so a clock that
+         ticks past a digit boundary doesn't shift under the eye. Absent entirely on a
+         game with no time to report, which is why it isn't a clause on the line below.
+         The panel's own `gap` spaces it, so it carries no margin. */
+      .win-panel__time {
+        margin: 0;
+        font: 600 20px "Libre Franklin", sans-serif;
+        font-variant-numeric: tabular-nums;
+        color: #e2e8f0;
+      }
+
       /* What the game cost (#289): "94 moves · 3 undos", under the title and above
          the buttons. Quieter than the title and a size down — the headline is that
          you won; this is the detail you read second. The panel's own `gap` spaces
