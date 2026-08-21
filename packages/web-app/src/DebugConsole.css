@@ -1,0 +1,364 @@
+/* The drop-down debug console (#271): the Quake-style panel `` ` `` drops over
+   the top of the board, showing the lines the app publishes through `DebugLog`.
+   Top-anchored and translucent so the board stays readable underneath — you're
+   meant to watch the log *and* the game it's narrating — and monospace, because
+   the payloads are JSON.
+
+   These are the *top* placement's rules, and they're the base ones: the three
+   other placements ⇧` steps to (#275) are written below as overrides keyed off
+   `html[data-console-dock="<placement>"]`, the attribute `ConsoleDock.reflect`
+   publishes while the panel is showing.
+
+   `z-index: 15` puts it above the board (which isolates its own large numbers;
+   see `.table-board`) and **below the menu** at 20: the menu is the modal chrome
+   and wins. In this shape the chrome model keeps the two from being up at once
+   anyway, so this is the belt to that pair of braces — but side-docked (#275) the
+   two *do* coexist, and then the ordering is load-bearing rather than
+   belt-and-braces (see the backdrop inset that goes with it, further down).
+
+   `hidden` (set by the chrome model) collapses it entirely when closed — needed
+   explicitly because the `display: flex` here would otherwise out-specify the
+   UA's `[hidden] { display: none }`. */
+#debug-console {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 15;
+  display: flex;
+  flex-direction: column;
+  height: 40vh;
+  /* The top padding is the top bar's height: the panel covers the chrome, and
+     the log starting *under* the Menu button keeps the two from being read on
+     top of each other. It clears the landscape rail's ☰ too, which sits in the
+     same corner. */
+  padding: calc(env(safe-area-inset-top) + 3rem) 0.6rem 0.35rem
+    calc(env(safe-area-inset-left) + 0.6rem);
+  box-sizing: border-box;
+  color: #d6e2f5;
+  /* Translucent, so the board is still legible through it — watching the log and
+     the game it's narrating at the same time is the point. */
+  background: rgba(6, 11, 22, 0.72);
+  border-bottom: 1px solid #2b3b58;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+  font: 12px/1.45 ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  /* **Pointer-transparent**, and that's the whole trick: overlaid, the panel
+     takes no pointer input. A console covering the top of the board would
+     otherwise cover the free cells, the foundations *and* the top bar's Menu
+     button — you couldn't play the game the log is narrating, which is exactly
+     what an open console is for. Nothing here swallows a drag aimed at the board
+     underneath. The scrollback is still scrollable: with no element to receive
+     them, wheel events are forwarded to it by hand while the panel is open (see
+     `DebugConsole.res`). The one deliberate exception is the prompt line at the
+     foot (#273), which takes events back for its own single row — see
+     `.debug-console__prompt` below.
+
+     `touch-action`/`overscroll-behavior` say the same thing to the touch and
+     scroll-chaining machinery — belt to that brace, and what would keep the
+     panel to itself if a later revision ever did take pointer events. */
+  pointer-events: none;
+  overscroll-behavior: contain;
+  touch-action: pan-y;
+  /* The page centres its text (`body` above) because the board is a centred thing;
+     a log is not. It went unnoticed while every line was a flex row — flex items
+     don't take `text-align` — and showed up the moment a *rendered* line (#282,
+     `display: block`) was short enough to see it float: a one-line move sentence
+     sitting halfway across the panel while the echo above it started at the left.
+     Said once here rather than per line, so the prompt and the status row are
+     covered by the same statement. */
+  text-align: left;
+}
+
+#debug-console[hidden] {
+  display: none;
+}
+
+/* --- Side-docked (#275) -----------------------------------------------------
+   The same panel, turned through 90°: a full-height column down the edge
+   *beside* the board rather than a band across the top of it. The axis is the
+   whole argument — `TableScene` fits the tallest cascade fan plus the top row
+   into the available height, so an overlay eats the scarce dimension and shrinks
+   every card, while past a point (`--rows-max-w`) the layout throws surplus
+   *width* away as equal left/right margins. This dock is built out of that
+   discard.
+
+   `--console-dock-inset` is the dock's width, published by `ConsoleDock` (in px,
+   the way `applyScale` publishes `--card-w`) so the one number is stated once in
+   ReScript: the CSS lays the panel out in it here, and the refusal test subtracts
+   it from the stage there. The attribute is on the root only while the panel is
+   showing — a closed console must not go on holding a strip of the board.
+
+   The side is opposite the menu, which enters from the left and mirrors right
+   under `html[data-cutout="right"]` — hence the mirror block below keyed off that
+   same attribute. It never fires in practice (that regime is phone-only, and
+   docking is refused at those widths); it's here so the invariant holds if the
+   menu ever moves for another reason. */
+html[data-console-dock="side"] #debug-console {
+  top: 0;
+  bottom: 0;
+  left: auto;
+  right: 0;
+  height: auto;
+  width: calc(env(safe-area-inset-right) + var(--console-dock-inset, 0px));
+  /* No 3rem top inset here: docked, the panel is nowhere near the top bar's Menu
+     button (both controls sit at the bar's left end), so the log starts at the
+     top of the screen. */
+  padding: calc(env(safe-area-inset-top) + 0.6rem) calc(env(safe-area-inset-right) + 0.6rem)
+    calc(env(safe-area-inset-bottom) + 0.35rem) 0.6rem;
+  border-bottom: none;
+  border-left: 1px solid #2b3b58;
+  box-shadow: -8px 0 24px rgba(0, 0, 0, 0.45);
+  /* **Takes pointer events**, the exact inverse of the overlay's trick above and
+     the reason this had to land before the input line (#273). The overlay is
+     pointer-transparent because it covers the free cells, the foundations and the
+     Menu button; docked it covers none of them — the board has been narrowed out
+     of the way — so nothing is gained by refusing input and a great deal is lost:
+     the log can be clicked, selected and scrolled natively instead of through
+     `DebugConsole`'s hand-forwarded wheel events (which unbind themselves in this
+     mode, or every turn would scroll twice). */
+  pointer-events: auto;
+}
+
+/* The mirror: the menu enters from the right in this regime, so the console docks
+   left. */
+html[data-cutout="right"][data-console-dock="side"] #debug-console {
+  right: auto;
+  left: 0;
+  width: calc(env(safe-area-inset-left) + var(--console-dock-inset, 0px));
+  padding-right: 0.6rem;
+  padding-left: calc(env(safe-area-inset-left) + 0.6rem);
+  border-left: none;
+  border-right: 1px solid #2b3b58;
+  box-shadow: 8px 0 24px rgba(0, 0, 0, 0.45);
+}
+
+/* The other half of docking, and the only thing the board is ever told about it:
+   narrow `.table-board`. That box is what `TableScene`'s `ResizeObserver` watches
+   (#172), so shrinking it re-runs the layout the resize path already runs —
+   `applyScale` resizes the cards, `reflowAll` moves the piles, loose cards scale
+   by the width ratio — and the board simply reflows into what's left. Every other
+   scene is untouched, which a flex-sibling restructure of the chrome would not
+   have managed.
+
+   `align-self` is what keeps the board flush against the far edge instead of
+   being re-centred by `#scene-container`'s `align-items: center` — with the base
+   `width: 100%` the two are indistinguishable, so this only ever matters here. */
+html[data-console-dock="side"] .table-board {
+  align-self: flex-start;
+  width: calc(100% - env(safe-area-inset-right) - var(--console-dock-inset, 0px));
+}
+
+html[data-cutout="right"][data-console-dock="side"] .table-board {
+  align-self: flex-end;
+  width: calc(100% - env(safe-area-inset-left) - var(--console-dock-inset, 0px));
+}
+
+/* --- Along the bottom (#275) ------------------------------------------------
+   The top band's mirror image, and the same bargain: an overlay the board is never
+   told about, pointer-transparent so the game underneath stays playable, costing
+   the layout nothing. What changes is *which* row it hides — and that's the whole
+   reason it exists. The top band lands on the free cells and the foundations,
+   which is exactly the state a `dispatch` line is usually about; put the log at the
+   foot and the row you're reading about stays in sight while the cascade tails go
+   under instead.
+
+   The 3rem of top-bar clearance goes with the band that covers the top bar, so the
+   padding here is the plain 0.6rem plus the bottom safe-area inset — the home
+   indicator's strip is the only thing to clear at this edge. */
+html[data-console-dock="bottom"] #debug-console {
+  top: auto;
+  bottom: 0;
+  padding: 0.6rem 0.6rem calc(env(safe-area-inset-bottom) + 0.35rem)
+    calc(env(safe-area-inset-left) + 0.6rem);
+  border-bottom: none;
+  border-top: 1px solid #2b3b58;
+  box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.45);
+}
+
+/* --- The whole window (#275) ------------------------------------------------
+   For when the board isn't what you're reading. `print` draws a text board (#273)
+   some 150 columns across and 20 rows down: the 340px dock crops it in both axes,
+   the 40vh band in one, and either way it's read through a letterbox. At full
+   window it simply arrives.
+
+   Two things follow from covering everything. It **takes pointer events**, like the
+   side dock and for the inverse reason: the overlays refuse them to keep the board
+   they cover playable, and here there is no visible board left to protect — so the
+   log can be selected, clicked and scrolled natively (`DebugConsole` unbinds its
+   hand-forwarded wheel here too). And it stays a shade translucent rather than going
+   flat: enough that a long line reads cleanly over the card faces, little enough that
+   the table still shows through and the panel reads as something dropped over the
+   game rather than a screen the game has left. `` ` `` is still the way out. */
+html[data-console-dock="full"] #debug-console {
+  bottom: 0;
+  height: auto;
+  padding: calc(env(safe-area-inset-top) + 0.6rem) calc(env(safe-area-inset-right) + 0.6rem)
+    calc(env(safe-area-inset-bottom) + 0.35rem) calc(env(safe-area-inset-left) + 0.6rem);
+  border-bottom: none;
+  box-shadow: none;
+  background: rgba(6, 11, 22, 0.94);
+  pointer-events: auto;
+}
+
+/* The prompt (#273): the caret glyph and the command field, in a row between the
+   scrollback and the status line. `flex: none` so it keeps exactly its own line
+   while the log above takes all the slack. */
+.debug-console__prompt {
+  display: flex;
+  flex: none;
+  align-items: baseline;
+  gap: 0.45rem;
+  padding-top: 0.25rem;
+  border-top: 1px solid #223148;
+  /* The one part of an *overlaid* panel that takes pointer events — and it has
+     to, because a field you can't click into isn't a field. The carve-out is
+     deliberately one line at the foot of the band rather than the whole panel:
+     what it costs the board underneath is a single row, and the way in is a
+     keypress that focuses it anyway, so this is for the mouse that wants to fix
+     a typo. Docked (#275) the whole panel already takes events and this adds
+     nothing. */
+  pointer-events: auto;
+}
+
+.debug-console__caret {
+  flex: none;
+  color: #7fd6a2;
+}
+
+/* `font: inherit` is what makes a typed command read like the log lines it joins
+   — same monospace, same size — instead of like a form control. The focus ring is
+   dropped because the field is focused for as long as the panel is open (focus
+   follows the panel, see `DebugConsole.apply`), so a permanent ring would be
+   noise; the caret is the indicator. */
+.debug-console__input {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 0;
+  font: inherit;
+  color: #e8f0fb;
+  background: transparent;
+  border: none;
+  outline: none;
+  caret-color: #7fd6a2;
+}
+
+.debug-console__input::placeholder {
+  color: #4d6183;
+}
+
+/* The status line at the foot: what this panel is, and the keys that work it. */
+.debug-console__status {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  padding-top: 0.3rem;
+  border-top: 1px solid #223148;
+  color: #8aa2c4;
+  text-transform: lowercase;
+  letter-spacing: 0.04em;
+}
+
+.debug-console__hint {
+  color: #5f7396;
+}
+
+/* The scrollback: a plain <ol> owned by DebugConsole.res and spliced in with
+   `Html.node`, appended to one <li> at a time (#45 — the reconciler has no keys,
+   so a re-rendered list would re-patch every visible line). It's the scroller,
+   and it grows to fill whatever the header leaves. */
+.debug-console__lines {
+  flex: 1 1 auto;
+  margin: 0;
+  padding: 0 0 0.3rem 0;
+  /* Both axes. Vertical is the log itself; horizontal is for the lines wider than
+     the panel — the aligned help table, and now the text board `print` draws
+     (#273), which is ~150 columns and has to stay aligned to be a board at all.
+     Before this they were simply clipped at the right edge with no way to reach
+     the rest. Scrolling the list moves every line together, which is what keeps a
+     printed board readable as one picture. */
+  overflow: auto;
+  list-style: none;
+}
+
+.debug-console__line {
+  display: flex;
+  gap: 0.5rem;
+  padding: 1px 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  /* Sized to its content, but never narrower than the panel: `max-content` is what
+     puts a wide line into the scroller's reach (a plain block line box would stop
+     at the panel edge and let its content spill unscrollably), and `min-width`
+     keeps ordinary lines filling the width as before. */
+  width: max-content;
+  min-width: 100%;
+}
+
+/* Label and payload styled apart — the reason DebugLog publishes structured
+   entries rather than finished strings.
+
+   `flex: none` keeps a long payload from squashing the tag beside it. It also
+   means a line wider than the panel extends rather than wrapping, which is the
+   right trade for every kind of line this carries: a JSON payload wraps into an
+   unreadable block, a console reply is an aligned two-column help table that only
+   reads as one while its columns hold, and a printed board is a picture that
+   wrapping would tear in half. Where it extends *to* is the scroller above. */
+.debug-console__label {
+  flex: none;
+  color: #7fd6a2;
+}
+
+.debug-console__value {
+  color: #c8d6ea;
+}
+
+/* A row `core` rendered as spans (#282) — a printed board, or any console reply,
+   which is the same document with everything inked plain. `display: block` rather
+   than the flex row above: the spans are a continuous run of text, and as flex
+   items they would take the 0.5rem `gap` between *every* card and its frame and
+   tear the drawing apart. As inline text they inherit the `pre-wrap` and the
+   `max-content` width that keep a ~150-column board aligned and scrollable. */
+.debug-console__line--rendered {
+  display: block;
+  /* A board drawn in box-drawing characters is only a *box* if the rows touch.
+     `│` and `─` are drawn to fill their glyph cell edge to edge, so what breaks a
+     frame into dashes is never the characters — it's the space the CSS puts around
+     them: the panel's 1.45 line-height (right for prose, ~5px of air per row here)
+     and the 1px of padding every log line carries. Both go for a rendered row, so
+     one row's cell ends exactly where the next one's begins and the verticals join
+     up. Prose lines keep their leading.
+
+     The remainder is the font's: the stack has to resolve to one whose box-drawing
+     glyphs really do span the full cell (the ui-monospace/SF Mono/Menlo/Consolas
+     faces at the head of it all do). A fallback that draws them short would leave
+     hairlines this can't close — bundling a face is the only way to guarantee it
+     everywhere, which is more weight than a debug panel has earned so far. */
+  line-height: 1;
+  padding: 0;
+}
+
+/* The ink roles `Render` names, painted for *this* medium. `core` says which run of
+   characters is a red suit's face and stops there, so these are the panel's own
+   choices — not the terminal's SGR red, and not `Deck.suitColor`'s #991b1b, which is
+   picked for a light card face and would be all but invisible on this dark ground.
+   The frames deliberately recede so the cards read first. */
+.debug-console__ink--plain {
+  color: #8ea6c8;
+}
+
+.debug-console__ink--red {
+  color: #ff7b88;
+}
+
+/* Not black: on a dark log the *other* colour has to be the bright one. What the
+   ink means is "this card is not red", and near-white says that here. */
+.debug-console__ink--black {
+  color: #dce6f5;
+}
+
+/* The board's heading, in the panel's own accent — the colour its labels and caret
+   already use. */
+.debug-console__ink--title {
+  color: #7fd6a2;
+}

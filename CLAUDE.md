@@ -123,6 +123,30 @@ an unformatted file will turn the build red.
 Developers get format-on-save automatically via the workspace settings in
 `.vscode/` (install the recommended ReScript extension when VS Code prompts).
 
+## Styling
+
+CSS is **one file per component**, next to the component that renders it —
+`src/components/TopBar.css` beside `TopBar.res`, `src/TableScene.css` beside
+`TableScene.res`. A rule goes in the file for the thing it styles; the shared
+foundations (faces, reset, app shell, the landscape rail) live in
+`src/styles/`.
+
+They are assembled by `src/styles/index.css`, which `index.html` links. **That
+file lists its `@import`s in a deliberate order and components do not import
+their own sheets** — the cascade still breaks ties on source order, and at
+least one rule depends on that (see the `:not([data-cutout="right"])` guard in
+`landscape-rail.css`, pinned by `browser-tests/rail.spec.mjs`). Adding a rule
+needs no thought; adding a *file* means adding an `@import` and deciding where
+in the order it belongs.
+
+Font `url()`s are root-relative (`/fonts/…`) so Vite resolves them from
+`public/` — a document-relative `./fonts/…` breaks once the stylesheet is
+emitted into `assets/`. See the note in `src/styles/fonts.css`.
+
+CSS is not covered by `mise run format`, and unit tests never evaluate it: the
+gate for a styling change is `mise run browsertest` plus a look at
+`mise run screenshots`.
+
 ## Conventions
 
 - Prefer a framework's own CLI (invoked through a mise task) over hand-writing

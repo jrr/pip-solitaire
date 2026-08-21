@@ -1,0 +1,46 @@
+/* Self-hosted, precached webfonts (issue #114): the app's type no longer
+   depends on the platform's installed fonts. Both faces are OFL and shipped
+   same-origin from ./fonts (vendored by `mise run fonts`, precached by the
+   PWA — see vite.config.js), so they render identically everywhere and on a
+   first offline launch, with no cross-origin CDN fetch.
+
+     Libre Franklin — chrome (400) and the card rank labels (600).
+     Pip Suits  — the four card pips ♠ ♣ ♥ ♦, a merged subset of IBM
+                      Plex Sans JP scoped to those code points.
+
+   `font-display: swap` renders text immediately in the fallback and swaps
+   the webface in when it loads (moot once precached, but correct on the
+   very first, still-online visit).
+
+   **The `src` URLs are root-relative (`/fonts/…`), and that is deliberate.**
+   They were `./fonts/…` while these rules lived inline in index.html, where
+   they resolved against the *document* at the site root. In a stylesheet they
+   would resolve against the *stylesheet* instead — and the built one is emitted
+   into `assets/`, so `./fonts/…` silently became `assets/fonts/…` and every
+   face 404'd (Vite says so at build time: "didn't resolve at build time, it
+   will remain unchanged"). A leading `/` hands the path to Vite, which serves
+   it from `public/` in dev and rewrites it to `../fonts/…` in the build —
+   correct under `base: "./"`, so it still works on the GitHub Pages subpath. */
+@font-face {
+  font-family: "Libre Franklin";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("/fonts/libre-franklin-400.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Libre Franklin";
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("/fonts/libre-franklin-600.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Pip Suits";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("/fonts/pip-suits.woff2") format("woff2");
+  /* ♠ U+2660 · ♣ U+2663 · ♥ U+2665 · ♦ U+2666 — the only glyphs it carries. */
+  unicode-range: U+2660, U+2663, U+2665, U+2666;
+}

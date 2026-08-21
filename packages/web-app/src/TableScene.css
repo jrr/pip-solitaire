@@ -1,0 +1,433 @@
+/* The board host (TableScene.res): wraps the playfield (and caption) so a
+   New Game re-deal can rebuild just the board in place — the re-deal is now
+   driven from the top bar (#109), which stays put across the rebuild. It
+   fills the scene band and lets the playfield's `flex: 1` grow into it, so
+   the board still stretches exactly as when the playfield was a direct child
+   of the container.
+
+   `isolation: isolate` makes it a **stacking context**, which keeps the
+   board's layering to itself (#249). The board stacks in the large: the
+   cards carry an imperative counter (TableScene.res), the finish sweep flies
+   at 100000, the Finish button sits at 900 and the win overlay at 1000 —
+   numbers chosen relative to *each other*. Without a stacking context here
+   they were all siblings of the app chrome in the root context, where the
+   slide-over menu sits at a modest z-index: 20, so the Finish button floated
+   over an open menu. Isolating means those numbers only ever order the board
+   internally, and the board as a whole (z-index: auto) stays under the menu —
+   so the chrome can keep its small, readable numbers without having to
+   out-bid the playfield. */
+.table-board {
+  position: relative;
+  isolation: isolate;
+  flex: 1;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+}
+
+/* The win overlay (issue #121): shown over the board when every foundation
+   is complete. A dimmed scrim covering the whole board (`.table-board` is
+   the positioning context) with a centred panel announcing the win and a
+   New Game button to play on. Built imperatively in TableScene.res and torn
+   down with the board on the next deal. */
+.win-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(11, 18, 32, 0.7);
+  animation: win-overlay-in 0.2s ease-out;
+}
+
+@keyframes win-overlay-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.win-panel {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  padding: 28px 36px;
+  background: #0f172a;
+  border: 2px solid #eab308;
+  border-radius: 14px;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+  text-align: center;
+}
+
+.win-panel__title {
+  margin: 0;
+  font: 600 26px "Libre Franklin", sans-serif;
+  color: #eab308;
+}
+
+/* What the game cost (#289): "94 moves · 3 undos", under the title and above
+   the buttons. Quieter than the title and a size down — the headline is that
+   you won; this is the detail you read second. The panel's own `gap` spaces
+   it, so it carries no margin of its own. */
+.win-panel__stats {
+  margin: 0;
+  font: 15px "Libre Franklin", sans-serif;
+  color: #cbd5e1;
+}
+
+.win-panel__button {
+  padding: 10px 22px;
+  font: 600 16px "Libre Franklin", sans-serif;
+  color: #f8fafc;
+  background: #166534;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.win-panel__button:hover {
+  background: #15803d;
+}
+
+/* The panel's button row (#264), so Share sits beside New Game rather than
+   under it. The panel is a centred column, so a row of one (a board with no
+   deal number to share) looks exactly as it did before the Share button
+   existed. */
+.win-panel__actions {
+  display: flex;
+  gap: 12px;
+}
+
+/* Share is the secondary action of the two: New Game keeps the green, this
+   takes the panel's slate so the eye lands on "play on" first. */
+.win-panel__button--share {
+  background: #334155;
+}
+
+.win-panel__button--share:hover {
+  background: #475569;
+}
+
+/* Where the share reports what it did ("Link copied to clipboard."). Its
+   height is reserved by the same line-height/min-height pair the menu's share
+   line uses, so the text landing doesn't push the buttons up the screen —
+   see `.menu-share-line` for why the two values have to be stated this way.
+
+   The negative margins are what keep that reserved height from *reading* as
+   padding. The line is empty until you tap Share, and an empty line under the
+   buttons is indistinguishable from whitespace: left alone it stacked the
+   panel's `gap` (16) and its own height (~18) on top of the 28px bottom
+   padding, so the panel sat with roughly twice as much space below the buttons
+   as above the title. Pulling it up by 8 and letting it eat 22 of the padding
+   leaves ~34px under the buttons against 30 above the title — even to the eye —
+   while the text, when it lands, still clears both the buttons and the border.
+   They live here rather than on `.win-panel` because a panel with no deal to
+   share has no status line at all, and its plain 28/28 padding is already
+   balanced. */
+.win-panel__status {
+  margin: -8px 0 -22px;
+  line-height: 1.35;
+  min-height: 1.35em;
+  font: 13px "Libre Franklin", sans-serif;
+  color: #94a3b8;
+}
+
+/* The end-game "Finish" button (#132): a floating control that appears
+   (this element is only in the DOM while the board is drainable) low on the
+   stage, offering the one-tap win sweep. Styled off the win panel's button
+   so the two read as one family; centred along the bottom edge, clear of the
+   cards, and lifted above the playfield so it's always tappable. */
+.finish-button {
+  position: absolute;
+  left: 50%;
+  bottom: 18px;
+  transform: translateX(-50%);
+  z-index: 900;
+  padding: 12px 30px;
+  font: 600 17px "Libre Franklin", sans-serif;
+  color: #f8fafc;
+  background: #166534;
+  border: 2px solid #eab308;
+  border-radius: 9px;
+  box-shadow: 0 6px 22px rgba(0, 0, 0, 0.45);
+  cursor: pointer;
+}
+
+.finish-button:hover {
+  background: #15803d;
+}
+
+/* Card-stacking tech demo (grown out of the drag-and-drop spike, issue
+   #21): a stage holding a few pointer-draggable cards and a row of drop
+   zones they snap into and pile up in. `position: relative` makes the
+   stage the origin for the cards' absolute left/top. The gesture locks
+   cover the *whole* stage, not just the cards (#113): `touch-action: none`
+   so a drag that starts or strays onto the bare background, a drop zone or
+   a caption still moves cards without scrolling the page or firing a
+   browser gesture. This one must stay scoped — a page-wide `touch-action:
+   none` would kill scrolling in the menu and card gallery — whereas the
+   selection/callout locks are now app-wide on <body> (see there).
+
+   No box of its own — it grows to fill the scene band (`flex: 1`, full
+   width) rather than sitting in a fixed, bordered rectangle, so the cards
+   and zones have the whole area to move in. A minimum height keeps it
+   playable when the viewport is short. */
+.stacking-playfield {
+  /* The card-table footprints, as the unscaled design defaults. `applyScale`
+     (TableScene.res) overwrites all six on this element the moment the stage is
+     laid out — before the first paint — so these only cover the window before
+     that, and every rule below reads them with a bare `var()`.
+
+     They are declared here, once, rather than repeated as a fallback at each
+     `var()` site, and they are *values* rather than ratios: the proportions they
+     embody (`cardH / cardW`, the card's corner ratio, `zoneInset`) all live in
+     ReScript, where the geometry that consumes them lives too. The stylesheet
+     used to re-derive them here with `calc(… * 1.4)` / `* 0.1` / `* 0.15`
+     literals, which restated those facts a second time and could drift from
+     them silently. browser-tests/geometry.spec.mjs (`mise run browsertest`) pins
+     the relationships. */
+  --card-w: 80px;
+  --card-h: 112px;
+  --card-radius: 8px;
+  --zone-w: 88px;
+  --zone-h: 120px;
+  --zone-radius: 12px;
+
+  position: relative;
+  flex: 1;
+  width: 100%;
+  min-height: 300px;
+  touch-action: none;
+}
+
+/* The role-grouped rows of drop zones (#94/#97), pinned to the top of the
+   stage: free cells + foundations across the top, cascades below. Stacked
+   in a flex column so the cascade row is pushed clear of the top row and
+   its fans grow into the space beneath. A single-group board (every
+   card-table demo but FreeCell) has just one row here, laid out exactly as
+   the old single row was. */
+.drop-rows {
+  position: absolute;
+  /* Inset the interactive layer by the safe-area insets (#179). The shaded
+     band (`#scene-area`) deliberately bleeds full-width under a display
+     cutout — it's just shading, harmless to draw under a notch — but the
+     zones, cards, empty-pile slots and everything else that must stay
+     legible are pinned inside the browser-reported safe rectangle here, so
+     the outer cascade columns never render under a side cutout in landscape.
+     On portrait and non-cutout devices these insets are `0`, so the row
+     spans the stage exactly as before and nothing moves. The `env()` sits in
+     the `left`/`right` offsets (not padding) so the `--rows-max-w` cap and
+     `margin-inline: auto` centring below keep working — the row just has
+     slightly less width to spread into on a cutout device. */
+  left: env(safe-area-inset-left);
+  right: env(safe-area-inset-right);
+  top: 16px;
+  /* Wide-desktop cap (#173): `--rows-max-w` (published by applyScale) is the
+     row width at which the columns' `space-evenly` gaps have grown to their
+     limit. Capping the row here and centring it (margin-inline: auto, between
+     the left/right insets) means a stage wider than that pours its extra width
+     into equal left/right margins instead of ever-wider gaps, so the board
+     keeps a tidy solitaire-table shape. Defaults to `none` until the scene
+     sizes itself, so the initial render fills the stage exactly as before. */
+  max-width: var(--rows-max-w, none);
+  margin-inline: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* One row of zones, spread across the stage's full width. `space-evenly`
+   opens equal gaps *everywhere* — before the first zone, between each pair,
+   and after the last — so the outer margin matches the space between
+   columns however many the row holds (see TableScene). Piles grow downward
+   from here. */
+.drop-row {
+  display: flex;
+  justify-content: space-evenly;
+}
+
+/* Card and zone footprints are driven by custom properties set on the
+   playfield (see TableScene.res): the scene measures its live width and
+   the game's pile count and shrinks the cards to fit, so however many
+   piles a game declares still spread across the row without spilling off
+   a narrow screen. Their unscaled design defaults are declared once on
+   `.stacking-playfield` above. */
+.drop-zone {
+  position: relative;
+  width: var(--zone-w);
+  height: var(--zone-h);
+  /* The resting-state dashed outline now lives on `.drop-zone__slot` below
+     (#166); the zone itself draws nothing until a highlight state lights it.
+     A *transparent* dashed border reserves the frame so `--over`/`--invalid`
+     only need to recolour it — keeping those highlights' dashed look
+     unchanged — while the plain, un-highlighted zone stays invisible and the
+     card-sized static indicator carries the empty-pile cue. */
+  border: 1px dashed transparent;
+  /* Concentric with the slot: the zone sits a uniform `zoneInset` (4px at the
+     default scale) outside the card-sized slot on every side (see
+     `zoneWidth`/`zoneBaseHeight` in TableScene), so the frame's radius is the
+     slot's radius plus that inset — computed as `zoneRadius` there and scaled
+     with everything else, so the two rounded corners share a centre and the gap
+     stays even round the bends too. */
+  border-radius: var(--zone-radius);
+  transition: border-color 0.12s ease, background 0.12s ease;
+}
+
+/* The static empty-pile indicator (#166): a card-sized dashed placeholder,
+   split off from the zone's old overloaded outline so it can match the card
+   footprint exactly. Centred where a squared card rests — horizontally in the
+   zone, vertically in its *base* box (`--zone-h`, which stays the base height
+   even as a fanned zone grows) — at the card's own width, height and corner
+   radius. All three come straight from the card's design box (`CardArt`'s
+   120×168 viewBox and its `rx`, scaled by TableScene), so the slot traces the
+   card rather than approximating it with its own ratios. A resting card (a
+   sibling `.stacking-card`, layered above) then covers it pixel-for-pixel, so
+   the dashed cue shows only on empty piles. It keys off the card properties,
+   not the zone's, so it tracks the card rather than the larger highlight frame;
+   `pointer-events: none` keeps the `.drop-zone` the drop hit-test box. */
+.drop-zone__slot {
+  position: absolute;
+  left: 50%;
+  top: calc(var(--zone-h) / 2);
+  transform: translate(-50%, -50%);
+  width: var(--card-w);
+  height: var(--card-h);
+  border: 1px dashed #334155;
+  border-radius: var(--card-radius);
+  pointer-events: none;
+}
+
+/* Lit while a card's centre hovers over the zone, so the drop target is
+   legible before release: green when the stacking rule accepts the drop. */
+.drop-zone--over {
+  border-color: #22c55e;
+  background: rgba(34, 197, 94, 0.12);
+}
+
+/* Flashed red instead while the hovered drop would be illegal (wrong colour
+   or not the next rank up), so a rejected move reads before release. */
+.drop-zone--invalid {
+  border-color: #ef4444;
+  background: rgba(239, 68, 68, 0.12);
+  animation: drop-zone-reject 0.5s ease-in-out infinite;
+}
+
+@keyframes drop-zone-reject {
+  0%,
+  100% {
+    border-color: #ef4444;
+    background: rgba(239, 68, 68, 0.12);
+  }
+  50% {
+    border-color: #7f1d1d;
+    background: rgba(239, 68, 68, 0.04);
+  }
+}
+
+/* The double-tap "where can this go?" hint mask (#217). A throwaway div
+   TableScene.res pulses over one eligible target card (card-sized), driving it
+   mostly-green for a beat, then removing it. Solid accent green (#22c55e — the
+   same "go" green the menu and the drop-zone hover highlight wear) at full
+   strength; the `opacity` WAAPI animation holds it a touch translucent so the pip
+   reads through, and fades it out. It covers its parent's box exactly
+   (`.stacking-card` is card width × height) and traces the card's corners.
+   `pointer-events: none` keeps it clear of hit-testing; `opacity: 0` is the
+   resting state the animation starts and ends at. */
+.hint-mask {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  border-radius: var(--card-radius);
+  background: #22c55e;
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* A draggable card. It's moved by writing style.left/top; the transition
+   animates the snap-into-place on drop, and is switched off while dragging
+   (below) so the card tracks the pointer without lag.
+
+   `translateZ(0)` forces the card onto its own compositing layer. Without
+   it, WebKit (Safari) doesn't invalidate the old `drop-shadow` region as
+   the card is repositioned via left/top, so the shadow smears into a trail
+   of ghosts behind the moving card. On its own layer the whole card —
+   shadow included — is repainted each frame, and the trail disappears.
+
+   The stacking order (`z-index`) is set imperatively in TableScene.res:
+   a monotonic counter bumped on create/grab/drop, so the most-recently
+   touched card layers on top of everything beneath it. */
+.stacking-card {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: var(--card-w);
+  /* The drag/select locks now live on `.stacking-playfield` (#113), which
+     covers the whole stage — cards inherit `user-select: none` and are
+     already under the stage's `touch-action: none`. `-webkit-user-drag`
+     still belongs here: it suppresses the browser's native drag-image
+     "ghost", which fought the pointer drag on desktop and the long-press
+     on iOS. */
+  -webkit-user-drag: none;
+  cursor: grab;
+  transform: translateZ(0);
+  transition: left 0.18s ease, top 0.18s ease;
+  /* filter: drop-shadow(0 4px 10px rgba(0, 0, 0, 0.4)); */
+}
+
+/* Each resting card carries a slight, hand-placed tilt (#65), driven by the
+   `--card-rot` custom property TableScene.res writes per card. The rotation
+   lives on the inner `.card-art`, not the `.stacking-card` wrapper, so it
+   never fights the wrapper's own `transform` (the drag `translateZ` and the
+   deal/finish flight animations). `transform-origin: center` pivots about
+   the card's middle (SVG elements otherwise default to a `0 0` origin), and
+   the transition eases a card into its new angle as it snaps home, matching
+   the wrapper's left/top snap.
+
+   That transition's delay and duration are themselves per-card properties,
+   defaulting to the in-game snap above. The finish sweep (#160) overrides
+   them while it plays: it re-tilts every card for its foundation slot up
+   front, but the cards leave one at a time, so each one's rotation is pushed
+   out to its own launch and stretched over its flight rather than swinging in
+   place before the sweep starts (#241). The `.dealing` rule below can't cover
+   this — that switches off the *wrapper's* left/top snap, a different
+   selector, deliberately so the tilt never fights the flight transform. */
+.stacking-card .card-art {
+  width: 100%;
+  transform: rotate(var(--card-rot, 0deg));
+  transform-origin: 50% 50%;
+  transition: transform var(--card-rot-dur, 0.18s) ease var(--card-rot-delay, 0s);
+}
+
+/* During the opening deal (#115) each card is positioned instantly — the
+   left/top snap transition is switched off so the card doesn't slide in
+   from the corner — and flown up into place by a transform animation
+   instead (see `animateDeal` in TableScene.res). The class is dropped a
+   frame later, restoring the in-game drop snap. */
+.stacking-playfield.dealing .stacking-card {
+  transition: none;
+}
+
+.stacking-card.dragging {
+  cursor: grabbing;
+  transition: none;
+  filter: drop-shadow(0 12px 22px rgba(0, 0, 0, 0.5));
+}
+
+/* A buried card (any pile card but the top one) can't be picked up yet, so
+   it doesn't offer the grab affordance. */
+.stacking-card--buried {
+  cursor: default;
+}
+
+.stacking-caption {
+  margin: 0;
+  font: 13px "Libre Franklin", sans-serif;
+  color: #94a3b8;
+}
