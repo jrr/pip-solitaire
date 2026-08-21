@@ -60,7 +60,7 @@ let scrollback = DebugLog.Ring.make(~capacity)
 @get external clientHeight: WebDom.element => float = "clientHeight"
 
 // Where the panel is on screen, and what a wheel turn over it means — an *overlaid*
-// panel takes no pointer events (see index.html), so scrolling it is done by hand below.
+// panel takes no pointer events (see DebugConsole.css), so scrolling it is done by hand below.
 type box = {"top": float, "bottom": float, "left": float, "right": float}
 @send external boxOf: WebDom.element => box = "getBoundingClientRect"
 
@@ -108,7 +108,7 @@ let atBottom = (el): bool => scrollHeight(el) -. scrollTop(el) -. clientHeight(e
 lines->WebDom.addEventListener("scroll", () => stickToBottom := atBottom(lines))
 
 // An *overlaid* scrollback takes no pointer events (it's a read-only HUD dropped over
-// the playfield; see index.html), so a wheel turn over it lands on the board behind
+// the playfield; see DebugConsole.css), so a wheel turn over it lands on the board behind
 // instead of scrolling the log. Nothing on the board reads `wheel`, so the panel picks
 // it up from the window while it's overlaid and scrolls itself — reading back through
 // history without the console ever taking input away from the game. `stickToBottom`

@@ -80,7 +80,7 @@
 // model state passed in as `open_`/`screen`; a click on the backdrop or the close
 // button calls `onClose`. The scene rows are an externally-owned real DOM node (the
 // switcher owns them), spliced with `Html.node` so the reconciler leaves them be
-// across open/close re-renders. Layout lives in index.html.
+// across open/close re-renders. Layout lives in Menu.css.
 
 // Which of the pane's three screens is showing (#191). Reopening the menu
 // resets this to `Main` (see the chrome model), so a visit to Settings/Debug never
@@ -245,7 +245,7 @@ let gameButton = (~label, ~value=?, ~enabled=true, ~onClick) => {
 // copied to clipboard.") or, on a board with nothing to share, why the button is
 // greyed out — and is otherwise *empty*, now that the seed itself rides on the button.
 //
-// Empty, but always rendered: the slot holds its height (`min-height`, see index.html)
+// Empty, but always rendered: the slot holds its height (`min-height`, see Menu.css)
 // so the confirmation appears and clears without shoving the sections below it. That
 // reflow is the whole reason the line is unconditional rather than a node that comes
 // and goes.

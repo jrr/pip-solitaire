@@ -96,7 +96,7 @@ external drawCanvasPart: (
 @val external btoa: string => string = "btoa"
 @val external encodeURIComponent: string => string = "encodeURIComponent"
 
-// Resolve a font URL the way index.html's own `@font-face` rules do — relative to
+// Resolve a font URL the way `styles/fonts.css`'s `@font-face` rules do — relative to
 // the document — so it inherits the GitHub Pages project subpath instead of
 // hardcoding a root-absolute path that only works at a domain root.
 type url

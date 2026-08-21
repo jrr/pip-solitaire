@@ -6,7 +6,7 @@
 // PNGs the manifest needs.
 
 // The game background: the same top-anchored radial gradient the page uses
-// (see the `body` rule in index.html — radial-gradient(... at 50% 0%, #13233b →
+// (see the `body` rule in styles/base.css — radial-gradient(... at 50% 0%, #13233b →
 // #0b1220)). Reproduced as an SVG <radialGradient> in <defs> so the icon sits on
 // the very backdrop the cards sit on in-game, rather than a flat brand color.
 let bgInner = "#13233b"
@@ -35,7 +35,7 @@ let fan = [
 
 // One fanned card: just the real card face, nested and placed. There's no green
 // mat anymore — instead each card carries the same soft drop-shadow the app
-// gives `.card-art` on screen (see index.html), so overlapping cards separate
+// gives `.card-art` on screen (see CardArt.css), so overlapping cards separate
 // the way they do in-game and the icon reads as the actual playfield.
 let placedCard = ((card, angle)) => {
   let w = 120. *. cardScale

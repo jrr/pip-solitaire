@@ -25,7 +25,7 @@
 // `<TopBar .../>` to `Html.jsx(TopBar.make, props)` and fills this record from the
 // attributes. See `VersionBadge` for why the record is spelled out by hand rather
 // than derived by the `@jsx.component` sugar. Layout lives in the stylesheet in
-// index.html; here we build only structure and behaviour.
+// TopBar.css; here we build only structure and behaviour.
 type props = {
   onMenu: unit => unit,
   onUndo: unit => unit,

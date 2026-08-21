@@ -84,7 +84,7 @@ let saveWantsShake = (enabled: bool) => saveFlag(wantsShakeKey, enabled)
 // "Display content around screen notch" (#204) defaults on, matching today's
 // shipped landscape layout: the Menu/Undo rail rides out into the corner "wings"
 // beside the notch, sharing the strip that's unsafe anyway (see CutoutSide and the
-// wing-placement rules in index.html). A player on untested phone geometry, where
+// wing-placement rules in styles/landscape-rail.css). A player on untested phone geometry, where
 // that placement could land a control awkwardly or unreachably, can turn it off to
 // fall back to a layout clamped entirely inside the browser-reported safe area —
 // worse-looking, but always playable. Presentation-only chrome the CLI has no
