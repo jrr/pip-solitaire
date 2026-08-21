@@ -16,7 +16,8 @@
 // The format is deliberately small and self-describing:
 //
 //   {"v":1,"past":[S,…],"present":S,"future":[S,…],
-//    "stats":{"moves":n,"undos":n,"autoplays":n}}
+//    "stats":{"moves":n,"undos":n,"autoplays":n},
+//    "timing":{"dealtAt":ms,"wonAt":ms}}
 //
 // where a state S is `{"piles":[[C,…],…],"loose":[C,…]}` and a card C is a
 // two-character code — rank char then suit char, e.g. "TS" (Ten of Spades),
@@ -36,6 +37,12 @@
 // `"autoplays"` (#291) joined `"stats"` on exactly those terms, one level down: a
 // blob without it decodes to a game the solver never touched, which is what a save
 // written before autoplay existed *is*.
+//
+// `"timing"` (#302) joins on the same terms again, and its *inner* fields too: a blob
+// without it is a game whose clock nobody kept (`Timing.unknown`), and one with a
+// `"dealtAt"` but no `"wonAt"` is a game still being played. Absence is a shape we
+// support at every level here; a field that's *present* and isn't a timestamp still
+// fails the whole save, because that isn't a blob we wrote.
 
 open Card
 
@@ -44,26 +51,38 @@ open Card
 // the player gets a fresh deal instead of a misread board.
 let version = 1
 
-// What a save *is*: the line of play, and the tally of how much play it took. Two
-// fields rather than one because they answer to different rules — the history is
-// stepped by undo/redo, the tally only ever counts up (see `Stats`) — and keeping
+// What a save *is*: the line of play, the tally of how much play it took, and the
+// clock either side of it (#302). Three fields rather than one because they answer to
+// different rules — the history is stepped by undo/redo, the tally only ever counts
+// up (see `Stats`), the clock is two wall-clock readings (see `Timing`) — and keeping
 // them apart is what lets `undo` stay the plain pop it has always been.
 type t = {
   history: History.t<GameState.t>,
   stats: Stats.t,
+  timing: Timing.t,
 }
 
-// A save for a history with no tally recorded beside it: what a blob written before
-// #289 decodes to, and what any caller holding only a history starts from.
+// The tally a save with no `"stats"` of its own is credited with.
 //
 // `moves` falls back to `History.steps` — the length of the line behind the present,
 // which is the one thing such a save can still say about how it got there, and the
 // number the victory share reported before this existed. `undos` falls back to none:
 // an undo leaves no trace in a history, so a save that didn't count them has no way
 // to remember, and guessing high would be a worse lie than guessing zero.
+let inferredStats = (history: History.t<GameState.t>): Stats.t => {
+  moves: History.steps(history),
+  undos: 0,
+  autoplays: 0,
+}
+
+// A save for a history with nothing recorded beside it: what a blob written before
+// #289 decodes to, and what any caller holding only a history starts from. The tally
+// is inferred as above; the clock isn't inferred at all, because a game whose deal
+// nobody timed has no honest time to report (see `Timing.unknown`).
 let ofHistory = (history: History.t<GameState.t>): t => {
   history,
-  stats: {moves: History.steps(history), undos: 0, autoplays: 0},
+  stats: inferredStats(history),
+  timing: Timing.unknown,
 }
 
 // --- Card codes --------------------------------------------------------------
@@ -167,6 +186,20 @@ let encodeStats = (s: Stats.t): JSON.t => JSON.Object(
   ]),
 )
 
+// The clock (#302), written as only the stamps that exist: an unfinished game has no
+// `"wonAt"`, and a game whose clock was never kept writes `{}`. Absence is how this
+// format says "not recorded" everywhere else (see the header), so a `null` or a `0`
+// standing in for a missing stamp would be a second, worse way to say it — and a `0`
+// in particular is a real timestamp (midnight, 1970) that `decode` would believe.
+let encodeTiming = (t: Timing.t): JSON.t => JSON.Object(
+  Dict.fromArray(
+    [
+      t.dealtAt->Option.map(ms => ("dealtAt", JSON.Number(ms))),
+      t.wonAt->Option.map(ms => ("wonAt", JSON.Number(ms))),
+    ]->Array.filterMap(x => x),
+  ),
+)
+
 // --- Decoding from JSON ------------------------------------------------------
 
 let decodeCards = (json: JSON.t): option<array<card>> =>
@@ -245,6 +278,28 @@ let decodeStats = (json: JSON.t): option<Stats.t> =>
   | _ => None
   }
 
+// A stamp on the clock (#302): milliseconds since the epoch, so a whole number isn't
+// required (fractional milliseconds are a legal `Date.now()` in some browsers) but a
+// finite, non-negative one is — a game dealt before the epoch is a blob we didn't
+// write. Absent is a supported shape and reads as "not recorded"; present-and-not-a-
+// timestamp fails the object, like every other malformed field here.
+let decodeStamp = (dict: Dict.t<JSON.t>, key: string): option<option<float>> =>
+  switch dict->Dict.get(key) {
+  | None => Some(None)
+  | Some(JSON.Number(ms)) if ms >= 0.0 && Float.isFinite(ms) => Some(Some(ms))
+  | Some(_) => None
+  }
+
+let decodeTiming = (json: JSON.t): option<Timing.t> =>
+  switch json {
+  | JSON.Object(dict) =>
+    switch (decodeStamp(dict, "dealtAt"), decodeStamp(dict, "wonAt")) {
+    | (Some(dealtAt), Some(wonAt)) => Some({Timing.dealtAt, wonAt})
+    | _ => None
+    }
+  | _ => None
+  }
+
 // --- The public seam ---------------------------------------------------------
 
 // Serialize a saved game — the whole undo/redo history, and the tally beside it —
@@ -258,6 +313,7 @@ let encode = (s: t): string =>
         ("present", encodeState(s.history.present)),
         ("future", JSON.Array(s.history.future->Array.map(encodeState))),
         ("stats", encodeStats(s.stats)),
+        ("timing", encodeTiming(s.timing)),
       ]),
     ),
   )
@@ -270,7 +326,9 @@ let encode = (s: t): string =>
 //
 // A blob with no `"stats"` at all is *not* one of those failures: it's a save
 // written before #289, and it decodes to a real game whose tally is inferred by
-// `ofHistory`. That's the whole reason the version didn't move.
+// `inferredStats`. Nor is one with no `"timing"` (#302) — that's a save from before
+// the clock existed, and it decodes to a game with no time to report. That's the
+// whole reason the version didn't move.
 let decode = (raw: string): option<t> => {
   let parsed = try Some(JSON.parseOrThrow(raw)) catch {
   | _ => None
@@ -286,9 +344,17 @@ let decode = (raw: string): option<t> => {
       ) {
       | (Some(past), Some(present), Some(future)) =>
         let history = {History.past, present, future}
-        switch dict->Dict.get("stats") {
-        | None => Some(ofHistory(history))
-        | Some(json) => decodeStats(json)->Option.map((stats): t => {history, stats})
+        let stats = switch dict->Dict.get("stats") {
+        | None => Some(inferredStats(history))
+        | Some(json) => decodeStats(json)
+        }
+        let timing = switch dict->Dict.get("timing") {
+        | None => Some(Timing.unknown)
+        | Some(json) => decodeTiming(json)
+        }
+        switch (stats, timing) {
+        | (Some(stats), Some(timing)) => Some({history, stats, timing})
+        | _ => None
         }
       | _ => None
       }

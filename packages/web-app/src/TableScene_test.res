@@ -274,7 +274,7 @@ describe("TableScene win share (#264)", () => {
   let wonHistory = (~autoplays=0, game) => {
     let (won, _moved) = Reducer.finishSequence(~game, Scenario.freecellAlmostWon(game))
     let history = History.record(History.make(GameState.initial(game)), won)
-    {SaveState.history, stats: {moves: 3, undos: 1, autoplays}}
+    {SaveState.history, stats: {moves: 3, undos: 1, autoplays}, timing: Timing.unknown}
   }
 
   test("offers the button when the driver has a deal to share", () => {
@@ -428,6 +428,7 @@ describe("TableScene move/undo counts (#289)", () => {
       Some({
         SaveState.history: History.make(GameState.initial(game)),
         stats: {moves: 12, undos: 4, autoplays: 0},
+        timing: Timing.unknown,
       }),
     )
     let container = createElement("div")
@@ -448,6 +449,7 @@ describe("TableScene move/undo counts (#289)", () => {
       Some({
         SaveState.history: History.make(GameState.initial(game)),
         stats: {moves: 12, undos: 4, autoplays: 0},
+        timing: Timing.unknown,
       }),
     )
     let newGame = ref(None)
@@ -474,6 +476,7 @@ describe("TableScene move/undo counts (#289)", () => {
       ~loadHistory=() => Some({
         SaveState.history: History.make(won),
         stats: {moves: 61, undos: 2, autoplays: 0},
+        timing: Timing.unknown,
       }),
       game,
     )
@@ -485,6 +488,136 @@ describe("TableScene move/undo counts (#289)", () => {
       ->Option.getOrThrow
       ->textContent
     expect(line)->toBe("61 moves · 2 undos")
+  })
+})
+
+// How long the game took (#302), where the player sees it. The arithmetic and the
+// `M:SS` reading are `core`'s (`Timing_test`); what's at stake here is the board's
+// half — that the clock starts with the deal, stops at the win, reaches the save so a
+// reload doesn't lose the one number that can only be measured as it happens, and
+// reports the same length however often a won board is reopened.
+describe("TableScene win time (#302)", () => {
+  let timeOf = (container): option<string> =>
+    container->querySelector(".win-panel__time")->Nullable.toOption->Option.map(textContent)
+
+  // A won board, with whatever clock the caller wants beside it.
+  let wonSave = (~timing, game): SaveState.t => {
+    let (won, _moved) = Reducer.finishSequence(~game, Scenario.freecellAlmostWon(game))
+    {history: History.make(won), stats: {moves: 61, undos: 2, autoplays: 0}, timing}
+  }
+
+  let dealtAt = 1_700_000_000_000.
+
+  test("the victory screen says how long the game took", () => {
+    let game = Game.freecell
+    let container = createElement("div")
+    let scene = TableScene.make(
+      ~loadHistory=() => Some(
+        wonSave(~timing={dealtAt: Some(dealtAt), wonAt: Some(dealtAt +. 247_000.)}, game),
+      ),
+      game,
+    )
+    let _teardown = scene.mount(container)
+    expect(timeOf(container))->toEqual(Some("4:07"))
+  })
+
+  test("a resumed victory reports the game's length, not how long ago it was", () => {
+    // The overlay goes up again on every reload of a won board (#177). Re-stamping the
+    // win there would make the number grow each time you came back to it, so the saved
+    // stamp stands — even though this board is being opened long after it was won.
+    let game = Game.freecell
+    let saved = ref(
+      Some(wonSave(~timing={dealtAt: Some(dealtAt), wonAt: Some(dealtAt +. 247_000.)}, game)),
+    )
+    let container = createElement("div")
+    let scene = TableScene.make(
+      ~loadHistory=() => saved.contents,
+      ~persist=s => saved := Some(s),
+      game,
+    )
+    let _teardown = scene.mount(container)
+    expect(timeOf(container))->toEqual(Some("4:07"))
+    // …and the save it re-writes on the way past carries the same stamp, so the next
+    // reload reads the same thing again.
+    expect(saved.contents->Option.map(s => s.timing.wonAt))->toEqual(
+      Some(Some(dealtAt +. 247_000.)),
+    )
+  })
+
+  test("a game with no clock behind it simply shows no time", () => {
+    // Every save written before this existed. There's nothing in a history to say when
+    // it was dealt, so the panel says nothing rather than inventing a number — and the
+    // rest of it (the tally, the buttons) is exactly as it was.
+    let game = Game.freecell
+    let container = createElement("div")
+    let scene = TableScene.make(
+      ~loadHistory=() => Some(wonSave(~timing=Timing.unknown, game)),
+      game,
+    )
+    let _teardown = scene.mount(container)
+    expect(timeOf(container))->toEqual(None)
+    expect(
+      container->querySelector(".win-panel__stats")->Nullable.toOption->Option.map(textContent),
+    )->toEqual(Some("61 moves · 2 undos"))
+  })
+
+  testAsync("a game won on the table stops the clock, and the save remembers", async () => {
+    // The live path, end to end: the board deals (starting its own clock), the game is
+    // won, and the panel reads a real duration. The winning move persisted the board
+    // *before* there was a win to time, so the stamp reaching the save at all is the
+    // thing being pinned here — without it a reload would show a won board with no time.
+    let game = Game.freecell
+    let saved = ref(None)
+    let console = ref(_ => [])
+    let container = createElement("div")
+    let scene = TableScene.make(
+      ~initial=Scenario.freecellFinish(game),
+      ~persist=s => saved := Some(s),
+      ~publishConsole=run => console := run,
+      game,
+    )
+    let _teardown = scene.mount(container)
+    console.contents(Command.Autoplay)->ignore
+    await nextTick()
+    // A test wins in milliseconds, so the digits are the clock's rather than a fixed
+    // duration's — what matters is that it reads as one.
+    switch timeOf(container) {
+    | Some(text) => expect(text->String.match(/^\d+:\d\d$/)->Option.isSome)->toBe(true)
+    | None => expect("a time on the panel")->toBe("but there was none")
+    }
+    switch saved.contents {
+    | Some(s) =>
+      expect(s.timing.dealtAt->Option.isSome)->toBe(true)
+      expect(s.timing.wonAt->Option.isSome)->toBe(true)
+    | None => expect("persisted")->toBe("but nothing was saved")
+    }
+  })
+
+  testAsync("stepping back out of a victory takes the win off the clock", async () => {
+    // An undone win isn't a win, so the board it leaves has no won-at — and the save
+    // says so, or a reload would resume a playable board that still claimed a time.
+    let game = Game.freecell
+    let saved = ref(None)
+    let undo = ref(() => ())
+    let console = ref(_ => [])
+    let container = createElement("div")
+    let scene = TableScene.make(
+      ~initial=Scenario.freecellFinish(game),
+      ~persist=s => saved := Some(s),
+      ~publishUndo=u => undo := u,
+      ~publishConsole=run => console := run,
+      game,
+    )
+    let _teardown = scene.mount(container)
+    console.contents(Command.Autoplay)->ignore
+    await nextTick()
+    undo.contents()
+    expect(saved.contents->Option.map(s => s.timing.wonAt))->toEqual(Some(None))
+    // …and winning it again times the whole game, detour included: the deal stamp never
+    // moved, so the clock still runs from the board it was dealt on.
+    console.contents(Command.Redo)->ignore
+    expect(saved.contents->Option.map(s => s.timing.wonAt->Option.isSome))->toEqual(Some(true))
+    expect(timeOf(container)->Option.isSome)->toBe(true)
   })
 })
 

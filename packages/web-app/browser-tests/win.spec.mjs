@@ -102,6 +102,13 @@ for (const input of inputs) {
       // can show is that a real drag on a real board reaches the counter at all.
       await expect(page.locator(".win-panel__stats")).toHaveText("1 move · 0 undos")
 
+      // …and how long it took (#302). The board was dealt when the page loaded and won
+      // by the drag above, so the digits belong to however long this test took to get
+      // here — what a browser can show that a unit test can't is that a real deal
+      // starts a real clock and a real drag stops it. The reading itself is
+      // `Timing_test`'s.
+      await expect(page.locator(".win-panel__time")).toHaveText(/^\d+:\d\d$/)
+
       // The panel's top and bottom breathing room have to match. They don't come
       // from the same place: above the title it's plain padding, while below the
       // buttons it's padding *minus* what the reserved-but-empty share status line

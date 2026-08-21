@@ -30,7 +30,11 @@ describe("ShareLink", () => {
   // A tally that the history alone couldn't produce (five moves and two undos behind
   // a two-step line), so a link that dropped the counts — or re-derived them from the
   // stack — fails rather than passing by looking close enough.
-  let saved: SaveState.t = {history, stats: {moves: 5, undos: 2, autoplays: 0}}
+  let saved: SaveState.t = {
+    history,
+    stats: {moves: 5, undos: 2, autoplays: 0},
+    timing: Timing.dealt(~at=1_700_000_000_000.),
+  }
 
   testAsync("a link's blob restores the whole game", async () => {
     let url = (await ShareLink.urlFor(saved))->Option.getOrThrow
@@ -92,7 +96,10 @@ describe("ShareLink", () => {
     // The counts were added to the save envelope without moving its version, so a
     // link already sitting in somebody's chat has to keep working. It comes back as a
     // real game whose tally was inferred rather than as "couldn't read that".
-    let legacy = SaveState.encode(saved)->String.replaceRegExp(/,"stats":\{[^}]*\}/, "")
+    let legacy =
+      SaveState.encode(saved)
+      ->String.replaceRegExp(/,"stats":\{[^}]*\}/, "")
+      ->String.replaceRegExp(/,"timing":\{[^}]*\}/, "")
     let blob = (await Compression.compress(legacy))->Option.getOrThrow
     switch await ShareLink.savedFrom(blob) {
     | Some(restored) => expect(restored.history)->toEqual(history)

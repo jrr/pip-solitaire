@@ -969,9 +969,26 @@ let make = (
         },
       )
 
-      // What this build would save: the live history and the live tally, read at call
-      // time so a caller always gets the board as it now stands.
-      let currentSave = (): SaveState.t => {history: history.contents, stats: stats.contents}
+      // How long this game has been going (#302): the clock the win overlay reports.
+      // A build that deals its own board starts it now; a resumed one keeps the clock
+      // its save carried, so a reload doesn't restart the game's timer (and a game
+      // saved *won* keeps the moment it was won — see `Timing.won`). Stamped in
+      // `showWin`, and un-stamped by `removeWinOverlay` when an undo steps back out of
+      // a victory, which are the only two moments the clock hears about.
+      let timing = ref(
+        switch seedHistory {
+        | Some(s) => s.timing
+        | None => Timing.dealt(~at=Date.now())
+        },
+      )
+
+      // What this build would save: the live history, the live tally and the live
+      // clock, read at call time so a caller always gets the board as it now stands.
+      let currentSave = (): SaveState.t => {
+        history: history.contents,
+        stats: stats.contents,
+        timing: timing.contents,
+      }
 
       // Point the mount-scope reader at *this* build's save, so the share button
       // encodes the board on the table rather than one a re-deal has since replaced.
@@ -1358,6 +1375,13 @@ let make = (
         if !winShown.contents {
           DebugLog.message("win")
           winShown := true
+          // Stop the clock (#302). Here rather than at each win check because this is
+          // the one place a victory becomes *visible*, and the same three flows that
+          // raise a panel (a winning move, a redo back into one, a resumed victory)
+          // should all stamp the same way. A save that already carries a `wonAt` keeps
+          // it, so reopening a won board reports the game's own length rather than how
+          // long ago you played it.
+          timing := Timing.won(timing.contents, ~at=Date.now())
           let overlay = WebDom.createElement("div")
           overlay->WebDom.setAttribute("class", "win-overlay")
 
@@ -1394,6 +1418,21 @@ let make = (
           actions->WebDom.appendChild(button)->ignore
 
           panel->WebDom.appendChild(title)->ignore
+          // How long it took (#302), between the headline and the tally: the biggest of
+          // the three numbers to look at, since it's the one you'd say out loud. Its own
+          // element rather than another clause on the tally line, because it's the one
+          // that can be missing — a game restored from a save written before the clock
+          // existed has no time to report, and a line that sometimes reads
+          // "94 moves · 0 undos" and sometimes "4:07 · 94 moves · 0 undos" is harder to
+          // read at a glance than a line that's sometimes simply not there.
+          switch Timing.summary(timing.contents) {
+          | Some(text) =>
+            let time = WebDom.createElement("p")
+            time->WebDom.setAttribute("class", "win-panel__time")
+            time->WebDom.setTextContent(text)
+            panel->WebDom.appendChild(time)->ignore
+          | None => ()
+          }
           panel->WebDom.appendChild(tally)->ignore
           panel->WebDom.appendChild(actions)->ignore
 
@@ -1449,6 +1488,16 @@ let make = (
           overlay->WebDom.appendChild(panel)->ignore
           boardHost->WebDom.appendChild(overlay)->ignore
           winOverlay := Some(overlay)
+
+          // Save the stamped clock (#302). The winning move persisted the board a moment
+          // ago, from `recordHistory` — *before* there was a win to time — so without
+          // this the one number that can only be measured as it happens would be the one
+          // number a reload lost. Gated by `persistThis` for the same reason the build's
+          // own save is: a forced-state board (`?state=`) mustn't become the saved game
+          // just because it opened on a victory.
+          if persistThis {
+            persistCurrent()
+          }
         }
 
       // Tear the win overlay down (#85) — undo out of a victory removes the panel
@@ -1460,6 +1509,12 @@ let make = (
           WebDom.remove(overlay)
           winOverlay := None
           winShown := false
+          // …and the clock starts again (#302): a board stepped back out of a victory
+          // isn't won, so it has no won-at. Winning it again stamps afresh, and the
+          // time then covers the detour too — the same stance the tally takes, where
+          // undoing never gives a move back. `adoptHistoryPresent` persists right
+          // after this, so the cleared stamp reaches the save with the stepped board.
+          timing := Timing.unwon(timing.contents)
         | None => ()
         }
 
