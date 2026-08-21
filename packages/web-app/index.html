@@ -1878,12 +1878,13 @@
            under the next card. The first is a tight contact shadow with no
            offset — it darkens all four edges, which is the one that separates
            overlapping faces. The second is the drop proper, small and soft, and
-           lifts the card off the table. Kept deliberately short: a big blur
-           spreads across the whole card beneath rather than drawing its edge.
-           The card frame itself is a hairline now (`CardArt.strokeW`) — these
-           carry the separation the thick pale stroke used to attempt. */
-        filter: drop-shadow(0 0 1.5px rgba(15, 23, 42, 0.5))
-          drop-shadow(0 2px 4px rgba(15, 23, 42, 0.45));
+           lifts the card off the table. Both are deliberately tiny — a blur
+           wider than a couple of pixels stops drawing the covering card's edge
+           and just greys the face beneath it, which is most of a cascade. The
+           card frame itself is a hairline now (`CardArt.strokeW`) — these carry
+           the separation the thick pale stroke used to attempt. */
+        filter: drop-shadow(0 0 1px rgba(15, 23, 42, 0.55))
+          drop-shadow(0 1px 2px rgba(15, 23, 42, 0.4));
       }
 
       /* Each resting card carries a slight, hand-placed tilt (#65), driven by the
