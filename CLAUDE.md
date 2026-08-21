@@ -155,5 +155,11 @@ gate for a styling change is `mise run browsertest` plus a look at
   before committing; CI's `format-check` rejects unformatted code.
 - Consult the latest official docs (allowed domains above) rather than relying
   on memory for framework specifics.
+- The leaf packages (`cli`, `web-app`) set `"namespace": true` in their
+  `rescript.json`, so their modules live under `Cli`/`WebApp` and can't collide
+  with `core`'s. `core` stays un-namespaced, which is why dependents still say
+  `Card`, `Reducer`, `Render` rather than `Core.Card` (#299). A leaf module that
+  shares a name with a `core` one shadows it *within that leaf only* — legal, but
+  still worth avoiding.
 - Leave the `hello` / `hello-cli` example packages in place for now; they exist
   to exercise CI and the agents.

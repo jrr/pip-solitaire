@@ -70,6 +70,19 @@
   color: #eab308;
 }
 
+/* How long the game took (#302): "4:07", between the title and the tally. The
+   second thing you read and the one you'd say out loud, so it's a size up on the
+   tally and keeps the panel's light ink, with tabular figures so a clock that
+   ticks past a digit boundary doesn't shift under the eye. Absent entirely on a
+   game with no time to report, which is why it isn't a clause on the line below.
+   The panel's own `gap` spaces it, so it carries no margin. */
+.win-panel__time {
+  margin: 0;
+  font: 600 20px "Libre Franklin", sans-serif;
+  font-variant-numeric: tabular-nums;
+  color: #e2e8f0;
+}
+
 /* What the game cost (#289): "94 moves · 3 undos", under the title and above
    the buttons. Quieter than the title and a size down — the headline is that
    you won; this is the detail you read second. The panel's own `gap` spaces
@@ -378,7 +391,19 @@
   cursor: grab;
   transform: translateZ(0);
   transition: left 0.18s ease, top 0.18s ease;
-  /* filter: drop-shadow(0 4px 10px rgba(0, 0, 0, 0.4)); */
+  /* Two shadows, because a cascade fans *downward*: each card covers the
+     one before it, so the edge you actually look at is the top edge of the
+     covering card, and a shadow that only falls below it would be hidden
+     under the next card. The first is a tight contact shadow with no
+     offset — it darkens all four edges, which is the one that separates
+     overlapping faces. The second is the drop proper, small and soft, and
+     lifts the card off the table. Both are deliberately tiny — a blur
+     wider than a couple of pixels stops drawing the covering card's edge
+     and just greys the face beneath it, which is most of a cascade. The
+     card frame itself is a hairline now (`CardArt.strokeW`) — these carry
+     the separation the thick pale stroke used to attempt. */
+  filter: drop-shadow(0 0 1px rgba(15, 23, 42, 0.55))
+    drop-shadow(0 1px 2px rgba(15, 23, 42, 0.4));
 }
 
 /* Each resting card carries a slight, hand-placed tilt (#65), driven by the

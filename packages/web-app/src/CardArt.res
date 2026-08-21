@@ -50,8 +50,21 @@ let cornerRatio = cornerR /. boxW
 // the painted outer edge exactly on the design box's edge — which is why the rect
 // below is `boxW - strokeW` wide at an offset of `strokeW / 2`, rather than filling
 // the box. Derived so the three stay consistent if the stroke ever changes.
-let strokeW = 2.
+//
+// A hairline rather than the 2 units it used to be: the edge that separates two
+// overlapping cards is now carried mostly by the board's drop-shadow (the
+// `.stacking-card` filter in index.html), so the frame only has to draw the card's
+// outline, not stand in for the shadow. Thin *and* dark reads as a crisper edge
+// than thick and pale did — see `frameStroke`.
+let strokeW = 1.
 let frameInset = strokeW /. 2.
+
+// The face's fill and the frame's colour. The stroke used to be `#cbd5e1`, a pale
+// slate that all but vanished where one white card overlapped another; this is
+// several steps darker, so the outline reads as an edge on its own — against the
+// neighbouring card's face as well as against the dark table.
+let cardFill = "#f7f7f7"
+let frameStroke = "#8496ad"
 
 // Centre of the design box: the pivot the bottom-right corner rank rotates about,
 // and where the middle suit glyph sits.
@@ -162,8 +175,8 @@ let body = (~detail=Full, card: Deck.card) => {
         ("height", n(boxH -. strokeW)),
         ("rx", n(cornerR)),
         ("ry", n(cornerR)),
-        ("fill", "#f7f7f7"),
-        ("stroke", "#cbd5e1"),
+        ("fill", cardFill),
+        ("stroke", frameStroke),
         ("stroke-width", n(strokeW)),
       ]}
     />

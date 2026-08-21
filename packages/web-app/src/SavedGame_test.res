@@ -32,7 +32,13 @@ describe("SavedGame (#177)", () => {
     ...GameState.initial(game),
     loose: [{suit: Spades, rank: Ace}],
   })
-  let saved: SaveState.t = {history, stats: {moves: 3, undos: 1, autoplays: 0}}
+  // …and a clock beside it (#302), for the same reason: a save that dropped the
+  // stamps would round-trip to a game that no longer knows how long it has taken.
+  let saved: SaveState.t = {
+    history,
+    stats: {moves: 3, undos: 1, autoplays: 0},
+    timing: Timing.dealt(~at=1_700_000_000_000.),
+  }
 
   test("save then load round-trips the whole game, tally included", () => {
     SavedGame.save(game.id, saved)

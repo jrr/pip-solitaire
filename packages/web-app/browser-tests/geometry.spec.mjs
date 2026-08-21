@@ -32,8 +32,8 @@
 // meant to stay green across a refactor that moves the derivation from CSS ratio
 // literals into published custom properties.
 //
-// Note on (3): the card's `<rect>` is inset 1 unit with a centred 2-unit stroke, so
-// its *painted outer* corner radius is (rx + 1) / 120, marginally larger than the
+// Note on (3): the card's `<rect>` is inset half a unit with a centred 1-unit stroke,
+// so its *painted outer* corner radius is (rx + 0.5) / 120, marginally larger than the
 // rx / 120 the slot uses. This checks against `rx` — i.e. today's behaviour — on
 // purpose; whether the slot should instead trace the painted edge is a separate
 // design question, not a regression.
