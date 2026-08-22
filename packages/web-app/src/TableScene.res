@@ -624,6 +624,11 @@ let looseTiltPile = 1000
 // opening/New Game/Restart builds), so the driver can save it. Both are omitted for
 // the demos and for any board opened from a `?state=`/`?seed=` link, so
 // save-and-resume attaches only to a plain FreeCell game.
+// The game clock (#302), read where the impurity belongs: `Session` stamps a win with a
+// moment it's handed, and this is the layer that has a wall clock to hand it. The same
+// line the terminal draws — see the comment above `Cli.randomSeed`.
+let clock = () => Date.now()
+
 let make = (
   ~initial: option<GameState.t>=?,
   ~loadHistory: unit => option<SaveState.t>=() => None,
@@ -859,9 +864,13 @@ let make = (
       // Falling to `None` on those two also keeps the reporting in step with saving:
       // a seed is reported precisely on the builds that become the saved game
       // (`~persistThis`), so the driver can persist it without a second rule.
+      //
+      // Named, because the session below carries the same fact for the same reason — the
+      // deal a board can honestly say it is — and two spellings of one rule is one too
+      // many.
+      let boardSeed = initial->Option.isSome || seedHistory->Option.isSome ? None : game.seed
       switch onDeal {
-      | Some(report) =>
-        report(initial->Option.isSome || seedHistory->Option.isSome ? None : game.seed)
+      | Some(report) => report(boardSeed)
       | None => ()
       }
       // The stage everything is positioned within; `position: relative` (in CSS)
@@ -930,65 +939,49 @@ let make = (
         Array.length(game.piles)
       }
 
-      // The single source of truth for *where every card rests* (#77/#82): the view
-      // holds one immutable `GameState`, seeded from the board's opening deal (or the
-      // forced `~initial` scenario, when one is given), and re-derives every pile's
-      // layout from it. Drops dispatch reducer actions and adopt the returned state;
-      // the view keeps only transient geometry (below).
-      let state = ref(
+      // The single source of truth for this board (#298): one `Session.t` holding where
+      // every card rests (#77/#82), the history behind it (#85), the tally (#289) and the
+      // clock (#302) beside it, and the house rules it's played under. The view
+      // re-derives every pile's layout from its present state and keeps only transient
+      // geometry (below).
+      //
+      // This used to be four refs stepped in lockstep, and the stepping was written out
+      // three times — at the drop, at the double-tap send-home, and at a typed command.
+      // Now a move hands an action to `Session.dispatch` and the view adopts what comes
+      // back: settling, the undo step, the tally and the clock are all one call, and it's
+      // the same call the terminal makes.
+      //
+      // Seeded from a saved game when there is one (#177), otherwise from the board's
+      // opening deal or the forced `~initial` scenario. Per-build, like everything else
+      // here, so a New Game or a Restart starts from a zero tally and a running clock
+      // while a resumed or shared game picks up what its save carried.
+      let session = ref(
         switch seedHistory {
-        | Some(s) => History.present(s.history)
-        | None => initial->Option.getOr(GameState.initial(game))
+        | Some(saved) => Session.restore(~seed=boardSeed, ~options=options.contents, game, saved)
+        | None =>
+          Session.open_(
+            ~clock,
+            ~options=options.contents,
+            ~seed=boardSeed,
+            game,
+            initial->Option.getOr(GameState.initial(game)),
+          )
         },
       )
 
-      // Undo/redo history over the board's `GameState` (#85): the states the board
-      // has passed through, so a step back is a pop. `state` stays the live snapshot
-      // the layout reads; `history` records each *settled* move as one undoable step
-      // and is stepped by `undo`/`redo` (defined below, once the reflow/win helpers
-      // they drive exist). A fresh build (a re-deal, or the opening mount) starts a
-      // clean history from the opening position.
-      let history = ref(
-        switch seedHistory {
-        | Some(s) => s.history
-        | None => History.make(state.contents)
-        },
-      )
+      // Where every card rests right now. A function rather than a stored value, so the
+      // session stays the one answer to the question.
+      let state = () => Session.present(session.contents)
 
-      // How much play this game has taken (#289): the move and undo counts the win
-      // overlay reports. It sits *beside* `history` rather than inside it for the
-      // reason `Stats` spells out — undo pops the history but must not un-count a
-      // move — and it's per-build like the history is, so a New Game or a Restart
-      // starts from `zero` while a resumed or shared game picks up the tally its save
-      // carried. Stepped by `recordHistory`/`undo`/`redo` below, which are the three
-      // places anything countable happens.
-      let stats = ref(
-        switch seedHistory {
-        | Some(s) => s.stats
-        | None => Stats.zero
-        },
-      )
+      // The live session with the driver's current house rules pushed into it. The
+      // switches live at mount scope and outlive any one board — a New Game doesn't
+      // change the rules you're playing under — so they're the driver's to carry and the
+      // session's to consult, which is the split the terminal draws too (see `Repl`).
+      let current = () => Session.withOptions(session.contents, options.contents)
 
-      // How long this game has been going (#302): the clock the win overlay reports.
-      // A build that deals its own board starts it now; a resumed one keeps the clock
-      // its save carried, so a reload doesn't restart the game's timer (and a game
-      // saved *won* keeps the moment it was won — see `Timing.won`). Stamped in
-      // `showWin`, and un-stamped by `removeWinOverlay` when an undo steps back out of
-      // a victory, which are the only two moments the clock hears about.
-      let timing = ref(
-        switch seedHistory {
-        | Some(s) => s.timing
-        | None => Timing.dealt(~at=Date.now())
-        },
-      )
-
-      // What this build would save: the live history, the live tally and the live
-      // clock, read at call time so a caller always gets the board as it now stands.
-      let currentSave = (): SaveState.t => {
-        history: history.contents,
-        stats: stats.contents,
-        timing: timing.contents,
-      }
+      // What this build would save: read at call time, so a caller always gets the board
+      // as it now stands.
+      let currentSave = (): SaveState.t => Session.save(session.contents)
 
       // Point the mount-scope reader at *this* build's save, so the share button
       // encodes the board on the table rather than one a re-deal has since replaced.
@@ -997,7 +990,7 @@ let make = (
       // Persist the board's whole undo/redo history and tally after any change (#177,
       // #289), when the driver wired a `~persist` sink. A no-op otherwise — the demos,
       // and any board opened from a `?state=`/`?seed=` link, pass none — so saving
-      // attaches only to a plain FreeCell game. Called from `recordHistory`, `undo`,
+      // attaches only to a plain FreeCell game. Called from `afterChange`, `undo`,
       // and each fresh build.
       let persistCurrent = () =>
         switch persist {
@@ -1027,7 +1020,7 @@ let make = (
       let hasFanned = game.piles->Array.some((p: Game.pile) => p.stacking == Game.Fanned)
       let openingMaxDepth =
         zones->Array.reduce(0, (m, z) =>
-          Math.Int.max(m, Array.length(GameState.cardsInPile(state.contents, z.index)))
+          Math.Int.max(m, Array.length(GameState.cardsInPile(state(), z.index)))
         )
       let referenceDepth = openingMaxDepth + fanHeadroom
 
@@ -1181,7 +1174,7 @@ let make = (
         let zr = boundingRect(zone.el)
         // The pile's cards come straight from the model now, bottom-first, and are
         // mapped back onto their nodes by identity — the card's slot is its index.
-        let cards = GameState.cardsInPile(state.contents, zone.index)
+        let cards = GameState.cardsInPile(state(), zone.index)
         let count = Array.length(cards)
         // The pile's stacking rule (#76), consulted to decide which cards head a
         // legal run and so may be lifted as a supermove span (#123).
@@ -1285,39 +1278,18 @@ let make = (
         requestAnimationFrame(() => classList(playfield)->removeClass("dealing"))->ignore
       }
 
-      // After an accepted move, auto-collect the safe cards to the foundations
-      // (#125) when the option is on (its default), adopting the settled state so
-      // the following reflow lays out the swept board. Gated entirely by the flag,
-      // so `autoCollect: false` leaves the reducer's result untouched — an exact
-      // no-op path. Runs *before* the win check, since a collection often plays the
-      // final cards and so is what trips `hasWon`.
-      // Once the board is finishable (#132), auto-collect steps aside so the
-      // "Finish" button owns the end-game sweep — otherwise safe auto-collect
-      // would often cascade to the win on its own and rob the player of the
-      // trigger.
-      // Hands back the cards it sent home (empty when the option is off or nothing was
-      // safe), which is what a caller animating the move needs: a typed command (#273)
-      // flies the cards it displaced *and* whatever the collection swept up behind
-      // them, so the two read as one gesture rather than a move and a jump.
-      let autoCollectIfEnabled = (): array<Deck.card> =>
-        if options.contents.autoCollect && !Reducer.canFinish(~game, state.contents) {
-          let (collected, moved) = Reducer.autoCollect(~game, state.contents)
-
-          // Narrate the collection to the debug console (#213) when it actually sent
-          // cards home; an empty sweep is the common no-op and isn't worth a line.
-          if Array.length(moved) > 0 {
-            DebugLog.line(Render.concat([[Render.plain("auto-collect ")], Render.cardSpans(moved)]))
-          }
-          state := collected
-          moved
-        } else {
-          []
-        }
-
-      // Dispatch an action into core's reducer (#213-instrumented), narrating the
-      // interaction to the debug console when logging is on. Both live move sites — a
-      // drop (`endDrag`) and the double-tap send-home — funnel through here, so the log
-      // captures every move the UI asks core to make.
+      // Play an action into the board's session (#298), narrating the interaction to the
+      // debug console when logging is on. Every live move site — a drop (`endDrag`), the
+      // double-tap send-home, a typed command (#273) — funnels through here, so the log
+      // captures every move the UI asks core to make and, more to the point, so all three
+      // get the *same* treatment: the house-rule gate, the reducer's verdict, safe
+      // auto-collect (#125), the undo step (#85), the tally (#289) and the clock (#302)
+      // are one call now, and it's the call the terminal makes too.
+      //
+      // What comes back is the `Session.change`, which names the cards that travelled —
+      // the ones the action moved, and separately whatever auto-collect swept up behind
+      // them. A caller flies both as one gesture; the log says them as two things,
+      // because a move is what you did and a collection is what the board did back.
       //
       // **One line per move**, not two. The old pair said the action and then its
       // outcome, which meant the commonest thing in the log — a move that worked — cost
@@ -1329,34 +1301,45 @@ let make = (
       //
       // Built only when something is listening: `DebugLog`'s own calls short-circuit on
       // that, and this composes a document before it calls one, so it checks first.
-      let dispatch = (action: Reducer.action): result<GameState.t, Reducer.moveError> => {
+      let dispatch = (action: Reducer.action): Session.change => {
         // A move of the player's own — a drop, a send-home, a typed one — takes the
         // board off whatever line an autoplay was walking (#291), so it stops the run.
         // Autoplay's own steps come pre-reduced from `Solver.autoplay` and never come
         // through here, which is what makes this the clean "the player did something"
         // signal.
         interruptPlay()
-        let before = state.contents
-        let result = Reducer.reduce(~game, before, action)
+        let before = state()
+        let (next, change) = Session.dispatch(~clock, current(), action)
+        session := next
         if DebugLog.enabled() {
           let accepted: Render.span = {text: " ✓", ink: Render.Title}
           let refused: Render.span = {text: " ✗", ink: Render.Plain}
           // A lawful no-op (#215) — an identity re-drop onto the pile a card already
-          // tops — reduces to `Ok` with the board untouched. It's accepted, so it keeps
-          // the ✓; saying nothing changed is what stops the log reading as a move that
-          // did something (it records no undo step below either).
+          // tops — is accepted with the board untouched. It keeps the ✓; saying nothing
+          // changed is what stops the log reading as a move that did something (it
+          // records no undo step either).
           let noChange: Render.span = {text: " (no change)", ink: Render.Plain}
-          let outcome = switch result {
-          | Ok(next) => GameState.equal(next, before) ? [accepted, noChange] : [accepted]
-          | Error(_) => [refused]
+          let outcome = switch change {
+          | Session.Settled(_) =>
+            GameState.equal(state(), before) ? [accepted, noChange] : [accepted]
+          | _ => [refused]
           }
           DebugLog.line(Array.concat(Render.action(~game, action), outcome))
-          switch result {
-          | Error(err) => DebugLog.line([Render.plain(`  ${Command.reason(err)}`)])
-          | Ok(_) => ()
+          switch change {
+          | Session.Rejected(err) => DebugLog.line([Render.plain(`  ${Command.reason(err)}`)])
+          | _ => ()
           }
         }
-        result
+        // Narrate the collection (#213) when it actually sent cards home; an empty sweep
+        // is the common no-op and isn't worth a line.
+        switch change {
+        | Session.Settled({collected}) if Array.length(collected) > 0 =>
+          DebugLog.line(
+            Render.concat([[Render.plain("auto-collect ")], Render.cardSpans(collected)]),
+          )
+        | _ => ()
+        }
+        change
       }
 
       // The win overlay (#121): a dimmed panel over the board announcing the win,
@@ -1366,6 +1349,10 @@ let make = (
       // (`newDeal`) or, for a fixed-layout board, replays the same deal — either way
       // `buildBoard` clears `boardHost` first, so the overlay is torn down with the
       // rest of the board and can't linger. Only one is ever raised at a time.
+      //
+      // It reports the game — the clock and the tally — but doesn't *take* either. Both
+      // were settled by the move that won (#298), which is why this raises a panel and
+      // saves nothing: the winning move's own save already says the game is over.
       let winShown = ref(false)
       // The live overlay element, kept so undo can tear it down when stepping back
       // out of a win (#85) — undoing a victory removes the panel and returns the
@@ -1375,13 +1362,11 @@ let make = (
         if !winShown.contents {
           DebugLog.message("win")
           winShown := true
-          // Stop the clock (#302). Here rather than at each win check because this is
-          // the one place a victory becomes *visible*, and the same three flows that
-          // raise a panel (a winning move, a redo back into one, a resumed victory)
-          // should all stamp the same way. A save that already carries a `wonAt` keeps
-          // it, so reopening a won board reports the game's own length rather than how
-          // long ago you played it.
-          timing := Timing.won(timing.contents, ~at=Date.now())
+          // The clock stopped when the *board* was won, not here (#302/#298): the
+          // session stamps it as it records the winning move, so the number reports how
+          // long the game took rather than how long the last card took to fly. A save
+          // that already carries a `wonAt` keeps it, so reopening a won board reports the
+          // game's own length rather than how long ago you played it.
           let overlay = WebDom.createElement("div")
           overlay->WebDom.setAttribute("class", "win-overlay")
 
@@ -1398,7 +1383,7 @@ let make = (
           // playing on raises a fresh panel with the larger numbers it earned.
           let tally = WebDom.createElement("p")
           tally->WebDom.setAttribute("class", "win-panel__stats")
-          tally->WebDom.setTextContent(Stats.summary(stats.contents))
+          tally->WebDom.setTextContent(Stats.summary(session.contents.stats))
 
           // The buttons sit in a row of their own, so a second one lands beside New
           // Game rather than under it and the panel stays as wide as its widest line.
@@ -1425,7 +1410,7 @@ let make = (
           // existed has no time to report, and a line that sometimes reads
           // "94 moves · 0 undos" and sometimes "4:07 · 94 moves · 0 undos" is harder to
           // read at a glance than a line that's sometimes simply not there.
-          switch Timing.summary(timing.contents) {
+          switch Timing.summary(session.contents.timing) {
           | Some(text) =>
             let time = WebDom.createElement("p")
             time->WebDom.setAttribute("class", "win-panel__time")
@@ -1463,7 +1448,7 @@ let make = (
           // board being replaced (a New Game or a Restart, both of which build afresh
           // from `Stats.zero`).
           switch winShare {
-          | Some(offer) if offer.available() && !Stats.usedAutoplay(stats.contents) =>
+          | Some(offer) if offer.available() && !Stats.usedAutoplay(session.contents.stats) =>
             let status = WebDom.createElement("p")
             status->WebDom.setAttribute("class", "win-panel__status")
             status->WebDom.setAttribute("aria-live", "polite")
@@ -1473,7 +1458,7 @@ let make = (
             shareButton->WebDom.setAttribute("class", "win-panel__button win-panel__button--share")
             shareButton->WebDom.setTextContent("Share")
             shareButton->WebDom.addEventListener("click", () =>
-              offer.share(~moves=stats.contents.moves, ~undos=stats.contents.undos)
+              offer.share(~moves=session.contents.stats.moves, ~undos=session.contents.stats.undos)
               // Writing into the panel is safe even if it's been torn down by the time
               // the share resolves (an undo out of the win, a New Game): the node is
               // detached by then, and setting text on it changes nothing anyone sees.
@@ -1488,33 +1473,22 @@ let make = (
           overlay->WebDom.appendChild(panel)->ignore
           boardHost->WebDom.appendChild(overlay)->ignore
           winOverlay := Some(overlay)
-
-          // Save the stamped clock (#302). The winning move persisted the board a moment
-          // ago, from `recordHistory` — *before* there was a win to time — so without
-          // this the one number that can only be measured as it happens would be the one
-          // number a reload lost. Gated by `persistThis` for the same reason the build's
-          // own save is: a forced-state board (`?state=`) mustn't become the saved game
-          // just because it opened on a victory.
-          if persistThis {
-            persistCurrent()
-          }
         }
 
       // Tear the win overlay down (#85) — undo out of a victory removes the panel
       // and clears the flag so a later win can raise it again. A no-op when no
       // overlay is up.
+      //
+      // The clock starts again with it (#302), but not from here: stepping the session
+      // back is what clears the won-at, because a board that isn't won hasn't been. It
+      // stamps afresh on winning again, and the time then covers the detour — the same
+      // stance the tally takes, where undoing never gives a move back.
       let removeWinOverlay = () =>
         switch winOverlay.contents {
         | Some(overlay) =>
           WebDom.remove(overlay)
           winOverlay := None
           winShown := false
-          // …and the clock starts again (#302): a board stepped back out of a victory
-          // isn't won, so it has no won-at. Winning it again stamps afresh, and the
-          // time then covers the detour too — the same stance the tally takes, where
-          // undoing never gives a move back. `adoptHistoryPresent` persists right
-          // after this, so the cleared stamp reaches the save with the stepped board.
-          timing := Timing.unwon(timing.contents)
         | None => ()
         }
 
@@ -1522,23 +1496,21 @@ let make = (
       // can enable or disable its button. Called after every state change.
       let reportHistory = () =>
         switch onHistory {
-        | Some(f) => f(History.canUndo(history.contents))
+        | Some(f) => f(Session.canUndo(session.contents))
         | None => ()
         }
 
-      // Record the current (settled) `state` as one undoable step, then report the
-      // updated availability. Called after each accepted move, once auto-collect has
-      // settled — so a move and the collection it triggered undo as a unit.
-      let recordHistory = () => {
-        history := History.record(history.contents, state.contents)
-        // One recorded step is one move made (#289). Counting here rather than at each
-        // drop/command means the two ways to play a move — and the finish sweep, which
-        // records itself as a single step — agree by construction, and a move that
-        // changed nothing (a lawful no-op, #215) doesn't reach this and so doesn't
-        // count. The tally is exactly "recorded steps", plus the redos below.
-        stats := Stats.move(stats.contents)
+      // What's left to do once the session has taken a change: tell the chrome the undo
+      // button has something to undo, and write the board to storage (#177) so a reload
+      // resumes here, mid-game.
+      //
+      // The recording itself isn't here any more (#298). One undoable step per accepted
+      // move, one move on the tally per recorded step, the clock stamped when the board
+      // is won — that is `Session.dispatch`'s, which is what makes the drop, the
+      // send-home, the typed command and the terminal agree by construction rather than
+      // by four places remembering to.
+      let afterChange = () => {
         reportHistory()
-        // Save the new position (#177) so a reload resumes here, mid-game.
         persistCurrent()
       }
 
@@ -1701,7 +1673,7 @@ let make = (
       // show-when-relevant shape as the win overlay above — that appears exactly
       // when the board can be drained to a win by foundation moves alone
       // (`Reducer.canFinish`), i.e. victory is one tap away, and is hidden the rest
-      // of the time. Tapping it plays the finishing sweep (`Reducer.finishSequence`)
+      // of the time. Tapping it plays the finishing sweep (`Session.finish`)
       // home to the detected win. It never gates manual play: you can still drag or
       // double-tap cards home one at a time — this is only the shortcut. Held in a
       // ref so `updateFinishButton` can add or remove it as `canFinish` flips after
@@ -1726,15 +1698,19 @@ let make = (
         // happens after its last step, so this only ever stops a run someone reached
         // past — the Finish button (or a typed `finish`) pressed mid-line.
         interruptPlay()
-        let (settled, moved) = Reducer.finishSequence(~game, state.contents)
+        let (next, outcome) = Session.finish(~clock, current())
+        let moved = switch outcome.change {
+        | Session.Swept({moved}) => moved
+        | _ => [] // unreachable: every caller checks `canFinish` before asking
+        }
+        session := next
         DebugLog.line(Render.concat([[Render.plain("finish ")], Render.cardSpans(moved)]))
-        state := settled
-        recordHistory()
+        afterChange()
         removeFinishButton()
         // Deliver the sweep as a staggered flight (#160) rather than an instant
         // jump; the win overlay lands only once the last card has arrived.
         animateFinish(moved, ~onDone=() =>
-          if GameState.hasWon(game, state.contents) {
+          if GameState.hasWon(game, state()) {
             showWin()
           }
         )
@@ -1742,7 +1718,7 @@ let make = (
       }
 
       let updateFinishButton = () =>
-        if winShown.contents || !Reducer.canFinish(~game, state.contents) {
+        if winShown.contents || !Reducer.canFinish(~game, state()) {
           removeFinishButton()
         } else {
           switch finishButton.contents {
@@ -1773,7 +1749,6 @@ let make = (
         // …including the tilt timing a cut-short sweep left on its cards (#241), or
         // the restored position's angles would arrive on the dead sweep's schedule.
         clearTiltTimings()
-        state := History.present(history.contents)
         reflowAll()
         updateFinishButton()
         reportHistory()
@@ -1787,13 +1762,14 @@ let make = (
       // *settled* state exactly. It tears down the win overlay first, so it steps
       // cleanly back out of a victory.
       let undo = () =>
-        if History.canUndo(history.contents) {
+        if Session.canUndo(session.contents) {
           DebugLog.message("undo")
-          history := History.undo(history.contents)
           // Counted as an undo, never as a move, and it never takes a move back off the
-          // tally (#289): the move was still made. Inside the `canUndo` guard, so a
-          // press with nothing behind the present isn't counted as one.
-          stats := Stats.undo(stats.contents)
+          // tally (#289) — the session's rule, applied wherever a board is stepped back.
+          // Inside the `canUndo` guard, so a press with nothing behind the present isn't
+          // counted as one.
+          let (stepped, _) = Session.undo(~clock, current())
+          session := stepped
           removeWinOverlay()
           adoptHistoryPresent()
         }
@@ -1804,15 +1780,14 @@ let make = (
       // that hand, and it's the mirror of `undo` down to the win overlay: redoing into
       // the move that won the game raises the victory the undo took down.
       let redo = () =>
-        if History.canRedo(history.contents) {
+        if Session.canRedo(session.contents) {
           DebugLog.message("redo")
-          history := History.redo(history.contents)
-          // A redo puts a move back on the board, so it counts as one (#289) — the
-          // issue's rule, and the only one that keeps undo-then-redo from being a way
-          // to play for free.
-          stats := Stats.redo(stats.contents)
+          // A redo puts a move back on the board, so it counts as one (#289) — the only
+          // rule that keeps undo-then-redo from being a way to play for free.
+          let (stepped, _) = Session.redo(~clock, current())
+          session := stepped
           adoptHistoryPresent()
-          if GameState.hasWon(game, state.contents) {
+          if GameState.hasWon(game, state()) {
             showWin()
           }
         }
@@ -1829,39 +1804,36 @@ let make = (
       // accepted move adds nothing (`""`) and only the things the instrumentation
       // can't say — why a move bounced, that there was nothing to undo — get a line.
 
-      // Play one action and fly the cards it displaced. `~movers` are the cards the
-      // command names; anything auto-collect sweeps up behind them joins the same
-      // flight, so a move and its collection read as one gesture rather than a move
-      // followed by a jump. `~collect` is off for a column reorder, which is
-      // organizational rather than played — matching the CLI driver (#159).
-      let playAction = (~movers: array<Deck.card>, ~collect: bool=true, action): array<
-        Render.line,
-      > => {
-        let before = state.contents
+      // Play one action and fly the cards it displaced. Which cards those are is the
+      // session's answer, not this function's (#298): the ones the action named, plus
+      // whatever auto-collect swept up behind them, flown together so a move and its
+      // collection read as one gesture rather than a move followed by a jump. A column
+      // reorder names no cards, so nothing flies and the reflow inside the flight path
+      // simply re-lays the board.
+      let playAction = (action): array<Render.line> => {
+        let before = state()
         switch dispatch(action) {
-        | Ok(next) =>
-          state := next
-          let collected = collect ? autoCollectIfEnabled() : []
-
-          // Record the settled position as one undoable step (#85) — unless nothing
-          // changed (a lawful no-op, #215), which isn't undoable.
-          if !GameState.equal(state.contents, before) {
-            recordHistory()
+        | Session.Settled({moved, collected}) =>
+          // The session records an accepted move as one undoable step (#85) — unless
+          // nothing changed (a lawful no-op, #215), which isn't undoable and so leaves
+          // nothing to save or report.
+          if !GameState.equal(state(), before) {
+            afterChange()
           }
-          animateCommand(Array.concat(movers, collected), ~onDone=() => {
+          animateCommand(Array.concat(moved, collected), ~onDone=() => {
             // A move that completes every foundation ends the game (#121). Raised once
             // the cards have landed, so the overlay is the payoff of the flight rather
             // than something that beats it to the board.
-            if GameState.hasWon(game, state.contents) {
+            if Session.hasWon(session.contents) {
               showWin()
             }
             updateFinishButton()
           })
           []
-        // Nothing to add on a rejection either: `dispatch` above has already put the
-        // move and the reason it bounced into the log, and a reply here would say the
-        // same thing a second time under it.
-        | Error(_) => []
+        // Nothing to add on a refusal either: `dispatch` above has already put the move
+        // and the reason it bounced into the log, and a reply here would say the same
+        // thing a second time under it.
+        | _ => []
         }
       }
 
@@ -1892,18 +1864,18 @@ let make = (
         // generated tens of thousands of positions, so the number describes the
         // thinking, which is the part worth reporting.
         let started = Date.now()
-        switch Solver.autoplay(~game, state.contents) {
+        switch Solver.autoplay(~game, state()) {
         | Solver.NotFreeCell => Render.text(Command.autoplayNotFreeCell)
         | Solver.NoLine => Render.text(Command.autoplayNoLine)
         | Solver.Played({steps, effort}) =>
           let ms = Date.now() -. started
           DebugLog.message("autoplay")
           // Counted once for the reaching, not once per move (#291) — the moves the
-          // solver plays are counted as moves by `recordHistory` below, like any
+          // solver plays are counted as moves by the session below, like any
           // other. Counted *before* the first step is recorded, so the very first save
           // this writes already carries "this game was autoplayed"; and counted even
           // if the run is interrupted a move later, because it was still reached for.
-          stats := Stats.autoplay(stats.contents)
+          session := {...session.contents, stats: Stats.autoplay(session.contents.stats)}
           // Any flight still in the air belongs to the position the line starts from
           // (and the tilt timings with it — see `adoptHistoryPresent`). This also ends
           // an autoplay already running, so a second `autoplay` replaces the first
@@ -1919,9 +1891,9 @@ let make = (
           // where the line left it, with the reply below saying how far that was.
           let handOver = () => {
             updateFinishButton()
-            if Reducer.canFinish(~game, state.contents) {
+            if Reducer.canFinish(~game, state()) {
               playFinish()->ignore
-            } else if GameState.hasWon(game, state.contents) {
+            } else if GameState.hasWon(game, state()) {
               showWin()
             }
           }
@@ -1943,13 +1915,13 @@ let make = (
                 if DebugLog.enabled() {
                   DebugLog.line(Render.action(~game, step.action))
                 }
-                state := step.state
                 // One recorded step per planned move, exactly as a typed move records
                 // one: the tally counts the game's true length, and undo walks back
                 // through the solver's line a move at a time rather than teleporting
                 // past the whole thing. Recorded *before* the flight, as every other
                 // move here is, so an interruption mid-air leaves the model settled.
-                recordHistory()
+                session := Session.commit(~clock, current(), step.state)
+                afterChange()
                 animateAutoplayStep(step.moved, ~onDone=() => playFrom(i + 1))
               }
             }
@@ -1987,11 +1959,7 @@ let make = (
           // the CLI gates it: with it off nothing is dispatched at all.
           | Reducer.MoveColumn(_) if !options.contents.allowColumnReorder =>
             Render.text("Column reordering is off for this game.")
-          | Reducer.Move({card}) => playAction(~movers=[card], action)
-          | Reducer.MoveRun({cards}) => playAction(~movers=cards, action)
-          // A reorder moves whole columns rather than named cards, so there's nothing
-          // to fly: `reflowAll` (inside the flight path) simply re-lays the board.
-          | Reducer.MoveColumn(_) => playAction(~movers=[], ~collect=false, action)
+          | _ => playAction(action)
           }
         // A move with a half only a board can read — a destination named as a card or a
         // column label (`move 8H 9S`, `move 8H T3`), a source named as the place it's
@@ -2001,24 +1969,24 @@ let make = (
         // ordinary flight.
         | Command.MoveTo({from, where}) =>
           switch (
-            Command.resolveFrom(~game, state.contents, from),
-            Command.resolveWhere(~game, state.contents, where),
+            Command.resolveFrom(~game, state(), from),
+            Command.resolveWhere(~game, state(), where),
           ) {
-          | (Ok(cards), Ok(to)) => playAction(~movers=cards, Command.moveAction(~cards, ~to))
+          | (Ok(cards), Ok(to)) => playAction(Command.moveAction(~cards, ~to))
           | (Error(message), _) | (_, Error(message)) => Render.text(message)
           }
         // `home <card>` names no destination, so resolve one here — through the very
         // `validMoves` the double-tap send-home uses (#196), which is what makes a typed
         // `home AS` and a double-tapped one the same move.
         | Command.Home({card}) =>
-          switch Reducer.validMoves(~game, state.contents, card)->Array.find(m =>
+          switch Reducer.validMoves(~game, state(), card)->Array.find(m =>
             m.role == Game.Foundation
           ) {
-          | Some({to: i}) => playAction(~movers=[card], Reducer.Move({card, to: Reducer.ToPile(i)}))
+          | Some({to: i}) => playAction(Reducer.Move({card, to: Reducer.ToPile(i)}))
           | None => Render.text(`No foundation is ready for ${CardText.format(card)}.`)
           }
         | Command.Finish =>
-          if Reducer.canFinish(~game, state.contents) {
+          if Reducer.canFinish(~game, state()) {
             playFinish()->ignore
             []
           } else {
@@ -2026,14 +1994,14 @@ let make = (
           }
         | Command.Autoplay => autoplay()
         | Command.Undo =>
-          if History.canUndo(history.contents) {
+          if Session.canUndo(session.contents) {
             undo()
             []
           } else {
             Render.text("Nothing to undo.")
           }
         | Command.Redo =>
-          if History.canRedo(history.contents) {
+          if Session.canRedo(session.contents) {
             redo()
             []
           } else {
@@ -2047,7 +2015,7 @@ let make = (
         // flattened to text (#282), so the panel can paint the suits the terminal paints
         // in ANSI. Nothing here chooses a colour; the ink says which cards are red and
         // the stylesheet decides what red looks like in a log.
-        | Command.Print => Render.stateLines(~game, ~deal=?currentDeal(), state.contents)
+        | Command.Print => Render.stateLines(~game, ~deal=?currentDeal(), state())
         // Everything else — help, clear, dealing a board — belongs to the chrome (see
         // `Main`), which answers those itself and never forwards them here.
         | _ => Render.text("That isn't something the board can do.")
@@ -2108,12 +2076,12 @@ let make = (
         // `state`, so the query would weigh them against themselves — so mirror the
         // reducer's identity case here, keeping hover in step with `reduce`.
         let accepts = (spanCards, zone) =>
-          switch GameState.locationOf(state.contents, cardData) {
+          switch GameState.locationOf(state(), cardData) {
           | Some(GameState.InPile(i, _)) if i == zone.index => true
           | _ =>
             Array.length(spanCards) <= 1
-              ? Reducer.canDrop(~game, state.contents, cardData, ~onto=zone.index)
-              : Reducer.canMoveRun(~game, state.contents, spanCards, ~onto=zone.index)
+              ? Reducer.canDrop(~game, state(), cardData, ~onto=zone.index)
+              : Reducer.canMoveRun(~game, state(), spanCards, ~onto=zone.index)
           }
 
         let clearHover = () =>
@@ -2155,9 +2123,9 @@ let make = (
             wrapper->setPointerCapture(pointerId(ev))
             // Gather the span this card heads: itself and every card resting above
             // it in its pile, bottom-first. A loose or lone card is a span of one.
-            let span = switch GameState.locationOf(state.contents, self.data) {
+            let span = switch GameState.locationOf(state(), self.data) {
             | Some(GameState.InPile(pileIdx, slot)) =>
-              let pile = GameState.cardsInPile(state.contents, pileIdx)
+              let pile = GameState.cardsInPile(state(), pileIdx)
               pile->Array.slice(~start=slot, ~end=Array.length(pile))->Array.filterMap(nodeFor)
             | _ => nodeFor(self.data)->Option.mapOr([], c => [c])
             }
@@ -2208,27 +2176,25 @@ let make = (
         // such move and is ignored. The move dispatched is the very `Move` a drag
         // would, so a completing card still raises the win overlay.
         let sendHome = () =>
-          switch Reducer.validMoves(~game, state.contents, self.data)->Array.find(m =>
+          switch Reducer.validMoves(~game, state(), self.data)->Array.find(m =>
             m.role == Game.Foundation
           ) {
           | Some({to: i}) =>
-            let before = state.contents
+            let before = state()
             switch dispatch(Reducer.Move({card: self.data, to: Reducer.ToPile(i)})) {
-            | Ok(next) =>
-              state := next
-              autoCollectIfEnabled()->ignore
-
-              // Record the settled position as one undoable step (#85), unless the
-              // move changed nothing (a lawful no-op, #215) — a no-op isn't undoable.
-              if !GameState.equal(state.contents, before) {
-                recordHistory()
+            | Session.Settled(_) =>
+              // The session has already settled the move (auto-collect included) and
+              // recorded it as one undoable step (#85) — unless it changed nothing (a
+              // lawful no-op, #215), which leaves nothing to save or report.
+              if !GameState.equal(state(), before) {
+                afterChange()
               }
               reflowAll()
-              if GameState.hasWon(game, state.contents) {
+              if Session.hasWon(session.contents) {
                 showWin()
               }
               updateFinishButton()
-            | Error(_) => ()
+            | _ => ()
             }
           | None => ()
           }
@@ -2288,7 +2254,7 @@ let make = (
           moves
           ->Array.filter(({role}) => role != Game.FreeCell)
           ->Array.forEach(({to: i}) => {
-            let cards = GameState.cardsInPile(state.contents, i)
+            let cards = GameState.cardsInPile(state(), i)
             switch cards->Array.get(Array.length(cards) - 1)->Option.flatMap(nodeFor) {
             | Some(node) => flash(node.wrapper)
             | None => ()
@@ -2300,7 +2266,7 @@ let make = (
         // a `Foundation` move sends it home (unchanged from #122); otherwise, if it has
         // any other legal destination, flash those; a card that can't move does nothing.
         let doubleTap = () => {
-          let moves = Reducer.validMoves(~game, state.contents, self.data)
+          let moves = Reducer.validMoves(~game, state(), self.data)
           switch moves->Array.find(m => m.role == Game.Foundation) {
           | Some(_) => sendHome()
           | None => flashMoveTargets(moves)
@@ -2328,29 +2294,26 @@ let make = (
               Array.length(spanCards) <= 1
                 ? Reducer.Move({card: self.data, to: target})
                 : Reducer.MoveRun({cards: spanCards, to: target})
-            let before = state.contents
+            let before = state()
             switch dispatch(action) {
-            // Lawful move (including the identity re-drop): adopt the new state and
-            // reflow every pile from it. Cards that joined a pile snap to their
-            // slots; a card left loose stays at the pixel it was dropped.
-            | Ok(next) =>
-              state := next
-              // Auto-collect any now-safe cards (#125) before the reflow, so the
-              // whole cascade settles in one pass; gated by the option.
-              autoCollectIfEnabled()->ignore
-
-              // Record the settled position as one undoable step (#85), so a move
-              // and the auto-collection it triggered undo together — unless nothing
-              // changed (dropping a card back where it started is a no-op, #215).
-              if !GameState.equal(state.contents, before) {
-                recordHistory()
+            // Lawful move (including the identity re-drop): the session has adopted it,
+            // auto-collected any now-safe cards behind it (#125) so the whole cascade
+            // settles in one pass, and recorded the settled position as one undoable step
+            // (#85) — so a move and its collection undo together. Reflow every pile from
+            // it: cards that joined a pile snap to their slots, a card left loose stays
+            // at the pixel it was dropped.
+            | Session.Settled(_) =>
+              // …unless nothing changed (dropping a card back where it started is a
+              // no-op, #215), which records no step and so leaves nothing to save.
+              if !GameState.equal(state(), before) {
+                afterChange()
               }
               reflowAll()
 
               // A move that completes every foundation ends the game (#121): raise
               // the win overlay following the accepted `reduce` (and any auto-collect
               // that played the final cards).
-              if GameState.hasWon(game, state.contents) {
+              if GameState.hasWon(game, state()) {
                 showWin()
               }
               // Recompute the "Finish" button (#132): a move can make the board
@@ -2359,8 +2322,8 @@ let make = (
             // Illegal move: bounce the span back where it came from. Cards that rest
             // in a pile return to their slots when that pile reflows; a loose card (a
             // rejected drop in a `free` game) returns to where the drag began.
-            | Error(_) =>
-              switch GameState.locationOf(state.contents, self.data) {
+            | _ =>
+              switch GameState.locationOf(state(), self.data) {
               | Some(GameState.InPile(_, _)) => reflowAll()
               | _ =>
                 switch spanStarts->Array.get(0) {
@@ -2497,7 +2460,7 @@ let make = (
       // the loose cards last. This is just the sequence the staggered start delays
       // below run over; the cards are already at their final resting spots.
       let dealSequence = () => {
-        let piles = zones->Array.map(z => GameState.cardsInPile(state.contents, z.index))
+        let piles = zones->Array.map(z => GameState.cardsInPile(state(), z.index))
         let depth = piles->Array.reduce(0, (m, p) => Math.Int.max(m, Array.length(p)))
         let ordered = []
         for slot in 0 to depth - 1 {
@@ -2591,7 +2554,7 @@ let make = (
             applyScale()
             reflowAll()
             nodes->Array.forEach(c =>
-              switch GameState.locationOf(state.contents, c.data) {
+              switch GameState.locationOf(state(), c.data) {
               | Some(GameState.Loose) =>
                 c.x := c.x.contents *. ratio
                 c.y := c.y.contents *. ratio
@@ -2618,7 +2581,7 @@ let make = (
       // Checked before the "Finish" button below so a completed board never offers to
       // finish itself. A fresh deal, a re-deal, or a `?state=` scenario is never
       // already won, so this only fires on a restored victory.
-      if GameState.hasWon(game, state.contents) {
+      if GameState.hasWon(game, state()) {
         showWin()
       }
 

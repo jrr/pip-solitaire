@@ -77,7 +77,11 @@ type change =
   | Shown // `print`: nothing moved, but the caller asked to see the board
   | Blocked({reason: string}) // a house rule refused it before the reducer saw it
   | Rejected(Reducer.moveError) // the reducer refused it
-  | Settled({moved: array<card>}) // an accepted move, and whatever auto-collect swept behind it
+  // An accepted move: `moved` is what the action named, `collected` whatever safe
+  // auto-collect swept up behind it (#125). Kept apart because a caller that narrates
+  // says two different things about them — the move is what you did, the collection is
+  // what the board did back — while a caller that animates flies them as one gesture.
+  | Settled({moved: array<card>, collected: array<card>})
   | Swept({moved: array<card>}) // the end-game finish sequence (#132)
   | Restored // undo/redo: a position the board already held
   | Dealt // a different board entirely (`redeal`)
@@ -238,7 +242,7 @@ let dispatch = (~clock: unit => float, s: t, action: Reducer.action): (t, change
       // fly: a caller re-lays the board instead.
       | Reducer.MoveColumn(_) => []
       }
-      (commit(~clock, s, settled), Settled({moved: Array.concat(moved, collected)}))
+      (commit(~clock, s, settled), Settled({moved, collected}))
     | Error(err) => (s, Rejected(err))
     }
   }

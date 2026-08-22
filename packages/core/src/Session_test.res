@@ -68,7 +68,7 @@ describe("Session tallies (#289)", () => {
     // The card the command named comes back, so a caller with an animation to run knows
     // what travelled — and anything auto-collect swept up behind it rides along.
     switch outcome.change {
-    | Session.Settled({moved}) => expect(moved->Array.some(c => c == threeOfSpades))->toBe(true)
+    | Session.Settled({moved}) => expect(moved)->toEqual([threeOfSpades])
     | _ => expect("a settled move")->toBe("something else")
     }
     expect(s.stats.moves)->toBe(1)
@@ -115,7 +115,9 @@ describe("Session tallies (#289)", () => {
     expect(Session.canUndo(s))->toBe(false)
     // Accepted, though — so a caller redraws. Nothing moved, so nothing flies.
     switch outcome.change {
-    | Session.Settled({moved}) => expect(Array.length(moved))->toBe(0)
+    | Session.Settled({moved, collected}) =>
+      expect(Array.length(moved))->toBe(0)
+      expect(Array.length(collected))->toBe(0)
     | _ => expect("a settled no-op")->toBe("something else")
     }
   })

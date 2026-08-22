@@ -544,6 +544,27 @@ describe("TableScene win time (#302)", () => {
     )
   })
 
+  test("the clock stops at the winning move, not when the last card lands", () => {
+    // The stamp used to be taken in `showWin`, which runs once the sweep's last card has
+    // flown — so the time included the flight, and the save the winning move wrote
+    // carried no win at all until a second one caught up behind it. The session stamps it
+    // as it records the move (#298), so the save that move writes already says the game
+    // is over.
+    let game = Game.freecell
+    let saved = ref(None)
+    let container = createElement("div")
+    let scene = TableScene.make(
+      ~initial=Scenario.freecellFinish(game),
+      ~persist=s => saved := Some(s),
+      game,
+    )
+    let _teardown = scene.mount(container)
+    expect(saved.contents->Option.flatMap(s => s.timing.wonAt))->toEqual(None)
+
+    container->querySelector(".finish-button")->Nullable.toOption->Option.getOrThrow->click
+    expect(saved.contents->Option.flatMap(s => s.timing.wonAt)->Option.isSome)->toBe(true)
+  })
+
   test("a game with no clock behind it simply shows no time", () => {
     // Every save written before this existed. There's nothing in a history to say when
     // it was dealt, so the panel says nothing rather than inventing a number — and the
