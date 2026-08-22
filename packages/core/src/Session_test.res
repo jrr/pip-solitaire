@@ -185,6 +185,29 @@ describe("Session house rules", () => {
     expect(Array.length(swept))->toBe(0)
   })
 
+  test("safe auto-collect steps aside once the board is finishable (#125 scope)", () => {
+    // On the finishable tail, settling must not auto-collect — even with the option on
+    // (its default) — leaving the board for the `finish` sweep to own.
+    let state = Scenario.freecellFinish(freecell)
+    let (settled, swept) = Session.settle(~game=freecell, ~options=Options.default, state)
+    expect(settled)->toEqual(state)
+    expect(Array.length(swept))->toBe(0)
+
+    // Contrast: on a *non*-finishable board with a safe card, settling still collects it
+    // — showing the finish guard, not a disabled option, is what held the sweep back
+    // above. A lone Ace atop the first cascade, foundations empty, is safe and homeable
+    // but nowhere near a win.
+    let lone = {
+      GameState.piles: freecell.piles->Array.mapWithIndex(
+        (_, i) => i == 8 ? [{suit: Spades, rank: Ace}] : [],
+      ),
+      loose: [],
+    }
+    let (collected, sent) = Session.settle(~game=freecell, ~options=Options.default, lone)
+    expect(GameState.equal(collected, lone))->toBe(false)
+    expect(sent)->toEqual([{suit: Spades, rank: Ace}])
+  })
+
   test("a restart is the same board under the same rules", () => {
     let off = Options.apply(Options.default, ~setting=Options.AutoCollect, ~on=false)
     let (again, outcome) = Session.redeal(~clock=stopped, fresh(~options=off, ()))

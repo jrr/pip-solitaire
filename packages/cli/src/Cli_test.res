@@ -347,7 +347,7 @@ describe("Repl.run", () => {
         | Some(s) =>
           // 3H was never commanded, yet it's off the free cell and home on the
           // hearts foundation (pile 5) — wherever the sweep settles above it.
-          switch GameState.locationOf(Repl.present(s), {suit: Hearts, rank: Three}) {
+          switch GameState.locationOf(Session.present(s), {suit: Hearts, rank: Three}) {
           | Some(GameState.InPile(5, _)) => expect(true)->toBe(true)
           | _ => expect(true)->toBe(false)
           }
@@ -368,8 +368,8 @@ describe("Repl.run", () => {
         | Some(s) =>
           // The hearts foundation still stands at its dealt Two; 3H is still parked
           // in a free cell (piles 0–3), untouched.
-          expect(GameState.topOf(Repl.present(s), 5))->toEqual(Some({suit: Hearts, rank: Two}))
-          switch GameState.locationOf(Repl.present(s), {suit: Hearts, rank: Three}) {
+          expect(GameState.topOf(Session.present(s), 5))->toEqual(Some({suit: Hearts, rank: Two}))
+          switch GameState.locationOf(Session.present(s), {suit: Hearts, rank: Three}) {
           | Some(GameState.InPile(i, _)) => expect(i >= 0 && i <= 3)->toBe(true) // a free cell
           | _ => expect(true)->toBe(false)
           }
@@ -409,31 +409,6 @@ describe("Repl.run", () => {
       "guides the user before a game is dealt",
       () => {
         expect(has(Repl.run(["finish"]), "Deal a game first"))->toBe(true)
-      },
-    )
-
-    test(
-      "safe auto-collect steps aside once the board is finishable (#125 scope)",
-      () => {
-        // On the finishable tail, `afterMove` must not auto-collect — even with the
-        // option on (its default) — leaving the board for the `finish` sweep.
-        let game = Game.freecell
-        let state = Scenario.freecellFinish(game)
-        let after = Repl.afterMove(~game, ~options=Options.default, state)
-        expect(after)->toEqual(state)
-
-        // Contrast: on a *non*-finishable board with a safe card, `afterMove` still
-        // collects it — showing the finish guard, not a disabled option, is what
-        // held the sweep back above. A lone Ace atop the first cascade, foundations
-        // empty, is safe and homeable but nowhere near a win.
-        let lone = {
-          GameState.piles: game.piles->Array.mapWithIndex(
-            (_, i) => i == 8 ? [{suit: Spades, rank: Ace}] : [],
-          ),
-          loose: [],
-        }
-        let collected = Repl.afterMove(~game, ~options=Options.default, lone)
-        expect(collected == lone)->toBe(false)
       },
     )
   })
@@ -519,8 +494,8 @@ describe("Repl.run", () => {
         // Capture the two columns the reorder will touch before moving them.
         let (col8, col9) = switch start {
         | Some(s) => (
-            GameState.cardsInPile(Repl.present(s), 8),
-            GameState.cardsInPile(Repl.present(s), 9),
+            GameState.cardsInPile(Session.present(s), 8),
+            GameState.cardsInPile(Session.present(s), 9),
           )
         | None => ([], [])
         }
@@ -528,12 +503,12 @@ describe("Repl.run", () => {
         switch moved {
         | Some(s) =>
           // Cascade 8 slid to 15; the one that followed it (9) slid into 8.
-          expect(GameState.cardsInPile(Repl.present(s), 15))->toEqual(col8)
-          expect(GameState.cardsInPile(Repl.present(s), 8))->toEqual(col9)
+          expect(GameState.cardsInPile(Session.present(s), 15))->toEqual(col8)
+          expect(GameState.cardsInPile(Session.present(s), 8))->toEqual(col9)
           // One clean undo step: undo restores the original order exactly.
           let (undone, _) = Repl.step(~options=Options.default, moved, "undo")
           switch undone {
-          | Some(u) => expect(GameState.cardsInPile(Repl.present(u), 8))->toEqual(col8)
+          | Some(u) => expect(GameState.cardsInPile(Session.present(u), 8))->toEqual(col8)
           | None => expect(true)->toBe(false)
           }
         | None => expect(true)->toBe(false)
@@ -547,14 +522,14 @@ describe("Repl.run", () => {
         let off = {...Options.default, Options.allowColumnReorder: false}
         let (start, _) = Repl.step(~options=off, None, "deal freecell")
         let col8 = switch start {
-        | Some(s) => GameState.cardsInPile(Repl.present(s), 8)
+        | Some(s) => GameState.cardsInPile(Session.present(s), 8)
         | None => []
         }
         let (after, text) = Repl.step(~options=off, start, "movecol 8 15")
         // The board is untouched and the driver says the rule is off — nothing moved.
         expect(has(text, "off"))->toBe(true)
         switch after {
-        | Some(s) => expect(GameState.cardsInPile(Repl.present(s), 8))->toEqual(col8)
+        | Some(s) => expect(GameState.cardsInPile(Session.present(s), 8))->toEqual(col8)
         | None => expect(true)->toBe(false)
         }
       },
@@ -618,7 +593,10 @@ describe("Repl.run", () => {
   // That makes the three ways of asking for the canonical board provably the same board.
   // Compared board-only: the echoed command line differs by construction.
   test("a fresh deal, a numbered one and a named one agree on deal #1", () => {
-    let board = t => t->String.split("\n\n")->Array.sliceToEnd(~start=1)->Array.join("\n\n")
+    let board = t => {
+      let parts = t->String.split("\n\n")
+      parts->Array.slice(~start=1, ~end=Array.length(parts))->Array.join("\n\n")
+    }
     let fresh = board(Repl.run(["new"]))
     expect(fresh)->toBe(board(Repl.run([`deal ${Game.freecellSeed->Int.toString}`])))
     expect(fresh)->toBe(board(Repl.run(["deal freecell"])))
@@ -659,7 +637,7 @@ describe("Repl.run", () => {
 // history, and from a posed position go to the game's *real* deal rather than the pose
 // (see `TableScene`'s `publishRestart`).
 describe("Repl redeal", () => {
-  let runToSession = (cmds: array<string>): option<Repl.session> =>
+  let runToSession = (cmds: array<string>): option<Session.t> =>
     cmds->Array.reduce(None, (acc, cmd) => {
       let (next, _) = Repl.step(~options=Options.default, acc, cmd)
       next
@@ -668,12 +646,12 @@ describe("Repl redeal", () => {
   test("puts the cards back and leaves nothing to undo", () => {
     let as_ = {suit: Spades, rank: Ace}
     let played = runToSession(["deal stacking", "move AS 0"])
-    expect(played->Option.flatMap(s => GameState.locationOf(Repl.present(s), as_)))->toEqual(
+    expect(played->Option.flatMap(s => GameState.locationOf(Session.present(s), as_)))->toEqual(
       Some(GameState.InPile(0, 0)),
     )
     let (restarted, _) = Repl.step(~options=Options.default, played, "redeal")
     // Back where the deal put it…
-    expect(restarted->Option.flatMap(s => GameState.locationOf(Repl.present(s), as_)))->toEqual(
+    expect(restarted->Option.flatMap(s => GameState.locationOf(Session.present(s), as_)))->toEqual(
       Some(GameState.Loose),
     )
     // …and the history starts here: a restart isn't an undo you can step back through.
@@ -697,9 +675,9 @@ describe("Repl redeal", () => {
     let (restarted, _) = Repl.step(~options=Options.default, posed, "redeal")
     switch (posed, restarted) {
     | (Some(before), Some(after)) =>
-      expect(GameState.equal(Repl.present(before), Repl.present(after)))->toBe(false)
+      expect(GameState.equal(Session.present(before), Session.present(after)))->toBe(false)
       // It's the opening layout of the very game that was on the table.
-      expect(GameState.equal(Repl.present(after), GameState.initial(before.game)))->toBe(true)
+      expect(GameState.equal(Session.present(after), GameState.initial(before.game)))->toBe(true)
     | _ => expect("no session")->toBe("session")
     }
   })
@@ -738,7 +716,7 @@ describe("Render deal number", () => {
 // interpreter's — a `~options` passed per call couldn't outlive the call that changed it
 // — so these drive the state the way a real loop does, carrying both halves forward.
 describe("Repl set", () => {
-  let drive = (cmds: array<string>): (option<Repl.session>, Options.t) => {
+  let drive = (cmds: array<string>): (option<Session.t>, Options.t) => {
     let session = ref(None)
     let flags = ref(Options.default)
     cmds->Array.forEach(line =>
@@ -764,7 +742,7 @@ describe("Repl set", () => {
   test("and the very next move honours it", () => {
     let (session, _) = drive(["deal freecell sendhome", "set autocollect off", "home 3S"])
     switch session->Option.flatMap(
-      s => GameState.locationOf(Repl.present(s), {suit: Hearts, rank: Three}),
+      s => GameState.locationOf(Session.present(s), {suit: Hearts, rank: Three}),
     ) {
     // The free cells are piles 0–3; the hearts foundation is 5. Still in its cell.
     | Some(GameState.InPile(pile, _)) => expect(pile < 4)->toBe(true)
@@ -828,7 +806,7 @@ describe("Repl.consider", () => {
   test("anything else runs, carrying the session and the text to show", () =>
     switch consider("games") {
     | Repl.Ran({output}) => expect(has(output, "freecell"))->toBe(true)
-    | Repl.Skipped | Repl.Ended => expect(true)->toBe(false)
+    | Repl.Skipped | Repl.Ended | Repl.Cleared => expect(true)->toBe(false)
     }
   )
 })
@@ -839,15 +817,15 @@ describe("Repl.consider", () => {
 // so the assertions pin the actual card positions.
 describe("Repl undo/redo", () => {
   // Fold a script of commands into the resulting session (the state assertions
-  // read positions off `Repl.present`).
-  let runToSession = (cmds: array<string>): option<Repl.session> =>
+  // read positions off `Session.present`).
+  let runToSession = (cmds: array<string>): option<Session.t> =>
     cmds->Array.reduce(None, (acc, cmd) => {
       let (next, _) = Repl.step(~options=Options.default, acc, cmd)
       next
     })
 
-  let locationOf = (s: option<Repl.session>, card) =>
-    s->Option.flatMap(s => GameState.locationOf(Repl.present(s), card))
+  let locationOf = (s: option<Session.t>, card) =>
+    s->Option.flatMap(s => GameState.locationOf(Session.present(s), card))
 
   test("apply → undo returns the prior state exactly, and redo replays it", () => {
     let as_ = {suit: Spades, rank: Ace}
@@ -902,7 +880,7 @@ describe("Repl undo/redo", () => {
       )
     let won = runToSession(Array.concat(["deal foundations"], heartsRun))
     switch won {
-    | Some(s) => expect(GameState.hasWon(s.game, Repl.present(s)))->toBe(true)
+    | Some(s) => expect(GameState.hasWon(s.game, Session.present(s)))->toBe(true)
     | None => expect(true)->toBe(false)
     }
     // Undo from the won position: the game is no longer won, and the win line is
@@ -910,7 +888,7 @@ describe("Repl undo/redo", () => {
     let (undone, text) = Repl.step(~options=Options.default, won, "undo")
     expect(has(text, "You win"))->toBe(false)
     switch undone {
-    | Some(s) => expect(GameState.hasWon(s.game, Repl.present(s)))->toBe(false)
+    | Some(s) => expect(GameState.hasWon(s.game, Session.present(s)))->toBe(false)
     | None => expect(true)->toBe(false)
     }
   })
