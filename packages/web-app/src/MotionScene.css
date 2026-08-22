@@ -1,0 +1,74 @@
+/* Motion scene (#231): raw accelerometer readout. Per-axis bars swing from
+   a centre line, a peak-magnitude bar decays, and a big counter ticks on
+   each shake. Verified on a real phone — desktop has no sensor. */
+.motion-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  width: min(86vw, 420px);
+  font: 13px ui-monospace, "SF Mono", Menlo, monospace;
+  color: #e2e8f0;
+}
+
+.motion-status {
+  margin: 0;
+  min-height: 1.4em;
+  color: #94a3b8;
+}
+
+/* An axis (or peak) row: label · number · bar, aligned into a grid so the
+   bars line up under one another. */
+.motion-axis {
+  display: grid;
+  grid-template-columns: 1.5em 3.5em 1fr;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.motion-axis__label {
+  color: #94a3b8;
+}
+
+.motion-axis__value {
+  text-align: right;
+}
+
+/* The bar track: a centre line at 50% for the signed axis bars. */
+.motion-bar {
+  position: relative;
+  height: 12px;
+  background: #0b1220;
+  border: 1px solid #334155;
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.motion-bar::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 1px;
+  background: #475569;
+}
+
+.motion-bar__fill {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  background: #38bdf8;
+}
+
+/* The peak-magnitude fill grows from the left edge, not the centre, and is
+   tinted warm so it reads apart from the signed axis bars. */
+.motion-bar__fill--peak {
+  background: #f59e0b;
+}
+
+.motion-counter {
+  margin: 0.2rem 0 0;
+  text-align: center;
+  font: 600 28px "Libre Franklin", sans-serif;
+  color: #f8fafc;
+}

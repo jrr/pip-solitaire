@@ -1140,7 +1140,7 @@ Console.log(Core.greeting())
 
 // A single wrapper is the loop's root so the reconciler owns a clean child list
 // (mounting straight onto <body> would fight the module <script> already there).
-// It's `display: contents` (see index.html) so it vanishes from layout and #app
+// It's `display: contents` (see styles/app-shell.css) so it vanishes from layout and #app
 // stays a direct flex child of <body>, exactly as before.
 let root = WebDom.createElement("div")
 root->WebDom.setAttribute("id", "app-root")
@@ -1148,7 +1148,7 @@ body->WebDom.appendChild(root)->ignore
 
 // Publish which side any display cutout sits on (`data-cutout` on <html>) so the
 // landscape chrome can put its control rail on the safe side (see CutoutSide and
-// the `[data-cutout="left"]` landscape rules in index.html).
+// the `[data-cutout="left"]` rules in styles/landscape-rail.css).
 CutoutSide.install()
 
 // Reflect the persisted "Display content around screen notch" preference (#204)

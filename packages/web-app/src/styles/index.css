@@ -1,0 +1,55 @@
+/* The app's stylesheet, assembled from one file per component.
+ *
+ * This used to be a single 2,036-line `<style>` block inside index.html (#306).
+ * Splitting it put each component's rules next to the component that renders
+ * them — `components/TopBar.css` beside `TopBar.res`, `TableScene.css` beside
+ * `TableScene.res` — so a component is now one place rather than two files a
+ * thousand lines apart.
+ *
+ * **The order below is load-bearing, and that is why it is written out here
+ * rather than left to each component importing its own file.** The cascade
+ * still resolves ties on source order, and at least one rule depends on that
+ * deliberately: the landscape rail's `:not([data-cutout="right"])` guard in
+ * `landscape-rail.css` exists precisely because two (1,1,1) selectors tie and
+ * the later one wins (see the comment there, and browser-tests/rail.spec.mjs).
+ * Import order here reproduces the old block's order exactly, so the split
+ * changed no computed style anywhere.
+ *
+ * Four blocks moved, and only because nothing between their old and new homes
+ * selects them: `.menu-title` joined `Menu.css`, `#scene-container` joined
+ * `app-shell.css`, `.svg-demo-button` joined `SvgScene.css`, and `.menu-footer`
+ * joined `AboutFooter.css`. Every other rule kept its position exactly, and the
+ * whole split reassembles to the old block line for line — nothing added,
+ * dropped or edited.
+ *
+ * So: adding a rule goes in the component's own file. Adding a *file* means
+ * adding an `@import` here, and thinking about where in the order it belongs.
+ */
+
+/* Foundations: faces, custom properties, reset, and the shell the scenes sit in. */
+@import "./fonts.css";
+@import "./base.css";
+@import "./app-shell.css";
+
+/* Chrome. `landscape-rail.css` is cross-cutting by nature — it restyles the top
+   bar, the menu and the board for a short landscape viewport — so it stays one
+   file rather than being scattered into the three it overrides. */
+@import "../components/TopBar.css";
+@import "./landscape-rail.css";
+@import "../DebugConsole.css";
+@import "../components/Menu.css";
+@import "../SceneSwitcher.css";
+
+/* Scenes. `CardArt.css` carries the shared `.card-art` base that the gallery,
+   the raster grid and the board all build on, so it precedes those three. */
+@import "../SvgScene.css";
+@import "../GalleryScene.css";
+@import "../CardArt.css";
+@import "../RasterScene.css";
+@import "../TableScene.css";
+@import "../SpinnerScene.css";
+@import "../MotionScene.css";
+
+/* The menu's About footer, last as it was before. */
+@import "../components/VersionBadge.css";
+@import "../components/AboutFooter.css";

@@ -9,7 +9,7 @@
 // `props` isn't usable here — it types `make` as the runtime's `element`, i.e. a
 // real DOM node, but on this diffing runtime a view is a `vnode` description — so
 // we spell the record out, which is all that sugar expands to anyway.) Layout and
-// colors for `#version-badge` live in the stylesheet in index.html; here we build
+// colors for `#version-badge` live in VersionBadge.css; here we build
 // only structure and state-dependent text.
 type props = {version: string, buildTime: string}
 

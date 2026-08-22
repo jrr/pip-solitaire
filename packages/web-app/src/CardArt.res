@@ -87,7 +87,7 @@ let centerY = boxH /. 2.
 //     box of the four pip glyphs it kept. Nothing says which to believe: OS/2
 //     fsSelection bit 7 (USE_TYPO_METRICS) is clear.
 //   - Worse, the page's `@font-face` for Pip Suits carries a `unicode-range`
-//     (index.html), which keeps the subset from shadowing Latin text but also
+//     (styles/fonts.css), which keeps the subset from shadowing Latin text but also
 //     means Pip Suits is *not* the element's primary font. The pips still come
 //     from it, but `central` was measuring the fallback — a different, OS-supplied
 //     face on every platform. The band it centres is 75.25 units in the page and
