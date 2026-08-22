@@ -218,14 +218,77 @@ type boardOps = {
   squareUp: unit => unit,
 }
 
-// The shake control the scene publishes to the chrome (#235), sibling of the
-// undo/relayout hooks: `start` begins listening for shakes (Settings turns Wiggle
+// The shake control the scene publishes to the chrome (#235), one field of the
+// `controls` record below: `start` begins listening for shakes (Settings turns Wiggle
 // Waggle on, once permission is granted), `stop` ends it and squares the board back
 // up. Held at mount scope so it survives re-deals — the chrome calls it as the
 // switch flips, never rebuilding the board.
 type shakeControl = {
   start: unit => unit,
   stop: unit => unit,
+}
+
+// Everything a mounted board offers the chrome (#300) — its published surface, as one
+// typed value handed over the moment the scene mounts (`~publish` below).
+//
+// It replaces eleven separate `~publishX` callbacks and the eleven module-level `ref`s
+// the driver kept them in. The driver-side win is the one that motivated it: a scene
+// swap now replaces this record wholesale, where before every hook had to be nulled by
+// name on each scene change and nothing type-checked that the list was complete. A
+// hook someone forgot to add to it was the chrome quietly driving a torn-down board —
+// a bug the compiler couldn't see. There is no list any more.
+//
+// Every field here is *mount*-scoped, not build-scoped. A board is torn down and
+// rebuilt on every re-deal (New Game, Restart, a forced state, a shared game landing),
+// so the three that genuinely belong to a build — `undo`, `runCommand`, `relayout` —
+// dispatch through mount-scope refs that each `buildBoard` repoints at its own. The
+// record the chrome took at mount therefore goes on driving whatever is actually on
+// the table, and a stale closure over a torn-down build isn't something a caller can
+// hold even by accident.
+//
+// `newGame` and `loadGame` are the two a board can genuinely lack: both open a board
+// the caller names — a fresh seed, a chosen deal number — which only a *re-dealable*
+// game has (`~newDeal`; FreeCell today). A fixed-layout demo answers `None`, which is
+// what lets the menu and the console's `deal` say so rather than silently doing
+// nothing. Everything else is offered by every card table.
+type controls = {
+  // Re-deal onto a fresh seed (#108/#156) — the menu's New Game, and the console's
+  // bare `deal`.
+  newGame: option<unit => unit>,
+  // Re-deal onto a *named* game (#273) — the addressed twin of `newGame`, behind the
+  // console's `deal <n>`. The caller turns the number into a `Game.t`, since only it
+  // knows a deal number is a seeded FreeCell shuffle.
+  loadGame: option<Game.t => unit>,
+  // Replay the deal now on the table (#156) — the menu's Restart, and the console's
+  // `redeal`. Every card table offers it: a fixed-layout demo restarts to its own deal.
+  restart: unit => unit,
+  // Rebuild the board into a forced position — the debug-states menu's live twin of the
+  // URL's `?state=`. Never persisted, so a debug jump can't clobber a saved game.
+  loadState: GameState.t => unit,
+  // Rebuild the board onto a whole restored undo/redo stack (`ShareLink`): a shared
+  // game arrives with its history intact. *Unlike* a forced state this persists — a
+  // shared game is adopted as this device's saved game rather than borrowed.
+  loadHistory: SaveState.t => unit,
+  // …and the read side, for the share button: the live board's saved game, whatever
+  // build is currently on the table.
+  readHistory: unit => option<SaveState.t>,
+  // Step the board's history back (#85) — the top bar's Undo button.
+  undo: unit => unit,
+  // Play one parsed command against this board (#273) and answer with whatever
+  // `DebugLog` won't already have said. Not a second interpreter: the command goes to
+  // `Session.step` like the terminal's does, and what comes back is turned into cards
+  // moving on a screen.
+  runCommand: Command.t => array<Render.line>,
+  // Re-lay every resting card (#65), so the menu's tilt switch re-tilts the board in
+  // place rather than only on the next move.
+  relayout: unit => unit,
+  // The board's answer to one question (#275): could you give up this many px of stage
+  // width and still deal cards above `minScale`? What the console's dock toggle
+  // consults, so the refusal is the layout's own verdict rather than a guessed
+  // breakpoint.
+  dockFit: float => bool,
+  // Start/stop listening for shakes (#235). See `shakeControl` above.
+  shake: shakeControl,
 }
 
 // What the driver offers the win overlay's Share button (#264), the victory twin of
@@ -560,48 +623,33 @@ let looseTiltPile = 1000
 // FreeCell a random seed; #98's deal-number entry can supply a chosen one).
 // Omitted, the board isn't re-dealable (the fixed-layout demos).
 //
-// `~publishNewGame` is how the chrome's menu (#156) reaches the re-deal: when
-// the board is re-dealable, the scene hands its `buildBoard(freshDeal())` thunk
-// to `publishNewGame` on mount, and the menu's New Game button calls it. (The
-// New Game control lives in the menu now, not on the board or the top bar.) The
-// chrome resets its hook on every scene switch, so a non-re-dealable scene simply
-// leaves it unset — it never calls `publishNewGame`.
+// `~publish` is how the chrome reaches everything the board does *on request* — the
+// re-deals, Undo, the console runner, the relayout, the share-link hooks, the shake
+// control. One record, handed over once as the scene mounts; see `controls` above for
+// what's on it and why it's one value rather than the eleven separate callbacks this
+// signature used to carry (#300). Omitted, the board simply publishes nothing: the
+// tests that only watch a board play, and any caller with no chrome to drive.
 //
-// `~publishRestart` is the sibling re-deal hook that replays the *same* deal (#156):
-// the menu's Restart button rebuilds the board from the game currently showing —
-// same seed, same opening layout — so a player can start the current deal over
-// rather than get a new one. Unlike New Game it's published by *every* card table
-// (a fixed-layout demo restarts to its own opening deal), tracking the live game
-// through the `currentGame` ref below so a Restart after a New Game replays the
-// *new* deal, not the one the scene first mounted with.
 // `~options` is a *ref* to the driver preference record (#125), read *live* at
 // each post-move step so a menu toggle (#139) that flips a field takes effect on
 // the very next move without rebuilding the board. Its `autoCollect` flag (on by
 // its `default`) sends every *safe* card home after an accepted move; the app's
 // menu owns this ref and rewrites it when the player flips the setting.
 //
-// `~publishLoadState` is the debug "states" hook (sibling to `~publishNewGame`):
-// on mount the scene hands the chrome a `GameState.t => unit` that rebuilds the
-// board into any forced position — the same `~initial` path a `?state=` scenario
-// takes, but reachable live from the menu instead of only at load. The debug-states
-// menu (see `DebugStates` / `Main`) calls it with a `Scenario` snapshot.
-//
 // `~tiltEnabled` is a *ref* to the hand-placed-tilt preference (#65), read *live*
 // wherever a card is laid out so a menu toggle takes hold on the next relayout
 // without rebuilding the board — the same live-ref trick as `~options`. When it's
-// off, cards rest dead-square. `~publishRelayout` is its companion hook (sibling of
-// `~publishNewGame`): on every build the board hands the chrome a thunk that
-// re-lays every resting card, so flipping the tilt switch re-tilts (or un-tilts)
-// the board in place, immediately, rather than only on the next move.
+// off, cards rest dead-square. `controls.relayout` is its companion: a thunk that
+// re-lays every resting card, so flipping the tilt switch re-tilts (or un-tilts) the
+// board in place, immediately, rather than only on the next move.
 //
-// `~publishUndo` is the undo hook (#85), sibling of `~publishNewGame`: on every
-// build the board hands the top bar a thunk that steps its `GameState` history
-// back and re-derives the layout. `~onHistory` is the reverse channel — after
-// every state change the board calls it with the current `canUndo` so the top bar
-// can enable or disable the button. Undo works even from a won board: a victory is
-// just another recorded state, so stepping back tears the win overlay down and
-// returns to the prior position. (Redo lives on in `core`'s `History` for the CLI,
-// but the web app's top bar no longer surfaces it.)
+// `~onHistory` is the reverse channel to `controls.undo` (#85) — after every state
+// change the board calls it with the current `canUndo` so the top bar can enable or
+// disable the button. Undo works even from a won board: a victory is just another
+// recorded state, so stepping back tears the win overlay down and returns to the prior
+// position. (Redo lives on in `core`'s `History` for the CLI, but the web app's top bar
+// no longer surfaces it.)
+//
 // `~loadHistory` restores a *whole* saved game (#177): the board's undo/redo stack,
 // not just its present position — so a resumed game comes back with Undo still
 // walking back through the moves played before the player left. It applies only to
@@ -634,42 +682,9 @@ let make = (
   ~loadHistory: unit => option<SaveState.t>=() => None,
   ~persist: option<SaveState.t => unit>=?,
   ~newDeal: option<unit => Game.t>=?,
-  ~publishNewGame: option<(unit => unit) => unit>=?,
-  ~publishRestart: option<(unit => unit) => unit>=?,
-  ~publishLoadState: option<(GameState.t => unit) => unit>=?,
-  // `~publishLoadHistory` is the share-link twin of `~publishLoadState` (see
-  // `ShareLink`): where that forces a single `GameState`, this rebuilds the board
-  // onto a whole restored undo/redo stack, so a shared game arrives with its history
-  // intact and the recipient can undo back through it. *Unlike* a forced state, the
-  // rebuilt board persists like any other — a shared game is adopted as this
-  // device's saved game rather than borrowed.
-  ~publishLoadHistory: option<(SaveState.t => unit) => unit>=?,
-  // `~publishReadHistory` is the read side the share button needs: a thunk handing
-  // back the *live* board's history, whatever build is currently on the table. It's
-  // `option` because it's called before the first `buildBoard` has run in principle
-  // (never in practice — the opening build happens during this same mount).
-  ~publishReadHistory: option<(unit => option<SaveState.t>) => unit>=?,
-  ~publishUndo: option<(unit => unit) => unit>=?,
-  // `~publishConsole` is the debug console's way in (#273), and the sibling of
-  // `~publishUndo` in every respect: on every build the board hands the chrome a
-  // `Command.t => array<Render.line>` that plays one parsed command against *this* board and
-  // answers with whatever `DebugLog` won't already have said. What it deliberately
-  // isn't is a second reducer loop — each command goes through the same `dispatch` a
-  // pointer drop does, so a typed move is the move a drag would have made.
-  ~publishConsole: option<(Command.t => array<Render.line>) => unit>=?,
-  // `~publishLoadGame` re-deals onto a *named* game (#273) — the addressed twin of
-  // `~publishNewGame`, which invents its own. The console's `deal <n>` uses it.
-  ~publishLoadGame: option<(Game.t => unit) => unit>=?,
-  ~publishRelayout: option<(unit => unit) => unit>=?,
-  // `~publishDockFit` (#275) hands the chrome the board's answer to one question: could
-  // you give up this many px of stage width and still deal cards above `minScale`? It's
-  // what the debug console's dock toggle consults before agreeing to dock, so the
-  // refusal is the layout's own verdict rather than a breakpoint guessed on its behalf.
-  ~publishDockFit: option<(float => bool) => unit>=?,
-  // `~publishShake` (#235) hands the chrome the board's shake control (start/stop
-  // listening). Published once per mount, since the control drives the *live* board
-  // through the mount-scope `boardOps` ref rather than closing over one build.
-  ~publishShake: option<shakeControl => unit>=?,
+  // The board's published surface, handed over once as this scene mounts (#300). See
+  // `controls` above, and the note on `~publish` in the prose above this signature.
+  ~publish: option<controls => unit>=?,
   ~onHistory: option<bool => unit>=?,
   // The board's other reverse channel (#98), sibling of `~onHistory`: the deal number
   // of the board now on the table, or `None` for a board that isn't showing a deal —
@@ -774,9 +789,24 @@ let make = (
     // `resizeRelayout` above: `history` is rebound by every `buildBoard`, so a reader
     // that closed over one build would go on reporting a torn-down board's stack
     // after a New Game. Each build repoints this at its own; the share button
-    // (`ShareLink`, via `~publishReadHistory`) reads through it and so always
+    // (`ShareLink`, via `controls.readHistory`) reads through it and so always
     // encodes what's actually on the table. `None` until the first build.
     let readHistory: ref<unit => option<SaveState.t>> = ref(() => None)
+
+    // The three published actions that genuinely belong to a *build* rather than to the
+    // mount — the top bar's Undo (#85), the console's command runner (#273) and the
+    // tilt relayout (#65) — held here for the same reason as `readHistory` above. Each
+    // closes over one board's nodes and history, so every `buildBoard` repoints these
+    // at its own, and the `controls` record published once at mount dispatches through
+    // them. That's what lets the chrome take the board's surface a single time and
+    // still be driving the board actually on the table after a New Game — where before
+    // each of the three had to be re-published, by name, on every build.
+    //
+    // No-ops until the first build: nothing to undo, nothing to re-lay, and a command
+    // answers with nothing, which is the truthful reply for a board not yet dealt.
+    let liveUndo: ref<unit => unit> = ref(() => ())
+    let liveRunCommand: ref<Command.t => array<Render.line>> = ref(_ => [])
+    let liveRelayout: ref<unit => unit> = ref(() => ())
 
     // The active `devicemotion` shake subscription, `Some` while Wiggle Waggle is on
     // and permission granted (#235). `Motion.subscribeShake` already parks the
@@ -801,10 +831,6 @@ let make = (
     let stopShake = () => {
       unsubscribeShake()
       boardOps.contents.squareUp()
-    }
-    switch publishShake {
-    | Some(publish) => publish({start: startShake, stop: stopShake})
-    | None => ()
     }
 
     // Build (or rebuild) the whole board for `game` into `boardHost`. Every call
@@ -2398,18 +2424,22 @@ let make = (
         })
       }
 
+      // Re-lay every resting card onto its deterministic spot: reflow the piles against
+      // their zones and re-strew the loose cluster, both reading `tiltEnabled` live.
+      // One function because it's one board state — the clean deal — reached from two
+      // directions: it's what the tilt switch asks for (`controls.relayout`, #65), so a
+      // flip re-tilts or squares the board in place rather than waiting for the next
+      // move, and it's what ends a shake (#235), so turning Wiggle Waggle off snaps the
+      // mess back to exactly that board.
+      let squareUp = () => {
+        reflowAll()
+        dealFree()
+      }
+
       // Publish this build's shake operations into the mount-scope `boardOps` ref, so
       // the persistent subscription drives the live board's nodes (a New Game rebuild
-      // swaps in fresh ones). `squareUp` is exactly the tilt switch's relayout — reflow
-      // the piles, re-strew the loose cluster — reused so turning Wiggle Waggle off
-      // snaps the mess back to a clean deal (see `publishRelayout`).
-      boardOps := {
-          jostle,
-          squareUp: () => {
-            reflowAll()
-            dealFree()
-          },
-        }
+      // swaps in fresh ones).
+      boardOps := {jostle, squareUp}
 
       // Lay out each opening pile from `state`: reflow reads the cards the model
       // deals that pile and positions their nodes, so the pile ends laid out exactly
@@ -2551,34 +2581,18 @@ let make = (
       // Layout-independent, so it needn't wait on the deal's frame.
       updateFinishButton()
 
-      // Publish this build's undo action to the chrome and report the opening
-      // history (nothing to undo yet), so the top bar's button starts disabled
-      // (#85). Re-published every build, so after a re-deal the top bar drives the
-      // fresh board's history, not the torn-down one's.
-      switch publishUndo {
-      | Some(publish) => publish(undo)
-      | None => ()
-      }
-      // …and this build's console command runner (#273), for the same reason: every
-      // command closes over the build it was published from, so a re-deal has to hand
-      // over the fresh board's or a typed `move` would address the torn-down one.
-      switch publishConsole {
-      | Some(publish) => publish(runCommand)
-      | None => ()
-      }
-      // Publish the relayout hook (#65): re-lay every resting card — the piles
-      // (`reflowAll`) and the loose cluster (`dealFree`) — reading `tiltEnabled`
-      // live, so the menu's tilt switch re-tilts or squares the whole board in
-      // place the instant it's flipped. Both re-lay onto the same spots (the
-      // geometry is deterministic), so this only re-publishes the tilt.
-      switch publishRelayout {
-      | Some(publish) =>
-        publish(() => {
-          reflowAll()
-          dealFree()
-        })
-      | None => ()
-      }
+      // Point the published `undo`, `runCommand` and `relayout` at *this* build (#300),
+      // and report the opening history (nothing to undo yet) so the top bar's button
+      // starts disabled (#85). Each of the three closes over the board it was built
+      // with — a command closes over the `session` it dispatches into, undo over that
+      // board's history, the relayout over its card nodes — so a re-deal has to repoint
+      // them or a typed `move` would address the board that was just torn down.
+      //
+      // The chrome doesn't see this happen: it took `controls` once at mount, and every
+      // field dispatches through these refs.
+      liveUndo := undo
+      liveRunCommand := runCommand
+      liveRelayout := squareUp
       reportHistory()
 
       // The caption is the game's own prose (`Game.caption`); a game without one
@@ -2602,74 +2616,55 @@ let make = (
       }
     }
 
-    // Publish the re-deal to the chrome (#109). When the game is re-dealable
-    // (`~newDeal` — FreeCell today), hand the top bar a thunk that asks for a fresh
-    // deal (a new seed each press, decided by whoever built `newDeal`) and rebuilds
-    // the board in place from it, tearing the previous deal down. The board host
-    // stays put across a re-deal — `buildBoard` rebuilds only its contents — so the
-    // top bar's New Game button can drive this hook without touching the chrome.
-    switch (newDeal, publishNewGame) {
-    | (Some(freshDeal), Some(publish)) => publish(() => buildBoard(freshDeal()))
-    | _ => ()
-    }
-
-    // Publish the *addressed* re-deal (#273): the same rebuild, but onto a game the
-    // caller names rather than one the scene invents. It's how the console's
-    // `deal <n>` opens a chosen deal number — the driver turns the number into a
-    // `Game.t` (only it knows the deal is a seeded FreeCell shuffle) and this opens
-    // it, so a typed deal lands on exactly the board a New Game would have, saved and
-    // reported the same way.
-    switch publishLoadGame {
-    | Some(publish) => publish(chosen => buildBoard(chosen))
-    | None => ()
-    }
-
-    // Publish Restart (#156): rebuild the board from the deal currently showing
-    // (`currentGame`), replaying the same seed's opening layout. Every card table
-    // offers this — a fixed-layout demo restarts to its own deal — so unlike New
-    // Game it isn't gated on `newDeal`. `buildBoard` clears the host first, so the
-    // fresh-but-identical board replaces the current one cleanly, with a clean
-    // history from the opening position (no `~initial`, so a `?state=` scenario
-    // restarts to the game's real deal, not the forced position).
-    switch publishRestart {
-    | Some(publish) => publish(() => buildBoard(currentGame.contents))
-    | None => ()
-    }
-
-    // Publish the debug "states" loader: hand the chrome a thunk that rebuilds
-    // the board into a forced `GameState` — the debug-states menu drops the board
-    // straight into a named `Scenario` position through this, exactly as `~initial`
-    // does at load. Like a re-deal, `buildBoard` clears the host first, so the
-    // forced position replaces the current board cleanly.
-    switch publishLoadState {
-    | Some(publish) => publish(state => buildBoard(~initial=state, ~persistThis=false, game))
-    | None => ()
-    }
-
-    // Publish the share-link loader (`ShareLink`): rebuild the board onto a whole
-    // restored history, undo stack and all. Unlike the forced-state load above this
-    // *does* persist — a shared game takes over as this device's saved game, so it
-    // saves on arrival and play continues from it normally. Whether that write
-    // actually reaches storage is still the driver's call: the sink is only wired for
-    // the opens that may write (see `Main`'s `~persist`), so this is a no-op on a
-    // demo scene or a `?state=` board.
-    switch publishLoadHistory {
-    | Some(publish) => publish(restored => buildBoard(~history=restored, game))
-    | None => ()
-    }
-
-    // …and the read side, so the chrome can encode whatever is currently on the
-    // table. Published once per mount; the thunk defers to the mount-scope ref, which
-    // each build repoints at its own history.
-    switch publishReadHistory {
-    | Some(publish) => publish(() => readHistory.contents())
-    | None => ()
-    }
-
-    // …and the dock-refusal test (#275), the same way: published once per mount, the
-    // thunk deferring to the mount-scope ref so it always asks the board on the table.
-    switch publishDockFit {
-    | Some(publish) => publish(inset => dockFit.contents(inset))
+    // Hand the chrome the board's published surface (#300): one record, once, as this
+    // scene mounts. What used to be eleven separate `publishX` calls scattered across
+    // the mount and every build is this single value — and the eleven `ref`s on the
+    // driver's side, plus the by-name reset that had to clear each one on a scene
+    // change, went with it.
+    //
+    // Everything here is written to survive a re-deal, which is the whole reason a
+    // mount-scope hand-over is safe:
+    //
+    //   - the four rebuilds (`newGame`, `loadGame`, `restart`, `loadState`) and the
+    //     share-link restore call `buildBoard` directly, which clears the host and
+    //     builds a fresh board in place — so they're about the *scene*, not a build;
+    //   - `readHistory`, `undo`, `runCommand`, `relayout` and `dockFit` dispatch
+    //     through mount-scope refs that each build repoints at its own board;
+    //   - `shake` drives the live board's nodes through `boardOps`, the same way.
+    //
+    // The two re-deals that open a board the caller names ride `~newDeal`: a fresh seed
+    // for `newGame` (#109 — the menu's New Game and the console's bare `deal`), and a
+    // caller-supplied `Game.t` for `loadGame` (#273 — `deal <n>`, where the driver turns
+    // the number into a board because only it knows a deal is a seeded FreeCell
+    // shuffle). A fixed-layout demo has no seed to vary and offers neither.
+    //
+    // `restart` (#156) is offered by *every* card table — a demo restarts to its own
+    // opening deal — and rebuilds from `currentGame`, the deal actually on the table, so
+    // a Restart after a New Game replays the new seed rather than the one this scene
+    // first mounted with. It passes no `~initial`, so a `?state=` board restarts to the
+    // game's real deal rather than the posed position.
+    //
+    // `loadState` forces a position without persisting it (`~persistThis=false`), so a
+    // debug-states jump never clobbers a real saved game — where `loadHistory` *does*
+    // persist, because a shared game takes over as this device's saved game and play
+    // continues from it normally. (Whether either write reaches storage is still the
+    // driver's call; the sink is only wired for the opens that may write. See `Main`'s
+    // `~persist`.)
+    switch publish {
+    | Some(publish) =>
+      publish({
+        newGame: newDeal->Option.map(freshDeal => () => buildBoard(freshDeal())),
+        loadGame: newDeal->Option.map(_ => chosen => buildBoard(chosen)),
+        restart: () => buildBoard(currentGame.contents),
+        loadState: state => buildBoard(~initial=state, ~persistThis=false, game),
+        loadHistory: restored => buildBoard(~history=restored, game),
+        readHistory: () => readHistory.contents(),
+        undo: () => liveUndo.contents(),
+        runCommand: command => liveRunCommand.contents(command),
+        relayout: () => liveRelayout.contents(),
+        dockFit: inset => dockFit.contents(inset),
+        shake: {start: startShake, stop: stopShake},
+      })
     | None => ()
     }
     container->WebDom.appendChild(boardHost)->ignore

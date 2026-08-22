@@ -51,6 +51,18 @@ external querySelector: (WebDom.element, string) => Nullable.t<WebDom.element> =
 // How many nodes in the mounted board match a selector.
 let countOf = (container, selector) => (container->querySelectorAll(selector))["length"]
 
+// The board's published surface (#300), as the tests below take hold of it. The scene
+// hands the whole thing over as one `TableScene.controls` record when it mounts
+// (`~publish`), so a test that wants to press Undo or type a command captures the
+// record and reads the action off it — where it used to name a `~publishUndo` or
+// `~publishConsole` callback apiece.
+//
+// Read through this rather than off a saved field, because these actions outlive a
+// *build*: a New Game tears the board down and builds another, and the record goes on
+// driving whichever board is now on the table. `getOrThrow` is the assertion that the
+// scene published at all, which every card table does on mount.
+let live = (board: ref<option<TableScene.controls>>) => board.contents->Option.getOrThrow
+
 let hasFinishButton = (container): bool =>
   container->querySelector(".finish-button")->Nullable.toOption->Option.isSome
 
@@ -121,11 +133,11 @@ describe("TableScene squared-pile occlusion (#267)", () => {
       // sends every remaining card home (collapsing to an instant reflow under the
       // reduced-motion stub above), and undo steps the whole sweep back as one.
       let game = Game.freecell
-      let undo = ref(() => ())
+      let board = ref(None)
       let container = createElement("div")
       let scene = TableScene.make(
         ~initial=Scenario.freecellFinish(game),
-        ~publishUndo=u => undo := u,
+        ~publish=published => board := Some(published),
         game,
       )
       let _teardown = scene.mount(container)
@@ -139,7 +151,7 @@ describe("TableScene squared-pile occlusion (#267)", () => {
       container->querySelector(".finish-button")->Nullable.toOption->Option.getOrThrow->click
       expect(hidden(container))->toBe(48)
 
-      undo.contents()
+      live(board).undo()
       expect(hidden(container))->toBe(before)
     },
   )
@@ -231,12 +243,12 @@ describe("TableScene re-mount", () => {
     let (won, _moved) = Reducer.finishSequence(~game, Scenario.freecellAlmostWon(game))
     let saved = ref(Some(SaveState.ofHistory(History.make(won))))
     let container = createElement("div")
-    let newGame = ref(None)
+    let board = ref(None)
     let scene = TableScene.make(
       ~loadHistory=() => saved.contents,
       ~persist=h => saved := Some(h),
       ~newDeal=() => Game.freecellDeal(~seed=7),
-      ~publishNewGame=hook => newGame := Some(hook),
+      ~publish=published => board := Some(published),
       game,
     )
     let _teardown = scene.mount(container)
@@ -244,7 +256,7 @@ describe("TableScene re-mount", () => {
     expect(hasWinOverlay(container))->toBe(true)
     // New Game deals a fresh board: the win is over and done with, and the fresh
     // board is what's saved from here on.
-    (newGame.contents->Option.getOrThrow)()
+    (live(board).newGame->Option.getOrThrow)()
     expect(hasWinOverlay(container))->toBe(false)
     // Mount the same scene again (a scene change away and back). The board that
     // comes back must be the one that was being played, not the finished game that
@@ -252,6 +264,76 @@ describe("TableScene re-mount", () => {
     WebDom.clear(container)
     let _remounted = scene.mount(container)
     expect(hasWinOverlay(container))->toBe(false)
+  })
+})
+
+// The board's published surface (#300). The scene hands the chrome one
+// `TableScene.controls` record when it mounts, and never another — so the record has to
+// go on meaning the board *now on the table*, across every re-deal that tears one board
+// down and builds the next. That's the invariant the whole hand-over rests on: get it
+// wrong and the chrome drives a board that no longer exists, which is exactly the
+// stale-closure bug the eleven separate hooks made possible.
+//
+// It can't be seen from the DOM — a stale action reaches a torn-down board's `session`,
+// and the give-away is what that board *saves*. So these read the `~persist` sink, the
+// same way the tally tests below do.
+describe("TableScene published controls (#300)", () => {
+  let tallyOf = (saved: ref<option<SaveState.t>>) =>
+    saved.contents->Option.map((s: SaveState.t) => (s.stats.moves, s.stats.undos))
+
+  test(
+    "the record taken at mount drives the board after a re-deal, not the one it replaced",
+    () => {
+      let game = Game.freecell
+      let saved = ref(None)
+      let board = ref(None)
+      let container = createElement("div")
+      let scene = TableScene.make(
+        // A finishable opening, so one press gives the first board a move to be stepped
+        // back over — something a stale `undo` would find, and the fresh deal won't.
+        ~initial=Scenario.freecellFinish(game),
+        ~persist=s => saved := Some(s),
+        ~newDeal=() => Game.freecellDeal(~seed=7),
+        ~publish=published => board := Some(published),
+        game,
+      )
+      let _teardown = scene.mount(container)
+      container->querySelector(".finish-button")->Nullable.toOption->Option.getOrThrow->click
+      expect(tallyOf(saved))->toEqual(Some((1, 0)))
+
+      // New Game tears that board down and builds another: a fresh deal, clean history,
+      // tally back to zero — and it's the fresh board that saves from here on.
+      (live(board).newGame->Option.getOrThrow)()
+      expect(tallyOf(saved))->toEqual(Some((0, 0)))
+
+      // The record was handed over once, before either board existed. Undo through it now
+      // has nothing behind it, because the board on the table is a fresh deal. Were it
+      // still the *first* board's undo, it would step that board's finish back and save
+      // (1, 1) over the deal actually showing.
+      live(board).undo()
+      expect(tallyOf(saved))->toEqual(Some((0, 0)))
+
+      // …and the same for a typed command, which reaches the board through the same
+      // record: `redo` on the fresh deal has nothing ahead of it either.
+      live(board).runCommand(Command.Redo)->ignore
+      expect(tallyOf(saved))->toEqual(Some((0, 0)))
+    },
+  )
+
+  test("a board that isn't re-dealable offers neither re-deal", () => {
+    // `newGame` and `loadGame` both open a board named by a seed, which only a
+    // re-dealable game has (`~newDeal`). The fixed-layout demos have none, and answering
+    // `None` is what lets the menu's New Game and the console's `deal <n>` say so rather
+    // than silently doing nothing.
+    let board = ref(None)
+    let container = createElement("div")
+    let scene = TableScene.make(~publish=published => board := Some(published), Game.stacking)
+    let _teardown = scene.mount(container)
+    expect(live(board).newGame->Option.isNone)->toBe(true)
+    expect(live(board).loadGame->Option.isNone)->toBe(true)
+    // Restart is offered by every card table, though — a demo restarts to its own deal.
+    live(board).restart()
+    expect(countOf(container, ".stacking-card") > 0)->toBe(true)
   })
 })
 
@@ -381,14 +463,12 @@ describe("TableScene move/undo counts (#289)", () => {
     // still going through `recordHistory`, which is where the counting happens.
     let game = Game.freecell
     let saved = ref(None)
-    let undo = ref(() => ())
-    let console = ref(_ => [])
+    let board = ref(None)
     let container = createElement("div")
     let scene = TableScene.make(
       ~initial=Scenario.freecellFinish(game),
       ~persist=s => saved := Some(s),
-      ~publishUndo=u => undo := u,
-      ~publishConsole=run => console := run,
+      ~publish=published => board := Some(published),
       game,
     )
     let _teardown = scene.mount(container)
@@ -397,10 +477,10 @@ describe("TableScene move/undo counts (#289)", () => {
     container->querySelector(".finish-button")->Nullable.toOption->Option.getOrThrow->click
     expect(tallyOf(saved))->toEqual(Some((1, 0)))
 
-    undo.contents()
+    live(board).undo()
     expect(tallyOf(saved))->toEqual(Some((1, 1))) // the move was still made
 
-    console.contents(Command.Redo)->ignore
+    live(board).runCommand(Command.Redo)->ignore
     expect(tallyOf(saved))->toEqual(Some((2, 1))) // …and making it again counts again
   })
 
@@ -408,15 +488,15 @@ describe("TableScene move/undo counts (#289)", () => {
     // The top bar's button can be pressed on a board with an empty past (it's the
     // chrome's job to disable it, not a guarantee the board can rely on).
     let saved = ref(None)
-    let undo = ref(() => ())
+    let board = ref(None)
     let container = createElement("div")
     let scene = TableScene.make(
       ~persist=s => saved := Some(s),
-      ~publishUndo=u => undo := u,
+      ~publish=published => board := Some(published),
       Game.freecell,
     )
     let _teardown = scene.mount(container)
-    undo.contents()
+    live(board).undo()
     expect(tallyOf(saved))->toEqual(Some((0, 0)))
   })
 
@@ -452,17 +532,17 @@ describe("TableScene move/undo counts (#289)", () => {
         timing: Timing.unknown,
       }),
     )
-    let newGame = ref(None)
+    let board = ref(None)
     let container = createElement("div")
     let scene = TableScene.make(
       ~loadHistory=() => saved.contents,
       ~persist=s => saved := Some(s),
       ~newDeal=() => Game.freecellDeal(~seed=7),
-      ~publishNewGame=hook => newGame := Some(hook),
+      ~publish=published => board := Some(published),
       game,
     )
     let _teardown = scene.mount(container)
-    (newGame.contents->Option.getOrThrow)()
+    (live(board).newGame->Option.getOrThrow)()
     expect(tallyOf(saved))->toEqual(Some((0, 0)))
   })
 
@@ -589,16 +669,16 @@ describe("TableScene win time (#302)", () => {
     // thing being pinned here — without it a reload would show a won board with no time.
     let game = Game.freecell
     let saved = ref(None)
-    let console = ref(_ => [])
+    let board = ref(None)
     let container = createElement("div")
     let scene = TableScene.make(
       ~initial=Scenario.freecellFinish(game),
       ~persist=s => saved := Some(s),
-      ~publishConsole=run => console := run,
+      ~publish=published => board := Some(published),
       game,
     )
     let _teardown = scene.mount(container)
-    console.contents(Command.Autoplay)->ignore
+    live(board).runCommand(Command.Autoplay)->ignore
     await nextTick()
     // A test wins in milliseconds, so the digits are the clock's rather than a fixed
     // duration's — what matters is that it reads as one.
@@ -619,24 +699,22 @@ describe("TableScene win time (#302)", () => {
     // says so, or a reload would resume a playable board that still claimed a time.
     let game = Game.freecell
     let saved = ref(None)
-    let undo = ref(() => ())
-    let console = ref(_ => [])
+    let board = ref(None)
     let container = createElement("div")
     let scene = TableScene.make(
       ~initial=Scenario.freecellFinish(game),
       ~persist=s => saved := Some(s),
-      ~publishUndo=u => undo := u,
-      ~publishConsole=run => console := run,
+      ~publish=published => board := Some(published),
       game,
     )
     let _teardown = scene.mount(container)
-    console.contents(Command.Autoplay)->ignore
+    live(board).runCommand(Command.Autoplay)->ignore
     await nextTick()
-    undo.contents()
+    live(board).undo()
     expect(saved.contents->Option.map(s => s.timing.wonAt))->toEqual(Some(None))
     // …and winning it again times the whole game, detour included: the deal stamp never
     // moved, so the clock still runs from the board it was dealt on.
-    console.contents(Command.Redo)->ignore
+    live(board).runCommand(Command.Redo)->ignore
     expect(saved.contents->Option.map(s => s.timing.wonAt->Option.isSome))->toEqual(Some(true))
     expect(timeOf(container)->Option.isSome)->toBe(true)
   })
@@ -656,16 +734,16 @@ describe("TableScene autoplay (#291)", () => {
   testAsync("counts the reach for the solver, and finishes the game", async () => {
     let game = Game.freecell
     let saved = ref(None)
-    let console = ref(_ => [])
+    let board = ref(None)
     let container = createElement("div")
     let scene = TableScene.make(
       ~initial=Scenario.freecellFinish(game),
       ~persist=s => saved := Some(s),
-      ~publishConsole=run => console := run,
+      ~publish=published => board := Some(published),
       game,
     )
     let _teardown = scene.mount(container)
-    console.contents(Command.Autoplay)->ignore
+    live(board).runCommand(Command.Autoplay)->ignore
     await nextTick()
     switch statsOf(saved) {
     | Some(stats) =>
@@ -682,22 +760,20 @@ describe("TableScene autoplay (#291)", () => {
     // the game by hand from there — the victory is still not shareable, because the
     // tally remembers.
     let game = Game.freecell
-    let undo = ref(() => ())
-    let console = ref(_ => [])
+    let board = ref(None)
     let container = createElement("div")
     let scene = TableScene.make(
       ~initial=Scenario.freecellFinish(game),
-      ~publishUndo=u => undo := u,
-      ~publishConsole=run => console := run,
+      ~publish=published => board := Some(published),
       ~winShare={available: () => true, share: (~moves as _, ~undos as _) => Promise.resolve("")},
       game,
     )
     let _teardown = scene.mount(container)
-    console.contents(Command.Autoplay)->ignore
+    live(board).runCommand(Command.Autoplay)->ignore
     await nextTick()
-    undo.contents()
+    live(board).undo()
     expect(hasWinOverlay(container))->toBe(false) // stepped back out of the victory
-    console.contents(Command.Redo)->ignore // …and won it again, by hand this time
+    live(board).runCommand(Command.Redo)->ignore // …and won it again, by hand this time
     expect(hasWinOverlay(container))->toBe(true)
     expect(
       container->querySelector(".win-panel__button--share")->Nullable.toOption->Option.isSome,
@@ -709,10 +785,12 @@ describe("TableScene autoplay (#291)", () => {
     // there's no position to pack it into — an honest refusal rather than a wrong
     // answer, in the words both front ends use.
     let game = Game.stacking
-    let console = ref(_ => [])
+    let board = ref(None)
     let container = createElement("div")
-    let scene = TableScene.make(~publishConsole=run => console := run, game)
+    let scene = TableScene.make(~publish=published => board := Some(published), game)
     let _teardown = scene.mount(container)
-    expect(Render.toPlain(console.contents(Command.Autoplay)))->toBe(Command.autoplayNotFreeCell)
+    expect(Render.toPlain(live(board).runCommand(Command.Autoplay)))->toBe(
+      Command.autoplayNotFreeCell,
+    )
   })
 })
