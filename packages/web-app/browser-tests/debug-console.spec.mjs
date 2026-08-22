@@ -418,8 +418,8 @@ test("home finds the foundation itself, and undo/redo walk the same history", as
   await settleBoard(page)
   await openConsole(page)
 
-  // `home` names no destination — the board resolves one, through the very `validMoves`
-  // the double-tap send-home uses.
+  // `home` names no destination — `core` resolves one, through the very
+  // `Reducer.foundationTarget` a hand-dragged drop is judged by.
   await runCommand(page, "home KC")
   await expect(page.locator(".win-overlay")).toHaveCount(1)
 
@@ -438,6 +438,27 @@ test("home finds the foundation itself, and undo/redo walk the same history", as
   // Nothing left to redo, and the console says so rather than silently doing nothing.
   await runCommand(page, "redo")
   await expect(consoleLines(page).filter({ hasText: "Nothing to redo." })).toHaveCount(1)
+})
+
+// `home` on a card that *is* wanted but can't be lifted. The distinction matters
+// because the two refusals read completely differently, and the panel used to give the
+// wrong one: it resolved the target through `validMoves`, which returns nothing at all
+// for a buried card, so it answered "no foundation is ready" about a foundation that was
+// sitting there waiting. Since the verb became `core`'s (#298) it takes the terminal's
+// route — find the foundation, dispatch, let the reducer say why not — and the answer is
+// the true one.
+test("home on a buried card says it's buried, not that nothing wants it", async ({ page }) => {
+  // The finishable board: ♥3 is trapped under ♠6 in the first cascade, and the Hearts
+  // foundation stands at ♥2 — so this card is exactly what that foundation wants next.
+  await page.goto("/?scene=freecell&state=finish&animate=off")
+  await settleBoard(page)
+  await openConsole(page)
+
+  await runCommand(page, "home 3H")
+  await expect(consoleLines(page).filter({ hasText: "that card is buried" })).toHaveCount(1)
+  await expect(
+    consoleLines(page).filter({ hasText: "No foundation is ready" }),
+  ).toHaveCount(0)
 })
 
 test("a rejected command explains itself in the same words the CLI uses", async ({ page }) => {
