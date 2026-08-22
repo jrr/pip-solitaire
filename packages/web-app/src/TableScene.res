@@ -1278,18 +1278,11 @@ let make = (
         requestAnimationFrame(() => classList(playfield)->removeClass("dealing"))->ignore
       }
 
-      // Play an action into the board's session (#298), narrating the interaction to the
-      // debug console when logging is on. Every live move site — a drop (`endDrag`), the
-      // double-tap send-home, a typed command (#273) — funnels through here, so the log
-      // captures every move the UI asks core to make and, more to the point, so all three
-      // get the *same* treatment: the house-rule gate, the reducer's verdict, safe
-      // auto-collect (#125), the undo step (#85), the tally (#289) and the clock (#302)
-      // are one call now, and it's the call the terminal makes too.
-      //
-      // What comes back is the `Session.change`, which names the cards that travelled —
-      // the ones the action moved, and separately whatever auto-collect swept up behind
-      // them. A caller flies both as one gesture; the log says them as two things,
-      // because a move is what you did and a collection is what the board did back.
+      // Narrate one change to the debug console (#213). Every way a card can move — a
+      // drop, a double-tap send-home, a typed command, a step of a solver's line — ends
+      // in a `Session.change`, and this is the one thing that turns one into a sentence.
+      // That's why the change carries its `action`: the move a typed command made is one
+      // this file never saw, and it still has to be able to say it.
       //
       // **One line per move**, not two. The old pair said the action and then its
       // outcome, which meant the commonest thing in the log — a move that worked — cost
@@ -1301,16 +1294,7 @@ let make = (
       //
       // Built only when something is listening: `DebugLog`'s own calls short-circuit on
       // that, and this composes a document before it calls one, so it checks first.
-      let dispatch = (action: Reducer.action): Session.change => {
-        // A move of the player's own — a drop, a send-home, a typed one — takes the
-        // board off whatever line an autoplay was walking (#291), so it stops the run.
-        // Autoplay's own steps come pre-reduced from `Solver.autoplay` and never come
-        // through here, which is what makes this the clean "the player did something"
-        // signal.
-        interruptPlay()
-        let before = state()
-        let (next, change) = Session.dispatch(~clock, current(), action)
-        session := next
+      let narrate = (~before: GameState.t, change: Session.change) => {
         if DebugLog.enabled() {
           let accepted: Render.span = {text: " ✓", ink: Render.Title}
           let refused: Render.span = {text: " ✗", ink: Render.Plain}
@@ -1319,26 +1303,43 @@ let make = (
           // changed is what stops the log reading as a move that did something (it
           // records no undo step either).
           let noChange: Render.span = {text: " (no change)", ink: Render.Plain}
-          let outcome = switch change {
-          | Session.Settled(_) =>
-            GameState.equal(state(), before) ? [accepted, noChange] : [accepted]
-          | _ => [refused]
-          }
-          DebugLog.line(Array.concat(Render.action(~game, action), outcome))
           switch change {
-          | Session.Rejected(err) => DebugLog.line([Render.plain(`  ${Command.reason(err)}`)])
+          | Session.Settled({action, collected}) =>
+            let mark = GameState.equal(state(), before) ? [accepted, noChange] : [accepted]
+            DebugLog.line(Array.concat(Render.action(~game, action), mark))
+
+            // The collection is its own line, and only when it actually sent cards home:
+            // an empty sweep is the common no-op and isn't worth one.
+            if Array.length(collected) > 0 {
+              DebugLog.line(
+                Render.concat([[Render.plain("auto-collect ")], Render.cardSpans(collected)]),
+              )
+            }
+          | Session.Rejected({action, error}) =>
+            DebugLog.line(Array.concat(Render.action(~game, action), [refused]))
+            DebugLog.line([Render.plain(`  ${Command.reason(error)}`)])
+          // A house rule that refused before the reducer saw it, a step through history,
+          // a board simply shown: none of those is a move, and the verbs that ask for
+          // them say so themselves.
           | _ => ()
           }
         }
-        // Narrate the collection (#213) when it actually sent cards home; an empty sweep
-        // is the common no-op and isn't worth a line.
-        switch change {
-        | Session.Settled({collected}) if Array.length(collected) > 0 =>
-          DebugLog.line(
-            Render.concat([[Render.plain("auto-collect ")], Render.cardSpans(collected)]),
-          )
-        | _ => ()
-        }
+      }
+
+      // Play an action into the board's session (#298). The pointer paths — a drop
+      // (`endDrag`) and the double-tap send-home — come through here; a typed command
+      // reaches the same `Session.dispatch` through `Session.step` instead, and is
+      // narrated by the same `narrate` above.
+      let dispatch = (action: Reducer.action): Session.change => {
+        // A move of the player's own — a drop, a send-home, a typed one — takes the
+        // board off whatever line an autoplay was walking (#291), so it stops the run.
+        // Autoplay's own steps are committed by the session and never come through here,
+        // which is what makes this the clean "the player did something" signal.
+        interruptPlay()
+        let before = state()
+        let (next, change) = Session.dispatch(~clock, current(), action)
+        session := next
+        narrate(~before, change)
         change
       }
 
@@ -1692,6 +1693,23 @@ let make = (
       // "finish" does to the model: the sweep is committed *immediately* as one
       // undoable step (#85), so undo after a finish steps back to the position it
       // started from regardless of what the animation is doing.
+      // The view's half of a sweep: the session has already taken it (one undoable step,
+      // and the clock stamped if it won), so what's left is to say it, save it and fly
+      // it. Shared by the Finish button below and the typed `finish` verb, which reach
+      // the sweep by different routes and have to land it the same way.
+      let flySweep = (moved: array<Deck.card>) => {
+        DebugLog.line(Render.concat([[Render.plain("finish ")], Render.cardSpans(moved)]))
+        afterChange()
+        removeFinishButton()
+        // Deliver the sweep as a staggered flight (#160) rather than an instant
+        // jump; the win overlay lands only once the last card has arrived.
+        animateFinish(moved, ~onDone=() =>
+          if Session.hasWon(session.contents) {
+            showWin()
+          }
+        )
+      }
+
       let playFinish = () => {
         // The sweep takes the board somewhere no planned move goes, so it ends any
         // autoplay still walking a line (#291). Autoplay's own hand-over to the sweep
@@ -1699,26 +1717,17 @@ let make = (
         // past — the Finish button (or a typed `finish`) pressed mid-line.
         interruptPlay()
         let (next, outcome) = Session.finish(~clock, current())
-        let moved = switch outcome.change {
-        | Session.Swept({moved}) => moved
+        session := next
+        switch outcome.change {
+        | Session.Swept({moved}) =>
+          flySweep(moved)
+          moved
         | _ => [] // unreachable: every caller checks `canFinish` before asking
         }
-        session := next
-        DebugLog.line(Render.concat([[Render.plain("finish ")], Render.cardSpans(moved)]))
-        afterChange()
-        removeFinishButton()
-        // Deliver the sweep as a staggered flight (#160) rather than an instant
-        // jump; the win overlay lands only once the last card has arrived.
-        animateFinish(moved, ~onDone=() =>
-          if GameState.hasWon(game, state()) {
-            showWin()
-          }
-        )
-        moved
       }
 
       let updateFinishButton = () =>
-        if winShown.contents || !Reducer.canFinish(~game, state()) {
+        if winShown.contents || !Session.canFinish(session.contents) {
           removeFinishButton()
         } else {
           switch finishButton.contents {
@@ -1761,6 +1770,28 @@ let make = (
       // restored state. Undo doesn't re-run auto-collect — it restores the prior
       // *settled* state exactly. It tears down the win overlay first, so it steps
       // cleanly back out of a victory.
+      // Bring the view to whatever position the session now holds after a step through
+      // history — the shared tail of undo and redo, whoever asked for one: the top bar's
+      // button, or the console's `undo`/`redo` verb.
+      //
+      // Symmetric in the win overlay, and it has to be: undoing out of a victory takes
+      // the panel down, and redoing back into the move that won raises it again.
+      let adoptRestored = () => {
+        if !Session.hasWon(session.contents) {
+          removeWinOverlay()
+        }
+        adoptHistoryPresent()
+        if Session.hasWon(session.contents) {
+          showWin()
+        }
+      }
+
+      // The top bar's Undo button (#85). The console's `undo` verb doesn't come through
+      // here — it goes through `Session.step` like every other typed verb — but both end
+      // in the same `Session.undo` and the same `adoptRestored`, so they can't drift.
+      //
+      // (`redo` has no button; it exists only as a typed verb, which is why there's no
+      // twin of this function. `core`'s `History` has always carried the redo side.)
       let undo = () =>
         if Session.canUndo(session.contents) {
           DebugLog.message("undo")
@@ -1770,256 +1801,186 @@ let make = (
           // counted as one.
           let (stepped, _) = Session.undo(~clock, current())
           session := stepped
-          removeWinOverlay()
-          adoptHistoryPresent()
+          adoptRestored()
         }
 
-      // …and forward again (#273). `core`'s `History` has always carried the redo
-      // side; the top bar simply doesn't surface it, so until now nothing in the web
-      // app could step back *into* a move it had undone. The console's `redo` verb is
-      // that hand, and it's the mirror of `undo` down to the win overlay: redoing into
-      // the move that won the game raises the victory the undo took down.
-      let redo = () =>
-        if Session.canRedo(session.contents) {
-          DebugLog.message("redo")
-          // A redo puts a move back on the board, so it counts as one (#289) — the only
-          // rule that keeps undo-then-redo from being a way to play for free.
-          let (stepped, _) = Session.redo(~clock, current())
-          session := stepped
-          adoptHistoryPresent()
-          if GameState.hasWon(game, state()) {
+      // --- Typed commands (#273) ---------------------------------------------------
+      // What the debug console's input line does with a parsed command.
+      //
+      // It no longer *interprets* one (#298). Every board verb — `move`, `home`, `undo`,
+      // `finish`, `autoplay`, `print` — is `Session.step`'s to run, which is the same
+      // interpreter the terminal runs, so a typed command means one thing rather than
+      // two. What's here is the other half: turning the `Session.change` that comes back
+      // into cards moving on a screen.
+      //
+      // The three shapes that need more than a reflow get a function each below; the rest
+      // is `react`, which is the whole of this file's answer to "what did that do".
+
+      // Fly the cards a settled move displaced. Which cards those are is the session's
+      // answer: the ones the action named, plus whatever auto-collect swept up behind
+      // them, flown together so a move and its collection read as one gesture rather than
+      // a move followed by a jump. A column reorder names no cards, so nothing flies and
+      // the reflow inside the flight path simply re-lays the board.
+      let flySettled = (~before: GameState.t, ~moved, ~collected) => {
+        // The session records an accepted move as one undoable step (#85) — unless
+        // nothing changed (a lawful no-op, #215), which isn't undoable and so leaves
+        // nothing to save or report.
+        if !GameState.equal(state(), before) {
+          afterChange()
+        }
+        animateCommand(Array.concat(moved, collected), ~onDone=() => {
+          // A move that completes every foundation ends the game (#121). Raised once the
+          // cards have landed, so the overlay is the payoff of the flight rather than
+          // something that beats it to the board.
+          if Session.hasWon(session.contents) {
+            showWin()
+          }
+          updateFinishButton()
+        })
+      }
+
+      // Play a solver's line (#291), a move at a time.
+      //
+      // The thinking and the playing are both `Session`'s: it hands back the line already
+      // played, as a *trail* of sessions — one per planned move, each the board as that
+      // move left it. What's this file's is the pace. Adopting them one at a time, each
+      // as the previous flight lands, is what makes a run something you watch being
+      // played rather than a board that changes while you blink, and it's the whole
+      // reason to hand a board to a solver in front of a person rather than in a test.
+      //
+      // That makes this the one thing on the board that runs *forward in time* after the
+      // command has answered, so it holds the interruption token (see `interruptPlay`)
+      // and re-checks it before every step: an undo, a move of the player's own, a New
+      // Game, a second `autoplay` — any of those and the run stops where it stands. It
+      // can afford to stop anywhere precisely because each entry is a whole session: what
+      // it stops on is a real position with a real history and a real tally behind it,
+      // not something half-applied that has to be unwound.
+      let playLine = (~reached: Session.t, ~trail: array<Session.played>) => {
+        DebugLog.message("autoplay")
+        // The reach is counted once, not once per move (#291) — the moves themselves are
+        // counted as moves, like any others. Adopted before the first step, so the very
+        // first save this writes already carries "this game was autoplayed", and adopted
+        // even on a line with no moves in it (a board that was already finishable), which
+        // is the case a trail alone wouldn't cover.
+        session := reached
+        // Any flight still in the air belongs to the position the line starts from (and
+        // the tilt timings with it — see `adoptHistoryPresent`). This also ends an
+        // autoplay already running, so a second `autoplay` replaces the first rather than
+        // racing it.
+        cancelOutstanding()
+        clearTiltTimings()
+        interruptPlay()
+        let token = playToken.contents
+
+        // Where the line ends: the solver stops where the Finish button lights up, so
+        // finishing is that button's own sweep — same flight, same win overlay, one
+        // further undoable step. A board it couldn't get all the way there stays where
+        // the line left it, with the reply saying how far that was.
+        let handOver = () => {
+          updateFinishButton()
+          if Session.canFinish(session.contents) {
+            playFinish()->ignore
+          } else if Session.hasWon(session.contents) {
             showWin()
           }
         }
 
-      // --- Typed commands (#273) ---------------------------------------------------
-      // What the debug console's input line does with a parsed command. The whole point
-      // is that it does **not** rebuild the board from a folded `Repl` state: it pushes
-      // the action through the same `dispatch` a pointer drop uses, so auto-collect, the
-      // undo history, the win check and persistence all behave exactly as they do for a
-      // drag — one code path, not two that have to be kept in step.
-      //
-      // Each of these returns the line to show *in addition to* what `DebugLog` already
-      // narrates. Since `dispatch` logs the action and core's answer either way, an
-      // accepted move adds nothing (`""`) and only the things the instrumentation
-      // can't say — why a move bounced, that there was nothing to undo — get a line.
-
-      // Play one action and fly the cards it displaced. Which cards those are is the
-      // session's answer, not this function's (#298): the ones the action named, plus
-      // whatever auto-collect swept up behind them, flown together so a move and its
-      // collection read as one gesture rather than a move followed by a jump. A column
-      // reorder names no cards, so nothing flies and the reflow inside the flight path
-      // simply re-lays the board.
-      let playAction = (action): array<Render.line> => {
-        let before = state()
-        switch dispatch(action) {
-        | Session.Settled({moved, collected}) =>
-          // The session records an accepted move as one undoable step (#85) — unless
-          // nothing changed (a lawful no-op, #215), which isn't undoable and so leaves
-          // nothing to save or report.
-          if !GameState.equal(state(), before) {
-            afterChange()
-          }
-          animateCommand(Array.concat(moved, collected), ~onDone=() => {
-            // A move that completes every foundation ends the game (#121). Raised once
-            // the cards have landed, so the overlay is the payoff of the flight rather
-            // than something that beats it to the board.
-            if Session.hasWon(session.contents) {
-              showWin()
-            }
-            updateFinishButton()
-          })
-          []
-        // Nothing to add on a refusal either: `dispatch` above has already put the move
-        // and the reason it bounced into the log, and a reply here would say the same
-        // thing a second time under it.
-        | _ => []
-        }
-      }
-
-      // `autoplay` (#291): hand the board to `core`'s solver and play the line it
-      // finds, then let the sweep this board already has finish the job. The thinking
-      // is `Solver.autoplay`'s — including the settling after each move, so a session
-      // with auto-collect switched off still plays the line the search actually found
-      // — and what's left here is the three things only a *board* can do: record the
-      // steps, count the reach, and put the cards where they now belong.
-      //
-      // The planned moves are *played*, one at a time: each is committed as its own
-      // undoable step and then flown like the move it is, and the next only begins
-      // once its cards have landed. So what you watch is the line being played —
-      // which is the whole reason to hand a board to a solver in front of a person
-      // rather than in a test — and the finishing sweep at the end arrives as the
-      // payoff of a game rather than as the only thing that moved.
-      //
-      // That makes this the one thing on the board that runs *forward in time* after
-      // the command has answered, so it holds the interruption token (see
-      // `interruptPlay`) and re-checks it before every step: an undo, a move of the
-      // player's own, a New Game, a second `autoplay` — any of those and the run stops
-      // where it stands, leaving a real position with a real history behind it rather
-      // than stamping the rest of a stale line over the board.
-      let autoplay = (): array<Render.line> => {
-        // The clock is this driver's, not the solver's (see `Solver.effort`): what it
-        // times is the whole call — the search, plus playing the line it found through
-        // the reducer. The second part is fifty reductions against a search that
-        // generated tens of thousands of positions, so the number describes the
-        // thinking, which is the part worth reporting.
-        let started = Date.now()
-        switch Solver.autoplay(~game, state()) {
-        | Solver.NotFreeCell => Render.text(Command.autoplayNotFreeCell)
-        | Solver.NoLine => Render.text(Command.autoplayNoLine)
-        | Solver.Played({steps, effort}) =>
-          let ms = Date.now() -. started
-          DebugLog.message("autoplay")
-          // Counted once for the reaching, not once per move (#291) — the moves the
-          // solver plays are counted as moves by the session below, like any
-          // other. Counted *before* the first step is recorded, so the very first save
-          // this writes already carries "this game was autoplayed"; and counted even
-          // if the run is interrupted a move later, because it was still reached for.
-          session := {...session.contents, stats: Stats.autoplay(session.contents.stats)}
-          // Any flight still in the air belongs to the position the line starts from
-          // (and the tilt timings with it — see `adoptHistoryPresent`). This also ends
-          // an autoplay already running, so a second `autoplay` replaces the first
-          // rather than racing it.
-          cancelOutstanding()
-          clearTiltTimings()
-          interruptPlay()
-          let token = playToken.contents
-
-          // Where the line ends: the solver stops where the Finish button lights up,
-          // so finishing is that button's own sweep — same flight, same win overlay,
-          // one further undoable step. A board it couldn't get all the way there stays
-          // where the line left it, with the reply below saying how far that was.
-          let handOver = () => {
-            updateFinishButton()
-            if Reducer.canFinish(~game, state()) {
-              playFinish()->ignore
-            } else if GameState.hasWon(game, state()) {
-              showWin()
-            }
-          }
-
-          let rec playFrom = i =>
-            // Bumped since we started: the board is no longer the one this line was
-            // planned for, so the rest of the plan is not ours to play.
-            if token != playToken.contents {
-              ()
-            } else {
-              switch steps->Array.get(i) {
-              | None => handOver()
-              | Some(step) =>
-                // The play-by-play, in the very words a typed or dragged move is
-                // logged in (`Render.action`, see `dispatch`) — narrated as each move
-                // is played, so the log keeps time with the cards. No outcome mark:
-                // these were played against `core` before they got here, and a move
-                // that didn't take never became a step.
-                if DebugLog.enabled() {
-                  DebugLog.line(Render.action(~game, step.action))
-                }
-                // One recorded step per planned move, exactly as a typed move records
-                // one: the tally counts the game's true length, and undo walks back
-                // through the solver's line a move at a time rather than teleporting
-                // past the whole thing. Recorded *before* the flight, as every other
-                // move here is, so an interruption mid-air leaves the model settled.
-                session := Session.commit(~clock, current(), step.state)
-                afterChange()
-                animateAutoplayStep(step.moved, ~onDone=() => playFrom(i + 1))
+        let rec playFrom = i =>
+          // Bumped since we started: the board is no longer the one this line was planned
+          // for, so the rest of the plan is not ours to play.
+          if token != playToken.contents {
+            ()
+          } else {
+            switch trail->Array.get(i) {
+            | None => handOver()
+            | Some(step: Session.played) =>
+              // The play-by-play, in the very words a typed or dragged move is logged in
+              // (`Render.action`, see `narrate`) — narrated as each move is played, so the
+              // log keeps time with the cards. No outcome mark: these were played against
+              // `core` before they got here, and a move that didn't take never became a
+              // step.
+              if DebugLog.enabled() {
+                DebugLog.line(Render.action(~game, step.action))
               }
+              // Adopted *before* the flight, as every other move here is, so an
+              // interruption mid-air leaves the model settled.
+              session := step.session
+              afterChange()
+              animateAutoplayStep(step.moved, ~onDone=() => playFrom(i + 1))
             }
-          // Started on the next tick, not here. Everything above is bookkeeping the
-          // command has to do before it answers — the tally, the cancellations, the
-          // token — but the first *move* is the first line of a play-by-play, and this
-          // function's reply is the sentence that heads it. Played inline, that reply
-          // came back to the console after the run had already narrated a move into it
-          // (the console prints a command's answer once the command returns), so the
-          // summary landed a line down its own play-by-play. A tick's delay is invisible
-          // next to a move's flight, and it puts the sentence back on top.
-          //
-          // Safe to defer for the same reason the run is safe to interrupt: `playFrom`
-          // re-checks `token` before every step, and anything that happens in between —
-          // a drag, an undo, a re-deal, a second `autoplay` — bumps it, so a run whose
-          // board has moved on never plays its first move at all.
-          setTimeout(() => playFrom(0), 0)->ignore
-          Render.text(
-            Command.describeAutoplay(
-              ~moves=Array.length(steps),
-              ~ms,
-              ~positions=effort.positions,
-              ~tried=effort.moves,
-              ~passes=effort.passes,
-            ),
-          )
-        }
+          }
+        // Started on the next tick, not here. Everything above is bookkeeping the command
+        // has to do before it answers — the tally, the cancellations, the token — but the
+        // first *move* is the first line of a play-by-play, and the command's reply is the
+        // sentence that heads it. Played inline, that reply came back to the console after
+        // the run had already narrated a move into it (the console prints a command's
+        // answer once the command returns), so the summary landed a line down its own
+        // play-by-play. A tick's delay is invisible next to a move's flight, and it puts
+        // the sentence back on top.
+        //
+        // Safe to defer for the same reason the run is safe to interrupt: `playFrom`
+        // re-checks `token` before every step, and anything that happens in between — a
+        // drag, an undo, a re-deal, a second `autoplay` — bumps it, so a run whose board
+        // has moved on never plays its first move at all.
+        setTimeout(() => playFrom(0), 0)->ignore
       }
 
-      let runCommand = (command: Command.t): array<Render.line> =>
-        switch command {
-        | Command.Dispatch(action) =>
-          switch action {
-          // The column-reorder house rule (#159), gated before the reducer exactly as
-          // the CLI gates it: with it off nothing is dispatched at all.
-          | Reducer.MoveColumn(_) if !options.contents.allowColumnReorder =>
-            Render.text("Column reordering is off for this game.")
-          | _ => playAction(action)
-          }
-        // A move with a half only a board can read — a destination named as a card or a
-        // column label (`move 8H 9S`, `move 8H T3`), a source named as the place it's
-        // showing in (`move C1 F1`, `moverun T6 T2`), or both — resolved against this
-        // board by the shared readers, so the panel lifts and lands on the same piles the
-        // CLI would and the move that follows is an ordinary dispatched one with the
-        // ordinary flight.
-        | Command.MoveTo({from, where}) =>
-          switch (
-            Command.resolveFrom(~game, state(), from),
-            Command.resolveWhere(~game, state(), where),
-          ) {
-          | (Ok(cards), Ok(to)) => playAction(Command.moveAction(~cards, ~to))
-          | (Error(message), _) | (_, Error(message)) => Render.text(message)
-          }
-        // `home <card>` names no destination, so resolve one here — through the very
-        // `validMoves` the double-tap send-home uses (#196), which is what makes a typed
-        // `home AS` and a double-tapped one the same move.
-        | Command.Home({card}) =>
-          switch Reducer.validMoves(~game, state(), card)->Array.find(m =>
-            m.role == Game.Foundation
-          ) {
-          | Some({to: i}) => playAction(Reducer.Move({card, to: Reducer.ToPile(i)}))
-          | None => Render.text(`No foundation is ready for ${CardText.format(card)}.`)
-          }
-        | Command.Finish =>
-          if Reducer.canFinish(~game, state()) {
-            playFinish()->ignore
-            []
-          } else {
-            Render.text("Not finishable yet — some cards still need a tableau move first.")
-          }
-        | Command.Autoplay => autoplay()
-        | Command.Undo =>
-          if Session.canUndo(session.contents) {
-            undo()
-            []
-          } else {
-            Render.text("Nothing to undo.")
-          }
-        | Command.Redo =>
-          if Session.canRedo(session.contents) {
-            redo()
-            []
-          } else {
-            Render.text("Nothing to redo.")
-          }
-        // The board, drawn in text. It used to answer "the board is on screen" — true,
-        // but useless: the point of `print` is a *snapshot* you can read back later in
-        // the log, compare against the one above it, or paste somewhere. Now that the
-        // renderer lives in `core` it's the very board the CLI prints, from the very
-        // same state — and handed over as the *document* core rendered rather than
-        // flattened to text (#282), so the panel can paint the suits the terminal paints
-        // in ANSI. Nothing here chooses a colour; the ink says which cards are red and
-        // the stylesheet decides what red looks like in a log.
-        | Command.Print => Render.stateLines(~game, ~deal=?currentDeal(), state())
-        // Everything else — help, clear, dealing a board — belongs to the chrome (see
-        // `Main`), which answers those itself and never forwards them here.
-        | _ => Render.text("That isn't something the board can do.")
+      // What a change means to a board with cards on it.
+      let react = (~before: GameState.t, change: Session.change) =>
+        switch change {
+        | Session.Settled({moved, collected}) =>
+          // A move of the player's own takes the board off whatever line an autoplay was
+          // walking (#291), exactly as a drop does.
+          interruptPlay()
+          flySettled(~before, ~moved, ~collected)
+        | Session.Swept({moved}) =>
+          interruptPlay()
+          flySweep(moved)
+        | Session.Restored => adoptRestored()
+        // A refusal moved nothing, so there's nothing to draw; `narrate` has already put
+        // the move and the reason it bounced into the log.
+        | Session.Rejected(_) => interruptPlay()
+        // Nothing to draw for these either: a house rule that refused before the reducer
+        // saw it, a verb with nothing to do, a board simply shown — each says its piece
+        // in the reply. `Dealt` never arrives: dealing a board means tearing this one
+        // down and building another, which is the chrome's (see `Main`), and it doesn't
+        // forward `deal`/`redeal` here.
+        | Session.Blocked(_) | Session.Unchanged | Session.Shown | Session.Dealt => ()
+        // Played by `playLine` rather than adopted whole — intercepted before `react`.
+        | Session.Played(_) => ()
         }
+
+      let runCommand = (command: Command.t): array<Render.line> => {
+        let before = state()
+        let (next, outcome) = Session.step(~clock, current(), command)
+        switch outcome.change {
+        // A solver line is walked, not adopted: `next` is where it *ends up*, and getting
+        // there a move at a time is the point (see `playLine`).
+        | Session.Played({reached, trail}) => playLine(~reached, ~trail)
+        | change =>
+          session := next
+          narrate(~before, change)
+          // A step through history isn't a move and carries no action to say, so the
+          // verb itself is what goes in the log — and only when it actually stepped, so a
+          // `redo` with nothing ahead of it doesn't read as one.
+          switch (command, change) {
+          | (Command.Undo, Session.Restored) => DebugLog.message("undo")
+          | (Command.Redo, Session.Restored) => DebugLog.message("redo")
+          | _ => ()
+          }
+          react(~before, change)
+        }
+        // Two verbs answer with something other than the session's own reply. `print`
+        // asks for the board, and this driver draws it with the deal number the *app*
+        // resolved (`~currentDeal`) rather than the one the board can prove — a resumed
+        // game really is a deal, and the chrome is what knows which. A refusal is already
+        // in the log, with its reason under it, so repeating it here would say it twice.
+        switch outcome.change {
+        | Session.Shown => Render.stateLines(~game, ~deal=?currentDeal(), state())
+        | Session.Rejected(_) => []
+        | _ => outcome.reply
+        }
+      }
 
       // Build one draggable card and wire its pointer loop. It starts at 0,0 and is
       // positioned by the initial deal (below); returning `self` lets the caller
@@ -2313,7 +2274,7 @@ let make = (
               // A move that completes every foundation ends the game (#121): raise
               // the win overlay following the accepted `reduce` (and any auto-collect
               // that played the final cards).
-              if GameState.hasWon(game, state()) {
+              if Session.hasWon(session.contents) {
                 showWin()
               }
               // Recompute the "Finish" button (#132): a move can make the board
@@ -2581,7 +2542,7 @@ let make = (
       // Checked before the "Finish" button below so a completed board never offers to
       // finish itself. A fresh deal, a re-deal, or a `?state=` scenario is never
       // already won, so this only fires on a restored victory.
-      if GameState.hasWon(game, state()) {
+      if Session.hasWon(session.contents) {
         showWin()
       }
 

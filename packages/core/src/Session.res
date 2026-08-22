@@ -72,20 +72,30 @@ type played = {action: Reducer.action, moved: array<card>, session: t}
 // because the one front end that needs them can't recover them: `moved` is what
 // *travelled*, and a board settled by auto-collect has cards resting somewhere new
 // that the command never mentioned.
+//
+// The `action` rides along for the same sort of reason. A caller that narrates a move
+// (the web app's debug console, #213) needs to say *which* move, in `Render.action`'s
+// words — and once the interpreting happens in here, a command's action is something it
+// never saw. Handing it back is what lets one narrator serve a drop, a typed command and
+// a solver's step alike.
 type change =
   | Unchanged // a verb with nothing to do — "nothing to undo", a lawful no-op
   | Shown // `print`: nothing moved, but the caller asked to see the board
   | Blocked({reason: string}) // a house rule refused it before the reducer saw it
-  | Rejected(Reducer.moveError) // the reducer refused it
+  | Rejected({action: Reducer.action, error: Reducer.moveError}) // the reducer refused it
   // An accepted move: `moved` is what the action named, `collected` whatever safe
   // auto-collect swept up behind it (#125). Kept apart because a caller that narrates
   // says two different things about them — the move is what you did, the collection is
   // what the board did back — while a caller that animates flies them as one gesture.
-  | Settled({moved: array<card>, collected: array<card>})
+  | Settled({action: Reducer.action, moved: array<card>, collected: array<card>})
   | Swept({moved: array<card>}) // the end-game finish sequence (#132)
   | Restored // undo/redo: a position the board already held
   | Dealt // a different board entirely (`redeal`)
-  | Played({trail: array<played>, swept: array<card>}) // a solver line (#291)
+  // A solver line (#291). `reached` is the session the moment the player reached for
+  // the solver — the tally already counting the reach, no move played yet — and it's
+  // what a caller that plays the line itself starts from. A caller that just wants the
+  // result takes the session returned beside this outcome and ignores all three.
+  | Played({reached: t, trail: array<played>, swept: array<card>})
 
 // What a command did, and what there is to say about it *beyond* the board.
 //
@@ -109,6 +119,10 @@ let hasWon = (s: t): bool => GameState.hasWon(s.game, present(s))
 
 let canUndo = (s: t): bool => History.canUndo(s.history)
 let canRedo = (s: t): bool => History.canRedo(s.history)
+
+// Can the board be drained to a win by foundation moves alone (#132)? What the `finish`
+// verb and the button that offers it both ask.
+let canFinish = (s: t): bool => Reducer.canFinish(~game=s.game, present(s))
 
 // The board as a document — `core`'s renderer over the present snapshot, reporting the
 // deal this board descends from. Ink but no colour: the caller's alphabet decides that.
@@ -242,8 +256,8 @@ let dispatch = (~clock: unit => float, s: t, action: Reducer.action): (t, change
       // fly: a caller re-lays the board instead.
       | Reducer.MoveColumn(_) => []
       }
-      (commit(~clock, s, settled), Settled({moved, collected}))
-    | Error(err) => (s, Rejected(err))
+      (commit(~clock, s, settled), Settled({action, moved, collected}))
+    | Error(error) => (s, Rejected({action, error}))
     }
   }
 
@@ -262,7 +276,7 @@ let dispatched = (~clock: unit => float, s: t, action: Reducer.action): (t, outc
       change,
       reply: switch change {
       | Blocked({reason}) => Render.text(reason)
-      | Rejected(err) => Render.text(Command.describeRejection(err, ~action))
+      | Rejected({error}) => Render.text(Command.describeRejection(error, ~action))
       | _ => []
       },
     },
@@ -312,7 +326,7 @@ let notFinishable = "Not finishable yet — some cards still need a tableau move
 // and, like a hand-played final card, trips the win (#121). It never blocks manual
 // play: `home`/`move` still work card-by-card, this is only the shortcut.
 let finish = (~clock: unit => float, s: t): (t, outcome) =>
-  if Reducer.canFinish(~game=s.game, present(s)) {
+  if canFinish(s) {
     let (s', moved) = sweepHome(~clock, s)
     (s', {change: Swept({moved: moved}), reply: []})
   } else {
@@ -358,13 +372,11 @@ let autoplay = (~clock: unit => float, s: t): (t, outcome) => {
     // Where the line ends: the solver stops where the board becomes finishable, so
     // finishing is the sweep's own — one further undoable step. A board it couldn't get
     // all the way there stays where the line left it, with nothing swept to report.
-    let (finished, swept) = Reducer.canFinish(~game=played.game, present(played))
-      ? sweepHome(~clock, played)
-      : (played, [])
+    let (finished, swept) = canFinish(played) ? sweepHome(~clock, played) : (played, [])
     (
       finished,
       {
-        change: Played({trail, swept}),
+        change: Played({reached, trail, swept}),
         reply: Render.text(
           Command.describeAutoplay(
             ~moves=Array.length(steps),
