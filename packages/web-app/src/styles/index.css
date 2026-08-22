@@ -16,7 +16,8 @@
  * changed no computed style anywhere.
  *
  * Four blocks moved, and only because nothing between their old and new homes
- * selects them: `.menu-title` joined `Menu.css`, `#scene-container` joined
+ * selects them: `.menu-title` joined `Menu.css` (and has since gone on to
+ * `MenuHeader.css` with the component, #307), `#scene-container` joined
  * `app-shell.css`, `.svg-demo-button` joined `SvgScene.css`, and `.menu-footer`
  * joined `AboutFooter.css`. Every other rule kept its position exactly, and the
  * whole split reassembles to the old block line for line — nothing added,
@@ -37,7 +38,20 @@
 @import "../components/TopBar.css";
 @import "./landscape-rail.css";
 @import "../DebugConsole.css";
+/* The menu, one file per component since the chrome was split up (#307). The
+   order within this block reproduces the old single Menu.css: the header's rules
+   led it, the pane's followed, then the game buttons, the share line, the toggle
+   row, the action row, the nav row. The only rules that moved *relative to each
+   other* are the toggle switch's, which used to trail the action/nav rows and are
+   now back with the rest of the toggle — nothing ties on specificity across that
+   move (see the note in MenuToggleRow.css). */
+@import "../components/MenuHeader.css";
 @import "../components/Menu.css";
+@import "../components/MenuGameButton.css";
+@import "../components/MenuMainScreen.css";
+@import "../components/MenuToggleRow.css";
+@import "../components/MenuActionRow.css";
+@import "../components/MenuNavRow.css";
 @import "../SceneSwitcher.css";
 
 /* Scenes. `CardArt.css` carries the shared `.card-art` base that the gallery,

@@ -1,0 +1,26 @@
+/* An action row (see MenuActionRow.res). Moved here with the component (#307);
+   the rules are unchanged. Its label/description stack is `.menu-toggle__text`,
+   shared with the toggle row and styled in MenuToggleRow.css. */
+
+/* An action row on the Debug screen ("Share game state"): the toggle row's box
+   and label/description stack, but with nothing on the right — it runs a
+   command rather than holding a state, so there's no switch to show. Disabled
+   while there's no link to hand over (no game on screen, or the encode still in
+   flight), which the muted styling and `cursor: default` announce. */
+.menu-action-row {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  padding: 10px 12px;
+  font: 14px "Libre Franklin", sans-serif;
+  color: #e2e8f0;
+  background: #16233b;
+  border: 1px solid #22304a;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.menu-action-row:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
