@@ -1,0 +1,57 @@
+/* The header row at the top of every menu screen: back button, title, ✕
+   (see MenuHeader.res). Moved here with the component (#307); the rules are
+   unchanged, and index.css imports this file where they used to sit. */
+
+/* The app's title, moved out of the retired Home scene into the menu header
+   (#109). Keeps the gradient wordmark it had as the greeting. */
+/* The Settings screen's copy of this doubles as the hidden-options tap target
+   (ten taps; see HiddenOptions), so it has to survive being jabbed at rapidly:
+   `user-select: none` stops the run from smearing a text selection across the
+   title, and `touch-action: manipulation` drops the double-tap-to-zoom gesture
+   (and the ~300ms click delay that comes with it) so every tap in the run
+   registers. Applied to all three screens' titles — none of them is text anyone
+   needs to select. */
+.menu-title {
+  margin: 0;
+  -webkit-user-select: none;
+  user-select: none;
+  touch-action: manipulation;
+  font-size: 1.6rem;
+  font-weight: 700;
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+  background: linear-gradient(180deg, #f0fdf4 0%, #86efac 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.menu-panel__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.menu-close {
+  padding: 4px 10px;
+  font: 16px "Libre Franklin", sans-serif;
+  color: #cbd5e1;
+  background: transparent;
+  border: 1px solid #334155;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+/* The Settings screen's back button (#191): sits on the left of the header
+   opposite the ✕, styled like the close button so the pair reads as a
+   matched set. Returns to the main menu without closing the pane. */
+.menu-back {
+  padding: 4px 10px;
+  font: 14px "Libre Franklin", sans-serif;
+  color: #cbd5e1;
+  background: transparent;
+  border: 1px solid #334155;
+  border-radius: 8px;
+  cursor: pointer;
+}

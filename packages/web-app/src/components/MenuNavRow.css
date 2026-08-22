@@ -1,0 +1,27 @@
+/* A nav row that opens a deeper screen (see MenuNavRow.res). Moved here with the
+   component (#307); the rules are unchanged. */
+
+/* A nav row that opens a deeper screen: the Settings screen's "Debug"
+   entry. Styled like a toggle/scene row but with a ›-chevron on the right in
+   place of a switch, marking it as "goes somewhere" rather than "flips here". */
+.menu-nav-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  width: 100%;
+  padding: 10px 12px;
+  font: 600 14px "Libre Franklin", sans-serif;
+  color: #e2e8f0;
+  background: #16233b;
+  border: 1px solid #22304a;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.menu-nav-row__chevron {
+  flex: 0 0 auto;
+  font-size: 1.2em;
+  line-height: 1;
+  color: #64748b;
+}
