@@ -259,6 +259,42 @@ describe("Repl.run", () => {
     expect(has(almost, "You win"))->toBe(false)
   })
 
+  // What the game cost, under the win line (#289/#302 via #298). The terminal reports
+  // these because its session *carries* them, not because this driver was taught to
+  // count — which is the whole point of the extraction: the web app's victory panel
+  // reads the same two numbers off the same record.
+  test("the win report says what the game took", () => {
+    let heartsRun =
+      ["AH", "2H", "3H", "4H", "5H", "6H", "7H", "8H", "9H", "TH", "JH", "QH", "KH"]->Array.map(
+        c => `move ${c} 0`,
+      )
+    let transcript = Repl.run(Array.concat(["deal foundations"], heartsRun))
+    // Thirteen cards stacked, and the clock a folded script honestly reports: none.
+    // (`Repl`'s default clock is stopped for the same reason its default seed is fixed —
+    // `Cli.res` hands a real one to a real sitting.)
+    expect(has(transcript, "0:00 · 13 moves · 0 undos"))->toBe(true)
+    // Stepping back out of the victory and winning it again reports the detour rather
+    // than pretending it away: the undo is on the record and the move is not given back.
+    let wonAgain = Repl.run(
+      Array.concat(["deal foundations"], heartsRun)->Array.concat(["undo", "redo"]),
+    )
+    expect(has(wonAgain, "0:00 · 14 moves · 1 undo"))->toBe(true)
+  })
+
+  // …and the autoplay tally, which is the one fact about a game that has to survive
+  // every undo back past the solver's moves — the web app withholds its victory Share
+  // button on the strength of it (#291).
+  testWithin(
+    "the win report owns up to a game the solver played",
+    () => {
+      // Already finishable, so the solver plans nothing and the sweep is the single
+      // recorded move — but the *reach* is counted, and counted once.
+      let transcript = Repl.run(["deal freecell finish", "autoplay"])
+      expect(has(transcript, "0:00 · 1 move · 0 undos · 1 autoplay"))->toBe(true)
+    },
+    ~timeout=120_000,
+  )
+
   // Auto-move to foundation (#122): the `home` verb sends a card to the foundation
   // that will take it, and refuses one no foundation is ready for.
   test("home collects several eligible cards to their foundations in a row", () => {

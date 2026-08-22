@@ -77,6 +77,11 @@ let clearScreen = () => Console.log(`${escape}[2J${escape}[3J${escape}[H`)
 // script and gets the same board every time, while a real session gets a new one.
 let randomSeed = () => (Math.random() *. 1_000_000.)->Float.toInt
 
+// …and where the game clock comes from, for the same reason and on the same line: a real
+// sitting is timed against the wall (#302), while `Repl`'s own default is stopped so a
+// folded script reports the same thing twice running.
+let now = () => Date.now()
+
 let usage = () => {
   let ids = Game.all->Array.map(g => g.id)->Array.join(", ")
   `Usage:
@@ -106,7 +111,7 @@ let script = (start: option<string>): string => {
   | Some(id) => Array.concat([`deal ${id}`], commandLines)
   | None => commandLines
   }
-  Repl.run(~newSeed=randomSeed, lines)
+  Repl.run(~newSeed=randomSeed, ~clock=now, lines)
 }
 
 // --- The interactive shape ----------------------------------------------------
@@ -137,7 +142,13 @@ let interactive = (start: option<string>): unit => {
     }
 
   let play = (line: string): unit =>
-    switch Repl.consider(~options=flags.contents, ~newSeed=randomSeed, session.contents, line) {
+    switch Repl.consider(
+      ~options=flags.contents,
+      ~newSeed=randomSeed,
+      ~clock=now,
+      session.contents,
+      line,
+    ) {
     | Repl.Skipped => ()
     | Repl.Ended =>
       alive := false

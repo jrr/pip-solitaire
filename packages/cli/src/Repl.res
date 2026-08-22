@@ -100,10 +100,34 @@ ${gamesList()}`
 // going — the web console asks the same renderer for the same board and paints it in
 // CSS instead.
 
-// The win line shown beneath a board once every foundation is complete (#121).
-let winLine: array<Render.line> = [
+// Where the game clock comes from. `Date.now` belongs at the impure edge (`Cli.res`),
+// not in the interpreter — the same line `~newSeed` draws, and for the same reason: a
+// test folds a script and gets the same transcript every time, while a real session gets
+// a real clock. A fold takes no time it can honestly report, so a stopped clock says
+// `0:00` rather than inventing a duration.
+let stoppedClock = () => 0.
+
+// What the game cost, once it's over (#289/#302) — the very numbers the web app's
+// victory panel reports, from the very same session, because they now ride in the
+// session rather than in whichever front end remembered to count them.
+//
+// One line rather than the panel's two: a terminal reads left to right, and time · moves
+// · undos is the order the panel stacks them in. The clock is left out when there's none
+// to report — a session restored from a save written before `Timing` existed has no
+// dealt-at, and a line that sometimes reads "12 moves · 1 undo" and sometimes
+// "0:47 · 12 moves · 1 undo" is easier to read than one with a gap where a time isn't.
+let tallyLine = (s: session): string =>
+  switch Timing.summary(s.timing) {
+  | Some(time) => `${time} · ${Stats.summary(s.stats)}`
+  | None => Stats.summary(s.stats)
+  }
+
+// The win report shown beneath a board once every foundation is complete (#121), and
+// what the game took to get there.
+let winLines = (s: session): array<Render.line> => [
   [],
   [Render.plain("🎉 You win! Every foundation is complete. `deal` to play again.")],
+  [Render.plain(tallyLine(s))],
 ]
 
 // The line the solver played, one move to a row, in the very words a typed or a
@@ -148,7 +172,7 @@ let boardBlock = (s: session, change: Session.change): array<Render.line> =>
   switch change {
   | Session.Shown | Session.Dealt => Session.boardLines(s)
   | Session.Settled(_) | Session.Swept(_) | Session.Restored | Session.Played(_) =>
-    Session.hasWon(s) ? Array.concat(Session.boardLines(s), winLine) : Session.boardLines(s)
+    Session.hasWon(s) ? Array.concat(Session.boardLines(s), winLines(s)) : Session.boardLines(s)
   | Session.Unchanged | Session.Blocked(_) | Session.Rejected(_) => []
   }
 
@@ -215,7 +239,7 @@ let dealFirstHint = (command: Command.t): option<string> =>
 let stepCommand = (
   ~options: Options.t,
   ~newSeed: unit => int=() => Game.freecellSeed,
-  ~clock: unit => float=() => Date.now(),
+  ~clock: unit => float=stoppedClock,
   session: option<session>,
   command: Command.t,
 ): (option<session>, string) => {
@@ -284,7 +308,7 @@ let stepCommand = (
 let step = (
   ~options: Options.t,
   ~newSeed: unit => int=() => Game.freecellSeed,
-  ~clock: unit => float=() => Date.now(),
+  ~clock: unit => float=stoppedClock,
   session: option<session>,
   line: string,
 ): (option<session>, string) =>
@@ -320,7 +344,7 @@ type outcome =
 let consider = (
   ~options: Options.t,
   ~newSeed: unit => int=() => Game.freecellSeed,
-  ~clock: unit => float=() => Date.now(),
+  ~clock: unit => float=stoppedClock,
   session: option<session>,
   line: string,
 ): outcome => {
@@ -359,7 +383,7 @@ let consider = (
 let run = (
   ~options: Options.t=Options.default,
   ~newSeed: unit => int=() => Game.freecellSeed,
-  ~clock: unit => float=() => Date.now(),
+  ~clock: unit => float=stoppedClock,
   lines: array<string>,
 ): string => {
   let session = ref(None)
