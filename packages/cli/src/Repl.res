@@ -54,25 +54,6 @@
 
 open Card
 
-// A driver's session is `core`'s (#298): the game in play, the history behind it, the
-// tally and clock beside it, and the house rules it's played under. `None` before the
-// first `deal` — the one thing about a session a terminal knows and a board doesn't.
-type session = Session.t
-
-// The live snapshot for a session — the present of its history.
-let present = Session.present
-
-// Settle an accepted move, as `Session` does it. Kept as a name of its own because the
-// driver's tests reach for it directly; the settling itself is `core`'s.
-let afterMove = (~game: Game.t, ~options: Options.t, state: GameState.t): GameState.t => {
-  let (settled, _swept) = Session.settle(~game, ~options, state)
-  settled
-}
-
-// Prose for a rejected move, so a driver user learns *why* the card bounced. Shared
-// with the web console (#273), which says the same thing to the same rejection.
-let describeError = Command.describeError
-
 let gamesList = Command.gamesList
 
 let help = () =>
@@ -116,7 +97,7 @@ let stoppedClock = () => 0.
 // to report — a session restored from a save written before `Timing` existed has no
 // dealt-at, and a line that sometimes reads "12 moves · 1 undo" and sometimes
 // "0:47 · 12 moves · 1 undo" is easier to read than one with a gap where a time isn't.
-let tallyLine = (s: session): string =>
+let tallyLine = (s: Session.t): string =>
   switch Timing.summary(s.timing) {
   | Some(time) => `${time} · ${Stats.summary(s.stats)}`
   | None => Stats.summary(s.stats)
@@ -124,7 +105,7 @@ let tallyLine = (s: session): string =>
 
 // The win report shown beneath a board once every foundation is complete (#121), and
 // what the game took to get there.
-let winLines = (s: session): array<Render.line> => [
+let winLines = (s: Session.t): array<Render.line> => [
   [],
   [Render.plain("🎉 You win! Every foundation is complete. `deal` to play again.")],
   [Render.plain(tallyLine(s))],
@@ -168,7 +149,7 @@ let playByPlay = (~game: Game.t, ~swept: array<card>, trail: array<Session.playe
 // a victory becomes news; `print` and a fresh deal show the board as it stands; and a
 // command that moved nothing shows none at all, because the board above it is still
 // the board.
-let boardBlock = (s: session, change: Session.change): array<Render.line> =>
+let boardBlock = (s: Session.t, change: Session.change): array<Render.line> =>
   switch change {
   | Session.Shown | Session.Dealt => Session.boardLines(s)
   | Session.Settled(_) | Session.Swept(_) | Session.Restored | Session.Played(_) =>
@@ -179,7 +160,7 @@ let boardBlock = (s: session, change: Session.change): array<Render.line> =>
 // One command's whole answer, as a transcript prints it: what the session had to say,
 // the play-by-play if it played a line, then the board it left behind. Blocks that have
 // nothing in them are left out rather than printed as a gap.
-let transcript = (s: session, outcome: Session.outcome): string =>
+let transcript = (s: Session.t, outcome: Session.outcome): string =>
   [
     outcome.reply,
     switch outcome.change {
@@ -240,9 +221,9 @@ let stepCommand = (
   ~options: Options.t,
   ~newSeed: unit => int=() => Game.freecellSeed,
   ~clock: unit => float=stoppedClock,
-  session: option<session>,
+  session: option<Session.t>,
   command: Command.t,
-): (option<session>, string) => {
+): (option<Session.t>, string) => {
   // Every board verb funnels through here so the "deal a game first" answer is
   // written once rather than once per verb. The driver's flags are pushed into the
   // session on the way in: they're the loop's to carry (a `set` before any `deal` has
@@ -255,7 +236,7 @@ let stepCommand = (
         `Deal a game first (try \`deal ${dealFirstHint(command)->Option.getOr("stacking")}\`).`,
       )
     }
-  let onSession = (s: session) => {
+  let onSession = (s: Session.t) => {
     let (s', outcome) = Session.step(~clock, s, command)
     (Some(s'), transcript(s', outcome))
   }
@@ -309,9 +290,9 @@ let step = (
   ~options: Options.t,
   ~newSeed: unit => int=() => Game.freecellSeed,
   ~clock: unit => float=stoppedClock,
-  session: option<session>,
+  session: option<Session.t>,
   line: string,
-): (option<session>, string) =>
+): (option<Session.t>, string) =>
   stepCommand(~options, ~newSeed, ~clock, session, Command.parse(line))
 
 // The prompt, in one place: written *before* the read in an interactive session and
@@ -330,7 +311,7 @@ type outcome =
   // Everything that ran: the driver's state after it (the session *and* the flags, since
   // `set` changes those) and the text to show. Both come back on every line, changed or
   // not, so a loop adopts the pair rather than deciding which half moved.
-  | Ran({session: option<session>, options: Options.t, output: string})
+  | Ran({session: option<Session.t>, options: Options.t, output: string})
   // `clear`: wipe the screen, if this driver has one. Nothing else changes — which is why
   // it carries no state. A batch fold has no screen and treats it as a well-formed line
   // that prints nothing, exactly as it always did.
@@ -345,7 +326,7 @@ let consider = (
   ~options: Options.t,
   ~newSeed: unit => int=() => Game.freecellSeed,
   ~clock: unit => float=stoppedClock,
-  session: option<session>,
+  session: option<Session.t>,
   line: string,
 ): outcome => {
   let trimmed = String.trim(line)
