@@ -163,40 +163,30 @@ type msg =
 // that's filled in just after mount (see below).
 let updateSW: ref<option<bool => promise<unit>>> = ref(None)
 
-// The active scene's "New Game" action, if it has one. The mounted scene
-// publishes its re-deal here (see `gameScene` / `TableScene`), the switcher's
-// `onActivate` clears it before each scene change, and the menu's New Game
-// button runs whatever is current. Only FreeCell publishes one today, so on a
-// debug scene the button is a harmless no-op.
-let newGameHook: ref<option<unit => unit>> = ref(None)
-
-// The active scene's "Restart" action (#156), sibling of `newGameHook`: re-deals
-// the *same* seed to replay the current deal. Every card table publishes one (a
-// fixed-layout demo restarts to its own deal), the switcher's `onActivate` clears
-// it before each scene change, and the menu's Restart button runs whatever is
-// current — a no-op on a non-game scene.
-let restartHook: ref<option<unit => unit>> = ref(None)
-
-// The active card-table scene's "load state" action: a `GameState.t => unit` that
-// rebuilds the board into a forced position. Every `TableScene` publishes one on
-// mount (see `gameScene`), the switcher's `onActivate` clears it before each scene
-// change, and the debug-states menu (below) calls it after surfacing FreeCell to
-// drop the board into a named `Scenario` position.
-let loadStateHook: ref<option<GameState.t => unit>> = ref(None)
-
-// The active card-table scene's share-link hooks (`ShareLink`), siblings of
-// `loadStateHook`. `readHistoryHook` hands back the live board's saved game — its
-// undo/redo history and its play tally (#289) — so the Debug screen can encode it
-// into a link; `loadHistoryHook` is the way back in, rebuilding the board onto the
-// game a `#g=` link carried. Both are published by every `TableScene` on mount and
-// cleared on each scene change, so on a demo scene there's nothing to share and
-// nothing to restore into.
-let readHistoryHook: ref<option<unit => option<SaveState.t>>> = ref(None)
-let loadHistoryHook: ref<option<SaveState.t => unit>> = ref(None)
+// The board on screen, and everything it offers this chrome (#300): one
+// `TableScene.controls` record, handed over as the scene mounts (see `gameScene`) and
+// dropped whole on every scene change (see the switcher's `onActivate`).
+//
+// It replaced eleven module-level `ref`s — `newGameHook`, `restartHook`,
+// `loadStateHook`, `readHistoryHook`, `loadHistoryHook`, `relayoutHook`,
+// `dockFitHook`, `shakeControlHook`, `undoHook`, `consoleHook`, `loadGameHook` — and
+// the eleven-line reset that had to null each one by name when a scene changed.
+// Nothing type-checked that that list was complete, so a twelfth hook nobody
+// remembered to add to it was this chrome quietly driving a board that had been torn
+// down: a stale-closure bug the compiler couldn't see. A scene swap now replaces the
+// whole record, so there's no list left to get wrong.
+//
+// `None` means there's no board on the scene now showing — one of the debug/demo
+// scenes, or the moment between two mounts. That's what lets the menu's New Game be a
+// harmless no-op there and the console answer "no board on this scene" rather than
+// silently doing nothing.
+let liveBoard: ref<option<TableScene.controls>> = ref(None)
 
 // The live board's saved game, or `None` on a scene that has none (a demo) or
-// before a board has mounted. What the share button encodes.
-let currentHistory = () => readHistoryHook.contents->Option.flatMap(read => read())
+// before a board has mounted. What the share button encodes — its undo/redo history
+// and its play tally (#289), rebuilt into a board at the far end by
+// `controls.loadHistory`.
+let currentHistory = () => liveBoard.contents->Option.flatMap(board => board.readHistory())
 
 // Whether a `#g=` link's game has actually reached the board. It gates saving on a
 // shared open (see `gameScene`): a shared game takes over storage the moment it
@@ -207,25 +197,6 @@ let currentHistory = () => readHistoryHook.contents->Option.flatMap(read => read
 // This flag only exists because a shared open builds the board twice (#259). Close
 // that gap and the placeholder build goes with it, and so does the need for this.
 let shareLanded = ref(false)
-
-// The active board's Undo action (#85), sibling of `newGameHook`. The mounted
-// `TableScene` publishes a thunk here on every build (a re-deal republishes the
-// fresh board's), the switcher's `onActivate` clears it before each scene change,
-// and the top bar's Undo button runs whatever is current. A debug/demo scene
-// publishes none, so the button is a harmless no-op there.
-let undoHook: ref<option<unit => unit>> = ref(None)
-
-// The active board's console command runner (#273), sibling of `undoHook` and
-// published on every build for the same reason: a `Command.t => array<Render.line>` that plays one
-// parsed command against the board actually on the table. `None` on a scene with no
-// board, which is what lets the console answer "no board here" instead of silently
-// doing nothing.
-let consoleHook: ref<option<Command.t => array<Render.line>>> = ref(None)
-
-// …and the addressed re-deal behind the console's `deal <n>` (#273): open *this* game.
-// Only the re-dealable scene publishes one (the same gate as `newGameHook`), since a
-// fixed-layout demo has no deal number to name.
-let loadGameHook: ref<option<Game.t => unit>> = ref(None)
 
 // The undo availability the board reports during its *opening* mount, captured to
 // seed the model below (#177). That first report fires while the switcher mounts
@@ -314,25 +285,16 @@ DebugLog.setConsoleEnabled(debugLogEnabled)
 // `ConsoleDock.reflect` — the attribute is published only while the panel shows).
 let consoleDockMode = Preferences.loadConsoleDock()
 
-// The active board's "relayout" action (#65), sibling of `undoHook`: the mounted
-// `TableScene` publishes a thunk that re-lays every resting card, so a tilt toggle
-// can re-tilt the board in place at once. Cleared on each scene change and a no-op
-// until the next board republishes.
-let relayoutHook: ref<option<unit => unit>> = ref(None)
-
-// The live board's dock-refusal test (#275), sibling of `relayoutHook`: "could you give
-// up this many px of stage width and still deal cards above `minScale`?" (see
-// `TableScene`'s `~publishDockFit`). `None` on a scene with no board, which refuses —
-// there's nothing to dock beside. Only the side dock ever asks; the other three
-// placements cover the board rather than displacing it.
-let dockFitHook: ref<option<float => bool>> = ref(None)
-
-// Whether the console may dock right now, asked of the stage as it actually stands.
-// Read at the keypress rather than inside `update`: the answer comes off live layout,
-// and the loop's update stays a pure function of the model.
+// Whether the console may dock right now (#275), asked of the stage as it actually
+// stands: "could you give up this many px of stage width and still deal cards above
+// `minScale`?" (see `TableScene.controls.dockFit`). No board on the scene means no,
+// since there's nothing to dock beside. Read at the keypress rather than inside
+// `update`: the answer comes off live layout, and the loop's update stays a pure
+// function of the model. Only the side dock ever asks; the other three placements cover
+// the board rather than displacing it.
 let dockFits = () =>
-  switch dockFitHook.contents {
-  | Some(fits) => fits(ConsoleDock.width)
+  switch liveBoard.contents {
+  | Some(board) => board.dockFit(ConsoleDock.width)
   | None => false
   }
 
@@ -349,15 +311,10 @@ let wantsShake = Preferences.loadWantsShake()
 let wiggleInit = Motion.initialState(~wantsShake)
 Motion.current := wiggleInit
 
-// The active board's shake control (#235), sibling of `relayoutHook`: the mounted
-// `TableScene` publishes `{start, stop}` here, and Settings calls it as the switch
-// flips. Cleared on each scene change; the mounting board republishes.
-let shakeControlHook: ref<option<TableScene.shakeControl>> = ref(None)
-
 // Whether the board *should* be listening for shakes right now (#235): true once
 // Wiggle Waggle is on and permission is granted. Held outside the Elm model so a
 // scene mount — which happens through the imperative switcher — can re-apply it to
-// the freshly-published control (see `~publishShake` in `gameScene`).
+// the board that just published its controls (see `~publish` in `gameScene`).
 let shakeActive = ref(Motion.isOn(wiggleInit))
 
 let update = (msg, model) =>
@@ -518,7 +475,7 @@ let update = (msg, model) =>
       () => {
         tiltEnabled := cardTilt
         Preferences.saveCardTilt(cardTilt)
-        relayoutHook.contents->Option.forEach(relayout => relayout())
+        liveBoard.contents->Option.forEach(board => board.relayout())
       },
     )
   // Wiggle Waggle turned off (#235): stop listening and square the board back up
@@ -531,7 +488,7 @@ let update = (msg, model) =>
         shakeActive := false
         Motion.current := Motion.Off
         Preferences.saveWantsShake(false)
-        shakeControlHook.contents->Option.forEach(control => control.stop())
+        liveBoard.contents->Option.forEach(board => board.shake.stop())
       },
     )
   // A motion-permission request resolved (#235). `On` — granted or ungated: start
@@ -548,10 +505,10 @@ let update = (msg, model) =>
         | Motion.On =>
           shakeActive := true
           Preferences.saveWantsShake(true)
-          shakeControlHook.contents->Option.forEach(control => control.start())
+          liveBoard.contents->Option.forEach(board => board.shake.start())
         | Blocked =>
           shakeActive := false
-          shakeControlHook.contents->Option.forEach(control => control.stop())
+          liveBoard.contents->Option.forEach(board => board.shake.stop())
         | Unavailable(_) | Off => ()
         }
       },
@@ -656,9 +613,9 @@ let url = AppUrl.parse()
 let randomSeed = () => (Math.random() *. 1_000_000.)->Float.toInt
 
 // Only FreeCell is re-dealable: it's built from a seeded shuffle, so a new seed
-// gives a genuinely new board. The fixed-layout demos have no seed to vary, so
-// they publish no New Game action. `~publishNewGame` hands the scene's re-deal to
-// the top bar (see `newGameHook`).
+// gives a genuinely new board. The fixed-layout demos have no seed to vary, so the
+// board they publish offers no `newGame` and no `loadGame` — the scene's `~newDeal`
+// is what decides both (see `TableScene.controls`).
 let gameScene = (game: Game.t) => {
   let isFreecell = game.id == Game.freecell.id
   // A *plain* FreeCell open is the only place save-and-resume applies (#177): the
@@ -728,26 +685,15 @@ let gameScene = (game: Game.t) => {
         )
       : None,
     ~newDeal?,
-    ~publishNewGame=hook => newGameHook := Some(hook),
-    ~publishRestart=hook => restartHook := Some(hook),
-    ~publishLoadState=hook => loadStateHook := Some(hook),
-    ~publishLoadHistory=hook => loadHistoryHook := Some(hook),
-    ~publishReadHistory=hook => readHistoryHook := Some(hook),
-    ~publishUndo=hook => undoHook := Some(hook),
-    ~publishConsole=hook => consoleHook := Some(hook),
-    // `deal <n>` only means something where a number names a board, so this rides the
-    // same gate as New Game: the re-dealable (seeded) game publishes it, the
-    // fixed-layout demos don't.
-    ~publishLoadGame=?isFreecell ? Some(hook => loadGameHook := Some(hook)) : None,
-    ~publishRelayout=hook => relayoutHook := Some(hook),
-    ~publishDockFit=hook => dockFitHook := Some(hook),
-    // Adopt the board's shake control (#235) and, if Wiggle Waggle is already on,
-    // start it listening straight away — this is what re-applies an active shake to a
-    // board that mounts (or re-deals) after the switch was flipped.
-    ~publishShake=control => {
-      shakeControlHook := Some(control)
+    // Adopt the mounting board whole (#300) — its re-deals, Undo, console runner,
+    // relayout, share-link hooks and shake control, in one record that replaces
+    // whatever the outgoing scene left here. Then, if Wiggle Waggle is already on,
+    // start the new board listening straight away: this is what re-applies an active
+    // shake to a board that mounts after the switch was flipped.
+    ~publish=board => {
+      liveBoard := Some(board)
       if shakeActive.contents {
-        control.start()
+        board.shake.start()
       }
     },
     ~onHistory=canUndo => reportHistory.contents(canUndo),
@@ -834,40 +780,28 @@ let gameScene = (game: Game.t) => {
 let switcher = SceneSwitcher.render(
   ~default="freecell",
   ~forced=?url.scene,
-  // Reset the per-scene hooks before each scene mounts (the mounting scene
-  // republishes whichever apply) and close the menu after a row tap.
+  // Drop the outgoing board before each scene mounts (a mounting card table publishes
+  // its own; a demo scene publishes none, which is how the chrome knows there's nothing
+  // to drive), reset the two things the board *reports* rather than offers, and close
+  // the menu after a row tap.
   ~onActivate=_scene => {
-    newGameHook := None
-    restartHook := None
-    loadStateHook := None
-    // Drop the outgoing board's share-link hooks; a demo scene publishes none, so
-    // the Debug screen's share row correctly reports nothing to share there.
-    readHistoryHook := None
-    loadHistoryHook := None
-    relayoutHook := None
-    // …and its dock-refusal test (#275), so the console refuses to dock on a scene with
-    // no board to dock beside until the mounting one publishes its own.
-    dockFitHook := None
-    // Drop the outgoing board's shake control (#235); its teardown already detached
-    // the `devicemotion` listener. The mounting scene republishes its own, and the
-    // `~publishShake` handler re-applies `shakeActive` to it.
-    shakeControlHook := None
-    // Drop the outgoing board's undo and reset the top bar's button to disabled;
-    // the mounting scene republishes and reports its own history (#85).
-    undoHook := None
-    // …and its console hooks (#273), so a command typed on a scene with no board is
-    // told so rather than reaching the board that scene replaced.
-    consoleHook := None
-    loadGameHook := None
+    // One line, and it can't be incomplete (#300): where this used to null eleven hooks
+    // by name — and a twelfth that nobody added to the list would have gone on driving
+    // the torn-down board — the whole published surface goes at once. The outgoing
+    // board's shake subscription is already detached by its own teardown, and
+    // `~publish` re-applies `shakeActive` to whichever board mounts next.
+    liveBoard := None
+    // Reset the top bar's Undo to disabled; the mounting scene reports its own
+    // history (#85).
     reportHistory.contents(false)
     // …and clear the deal number with it (#98), so the Share buttons are dark for the
     // moment between scenes; the mounting scene reports its own (a demo reports none).
     publishDeal(None)
     closeMenu.contents()
   },
-  // A tap on the row for the game already showing: nothing mounts, so none of the
-  // per-scene hooks above may be reset — they still belong to the live board — and
-  // closing the menu is the whole response. The board carries on untouched.
+  // A tap on the row for the game already showing: nothing mounts, so nothing above
+  // may be reset — `liveBoard` still holds the board on screen — and closing the menu
+  // is the whole response. The board carries on untouched.
   ~onReselect=() => closeMenu.contents(),
   Array.concat(
     [
@@ -914,7 +848,7 @@ switch url.shared {
         // has to be told there isn't one rather than handed the last one this device
         // dealt for itself.
         SavedGame.clearSeed(Game.freecell.id)
-        loadHistoryHook.contents->Option.forEach(load => load(restored))
+        liveBoard.contents->Option.forEach(board => board.loadHistory(restored))
       | None => DebugLog.message("share link: could not decode the shared game")
       }
   )()->ignore
@@ -924,8 +858,8 @@ switch url.shared {
 // The debug "states" menu (sibling to the switcher's "Debug scenes"): one row per
 // named FreeCell position (`Scenario.scenariosFor`). Tapping a row surfaces FreeCell
 // — mounting it if a demo scene is showing — then forces that position onto the
-// board through the mounted scene's `loadStateHook`, the live in-app twin of the
-// URL's `?state=`. `ensureActive` runs first so the hook is FreeCell's, and closing
+// board through the mounted board's `loadState` (#300), the live in-app twin of the
+// URL's `?state=`. `ensureActive` runs first so the board is FreeCell's, and closing
 // the menu is explicit (a no-op if `ensureActive` already closed it on a scene
 // change).
 let debugStates = DebugStates.render(
@@ -933,7 +867,7 @@ let debugStates = DebugStates.render(
     label: scenario.label,
     onSelect: () => {
       switcher.ensureActive("freecell")
-      loadStateHook.contents->Option.forEach(load => load(scenario.build(Game.freecell)))
+      liveBoard.contents->Option.forEach(board => board.loadState(scenario.build(Game.freecell)))
       // Say which deal the board is now showing, the menu twin of the `?state=` rule
       // above (#264): a posed position offers the deal it's been shown to descend from,
       // and nothing otherwise. This runs *after* the load because the rebuild it
@@ -958,9 +892,9 @@ let openNamedDeal = (~game: Game.t, ~position: option<Scenario.named>): string =
   switcher.ensureActive(game.id)
   switch position {
   | Some(p) =>
-    switch loadStateHook.contents {
-    | Some(load) =>
-      load(p.build(game))
+    switch liveBoard.contents {
+    | Some(board) =>
+      board.loadState(p.build(game))
       // Say which deal the posed board descends from, for the same reason the menu row
       // does it (#264): the rebuild reports `None` on its way past, and leaving it there
       // would point the Share buttons at the deal the player was on a moment ago.
@@ -974,7 +908,7 @@ let openNamedDeal = (~game: Game.t, ~position: option<Scenario.named>): string =
     // `deal 1` here exactly as it does in the CLI, rather than whatever random board the
     // mount happened to invent. A fixed-layout demo has no seed and needs nothing more —
     // mounting its scene dealt it.
-    switch (game.seed, loadGameHook.contents) {
+    switch (game.seed, liveBoard.contents->Option.flatMap(board => board.loadGame)) {
     | (Some(_), Some(load)) =>
       load(game)
       ""
@@ -987,11 +921,7 @@ let view = (model, dispatch) => <>
   <main id="app">
     <TopBar
       onMenu={() => dispatch(ToggleMenu)}
-      onUndo={() =>
-        switch undoHook.contents {
-        | Some(undo) => undo()
-        | None => ()
-        }}
+      onUndo={() => liveBoard.contents->Option.forEach(board => board.undo())}
       canUndo={model.canUndo}
       updateVisible={model.updateAvailable}
     />
@@ -1034,11 +964,11 @@ let view = (model, dispatch) => <>
     }}
     onBackToSettings={() => dispatch(BackToSettings)}
     onNewGame={() => {
-      newGameHook.contents->Option.forEach(newGame => newGame())
+      liveBoard.contents->Option.forEach(board => board.newGame->Option.forEach(deal => deal()))
       dispatch(CloseMenu)
     }}
     onRestart={() => {
-      restartHook.contents->Option.forEach(restart => restart())
+      liveBoard.contents->Option.forEach(board => board.restart())
       dispatch(CloseMenu)
     }}
     shareDealSeed={model.dealSeed}
@@ -1293,7 +1223,7 @@ DebugConsole.setRunner(line => {
     // Bare `deal`/`new` is the menu's New Game, reached the same way the button reaches
     // it, so a typed one is saved and reported like any other fresh deal.
     | Command.Fresh =>
-      switch newGameHook.contents {
+      switch liveBoard.contents->Option.flatMap(board => board.newGame) {
       | Some(newGame) =>
         newGame()
         []
@@ -1302,7 +1232,7 @@ DebugConsole.setRunner(line => {
     // `deal <n>` opens a *chosen* deal number. Turning the number into a board stays out
     // here, because only the driver knows a deal number is a seeded FreeCell shuffle.
     | Command.Numbered({seed}) =>
-      switch loadGameHook.contents {
+      switch liveBoard.contents->Option.flatMap(board => board.loadGame) {
       | Some(load) =>
         load(Game.freecellDeal(~seed))
         []
@@ -1313,18 +1243,19 @@ DebugConsole.setRunner(line => {
     | Command.NoSuchScenario({game, name}) =>
       Render.text(Command.describeNoSuchScenario(~game, ~name))
     }
-  // `redeal`/`restart` is the menu's Restart button as a verb — the same hook, so it
-  // replays the deal on the table with a clean history exactly as the button does.
+  // `redeal`/`restart` is the menu's Restart button as a verb — the same action on the
+  // same record, so it replays the deal on the table with a clean history exactly as the
+  // button does.
   | Command.Redeal =>
-    switch restartHook.contents {
-    | Some(restart) =>
-      restart()
+    switch liveBoard.contents {
+    | Some(table) =>
+      table.restart()
       []
     | None => Render.text("Nothing to restart on this scene.")
     }
   | board =>
-    switch consoleHook.contents {
-    | Some(run) => run(board)
+    switch liveBoard.contents {
+    | Some(table) => table.runCommand(board)
     | None => Render.text("No board on this scene.")
     }
   }
