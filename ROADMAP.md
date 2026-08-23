@@ -34,9 +34,35 @@ Everything the project wants falls out of this one decision:
 | Decision | Choice |
 |---|---|
 | Rendering | **Plain DOM bindings** (no rescript-react). Revisit only if composition hurts. |
+| Child diffing | **Keys in the hand-rolled runtime** (#309), not Preact (#45). See below. |
 | Service worker tooling | **`vite-plugin-pwa`** — manifest, precache, build hash, and the update hook. |
 | Card rendering | **SVG** cards for full visual control. |
 | State ownership | **100% in `core`**, reduxey: immutable state + action variant + pure reducer. |
+
+### Why keys rather than Preact
+
+#45 filed the trigger for adopting Preact: *cards need keyed identity across a
+diff*, **and** we need FLIP on those same nodes, **and** the way forward
+otherwise is owning a keyed diff. #309 called the moment arrived. Weighed at
+that point, only the third condition really held:
+
+- The board never reorders a list of DOM children. Every card is appended once
+  to one flat `playfield` and then positioned by `style.left/top` with a
+  `zIndex` — a card moving cascade 3 → cascade 5 changes two numbers, not the
+  tree. `TableScene` is deliberately outside the `Html` loop for that reason.
+- FLIP is already covered. The board measures and animates itself through the
+  Web Animations API, which is the half of the trigger a library would have
+  supplied.
+- Keys came to ~60 lines against a runtime we already own, and are unit-tested
+  in isolation (`Html_test.res`). The zero-dependency story stays intact for an
+  offline-first PWA, and `Html.node` — the escape hatch several modules use to
+  own their own subtrees — has no Preact equivalent, so adopting would have
+  been a migration, not a swap.
+
+So the trigger did not fire, exactly as #45 allowed for. **Revisit if piles come
+to own their cards as DOM children** (nesting, clipping, per-pile transforms),
+or if #308 lands on wanting hooks-style local state throughout — either makes
+the runtime's growth curve steeper than a dependency.
 
 ## How to read this
 
