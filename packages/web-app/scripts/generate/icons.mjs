@@ -24,11 +24,17 @@ import { writeFileSync, mkdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
-// The compiled ReScript art. `mise run icons` depends on `build`, so these
-// `.res.mjs` siblings exist by the time this runs.
-import { standardSvg, maskableSvg, fullBleedSvg } from "../../src/IconArt.res.mjs";
+import { loadJsxModule } from "../lib/load-jsx-module.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
+
+// The compiled ReScript art. `mise run icons` depends on `build`, so these
+// `.res.mjs` siblings exist by the time this runs — but they carry JSX now
+// (`"preserve": true`, see src/Html.res), which bare Node can't parse, so the
+// module comes through esbuild rather than through a plain `import`.
+const { standardSvg, maskableSvg, fullBleedSvg } = await loadJsxModule(
+  join(HERE, "..", "..", "src", "IconArt.res.mjs"),
+);
 const OUT_DIR = join(HERE, "..", "..", "public");
 
 // The exact fonts the app ships, vendored by `mise run fonts` (issue #114): the

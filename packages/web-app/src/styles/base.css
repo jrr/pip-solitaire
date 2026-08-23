@@ -64,3 +64,16 @@ body {
 /* The Elm loop's mount root (src/Main.res). `display: contents` removes it
    from layout so #app stays a direct flex child of <body>, exactly as when
    the chrome was built imperatively. */
+
+/* Splice hosts (`Html.node`). Preact has no vnode that *is* a live DOM node, so
+   a subtree the app owns imperatively — the scene container, the debug
+   console's scrollback, a rasterized card — is appended into a host element
+   through a callback ref. `display: contents` keeps that host out of layout, so
+   the spliced node lays out exactly where it did when the old runtime spliced it
+   in with no wrapper at all. It is still an extra element in the *tree*, which
+   is why a `.parent > .child` rule across a splice has to become a descendant
+   selector (see `RasterScene.css`). */
+.raw-host {
+  display: contents;
+}
+

@@ -8,6 +8,14 @@ import { defineConfig } from "vitest/config"
 // the `jsdom` environment provides `document`, `createElementNS`, namespaces and
 // attribute reflection.
 export default defineConfig({
+  // The compiled output carries JSX under `"preserve": true` (see rescript.json
+  // and vite.config.js); the test run needs the same lowering the app build gets.
+  esbuild: {
+    include: [/\.res\.mjs$/, /\.[jt]sx?$/],
+    loader: "jsx",
+    jsx: "automatic",
+    jsxImportSource: "preact",
+  },
   test: {
     environment: "jsdom",
     include: ["src/**/*_test.res.mjs"],

@@ -94,12 +94,14 @@ describe("MenuHeader (#307)", () => {
     settings->find(".menu-title")->Option.forEach(click)
     expect(taps.contents)->toBe(2)
 
-    // …and the identical title on the other screens is inert. Asserted at the node
-    // rather than by counting nothing: `Html` stashes the current handler *on the
-    // element* and re-applies it on every patch, so "no handler stashed" is precisely
-    // what makes a reused <h1> stop counting when the player leaves Settings.
+    // …and the identical title on the other screens is inert. This used to be
+    // asserted at the node — the old hand-rolled runtime stashed the current
+    // handler *on the element*, so `Html.getClick` could be read back. Preact
+    // attaches a real listener instead and there is nothing to read, so the
+    // assertion is now what it always meant: tapping the other screen's title
+    // counts nothing.
     let main = render(~title="Pip")
-    expect(main->find(".menu-title")->Option.flatMap(Html.getClick)->Option.isSome)->toBe(false)
-    expect(settings->find(".menu-title")->Option.flatMap(Html.getClick)->Option.isSome)->toBe(true)
+    main->find(".menu-title")->Option.forEach(click)
+    expect(taps.contents)->toBe(2)
   })
 })

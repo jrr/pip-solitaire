@@ -225,7 +225,7 @@ let markup = (~fontCss, ~pxWidth, ~pxHeight, ~columns, cards) => {
         ),
       ]}
     >
-      <style> {Html.string(fontCss)} </style>
+      <style dangerouslySetInnerHTML={{"__html": fontCss}} />
       {cards
       ->Array.mapWithIndex((card, index) => {
         let x = Int.toFloat(mod(index, columns)) *. CardArt.boxW

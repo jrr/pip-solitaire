@@ -8,7 +8,7 @@ The directories split by **purpose**, not by mechanism:
 
 | dir | what's in it |
 | --- | --- |
-| `lib/` | shared machinery, imported by the rest (and by `playwright.config.mjs` / the browser tests) |
+| `lib/` | shared machinery, imported by the rest (and by `playwright.config.mjs` / the browser tests) — including `load-jsx-module.mjs`, which is how a Node script imports compiled ReScript that carries JSX |
 | `generate/` | asset generators — they write committed files into `public/` or `src/` |
 | `screenshots/` | the screenshot report: rendering it, and the two pieces that publish it |
 | `autoplay/` | playing the game: read the board off the page, plan, and drag the moves |

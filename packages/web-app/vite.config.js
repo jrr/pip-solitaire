@@ -42,6 +42,17 @@ const isPreview = process.env.PIP_PREVIEW === "1";
 //   - Icon `src`s are relative and resolve next to the manifest.
 export default defineConfig({
   base: "./",
+  // SPIKE (Preact): ReScript compiles with `"jsx": {"preserve": true}`, so the
+  // emitted `.res.mjs` files contain real JSX rather than calls into a runtime
+  // we wrote. Vite's esbuild pass is what lowers it — `.res.mjs` isn't a JSX
+  // extension, so both the `jsx` loader and the file filter are explicit.
+  // Vitest reads the same block from its own config.
+  esbuild: {
+    include: [/\.res\.mjs$/, /\.[jt]sx?$/],
+    loader: "jsx",
+    jsx: "automatic",
+    jsxImportSource: "preact",
+  },
   // Expose the build version to the app as compile-time constants. Vite
   // string-replaces these identifiers; the ReScript entry reads them through
   // `@val external` bindings (see src/Main.res).
