@@ -13,6 +13,10 @@
 //   <div>{a}{b}</div>         →  Elements.jsxs("div", {children:?Some(array([a, b]))})
 //   <Comp prop=.. />          →  jsx(Comp.make, {prop:..})
 //   <>{a}{b}</>               →  jsxs(jsxFragment, {children:?Some(array([a, b]))})
+//   <div key=.. />            →  Elements.jsxKeyed("div", {..}, key, ())
+//   <Comp key=.. />           →  jsxKeyed(Comp.make, {..}, key, ())
+// — `key` is lifted out of the props record and passed on its own, so it is a
+// property of the vnode rather than of the element (see `vnode` below).
 
 type element // a real DOM Node
 type domEvent
@@ -30,6 +34,11 @@ let svgNamespace = "http://www.w3.org/2000/svg"
 @val @scope("document") external fragment: unit => element = "createDocumentFragment"
 @send external appendChild: (element, element) => element = "appendChild"
 @send external removeChild: (element, element) => element = "removeChild"
+// `before` is nullable on purpose: `insertBefore(node, null)` appends, so one
+// call covers both "move this node to position i" and "put it on the end".
+@send
+external insertBefore: (element, ~newNode: element, ~before: Nullable.t<element>) => element =
+  "insertBefore"
 @send
 external replaceChild: (element, ~newNode: element, ~oldNode: element) => element = "replaceChild"
 @send external setAttribute: (element, string, string) => unit = "setAttribute"
@@ -37,8 +46,9 @@ external replaceChild: (element, ~newNode: element, ~oldNode: element) => elemen
 @set external setTextContent: (element, string) => unit = "textContent"
 @send external addEventListener: (element, string, domEvent => unit) => unit = "addEventListener"
 @get external childNodes: element => nodeList = "childNodes"
-@send external nodeAt: (nodeList, int) => element = "item"
-@get external lastChild: element => Nullable.t<element> = "lastChild"
+// `item(i)` is null past the end of the list, which the placement pass below
+// relies on to mean "append".
+@send external nodeAt: (nodeList, int) => Nullable.t<element> = "item"
 
 // The current click handler is stashed on the node itself, so one stable
 // listener can forward to it. Patching then swaps the handler by re-stashing —
@@ -80,8 +90,12 @@ let on = (target, ~name, handler) =>
   addCustomListener(target, name, event => handler(eventDetail(event)))
 
 // --- Virtual nodes -----------------------------------------------------------
+// `key` is not a prop: ReScript's JSX transform lifts `key=` out of the props
+// record and passes it as its own argument (to `jsxKeyed` rather than `jsx`),
+// so it lives on the vnode itself. It identifies a child *across* a re-render,
+// which is what lets `patchChildren` move a node instead of rebuilding it.
 type rec vnode =
-  | VNode({tag: string, props: elementProps, children: array<vnode>})
+  | VNode({tag: string, key: option<string>, props: elementProps, children: array<vnode>})
   | VText(string)
   | VGroup(array<vnode>) // sibling group from `array`; flattened when materialised
   | VRaw(element) // an externally-owned real DOM node, spliced in untouched
@@ -113,12 +127,28 @@ let node = el => VRaw(el)
 let jsx = (component, props) => component(props)
 let jsxs = jsx
 
+// Attach a key to whatever a component rendered. A component is a plain
+// function, so `<Card key=.. />` can only be keyed through its result: the key
+// lands on the single element it returns. A component that renders text or a
+// group has no one node to identify, so the key is dropped — key such a
+// component's wrapper element instead.
+let withKey = (key, vnode) =>
+  switch (key, vnode) {
+  | (Some(_), VNode({tag, props, children, _})) => VNode({tag, key, props, children})
+  | (_, v) => v
+  }
+
+// <Component key=.. /> → jsxKeyed(Component.make, props, key, ()).
+let jsxKeyed = (component, props, ~key=?, ()) => withKey(key, component(props))
+let jsxsKeyed = jsxKeyed
+
 // Fragments (<>…</>): a component whose only prop is its already-combined children.
 type fragmentProps = {children?: vnode}
 let jsxFragment = (props: fragmentProps) => props.children->Option.getOr(VGroup([]))
 
 // Expand VGroups so a node's children are a flat list of VNode/VText, each of
-// which maps to exactly one real DOM node (keeps the positional diff simple).
+// which maps to exactly one real DOM node — which is what lets `patchChildren`
+// line children up with DOM nodes one for one, by key or by position.
 let childrenOf = (c: option<vnode>): array<vnode> => {
   let acc = []
   let rec go = n =>
@@ -137,9 +167,30 @@ module Elements = {
   // The transform wraps a single child through `someElement`; after `array`
   // combining, children is one vnode, so jsx and jsxs share a builder.
   let someElement = x => Some(x)
-  let jsx = (tag: string, props: props) => VNode({tag, props, children: childrenOf(props.children)})
+  let jsx = (tag: string, props: props) => VNode({
+    tag,
+    key: None,
+    props,
+    children: childrenOf(props.children),
+  })
   let jsxs = jsx
+  // <div key=.. /> → jsxKeyed("div", props, key, ()): the transform hands the
+  // key over separately rather than leaving it in the props record.
+  let jsxKeyed = (tag: string, props: props, ~key=?, ()) => VNode({
+    tag,
+    key,
+    props,
+    children: childrenOf(props.children),
+  })
+  let jsxsKeyed = jsxKeyed
 }
+
+// The key a child was rendered with, if any. Only elements can carry one.
+let keyOf = vnode =>
+  switch vnode {
+  | VNode({key, _}) => key
+  | _ => None
+  }
 
 // --- Reconciler --------------------------------------------------------------
 // Set/clear the flat attributes an elementProps can carry, idempotently — the
@@ -189,7 +240,7 @@ let rec create = (~inSvg=false, vnode) =>
     let frag = fragment()
     xs->Array.forEach(x => appendChild(frag, create(~inSvg, x))->ignore)
     frag
-  | VNode({tag, props, children}) =>
+  | VNode({tag, props, children, _}) =>
     let inSvg = inSvg || tag == "svg"
     let el = inSvg ? makeNS(svgNamespace, tag) : make(tag)
     applyProps(el, props)
@@ -204,47 +255,119 @@ let rec create = (~inSvg=false, vnode) =>
     el
   }
 
-// Patch one DOM node to match `newV`, given the `oldV` it currently reflects.
+// Patch one DOM node to match `newV`, given the `oldV` it currently reflects,
+// and answer with the node that now stands for `newV` — the same node when it
+// was reused, a fresh one when the shapes were too different and it had to be
+// replaced. `patchChildren` needs that answer to place the node afterwards.
 // `inSvg` is threaded so a wholesale replacement rebuilds in the right namespace.
-let rec patch = (~inSvg=false, parent, dom, oldV, newV) =>
+let rec patchInto = (~inSvg=false, parent, dom, oldV, newV) =>
   switch (oldV, newV) {
   | (VText(a), VText(b)) =>
     if a != b {
       setTextContent(dom, b)
     }
+    dom
   | (VNode({tag: t1, children: oldKids, _}), VNode({tag: t2, props, children: newKids, _}))
     if t1 == t2 =>
     // Same tag → reuse this node: just update its attributes and its children.
     applyProps(dom, props)
     patchChildren(~inSvg=inSvg || t1 == "svg", dom, oldKids, newKids)
-  | (VRaw(a), VRaw(b)) if a === b => () // same externally-owned node → leave it be
-  | (_, _) => replaceChild(parent, ~newNode=create(~inSvg, newV), ~oldNode=dom)->ignore
+    dom
+  | (VRaw(a), VRaw(b)) if a === b => dom // same externally-owned node → leave it be
+  | (_, _) =>
+    let fresh = create(~inSvg, newV)
+    replaceChild(parent, ~newNode=fresh, ~oldNode=dom)->ignore
+    fresh
   }
-// Positional diff of a parent's children: patch the overlap, then append or
-// trim the tail. No keys yet — fine for fixed structure; add keys when a list
-// can reorder.
+
+// Patch one DOM node in place, for callers that don't care which node came out.
+and patch = (~inSvg=false, parent, dom, oldV, newV) =>
+  patchInto(~inSvg, parent, dom, oldV, newV)->ignore
+// Diff a parent's children. Each new child is *matched* to an old one, then
+// patched onto that old child's DOM node, and finally the surviving nodes are
+// put in the order the new list asks for.
+//
+// Matching is by key where there is one: a child rendered with `key="4S"` is
+// matched to last render's `key="4S"` wherever it sat, so a list that reorders
+// moves its nodes rather than rebuilding them. That matters because a rebuilt
+// node is a *different* node — it loses any running CSS transition or WAAPI
+// animation, its scroll position, and focus.
+//
+// A child with no key falls back to position, taking the next unkeyed old child
+// in order. With nothing keyed that is exactly the positional diff this started
+// as (child i matches old child i, the tail is appended or trimmed), so fixed
+// structure keeps behaving as it always did and a list only pays for keys when
+// it uses them. Mixing the two in one list is well defined for the same reason:
+// the keyed children find each other by name, the rest line up by position.
+//
+// Sizes here are a card table's, not a feed's — a few dozen children — so the
+// placement pass reads the live child list per slot rather than keeping an
+// index of its own.
 and patchChildren = (~inSvg=false, parent, oldKids, newKids) => {
   let oldLen = Array.length(oldKids)
-  let newLen = Array.length(newKids)
-  let shared = oldLen < newLen ? oldLen : newLen
-  for i in 0 to shared - 1 {
-    patch(
-      ~inSvg,
-      parent,
-      nodeAt(childNodes(parent), i),
-      oldKids->Array.getUnsafe(i),
-      newKids->Array.getUnsafe(i),
-    )
-  }
-  for i in oldLen to newLen - 1 {
-    appendChild(parent, create(~inSvg, newKids->Array.getUnsafe(i)))->ignore
-  }
-  for _ in 1 to oldLen - newLen {
-    switch lastChild(parent)->Nullable.toOption {
-    | Some(n) => removeChild(parent, n)->ignore
-    | None => ()
+  // The DOM nodes currently standing for `oldKids`, snapshotted: `childNodes` is
+  // live, and the passes below move nodes about.
+  let oldDoms = Array.fromInitializer(~length=oldLen, i =>
+    nodeAt(childNodes(parent), i)->Nullable.toOption
+  )
+
+  // Where each key sat last time, and — for the children that had no key — the
+  // old positions still up for grabs, oldest first.
+  let byKey = Map.make()
+  let unkeyed = []
+  oldKids->Array.forEachWithIndex((v, i) =>
+    switch keyOf(v) {
+    | Some(k) => byKey->Map.set(k, i)
+    | None => unkeyed->Array.push(i)
     }
-  }
+  )
+  let taken = Array.make(~length=oldLen, false)
+  let nextUnkeyed = ref(0)
+
+  // The old child this new one continues, if any.
+  let matchFor = newV =>
+    switch keyOf(newV) {
+    | Some(k) => byKey->Map.get(k)
+    | None =>
+      let i = unkeyed->Array.get(nextUnkeyed.contents)
+      nextUnkeyed := nextUnkeyed.contents + 1
+      i
+    }
+
+  // Patch each new child onto its match (or build it fresh), collecting the
+  // nodes in new-list order. Nothing is removed or moved yet, so a replacement
+  // inside `patchInto` still finds the node it is replacing where it left it.
+  let newDoms = newKids->Array.map(newV =>
+    switch matchFor(newV) {
+    | Some(i) if !(taken->Array.getUnsafe(i)) =>
+      taken->Array.setUnsafe(i, true)
+      switch oldDoms->Array.getUnsafe(i) {
+      | Some(dom) => patchInto(~inSvg, parent, dom, oldKids->Array.getUnsafe(i), newV)
+      | None => create(~inSvg, newV)
+      }
+    | _ => create(~inSvg, newV)
+    }
+  )
+
+  // Whatever no new child claimed is gone from the view: drop it. (A node that
+  // `patchInto` replaced was taken, so it is never removed twice.)
+  oldDoms->Array.forEachWithIndex((dom, i) =>
+    switch dom {
+    | Some(n) if !(taken->Array.getUnsafe(i)) => removeChild(parent, n)->ignore
+    | _ => ()
+    }
+  )
+
+  // Put the survivors in order. `insertBefore` *moves* a node that is already
+  // in this parent, which is what keeps identity across a reorder; past the end
+  // of the list the reference node is null and it appends instead.
+  newDoms->Array.forEachWithIndex((dom, i) => {
+    let atSlot = nodeAt(childNodes(parent), i)
+    switch atSlot->Nullable.toOption {
+    | Some(here) if here === dom => ()
+    | _ => insertBefore(parent, ~newNode=dom, ~before=atSlot)->ignore
+    }
+  })
 }
 
 // --- A minimal Elm-style loop ------------------------------------------------

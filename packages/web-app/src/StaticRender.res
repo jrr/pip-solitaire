@@ -43,7 +43,7 @@ let rec toString = (vnode: Html.vnode) =>
   | VText(s) => escapeText(s)
   | VGroup(xs) => xs->Array.map(toString)->Array.join("")
   | VRaw(_) => ""
-  | VNode({tag, props, children}) =>
+  | VNode({tag, props, children, _}) =>
     let attrs = attrsString(props)
     let inner = children->Array.map(toString)->Array.join("")
     inner == "" ? `<${tag}${attrs}/>` : `<${tag}${attrs}>${inner}</${tag}>`
