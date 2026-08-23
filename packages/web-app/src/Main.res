@@ -75,28 +75,21 @@ type model = {
   // hand rather than an automatic breakpoint has to stay flipped — and it mirrors the
   // `Preferences` value like `debugLog` does.
   consoleDock: ConsoleDock.t,
-  autoCollect: bool,
-  cardTilt: bool,
-  // "Wiggle Waggle" (#235): the shake-to-jostle switch, a state machine rather than a
-  // bool. `Motion.state` carries whether we're off/listening/blocked/unavailable, which
-  // drives both the switch position and its problem-only subtitle. Settings owns the
-  // motion grant; the board only listens when this is `On`.
-  wiggle: Motion.state,
-  // "Display content around screen notch" (#204): on (default) lets the landscape
-  // rail ride out into the corner wings beside the notch; off clamps every control
-  // inside the safe area. Presentation-only chrome, so it mirrors a `Preferences`
-  // flag (like `cardTilt`) rather than a driver `Options` field.
-  notchDisplay: bool,
+  // The Settings screen's own model, embedded whole (#308). Auto-collect, the card
+  // tilt, Wiggle Waggle, notch display and the hidden-options tap count all live in
+  // there now, along with the `update` that flips them — this file names the screen,
+  // not its switches, and nothing here reads a field of it except the wiring below
+  // that has to open the board's shake subscription in the same state the switch
+  // does. See `MenuSettingsScreen`, and the "Component state" decision in the
+  // ROADMAP for why this one screen composes a child loop while the rest of
+  // `components/` stays a pure `props => vnode`.
+  settings: MenuSettingsScreen.model,
   cutoutDebug: bool,
   // "Console logging" (#213): the Debug screen's switch for narrating every UI↔Core
   // interaction to the JS console. Mirrors the persisted `Preferences` flag (like
   // `cutoutDebug`) so the switch opens in the right position; the logging itself is
   // driven by the shared `DebugLog.enabled` gate the toggle flips.
   debugLog: bool,
-  // The hidden settings and the run of taps that reveals them (`HiddenOptions`).
-  // `revealed` is persisted; the tap count is session state, cleared on the way out
-  // of the Settings screen so a half-finished run can't be resumed later.
-  hidden: HiddenOptions.t,
   canUndo: bool,
   // The adaptive Settings refresh control (#112). `refreshMode` is `None` until
   // `Refresh.detect` resolves (and stays effectively hidden on an unsupported
@@ -141,14 +134,13 @@ type msg =
   | BackToMenu // the Settings screen's back button — swap back to the main menu (#191)
   | OpenDebug // the Settings screen's Debug row — swap to the Debug screen
   | BackToSettings // the Debug screen's back button — swap back to Settings
-  | ToggleAutoCollect // the menu's Auto-collect switch (#139)
-  | ToggleCardTilt // the menu's hand-placed-tilt switch (#65)
-  | WiggleOff // the Wiggle Waggle switch turned off (#235) — stop listening, square up
-  | WiggleResolved(Motion.state) // a motion-permission request resolved to a new state (#235)
-  | ToggleNotchDisplay // the menu's "Display content around screen notch" switch (#204)
+  // Everything the Settings screen does, in one constructor (#308): six switches
+  // that used to be six messages here, each with its own model field and its own
+  // branch below. The screen's `update` handles them; this file only maps them in
+  // and threads the effect back out (see the `SettingsMsg` branches).
+  | SettingsMsg(MenuSettingsScreen.msg)
   | ToggleCutoutDebug // the menu's safe-area overlay switch (debug)
   | ToggleDebugLog // the Debug screen's console-logging switch (#213)
-  | SettingsTitleTapped // a tap on the Settings screen's title — ten reveal the hidden settings
   | HistoryChanged(bool) // whether the board can undo after a move (#85)
   | RefreshDetected(Refresh.mode) // service-worker presence detected — sets the button's shape (#112)
   | RefreshStarted // the refresh button was tapped — start spinning the button (#112/#201)
@@ -265,12 +257,6 @@ let options: ref<Options.t> = ref(Preferences.load())
 // its next relayout, and the model's mirror keeps the switch in sync.
 let tiltEnabled: ref<bool> = ref(Preferences.loadCardTilt())
 
-// The persisted "Display content around screen notch" preference (#204, defaults
-// on). Presentation-only and read entirely by the CSS via the document-root
-// attribute (see `NotchDisplay`), so unlike `tiltEnabled` the board never reads it
-// — a plain value seeds the model's mirror and the startup attribute apply below.
-let notchDisplayEnabled = Preferences.loadNotchDisplay()
-
 // The persisted "Console logging" preference (#213, defaults off). Read once at
 // startup to seed both the model's toggle and the shared `DebugLog` gate, and the gate
 // is opened straight away — before the first board is built below — so a developer who
@@ -298,24 +284,43 @@ let dockFits = () =>
   | None => false
   }
 
-// The persisted Wiggle Waggle *intent* (#235), read once at startup. It's intent, not
-// permission — the OS can revoke the grant behind us — so on relaunch the first board
-// tap re-asks `Motion.requestAccess` (silent if still granted; see the wiring at the
-// foot of the file) and the switch reflects whatever it finds.
-let wantsShake = Preferences.loadWantsShake()
-
-// The switch state the app opens in: `Unavailable(reason)` on a device/origin that
-// can't do motion, else the saved intent (`On`/`Off`). Never prompts — the real grant
-// is deferred to a user gesture. Also seeds `Motion.current`, the shared state the
-// debug Motion scene reads (it no longer owns a "Request permission" button).
-let wiggleInit = Motion.initialState(~wantsShake)
-Motion.current := wiggleInit
+// The Settings screen's opening state (#308), read from storage by the screen itself
+// — this file no longer names the preferences behind those switches. Held here as a
+// value because two of them are needed before the loop is mounted: the switch state
+// seeds `Motion.current` and the board's shake subscription below, and the notch flag
+// seeds the document-root attribute (see the startup apply further down).
+//
+// `wiggle` is the state the switch opens in (#235): `Unavailable(reason)` on a
+// device/origin that can't do motion, else the saved *intent* (`On`/`Off`). It's
+// intent, not permission — the OS can revoke the grant behind us — so nothing prompts
+// here; on relaunch the first board tap re-asks `Motion.requestAccess` (silent if
+// still granted; see the wiring at the foot of the file) and the switch reflects
+// whatever it finds. `Motion.current` is the shared state the debug Motion scene
+// reads (it no longer owns a "Request permission" button).
+let settingsInit = MenuSettingsScreen.init()
+Motion.current := settingsInit.wiggle
 
 // Whether the board *should* be listening for shakes right now (#235): true once
 // Wiggle Waggle is on and permission is granted. Held outside the Elm model so a
 // scene mount — which happens through the imperative switcher — can re-apply it to
 // the board that just published its controls (see `~publish` in `gameScene`).
-let shakeActive = ref(Motion.isOn(wiggleInit))
+let shakeActive = ref(Motion.isOn(settingsInit.wiggle))
+
+// The chrome capabilities the Settings screen's effects reach through (#308). Its
+// switches persist themselves and publish their own shared state; what they can't do
+// from inside a component is touch the live refs the board reads or the board itself,
+// so those four handles are handed over here. It's a fixed list of things only this
+// file has — not a field per switch — which is what keeps it from being the prop
+// drilling the child loop replaced. See `MenuSettingsScreen.env`.
+let settingsEnv: MenuSettingsScreen.env = {
+  setAutoCollect: on => options := {...options.contents, autoCollect: on},
+  setCardTilt: on => tiltEnabled := on,
+  relayout: () => liveBoard.contents->Option.forEach(board => board.relayout()),
+  setShake: on => {
+    shakeActive := on
+    liveBoard.contents->Option.forEach(board => on ? board.shake.start() : board.shake.stop())
+  },
+}
 
 let update = (msg, model) =>
   switch msg {
@@ -323,8 +328,10 @@ let update = (msg, model) =>
   // Opening or closing the menu resets it to the main screen, so a visit to
   // Settings never lingers into the next open (#191).
   // Every screen change also abandons a part-finished run of reveal taps
-  // (`HiddenOptions.reset`), here and in the five branches below: the counter only
-  // ever spans one uninterrupted visit to the Settings screen.
+  // (`MenuSettingsScreen.forgetTaps`), here and in the five branches below: the
+  // counter only ever spans one uninterrupted visit to the Settings screen. It's a
+  // plain function on the child's model rather than a message, because the end of a
+  // visit is something *this* file knows and that screen doesn't.
   // Opening the menu also puts an *overlapping* debug console away (#271): the menu is
   // the modal chrome and takes the screen for itself, and the console's twin rule below
   // closes the menu on the way in. A **side-docked** console is exempt (#275) — it's
@@ -340,7 +347,7 @@ let update = (msg, model) =>
         menuOpen,
         menuScreen: Menu.Main,
         refreshBusy: false,
-        hidden: HiddenOptions.reset(model.hidden),
+        settings: MenuSettingsScreen.forgetTaps(model.settings),
         consoleOpen: putConsoleAway ? false : model.consoleOpen,
       },
       putConsoleAway
@@ -416,7 +423,7 @@ let update = (msg, model) =>
             menuOpen: false,
             menuScreen: Menu.Main,
             refreshBusy: false,
-            hidden: HiddenOptions.reset(model.hidden),
+            settings: MenuSettingsScreen.forgetTaps(model.settings),
           },
           Html.noEffect,
         )
@@ -428,12 +435,12 @@ let update = (msg, model) =>
         ...model,
         menuScreen: Menu.Settings,
         refreshBusy: false,
-        hidden: HiddenOptions.reset(model.hidden),
+        settings: MenuSettingsScreen.forgetTaps(model.settings),
       },
       Html.noEffect,
     )
   | BackToMenu => (
-      {...model, menuScreen: Menu.Main, hidden: HiddenOptions.reset(model.hidden)},
+      {...model, menuScreen: Menu.Main, settings: MenuSettingsScreen.forgetTaps(model.settings)},
       Html.noEffect,
     )
   // Opening the Debug screen clears the previous visit's share link rather than
@@ -444,86 +451,19 @@ let update = (msg, model) =>
       {
         ...model,
         menuScreen: Menu.Debug,
-        hidden: HiddenOptions.reset(model.hidden),
+        settings: MenuSettingsScreen.forgetTaps(model.settings),
         shareUrl: None,
         shareStatus: None,
       },
       Html.noEffect,
     )
   | BackToSettings => (
-      {...model, menuScreen: Menu.Settings, hidden: HiddenOptions.reset(model.hidden)},
+      {
+        ...model,
+        menuScreen: Menu.Settings,
+        settings: MenuSettingsScreen.forgetTaps(model.settings),
+      },
       Html.noEffect,
-    )
-  | ToggleAutoCollect =>
-    let autoCollect = !model.autoCollect
-    (
-      {...model, autoCollect},
-      // Push the flip into the shared preference ref the board reads, and persist
-      // it so the choice survives a reload. Both run as the post-update effect.
-      () => {
-        options := {...options.contents, autoCollect}
-        Preferences.save(options.contents)
-      },
-    )
-  | ToggleCardTilt =>
-    let cardTilt = !model.cardTilt
-    (
-      {...model, cardTilt},
-      // Flip the shared preference ref the board reads, persist it, and ask the
-      // board to relayout so the tilt appears (or clears) immediately, not just on
-      // the next move. All three run as the post-update effect.
-      () => {
-        tiltEnabled := cardTilt
-        Preferences.saveCardTilt(cardTilt)
-        liveBoard.contents->Option.forEach(board => board.relayout())
-      },
-    )
-  // Wiggle Waggle turned off (#235): stop listening and square the board back up
-  // (the board's `stop` does both), persist the flipped-off intent, and drop the
-  // shared state to `Off`. Snapping the mess back is the deliberate way out — a
-  // hidden square-up gesture can't be the only one (#236).
-  | WiggleOff => (
-      {...model, wiggle: Motion.Off},
-      () => {
-        shakeActive := false
-        Motion.current := Motion.Off
-        Preferences.saveWantsShake(false)
-        liveBoard.contents->Option.forEach(board => board.shake.stop())
-      },
-    )
-  // A motion-permission request resolved (#235). `On` — granted or ungated: start
-  // listening and persist the intent so the next launch resumes. `Blocked` — the OS
-  // refused: the switch snaps back to off (its subtitle explains why) and we stop;
-  // crucially we *don't* persist a false intent, so a grant revoked behind us (the
-  // saved intent still `true`) keeps re-asking on future launches rather than giving
-  // up. `Unavailable`/`Off` just reflect the state.
-  | WiggleResolved(state) => (
-      {...model, wiggle: state},
-      () => {
-        Motion.current := state
-        switch state {
-        | Motion.On =>
-          shakeActive := true
-          Preferences.saveWantsShake(true)
-          liveBoard.contents->Option.forEach(board => board.shake.start())
-        | Blocked =>
-          shakeActive := false
-          liveBoard.contents->Option.forEach(board => board.shake.stop())
-        | Unavailable(_) | Off => ()
-        }
-      },
-    )
-  | ToggleNotchDisplay =>
-    let notchDisplay = !model.notchDisplay
-    (
-      {...model, notchDisplay},
-      // Reflect the flip onto the document root so the CSS wing-placement rules
-      // switch off/on at once, and persist it so the choice survives a reload. Both
-      // run as the post-update effect.
-      () => {
-        NotchDisplay.setEnabled(notchDisplay)
-        Preferences.saveNotchDisplay(notchDisplay)
-      },
     )
   | ToggleCutoutDebug =>
     let cutoutDebug = !model.cutoutDebug
@@ -546,27 +486,26 @@ let update = (msg, model) =>
         Preferences.saveDebugLog(debugLog)
       },
     )
-  // A tap on the Settings screen's title (`HiddenOptions`): every tenth flips the
-  // settings that aren't ready to be found yet into or out of view, and persists that
-  // so the gesture is performed once per device rather than once per launch. Hiding
-  // them again leaves whatever they switched on running — see `HiddenOptions` for why
-  // that's deliberate, and what it costs.
+  // Everything the Settings screen owns (#308), in two branches where there were six.
   //
-  // The screen guard is the other half of "only Settings unlocks": the same green
-  // `menu-title` heads all three screens, and while the view only wires the handler
-  // onto Settings' copy, this makes the invariant explicit rather than resting on the
-  // reconciler clearing a reused node's click handler.
-  | SettingsTitleTapped if model.menuScreen != Menu.Settings => (model, Html.noEffect)
-  | SettingsTitleTapped =>
-    let hidden = HiddenOptions.tap(model.hidden)
-    (
-      {...model, hidden},
-      // Only the tap that actually flipped the reveal is worth persisting; the other
-      // nine in a run just move the counter.
-      HiddenOptions.revealChanged(~before=model.hidden, ~after=hidden)
-        ? () => Preferences.saveRevealHidden(hidden.revealed)
-        : Html.noEffect,
+  // The guard is the other half of "only Settings unlocks" (`HiddenOptions`): the
+  // same green `menu-title` heads all three screens, and while the view only wires
+  // the handler onto Settings' copy, dropping a tap that arrives on another screen
+  // makes the invariant explicit rather than resting on the reconciler clearing a
+  // reused node's click handler. It lives here rather than in the screen because
+  // *which* screen is showing is this model's fact, not that one's.
+  | SettingsMsg(MenuSettingsScreen.TitleTapped) if model.menuScreen != Menu.Settings => (
+      model,
+      Html.noEffect,
     )
+  // Otherwise: hand the message to the screen's own `update`, put the model it
+  // returns back in its field, and pass its effect straight out to the loop — so an
+  // effect raised in there runs exactly when one raised here would. A child model
+  // that came back physically unchanged leaves the parent's alone too, keeping the
+  // loop's skip-the-render check (see `Html.mount`) working through the boundary.
+  | SettingsMsg(sub) =>
+    let (settings, effect) = MenuSettingsScreen.update(~env=settingsEnv, sub, model.settings)
+    settings === model.settings ? (model, effect) : ({...model, settings}, effect)
   | Reload => (
       model, // no state change — just run the effect
       () =>
@@ -934,134 +873,131 @@ let view = (model, dispatch) => <>
   // arrangement as the scene container above, and for the same reason (the reconciler
   // leaves a spliced node alone, so a growing log never re-patches its lines).
   <DebugConsole open_={model.consoleOpen} body={DebugConsole.lines} />
+  // One field per screen (#308), each carrying that screen's own props record whole:
+  // `Menu` hands them straight to the component that owns them and never names a
+  // field inside. The Settings screen's record is two entries wide because it holds
+  // its own state — its model, and the conduit its messages come back through.
   <Menu
     open_={model.menuOpen}
     screen={model.menuScreen}
     onClose={() => dispatch(CloseMenu)}
-    onOpenSettings={() => {
-      // Re-detect the service-worker state each time Settings opens, so the button
-      // reflects a worker that registered (or self-destructed) since page load.
-      Refresh.detect(mode => dispatch(RefreshDetected(mode)))
-      dispatch(OpenSettings)
+    main={{
+      onClose: () => dispatch(CloseMenu),
+      onNewGame: () => {
+        liveBoard.contents->Option.forEach(board => board.newGame->Option.forEach(deal => deal()))
+        dispatch(CloseMenu)
+      },
+      onRestart: () => {
+        liveBoard.contents->Option.forEach(board => board.restart())
+        dispatch(CloseMenu)
+      },
+      shareDealSeed: model.dealSeed,
+      shareDealStatus: model.shareDealStatus,
+      onShareDeal: () =>
+        // Share the *deal* (#98). The link is a `?seed=` string, so it's built right
+        // here and handed straight to `deliver` — no `await` between the click and
+        // `navigator.share`, which is what keeps the gesture's transient activation
+        // intact for the OS share sheet (the Debug screen's whole-game share has to
+        // encode ahead of time for exactly this reason; this one doesn't).
+        //
+        // The menu deliberately stays open, unlike New Game and Restart: the status
+        // line under the buttons is the only confirmation the player gets, and on a
+        // desktop browser — where the link goes quietly onto the clipboard with no OS
+        // sheet to acknowledge it — closing over it would leave nothing to see. It
+        // clears itself a few seconds later so it can't go stale.
+        model.dealSeed->Option.forEach(seed =>
+          ShareLink.deliver(ShareLink.urlForDeal(seed))
+          ->Promise.thenResolve(outcome => {
+            dispatch(ShareDealStatus(Some(ShareLink.message(outcome))))
+            setTimeout(() => dispatch(ShareDealStatus(None)), shareStatusMs)->ignore
+          })
+          ->ignore
+        ),
+      games: switcher.controls,
+      onOpenSettings: () => {
+        // Re-detect the service-worker state each time Settings opens, so the button
+        // reflects a worker that registered (or self-destructed) since page load.
+        Refresh.detect(mode => dispatch(RefreshDetected(mode)))
+        dispatch(OpenSettings)
+      },
     }}
-    onBackToMenu={() => dispatch(BackToMenu)}
-    onOpenDebug={() => {
-      dispatch(OpenDebug)
-      // Encode the board *now*, while the menu is going up, so the share button has a
-      // link ready to hand straight to `navigator.share` without an `await` in front
-      // of it (see `ShareLink.deliver`). Nothing can move the board until this screen
-      // is dismissed, so the link stays current for as long as the row is on screen.
-      // A scene with no history to read (a demo) resolves to `None` and the row
-      // stays disabled.
+    settings={{
+      model: model.settings,
+      // Map the screen's messages up into this loop's own (#308) — the one hop
+      // between a switch being flipped and `MenuSettingsScreen.update` running.
+      dispatch: msg => dispatch(SettingsMsg(msg)),
+      onClose: () => dispatch(CloseMenu),
+      onBackToMenu: () => dispatch(BackToMenu),
+      onOpenDebug: () => {
+        dispatch(OpenDebug)
+        // Encode the board *now*, while the menu is going up, so the share button has a
+        // link ready to hand straight to `navigator.share` without an `await` in front
+        // of it (see `ShareLink.deliver`). Nothing can move the board until this screen
+        // is dismissed, so the link stays current for as long as the row is on screen.
+        // A scene with no history to read (a demo) resolves to `None` and the row
+        // stays disabled.
 
-      (
-        async () =>
-          switch currentHistory() {
-          | Some(saved) => dispatch(ShareLinkReady(await ShareLink.urlFor(saved)))
-          | None => dispatch(ShareLinkReady(None))
-          }
-      )()->ignore
+        (
+          async () =>
+            switch currentHistory() {
+            | Some(saved) => dispatch(ShareLinkReady(await ShareLink.urlFor(saved)))
+            | None => dispatch(ShareLinkReady(None))
+            }
+        )()->ignore
+      },
     }}
-    onBackToSettings={() => dispatch(BackToSettings)}
-    onNewGame={() => {
-      liveBoard.contents->Option.forEach(board => board.newGame->Option.forEach(deal => deal()))
-      dispatch(CloseMenu)
+    debug={{
+      onClose: () => dispatch(CloseMenu),
+      onBackToSettings: () => dispatch(BackToSettings),
+      cutoutDebug: model.cutoutDebug,
+      onToggleCutoutDebug: () => dispatch(ToggleCutoutDebug),
+      debugLog: model.debugLog,
+      onToggleDebugLog: () => dispatch(ToggleDebugLog),
+      shareEnabled: model.shareUrl->Option.isSome,
+      shareStatus: model.shareStatus,
+      onShareGame: () =>
+        // Straight into `deliver` with the link encoded on screen-open: no `await`
+        // between the click and `navigator.share`, which is what keeps the gesture's
+        // transient activation intact for the OS share sheet. The status line clears
+        // itself a few seconds later so it doesn't sit there stale.
+        model.shareUrl->Option.forEach(url =>
+          ShareLink.deliver(url)
+          ->Promise.thenResolve(outcome => {
+            dispatch(ShareStatus(Some(ShareLink.message(outcome))))
+            setTimeout(() => dispatch(ShareStatus(None)), shareStatusMs)->ignore
+          })
+          ->ignore
+        ),
+      debugScenes: switcher.debugScenes,
+      debugStates,
     }}
-    onRestart={() => {
-      liveBoard.contents->Option.forEach(board => board.restart())
-      dispatch(CloseMenu)
-    }}
-    shareDealSeed={model.dealSeed}
-    shareDealStatus={model.shareDealStatus}
-    onShareDeal={() =>
-      // Share the *deal* (#98). The link is a `?seed=` string, so it's built right
-      // here and handed straight to `deliver` — no `await` between the click and
-      // `navigator.share`, which is what keeps the gesture's transient activation
-      // intact for the OS share sheet (the Debug screen's whole-game share has to
-      // encode ahead of time for exactly this reason; this one doesn't).
-      //
-      // The menu deliberately stays open, unlike New Game and Restart: the status
-      // line under the buttons is the only confirmation the player gets, and on a
-      // desktop browser — where the link goes quietly onto the clipboard with no OS
-      // sheet to acknowledge it — closing over it would leave nothing to see. It
-      // clears itself a few seconds later so it can't go stale.
-      model.dealSeed->Option.forEach(seed =>
-        ShareLink.deliver(ShareLink.urlForDeal(seed))
-        ->Promise.thenResolve(outcome => {
-          dispatch(ShareDealStatus(Some(ShareLink.message(outcome))))
-          setTimeout(() => dispatch(ShareDealStatus(None)), shareStatusMs)->ignore
+    about={{
+      version: model.version,
+      buildTime: model.buildTime,
+      updateVisible: model.updateAvailable,
+      onReload: () => dispatch(Reload),
+      refreshButton: switch model.refreshMode {
+      | None | Some(Refresh.Unsupported) => None // still detecting, or unsupported — no button
+      | Some(Refresh.NoWorker) =>
+        Some({
+          Menu.label: "Refresh",
+          busy: model.refreshBusy,
+          onClick: () => {
+            dispatch(RefreshStarted)
+            Refresh.forceReload()
+          },
         })
-        ->ignore
-      )}
-    games={switcher.controls}
-    debugScenes={switcher.debugScenes}
-    debugStates={debugStates}
-    cutoutDebug={model.cutoutDebug}
-    onToggleCutoutDebug={() => dispatch(ToggleCutoutDebug)}
-    debugLog={model.debugLog}
-    onToggleDebugLog={() => dispatch(ToggleDebugLog)}
-    shareEnabled={model.shareUrl->Option.isSome}
-    shareStatus={model.shareStatus}
-    onShareGame={() =>
-      // Straight into `deliver` with the link encoded on screen-open: no `await`
-      // between the click and `navigator.share`, which is what keeps the gesture's
-      // transient activation intact for the OS share sheet. The status line clears
-      // itself a few seconds later so it doesn't sit there stale.
-      model.shareUrl->Option.forEach(url =>
-        ShareLink.deliver(url)
-        ->Promise.thenResolve(outcome => {
-          dispatch(ShareStatus(Some(ShareLink.message(outcome))))
-          setTimeout(() => dispatch(ShareStatus(None)), shareStatusMs)->ignore
+      | Some(Refresh.HasWorker) =>
+        Some({
+          Menu.label: "Check for updates",
+          busy: model.refreshBusy,
+          onClick: () => {
+            dispatch(RefreshStarted)
+            Refresh.checkForUpdates(_pending => dispatch(RefreshChecked))
+          },
         })
-        ->ignore
-      )}
-    autoCollect={model.autoCollect}
-    onToggleAutoCollect={() => dispatch(ToggleAutoCollect)}
-    cardTilt={model.cardTilt}
-    onToggleCardTilt={() => dispatch(ToggleCardTilt)}
-    wiggle={model.wiggle}
-    onToggleWiggle={() =>
-      // The single chance to ask (#235): flip *on* asks for the motion grant under
-      // this real click's transient activation — iOS won't prompt without it and
-      // remembers a denial per origin. Flip *off* just stops. An `Unavailable` switch
-      // has nothing to grant, so a tap is inert.
-      switch model.wiggle {
-      | Motion.Unavailable(_) => ()
-      | On => dispatch(WiggleOff)
-      | Off | Blocked =>
-        Motion.requestAccess()
-        ->Promise.thenResolve(state => dispatch(WiggleResolved(state)))
-        ->ignore
-      }}
-    notchDisplay={model.notchDisplay}
-    onToggleNotchDisplay={() => dispatch(ToggleNotchDisplay)}
-    revealHidden={model.hidden.revealed}
-    onTapSettingsTitle={() => dispatch(SettingsTitleTapped)}
-    refreshButton={switch model.refreshMode {
-    | None | Some(Refresh.Unsupported) => None // still detecting, or unsupported — no button
-    | Some(Refresh.NoWorker) =>
-      Some({
-        label: "Refresh",
-        busy: model.refreshBusy,
-        onClick: () => {
-          dispatch(RefreshStarted)
-          Refresh.forceReload()
-        },
-      })
-    | Some(Refresh.HasWorker) =>
-      Some({
-        label: "Check for updates",
-        busy: model.refreshBusy,
-        onClick: () => {
-          dispatch(RefreshStarted)
-          Refresh.checkForUpdates(_pending => dispatch(RefreshChecked))
-        },
-      })
+      },
     }}
-    version={model.version}
-    buildTime={model.buildTime}
-    updateVisible={model.updateAvailable}
-    onReload={() => dispatch(Reload)}
   />
 </>
 
@@ -1084,7 +1020,7 @@ CutoutSide.install()
 // Reflect the persisted "Display content around screen notch" preference (#204)
 // onto the document root up front, so a player who turned wing placement off sees
 // the clamped layout from the first paint rather than after a toggle.
-NotchDisplay.setEnabled(notchDisplayEnabled)
+NotchDisplay.setEnabled(settingsInit.notchDisplay)
 
 // The safe-area debug overlay (a menu Debug-section toggle): built once here,
 // hidden, and flipped live by ToggleCutoutDebug. A developer aid for spot-checking
@@ -1107,27 +1043,15 @@ let dispatch = Html.mount(
     // it survives a reload. Nothing shows until a keypress opens the panel, so a
     // screenshot taken on a load with `docked` saved still sees an untouched board.
     consoleDock: consoleDockMode,
-    // Mirror the persisted preferences so the menu's switches open in the right
-    // position (the board reads the `options` and `tiltEnabled` refs directly).
-    autoCollect: options.contents.autoCollect,
-    cardTilt: tiltEnabled.contents,
-    // The Wiggle Waggle switch opens in its computed startup state (#235): its saved
-    // intent, or an `Unavailable` reason on a device/origin that can't do motion. The
-    // real grant is deferred to the first board tap (wired at the foot of the file).
-    wiggle: wiggleInit,
-    // Mirror the persisted notch-display preference so the switch opens in the
-    // right position; the layout itself is driven by the root attribute applied
-    // above (see `NotchDisplay`).
-    notchDisplay: notchDisplayEnabled,
+    // The Settings screen's own opening state, read from storage by the screen
+    // itself (#308) — its switches, and whether the hidden ones are showing.
+    settings: settingsInit,
     // Debug overlay starts off each session (not persisted); the model keeps it
     // across rotations.
     cutoutDebug: false,
     // Mirror the persisted console-logging preference (#213) so the switch opens in
     // the right position; the `DebugLog` gate itself was seeded above.
     debugLog: debugLogEnabled,
-    // The hidden settings open showing or not according to whether this device has
-    // ever completed the ten-tap unlock; the tap run always starts fresh.
-    hidden: HiddenOptions.initial(~revealed=Preferences.loadRevealHidden()),
     // Seeded from the board's opening history report (#177): a fresh deal reports
     // `false` (nothing to undo yet), but a resumed game with a restored undo stack
     // reports `true`, and that report already fired during the switcher's initial
@@ -1198,7 +1122,7 @@ DebugConsole.setRunner(line => {
     switch setting {
     | Options.AutoCollect =>
       if options.contents.autoCollect != on {
-        dispatch(ToggleAutoCollect)
+        dispatch(SettingsMsg(MenuSettingsScreen.ToggleAutoCollect))
       }
     | Options.ColumnReorder => options := Options.apply(options.contents, ~setting, ~on)
     }
@@ -1273,11 +1197,11 @@ DebugConsole.setRunner(line => {
 // the switch to off with its explanation. This is the spike's first-click listener,
 // promoted from a hack to the resume path. Only armed when the switch actually opened
 // listening — an off, blocked, or unavailable start has nothing to resume.
-if Motion.isOn(wiggleInit) {
+if Motion.isOn(settingsInit.wiggle) {
   let rec onFirstTap = _event => {
     WebDom.removeWindowListener("pointerdown", onFirstTap)
     Motion.requestAccess()
-    ->Promise.thenResolve(state => dispatch(WiggleResolved(state)))
+    ->Promise.thenResolve(state => dispatch(SettingsMsg(MenuSettingsScreen.WiggleResolved(state))))
     ->ignore
   }
   WebDom.addWindowListener("pointerdown", onFirstTap)

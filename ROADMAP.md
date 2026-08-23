@@ -35,6 +35,7 @@ Everything the project wants falls out of this one decision:
 |---|---|
 | Rendering | **Plain DOM bindings** (no rescript-react). Revisit only if composition hurts. |
 | Child diffing | **Keys in the hand-rolled runtime** (#309), not Preact (#45). See below. |
+| Component state | **Child Elm composition** (#308), not nested mounts. Pure `props => vnode` stays the default. See below. |
 | Service worker tooling | **`vite-plugin-pwa`** — manifest, precache, build hash, and the update hook. |
 | Card rendering | **SVG** cards for full visual control. |
 | State ownership | **100% in `core`**, reduxey: immutable state + action variant + pure reducer. |
@@ -61,8 +62,71 @@ that point, only the third condition really held:
 
 So the trigger did not fire, exactly as #45 allowed for. **Revisit if piles come
 to own their cards as DOM children** (nesting, clipping, per-pile transforms),
-or if #308 lands on wanting hooks-style local state throughout — either makes
-the runtime's growth curve steeper than a dependency.
+or if the component-state decision below comes to want hooks-style local state
+throughout — either makes the runtime's growth curve steeper than a dependency.
+
+### Why child composition rather than nested mounts
+
+Every component under `components/` is a pure `props => vnode` whose state lives
+in `Main`'s single model, because `Html.mount` is the only Elm loop in the app.
+**That stays the default**, and most components never need anything else. #308
+was about the one place it had visibly run out: the menu.
+
+The measured cost was the menu's chrome. `Menu.res` had **37 props**, and each of
+its six settings switches was declared four times over — in `Main`'s model, on
+`Menu.props`, on the screen's props, and on the row's — with `Menu` in the middle
+paying six lines apiece for values it never read. Extraction (#307) had already
+been tried and made the record *bigger*: the markup moved out, the plumbing
+stayed and gained a hop.
+
+Two ways to fix it were on the table, and the codebase had a precedent for each.
+
+**Nested mount** — what `Board.res` does: a `<game-board>` custom element with a
+shadow root, its own scoped `css`, its own `model`/`msg`/`update`/`view` and its
+own `mount`, and a typed boundary in `InwardEvents`/`OutwardEvents`. Real
+encapsulation, and the boundary is DOM events. Rejected here:
+
+- Each one needs an owned subtree. As a custom element that means a hand-written
+  `.js` shell per component, because ReScript has no class syntax (see the note
+  in `game-board.js`); without one it means a module-level ref holding the div —
+  the imperative pattern #300 had just finished retiring on the board boundary.
+- Style scoping stopped being a benefit when #306 landed. `styles/index.css` now
+  assembles one file per component in a deliberate, load-bearing order, and
+  `MenuHeader`/`MenuToggleRow`/`MenuActionRow`/`MenuNavRow` are shared by all
+  three menu screens — shadow-rooting any one screen splits those four
+  stylesheets across the boundary.
+- It tests worse. Component tests here are `Html.create(C.make(props))` under
+  jsdom; a nested mount needs a mounted root and CustomEvent assertions. `Board`
+  itself has no test, which is the whole of the evidence for the approach.
+
+**Child Elm composition** — child `model`/`msg`/`update`/`view` in its own file;
+the parent embeds the child's model as one field and maps its messages up through
+one constructor. Chosen, because:
+
+- The state had no other reader. Before the change, not one of the six switch
+  flags was read anywhere in `Main` outside its own toggle branch and the `<Menu>`
+  call — they existed purely to draw a switch.
+- `update` stays a pure function, so it's unit-testable in isolation exactly like
+  `core`'s `Reducer`, which is the testing story the rest of the codebase already
+  has.
+- It needs no runtime change at all. `Html.mount`'s `update` already returns
+  `(model, effect)`, so the parent threads the child's effect straight out.
+
+It cost two things worth knowing. The child's model is a **mirror** — of
+`Preferences`, of the live refs the board reads, of a document-root attribute —
+so its `update` has to write every flip through, and a setting's value must be
+read from its real home rather than from the screen. And the effects that reach
+the board or those refs can't be raised from inside a component, so `Main` hands
+the screen an `env` of four chrome capabilities; that list is fixed, not one entry
+per switch, which is what keeps it from being the prop drilling it replaced.
+
+`MenuSettingsScreen` is the worked example: 13 props to 5, `Menu` from 37 props to
+7 (its other screens got the same treatment as plain records — pass the record,
+don't re-spell its fields, as #300 did), and `Main` 76 lines shorter with
+`cardTilt` no longer appearing in it at all. **Revisit if a third or fourth screen
+wants the same** — at that point the mapping boilerplate per child is worth
+weighing against #45 again, which is now the only one of that issue's three
+arguments still standing.
 
 ## How to read this
 

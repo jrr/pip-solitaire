@@ -11,6 +11,18 @@
 // `<AboutFooter>` established when it was lifted out of here for the same reason
 // (#201). What each screen holds, and why, is documented in its own file.
 //
+// **The props record is one field per screen, not one field per thing on it
+// (#308).** It used to be flat — 37 fields, every one of them re-declared from the
+// screen below and re-declared again from `Main`'s model above, so a seventh switch
+// meant editing four files and this one paid six lines for it without ever reading
+// the value. It now carries each child's *own* props record whole and hands it
+// straight over, which is the same move #300 made on the board boundary: pass the
+// record, don't re-spell its fields. Adding anything to a screen is now that
+// screen's business and `Main`'s, and this file doesn't change at all.
+//
+// What's left here is genuinely the pane's: whether it's open, which screen shows,
+// the backdrop's close, and the one decision it makes about the footer (below).
+//
 // The pane has **three screens** (#191): the **main menu**, a dedicated **Settings**
 // screen, and a **Debug** screen nested one level below Settings — which one shows
 // is chosen by the `screen` variant. The **About** footer (version line + update
@@ -31,9 +43,7 @@
 // It's a pure `props => vnode` in the `VersionBadge` mold (see VersionBadge for why
 // the record is spelled out by hand). Open/closed and which-screen are chrome model
 // state passed in as `open_`/`screen`; a click on the backdrop or the close button
-// calls `onClose`. The props record stays *flat* — it's the single boundary between
-// `Main`'s chrome model and the menu, and this file's job is to fan those fields out
-// to the screen that wants them. Layout lives in Menu.css.
+// calls `onClose`. Layout lives in Menu.css.
 
 // Which of the pane's three screens is showing (#191). Reopening the menu
 // resets this to `Main` (see the chrome model), so a visit to Settings/Debug never
@@ -55,137 +65,62 @@ type refreshButton = {
   onClick: unit => unit,
 }
 
-type props = {
-  open_: bool,
-  screen: screen,
-  onClose: unit => unit,
-  onOpenSettings: unit => unit,
-  onBackToMenu: unit => unit,
-  onOpenDebug: unit => unit,
-  onBackToSettings: unit => unit,
-  // --- main screen (see MenuMainScreen) ---
-  onNewGame: unit => unit,
-  onRestart: unit => unit,
-  shareDealSeed: option<int>,
-  shareDealStatus: option<string>,
-  onShareDeal: unit => unit,
-  games: Html.element,
-  // --- settings screen (see MenuSettingsScreen) ---
-  autoCollect: bool,
-  onToggleAutoCollect: unit => unit,
-  cardTilt: bool,
-  onToggleCardTilt: unit => unit,
-  wiggle: Motion.state,
-  onToggleWiggle: unit => unit,
-  notchDisplay: bool,
-  onToggleNotchDisplay: unit => unit,
-  revealHidden: bool,
-  onTapSettingsTitle: unit => unit,
-  // --- debug screen (see MenuDebugScreen) ---
-  debugScenes: Html.element,
-  debugStates: Html.element,
-  cutoutDebug: bool,
-  onToggleCutoutDebug: unit => unit,
-  debugLog: bool,
-  onToggleDebugLog: unit => unit,
-  shareEnabled: bool,
-  shareStatus: option<string>,
-  onShareGame: unit => unit,
-  // --- the About footer, under every screen (see AboutFooter) ---
-  refreshButton: option<refreshButton>,
+// What the About footer needs from the app. It's `AboutFooter.props` minus the
+// `refresh` slot and plus the button that fills it, because *whether* there's a
+// refresh button to show is the one thing about that footer this pane decides (it
+// depends on which screen is up — see `make`). Everything else it just carries.
+type about = {
   version: string,
   buildTime: string,
   updateVisible: bool,
   onReload: unit => unit,
+  refreshButton: option<refreshButton>,
 }
 
-let make = ({
-  open_,
-  screen,
-  onClose,
-  onOpenSettings,
-  onBackToMenu,
-  onOpenDebug,
-  onBackToSettings,
-  onNewGame,
-  onRestart,
-  shareDealSeed,
-  shareDealStatus,
-  onShareDeal,
-  games,
-  debugScenes,
-  debugStates,
-  cutoutDebug,
-  onToggleCutoutDebug,
-  debugLog,
-  onToggleDebugLog,
-  shareEnabled,
-  shareStatus,
-  onShareGame,
-  autoCollect,
-  onToggleAutoCollect,
-  cardTilt,
-  onToggleCardTilt,
-  wiggle,
-  onToggleWiggle,
-  notchDisplay,
-  onToggleNotchDisplay,
-  revealHidden,
-  onTapSettingsTitle,
-  refreshButton,
-  version,
-  buildTime,
-  updateVisible,
-  onReload,
-}) => {
+type props = {
+  open_: bool,
+  screen: screen,
+  // The backdrop and, through each screen's own props, the ✕ in its header.
+  onClose: unit => unit,
+  // One field per screen, carried whole and handed straight to the component that
+  // owns it. `settings` is two fields wide because that screen holds its own state
+  // (#308); the other two are still flat records built by `Main`.
+  main: MenuMainScreen.props,
+  settings: MenuSettingsScreen.props,
+  debug: MenuDebugScreen.props,
+  about: about,
+}
+
+let make = ({open_, screen, onClose, main, settings, debug, about}) => {
   // The update-check button folded into the About footer: shown on the Settings and
   // Debug screens once a service-worker state has been detected, and never on the
   // main menu — which is where the detection is kicked off (see `Main`).
-  let refresh = switch (screen, refreshButton) {
+  let refresh = switch (screen, about.refreshButton) {
   | (Main, _) | (_, None) => Html.array([])
   | (_, Some({label, busy, onClick})) => <RefreshControl label busy onClick />
+  }
+
+  // The screen itself. `Html.jsx(C.make, props)` is exactly what `<C … />` lowers to
+  // (see Html.res); it's written that way rather than as JSX because JSX *builds* the
+  // props record out of attributes, and these records already exist — the whole point
+  // of carrying them whole is not to take them apart again on the way through.
+  let content = switch screen {
+  | Main => Html.jsx(MenuMainScreen.make, main)
+  | Settings => Html.jsx(MenuSettingsScreen.make, settings)
+  | Debug => Html.jsx(MenuDebugScreen.make, debug)
   }
 
   <div id="menu-overlay" hidden={!open_}>
     <div className="menu-overlay__backdrop" onClick={_ => onClose()} />
     <aside className="menu-panel" attrs={[("aria-label", "Menu")]}>
-      {switch screen {
-      | Main =>
-        <MenuMainScreen
-          onClose onNewGame onRestart shareDealSeed shareDealStatus onShareDeal games onOpenSettings
-        />
-      | Settings =>
-        <MenuSettingsScreen
-          onClose
-          onBackToMenu
-          onOpenDebug
-          onTapSettingsTitle
-          autoCollect
-          onToggleAutoCollect
-          cardTilt
-          onToggleCardTilt
-          wiggle
-          onToggleWiggle
-          revealHidden
-          notchDisplay
-          onToggleNotchDisplay
-        />
-      | Debug =>
-        <MenuDebugScreen
-          onClose
-          onBackToSettings
-          cutoutDebug
-          onToggleCutoutDebug
-          debugLog
-          onToggleDebugLog
-          shareEnabled
-          shareStatus
-          onShareGame
-          debugScenes
-          debugStates
-        />
-      }}
-      <AboutFooter version buildTime updateVisible onReload refresh />
+      {content}
+      <AboutFooter
+        version={about.version}
+        buildTime={about.buildTime}
+        updateVisible={about.updateVisible}
+        onReload={about.onReload}
+        refresh
+      />
     </aside>
   </div>
 }

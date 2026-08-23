@@ -64,8 +64,12 @@ let load = (): Options.t => {
   {autoCollect, allowColumnReorder: Options.default.allowColumnReorder}
 }
 
-// Persist the current driver preferences.
-let save = (options: Options.t) => saveFlag(autoCollectKey, options.autoCollect)
+// Persist auto-collect. One flag at a time rather than a `save(options)` taking the
+// whole `Options.t`: the switch that writes it owns nothing but the flag (see
+// `MenuSettingsScreen`, which holds its own state since #308), and every other
+// preference on that screen already persisted itself through a setter this shape.
+// `load` above still answers with a whole `Options.t`, because the driver wants one.
+let saveAutoCollect = (enabled: bool) => saveFlag(autoCollectKey, enabled)
 
 // The hand-placed card tilt (#65) defaults on, matching the shipped look; the
 // menu's toggle lets a player who'd rather see cards stacked dead-square turn it
