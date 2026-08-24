@@ -42,7 +42,7 @@ let make = ({title, back, onTitleTap, onClose}) =>
       <button className="menu-back" onClick={_ => onClick()} type_="button" ariaLabel={label}>
         {Html.string("‹ Back")}
       </button>
-    | None => Html.array([])
+    | None => Html.empty
     }}
     <h1 className="menu-title" onClick=?{onTitleTap->Option.map(tap => _ => tap())}>
       {Html.string(title)}

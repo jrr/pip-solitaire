@@ -14,15 +14,7 @@
 // but a `visibility: hidden` reserve would not — plus the specific regression
 // guard that the button never falls back to the `hidden` attribute.
 open Vitest
-
-@get external tagName: Html.element => string = "tagName"
-@get external className: Html.element => string = "className"
-type htmlCollection
-@get external childElements: Html.element => htmlCollection = "children"
-@get external collLength: htmlCollection => int = "length"
-@send external collItem: (htmlCollection, int) => Html.element = "item"
-@send external querySelector: (Html.element, string) => Nullable.t<Html.element> = "querySelector"
-@send external hasAttribute: (Html.element, string) => bool = "hasAttribute"
+open TestDom
 
 // The size-determining shape of a rendered subtree: tag + children skeleton, with
 // text and attributes stripped. A button hidden with `visibility` keeps its box
@@ -30,13 +22,9 @@ type htmlCollection
 // the browser still reports the element, so the skeleton alone can't catch a
 // regression to `hidden`. The dedicated attribute check below does.
 let rec skeleton = (el: Html.element): string => {
-  let kids = el->childElements
-  let parts = []
-  for i in 0 to kids->collLength - 1 {
-    parts->Array.push(kids->collItem(i)->skeleton)
-  }
+  let parts = el->children->Array.map(skeleton)
   let inner = parts->Array.length == 0 ? "" : `(${parts->Array.join(",")})`
-  el->tagName ++ inner
+  el->tag ++ inner
 }
 
 let render = (~updateVisible): Html.element =>
@@ -48,12 +36,11 @@ let render = (~updateVisible): Html.element =>
       onReload: () => (),
       // The update-check slot; empty here so the size-stability assertions turn on
       // the update button alone (its presence is what used to reflow the footer).
-      refresh: Html.array([]),
+      refresh: Html.empty,
     }),
   )
 
-let button = (footer): option<Html.element> =>
-  footer->querySelector(".menu-update__button")->Nullable.toOption
+let button = (footer): option<Html.element> => footer->find(".menu-update__button")
 
 describe("AboutFooter size stability (#201)", () => {
   let noUpdate = render(~updateVisible=false)
@@ -76,13 +63,13 @@ describe("AboutFooter size stability (#201)", () => {
       // bring the wiggle straight back. The hidden state must reserve with the class.
       switch noUpdate->button {
       | Some(b) =>
-        expect(b->hasAttribute("hidden"))->toBe(false)
-        expect(b->className->String.includes("menu-update--hidden"))->toBe(true)
+        expect(b->hasAttr("hidden"))->toBe(false)
+        expect(b->classes->String.includes("menu-update--hidden"))->toBe(true)
       | None => expect("button present")->toBe("button missing")
       }
       // When an update is waiting the button is fully shown (no reserve class).
       switch updateWaiting->button {
-      | Some(b) => expect(b->className->String.includes("menu-update--hidden"))->toBe(false)
+      | Some(b) => expect(b->classes->String.includes("menu-update--hidden"))->toBe(false)
       | None => expect("button present")->toBe("button missing")
       }
     },

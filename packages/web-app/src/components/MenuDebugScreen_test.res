@@ -18,17 +18,7 @@
 // Rendered through `Html.create` like the other component tests here (see
 // `AboutFooter_test`), which needs no DOM beyond what jsdom gives.
 open Vitest
-
-@get external textContent: Html.element => string = "textContent"
-@send external querySelector: (Html.element, string) => Nullable.t<Html.element> = "querySelector"
-type nodeList
-@send external querySelectorAll: (Html.element, string) => nodeList = "querySelectorAll"
-@get external listLength: nodeList => int = "length"
-@send external listItem: (nodeList, int) => Html.element = "item"
-@send external getAttribute: (Html.element, string) => Nullable.t<string> = "getAttribute"
-@send external hasAttribute: (Html.element, string) => bool = "hasAttribute"
-@send external click: Html.element => unit = "click"
-@send external contains: (Html.element, Html.element) => bool = "contains"
+open TestDom
 
 let debugScenes = Html.make("div")
 let debugStates = Html.make("div")
@@ -59,23 +49,11 @@ let render = (
     }),
   )
 
-let find = (screen, selector) => screen->querySelector(selector)->Nullable.toOption
-
-let all = (screen, selector): array<Html.element> => {
-  let found = screen->querySelectorAll(selector)
-  let out = []
-  for i in 0 to found->listLength - 1 {
-    out->Array.push(found->listItem(i))
-  }
-  out
-}
-
-let shareDesc = screen =>
-  screen->find(".menu-row--action .menu-row__desc")->Option.mapOr("<missing>", textContent)
+let shareDesc = screen => screen->textIn(".menu-row--action .menu-row__desc")
 
 describe("MenuDebugScreen (#307)", () => {
   test("offers the two developer toggles", () => {
-    expect(render()->all(".menu-row--switch .menu-row__label")->Array.map(textContent))->toEqual([
+    expect(render()->findAll(".menu-row--switch .menu-row__label")->Array.map(text))->toEqual([
       "Safe-area overlay",
       "Console logging",
     ])
@@ -87,7 +65,7 @@ describe("MenuDebugScreen (#307)", () => {
       ~onToggleCutoutDebug=() => log->Array.push("cutout"),
       ~onToggleDebugLog=() => log->Array.push("debug-log"),
     )
-    screen->all(".menu-row--switch")->Array.forEach(click)
+    screen->findAll(".menu-row--switch")->Array.forEach(click)
     expect(log)->toEqual(["cutout", "debug-log"])
   })
 
@@ -102,7 +80,7 @@ describe("MenuDebugScreen (#307)", () => {
     // went, shoving the scene lists below it down the panel.
     let screen = render(~shareEnabled=true, ~shareStatus=Some("Link copied to clipboard."))
     expect(screen->shareDesc)->toBe("Link copied to clipboard.")
-    expect(screen->all(".menu-row--action .menu-row__desc")->Array.length)->toBe(1)
+    expect(screen->findAll(".menu-row--action .menu-row__desc")->Array.length)->toBe(1)
   })
 
   test("is really disabled with no game to share, and says so", () => {
@@ -111,7 +89,7 @@ describe("MenuDebugScreen (#307)", () => {
     expect(screen->shareDesc)->toBe("No game on screen to share.")
     switch screen->find(".menu-row--action") {
     | Some(row) =>
-      expect(row->hasAttribute("disabled"))->toBe(true)
+      expect(row->hasAttr("disabled"))->toBe(true)
       row->click
       expect(taps.contents)->toBe(0)
     | None => expect("share row")->toBe("missing")
@@ -139,10 +117,7 @@ describe("MenuDebugScreen (#307)", () => {
     expect(
       screen
       ->find(".menu-back")
-      ->Option.mapOr(
-        "<missing>",
-        b => b->getAttribute("aria-label")->Nullable.toOption->Option.getOr("<missing>"),
-      ),
+      ->Option.mapOr("<missing>", b => b->attrOr("aria-label")),
     )->toBe("Back to settings")
     screen->find(".menu-back")->Option.forEach(click)
     expect(taps.contents)->toBe(1)

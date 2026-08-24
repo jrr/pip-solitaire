@@ -41,7 +41,7 @@ let make = ({label, busy, onClick}) =>
       // The spinner sits inside the button, on the button's own text line, so
       // showing it never changes the button's — or the section's — height. Purely
       // decorative; `aria-busy` above voices the state.
-      {busy ? <span className="menu-refresh__spinner" ariaHidden="true" /> : Html.array([])}
+      {busy ? <span className="menu-refresh__spinner" ariaHidden="true" /> : Html.empty}
       {Html.string(busy ? "Checking…" : label)}
     </button>
   </MenuSection>

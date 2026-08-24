@@ -61,7 +61,7 @@ let make = ({onMenu, onUndo, canUndo, updateVisible}) =>
       // The update pip: a small green presence dot on the Menu button when a new
       // version is waiting (#165). Purely decorative — the state it marks is voiced
       // by the button's `aria-label` above — so it's `aria-hidden`.
-      {updateVisible ? <span className="top-bar__pip" ariaHidden="true" /> : Html.array([])}
+      {updateVisible ? <span className="top-bar__pip" ariaHidden="true" /> : Html.empty}
     </button>
     <button
       className="top-bar__button top-bar__button--undo"

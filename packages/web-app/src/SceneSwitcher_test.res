@@ -4,10 +4,7 @@
 // check this in jsdom; no layout or input engine needed.
 
 open Vitest
-
-@send
-external querySelector: (WebDom.element, string) => Nullable.t<WebDom.element> = "querySelector"
-@send external click: WebDom.element => unit = "click"
+open TestDom
 
 let countingScene = (~id, ~mounts): Scene.t => {
   id,
@@ -27,7 +24,7 @@ describe("SceneSwitcher rows", () => {
     )
     // The initial mount.
     expect(mounts.contents)->toBe(1)
-    switch switcher.controls->querySelector(".scene-menu__row")->Nullable.toOption {
+    switch switcher.controls->find(".scene-menu__row") {
     | Some(row) => row->click
     | None => expect("the freecell row")->toBe("but it wasn't rendered")
     }
@@ -44,7 +41,7 @@ describe("SceneSwitcher rows", () => {
       ~onReselect=() => reselects := reselects.contents + 1,
       [countingScene(~id="freecell", ~mounts)],
     )
-    switch switcher.controls->querySelector(".scene-menu__row")->Nullable.toOption {
+    switch switcher.controls->find(".scene-menu__row") {
     | Some(row) => row->click
     | None => expect("the freecell row")->toBe("but it wasn't rendered")
     }
@@ -65,7 +62,7 @@ describe("SceneSwitcher rows", () => {
       [countingScene(~id="freecell", ~mounts=freecell), countingScene(~id="demo", ~mounts=demo)],
     )
     // The non-primary scene's row lives in the debug group, not the games list.
-    switch switcher.debugScenes->querySelector(".scene-menu__row")->Nullable.toOption {
+    switch switcher.debugScenes->find(".scene-menu__row") {
     | Some(row) => row->click
     | None => expect("the demo row")->toBe("but it wasn't rendered")
     }

@@ -16,14 +16,7 @@
 // Rendered through `Html.create` like the other component tests here (see
 // `AboutFooter_test`), which needs no DOM beyond what jsdom gives.
 open Vitest
-
-@get external textContent: Html.element => string = "textContent"
-@send external querySelector: (Html.element, string) => Nullable.t<Html.element> = "querySelector"
-type nodeList
-@send external querySelectorAll: (Html.element, string) => nodeList = "querySelectorAll"
-@get external listLength: nodeList => int = "length"
-@send external listItem: (nodeList, int) => Html.element = "item"
-@send external click: Html.element => unit = "click"
+open TestDom
 
 let render = (
   ~revealHidden=false,
@@ -56,22 +49,11 @@ let render = (
     }),
   )
 
-let find = (screen, selector) => screen->querySelector(selector)->Nullable.toOption
-
-let all = (screen, selector): array<Html.element> => {
-  let found = screen->querySelectorAll(selector)
-  let out = []
-  for i in 0 to found->listLength - 1 {
-    out->Array.push(found->listItem(i))
-  }
-  out
-}
-
 // The settings rows' labels, top to bottom.
 let rowLabels = screen =>
   screen
-  ->all("[aria-label=\"Settings\"] .menu-row--switch .menu-row__label")
-  ->Array.map(textContent)
+  ->findAll("[aria-label=\"Settings\"] .menu-row--switch .menu-row__label")
+  ->Array.map(text)
 
 describe("MenuSettingsScreen (#307)", () => {
   test("lists the player's preferences, top to bottom", () => {
@@ -107,7 +89,7 @@ describe("MenuSettingsScreen (#307)", () => {
       ~onToggleWiggle=() => log->Array.push("wiggle"),
       ~onToggleNotchDisplay=() => log->Array.push("notch"),
     )
-    screen->all("[aria-label=\"Settings\"] .menu-row--switch")->Array.forEach(click)
+    screen->findAll("[aria-label=\"Settings\"] .menu-row--switch")->Array.forEach(click)
     expect(log)->toEqual(["auto-collect", "card-tilt", "wiggle", "notch"])
   })
 
@@ -115,8 +97,8 @@ describe("MenuSettingsScreen (#307)", () => {
     // Which rows read *on*, by name — the crossed-wire check's static twin.
     let states = screen =>
       screen
-      ->all("[aria-label=\"Settings\"] .menu-row--on .menu-row__label")
-      ->Array.map(textContent)
+      ->findAll("[aria-label=\"Settings\"] .menu-row--on .menu-row__label")
+      ->Array.map(text)
     expect(states(render(~autoCollect=true, ~cardTilt=false, ~notchDisplay=false)))->toEqual([
       "Auto-collect",
     ])
@@ -130,9 +112,7 @@ describe("MenuSettingsScreen (#307)", () => {
     // The debug tools moved off this screen entirely (#191); what's left is a way in.
     let screen = render()
     expect(rowLabels(screen)->Array.includes("Debug"))->toBe(false)
-    expect(
-      screen->find(".menu-row--nav .menu-row__label")->Option.mapOr("<missing>", textContent),
-    )->toBe("Debug")
+    expect(screen->textIn(".menu-row--nav .menu-row__label"))->toBe("Debug")
   })
 
   test("opens the Debug screen from that row", () => {

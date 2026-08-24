@@ -174,10 +174,18 @@ module Elements = {
 external string: string => vnode = "%identity"
 external array: array<vnode> => vnode = "%identity"
 
+// Nothing at all — the branch of a conditional that has no node to show. A dozen
+// such branches across the app each spelled this `array([])`, which reads as "an
+// empty group of children" where what it means is "nothing". `null` is what Preact
+// itself takes for nothing, and unlike a fresh `[]` per call site it is a value
+// there is only one of.
+let empty: vnode = %raw("null")
+
 // --- Preact --------------------------------------------------------------
 @module("preact") external renderInto: (vnode, element) => unit = "render"
 @val @scope("document") external make: string => element = "createElement"
 @send external appendChild: (element, element) => element = "appendChild"
+@send external replaceChildren: (element, element) => unit = "replaceChildren"
 @send external contains: (element, element) => bool = "contains"
 @get external firstChild: element => Nullable.t<element> = "firstChild"
 @get external childCount: element => int = "childElementCount"
@@ -206,9 +214,18 @@ let rawHost = (props: rawHostProps) =>
         switch el->Nullable.toOption {
         | Some(host) =>
           // Preact calls a ref again whenever the callback's identity changes,
-          // which is every re-render; only append the first time.
+          // which is every re-render, so this runs constantly — hence the guard,
+          // which skips the work once the node is where it belongs.
+          //
+          // `replaceChildren` rather than `appendChild` for the case where it
+          // isn't: a host handed a *different* node than last time must end up
+          // holding that one rather than both. Every call site today hands over a
+          // node that is stable for the life of its position, so nothing depends
+          // on this — which is exactly why it should be the host's rule and not
+          // an unwritten condition on eight callers (a duplicated node would show
+          // up as a doubled scene or a doubled log, with nothing to point at).
           if !contains(host, props.node) {
-            appendChild(host, props.node)->ignore
+            replaceChildren(host, props.node)
           }
         | None => ()
         },
@@ -255,6 +272,20 @@ let on = (target, ~name, handler) =>
 // runtime did with a `VGroup`: one node comes back as itself, several come back
 // in a DocumentFragment — which `querySelector` searches and `appendChild`
 // splices in without adding a wrapper.
+//
+// **What comes back is a node, not a mounted tree, and this is the one rule to
+// know before reaching for hooks (#308).** The host is thrown away and the nodes
+// are lifted out of it, so nothing ever renders into it again: a component
+// reached through `create` renders exactly once, for ever. `useState` in one
+// would hold state that no re-render could ever read back, and a `useEffect`
+// cleanup would never run — both failing silently, which is the worst way for a
+// constraint to be discovered.
+//
+// So: **a component reachable from `create` must stay pure.** Hooks are only
+// meaningful inside the tree `mount` owns and diffs. That covers more of the app
+// than it sounds like — `TableScene` builds all 52 cards this way, and every
+// component test in the package renders through here — so it is closer to a
+// property of the component layer than to a caveat on one function.
 let create = vnode => {
   let host = make("div")
   renderInto(vnode, host)

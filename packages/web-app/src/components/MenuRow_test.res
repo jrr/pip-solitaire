@@ -21,21 +21,14 @@
 // Rendered through `Html.create` like the other component tests here (see
 // `AboutFooter_test`), which needs no DOM beyond what jsdom gives.
 open Vitest
-
-@get external className: Html.element => string = "className"
-@get external textContent: Html.element => string = "textContent"
-@send external querySelector: (Html.element, string) => Nullable.t<Html.element> = "querySelector"
-@send external getAttribute: (Html.element, string) => Nullable.t<string> = "getAttribute"
-@send external hasAttribute: (Html.element, string) => bool = "hasAttribute"
-@send external click: Html.element => unit = "click"
+open TestDom
 
 let render = (~label="Auto-collect", ~desc=?, ~trailing=?, ~enabled=?, ~onClick=() => ()) =>
   Html.create(MenuRow.make({label, ?desc, ?trailing, ?enabled, onClick}))
 
-let find = (row, selector) => row->querySelector(selector)->Nullable.toOption
 let has = (row, selector) => row->find(selector)->Option.isSome
-let text = (row, selector) => row->find(selector)->Option.mapOr("<missing>", textContent)
-let attr = (row, name) => row->getAttribute(name)->Nullable.toOption
+let text = (row, selector) => row->textIn(selector)
+let attr = (row, name) => row->attr(name)
 
 describe("MenuRow", () => {
   test("is a button carrying its label, whatever kind of row it is", () => {
@@ -55,15 +48,15 @@ describe("MenuRow", () => {
   })
 
   test("names its kind in the class list", () => {
-    expect(render(~trailing=MenuRow.Switch(false))->className)->toBe("menu-row menu-row--switch")
-    expect(render(~trailing=MenuRow.Switch(true))->className)->toBe(
+    expect(render(~trailing=MenuRow.Switch(false))->classes)->toBe("menu-row menu-row--switch")
+    expect(render(~trailing=MenuRow.Switch(true))->classes)->toBe(
       "menu-row menu-row--switch menu-row--on",
     )
-    expect(render(~trailing=MenuRow.Chevron)->className)->toBe("menu-row menu-row--nav")
+    expect(render(~trailing=MenuRow.Chevron)->classes)->toBe("menu-row menu-row--nav")
     // `Nothing` is the default, and it is a kind like the others rather than the
     // absence of one — `--action` is what carries the disabled styling.
-    expect(render(~trailing=MenuRow.Nothing)->className)->toBe("menu-row menu-row--action")
-    expect(render()->className)->toBe("menu-row menu-row--action")
+    expect(render(~trailing=MenuRow.Nothing)->classes)->toBe("menu-row menu-row--action")
+    expect(render()->classes)->toBe("menu-row menu-row--action")
   })
 
   test("puts a switch — and only a switch — on the right of a Switch row", () => {
@@ -86,9 +79,7 @@ describe("MenuRow", () => {
   test("hides the chevron from assistive tech, so the row is named by its label", () => {
     let chevron = render(~trailing=MenuRow.Chevron)->find(".menu-row__chevron")
     expect(chevron->Option.isSome)->toBe(true)
-    expect(chevron->Option.flatMap(c => c->getAttribute("aria-hidden")->Nullable.toOption))->toBe(
-      Some("true"),
-    )
+    expect(chevron->Option.flatMap(c => c->attr("aria-hidden")))->toBe(Some("true"))
   })
 
   test("runs its action when tapped", () => {
@@ -102,10 +93,10 @@ describe("MenuRow", () => {
     // behind it is only belt and braces.
     let taps = ref(0)
     let row = render(~enabled=false, ~onClick=() => taps := taps.contents + 1)
-    expect(row->hasAttribute("disabled"))->toBe(true)
+    expect(row->hasAttr("disabled"))->toBe(true)
     row->click
     expect(taps.contents)->toBe(0)
     // Enabled is the default, and it renders no attribute at all.
-    expect(render()->hasAttribute("disabled"))->toBe(false)
+    expect(render()->hasAttr("disabled"))->toBe(false)
   })
 })

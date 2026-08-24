@@ -95,13 +95,13 @@ let make = (props: props) => {
       <span className="menu-row__label"> {Html.string(props.label)} </span>
       {switch props.desc {
       | Some(desc) => <span className="menu-row__desc"> {Html.string(desc)} </span>
-      | None => Html.array([])
+      | None => Html.empty
       }}
     </span>
     {switch trailing {
     | Switch(_) => <span className="menu-row__switch" />
     | Chevron => <span className="menu-row__chevron" ariaHidden="true"> {Html.string("›")} </span>
-    | Nothing => Html.array([])
+    | Nothing => Html.empty
     }}
   </button>
 }

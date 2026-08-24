@@ -17,28 +17,20 @@
 // Rendered through `Html.create` like the other component tests here (see
 // `AboutFooter_test`), which needs no DOM beyond what jsdom gives.
 open Vitest
-
-@get external className: Html.element => string = "className"
-@get external textContent: Html.element => string = "textContent"
-@send external querySelector: (Html.element, string) => Nullable.t<Html.element> = "querySelector"
-@send external getAttribute: (Html.element, string) => Nullable.t<string> = "getAttribute"
-@send external click: Html.element => unit = "click"
+open TestDom
 
 let render = (state, ~onToggle=() => ()) => Html.create(MenuWiggleRow.make({state, onToggle}))
 
-let subtitle = row =>
-  row->querySelector(".menu-row__desc")->Nullable.toOption->Option.map(textContent)
+let subtitle = row => row->find(".menu-row__desc")->Option.map(text)
 
-let checked = row => row->getAttribute("aria-checked")->Nullable.toOption->Option.getOr("<missing>")
+let checked = row => row->attrOr("aria-checked")
 
-let isOn = row => row->className->String.includes("menu-row--on")
+let isOn = row => row->classes->String.includes("menu-row--on")
 
 describe("MenuWiggleRow (#307)", () => {
   test("is titled, and deliberately unexplained, while it's healthy", () => {
     let off = render(Motion.Off)
-    expect(
-      off->querySelector(".menu-row__label")->Nullable.toOption->Option.mapOr("", textContent),
-    )->toBe("Wiggle Waggle")
+    expect(off->find(".menu-row__label")->Option.mapOr("", text))->toBe("Wiggle Waggle")
     expect(off->subtitle)->toBe(None)
     expect(render(Motion.On)->subtitle)->toBe(None)
   })

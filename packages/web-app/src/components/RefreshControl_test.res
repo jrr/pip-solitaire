@@ -14,32 +14,17 @@
 // nested *inside* the button, not a new row, so it can't change the section's
 // height. We also guard that the old reflowing status line is gone for good.
 open Vitest
-
-@get external tagName: Html.element => string = "tagName"
-type htmlCollection
-@get external childElements: Html.element => htmlCollection = "children"
-@get external collLength: htmlCollection => int = "length"
-@send external collItem: (htmlCollection, int) => Html.element = "item"
-@send external querySelector: (Html.element, string) => Nullable.t<Html.element> = "querySelector"
-@get external textContent: Html.element => string = "textContent"
+open TestDom
 
 // The section's stacked rows: the tag of each direct child element. This is what
 // determines the section's height — each row is a box in the column. Nested
 // content (the spinner inside the button) is deliberately not walked.
-let rows = (el: Html.element): array<string> => {
-  let kids = el->childElements
-  let out = []
-  for i in 0 to kids->collLength - 1 {
-    out->Array.push(kids->collItem(i)->tagName)
-  }
-  out
-}
+let rows = (el: Html.element): array<string> => el->children->Array.map(tag)
 
 let render = (busy): Html.element =>
   Html.create(RefreshControl.make({label: "Check for updates", busy, onClick: () => ()}))
 
-let hasSpinner = (el): bool =>
-  el->querySelector(".menu-refresh__spinner")->Nullable.toOption->Option.isSome
+let hasSpinner = (el): bool => el->find(".menu-refresh__spinner")->Option.isSome
 
 describe("RefreshControl size stability (#201)", () => {
   let idle = render(false)
@@ -52,12 +37,8 @@ describe("RefreshControl size stability (#201)", () => {
   test("never renders the old reflowing status line", () => {
     // The line that used to appear/disappear under the button is gone entirely —
     // its comings and goings were the wiggle.
-    expect(idle->querySelector(".menu-refresh__status")->Nullable.toOption->Option.isSome)->toBe(
-      false,
-    )
-    expect(busy->querySelector(".menu-refresh__status")->Nullable.toOption->Option.isSome)->toBe(
-      false,
-    )
+    expect(idle->find(".menu-refresh__status")->Option.isSome)->toBe(false)
+    expect(busy->find(".menu-refresh__status")->Option.isSome)->toBe(false)
   })
 
   test("shows the spinner only while busy, and inside the button (not as a new row)", () => {
@@ -65,13 +46,12 @@ describe("RefreshControl size stability (#201)", () => {
     expect(hasSpinner(busy))->toBe(true)
     // The spinner is a descendant of the button, so it rides the button's line
     // rather than adding a row that would change the section's height.
-    let button = busy->querySelector(".menu-button")->Nullable.toOption
+    let button = busy->find(".menu-button")
     expect(button->Option.mapOr(false, hasSpinner))->toBe(true)
   })
 
   test("the button reads its label when idle and \"Checking…\" while busy", () => {
-    let buttonText = el =>
-      el->querySelector(".menu-button")->Nullable.toOption->Option.mapOr("", textContent)
+    let buttonText = el => el->find(".menu-button")->Option.mapOr("", text)
     expect(buttonText(idle))->toBe("Check for updates")
     expect(buttonText(busy))->toBe("Checking…")
   })

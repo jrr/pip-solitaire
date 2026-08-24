@@ -23,10 +23,7 @@
 // the other two are built because the pane's record wants them, not because anything
 // places them while `screen` is `Main`.
 open Vitest
-
-@get external textContent: Html.element => string = "textContent"
-@send external querySelector: (Html.element, string) => Nullable.t<Html.element> = "querySelector"
-@send external hasAttribute: (Html.element, string) => bool = "hasAttribute"
+open TestDom
 
 // The two screens this file never shows, and the footer under all three. Scenery:
 // held fixed across every case, and never placed while `screen` is `Main`.
@@ -66,7 +63,7 @@ let about: AboutFooter.props = {
   buildTime: "2026-08-14T04:00:00.000Z",
   updateVisible: false,
   onReload: () => (),
-  refresh: Html.array([]),
+  refresh: Html.empty,
 }
 
 // The main menu, opened, with everything but the seed-sharing fields held fixed.
@@ -94,27 +91,25 @@ let render = (~seed, ~status): Html.element =>
   )
 
 // The Share Seed button — the third of the "game" buttons.
-let shareButton = (menu): option<Html.element> =>
-  menu->querySelector(".menu-buttons button:nth-child(3)")->Nullable.toOption
+let shareButton = (menu): option<Html.element> => menu->find(".menu-buttons button:nth-child(3)")
 
 // The line beneath the buttons: where a link just went, or why the button is dark.
 let line = (menu): string =>
-  switch menu->querySelector(".menu-share-line")->Nullable.toOption {
-  | Some(el) => el->textContent
+  switch menu->find(".menu-share-line") {
+  | Some(el) => el->text
   | None => "<no line>"
   }
 
 // Is the line's element there at all? An empty line and an absent one read the same
 // through `line`, and only one of them holds the layout still.
-let hasLine = (menu): bool =>
-  menu->querySelector(".menu-share-line")->Nullable.toOption->Option.isSome
+let hasLine = (menu): bool => menu->find(".menu-share-line")->Option.isSome
 
 describe("Menu Share Seed button (#98)", () => {
   test("names the seed on the table, which is what the link carries", () => {
     // On the button itself, so the label and the number a player would read out are
     // one control rather than a caption that has to be associated with it.
     let text = switch render(~seed=Some(123456), ~status=None)->shareButton {
-    | Some(b) => b->textContent
+    | Some(b) => b->text
     | None => "<no button>"
     }
     expect(text)->toBe("Share Seed 123456")
@@ -126,9 +121,8 @@ describe("Menu Share Seed button (#98)", () => {
     let value = switch render(~seed=Some(777), ~status=None)->shareButton {
     | Some(b) =>
       b
-      ->querySelector(".menu-button__value")
-      ->Nullable.toOption
-      ->Option.mapOr("<none>", textContent)
+      ->find(".menu-button__value")
+      ->Option.mapOr("<none>", text)
     | None => "<no button>"
     }
     expect(value)->toBe("777")
@@ -143,7 +137,7 @@ describe("Menu Share Seed button (#98)", () => {
 
   test("shows the bare label when there's no seed to name", () => {
     let text = switch render(~seed=None, ~status=None)->shareButton {
-    | Some(b) => b->textContent
+    | Some(b) => b->text
     | None => "<no button>"
     }
     expect(text)->toBe("Share Seed")
@@ -152,7 +146,7 @@ describe("Menu Share Seed button (#98)", () => {
   test("disables the button on a board with no seed, and says why", () => {
     let menu = render(~seed=None, ~status=None)
     switch menu->shareButton {
-    | Some(b) => expect(b->hasAttribute("disabled"))->toBe(true)
+    | Some(b) => expect(b->hasAttr("disabled"))->toBe(true)
     | None => expect("share button")->toBe("missing")
     }
     expect(menu->line)->toBe("No seed for this board.")
@@ -160,7 +154,7 @@ describe("Menu Share Seed button (#98)", () => {
     // the handler guard behind it is only belt and braces.
     expect(render(~seed=Some(1), ~status=None)->shareButton->Option.isSome)->toBe(true)
     switch render(~seed=Some(1), ~status=None)->shareButton {
-    | Some(b) => expect(b->hasAttribute("disabled"))->toBe(false)
+    | Some(b) => expect(b->hasAttr("disabled"))->toBe(false)
     | None => expect("share button")->toBe("missing")
     }
   })
@@ -171,7 +165,7 @@ describe("Menu Share Seed button (#98)", () => {
     let menu = render(~seed=Some(24680), ~status=Some("Link copied to clipboard."))
     expect(menu->line)->toBe("Link copied to clipboard.")
     let text = switch menu->shareButton {
-    | Some(b) => b->textContent
+    | Some(b) => b->text
     | None => "<no button>"
     }
     expect(text)->toBe("Share Seed 24680")
@@ -181,7 +175,7 @@ describe("Menu Share Seed button (#98)", () => {
     // The status is transient chrome, not a state change: the deal hasn't gone
     // anywhere, so a second press must still be possible.
     switch render(~seed=Some(24680), ~status=Some("Link copied to clipboard."))->shareButton {
-    | Some(b) => expect(b->hasAttribute("disabled"))->toBe(false)
+    | Some(b) => expect(b->hasAttr("disabled"))->toBe(false)
     | None => expect("share button")->toBe("missing")
     }
   })

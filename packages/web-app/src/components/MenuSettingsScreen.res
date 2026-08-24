@@ -89,7 +89,7 @@ let make = ({
         // a player yet, but reachable on a test device. Ten more taps hide the row
         // again *without* stopping the shake, so an absent row here doesn't mean the
         // board is sitting still.
-        revealHidden ? <MenuWiggleRow state=wiggle onToggle=onToggleWiggle /> : Html.array([])
+        revealHidden ? <MenuWiggleRow state=wiggle onToggle=onToggleWiggle /> : Html.empty
       }
       <MenuToggleRow
         label="Display content around notch"
