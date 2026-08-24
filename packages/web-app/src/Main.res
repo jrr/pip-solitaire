@@ -917,6 +917,171 @@ let openNamedDeal = (~game: Game.t, ~position: option<Scenario.named>): string =
   }
 }
 
+// The menu's four prop records (#308). Each is the screen's own contract with this
+// chrome, built here and handed to `<Menu>` whole — the pane places whichever screen
+// `menuScreen` names and never looks inside. Grouping them this way is what lets a
+// new setting be declared once in `Main` and once on the screen that shows it,
+// rather than a third and fourth time on the way through the pane.
+
+// The main screen (#109/#191): re-deal the board, share its deal number, pick a
+// game, go on to Settings.
+let mainScreen = (model, dispatch): MenuMainScreen.props => {
+  onClose: () => dispatch(CloseMenu),
+  onNewGame: () => {
+    liveBoard.contents->Option.forEach(board => board.newGame->Option.forEach(deal => deal()))
+    dispatch(CloseMenu)
+  },
+  onRestart: () => {
+    liveBoard.contents->Option.forEach(board => board.restart())
+    dispatch(CloseMenu)
+  },
+  shareDealSeed: model.dealSeed,
+  shareDealStatus: model.shareDealStatus,
+  onShareDeal: () =>
+    // Share the *deal* (#98). The link is a `?seed=` string, so it's built right
+    // here and handed straight to `deliver` — no `await` between the click and
+    // `navigator.share`, which is what keeps the gesture's transient activation
+    // intact for the OS share sheet (the Debug screen's whole-game share has to
+    // encode ahead of time for exactly this reason; this one doesn't).
+    //
+    // The menu deliberately stays open, unlike New Game and Restart: the status
+    // line under the buttons is the only confirmation the player gets, and on a
+    // desktop browser — where the link goes quietly onto the clipboard with no OS
+    // sheet to acknowledge it — closing over it would leave nothing to see. It
+    // clears itself a few seconds later so it can't go stale.
+    model.dealSeed->Option.forEach(seed =>
+      ShareLink.deliver(ShareLink.urlForDeal(seed))
+      ->Promise.thenResolve(outcome => {
+        dispatch(ShareDealStatus(Some(ShareLink.message(outcome))))
+        setTimeout(() => dispatch(ShareDealStatus(None)), shareStatusMs)->ignore
+      })
+      ->ignore
+    ),
+  games: switcher.controls,
+  onOpenSettings: () => {
+    // Re-detect the service-worker state each time Settings opens, so the button
+    // reflects a worker that registered (or self-destructed) since page load.
+    Refresh.detect(mode => dispatch(RefreshDetected(mode)))
+    dispatch(OpenSettings)
+  },
+}
+
+// The Settings screen (#191): the player-facing preferences.
+let settingsScreen = (model, dispatch): MenuSettingsScreen.props => {
+  onClose: () => dispatch(CloseMenu),
+  onBackToMenu: () => dispatch(BackToMenu),
+  onOpenDebug: () => {
+    dispatch(OpenDebug)
+    // Encode the board *now*, while the menu is going up, so the share button has a
+    // link ready to hand straight to `navigator.share` without an `await` in front
+    // of it (see `ShareLink.deliver`). Nothing can move the board until this screen
+    // is dismissed, so the link stays current for as long as the row is on screen.
+    // A scene with no history to read (a demo) resolves to `None` and the row
+    // stays disabled.
+
+    (
+      async () =>
+        switch currentHistory() {
+        | Some(saved) => dispatch(ShareLinkReady(await ShareLink.urlFor(saved)))
+        | None => dispatch(ShareLinkReady(None))
+        }
+    )()->ignore
+  },
+  onTapSettingsTitle: () => dispatch(SettingsTitleTapped),
+  autoCollect: model.autoCollect,
+  onToggleAutoCollect: () => dispatch(ToggleAutoCollect),
+  cardTilt: model.cardTilt,
+  onToggleCardTilt: () => dispatch(ToggleCardTilt),
+  wiggle: model.wiggle,
+  onToggleWiggle: () =>
+    // The single chance to ask (#235): flip *on* asks for the motion grant under
+    // this real click's transient activation — iOS won't prompt without it and
+    // remembers a denial per origin. Flip *off* just stops. An `Unavailable` switch
+    // has nothing to grant, so a tap is inert.
+    switch model.wiggle {
+    | Motion.Unavailable(_) => ()
+    | On => dispatch(WiggleOff)
+    | Off | Blocked =>
+      Motion.requestAccess()->Promise.thenResolve(state => dispatch(WiggleResolved(state)))->ignore
+    },
+  revealHidden: model.hidden.revealed,
+  notchDisplay: model.notchDisplay,
+  onToggleNotchDisplay: () => dispatch(ToggleNotchDisplay),
+}
+
+// The Debug screen: developer tools, a level below Settings.
+let debugScreen = (model, dispatch): MenuDebugScreen.props => {
+  onClose: () => dispatch(CloseMenu),
+  onBackToSettings: () => dispatch(BackToSettings),
+  cutoutDebug: model.cutoutDebug,
+  onToggleCutoutDebug: () => dispatch(ToggleCutoutDebug),
+  debugLog: model.debugLog,
+  onToggleDebugLog: () => dispatch(ToggleDebugLog),
+  shareEnabled: model.shareUrl->Option.isSome,
+  shareStatus: model.shareStatus,
+  onShareGame: () =>
+    // Straight into `deliver` with the link encoded on screen-open: no `await`
+    // between the click and `navigator.share`, which is what keeps the gesture's
+    // transient activation intact for the OS share sheet. The status line clears
+    // itself a few seconds later so it doesn't sit there stale.
+    model.shareUrl->Option.forEach(url =>
+      ShareLink.deliver(url)
+      ->Promise.thenResolve(outcome => {
+        dispatch(ShareStatus(Some(ShareLink.message(outcome))))
+        setTimeout(() => dispatch(ShareStatus(None)), shareStatusMs)->ignore
+      })
+      ->ignore
+    ),
+  debugScenes: switcher.debugScenes,
+  debugStates,
+}
+
+// The adaptive update-check control (#112), or `None` while the service-worker state
+// is still being detected — and on a browser that has no `serviceWorker` at all,
+// where there is nothing a button could do. `Refresh.mode` is what decides its shape:
+// "Refresh" force-reloads a cache-only install, "Check for updates" checks a real one
+// without applying it.
+let refreshControl = (model, dispatch): option<RefreshControl.props> =>
+  switch model.refreshMode {
+  | None | Some(Refresh.Unsupported) => None
+  | Some(Refresh.NoWorker) =>
+    Some({
+      label: "Refresh",
+      busy: model.refreshBusy,
+      onClick: () => {
+        dispatch(RefreshStarted)
+        Refresh.forceReload()
+      },
+    })
+  | Some(Refresh.HasWorker) =>
+    Some({
+      label: "Check for updates",
+      busy: model.refreshBusy,
+      onClick: () => {
+        dispatch(RefreshStarted)
+        Refresh.checkForUpdates(_pending => dispatch(RefreshChecked))
+      },
+    })
+  }
+
+// The About footer, under all three screens: the build/version line, the Update
+// button when a new build is waiting (#165), and the update-check control tucked
+// under them.
+let aboutFooter = (model, dispatch): AboutFooter.props => {
+  version: model.version,
+  buildTime: model.buildTime,
+  updateVisible: model.updateAvailable,
+  onReload: () => dispatch(Reload),
+  // Shown on the Settings and Debug screens once a worker state has been detected,
+  // and never on the main menu — which is where the detection is kicked off (see
+  // `mainScreen`'s `onOpenSettings` above). Both halves of that rule are known here,
+  // so the footer takes a ready-made node and stays a dumb layout.
+  refresh: switch (model.menuScreen, refreshControl(model, dispatch)) {
+  | (Menu.Main, _) | (_, None) => Html.array([])
+  | (_, Some(control)) => RefreshControl.make(control)
+  },
+}
+
 let view = (model, dispatch) => <>
   <main id="app">
     <TopBar
@@ -938,130 +1103,10 @@ let view = (model, dispatch) => <>
     open_={model.menuOpen}
     screen={model.menuScreen}
     onClose={() => dispatch(CloseMenu)}
-    onOpenSettings={() => {
-      // Re-detect the service-worker state each time Settings opens, so the button
-      // reflects a worker that registered (or self-destructed) since page load.
-      Refresh.detect(mode => dispatch(RefreshDetected(mode)))
-      dispatch(OpenSettings)
-    }}
-    onBackToMenu={() => dispatch(BackToMenu)}
-    onOpenDebug={() => {
-      dispatch(OpenDebug)
-      // Encode the board *now*, while the menu is going up, so the share button has a
-      // link ready to hand straight to `navigator.share` without an `await` in front
-      // of it (see `ShareLink.deliver`). Nothing can move the board until this screen
-      // is dismissed, so the link stays current for as long as the row is on screen.
-      // A scene with no history to read (a demo) resolves to `None` and the row
-      // stays disabled.
-
-      (
-        async () =>
-          switch currentHistory() {
-          | Some(saved) => dispatch(ShareLinkReady(await ShareLink.urlFor(saved)))
-          | None => dispatch(ShareLinkReady(None))
-          }
-      )()->ignore
-    }}
-    onBackToSettings={() => dispatch(BackToSettings)}
-    onNewGame={() => {
-      liveBoard.contents->Option.forEach(board => board.newGame->Option.forEach(deal => deal()))
-      dispatch(CloseMenu)
-    }}
-    onRestart={() => {
-      liveBoard.contents->Option.forEach(board => board.restart())
-      dispatch(CloseMenu)
-    }}
-    shareDealSeed={model.dealSeed}
-    shareDealStatus={model.shareDealStatus}
-    onShareDeal={() =>
-      // Share the *deal* (#98). The link is a `?seed=` string, so it's built right
-      // here and handed straight to `deliver` — no `await` between the click and
-      // `navigator.share`, which is what keeps the gesture's transient activation
-      // intact for the OS share sheet (the Debug screen's whole-game share has to
-      // encode ahead of time for exactly this reason; this one doesn't).
-      //
-      // The menu deliberately stays open, unlike New Game and Restart: the status
-      // line under the buttons is the only confirmation the player gets, and on a
-      // desktop browser — where the link goes quietly onto the clipboard with no OS
-      // sheet to acknowledge it — closing over it would leave nothing to see. It
-      // clears itself a few seconds later so it can't go stale.
-      model.dealSeed->Option.forEach(seed =>
-        ShareLink.deliver(ShareLink.urlForDeal(seed))
-        ->Promise.thenResolve(outcome => {
-          dispatch(ShareDealStatus(Some(ShareLink.message(outcome))))
-          setTimeout(() => dispatch(ShareDealStatus(None)), shareStatusMs)->ignore
-        })
-        ->ignore
-      )}
-    games={switcher.controls}
-    debugScenes={switcher.debugScenes}
-    debugStates={debugStates}
-    cutoutDebug={model.cutoutDebug}
-    onToggleCutoutDebug={() => dispatch(ToggleCutoutDebug)}
-    debugLog={model.debugLog}
-    onToggleDebugLog={() => dispatch(ToggleDebugLog)}
-    shareEnabled={model.shareUrl->Option.isSome}
-    shareStatus={model.shareStatus}
-    onShareGame={() =>
-      // Straight into `deliver` with the link encoded on screen-open: no `await`
-      // between the click and `navigator.share`, which is what keeps the gesture's
-      // transient activation intact for the OS share sheet. The status line clears
-      // itself a few seconds later so it doesn't sit there stale.
-      model.shareUrl->Option.forEach(url =>
-        ShareLink.deliver(url)
-        ->Promise.thenResolve(outcome => {
-          dispatch(ShareStatus(Some(ShareLink.message(outcome))))
-          setTimeout(() => dispatch(ShareStatus(None)), shareStatusMs)->ignore
-        })
-        ->ignore
-      )}
-    autoCollect={model.autoCollect}
-    onToggleAutoCollect={() => dispatch(ToggleAutoCollect)}
-    cardTilt={model.cardTilt}
-    onToggleCardTilt={() => dispatch(ToggleCardTilt)}
-    wiggle={model.wiggle}
-    onToggleWiggle={() =>
-      // The single chance to ask (#235): flip *on* asks for the motion grant under
-      // this real click's transient activation — iOS won't prompt without it and
-      // remembers a denial per origin. Flip *off* just stops. An `Unavailable` switch
-      // has nothing to grant, so a tap is inert.
-      switch model.wiggle {
-      | Motion.Unavailable(_) => ()
-      | On => dispatch(WiggleOff)
-      | Off | Blocked =>
-        Motion.requestAccess()
-        ->Promise.thenResolve(state => dispatch(WiggleResolved(state)))
-        ->ignore
-      }}
-    notchDisplay={model.notchDisplay}
-    onToggleNotchDisplay={() => dispatch(ToggleNotchDisplay)}
-    revealHidden={model.hidden.revealed}
-    onTapSettingsTitle={() => dispatch(SettingsTitleTapped)}
-    refreshButton={switch model.refreshMode {
-    | None | Some(Refresh.Unsupported) => None // still detecting, or unsupported — no button
-    | Some(Refresh.NoWorker) =>
-      Some({
-        label: "Refresh",
-        busy: model.refreshBusy,
-        onClick: () => {
-          dispatch(RefreshStarted)
-          Refresh.forceReload()
-        },
-      })
-    | Some(Refresh.HasWorker) =>
-      Some({
-        label: "Check for updates",
-        busy: model.refreshBusy,
-        onClick: () => {
-          dispatch(RefreshStarted)
-          Refresh.checkForUpdates(_pending => dispatch(RefreshChecked))
-        },
-      })
-    }}
-    version={model.version}
-    buildTime={model.buildTime}
-    updateVisible={model.updateAvailable}
-    onReload={() => dispatch(Reload)}
+    main={mainScreen(model, dispatch)}
+    settings={settingsScreen(model, dispatch)}
+    debug={debugScreen(model, dispatch)}
+    about={aboutFooter(model, dispatch)}
   />
 </>
 
