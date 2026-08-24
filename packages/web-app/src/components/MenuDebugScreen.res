@@ -70,7 +70,7 @@ let make = ({
     onClose
   />
   <div className="menu-screen">
-    <nav className="menu-section" attrs={[("aria-label", "Debug")]}>
+    <MenuSection label="Debug" tag=Nav>
       <MenuToggleRow
         label="Safe-area overlay"
         desc="Outline the device safe area to check cutout handling."
@@ -93,6 +93,6 @@ let make = ({
       />
       {Html.node(debugScenes)}
       {Html.node(debugStates)}
-    </nav>
+    </MenuSection>
   </div>
 </>

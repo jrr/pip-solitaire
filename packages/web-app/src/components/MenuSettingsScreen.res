@@ -69,7 +69,7 @@ let make = ({
     onClose
   />
   <div className="menu-screen">
-    <div className="menu-section" attrs={[("aria-label", "Settings")]}>
+    <MenuSection label="Settings">
       <MenuToggleRow
         label="Auto-collect"
         desc="Send cards to the foundations for you as soon as they're ready."
@@ -97,9 +97,9 @@ let make = ({
         on=notchDisplay
         onToggle=onToggleNotchDisplay
       />
-    </div>
-    <nav className="menu-section" attrs={[("aria-label", "More")]}>
+    </MenuSection>
+    <MenuSection label="More" tag=Nav>
       <MenuNavRow label="Debug" onClick=onOpenDebug />
-    </nav>
+    </MenuSection>
   </div>
 </>

@@ -31,7 +31,7 @@ type props = {
 }
 
 let make = ({label, busy, onClick}) =>
-  <div className="menu-section menu-refresh" attrs={[("aria-label", "Updates")]}>
+  <MenuSection label="Updates" modifier="menu-refresh">
     <button
       className="menu-button"
       onClick={_ => onClick()}
@@ -45,4 +45,4 @@ let make = ({label, busy, onClick}) =>
         : Html.array([])}
       {Html.string(busy ? "Checking…" : label)}
     </button>
-  </div>
+  </MenuSection>

@@ -71,8 +71,7 @@ let make = ({
   onOpenSettings,
 }) => <>
   <MenuHeader title="Pip" back=None onTitleTap=None onClose />
-  <div className="menu-section" attrs={[("aria-label", "game")]}>
-    <h2 className="menu-section__heading"> {Html.string("game")} </h2>
+  <MenuSection label="game" heading="game">
     <div className="menu-buttons">
       <MenuGameButton label="New" value=None enabled=true onClick=onNewGame />
       <MenuGameButton label="Restart" value=None enabled=true onClick=onRestart />
@@ -93,14 +92,11 @@ let make = ({
     <p className="menu-share-line" attrs={[("aria-live", "polite")]}>
       {Html.string(seedLine(~seed=shareDealSeed, ~status=shareDealStatus))}
     </p>
-  </div>
-  <nav className="menu-section" attrs={[("aria-label", "Games")]}>
-    <h2 className="menu-section__heading"> {Html.string("Games")} </h2>
-    {Html.node(games)}
-  </nav>
-  <div className="menu-section menu-section--bottom">
+  </MenuSection>
+  <MenuSection label="Games" heading="Games" tag=Nav> {Html.node(games)} </MenuSection>
+  <MenuSection modifier="menu-section--bottom">
     <button className="menu-button" onClick={_ => onOpenSettings()} attrs={[("type", "button")]}>
       {Html.string("Settings")}
     </button>
-  </div>
+  </MenuSection>
 </>
