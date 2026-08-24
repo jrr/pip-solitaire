@@ -1,15 +1,31 @@
 // The menu (#109): a slide-over overlay opened from the top bar's Menu button,
 // holding everything that isn't day-to-day play.
 //
-// **This file is the pane, not its contents (#307).** It owns the overlay, the
-// backdrop, the panel, which of the three screens is showing, and the About footer
-// that sits under all of them. Everything inside a screen is a component of its own
-// under `components/` — `<MenuMainScreen>`, `<MenuSettingsScreen>`,
-// `<MenuDebugScreen>`, and the rows they're built from (`<MenuHeader>`,
-// `<MenuToggleRow>`, `<MenuActionRow>`, `<MenuNavRow>`, `<MenuGameButton>`,
-// `<MenuWiggleRow>`) — each with its own props record and its own test, the shape
-// `<AboutFooter>` established when it was lifted out of here for the same reason
-// (#201). What each screen holds, and why, is documented in its own file.
+// **This file is the pane, and only the pane (#307/#308).** It owns the overlay, the
+// backdrop, the panel, which of the three screens is showing, and the fact that the
+// About footer sits under all of them. Everything inside a screen is a component of
+// its own under `components/` — `<MenuMainScreen>`, `<MenuSettingsScreen>`,
+// `<MenuDebugScreen>`, and the rows they're built from (`<MenuHeader>`, `<MenuRow>`
+// and its four variants, `<MenuGameButton>`) — each with its own props record and its
+// own test, the shape `<AboutFooter>` established when it was lifted out of here for
+// the same reason (#201). What each screen holds, and why, is documented in its own
+// file.
+//
+// **The props are a screen apiece, not a field apiece.** This record used to be flat:
+// 37 fields, one per thing any screen wanted, destructured by name here and fanned
+// back out to whichever screen it belonged to. That made this file mention every
+// setting in the app — a seventh toggle meant declaring it in `Main`'s model, again
+// on `Menu.props`, again on the destructure, again on the `<MenuSettingsScreen>` call
+// and again on that screen's own props. Four declarations for one switch, and the
+// middle two said nothing: they were this file repeating what the screen had already
+// specified (#308).
+//
+// So each screen's props record *is* the field now. `Menu` hands `settings` to
+// `<MenuSettingsScreen>` whole and never looks inside it, which is why adding a
+// setting no longer touches this file at all. The trade is that `Main` names the
+// screens' types rather than only this one's — this stopped being the single boundary
+// between the chrome model and the menu, and became the pane that arranges three
+// boundaries. That's the honest description of what it was already doing.
 //
 // The pane has **three screens** (#191): the **main menu**, a dedicated **Settings**
 // screen, and a **Debug** screen nested one level below Settings — which one shows
@@ -18,22 +34,9 @@
 // the menu always lands on the main screen (the chrome resets `screen` to `Main` when
 // it closes/opens the menu).
 //
-// The **About** footer is the build/version line and, when a service-worker update is
-// waiting, the green **Update** button (#165). The adaptive **update-check** button
-// (#112) folds into that footer too: it used to be its own "Updates" section above
-// About; the build info and the update check belong together, so `Menu` hands the
-// footer a `refresh` vnode (a `<RefreshControl>` when a worker state is known, an
-// empty node otherwise) and the footer tucks it under the version row. Both
-// `<AboutFooter>` and `<RefreshControl>` are their own pure components, lifted out so
-// their size-across-state can be pinned in isolation (#201) — see those files for the
-// "don't wiggle" story.
-//
-// It's a pure `props => vnode` in the `VersionBadge` mold (see VersionBadge for why
-// the record is spelled out by hand). Open/closed and which-screen are chrome model
-// state passed in as `open_`/`screen`; a click on the backdrop or the close button
-// calls `onClose`. The props record stays *flat* — it's the single boundary between
-// `Main`'s chrome model and the menu, and this file's job is to fan those fields out
-// to the screen that wants them. Layout lives in Menu.css.
+// A screen is placed by calling its `make` with the record it was handed, which is
+// exactly what `<MenuSettingsScreen …/>` lowers to — the JSX form builds the record
+// from attributes, and here the record already exists. Layout lives in Menu.css.
 
 // Which of the pane's three screens is showing (#191). Reopening the menu
 // resets this to `Main` (see the chrome model), so a visit to Settings/Debug never
@@ -43,149 +46,39 @@ type screen =
   | Settings
   | Debug
 
-// The adaptive refresh control folded into the About footer (#112): one button whose
-// `label` and click behaviour adapt to whether a service worker is registered
-// ("Refresh" force-reloads a cache-only install; "Check for updates" checks a
-// real install without applying — see Refresh/Main). `busy` spins the on-button
-// indicator while a check/refresh is in flight (#201). The whole control is a
-// `props` option: `None` (still detecting, or `serviceWorker` unsupported) hides it.
-type refreshButton = {
-  label: string,
-  busy: bool,
-  onClick: unit => unit,
-}
-
 type props = {
   open_: bool,
   screen: screen,
+  // The backdrop's tap. The ✕ in each screen's header closes the menu too, and is
+  // that screen's own `onClose` — the two are wired to the same thunk by `Main`.
   onClose: unit => unit,
-  onOpenSettings: unit => unit,
-  onBackToMenu: unit => unit,
-  onOpenDebug: unit => unit,
-  onBackToSettings: unit => unit,
-  // --- main screen (see MenuMainScreen) ---
-  onNewGame: unit => unit,
-  onRestart: unit => unit,
-  shareDealSeed: option<int>,
-  shareDealStatus: option<string>,
-  onShareDeal: unit => unit,
-  games: Html.element,
-  // --- settings screen (see MenuSettingsScreen) ---
-  autoCollect: bool,
-  onToggleAutoCollect: unit => unit,
-  cardTilt: bool,
-  onToggleCardTilt: unit => unit,
-  wiggle: Motion.state,
-  onToggleWiggle: unit => unit,
-  notchDisplay: bool,
-  onToggleNotchDisplay: unit => unit,
-  revealHidden: bool,
-  onTapSettingsTitle: unit => unit,
-  // --- debug screen (see MenuDebugScreen) ---
-  debugScenes: Html.element,
-  debugStates: Html.element,
-  cutoutDebug: bool,
-  onToggleCutoutDebug: unit => unit,
-  debugLog: bool,
-  onToggleDebugLog: unit => unit,
-  shareEnabled: bool,
-  shareStatus: option<string>,
-  onShareGame: unit => unit,
-  // --- the About footer, under every screen (see AboutFooter) ---
-  refreshButton: option<refreshButton>,
-  version: string,
-  buildTime: string,
-  updateVisible: bool,
-  onReload: unit => unit,
+  // One record per screen, passed through untouched. The pane chooses which of the
+  // three to place; what's in them is between `Main` and the screen.
+  //
+  // All three are built on every render even though one is placed — the same three
+  // records' worth of fields the flat props built before, just grouped, so it costs
+  // what it always did. Folding the props into the `screen` variant would build only
+  // the one, but `screen` is also a *model* field (`Main`'s `menuScreen`, compared
+  // with `!=` in `update`), and a variant carrying closures can't be compared.
+  main: MenuMainScreen.props,
+  settings: MenuSettingsScreen.props,
+  debug: MenuDebugScreen.props,
+  // The About footer, under every screen. Its `refresh` slot — the adaptive
+  // update-check button (#112), or an empty node — is filled in by `Main`, which is
+  // where both halves of that decision live: whether a service-worker state has been
+  // detected yet, and which screen is showing (it never appears on the main menu).
+  about: AboutFooter.props,
 }
 
-let make = ({
-  open_,
-  screen,
-  onClose,
-  onOpenSettings,
-  onBackToMenu,
-  onOpenDebug,
-  onBackToSettings,
-  onNewGame,
-  onRestart,
-  shareDealSeed,
-  shareDealStatus,
-  onShareDeal,
-  games,
-  debugScenes,
-  debugStates,
-  cutoutDebug,
-  onToggleCutoutDebug,
-  debugLog,
-  onToggleDebugLog,
-  shareEnabled,
-  shareStatus,
-  onShareGame,
-  autoCollect,
-  onToggleAutoCollect,
-  cardTilt,
-  onToggleCardTilt,
-  wiggle,
-  onToggleWiggle,
-  notchDisplay,
-  onToggleNotchDisplay,
-  revealHidden,
-  onTapSettingsTitle,
-  refreshButton,
-  version,
-  buildTime,
-  updateVisible,
-  onReload,
-}) => {
-  // The update-check button folded into the About footer: shown on the Settings and
-  // Debug screens once a service-worker state has been detected, and never on the
-  // main menu — which is where the detection is kicked off (see `Main`).
-  let refresh = switch (screen, refreshButton) {
-  | (Main, _) | (_, None) => Html.array([])
-  | (_, Some({label, busy, onClick})) => <RefreshControl label busy onClick />
-  }
-
+let make = ({open_, screen, onClose, main, settings, debug, about}) =>
   <div id="menu-overlay" hidden={!open_}>
     <div className="menu-overlay__backdrop" onClick={_ => onClose()} />
     <aside className="menu-panel" ariaLabel="Menu">
       {switch screen {
-      | Main =>
-        <MenuMainScreen
-          onClose onNewGame onRestart shareDealSeed shareDealStatus onShareDeal games onOpenSettings
-        />
-      | Settings =>
-        <MenuSettingsScreen
-          onClose
-          onBackToMenu
-          onOpenDebug
-          onTapSettingsTitle
-          autoCollect
-          onToggleAutoCollect
-          cardTilt
-          onToggleCardTilt
-          wiggle
-          onToggleWiggle
-          revealHidden
-          notchDisplay
-          onToggleNotchDisplay
-        />
-      | Debug =>
-        <MenuDebugScreen
-          onClose
-          onBackToSettings
-          cutoutDebug
-          onToggleCutoutDebug
-          debugLog
-          onToggleDebugLog
-          shareEnabled
-          shareStatus
-          onShareGame
-          debugScenes
-          debugStates
-        />
+      | Main => MenuMainScreen.make(main)
+      | Settings => MenuSettingsScreen.make(settings)
+      | Debug => MenuDebugScreen.make(debug)
       }}
-      <AboutFooter version buildTime updateVisible onReload refresh />
+      {AboutFooter.make(about)}
     </aside>
   </div>
-}

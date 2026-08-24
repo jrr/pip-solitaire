@@ -18,14 +18,56 @@
 //    every section below it down the panel as it came and went.
 //
 // Rendered through `Html.create` like the other component tests here (see
-// `AboutFooter_test`), which needs no DOM beyond what jsdom gives. The props record
-// is spelled out in full because `Menu` takes the whole chrome model — everything but
-// the three share fields is scenery, held fixed across the cases.
+// `AboutFooter_test`), which needs no DOM beyond what jsdom gives. `Menu` takes a
+// props record per screen (#308), so only the main screen's is interesting here —
+// the other two are built because the pane's record wants them, not because anything
+// places them while `screen` is `Main`.
 open Vitest
 
 @get external textContent: Html.element => string = "textContent"
 @send external querySelector: (Html.element, string) => Nullable.t<Html.element> = "querySelector"
 @send external hasAttribute: (Html.element, string) => bool = "hasAttribute"
+
+// The two screens this file never shows, and the footer under all three. Scenery:
+// held fixed across every case, and never placed while `screen` is `Main`.
+let settings: MenuSettingsScreen.props = {
+  onClose: () => (),
+  onBackToMenu: () => (),
+  onOpenDebug: () => (),
+  onTapSettingsTitle: () => (),
+  autoCollect: true,
+  onToggleAutoCollect: () => (),
+  cardTilt: true,
+  onToggleCardTilt: () => (),
+  wiggle: Motion.Off,
+  onToggleWiggle: () => (),
+  revealHidden: false,
+  notchDisplay: true,
+  onToggleNotchDisplay: () => (),
+}
+
+let debug: MenuDebugScreen.props = {
+  onClose: () => (),
+  onBackToSettings: () => (),
+  cutoutDebug: false,
+  onToggleCutoutDebug: () => (),
+  debugLog: false,
+  onToggleDebugLog: () => (),
+  shareEnabled: false,
+  shareStatus: None,
+  onShareGame: () => (),
+  // The externally-owned nodes the menu splices in; empty stand-ins here.
+  debugScenes: Html.make("div"),
+  debugStates: Html.make("div"),
+}
+
+let about: AboutFooter.props = {
+  version: "1.2.3",
+  buildTime: "2026-08-14T04:00:00.000Z",
+  updateVisible: false,
+  onReload: () => (),
+  refresh: Html.array([]),
+}
 
 // The main menu, opened, with everything but the seed-sharing fields held fixed.
 let render = (~seed, ~status): Html.element =>
@@ -34,42 +76,20 @@ let render = (~seed, ~status): Html.element =>
       open_: true,
       screen: Menu.Main,
       onClose: () => (),
-      onOpenSettings: () => (),
-      onBackToMenu: () => (),
-      onOpenDebug: () => (),
-      onBackToSettings: () => (),
-      onNewGame: () => (),
-      onRestart: () => (),
-      // The three under test.
-      shareDealSeed: seed,
-      shareDealStatus: status,
-      onShareDeal: () => (),
-      // The externally-owned nodes the menu splices in; empty stand-ins here.
-      games: Html.make("div"),
-      debugScenes: Html.make("div"),
-      debugStates: Html.make("div"),
-      cutoutDebug: false,
-      onToggleCutoutDebug: () => (),
-      debugLog: false,
-      onToggleDebugLog: () => (),
-      shareEnabled: false,
-      shareStatus: None,
-      onShareGame: () => (),
-      autoCollect: true,
-      onToggleAutoCollect: () => (),
-      cardTilt: true,
-      onToggleCardTilt: () => (),
-      wiggle: Motion.Off,
-      onToggleWiggle: () => (),
-      notchDisplay: true,
-      onToggleNotchDisplay: () => (),
-      revealHidden: false,
-      onTapSettingsTitle: () => (),
-      refreshButton: None,
-      version: "1.2.3",
-      buildTime: "2026-08-14T04:00:00.000Z",
-      updateVisible: false,
-      onReload: () => (),
+      main: {
+        onClose: () => (),
+        onNewGame: () => (),
+        onRestart: () => (),
+        // The three under test.
+        shareDealSeed: seed,
+        shareDealStatus: status,
+        onShareDeal: () => (),
+        games: Html.make("div"),
+        onOpenSettings: () => (),
+      },
+      settings,
+      debug,
+      about,
     }),
   )
 
