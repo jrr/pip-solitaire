@@ -35,8 +35,8 @@ let attr = (row, name) => row->getAttribute(name)->Nullable.toOption->Option.get
 describe("MenuToggleRow (#307)", () => {
   test("shows the label and the line explaining what the setting does", () => {
     let row = render(~on=false)
-    expect(row->text(".menu-toggle__label"))->toBe("Auto-collect")
-    expect(row->text(".menu-toggle__desc"))->toBe(
+    expect(row->text(".menu-row__label"))->toBe("Auto-collect")
+    expect(row->text(".menu-row__desc"))->toBe(
       "Send cards to the foundations for you as soon as they're ready.",
     )
   })
@@ -51,10 +51,12 @@ describe("MenuToggleRow (#307)", () => {
 
   test("announces its state as well as showing it", () => {
     // The class slides the knob and greens the track; `aria-checked` is the half a
-    // screen reader can read, so both have to move together.
-    expect(render(~on=false)->className)->toBe("menu-toggle")
+    // screen reader can read, so both have to move together. What each class
+    // *spells* is `MenuRow`'s to pin (see MenuRow_test); what this row owes is that
+    // both halves follow the bool it was handed.
+    expect(render(~on=false)->className->String.includes("menu-row--on"))->toBe(false)
     expect(render(~on=false)->attr("aria-checked"))->toBe("false")
-    expect(render(~on=true)->className)->toBe("menu-toggle menu-toggle--on")
+    expect(render(~on=true)->className->String.includes("menu-row--on"))->toBe(true)
     expect(render(~on=true)->attr("aria-checked"))->toBe("true")
   })
 

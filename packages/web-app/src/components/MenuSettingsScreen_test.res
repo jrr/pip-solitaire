@@ -69,7 +69,9 @@ let all = (screen, selector): array<Html.element> => {
 
 // The settings rows' labels, top to bottom.
 let rowLabels = screen =>
-  screen->all("[aria-label=\"Settings\"] .menu-toggle__label")->Array.map(textContent)
+  screen
+  ->all("[aria-label=\"Settings\"] .menu-row--switch .menu-row__label")
+  ->Array.map(textContent)
 
 describe("MenuSettingsScreen (#307)", () => {
   test("lists the player's preferences, top to bottom", () => {
@@ -105,7 +107,7 @@ describe("MenuSettingsScreen (#307)", () => {
       ~onToggleWiggle=() => log->Array.push("wiggle"),
       ~onToggleNotchDisplay=() => log->Array.push("notch"),
     )
-    screen->all("[aria-label=\"Settings\"] .menu-toggle")->Array.forEach(click)
+    screen->all("[aria-label=\"Settings\"] .menu-row--switch")->Array.forEach(click)
     expect(log)->toEqual(["auto-collect", "card-tilt", "wiggle", "notch"])
   })
 
@@ -113,7 +115,7 @@ describe("MenuSettingsScreen (#307)", () => {
     // Which rows read *on*, by name — the crossed-wire check's static twin.
     let states = screen =>
       screen
-      ->all("[aria-label=\"Settings\"] .menu-toggle--on .menu-toggle__label")
+      ->all("[aria-label=\"Settings\"] .menu-row--on .menu-row__label")
       ->Array.map(textContent)
     expect(states(render(~autoCollect=true, ~cardTilt=false, ~notchDisplay=false)))->toEqual([
       "Auto-collect",
@@ -128,15 +130,15 @@ describe("MenuSettingsScreen (#307)", () => {
     // The debug tools moved off this screen entirely (#191); what's left is a way in.
     let screen = render()
     expect(rowLabels(screen)->Array.includes("Debug"))->toBe(false)
-    expect(screen->find(".menu-nav-row__label")->Option.mapOr("<missing>", textContent))->toBe(
-      "Debug",
-    )
+    expect(
+      screen->find(".menu-row--nav .menu-row__label")->Option.mapOr("<missing>", textContent),
+    )->toBe("Debug")
   })
 
   test("opens the Debug screen from that row", () => {
     let taps = ref(0)
     let screen = render(~onOpenDebug=() => taps := taps.contents + 1)
-    screen->find(".menu-nav-row")->Option.forEach(click)
+    screen->find(".menu-row--nav")->Option.forEach(click)
     expect(taps.contents)->toBe(1)
   })
 

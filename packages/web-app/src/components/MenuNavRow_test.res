@@ -20,7 +20,7 @@ describe("MenuNavRow (#307)", () => {
   test("shows its label", () => {
     expect(
       render()
-      ->querySelector(".menu-nav-row__label")
+      ->querySelector(".menu-row--nav .menu-row__label")
       ->Nullable.toOption
       ->Option.mapOr("<missing>", textContent),
     )->toBe("Debug")
@@ -28,16 +28,12 @@ describe("MenuNavRow (#307)", () => {
 
   test("marks the way onward with a chevron, not a switch", () => {
     let row = render()
-    expect(row->querySelector(".menu-nav-row__chevron")->Nullable.toOption->Option.isSome)->toBe(
-      true,
-    )
-    expect(row->querySelector(".menu-toggle__switch")->Nullable.toOption->Option.isSome)->toBe(
-      false,
-    )
+    expect(row->querySelector(".menu-row__chevron")->Nullable.toOption->Option.isSome)->toBe(true)
+    expect(row->querySelector(".menu-row__switch")->Nullable.toOption->Option.isSome)->toBe(false)
   })
 
   test("hides the chevron from assistive tech, so the row is named by its label", () => {
-    let chevron = render()->querySelector(".menu-nav-row__chevron")->Nullable.toOption
+    let chevron = render()->querySelector(".menu-row__chevron")->Nullable.toOption
     expect(
       chevron->Option.mapOr(
         "<missing>",
