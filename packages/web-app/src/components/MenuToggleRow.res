@@ -1,18 +1,17 @@
 // A settings toggle row (#139), lifted out of `Menu` into its own pure component
-// (#307) alongside the other rows the menu is built from: the label with a
-// one-line description under it on the left, a switch track on the right.
+// (#307): the label with a one-line description under it on the left, a switch
+// track on the right.
 //
-// It's a `<button role="switch">` — the `Html` runtime only wires clicks, so the
-// switch is a plain button, not a checkbox — and toggling `--on` slides the knob
-// and greens the track. `aria-checked` is what actually voices the state; the
-// class is only how it looks.
+// It's the menu's most-used row and the plainest use of `<MenuRow>`: a `Switch`
+// trailing, whose state comes straight from a bool. `MenuRow` is what makes it a
+// real `<button role="switch">` with `aria-checked` — the class only slides the
+// knob; the role and the ARIA state are what a screen reader reads.
 //
-// This is the menu's most-used row, and the two rows beside it are deliberate
-// variations on it rather than separate designs: `<MenuActionRow>` keeps the box
-// and the label/description stack but drops the switch (it *does* something once
-// rather than holding a state), and `<MenuWiggleRow>` keeps the switch but
-// supplies its own label/subtitle rules. Both borrow this file's
-// `.menu-toggle__text` stack — see MenuToggleRow.css.
+// The rows beside it are the same box with a different right-hand end:
+// `<MenuActionRow>` has none (it *does* something once rather than holding a
+// state), `<MenuNavRow>` has a chevron, and `<MenuWiggleRow>` has a switch but
+// derives its whole shape from `Motion.state` rather than from a bool. All four
+// now hand that shape to `<MenuRow>` instead of drawing it themselves.
 //
 // A component is just a `props => vnode` function (see `VersionBadge` for why the
 // record is spelled out by hand).
@@ -27,16 +26,4 @@ type props = {
 }
 
 let make = ({label, desc, on, onToggle}) =>
-  <button
-    className={on ? "menu-toggle menu-toggle--on" : "menu-toggle"}
-    onClick={_ => onToggle()}
-    type_="button"
-    role="switch"
-    ariaChecked={on ? "true" : "false"}
-  >
-    <span className="menu-toggle__text">
-      <span className="menu-toggle__label"> {Html.string(label)} </span>
-      <span className="menu-toggle__desc"> {Html.string(desc)} </span>
-    </span>
-    <span className="menu-toggle__switch" />
-  </button>
+  <MenuRow label desc trailing={MenuRow.Switch(on)} onClick=onToggle />

@@ -27,17 +27,17 @@ open Vitest
 let render = (state, ~onToggle=() => ()) => Html.create(MenuWiggleRow.make({state, onToggle}))
 
 let subtitle = row =>
-  row->querySelector(".menu-toggle__desc")->Nullable.toOption->Option.map(textContent)
+  row->querySelector(".menu-row__desc")->Nullable.toOption->Option.map(textContent)
 
 let checked = row => row->getAttribute("aria-checked")->Nullable.toOption->Option.getOr("<missing>")
 
-let isOn = row => row->className->String.includes("menu-toggle--on")
+let isOn = row => row->className->String.includes("menu-row--on")
 
 describe("MenuWiggleRow (#307)", () => {
   test("is titled, and deliberately unexplained, while it's healthy", () => {
     let off = render(Motion.Off)
     expect(
-      off->querySelector(".menu-toggle__label")->Nullable.toOption->Option.mapOr("", textContent),
+      off->querySelector(".menu-row__label")->Nullable.toOption->Option.mapOr("", textContent),
     )->toBe("Wiggle Waggle")
     expect(off->subtitle)->toBe(None)
     expect(render(Motion.On)->subtitle)->toBe(None)

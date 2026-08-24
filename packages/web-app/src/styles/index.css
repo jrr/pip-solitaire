@@ -40,18 +40,16 @@
 @import "../DebugConsole.css";
 /* The menu, one file per component since the chrome was split up (#307). The
    order within this block reproduces the old single Menu.css: the header's rules
-   led it, the pane's followed, then the game buttons, the share line, the toggle
-   row, the action row, the nav row. The only rules that moved *relative to each
-   other* are the toggle switch's, which used to trail the action/nav rows and are
-   now back with the rest of the toggle — nothing ties on specificity across that
-   move (see the note in MenuToggleRow.css). */
+   led it, the pane's followed, then the game buttons, the share line, and the
+   rows. `MenuRow.css` takes the slot the toggle/action/nav row files shared —
+   it is the three of them consolidated, since all three drew the same box (see
+   the note there). Nothing outside it selects `.menu-row*`, so it ties with
+   nothing and its position within this block is not load-bearing. */
 @import "../components/MenuHeader.css";
 @import "../components/Menu.css";
 @import "../components/MenuGameButton.css";
 @import "../components/MenuMainScreen.css";
-@import "../components/MenuToggleRow.css";
-@import "../components/MenuActionRow.css";
-@import "../components/MenuNavRow.css";
+@import "../components/MenuRow.css";
 @import "../SceneSwitcher.css";
 
 /* Scenes. `CardArt.css` carries the shared `.card-art` base that the gallery,

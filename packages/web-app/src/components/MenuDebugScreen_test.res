@@ -71,11 +71,11 @@ let all = (screen, selector): array<Html.element> => {
 }
 
 let shareDesc = screen =>
-  screen->find(".menu-action-row .menu-toggle__desc")->Option.mapOr("<missing>", textContent)
+  screen->find(".menu-row--action .menu-row__desc")->Option.mapOr("<missing>", textContent)
 
 describe("MenuDebugScreen (#307)", () => {
   test("offers the two developer toggles", () => {
-    expect(render()->all(".menu-toggle .menu-toggle__label")->Array.map(textContent))->toEqual([
+    expect(render()->all(".menu-row--switch .menu-row__label")->Array.map(textContent))->toEqual([
       "Safe-area overlay",
       "Console logging",
     ])
@@ -87,7 +87,7 @@ describe("MenuDebugScreen (#307)", () => {
       ~onToggleCutoutDebug=() => log->Array.push("cutout"),
       ~onToggleDebugLog=() => log->Array.push("debug-log"),
     )
-    screen->all(".menu-toggle")->Array.forEach(click)
+    screen->all(".menu-row--switch")->Array.forEach(click)
     expect(log)->toEqual(["cutout", "debug-log"])
   })
 
@@ -102,14 +102,14 @@ describe("MenuDebugScreen (#307)", () => {
     // went, shoving the scene lists below it down the panel.
     let screen = render(~shareEnabled=true, ~shareStatus=Some("Link copied to clipboard."))
     expect(screen->shareDesc)->toBe("Link copied to clipboard.")
-    expect(screen->all(".menu-action-row .menu-toggle__desc")->Array.length)->toBe(1)
+    expect(screen->all(".menu-row--action .menu-row__desc")->Array.length)->toBe(1)
   })
 
   test("is really disabled with no game to share, and says so", () => {
     let taps = ref(0)
     let screen = render(~shareEnabled=false, ~onShareGame=() => taps := taps.contents + 1)
     expect(screen->shareDesc)->toBe("No game on screen to share.")
-    switch screen->find(".menu-action-row") {
+    switch screen->find(".menu-row--action") {
     | Some(row) =>
       expect(row->hasAttribute("disabled"))->toBe(true)
       row->click
@@ -121,7 +121,7 @@ describe("MenuDebugScreen (#307)", () => {
   test("shares the game state when the row is live", () => {
     let taps = ref(0)
     let screen = render(~shareEnabled=true, ~onShareGame=() => taps := taps.contents + 1)
-    screen->find(".menu-action-row")->Option.forEach(click)
+    screen->find(".menu-row--action")->Option.forEach(click)
     expect(taps.contents)->toBe(1)
   })
 

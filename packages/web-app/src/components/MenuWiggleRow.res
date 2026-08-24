@@ -9,10 +9,10 @@
 //
 // The subtitle line under the title appears *only* to report a problem
 // (`Motion.subtitle`): blocked, no sensor, or an insecure origin. A healthy switch
-// — off or listening — shows just the title and the switch, so the row renders no
-// `menu-toggle__desc` at all in those states. The switch reads on only while
-// actually listening; a `Blocked` state snaps it back to off but keeps its
-// subtitle.
+// — off or listening — shows just the title and the switch, so `desc` is simply
+// absent in those states and `<MenuRow>` renders no description element at all.
+// The switch reads on only while actually listening (`Motion.isOn`); a `Blocked`
+// state snaps it back to off but keeps its subtitle.
 //
 // Whether the row shows at all is the *caller's* business — it's hidden until the
 // Settings title has been tapped ten times (`HiddenOptions`), which
@@ -27,22 +27,10 @@ type props = {
   onToggle: unit => unit,
 }
 
-let make = ({state, onToggle}) => {
-  let on = Motion.isOn(state)
-  <button
-    className={on ? "menu-toggle menu-toggle--on" : "menu-toggle"}
-    onClick={_ => onToggle()}
-    type_="button"
-    role="switch"
-    ariaChecked={on ? "true" : "false"}
-  >
-    <span className="menu-toggle__text">
-      <span className="menu-toggle__label"> {Html.string("Wiggle Waggle")} </span>
-      {switch Motion.subtitle(state) {
-      | Some(line) => <span className="menu-toggle__desc"> {Html.string(line)} </span>
-      | None => Html.array([])
-      }}
-    </span>
-    <span className="menu-toggle__switch" />
-  </button>
-}
+let make = ({state, onToggle}) =>
+  <MenuRow
+    label="Wiggle Waggle"
+    desc=?{Motion.subtitle(state)}
+    trailing={MenuRow.Switch(Motion.isOn(state))}
+    onClick=onToggle
+  />
