@@ -1077,7 +1077,7 @@ let aboutFooter = (model, dispatch): AboutFooter.props => {
   // `mainScreen`'s `onOpenSettings` above). Both halves of that rule are known here,
   // so the footer takes a ready-made node and stays a dumb layout.
   refresh: switch (model.menuScreen, refreshControl(model, dispatch)) {
-  | (Menu.Main, _) | (_, None) => Html.array([])
+  | (Menu.Main, _) | (_, None) => Html.empty
   | (_, Some(control)) => RefreshControl.make(control)
   },
 }

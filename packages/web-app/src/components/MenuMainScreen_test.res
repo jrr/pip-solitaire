@@ -20,15 +20,7 @@
 // Rendered through `Html.create` like the other component tests here (see
 // `AboutFooter_test`), which needs no DOM beyond what jsdom gives.
 open Vitest
-
-@get external textContent: Html.element => string = "textContent"
-@send external querySelector: (Html.element, string) => Nullable.t<Html.element> = "querySelector"
-type nodeList
-@send external querySelectorAll: (Html.element, string) => nodeList = "querySelectorAll"
-@get external listLength: nodeList => int = "length"
-@send external listItem: (nodeList, int) => Html.element = "item"
-@send external click: Html.element => unit = "click"
-@send external contains: (Html.element, Html.element) => bool = "contains"
+open TestDom
 
 let games = Html.make("div")
 
@@ -53,16 +45,8 @@ let render = (
     }),
   )
 
-let find = (screen, selector) => screen->querySelector(selector)->Nullable.toOption
-
-let gameButtons = (screen): array<string> => {
-  let found = screen->querySelectorAll(".menu-buttons button")
-  let out = []
-  for i in 0 to found->listLength - 1 {
-    out->Array.push(found->listItem(i)->textContent)
-  }
-  out
-}
+let gameButtons = (screen): array<string> =>
+  screen->findAll(".menu-buttons button")->Array.map(text)
 
 describe("MenuMainScreen (#307)", () => {
   test("offers New, Restart and Share Seed, in that order", () => {
@@ -81,27 +65,24 @@ describe("MenuMainScreen (#307)", () => {
       ~onRestart=() => log->Array.push("restart"),
       ~onShareDeal=() => log->Array.push("share"),
     )
-    let buttons = screen->querySelectorAll(".menu-buttons button")
-    for i in 0 to buttons->listLength - 1 {
-      buttons->listItem(i)->click
-    }
+    screen->findAll(".menu-buttons button")->Array.forEach(click)
     expect(log)->toEqual(["new", "restart", "share"])
   })
 
   test("keeps the share line's slot even when it has nothing to say", () => {
     let quiet = render(~shareDealSeed=Some(9))
     expect(quiet->find(".menu-share-line")->Option.isSome)->toBe(true)
-    expect(quiet->find(".menu-share-line")->Option.mapOr("<missing>", textContent))->toBe("")
+    expect(quiet->textIn(".menu-share-line"))->toBe("")
   })
 
   test("uses the line to report a share, or to say why there's nothing to share", () => {
-    expect(
-      render(~shareDealSeed=None)->find(".menu-share-line")->Option.mapOr("", textContent),
-    )->toBe("No seed for this board.")
+    expect(render(~shareDealSeed=None)->find(".menu-share-line")->Option.mapOr("", text))->toBe(
+      "No seed for this board.",
+    )
     expect(
       render(~shareDealSeed=Some(9), ~shareDealStatus=Some("Link copied to clipboard."))
       ->find(".menu-share-line")
-      ->Option.mapOr("", textContent),
+      ->Option.mapOr("", text),
     )->toBe("Link copied to clipboard.")
   })
 
@@ -116,7 +97,7 @@ describe("MenuMainScreen (#307)", () => {
     let taps = ref(0)
     let screen = render(~onOpenSettings=() => taps := taps.contents + 1)
     let button = screen->find(".menu-section--bottom .menu-button")
-    expect(button->Option.mapOr("<missing>", textContent))->toBe("Settings")
+    expect(button->Option.mapOr("<missing>", text))->toBe("Settings")
     button->Option.forEach(click)
     expect(taps.contents)->toBe(1)
   })

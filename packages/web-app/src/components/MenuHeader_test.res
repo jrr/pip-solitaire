@@ -17,37 +17,17 @@
 // Rendered through `Html.create` like the other component tests here (see
 // `AboutFooter_test`), which needs no DOM beyond what jsdom gives.
 open Vitest
-
-@get external tagName: Html.element => string = "tagName"
-@get external textContent: Html.element => string = "textContent"
-type htmlCollection
-@get external childElements: Html.element => htmlCollection = "children"
-@get external collLength: htmlCollection => int = "length"
-@send external collItem: (htmlCollection, int) => Html.element = "item"
-@send external querySelector: (Html.element, string) => Nullable.t<Html.element> = "querySelector"
-@send external getAttribute: (Html.element, string) => Nullable.t<string> = "getAttribute"
-@send external click: Html.element => unit = "click"
+open TestDom
 
 let render = (~title, ~back=None, ~onTitleTap=None, ~onClose=() => ()) =>
   Html.create(MenuHeader.make({title, back, onTitleTap, onClose}))
 
 // The header's slots, left to right — which is what decides where the title sits.
-let slots = (header: Html.element): array<string> => {
-  let kids = header->childElements
-  let out = []
-  for i in 0 to kids->collLength - 1 {
-    out->Array.push(kids->collItem(i)->tagName)
-  }
-  out
-}
-
-let find = (header, selector) => header->querySelector(selector)->Nullable.toOption
+let slots = (header: Html.element): array<string> => header->children->Array.map(tag)
 
 describe("MenuHeader (#307)", () => {
   test("shows the screen's title", () => {
-    expect(render(~title="Settings")->find(".menu-title")->Option.mapOr("", textContent))->toBe(
-      "Settings",
-    )
+    expect(render(~title="Settings")->find(".menu-title")->Option.mapOr("", text))->toBe("Settings")
   })
 
   test("leaves the back slot genuinely empty on a screen with nowhere to go back to", () => {
@@ -66,7 +46,7 @@ describe("MenuHeader (#307)", () => {
     expect(
       settings
       ->find(".menu-back")
-      ->Option.mapOr("", b => b->getAttribute("aria-label")->Nullable.toOption->Option.getOr("")),
+      ->Option.mapOr("", b => b->attr("aria-label")->Option.getOr("")),
     )->toBe("Back to menu")
   })
 

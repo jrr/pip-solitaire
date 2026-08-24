@@ -19,61 +19,46 @@
 // Rendered through `Html.create` like the other component tests here (see
 // `AboutFooter_test`), which needs no DOM beyond what jsdom gives.
 open Vitest
-
-@get external tagName: Html.element => string = "tagName"
-@get external textContent: Html.element => string = "textContent"
-@get external childElementCount: Html.element => int = "childElementCount"
-@send external getAttribute: (Html.element, string) => Nullable.t<string> = "getAttribute"
-@send external hasAttribute: (Html.element, string) => bool = "hasAttribute"
-@send external querySelector: (Html.element, string) => Nullable.t<Html.element> = "querySelector"
+open TestDom
 
 let row = label => <span className="row"> {Html.string(label)} </span>
 
 // The first row's text — enough to say *what* landed inside a single-child
 // section, without asserting on the row itself.
-let rowText = (section: Html.element) =>
-  section
-  ->querySelector(".row")
-  ->Nullable.toOption
-  ->Option.mapOr("<missing>", textContent)
+let rowText = (section: Html.element) => section->textIn(".row")
 
 describe("MenuSection", () => {
   test("is a div by default, and a nav where the rows go somewhere", () => {
-    expect(Html.create(MenuSection.make({label: "Settings"}))->tagName)->toBe("DIV")
-    expect(Html.create(MenuSection.make({label: "More", tag: Nav}))->tagName)->toBe("NAV")
+    expect(Html.create(MenuSection.make({label: "Settings"}))->tag)->toBe("DIV")
+    expect(Html.create(MenuSection.make({label: "More", tag: Nav}))->tag)->toBe("NAV")
   })
 
   test("names itself for assistive tech, or stays anonymous with no label", () => {
     let named = Html.create(MenuSection.make({label: "Debug"}))
-    expect(named->getAttribute("aria-label")->Nullable.toOption)->toBe(Some("Debug"))
+    expect(named->attr("aria-label"))->toBe(Some("Debug"))
 
     // The bottom band is a layout group, not a named region: naming it would
     // announce a position rather than a purpose.
     let anonymous = Html.create(MenuSection.make({modifier: "menu-section--bottom"}))
-    expect(anonymous->hasAttribute("aria-label"))->toBe(false)
-    expect(anonymous->getAttribute("class")->Nullable.toOption)->toBe(
-      Some("menu-section menu-section--bottom"),
-    )
+    expect(anonymous->hasAttr("aria-label"))->toBe(false)
+    expect(anonymous->attr("class"))->toBe(Some("menu-section menu-section--bottom"))
   })
 
   test("shows a heading only where one was asked for", () => {
     let headed = Html.create(MenuSection.make({label: "game", heading: "game"}))
     expect(
       headed
-      ->querySelector(".menu-section__heading")
-      ->Nullable.toOption
-      ->Option.mapOr("", textContent),
+      ->find(".menu-section__heading")
+      ->Option.mapOr("", text),
     )->toBe("game")
 
     let unheaded = Html.create(MenuSection.make({label: "Settings"}))
-    expect(
-      unheaded->querySelector(".menu-section__heading")->Nullable.toOption->Option.isSome,
-    )->toBe(false)
+    expect(unheaded->find(".menu-section__heading")->Option.isSome)->toBe(false)
   })
 
   test("holds a single child", () => {
     let section = Html.create(<MenuSection label="Games"> {row("only")} </MenuSection>)
-    expect(section->childElementCount)->toBe(1)
+    expect(section->childCount)->toBe(1)
     expect(section->rowText)->toBe("only")
   })
 
@@ -85,8 +70,8 @@ describe("MenuSection", () => {
         {row("third")}
       </MenuSection>,
     )
-    expect(section->childElementCount)->toBe(3)
-    expect(section->textContent)->toBe("firstsecondthird")
+    expect(section->childCount)->toBe(3)
+    expect(section->text)->toBe("firstsecondthird")
   })
 
   test("splices a mapped list in rather than nesting it", () => {
@@ -96,8 +81,8 @@ describe("MenuSection", () => {
     // Three siblings, not one wrapper holding three: `Html.array` is `%identity`,
     // so a list of children is the same thing to the runtime as children written
     // out one by one.
-    expect(section->childElementCount)->toBe(3)
-    expect(section->textContent)->toBe("abc")
+    expect(section->childCount)->toBe(3)
+    expect(section->text)->toBe("abc")
   })
 
   test("takes a heading and children together, heading first", () => {
@@ -107,12 +92,12 @@ describe("MenuSection", () => {
         {row("Restart")}
       </MenuSection>,
     )
-    expect(section->childElementCount)->toBe(3)
-    expect(section->textContent)->toBe("gameNewRestart")
+    expect(section->childCount)->toBe(3)
+    expect(section->text)->toBe("gameNewRestart")
   })
 
   test("is legal with no children at all", () => {
     let empty = Html.create(MenuSection.make({label: "Updates"}))
-    expect(empty->childElementCount)->toBe(0)
+    expect(empty->childCount)->toBe(0)
   })
 })

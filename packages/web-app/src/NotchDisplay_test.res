@@ -5,11 +5,11 @@
 // `document.documentElement`, so this exercises the actual attribute writes.
 
 open Vitest
+open TestDom
 
 @val @scope("document") external documentElement: Html.element = "documentElement"
-@send external getAttribute: (Html.element, string) => Nullable.t<string> = "getAttribute"
 
-let attr = () => documentElement->getAttribute("data-notch-wings")->Nullable.toOption
+let attr = () => documentElement->attr("data-notch-wings")
 
 describe("NotchDisplay.setEnabled (#204)", () => {
   test("off stamps data-notch-wings=off so the clamp overrides apply", () => {

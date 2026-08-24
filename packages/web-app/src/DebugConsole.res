@@ -34,10 +34,15 @@
 //     the chrome model, which is where open/closed lives — console state is dev
 //     chrome, so it never touches `core`'s reducer;
 //   - **the scrollback** is a plain `<ol>` this module owns and appends to,
-//     spliced into the shell with `Html.node`. That's deliberate: children with no
-//     keys are diffed by position (#45), so a list that drops from the front would
-//     re-patch every visible line on every new entry. Append one `<li>`, drop one
-//     from the front, and the diff never has to look inside.
+//     spliced into the shell with `Html.node`. That's deliberate, though no longer
+//     for the reason it was: this used to say the runtime diffed unkeyed children
+//     by position, so a list that drops from the front would re-patch every visible
+//     line. Preact has keys, so that particular objection is gone — and the
+//     arrangement stays anyway, because the real cost was never the re-patching but
+//     the walk. Rendering the log as JSX means handing the diff up to 500 vnodes on
+//     every entry, and entries arrive in bursts (an autoplay narrates every move).
+//     Appending one `<li>` and dropping one from the front is work proportional to
+//     what changed, and a spliced subtree is outside the diff entirely.
 //
 // The panel subscribes to `DebugLog` while it's open and unsubscribes when it closes,
 // so a closed console costs exactly nothing (`DebugLog.enabled` is derived from the

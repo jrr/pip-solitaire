@@ -10,12 +10,7 @@
 // Rendered through `Html.create` like the other component tests here (see
 // `AboutFooter_test`), which needs no DOM beyond what jsdom gives.
 open Vitest
-
-@get external className: Html.element => string = "className"
-@get external textContent: Html.element => string = "textContent"
-@send external querySelector: (Html.element, string) => Nullable.t<Html.element> = "querySelector"
-@send external getAttribute: (Html.element, string) => Nullable.t<string> = "getAttribute"
-@send external click: Html.element => unit = "click"
+open TestDom
 
 let render = (~on, ~onToggle=() => ()): Html.element =>
   Html.create(
@@ -27,10 +22,9 @@ let render = (~on, ~onToggle=() => ()): Html.element =>
     }),
   )
 
-let text = (row, selector) =>
-  row->querySelector(selector)->Nullable.toOption->Option.mapOr("<missing>", textContent)
+let text = (row, selector) => row->textIn(selector)
 
-let attr = (row, name) => row->getAttribute(name)->Nullable.toOption->Option.getOr("<missing>")
+let attr = (row, name) => row->attrOr(name)
 
 describe("MenuToggleRow (#307)", () => {
   test("shows the label and the line explaining what the setting does", () => {
@@ -54,9 +48,9 @@ describe("MenuToggleRow (#307)", () => {
     // screen reader can read, so both have to move together. What each class
     // *spells* is `MenuRow`'s to pin (see MenuRow_test); what this row owes is that
     // both halves follow the bool it was handed.
-    expect(render(~on=false)->className->String.includes("menu-row--on"))->toBe(false)
+    expect(render(~on=false)->classes->String.includes("menu-row--on"))->toBe(false)
     expect(render(~on=false)->attr("aria-checked"))->toBe("false")
-    expect(render(~on=true)->className->String.includes("menu-row--on"))->toBe(true)
+    expect(render(~on=true)->classes->String.includes("menu-row--on"))->toBe(true)
     expect(render(~on=true)->attr("aria-checked"))->toBe("true")
   })
 

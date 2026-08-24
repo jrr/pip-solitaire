@@ -39,6 +39,6 @@ let make = ({label, value, enabled, onClick}) =>
     {Html.string(value->Option.isSome ? label ++ " " : label)}
     {switch value {
     | Some(value) => <span className="menu-button__value"> {Html.string(value)} </span>
-    | None => Html.array([])
+    | None => Html.empty
     }}
   </button>

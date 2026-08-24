@@ -56,9 +56,9 @@ let make = (props: props) => {
     <>
       {switch props.heading {
       | Some(heading) => <h2 className="menu-section__heading"> {Html.string(heading)} </h2>
-      | None => Html.array([])
+      | None => Html.empty
       }}
-      {props.children->Option.getOr(Html.array([]))}
+      {props.children->Option.getOr(Html.empty)}
     </>
 
   switch props.tag->Option.getOr(Div) {

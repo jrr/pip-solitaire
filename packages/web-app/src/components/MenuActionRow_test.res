@@ -9,17 +9,12 @@
 // Rendered through `Html.create` like the other component tests here (see
 // `AboutFooter_test`), which needs no DOM beyond what jsdom gives.
 open Vitest
-
-@get external textContent: Html.element => string = "textContent"
-@send external querySelector: (Html.element, string) => Nullable.t<Html.element> = "querySelector"
-@send external hasAttribute: (Html.element, string) => bool = "hasAttribute"
-@send external click: Html.element => unit = "click"
+open TestDom
 
 let render = (~enabled, ~desc="Copy a link that reopens this exact game.", ~onClick=() => ()) =>
   Html.create(MenuActionRow.make({label: "Share game state", desc, enabled, onClick}))
 
-let text = (row, selector) =>
-  row->querySelector(selector)->Nullable.toOption->Option.mapOr("<missing>", textContent)
+let text = (row, selector) => row->textIn(selector)
 
 describe("MenuActionRow (#307)", () => {
   test("shows the label and its description in the toggle row's stack", () => {
@@ -30,7 +25,7 @@ describe("MenuActionRow (#307)", () => {
 
   test("carries no switch, since it does something once rather than holding a state", () => {
     let row = render(~enabled=true)
-    expect(row->querySelector(".menu-row__switch")->Nullable.toOption->Option.isSome)->toBe(false)
+    expect(row->find(".menu-row__switch")->Option.isSome)->toBe(false)
   })
 
   test("takes the caller's line as its description, so a status doesn't add a row", () => {
@@ -53,9 +48,9 @@ describe("MenuActionRow (#307)", () => {
     // behind it is only belt and braces.
     let taps = ref(0)
     let row = render(~enabled=false, ~onClick=() => taps := taps.contents + 1)
-    expect(row->hasAttribute("disabled"))->toBe(true)
+    expect(row->hasAttr("disabled"))->toBe(true)
     row->click
     expect(taps.contents)->toBe(0)
-    expect(render(~enabled=true)->hasAttribute("disabled"))->toBe(false)
+    expect(render(~enabled=true)->hasAttr("disabled"))->toBe(false)
   })
 })
