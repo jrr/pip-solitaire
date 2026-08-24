@@ -53,6 +53,18 @@ export default defineConfig({
     jsx: "automatic",
     jsxImportSource: "preact",
   },
+  // …and again for the dev server's dependency scanner, which crawls the entry's
+  // imports with its own esbuild instance and does *not* read the block above.
+  // Without this, `vite` (i.e. `mise run dev`) dies on the first `.res.mjs` that
+  // contains JSX — "The JSX syntax extension is not currently enabled" — while
+  // `vite build` is perfectly happy, because the build takes the other path.
+  optimizeDeps: {
+    esbuildOptions: {
+      loader: { ".mjs": "jsx" },
+      jsx: "automatic",
+      jsxImportSource: "preact",
+    },
+  },
   // Expose the build version to the app as compile-time constants. Vite
   // string-replaces these identifiers; the ReScript entry reads them through
   // `@val external` bindings (see src/Main.res).
