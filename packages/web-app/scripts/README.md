@@ -8,7 +8,7 @@ The directories split by **purpose**, not by mechanism:
 
 | dir | what's in it |
 | --- | --- |
-| `lib/` | shared machinery, imported by the rest (and by `playwright.config.mjs` / the browser tests) |
+| `lib/` | shared machinery, imported by the rest (and by `playwright.config.mjs` / the browser tests) — including `load-jsx-module.mjs`, which is how a Node script imports compiled ReScript that carries JSX |
 | `generate/` | asset generators — they write committed files into `public/` or `src/` |
 | `screenshots/` | the screenshot report: rendering it, and the two pieces that publish it |
 | `autoplay/` | playing the game: read the board off the page, plan, and drag the moves |
@@ -25,6 +25,7 @@ imports the shared browser boot from `lib/`.
 | `generate/fonts.mjs` | `mise run fonts` | `public/fonts/*`, `src/fonts/*` — the vendored woff2/ttf, rebuilt from their `@fontsource` sources (#114) |
 | `generate/icons.mjs` | `mise run icons` | `public/*.png` — the PWA icons, composed from the real `CardArt` cards and rasterized (#49) |
 | `generate/og-image.mjs` | `mise run og-image` | `public/og-image.png` — the link-preview crop of a rendered mid-game board (#221) |
+| `dev-smoke.mjs` | `mise run dev-smoke` | nothing — it boots the dev server, loads the app in a browser, and fails if either the page or the server complains (see the file for why the build's green suite can't cover this) |
 | `screenshots/render.mjs` | `mise run screenshots` | `screenshots/` — the report: FreeCell scenes (plus the card-raster fidelity sheet, #225) × emulated devices × orientation, and an `index.html` contact sheet |
 | `screenshots/stage.mjs` | `mise run stage-screenshots -- <dir> <stamp>` | a local staging dir for `peaceiris/actions-gh-pages` to publish |
 | `screenshots/hub.mjs` | `mise run screenshots-hub -- <dir>` | `<dir>/index.html` — the `/screenshots/` hub listing every published report |

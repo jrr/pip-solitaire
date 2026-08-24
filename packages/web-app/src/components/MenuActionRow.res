@@ -28,7 +28,8 @@ let make = ({label, desc, enabled, onClick}) =>
       if enabled {
         onClick()
       }}
-    attrs={enabled ? [("type", "button")] : [("type", "button"), ("disabled", "")]}
+    type_="button"
+    disabled={!enabled}
   >
     <span className="menu-toggle__text">
       <span className="menu-toggle__label"> {Html.string(label)} </span>

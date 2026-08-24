@@ -34,7 +34,7 @@ type props = {
 }
 
 let make = ({version, buildTime, updateVisible, onReload, refresh}) =>
-  <div className="menu-footer" attrs={[("aria-label", "About")]}>
+  <div className="menu-footer" ariaLabel="About">
     <h2 className="menu-section__heading"> {Html.string("About")} </h2>
     <div className="menu-about__row">
       <VersionBadge version={version} buildTime={buildTime} />
@@ -46,12 +46,10 @@ let make = ({version, buildTime, updateVisible, onReload, refresh}) =>
           ? "menu-update__button"
           : "menu-update__button menu-update--hidden"}
         onClick={_ => onReload()}
-        attrs={[
-          ("type", "button"),
-          ("title", "Update available — reload"),
-          ("aria-label", "Update now — reload to the new version"),
-          ("aria-hidden", updateVisible ? "false" : "true"),
-        ]}
+        type_="button"
+        title="Update available — reload"
+        ariaLabel="Update now — reload to the new version"
+        ariaHidden={updateVisible ? "false" : "true"}
       >
         {Html.string("↻ Update")}
       </button>

@@ -33,7 +33,7 @@ type props = {
   shareStatus: option<string>,
   onShareGame: unit => unit,
   // Externally-owned real DOM nodes (SceneSwitcher owns them), spliced with
-  // `Html.node` so the reconciler leaves them be across open/close re-renders.
+  // `Html.node` so the diff leaves them be across open/close re-renders.
   debugScenes: Html.element,
   debugStates: Html.element,
 }
@@ -70,7 +70,7 @@ let make = ({
     onClose
   />
   <div className="menu-screen">
-    <nav className="menu-section" attrs={[("aria-label", "Debug")]}>
+    <MenuSection label="Debug" tag=Nav>
       <MenuToggleRow
         label="Safe-area overlay"
         desc="Outline the device safe area to check cutout handling."
@@ -93,6 +93,6 @@ let make = ({
       />
       {Html.node(debugScenes)}
       {Html.node(debugStates)}
-    </nav>
+    </MenuSection>
   </div>
 </>

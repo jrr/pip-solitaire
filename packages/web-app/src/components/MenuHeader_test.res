@@ -9,8 +9,8 @@
 // 2. **The title is only tappable on one screen.** It doubles as the hidden-options
 //    tap target (`HiddenOptions`) on Settings; the identical `menu-title` renders
 //    "Pip" and "Debug" elsewhere and must stay inert. `onTitleTap: None` is what
-//    keeps it that way, and — because the reconciler re-applies `onClick` on every
-//    patch (see `Html.applyProps`) — it's also what *clears* the handler from the
+//    keeps it that way, and — because a handler that is no longer in the props is
+//    dropped from the node it was on — it's also what *clears* the handler from the
 //    reused <h1> when the player leaves Settings. A leak here would be invisible
 //    until someone found it, which is exactly why it's pinned.
 //
@@ -94,12 +94,13 @@ describe("MenuHeader (#307)", () => {
     settings->find(".menu-title")->Option.forEach(click)
     expect(taps.contents)->toBe(2)
 
-    // …and the identical title on the other screens is inert. Asserted at the node
-    // rather than by counting nothing: `Html` stashes the current handler *on the
-    // element* and re-applies it on every patch, so "no handler stashed" is precisely
-    // what makes a reused <h1> stop counting when the player leaves Settings.
+    // …and the identical title on the other screens is inert. This used to be
+    // asserted at the node: the runtime this replaced stashed the current handler
+    // *on the element*, where a test could read it back. A real listener leaves
+    // nothing to read, so the assertion says what it always meant — tapping the
+    // other screen's title counts nothing.
     let main = render(~title="Pip")
-    expect(main->find(".menu-title")->Option.flatMap(Html.getClick)->Option.isSome)->toBe(false)
-    expect(settings->find(".menu-title")->Option.flatMap(Html.getClick)->Option.isSome)->toBe(true)
+    main->find(".menu-title")->Option.forEach(click)
+    expect(taps.contents)->toBe(2)
   })
 })

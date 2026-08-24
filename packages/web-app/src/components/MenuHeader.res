@@ -13,10 +13,10 @@
 // identical `menu-title` renders "Pip" and "Debug" on the other two screens and
 // must stay inert, which is why this is an option rather than a handler every
 // caller supplies. Passing `None` genuinely clears it from a reused <h1>: the
-// reconciler re-applies `onClick` on every patch, so switching screens drops the
-// handler (see `Html.applyProps`), and `Main` *also* ignores any tap that arrives
-// while `menuScreen` isn't `Settings`. Belt and braces, because a leak here would
-// be invisible until someone found it.
+// diff drops a handler that is no longer in the props, so switching screens
+// unwires it, and `Main` *also* ignores any tap that arrives while `menuScreen`
+// isn't `Settings`. Belt and braces, because a leak here would be invisible
+// until someone found it.
 //
 // A component is just a `props => vnode` function (see `VersionBadge` for why the
 // record is spelled out by hand).
@@ -39,11 +39,7 @@ let make = ({title, back, onTitleTap, onClose}) =>
   <div className="menu-panel__header">
     {switch back {
     | Some({label, onClick}) =>
-      <button
-        className="menu-back"
-        onClick={_ => onClick()}
-        attrs={[("type", "button"), ("aria-label", label)]}
-      >
+      <button className="menu-back" onClick={_ => onClick()} type_="button" ariaLabel={label}>
         {Html.string("‹ Back")}
       </button>
     | None => Html.array([])
@@ -51,11 +47,7 @@ let make = ({title, back, onTitleTap, onClose}) =>
     <h1 className="menu-title" onClick=?{onTitleTap->Option.map(tap => _ => tap())}>
       {Html.string(title)}
     </h1>
-    <button
-      className="menu-close"
-      onClick={_ => onClose()}
-      attrs={[("type", "button"), ("aria-label", "Close menu")]}
-    >
+    <button className="menu-close" onClick={_ => onClose()} type_="button" ariaLabel="Close menu">
       {Html.string("✕")}
     </button>
   </div>

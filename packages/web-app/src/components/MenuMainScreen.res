@@ -39,8 +39,8 @@ type props = {
   shareDealStatus: option<string>,
   onShareDeal: unit => unit,
   // SceneSwitcher's own rows: an externally-owned real DOM node (the switcher owns
-  // them), spliced with `Html.node` so the reconciler leaves them be across
-  // open/close re-renders.
+  // them), spliced with `Html.node` so the diff leaves them be across open/close
+  // re-renders.
   games: Html.element,
   onOpenSettings: unit => unit,
 }
@@ -71,8 +71,7 @@ let make = ({
   onOpenSettings,
 }) => <>
   <MenuHeader title="Pip" back=None onTitleTap=None onClose />
-  <div className="menu-section" attrs={[("aria-label", "game")]}>
-    <h2 className="menu-section__heading"> {Html.string("game")} </h2>
+  <MenuSection label="game" heading="game">
     <div className="menu-buttons">
       <MenuGameButton label="New" value=None enabled=true onClick=onNewGame />
       <MenuGameButton label="Restart" value=None enabled=true onClick=onRestart />
@@ -90,17 +89,14 @@ let make = ({
         onClick=onShareDeal
       />
     </div>
-    <p className="menu-share-line" attrs={[("aria-live", "polite")]}>
+    <p className="menu-share-line" ariaLive="polite">
       {Html.string(seedLine(~seed=shareDealSeed, ~status=shareDealStatus))}
     </p>
-  </div>
-  <nav className="menu-section" attrs={[("aria-label", "Games")]}>
-    <h2 className="menu-section__heading"> {Html.string("Games")} </h2>
-    {Html.node(games)}
-  </nav>
-  <div className="menu-section menu-section--bottom">
-    <button className="menu-button" onClick={_ => onOpenSettings()} attrs={[("type", "button")]}>
+  </MenuSection>
+  <MenuSection label="Games" heading="Games" tag=Nav> {Html.node(games)} </MenuSection>
+  <MenuSection modifier="menu-section--bottom">
+    <button className="menu-button" onClick={_ => onOpenSettings()} type_="button">
       {Html.string("Settings")}
     </button>
-  </div>
+  </MenuSection>
 </>

@@ -1,7 +1,7 @@
 // Web-app entry point. The app *opens as a game*: on startup it mounts the
 // FreeCell board straight away (#109), and all the chrome — a single top bar plus
-// a slide-over menu — is expressed as ReScript JSX on the hand-rolled `Html`
-// runtime and driven by its Elm-style loop. The bottom of the screen is left
+// a slide-over menu — is expressed as ReScript JSX on the `Html` runtime and
+// driven by its Elm-style loop. The bottom of the screen is left
 // clear for dragging cards; every control lives up top.
 //
 // The chrome is two components over the scene:
@@ -555,7 +555,7 @@ let update = (msg, model) =>
   // The screen guard is the other half of "only Settings unlocks": the same green
   // `menu-title` heads all three screens, and while the view only wires the handler
   // onto Settings' copy, this makes the invariant explicit rather than resting on the
-  // reconciler clearing a reused node's click handler.
+  // diff clearing a reused node's click handler.
   | SettingsTitleTapped if model.menuScreen != Menu.Settings => (model, Html.noEffect)
   | SettingsTitleTapped =>
     let hidden = HiddenOptions.tap(model.hidden)
@@ -931,8 +931,8 @@ let view = (model, dispatch) => <>
   </main>
   // The drop-down debug console (#271). Only its shell is JSX; the scrollback itself
   // is a real `<ol>` the module appends to, spliced in with `Html.node` — the same
-  // arrangement as the scene container above, and for the same reason (the reconciler
-  // leaves a spliced node alone, so a growing log never re-patches its lines).
+  // arrangement as the scene container above, and for the same reason (a spliced
+  // node's subtree is outside the diff, so a growing log never re-patches its lines).
   <DebugConsole open_={model.consoleOpen} body={DebugConsole.lines} />
   <Menu
     open_={model.menuOpen}
@@ -1068,7 +1068,7 @@ let view = (model, dispatch) => <>
 // --- Wire it up --------------------------------------------------------------
 Console.log(Core.greeting())
 
-// A single wrapper is the loop's root so the reconciler owns a clean child list
+// A single wrapper is the loop's root so the diff owns a clean child list
 // (mounting straight onto <body> would fight the module <script> already there).
 // It's `display: contents` (see styles/app-shell.css) so it vanishes from layout and #app
 // stays a direct flex child of <body>, exactly as before.

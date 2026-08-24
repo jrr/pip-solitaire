@@ -87,7 +87,10 @@
 /* Exactly one card width; `height: auto` lets the live SVG take its 5:7
    height from the viewBox, which is the same height the bitmaps are given
    inline. */
-.raster-cell > .card-art {
+/* Descendant, not child: the sprite is spliced in with `Html.node`, which now
+   puts a `display: contents` host between the cell and the card (see
+   `styles/base.css`). */
+.raster-cell .card-art {
   width: var(--raster-card-w);
   height: auto;
 }

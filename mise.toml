@@ -92,6 +92,14 @@ run = "node packages/web-app/scripts/autoplay/play.mjs"
 # can't answer — real layout, `calc()`, media queries, transform matrices, live
 # transitions, pointer input. Kept out of `ci` on purpose (`ci` stays
 # browser-free); CI runs it as its own job after `playwright-install`.
+# Boots the dev server and loads the app in a browser. Small on purpose: it covers
+# the one path the test suites can't, since `vite dev` lowers the compiler's JSX by
+# a different route than `vite build` does (see scripts/dev-smoke.mjs).
+[tasks.dev-smoke]
+description = "Boot the dev server and check the app renders"
+depends = ["build"]
+run = "node packages/web-app/scripts/dev-smoke.mjs"
+
 [tasks.browsertest]
 description = "Run the browser test suite against the built web app"
 depends = ["bundle"]

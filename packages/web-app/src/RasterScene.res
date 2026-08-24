@@ -116,7 +116,7 @@ let view = (model, dispatch) => {
     let current = model.rendering == rendering
     <button
       className={current ? "raster-toggle raster-toggle--on" : "raster-toggle"}
-      attrs={[("type", "button")]}
+      type_="button"
       onClick={_ => dispatch(Choose(rendering))}
     >
       <span className="raster-toggle__key"> {Html.string(Int.toString(index + 1))} </span>
@@ -148,15 +148,14 @@ let view = (model, dispatch) => {
   | Live => true
   | Sprite => model.cache->Option.isSome
   }
-  let rootAttrs = Array.concat(
-    [
-      ("style", `--raster-card-w: ${Float.toString(cardWidth)}px`),
-      ("data-rendering", renderingId(model.rendering)),
-    ],
-    settled ? [("data-raster", "ready")] : [],
-  )
-
-  <div className="raster-scene" attrs={rootAttrs}>
+  <div
+    className="raster-scene"
+    style={`--raster-card-w: ${Float.toString(cardWidth)}px`}
+    dataRendering={renderingId(model.rendering)}
+    // Absent until the scene has something to show — the browser tests wait on
+    // this attribute appearing, so "not ready" has to mean "no attribute".
+    dataRaster=?{settled ? Some("ready") : None}
+  >
     <div className="raster-scene__toolbar">
       {renderings->Array.mapWithIndex(toggle)->Html.array}
     </div>

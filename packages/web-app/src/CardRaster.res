@@ -215,22 +215,19 @@ let markup = (~fontCss, ~pxWidth, ~pxHeight, ~columns, cards) => {
   let n = Float.toString
   StaticRender.toString(
     <svg
-      attrs={[
-        ("xmlns", "http://www.w3.org/2000/svg"),
-        ("width", Int.toString(columns * pxWidth)),
-        ("height", Int.toString(rows * pxHeight)),
-        (
-          "viewBox",
-          `0 0 ${n(Int.toFloat(columns) *. CardArt.boxW)} ${n(Int.toFloat(rows) *. CardArt.boxH)}`,
-        ),
-      ]}
+      xmlns="http://www.w3.org/2000/svg"
+      width={Int.toString(columns * pxWidth)}
+      height={Int.toString(rows * pxHeight)}
+      viewBox={`0 0 ${n(Int.toFloat(columns) *. CardArt.boxW)} ${n(
+          Int.toFloat(rows) *. CardArt.boxH,
+        )}`}
     >
-      <style> {Html.string(fontCss)} </style>
+      <style dangerouslySetInnerHTML={{"__html": fontCss}} />
       {cards
       ->Array.mapWithIndex((card, index) => {
         let x = Int.toFloat(mod(index, columns)) *. CardArt.boxW
         let y = Int.toFloat(index / columns) *. CardArt.boxH
-        <g attrs={[("transform", `translate(${n(x)} ${n(y)})`)]}> {CardArt.body(card)} </g>
+        <g transform={`translate(${n(x)} ${n(y)})`}> {CardArt.body(card)} </g>
       })
       ->Html.array}
     </svg>,
