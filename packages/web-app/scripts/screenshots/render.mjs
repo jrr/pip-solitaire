@@ -57,14 +57,37 @@ const outDir = path.join(webAppRoot, "screenshots");
 //     device-pixel ratio reads as slightly soft, and only the retina shots show it.
 //     The scene draws one rendering at a time (`?raster=live|svg|canvas`); the plain
 //     query shoots its default, the sprite path that ships.
+//   - Menu — the slide-over menu open on its root screen (#324), the one piece of
+//     chrome the board shots never show. It's the panel that has to fit a narrow
+//     phone and a notch's safe area alike, so how it lands per device is worth an
+//     eye. The nested Settings/Debug screens are deliberately not shot: the root
+//     screen is what the report is for.
 //
 // `ready` is the selector that means "this scene has settled"; scenes that draw the
-// board share the default.
+// board share the default. `open` is the one escape hatch from the URL contract: a
+// scene that can only be reached by touching the app (the menu is chrome model
+// state, with no query parameter behind it) drives itself here, after the board has
+// settled and before the shot.
 const BOARD_READY = ".stacking-card";
 const scenes = [
   { name: "Dealt", query: "?scene=freecell&seed=1&animate=off" },
   { name: "Mid-game", query: "?scene=freecell&state=midgame" },
   { name: "Finish", query: "?scene=freecell&state=finish" },
+  {
+    name: "Menu",
+    query: "?scene=freecell&seed=1&animate=off",
+    note: "menu opened",
+    // The same click a player makes, and the same one the browser suite makes. The
+    // button's accessible name grows a suffix when an update is waiting ("Open menu
+    // — update available"), hence the prefix match rather than an exact one.
+    open: async (page) => {
+      await page.getByRole("button", { name: /^Open menu/ }).click();
+      await page.waitForSelector("#menu-overlay .menu-panel", {
+        state: "visible",
+        timeout: 15000,
+      });
+    },
+  },
   {
     name: "Card raster",
     query: "?scene=raster",
@@ -119,7 +142,7 @@ function reportHtml(shots) {
     .map(
       (scene) => `
       <section class="scene">
-        <h2>${scene.name} <span><code>${scene.query}</code></span></h2>
+        <h2>${scene.name} <span><code>${scene.query}</code>${scene.note ? ` · ${scene.note}` : ""}</span></h2>
         ${deviceCards(scene)}
       </section>`,
     )
@@ -210,6 +233,10 @@ async function main() {
             timeout: 15000,
           });
           await page.waitForTimeout(600);
+
+          // Scenes that aren't reachable from the URL alone drive themselves the
+          // rest of the way, once the board underneath them has settled.
+          if (scene.open) await scene.open(page);
 
           // The PNG comes out at the device's physical resolution (CSS size × dpr,
           // both from the descriptor).
