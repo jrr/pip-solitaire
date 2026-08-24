@@ -1,4 +1,4 @@
-// Import a compiled ReScript module that carries JSX (SPIKE — see src/Html.res).
+// Import a compiled ReScript module that carries JSX (see src/Html.res).
 //
 // Under `"jsx": {"preserve": true}` the compiler emits real JSX into the
 // `.res.mjs` output and leaves the lowering to the bundler. That's exactly what

@@ -9,8 +9,8 @@
 // 2. **The title is only tappable on one screen.** It doubles as the hidden-options
 //    tap target (`HiddenOptions`) on Settings; the identical `menu-title` renders
 //    "Pip" and "Debug" elsewhere and must stay inert. `onTitleTap: None` is what
-//    keeps it that way, and — because the reconciler re-applies `onClick` on every
-//    patch (see `Html.applyProps`) — it's also what *clears* the handler from the
+//    keeps it that way, and — because a handler that is no longer in the props is
+//    dropped from the node it was on — it's also what *clears* the handler from the
 //    reused <h1> when the player leaves Settings. A leak here would be invisible
 //    until someone found it, which is exactly why it's pinned.
 //
@@ -95,11 +95,10 @@ describe("MenuHeader (#307)", () => {
     expect(taps.contents)->toBe(2)
 
     // …and the identical title on the other screens is inert. This used to be
-    // asserted at the node — the old hand-rolled runtime stashed the current
-    // handler *on the element*, so `Html.getClick` could be read back. Preact
-    // attaches a real listener instead and there is nothing to read, so the
-    // assertion is now what it always meant: tapping the other screen's title
-    // counts nothing.
+    // asserted at the node: the runtime this replaced stashed the current handler
+    // *on the element*, where a test could read it back. A real listener leaves
+    // nothing to read, so the assertion says what it always meant — tapping the
+    // other screen's title counts nothing.
     let main = render(~title="Pip")
     main->find(".menu-title")->Option.forEach(click)
     expect(taps.contents)->toBe(2)

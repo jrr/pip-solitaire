@@ -14,9 +14,7 @@ type props = {
 }
 
 let make = ({label, onClick}) =>
-  <button className="menu-nav-row" onClick={_ => onClick()} attrs={[("type", "button")]}>
+  <button className="menu-nav-row" onClick={_ => onClick()} type_="button">
     <span className="menu-nav-row__label"> {Html.string(label)} </span>
-    <span className="menu-nav-row__chevron" attrs={[("aria-hidden", "true")]}>
-      {Html.string("›")}
-    </span>
+    <span className="menu-nav-row__chevron" ariaHidden="true"> {Html.string("›")} </span>
   </button>

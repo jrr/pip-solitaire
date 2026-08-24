@@ -30,7 +30,9 @@ let make = ({label, desc, on, onToggle}) =>
   <button
     className={on ? "menu-toggle menu-toggle--on" : "menu-toggle"}
     onClick={_ => onToggle()}
-    attrs={[("type", "button"), ("role", "switch"), ("aria-checked", on ? "true" : "false")]}
+    type_="button"
+    role="switch"
+    ariaChecked={on ? "true" : "false"}
   >
     <span className="menu-toggle__text">
       <span className="menu-toggle__label"> {Html.string(label)} </span>

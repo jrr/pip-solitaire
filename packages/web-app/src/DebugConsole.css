@@ -264,8 +264,8 @@ html[data-console-dock="full"] #debug-console {
 }
 
 /* The scrollback: a plain <ol> owned by DebugConsole.res and spliced in with
-   `Html.node`, appended to one <li> at a time (#45 — the reconciler has no keys,
-   so a re-rendered list would re-patch every visible line). It's the scroller,
+   `Html.node`, appended to one <li> at a time (#45 — an unkeyed list re-patches
+   every visible line when it changes). It's the scroller,
    and it grows to fill whatever the header leaves. */
 .debug-console__lines {
   flex: 1 1 auto;

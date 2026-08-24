@@ -1,10 +1,10 @@
 // The banded group the menu is built out of: a labelled block with an optional
 // heading, holding rows.
 //
-// Every menu screen was writing this wrapper by hand — six copies of
-// `<div|nav className="menu-section" attrs={[("aria-label", …)]}>` with an
-// optional `<h2 className="menu-section__heading">` inside. The rules for those
-// classes live in Menu.css and haven't moved; this component owns only the shape.
+// Every menu screen was writing this wrapper by hand — seven copies of
+// `<div|nav className="menu-section" ariaLabel=…>` with an optional
+// `<h2 className="menu-section__heading">` inside. The rules for those classes
+// live in Menu.css and haven't moved; this component owns only the shape.
 //
 // **It is also the app's first component that takes children**, which is worth a
 // word since nothing else here does. `children` is an ordinary field on the props
@@ -52,10 +52,6 @@ let make = (props: props) => {
   | Some(modifier) => "menu-section " ++ modifier
   | None => "menu-section"
   }
-  let attrs = switch props.label {
-  | Some(label) => [("aria-label", label)]
-  | None => []
-  }
   let body =
     <>
       {switch props.heading {
@@ -66,7 +62,9 @@ let make = (props: props) => {
     </>
 
   switch props.tag->Option.getOr(Div) {
-  | Div => <div className attrs> {body} </div>
-  | Nav => <nav className attrs> {body} </nav>
+  // `ariaLabel=?` passes the option straight through: absent stays absent, which
+  // is what an unnamed layout band wants.
+  | Div => <div className ariaLabel=?{props.label}> {body} </div>
+  | Nav => <nav className ariaLabel=?{props.label}> {body} </nav>
   }
 }

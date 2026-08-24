@@ -34,10 +34,10 @@
 //     the chrome model, which is where open/closed lives — console state is dev
 //     chrome, so it never touches `core`'s reducer;
 //   - **the scrollback** is a plain `<ol>` this module owns and appends to,
-//     spliced into the shell with `Html.node`. That's deliberate: `Html`'s reconciler
-//     does a positional diff with no keys (#45), so a list that drops from the front
-//     would re-patch every visible line on every new entry. Append one `<li>`, drop
-//     one from the front, and the reconciler never has to look inside.
+//     spliced into the shell with `Html.node`. That's deliberate: children with no
+//     keys are diffed by position (#45), so a list that drops from the front would
+//     re-patch every visible line on every new entry. Append one `<li>`, drop one
+//     from the front, and the diff never has to look inside.
 //
 // The panel subscribes to `DebugLog` while it's open and unsubscribes when it closes,
 // so a closed console costs exactly nothing (`DebugLog.enabled` is derived from the
@@ -87,7 +87,7 @@ external addKeyListener: (WebDom.element, string, keyEvent => unit) => unit = "a
 
 // --- The scrollback list ------------------------------------------------------
 // Built once at module init and never rebuilt: the shell splices this exact node, and
-// `Html`'s reconciler leaves a spliced node's subtree entirely alone.
+// a spliced node's subtree sits outside the diff entirely (see `Html.node`).
 let lines = WebDom.createElement("ol")
 lines->WebDom.setAttribute("id", "debug-console-lines")
 lines->WebDom.setAttribute("class", "debug-console__lines")
@@ -221,8 +221,8 @@ let clear = (): unit => {
 
 // --- The input line (#273) --------------------------------------------------------
 // A real `<input>` this module owns and splices into the shell, exactly like the
-// scrollback above and for the same reason: `Html`'s reconciler does a positional diff
-// with no keys (#45), and a re-created input is an input that loses its caret, its
+// scrollback above and for the same reason: unkeyed children are diffed by position
+// (#45), and a re-created input is an input that loses its caret, its
 // selection and whatever was half-typed in it every time a line arrives in the log.
 //
 // The panel is *keyboard* chrome — a physical key is the only way in — so this is
@@ -443,18 +443,17 @@ let make = ({open_, body}) =>
   <section
     id="debug-console"
     hidden={!open_}
-    attrs={[("aria-label", "Debug console"), ("aria-hidden", open_ ? "false" : "true")]}
+    ariaLabel="Debug console"
+    ariaHidden={open_ ? "false" : "true"}
   >
     {Html.node(body)}
     // The prompt, under the scrollback (#273) — the seam #271 left open here. Spliced
-    // like the scrollback rather than rendered as JSX, so the reconciler never touches
+    // like the scrollback rather than rendered as JSX, so the diff never touches
     // the live field (see `input` above). The `>` is a plain sibling: a `::before` on
     // the input itself isn't possible, and putting the caret behind a padded background
     // image is more machinery than a span.
     <div className="debug-console__prompt">
-      <span className="debug-console__caret" attrs={[("aria-hidden", "true")]}>
-        {Html.string(">")}
-      </span>
+      <span className="debug-console__caret" ariaHidden="true"> {Html.string(">")} </span>
       {Html.node(input)}
     </div>
     // The status line sits at the *foot*, under the prompt: up top it would land on the

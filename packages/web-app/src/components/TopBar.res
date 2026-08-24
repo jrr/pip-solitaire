@@ -42,47 +42,38 @@ type props = {
 let undoPath = "M12.5 8c-2.65 0-5.05.99-6.9 2.6L2 7v9h9l-3.62-3.62c1.39-1.16 3.16-1.88 5.12-1.88 3.54 0 6.55 2.31 7.6 5.5l2.37-.78C21.08 11.03 17.15 8 12.5 8z"
 
 let undoIcon =
-  <svg
-    className="top-bar__icon"
-    attrs={[("viewBox", "0 0 24 24"), ("aria-hidden", "true"), ("focusable", "false")]}
-  >
-    <path attrs={[("d", undoPath), ("fill", "currentColor")]} />
+  <svg className="top-bar__icon" viewBox="0 0 24 24" ariaHidden="true" focusable="false">
+    <path d={undoPath} fill="currentColor" />
   </svg>
-
-// A base attribute list plus the `disabled`/`aria-disabled` pair only when the
-// action isn't available — a disabled <button> ignores clicks, so the handler can
-// stay wired unconditionally.
-let controlAttrs = (~enabled: bool, base: array<(string, string)>): array<(string, string)> =>
-  enabled ? base : Array.concat(base, [("disabled", ""), ("aria-disabled", "true")])
 
 let make = ({onMenu, onUndo, canUndo, updateVisible}) =>
   <header id="top-bar">
     <button
       className="top-bar__button top-bar__button--menu"
       onClick={_ => onMenu()}
-      attrs={[
-        ("type", "button"),
-        // Fold the pending-update signal into the button's accessible name so the
-        // pip isn't a silent, visual-only cue (#165).
-        ("aria-label", updateVisible ? "Open menu — update available" : "Open menu"),
-        ("title", "Menu"),
-      ]}
+      type_="button"
+      // Fold the pending-update signal into the button's accessible name so the
+      // pip isn't a silent, visual-only cue (#165).
+      ariaLabel={updateVisible ? "Open menu — update available" : "Open menu"}
+      title="Menu"
     >
       {Html.string("☰")}
       // The update pip: a small green presence dot on the Menu button when a new
       // version is waiting (#165). Purely decorative — the state it marks is voiced
       // by the button's `aria-label` above — so it's `aria-hidden`.
-      {updateVisible
-        ? <span className="top-bar__pip" attrs={[("aria-hidden", "true")]} />
-        : Html.array([])}
+      {updateVisible ? <span className="top-bar__pip" ariaHidden="true" /> : Html.array([])}
     </button>
     <button
       className="top-bar__button top-bar__button--undo"
       onClick={_ => onUndo()}
-      attrs={controlAttrs(
-        ~enabled=canUndo,
-        [("type", "button"), ("title", "Undo"), ("aria-label", "Undo")],
-      )}
+      type_="button"
+      title="Undo"
+      ariaLabel="Undo"
+      // A disabled <button> ignores clicks, so the handler stays wired
+      // unconditionally; `aria-disabled` mirrors the state for assistive tech,
+      // and is absent rather than "false" when the action is available.
+      disabled={!canUndo}
+      ariaDisabled=?{canUndo ? None : Some("true")}
     >
       {undoIcon}
     </button>

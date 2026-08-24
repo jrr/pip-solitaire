@@ -42,23 +42,10 @@ let placedCard = ((card, angle)) => {
   let h = 168. *. cardScale
   let f = Float.toString
   <g
-    attrs={[
-      (
-        "transform",
-        `translate(${f(pivotX)} ${f(pivotY)}) rotate(${f(angle)}) translate(0 ${f(-.lift)})`,
-      ),
-      ("filter", "url(#cardShadow)"),
-    ]}
+    transform={`translate(${f(pivotX)} ${f(pivotY)}) rotate(${f(angle)}) translate(0 ${f(-.lift)})`}
+    filter="url(#cardShadow)"
   >
-    <svg
-      attrs={[
-        ("x", f(-.(w /. 2.))),
-        ("y", f(-.(h /. 2.))),
-        ("width", f(w)),
-        ("height", f(h)),
-        ("viewBox", CardArt.viewBox),
-      ]}
-    >
+    <svg x={f(-.(w /. 2.))} y={f(-.(h /. 2.))} width={f(w)} height={f(h)} viewBox={CardArt.viewBox}>
       {CardArt.body(card)}
     </svg>
   </g>
@@ -72,35 +59,13 @@ let defs = () => {
   let f = Float.toString
   <defs>
     <radialGradient
-      attrs={[
-        ("id", "bg"),
-        ("gradientUnits", "userSpaceOnUse"),
-        ("cx", f(size /. 2.)),
-        ("cy", "0"),
-        ("r", f(size *. 1.2)),
-      ]}
+      id="bg" gradientUnits="userSpaceOnUse" cx={f(size /. 2.)} cy="0" r={f(size *. 1.2)}
     >
-      <stop attrs={[("offset", "0"), ("stop-color", bgInner)]} />
-      <stop attrs={[("offset", "0.6"), ("stop-color", bgOuter)]} />
+      <stop offset="0" stopColor={bgInner} />
+      <stop offset="0.6" stopColor={bgOuter} />
     </radialGradient>
-    <filter
-      attrs={[
-        ("id", "cardShadow"),
-        ("x", "-30%"),
-        ("y", "-30%"),
-        ("width", "160%"),
-        ("height", "160%"),
-      ]}
-    >
-      <feDropShadow
-        attrs={[
-          ("dx", "0"),
-          ("dy", "8"),
-          ("stdDeviation", "10"),
-          ("flood-color", "#000000"),
-          ("flood-opacity", "0.42"),
-        ]}
-      />
+    <filter id="cardShadow" x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="0" dy="8" stdDeviation="10" floodColor="#000000" floodOpacity="0.42" />
     </filter>
   </defs>
 }
@@ -114,25 +79,16 @@ let defs = () => {
 let svg = (~cornerRadius=0.16, ~inset=1.0) => {
   let f = Float.toString
   <svg
-    attrs={[
-      ("xmlns", "http://www.w3.org/2000/svg"),
-      ("viewBox", `0 0 ${f(size)} ${f(size)}`),
-      ("width", f(size)),
-      ("height", f(size)),
-    ]}
+    xmlns="http://www.w3.org/2000/svg"
+    viewBox={`0 0 ${f(size)} ${f(size)}`}
+    width={f(size)}
+    height={f(size)}
   >
     {defs()}
     <rect
-      attrs={[
-        ("x", "0"),
-        ("y", "0"),
-        ("width", f(size)),
-        ("height", f(size)),
-        ("rx", f(size *. cornerRadius)),
-        ("fill", "url(#bg)"),
-      ]}
+      x="0" y="0" width={f(size)} height={f(size)} rx={f(size *. cornerRadius)} fill="url(#bg)"
     />
-    <g attrs={[("transform", `translate(256 256) scale(${f(inset)}) translate(-256 -256)`)]}>
+    <g transform={`translate(256 256) scale(${f(inset)}) translate(-256 -256)`}>
       {fan->Array.map(placedCard)->Html.array}
     </g>
   </svg>

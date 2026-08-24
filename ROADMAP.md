@@ -33,36 +33,43 @@ Everything the project wants falls out of this one decision:
 
 | Decision | Choice |
 |---|---|
-| Rendering | **Plain DOM bindings** (no rescript-react). Revisit only if composition hurts. |
-| Child diffing | **Keys in the hand-rolled runtime** (#309), not Preact (#45). See below. |
+| Rendering | **ReScript JSX in preserve mode over Preact** (no rescript-react). See below. |
+| Child diffing | **Preact's**, reached through `Html.res`'s bindings. Was ours (#309); see below. |
 | Service worker tooling | **`vite-plugin-pwa`** — manifest, precache, build hash, and the update hook. |
 | Card rendering | **SVG** cards for full visual control. |
 | State ownership | **100% in `core`**, reduxey: immutable state + action variant + pure reducer. |
 
-### Why keys rather than Preact
+### Why Preact now, after saying no twice
 
-#45 filed the trigger for adopting Preact: *cards need keyed identity across a
-diff*, **and** we need FLIP on those same nodes, **and** the way forward
-otherwise is owning a keyed diff. #309 called the moment arrived. Weighed at
-that point, only the third condition really held:
+#45 filed the trigger for adopting Preact and #309 declined it, on grounds that
+were right at the time: the board never reorders a list of DOM children, FLIP was
+already covered by the Web Animations API, and keys came to ~60 lines against a
+runtime we owned. What tipped it later wasn't the keys — it was the two things
+that decision named as its own revisit conditions, plus a measurement.
 
-- The board never reorders a list of DOM children. Every card is appended once
-  to one flat `playfield` and then positioned by `style.left/top` with a
-  `zIndex` — a card moving cascade 3 → cascade 5 changes two numbers, not the
-  tree. `TableScene` is deliberately outside the `Html` loop for that reason.
-- FLIP is already covered. The board measures and animates itself through the
-  Web Animations API, which is the half of the trigger a library would have
-  supplied.
-- Keys came to ~60 lines against a runtime we already own, and are unit-tested
-  in isolation (`Html_test.res`). The zero-dependency story stays intact for an
-  offline-first PWA, and `Html.node` — the escape hatch several modules use to
-  own their own subtrees — has no Preact equivalent, so adopting would have
-  been a migration, not a swap.
+- **The runtime's growth curve.** #308 wants hooks-style local state. That is the
+  second thing #309 said to revisit on, and it is where a hand-rolled runtime
+  stops being ~400 lines you can hold in your head.
+- **`Html.node` does have an equivalent.** #309's blocker — splicing a subtree
+  the app owns — is a host element with a callback ref, `display: contents` so it
+  adds nothing to layout. It costs one element in the tree, so a `.parent > .child`
+  rule across a splice becomes a descendant selector. That was one rule.
+- **Measured, not assumed.** On identical ReScript source, Preact patches a
+  182-node tree in 0.130 ms against the old runtime's 0.184 ms, and costs
+  +6.6 KB gzip on the app bundle (40.6 → 47.2). About 3 KB of that is
+  `preact-render-to-string`, which `CardRaster` needs because Preact's vnodes are
+  opaque where ours were a variant we could walk.
 
-So the trigger did not fire, exactly as #45 allowed for. **Revisit if piles come
-to own their cards as DOM children** (nesting, clipping, per-pile transforms),
-or if #308 lands on wanting hooks-style local state throughout — either makes
-the runtime's growth curve steeper than a dependency.
+What the swap is *not*: a rewrite. Components are still `props => vnode`
+functions, the Elm loop is unchanged, and `Html.res` keeps its public API — the
+whole app compiled against the new runtime with no call-site changes at all. The
+diff that followed was the honest part: typed props replacing the generic `attrs`
+escape hatch, and stale comments about a reconciler we no longer own.
+
+**What we own now** is a binding module, and three esbuild configurations that
+have to agree (build, dev-server scan, Vitest) because preserve mode leaves JSX
+in the compiled output for the bundler to lower. `mise run dev-smoke` exists
+because nothing else checks the second one.
 
 ## How to read this
 

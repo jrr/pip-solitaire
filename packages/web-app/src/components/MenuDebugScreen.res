@@ -33,7 +33,7 @@ type props = {
   shareStatus: option<string>,
   onShareGame: unit => unit,
   // Externally-owned real DOM nodes (SceneSwitcher owns them), spliced with
-  // `Html.node` so the reconciler leaves them be across open/close re-renders.
+  // `Html.node` so the diff leaves them be across open/close re-renders.
   debugScenes: Html.element,
   debugStates: Html.element,
 }

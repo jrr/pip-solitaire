@@ -39,8 +39,8 @@ type props = {
   shareDealStatus: option<string>,
   onShareDeal: unit => unit,
   // SceneSwitcher's own rows: an externally-owned real DOM node (the switcher owns
-  // them), spliced with `Html.node` so the reconciler leaves them be across
-  // open/close re-renders.
+  // them), spliced with `Html.node` so the diff leaves them be across open/close
+  // re-renders.
   games: Html.element,
   onOpenSettings: unit => unit,
 }
@@ -89,13 +89,13 @@ let make = ({
         onClick=onShareDeal
       />
     </div>
-    <p className="menu-share-line" attrs={[("aria-live", "polite")]}>
+    <p className="menu-share-line" ariaLive="polite">
       {Html.string(seedLine(~seed=shareDealSeed, ~status=shareDealStatus))}
     </p>
   </MenuSection>
   <MenuSection label="Games" heading="Games" tag=Nav> {Html.node(games)} </MenuSection>
   <MenuSection modifier="menu-section--bottom">
-    <button className="menu-button" onClick={_ => onOpenSettings()} attrs={[("type", "button")]}>
+    <button className="menu-button" onClick={_ => onOpenSettings()} type_="button">
       {Html.string("Settings")}
     </button>
   </MenuSection>

@@ -43,6 +43,13 @@ jobs:
       - name: Run the browser test suite
         run: mise run browsertest
 
+      # The dev server lowers the compiler's JSX by a different route than the
+      # build does, so a green suite says nothing about it (see
+      # packages/web-app/scripts/dev-smoke.mjs).
+      - name: Check the dev server boots
+        run: mise run dev-smoke
+        timeout-minutes: 5
+
       - name: Upload Playwright report
         if: failure()
         uses: actions/upload-artifact@v7

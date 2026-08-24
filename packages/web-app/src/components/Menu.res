@@ -148,7 +148,7 @@ let make = ({
 
   <div id="menu-overlay" hidden={!open_}>
     <div className="menu-overlay__backdrop" onClick={_ => onClose()} />
-    <aside className="menu-panel" attrs={[("aria-label", "Menu")]}>
+    <aside className="menu-panel" ariaLabel="Menu">
       {switch screen {
       | Main =>
         <MenuMainScreen

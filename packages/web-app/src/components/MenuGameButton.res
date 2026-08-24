@@ -26,18 +26,15 @@ type props = {
   onClick: unit => unit,
 }
 
-let make = ({label, value, enabled, onClick}) => {
-  let attrs = [("type", "button")]
-  if !enabled {
-    attrs->Array.push(("disabled", ""))
-  }
+let make = ({label, value, enabled, onClick}) =>
   <button
     className="menu-button"
     onClick={_ =>
       if enabled {
         onClick()
       }}
-    attrs
+    type_="button"
+    disabled={!enabled}
   >
     {Html.string(value->Option.isSome ? label ++ " " : label)}
     {switch value {
@@ -45,4 +42,3 @@ let make = ({label, value, enabled, onClick}) => {
     | None => Html.array([])
     }}
   </button>
-}

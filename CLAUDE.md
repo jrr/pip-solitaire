@@ -123,6 +123,25 @@ an unformatted file will turn the build red.
 Developers get format-on-save automatically via the workspace settings in
 `.vscode/` (install the recommended ReScript extension when VS Code prompts).
 
+## Rendering
+
+The web app's UI is ReScript JSX compiled in **preserve mode** onto **Preact**:
+the compiler emits real JSX into the `.res.mjs` output and the bundler lowers it
+(see `packages/web-app/src/Html.res`, which holds the bindings and the reasoning).
+Two consequences worth knowing before you touch the build:
+
+- **The same three esbuild settings live in three places** — `vite.config.js`
+  twice (the build's transform and the dev server's dependency scanner take
+  different paths, and the scanner keys its loader on `.js` even for `.mjs`
+  files) and `vitest.config.js` once. Nothing checks that they agree, so
+  `mise run dev-smoke` boots the dev server and fails if it complains.
+- **Node can't `import` the compiled output directly** where it carries JSX. A
+  build script that needs a ReScript module goes through
+  `scripts/lib/load-jsx-module.mjs`, which lowers it with esbuild first.
+
+Attributes are typed props on `Html.elementProps`, not a generic string map:
+adding an attribute the app has never used means adding a field there.
+
 ## Styling
 
 CSS is **one file per component**, next to the component that renders it —

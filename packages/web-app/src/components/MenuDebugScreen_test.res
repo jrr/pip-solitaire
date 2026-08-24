@@ -126,8 +126,8 @@ describe("MenuDebugScreen (#307)", () => {
   })
 
   test("splices the scene and state lists in rather than rebuilding them", () => {
-    // The very same nodes, so the reconciler leaves the switcher's subtrees alone
-    // across open/close re-renders — scenes first, then states.
+    // The very same nodes, so the switcher's subtrees are left alone across
+    // open/close re-renders — scenes first, then states.
     let screen = render()
     expect(screen->contains(debugScenes))->toBe(true)
     expect(screen->contains(debugStates))->toBe(true)

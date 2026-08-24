@@ -1,7 +1,6 @@
 // The card SVG generator: a `Deck.card` in, an inline `<svg>` vnode out. Like
-// SvgScene, these are typed vnodes rendered by the hand-rolled `Html` runtime —
-// never `innerHTML` strings — so a card is an ordinary node the reconciler can
-// diff and patch.
+// SvgScene, these are typed vnodes rendered through `Html` — never `innerHTML`
+// strings — so a card is an ordinary node the diff can patch.
 //
 // This is the rudimentary first cut called for by #36: a rounded-rect frame,
 // the rank glyph — with a small suit pip (#223) pinned to the far right so the
@@ -139,28 +138,17 @@ let body = (~detail=Full, card: Deck.card) => {
   let cornerRank = (~rotated) => {
     // Only the bottom-right corner carries a transform; the top-left one omits
     // the attribute entirely (SVG 1.1's `transform` grammar has no "none").
-    let base = [
-      ("x", "5"),
-      ("y", "38"),
-      ("font-size", "40"),
-      ("font-weight", "600"),
-      ("font-family", "Libre Franklin, sans-serif"),
-      ("fill", color),
-    ]
-    let attrs = rotated
-      ? base->Array.concat([("transform", `rotate(180 ${n(centerX)} ${n(centerY)})`)])
-      : base
-    <text attrs>
+    <text
+      x="5"
+      y="38"
+      fontSize="40"
+      fontWeight="600"
+      fontFamily="Libre Franklin, sans-serif"
+      fill={color}
+      transform=?{rotated ? Some(`rotate(180 ${n(centerX)} ${n(centerY)})`) : None}
+    >
       {Html.string(label)}
-      <tspan
-        attrs={[
-          ("x", "106"),
-          ("y", "34"),
-          ("text-anchor", "end"),
-          ("font-size", "26"),
-          ("font-family", "Pip Suits"),
-        ]}
-      >
+      <tspan x="106" y="34" textAnchor="end" fontSize="26" fontFamily="Pip Suits">
         {Html.string(glyph)}
       </tspan>
     </text>
@@ -168,28 +156,24 @@ let body = (~detail=Full, card: Deck.card) => {
 
   <>
     <rect
-      attrs={[
-        ("x", n(frameInset)),
-        ("y", n(frameInset)),
-        ("width", n(boxW -. strokeW)),
-        ("height", n(boxH -. strokeW)),
-        ("rx", n(cornerR)),
-        ("ry", n(cornerR)),
-        ("fill", cardFill),
-        ("stroke", frameStroke),
-        ("stroke-width", n(strokeW)),
-      ]}
+      x={n(frameInset)}
+      y={n(frameInset)}
+      width={n(boxW -. strokeW)}
+      height={n(boxH -. strokeW)}
+      rx={n(cornerR)}
+      ry={n(cornerR)}
+      fill={cardFill}
+      stroke={frameStroke}
+      strokeWidth={n(strokeW)}
     />
     {cornerRank(~rotated=false)}
     <text
-      attrs={[
-        ("x", n(centerX)),
-        ("y", n(centerGlyphBaseline)),
-        ("text-anchor", "middle"),
-        ("font-size", n(centerGlyphSize)),
-        ("font-family", "Pip Suits"),
-        ("fill", color),
-      ]}
+      x={n(centerX)}
+      y={n(centerGlyphBaseline)}
+      textAnchor="middle"
+      fontSize={n(centerGlyphSize)}
+      fontFamily="Pip Suits"
+      fill={color}
     >
       {Html.string(glyph)}
     </text>
@@ -198,9 +182,6 @@ let body = (~detail=Full, card: Deck.card) => {
 }
 
 let svg = (~detail=Full, card: Deck.card) =>
-  <svg
-    className="card-art"
-    attrs={[("viewBox", viewBox), ("role", "img"), ("aria-label", Deck.cardName(card))]}
-  >
+  <svg className="card-art" viewBox={viewBox} role="img" ariaLabel={Deck.cardName(card)}>
     {body(~detail, card)}
   </svg>

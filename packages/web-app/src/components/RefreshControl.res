@@ -35,14 +35,13 @@ let make = ({label, busy, onClick}) =>
     <button
       className="menu-button"
       onClick={_ => onClick()}
-      attrs={[("type", "button"), ("aria-busy", busy ? "true" : "false")]}
+      type_="button"
+      ariaBusy={busy ? "true" : "false"}
     >
       // The spinner sits inside the button, on the button's own text line, so
       // showing it never changes the button's — or the section's — height. Purely
       // decorative; `aria-busy` above voices the state.
-      {busy
-        ? <span className="menu-refresh__spinner" attrs={[("aria-hidden", "true")]} />
-        : Html.array([])}
+      {busy ? <span className="menu-refresh__spinner" ariaHidden="true" /> : Html.array([])}
       {Html.string(busy ? "Checking…" : label)}
     </button>
   </MenuSection>

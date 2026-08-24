@@ -106,8 +106,8 @@ describe("MenuMainScreen (#307)", () => {
   })
 
   test("splices SceneSwitcher's own rows in rather than rebuilding them", () => {
-    // The very same node, so the reconciler leaves the switcher's subtree alone
-    // across open/close re-renders.
+    // The very same node, so the switcher's subtree is left alone across
+    // open/close re-renders.
     let screen = render()
     expect(screen->contains(games))->toBe(true)
   })
