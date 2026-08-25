@@ -1340,6 +1340,12 @@ reportHistory := (canUndo => dispatch(HistoryChanged(canUndo)))
 // New Game's fresh deal, a Restart's same one, a scene switch to a board with none.
 reportDeal := (seed => dispatch(DealChanged(seed)))
 
+// Refuse the browser's double-tap-to-zoom gesture app-wide. `styles/base.css`
+// already asks for this with `touch-action: manipulation`, which iOS ignores in the
+// home-screen web app; `TapZoom` enforces the same policy in the touch layer. Armed
+// once here rather than per-scene, since the listener is on `document`.
+TapZoom.arm()
+
 // Detect the service-worker state up front so the Settings refresh button opens
 // with the right label (#112). It's re-detected each time Settings opens too (see
 // the view), which also covers the first-load race where the worker registers

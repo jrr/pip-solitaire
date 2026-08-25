@@ -527,6 +527,11 @@ let flyHome = (~wrapper, ~dx, ~dy, ~flight, ~delay) =>
 let doubleTapMs = 300.
 let doubleTapMoveTol = 12.
 
+// The browser's own double-tap gesture — which on iOS scales the viewport, over
+// the top of this one — is refused app-wide in `TapZoom`, armed by `Main`. It has
+// to be refused in the touch layer, and so can't ride along with the pointer
+// bookkeeping here; the two are independent by necessity, not by preference.
+
 // A resting card gets a slight, hand-placed tilt (#65) so the tableau reads as
 // dealt by a person rather than stamped down by a machine. The angle is
 // *deterministic* — a cheap hash of the card's identity and where it now rests —
