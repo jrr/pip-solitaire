@@ -1,15 +1,17 @@
-/* The build/version info, folded out of its old bottom-right corner into the
-   foot of the menu (#109). Now a plain muted line within the panel — the
-   menu's `.menu-footer` handles placement. */
-#version-badge {
-  padding: 2px 0;
-  font: 11px/1.4 "Libre Franklin", sans-serif;
-  color: #64748b;
-  /* The lone opt-out of the app-wide selection lock (see <body>): the build
-     string stays selectable so it can be copied. It lives inside the menu
-     overlay, out of any drag's reach, so re-enabling selection here can't
-     be caught by a stray card drag. */
-  -webkit-user-select: text;
-  user-select: text;
-  -webkit-touch-callout: default;
+@layer components {
+  /* The build/version info, folded out of its old bottom-right corner into the
+     foot of the menu (#109). Now a plain muted line within the panel — the
+     menu's `.menu-footer` handles placement. */
+  #version-badge {
+    padding: 2px 0;
+    font: 11px/1.4 "Libre Franklin", sans-serif;
+    color: #64748b;
+    /* The lone opt-out of the app-wide selection lock (see <body>): the build
+       string stays selectable so it can be copied. It lives inside the menu
+       overlay, out of any drag's reach, so re-enabling selection here can't
+       be caught by a stray card drag. */
+    -webkit-user-select: text;
+    user-select: text;
+    -webkit-touch-callout: default;
+  }
 }

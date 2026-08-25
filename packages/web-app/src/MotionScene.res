@@ -22,6 +22,9 @@
 // `devicemotion`), so this is verified with a phone pointed at the deployed build —
 // hence it's also skipped by the screenshot script.
 
+// This component's stylesheet, in the `scenes` layer (see src/styles/index.css).
+%%raw(`import "./MotionScene.css"`)
+
 // --- Bindings ---------------------------------------------------------------
 // The `devicemotion` plumbing (the event shape, the permission request, the
 // secure-context check, the durable subscription) all live in `Motion` now; this

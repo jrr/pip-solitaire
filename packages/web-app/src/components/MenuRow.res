@@ -21,6 +21,9 @@
 // A component is just a `props => vnode` function (see `VersionBadge` for why the
 // record is spelled out by hand).
 
+// This component's stylesheet, in the `components` layer (see src/styles/index.css).
+%%raw(`import "./MenuRow.css"`)
+
 // What sits at the right-hand end, which is also what *kind* of row this is:
 //
 //   - `Switch(on)` — a setting that holds a state. The row is a real

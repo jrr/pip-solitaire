@@ -1,115 +1,117 @@
-/* The menu's row (see MenuRow.res), and the three shapes its right-hand end takes.
+@layer components {
+  /* The menu's row (see MenuRow.res), and the three shapes its right-hand end takes.
 
-   These rules are the union of what `MenuToggleRow.css`, `MenuActionRow.css` and
-   `MenuNavRow.css` used to hold — three copies of the same box, differing only in
-   the two declarations noted below. Nothing here is new: the toggle row's box is
-   the base, and the two rules that were genuinely per-kind (the nav row's heavier
-   weight, the action row's disabled styling) are modifiers on it.
+     These rules are the union of what `MenuToggleRow.css`, `MenuActionRow.css` and
+     `MenuNavRow.css` used to hold — three copies of the same box, differing only in
+     the two declarations noted below. Nothing here is new: the toggle row's box is
+     the base, and the two rules that were genuinely per-kind (the nav row's heavier
+     weight, the action row's disabled styling) are modifiers on it.
 
-   `.menu-row__switch`'s rules used to trail the action/nav rows in the old single
-   Menu.css and were moved back beside the toggle in #307; nothing ties on
-   specificity across that move — a switch span only exists inside a `--switch`
-   row. Consolidating the three files here changes no computed style: the action
-   row's box lacked `justify-content`/`gap`, but it renders a single flex child, for
-   which `space-between` and `flex-start` place identically and a gap has nothing to
-   sit between. */
+     `.menu-row__switch`'s rules used to trail the action/nav rows in the old single
+     Menu.css and were moved back beside the toggle in #307; nothing ties on
+     specificity across that move — a switch span only exists inside a `--switch`
+     row. Consolidating the three files here changes no computed style: the action
+     row's box lacked `justify-content`/`gap`, but it renders a single flex child, for
+     which `space-between` and `flex-start` place identically and a gap has nothing to
+     sit between. */
 
-/* A full-width control styled like the scene rows: label on the left, and
-   whatever the row's kind puts on the right. It's a <button> throughout — the
-   Html runtime only wires clicks, so a switch is a button with a role rather
-   than a checkbox. */
-.menu-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.75rem;
-  width: 100%;
-  padding: 10px 12px;
-  font: 14px "Libre Franklin", sans-serif;
-  color: #e2e8f0;
-  background: #16233b;
-  border: 1px solid #22304a;
-  border-radius: 8px;
-  cursor: pointer;
-}
+  /* A full-width control styled like the scene rows: label on the left, and
+     whatever the row's kind puts on the right. It's a <button> throughout — the
+     Html runtime only wires clicks, so a switch is a button with a role rather
+     than a checkbox. */
+  .menu-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    width: 100%;
+    padding: 10px 12px;
+    font: 14px "Libre Franklin", sans-serif;
+    color: #e2e8f0;
+    background: #16233b;
+    border: 1px solid #22304a;
+    border-radius: 8px;
+    cursor: pointer;
+  }
 
-/* A row that goes somewhere is set in the heavier weight throughout — including
-   its chevron, which is why this sits on the row rather than on the label (the
-   label carries its own 600 below regardless of kind). */
-.menu-row--nav {
-  font-weight: 600;
-}
+  /* A row that goes somewhere is set in the heavier weight throughout — including
+     its chevron, which is why this sits on the row rather than on the label (the
+     label carries its own 600 below regardless of kind). */
+  .menu-row--nav {
+    font-weight: 600;
+  }
 
-/* Only an action row is ever disabled — while there's no link to hand over, say
-   (no game on screen, or the encode still in flight). The muted styling and
-   `cursor: default` announce it. */
-.menu-row--action:disabled {
-  opacity: 0.5;
-  cursor: default;
-}
+  /* Only an action row is ever disabled — while there's no link to hand over, say
+     (no game on screen, or the encode still in flight). The muted styling and
+     `cursor: default` announce it. */
+  .menu-row--action:disabled {
+    opacity: 0.5;
+    cursor: default;
+  }
 
-/* The label + description stack on the left. The label leads; the muted
-   description under it says what the row does. `min-width: 0` lets a long
-   description wrap within the row instead of shoving the switch off the right
-   edge. */
-.menu-row__text {
-  display: flex;
-  flex-direction: column;
-  gap: 0.15rem;
-  min-width: 0;
-  /* A <button>'s UA default is `text-align: center`; the label and its wrapped
-     description must read left-aligned like every other row. */
-  text-align: left;
-}
+  /* The label + description stack on the left. The label leads; the muted
+     description under it says what the row does. `min-width: 0` lets a long
+     description wrap within the row instead of shoving the switch off the right
+     edge. */
+  .menu-row__text {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+    min-width: 0;
+    /* A <button>'s UA default is `text-align: center`; the label and its wrapped
+       description must read left-aligned like every other row. */
+    text-align: left;
+  }
 
-.menu-row__label {
-  font-weight: 600;
-}
+  .menu-row__label {
+    font-weight: 600;
+  }
 
-.menu-row__desc {
-  font-size: 12px;
-  line-height: 1.35;
-  color: #94a3b8;
-}
+  .menu-row__desc {
+    font-size: 12px;
+    line-height: 1.35;
+    color: #94a3b8;
+  }
 
-/* The switch track; the knob is its ::after, parked left when off. */
-.menu-row__switch {
-  position: relative;
-  flex: 0 0 auto;
-  width: 40px;
-  height: 22px;
-  background: #334155;
-  border-radius: 999px;
-  transition: background 0.15s ease;
-}
+  /* The switch track; the knob is its ::after, parked left when off. */
+  .menu-row__switch {
+    position: relative;
+    flex: 0 0 auto;
+    width: 40px;
+    height: 22px;
+    background: #334155;
+    border-radius: 999px;
+    transition: background 0.15s ease;
+  }
 
-.menu-row__switch::after {
-  content: "";
-  position: absolute;
-  top: 2px;
-  left: 2px;
-  width: 18px;
-  height: 18px;
-  background: #e2e8f0;
-  border-radius: 50%;
-  transition: transform 0.15s ease;
-}
+  .menu-row__switch::after {
+    content: "";
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 18px;
+    height: 18px;
+    background: #e2e8f0;
+    border-radius: 50%;
+    transition: transform 0.15s ease;
+  }
 
-/* On: the accent-green track and the knob slid to the right. */
-.menu-row--on .menu-row__switch {
-  background: #166534;
-}
+  /* On: the accent-green track and the knob slid to the right. */
+  .menu-row--on .menu-row__switch {
+    background: #166534;
+  }
 
-.menu-row--on .menu-row__switch::after {
-  transform: translateX(18px);
-  background: #f0fdf4;
-}
+  .menu-row--on .menu-row__switch::after {
+    transform: translateX(18px);
+    background: #f0fdf4;
+  }
 
-/* The ›-chevron in place of a switch, marking "goes somewhere" rather than
-   "flips here". */
-.menu-row__chevron {
-  flex: 0 0 auto;
-  font-size: 1.2em;
-  line-height: 1;
-  color: #64748b;
+  /* The ›-chevron in place of a switch, marking "goes somewhere" rather than
+     "flips here". */
+  .menu-row__chevron {
+    flex: 0 0 auto;
+    font-size: 1.2em;
+    line-height: 1;
+    color: #64748b;
+  }
 }

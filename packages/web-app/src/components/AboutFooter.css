@@ -1,70 +1,72 @@
-/* The About footer (#165): the build/version line and, when an update is
-   waiting, the note + Update button below it. It stays put at the foot of the
-   panel on both the main menu and the Settings screen (#191) as the last of
-   the bottom group — the bottom group's leading `margin-top: auto` (see
-   `.menu-section--bottom`) already pushes that group and this footer down
-   together, so the footer needs no auto margin of its own (a second one would
-   split the free space and open a gap above About). A small gap keeps its own
-   rows apart. */
-.menu-footer {
-  display: flex;
-  flex-direction: column;
-  gap: 0.4rem;
-}
+@layer components {
+  /* The About footer (#165): the build/version line and, when an update is
+     waiting, the note + Update button below it. It stays put at the foot of the
+     panel on both the main menu and the Settings screen (#191) as the last of
+     the bottom group — the bottom group's leading `margin-top: auto` (see
+     `.menu-section--bottom`) already pushes that group and this footer down
+     together, so the footer needs no auto margin of its own (a second one would
+     split the free space and open a gap above About). A small gap keeps its own
+     rows apart. */
+  .menu-footer {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+  }
 
-/* The About footer's one row (#201): the build/version line on the left, the
-   Update button on the right, vertically centred. The button reserves its box
-   even when hidden (see `.menu-update--hidden`), so the row is the same height
-   whether or not an update is waiting. */
-.menu-about__row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.75rem;
-}
+  /* The About footer's one row (#201): the build/version line on the left, the
+     Update button on the right, vertically centred. The button reserves its box
+     even when hidden (see `.menu-update--hidden`), so the row is the same height
+     whether or not an update is waiting. */
+  .menu-about__row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+  }
 
-/* Reserve an element's space while hiding it: `visibility` keeps the layout
-   box (unlike `display: none`, which collapses it), so a control can come and
-   go without reflowing its neighbours (#201). Used for the About Update button
-   when no update is waiting. */
-.menu-update--hidden {
-  visibility: hidden;
-}
+  /* Reserve an element's space while hiding it: `visibility` keeps the layout
+     box (unlike `display: none`, which collapses it), so a control can come and
+     go without reflowing its neighbours (#201). Used for the About Update button
+     when no update is waiting. */
+  .menu-update--hidden {
+    visibility: hidden;
+  }
 
-/* The green call-to-action (#165), keeping the accent fill it wore on the bar.
-   Now a short button sitting at the end of the About row rather than a
-   full-width block below it (#201). */
-.menu-update__button {
-  flex: none;
-  white-space: nowrap;
-  padding: 8px 14px;
-  font: 14px "Libre Franklin", sans-serif;
-  color: #f8fafc;
-  background: #166534;
-  border: 1px solid transparent;
-  border-radius: 8px;
-  cursor: pointer;
-}
+  /* The green call-to-action (#165), keeping the accent fill it wore on the bar.
+     Now a short button sitting at the end of the About row rather than a
+     full-width block below it (#201). */
+  .menu-update__button {
+    flex: none;
+    white-space: nowrap;
+    padding: 8px 14px;
+    font: 14px "Libre Franklin", sans-serif;
+    color: #f8fafc;
+    background: #166534;
+    border: 1px solid transparent;
+    border-radius: 8px;
+    cursor: pointer;
+  }
 
-/* The on-button progress spinner for the Settings refresh control (#201):
-   a ¾ ring in the button's own text colour, spinning while a check/refresh is
-   in flight. It rides inside the button's text line — smaller than the line
-   box — so showing it never changes the button's or the section's height,
-   which is the point (it replaced a status line that used to reflow). */
-.menu-refresh__spinner {
-  display: inline-block;
-  width: 0.85em;
-  height: 0.85em;
-  margin-right: 0.5em;
-  vertical-align: -0.12em;
-  border: 2px solid currentColor;
-  border-right-color: transparent;
-  border-radius: 50%;
-  animation: menu-refresh-spin 0.7s linear infinite;
-}
+  /* The on-button progress spinner for the Settings refresh control (#201):
+     a ¾ ring in the button's own text colour, spinning while a check/refresh is
+     in flight. It rides inside the button's text line — smaller than the line
+     box — so showing it never changes the button's or the section's height,
+     which is the point (it replaced a status line that used to reflow). */
+  .menu-refresh__spinner {
+    display: inline-block;
+    width: 0.85em;
+    height: 0.85em;
+    margin-right: 0.5em;
+    vertical-align: -0.12em;
+    border: 2px solid currentColor;
+    border-right-color: transparent;
+    border-radius: 50%;
+    animation: menu-refresh-spin 0.7s linear infinite;
+  }
 
-@keyframes menu-refresh-spin {
-  to {
-    transform: rotate(360deg);
+  @keyframes menu-refresh-spin {
+    to {
+      transform: rotate(360deg);
+    }
   }
 }

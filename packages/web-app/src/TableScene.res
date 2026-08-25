@@ -29,6 +29,9 @@
 //     target, and snapping the card to that zone's centre on release.
 //   - Squared vs fanned pile layout, reflowed live from the zones' rects.
 
+// This component's stylesheet, in the `scenes` layer (see src/styles/index.css).
+%%raw(`import "./TableScene.css"`)
+
 // --- Pointer / geometry bindings ---------------------------------------------
 // WebDom's `addEventListener` is event-less; dragging needs the PointerEvent
 // (coordinates + id), so bind a pointer-specific listener and the few reads off

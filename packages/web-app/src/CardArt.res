@@ -15,6 +15,9 @@
 // level will drop detail on small cards, chosen by rendered size. Until then
 // every card renders `Full`.
 
+// This component's stylesheet, in the `scenes` layer (see src/styles/index.css).
+%%raw(`import "./CardArt.css"`)
+
 type detail = Full
 
 // The card face geometry, shared by every card, and the single source of the card's

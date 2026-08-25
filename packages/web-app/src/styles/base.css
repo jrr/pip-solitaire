@@ -1,79 +1,80 @@
-:root {
-  color-scheme: dark;
+@layer foundations {
+  :root {
+    color-scheme: dark;
+  }
+
+  *,
+  *::before,
+  *::after {
+    box-sizing: border-box;
+  }
+
+  html,
+  body {
+    margin: 0;
+    /* Native-app touch behaviour (#113). `manipulation` kills double-tap-to-
+       zoom (and the legacy 300ms tap delay) app-wide — iOS intersects
+       `touch-action` down the ancestor chain, so a root value covers every
+       descendant — while still permitting pinch-zoom. `overscroll-behavior:
+       none` stops the rubber-band bounce / scroll-chaining that reads as
+       "the drag scrolled the page" (in-bounds scrolling, e.g. the tall card
+       gallery, is unaffected; the tradeoff is Android-in-a-tab pull-to-
+       refresh, acceptable for a standalone-first app — see #112). The
+       transparent tap highlight removes iOS's grey tap flash on controls.
+
+       The selection locks are app-wide, not scoped to the playfield: a fast
+       card drag strays off the stage and onto the chrome (the Undo button in
+       #113's follow-up), where iOS would otherwise latch onto the button text
+       and pop the "Copy / Look Up" callout mid-drag. `user-select: none`
+       blocks the text grab and `-webkit-touch-callout: none` suppresses the
+       long-press menu everywhere; the one place that genuinely wants
+       selection (the build string, #version-badge) opts back in below. */
+    touch-action: manipulation;
+    overscroll-behavior: none;
+    -webkit-tap-highlight-color: transparent;
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
+  }
+
+  body {
+    min-height: 100dvh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    background: radial-gradient(130% 120% at 50% 0%, #13233b 0%, #0b1220 60%);
+    color: #e2e8f0;
+    font-family: "Libre Franklin", sans-serif;
+    font-weight: 400;
+    -webkit-font-smoothing: antialiased;
+    /* Clear the notch/status bar on the top and sides. The bottom is left
+       unpadded (#199): the shaded scene band runs clear to the bottom edge, so
+       there's no darkened strip below the play area where the version badge used
+       to sit. The home-indicator clearance moves onto #scene-box as its own
+       padding-bottom — cards stay above the indicator (the height fit reads the
+       padded playfield height) while the shading bleeds under it, the vertical
+       twin of the horizontal full-bleed. The top padding is kept tight — just
+       enough to sit the top bar below the status bar — so the scene band fills
+       nearly the whole viewport. */
+    padding: calc(env(safe-area-inset-top) + 0.75rem)
+      calc(env(safe-area-inset-right) + 1.5rem) 0
+      calc(env(safe-area-inset-left) + 1.5rem);
+  }
+
+  /* The Elm loop's mount root (src/Main.res). `display: contents` removes it
+     from layout so #app stays a direct flex child of <body>, exactly as when
+     the chrome was built imperatively. */
+
+  /* Splice hosts (`Html.node`). Preact has no vnode that *is* a live DOM node, so
+     a subtree the app owns imperatively — the scene container, the debug
+     console's scrollback, a rasterized card — is appended into a host element
+     through a callback ref. `display: contents` keeps that host out of layout, so
+     the spliced node lays out exactly where it did when the old runtime spliced it
+     in with no wrapper at all. It is still an extra element in the *tree*, which
+     is why a `.parent > .child` rule across a splice has to become a descendant
+     selector (see `RasterScene.css`). */
+  .raw-host {
+    display: contents;
+  }
 }
-
-*,
-*::before,
-*::after {
-  box-sizing: border-box;
-}
-
-html,
-body {
-  margin: 0;
-  /* Native-app touch behaviour (#113). `manipulation` kills double-tap-to-
-     zoom (and the legacy 300ms tap delay) app-wide — iOS intersects
-     `touch-action` down the ancestor chain, so a root value covers every
-     descendant — while still permitting pinch-zoom. `overscroll-behavior:
-     none` stops the rubber-band bounce / scroll-chaining that reads as
-     "the drag scrolled the page" (in-bounds scrolling, e.g. the tall card
-     gallery, is unaffected; the tradeoff is Android-in-a-tab pull-to-
-     refresh, acceptable for a standalone-first app — see #112). The
-     transparent tap highlight removes iOS's grey tap flash on controls.
-
-     The selection locks are app-wide, not scoped to the playfield: a fast
-     card drag strays off the stage and onto the chrome (the Undo button in
-     #113's follow-up), where iOS would otherwise latch onto the button text
-     and pop the "Copy / Look Up" callout mid-drag. `user-select: none`
-     blocks the text grab and `-webkit-touch-callout: none` suppresses the
-     long-press menu everywhere; the one place that genuinely wants
-     selection (the build string, #version-badge) opts back in below. */
-  touch-action: manipulation;
-  overscroll-behavior: none;
-  -webkit-tap-highlight-color: transparent;
-  -webkit-user-select: none;
-  user-select: none;
-  -webkit-touch-callout: none;
-}
-
-body {
-  min-height: 100dvh;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  text-align: center;
-  background: radial-gradient(130% 120% at 50% 0%, #13233b 0%, #0b1220 60%);
-  color: #e2e8f0;
-  font-family: "Libre Franklin", sans-serif;
-  font-weight: 400;
-  -webkit-font-smoothing: antialiased;
-  /* Clear the notch/status bar on the top and sides. The bottom is left
-     unpadded (#199): the shaded scene band runs clear to the bottom edge, so
-     there's no darkened strip below the play area where the version badge used
-     to sit. The home-indicator clearance moves onto #scene-box as its own
-     padding-bottom — cards stay above the indicator (the height fit reads the
-     padded playfield height) while the shading bleeds under it, the vertical
-     twin of the horizontal full-bleed. The top padding is kept tight — just
-     enough to sit the top bar below the status bar — so the scene band fills
-     nearly the whole viewport. */
-  padding: calc(env(safe-area-inset-top) + 0.75rem)
-    calc(env(safe-area-inset-right) + 1.5rem) 0
-    calc(env(safe-area-inset-left) + 1.5rem);
-}
-
-/* The Elm loop's mount root (src/Main.res). `display: contents` removes it
-   from layout so #app stays a direct flex child of <body>, exactly as when
-   the chrome was built imperatively. */
-
-/* Splice hosts (`Html.node`). Preact has no vnode that *is* a live DOM node, so
-   a subtree the app owns imperatively — the scene container, the debug
-   console's scrollback, a rasterized card — is appended into a host element
-   through a callback ref. `display: contents` keeps that host out of layout, so
-   the spliced node lays out exactly where it did when the old runtime spliced it
-   in with no wrapper at all. It is still an extra element in the *tree*, which
-   is why a `.parent > .child` rule across a splice has to become a descendant
-   selector (see `RasterScene.css`). */
-.raw-host {
-  display: contents;
-}
-

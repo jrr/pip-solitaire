@@ -5,6 +5,9 @@
 // selected. A fresh <game-board> is created each time the scene mounts, so
 // re-selecting it starts the spin over from a clean slate.
 
+// This component's stylesheet, in the `scenes` layer (see src/styles/index.css).
+%%raw(`import "./SpinnerScene.css"`)
+
 // The <game-board> element's inward conduit (see game-board.js / InwardEvents).
 @send external send: (WebDom.element, InwardEvents.command) => unit = "send"
 

@@ -11,6 +11,9 @@
 // sees the same tags, and it patches that one attribute in place. No node is
 // torn down and rebuilt (which is what would restart a CSS/WAAPI animation).
 
+// This component's stylesheet, in the `scenes` layer (see src/styles/index.css).
+%%raw(`import "./SvgScene.css"`)
+
 type model = {hue: int}
 
 type msg = Cycle
