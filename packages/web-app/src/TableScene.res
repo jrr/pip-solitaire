@@ -1369,13 +1369,14 @@ let make = (
         change
       }
 
-      // The win overlay (#121): a dimmed panel over the board announcing the win,
-      // with a New Game button to play on — and, when the driver has a deal number to
-      // hand out, a Share button beside it (#264). Shown when a move completes every
-      // foundation (`GameState.hasWon`); the button re-deals a fresh FreeCell
-      // (`newDeal`) or, for a fixed-layout board, replays the same deal — either way
-      // `buildBoard` clears `boardHost` first, so the overlay is torn down with the
-      // rest of the board and can't linger. Only one is ever raised at a time.
+      // The win overlay (#121). The panel itself is `<WinOverlay>` — what it holds and
+      // why lives in that file (#319); what lives here is *when* it is raised and torn
+      // down, which is the half that needs this closure.
+      //
+      // Raised when a move completes every foundation (`GameState.hasWon`), built with
+      // `Html.create` like the 52 cards are, and appended to `boardHost` — so
+      // `buildBoard` clearing that host is also what stops a panel lingering onto the
+      // next board. Only one is ever raised at a time.
       //
       // It reports the game — the clock and the tally — but doesn't *take* either. Both
       // were settled by the move that won (#298), which is why this raises a panel and
@@ -1393,115 +1394,44 @@ let make = (
           // session stamps it as it records the winning move, so the number reports how
           // long the game took rather than how long the last card took to fly. A save
           // that already carries a `wonAt` keeps it, so reopening a won board reports the
-          // game's own length rather than how long ago you played it.
-          let overlay = WebDom.createElement("div")
-          overlay->WebDom.setAttribute("class", "win-overlay")
-
-          let panel = WebDom.createElement("div")
-          panel->WebDom.setAttribute("class", "win-panel")
-
-          let title = WebDom.createElement("p")
-          title->WebDom.setAttribute("class", "win-panel__title")
-          title->WebDom.setTextContent("You win!")
-
-          // What the game cost (#289), under the title: every move made and every undo
-          // taken. Read now, as the overlay goes up, so it describes the game that was
-          // just won — and re-read on each win, since undoing back out of a victory and
-          // playing on raises a fresh panel with the larger numbers it earned.
-          let tally = WebDom.createElement("p")
-          tally->WebDom.setAttribute("class", "win-panel__stats")
-          tally->WebDom.setTextContent(Stats.summary(session.contents.stats))
-
-          // The buttons sit in a row of their own, so a second one lands beside New
-          // Game rather than under it and the panel stays as wide as its widest line.
-          let actions = WebDom.createElement("div")
-          actions->WebDom.setAttribute("class", "win-panel__actions")
-
-          let button = WebDom.createElement("button")
-          button->WebDom.setAttribute("type", "button")
-          button->WebDom.setAttribute("class", "win-panel__button")
-          button->WebDom.setTextContent("New Game")
-          button->WebDom.addEventListener("click", () =>
-            switch newDeal {
-            | Some(freshDeal) => buildBoard(freshDeal())
-            | None => buildBoard(game)
-            }
+          // game's own length rather than how long ago you played it. Both numbers are
+          // read *now*, as the panel goes up, so they describe the game that was just
+          // won — undoing back out of a victory and playing on raises a fresh panel with
+          // the larger numbers it earned.
+          let overlay = Html.create(
+            WinOverlay.make({
+              time: Timing.summary(session.contents.timing),
+              tally: Stats.summary(session.contents.stats),
+              onNewGame: () =>
+                switch newDeal {
+                | Some(freshDeal) => buildBoard(freshDeal())
+                | None => buildBoard(game)
+                },
+              // Offered only when the driver has a deal to hand out — asked *now*, as
+              // the panel goes up, so the answer is about the board that was just won
+              // rather than whatever the scene mounted with — and withheld entirely
+              // from a game the solver had a hand in (#291). `Stats.usedAutoplay` is
+              // why the tally counts autoplays at all: it's the one fact about a game
+              // that has to survive every undo back past the solver's moves, and it
+              // does because the tally only ever counts up and is only ever reset by a
+              // board being replaced (a New Game or a Restart, both of which build
+              // afresh from `Stats.zero`).
+              share: switch winShare {
+              | Some(offer) if offer.available() && !Stats.usedAutoplay(session.contents.stats) =>
+                Some({
+                  onShare: () =>
+                    offer.share(
+                      ~moves=session.contents.stats.moves,
+                      ~undos=session.contents.stats.undos,
+                    ),
+                })
+              | _ => None
+              },
+            }),
           )
-          actions->WebDom.appendChild(button)->ignore
-
-          panel->WebDom.appendChild(title)->ignore
-          // How long it took (#302), between the headline and the tally: the biggest of
-          // the three numbers to look at, since it's the one you'd say out loud. Its own
-          // element rather than another clause on the tally line, because it's the one
-          // that can be missing — a game restored from a save written before the clock
-          // existed has no time to report, and a line that sometimes reads
-          // "94 moves · 0 undos" and sometimes "4:07 · 94 moves · 0 undos" is harder to
-          // read at a glance than a line that's sometimes simply not there.
-          switch Timing.summary(session.contents.timing) {
-          | Some(text) =>
-            let time = WebDom.createElement("p")
-            time->WebDom.setAttribute("class", "win-panel__time")
-            time->WebDom.setTextContent(text)
-            panel->WebDom.appendChild(time)->ignore
-          | None => ()
-          }
-          panel->WebDom.appendChild(tally)->ignore
-          panel->WebDom.appendChild(actions)->ignore
-
-          // The victory share (#264), offered only when the driver has a deal to hand
-          // out — asked *now*, as the overlay goes up, so the answer is about the board
-          // that was just won rather than whatever the scene mounted with.
-          //
-          // The click calls `share` with nothing awaited in front of it, so the
-          // gesture's transient activation survives into `navigator.share` (see
-          // `ShareLink.deliver`). That's affordable here precisely because a victory
-          // shares the *deal*: a `?seed=` link is built from a number, with no
-          // compression standing between the tap and the sheet.
-          //
-          // The status line beneath reports where the link went — the only
-          // acknowledgement a desktop player gets, since the clipboard route opens no
-          // OS sheet. Unlike the menu's, it doesn't clear itself: the panel is torn
-          // down by the very next thing the player does, so there's no stale state for
-          // a timer to save us from. Its height is reserved in CSS so the line landing
-          // doesn't jostle the buttons above it.
-          //
-          // …and withdrawn entirely from a game the solver had a hand in (#291). A
-          // shared victory is a claim about how you played, and "I typed `autoplay`"
-          // isn't one worth passing on — so the button is simply not built, rather
-          // than built and made to explain itself. The test is `Stats.usedAutoplay`,
-          // which is why the tally counts autoplays at all: it's the one fact about a
-          // game that has to survive every undo back past the solver's moves, and it
-          // does because the tally only ever counts up and is only ever reset by a
-          // board being replaced (a New Game or a Restart, both of which build afresh
-          // from `Stats.zero`).
-          switch winShare {
-          | Some(offer) if offer.available() && !Stats.usedAutoplay(session.contents.stats) =>
-            let status = WebDom.createElement("p")
-            status->WebDom.setAttribute("class", "win-panel__status")
-            status->WebDom.setAttribute("aria-live", "polite")
-
-            let shareButton = WebDom.createElement("button")
-            shareButton->WebDom.setAttribute("type", "button")
-            shareButton->WebDom.setAttribute("class", "win-panel__button win-panel__button--share")
-            shareButton->WebDom.setTextContent("Share")
-            shareButton->WebDom.addEventListener("click", () =>
-              offer.share(~moves=session.contents.stats.moves, ~undos=session.contents.stats.undos)
-              // Writing into the panel is safe even if it's been torn down by the time
-              // the share resolves (an undo out of the win, a New Game): the node is
-              // detached by then, and setting text on it changes nothing anyone sees.
-              ->Promise.thenResolve(line => status->WebDom.setTextContent(line))
-              ->ignore
-            )
-            actions->WebDom.appendChild(shareButton)->ignore
-            panel->WebDom.appendChild(status)->ignore
-          | _ => ()
-          }
-
-          overlay->WebDom.appendChild(panel)->ignore
           boardHost->WebDom.appendChild(overlay)->ignore
           winOverlay := Some(overlay)
         }
-
       // Tear the win overlay down (#85) — undo out of a victory removes the panel
       // and clears the flag so a later win can raise it again. A no-op when no
       // overlay is up.
@@ -1759,11 +1689,17 @@ let make = (
           switch finishButton.contents {
           | Some(_) => () // already shown
           | None =>
-            let btn = WebDom.createElement("button")
-            btn->WebDom.setAttribute("type", "button")
-            btn->WebDom.setAttribute("class", "finish-button")
-            btn->WebDom.setTextContent("Finish")
-            btn->WebDom.addEventListener("click", () => playFinish()->ignore)
+            // One button, raised and removed whole like the win panel above, so it's
+            // built the same way — as markup through `Html.create` rather than four
+            // `setAttribute` calls. It stays here rather than becoming a component of
+            // its own: the markup is a line, and the part worth naming is the rule
+            // above it, which reads `winShown` and the session and so belongs to this
+            // closure (#319).
+            let btn = Html.create(
+              <button className="finish-button" type_="button" onClick={_ => playFinish()->ignore}>
+                {Html.string("Finish")}
+              </button>,
+            )
             boardHost->WebDom.appendChild(btn)->ignore
             finishButton := Some(btn)
           }
