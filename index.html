@@ -58,12 +58,14 @@
     />
     <meta name="twitter:image" content="https://jrr.github.io/pip-solitaire/og-image.png" />
 
-    <!-- App styling. One file per component under src/, assembled in
-         src/styles/index.css — see that file for why the import order there is
-         pinned rather than left to each component importing its own sheet
-         (#306). Linked rather than inlined so it is render-blocking in dev as
-         well as in the built site; Vite bundles it into a single hashed
-         stylesheet, which vite-plugin-pwa then precaches.
+    <!-- App styling. One file per component under src/, each imported by the
+         component that renders it; what this links is src/styles/index.css, which
+         holds the `@layer` order they are all assembled in plus the foundations
+         no component owns (#306). Linked rather than inlined so the foundations
+         are render-blocking in dev as well as in the built site — a
+         component-imported sheet arrives with its module, so in dev it lands a
+         beat later, while the build extracts every one of them into the same
+         single hashed stylesheet, which vite-plugin-pwa then precaches.
 
          The key usability fix lives in base.css: padding the page by the
          `env(safe-area-inset-*)` values, since with the translucent iOS status
@@ -71,8 +73,8 @@
          the home indicator. Colors track the PWA manifest (background #0b1220,
          accent green #166534) so the web page, the OS chrome and the installed
          splash all look like one app. -->
-    <script type="module" crossorigin src="./assets/index-D6S82q77.js"></script>
-    <link rel="stylesheet" crossorigin href="./assets/index-G5_QsHcQ.css">
+    <script type="module" crossorigin src="./assets/index-ByFRdJNq.js"></script>
+    <link rel="stylesheet" crossorigin href="./assets/index-Cw4B4Pd3.css">
   <link rel="manifest" href="./manifest.webmanifest"></head>
   <body>
     <!-- Vite resolves the bare `core/…` specifier the compiled entry imports
