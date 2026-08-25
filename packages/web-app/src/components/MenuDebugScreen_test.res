@@ -11,8 +11,9 @@
 //    otherwise, shoving the scene lists below it.
 // 3. **It's disabled while there's nothing to share** — a scene with no game, or the
 //    moment between opening the screen and the encode resolving — and says which.
-// 4. **The scene/state lists are spliced, not rebuilt.** SceneSwitcher owns those
-//    nodes; the screen must hand back the very elements it was given, in order.
+// 4. **The two lists arrive differently, and both land.** The scene list is a node
+//    SceneSwitcher owns, so the screen must hand back the very element it was given;
+//    the state list is data, rendered by `<DebugStates>`. Scenes first, then states.
 // 5. **Back goes one step, to Settings** — not all the way out of the pane.
 //
 // Rendered through `Html.create` like the other component tests here (see
@@ -21,7 +22,11 @@ open Vitest
 open TestDom
 
 let debugScenes = Html.make("div")
-let debugStates = Html.make("div")
+
+let debugStates: array<DebugStates.entry> = [
+  {label: "Mid-game", onSelect: () => ()},
+  {label: "Almost won", onSelect: () => ()},
+]
 
 let render = (
   ~shareEnabled=true,
@@ -103,12 +108,16 @@ describe("MenuDebugScreen (#307)", () => {
     expect(taps.contents)->toBe(1)
   })
 
-  test("splices the scene and state lists in rather than rebuilding them", () => {
-    // The very same nodes, so the switcher's subtrees are left alone across
-    // open/close re-renders — scenes first, then states.
+  test("splices the scene list in rather than rebuilding it, and renders the states", () => {
     let screen = render()
+    // The very same node, so the switcher's subtree is left alone across open/close
+    // re-renders.
     expect(screen->contains(debugScenes))->toBe(true)
-    expect(screen->contains(debugStates))->toBe(true)
+    // …and the states are the screen's own markup, one row per entry, in order.
+    expect(screen->findAll(".scene-menu__group-body .scene-menu__row")->Array.map(text))->toEqual([
+      "Mid-game",
+      "Almost won",
+    ])
   })
 
   test("goes back one step, to Settings — not all the way out", () => {
