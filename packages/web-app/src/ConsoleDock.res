@@ -57,7 +57,7 @@ type t =
 // The side dock's width in CSS px. One width, tuned once — a resizable or draggable dock
 // is deliberately out of scope. Wide enough that a `dispatch` line's JSON payload wraps
 // only a couple of times, narrow enough that an ordinary laptop window still clears the
-// refusal test (`TableScene.minStageWidth`) with room over.
+// refusal test (`TableLayout.minStageWidth`) with room over.
 let width = 340.
 
 @val @scope("document") external documentElement: WebDom.element = "documentElement"

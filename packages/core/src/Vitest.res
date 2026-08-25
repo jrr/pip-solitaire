@@ -34,3 +34,11 @@ external testWithin: (string, unit => unit, ~timeout: int) => unit = "test"
 
 @send external toBe: (assertion<'a>, 'a) => unit = "toBe"
 @send external toEqual: (assertion<'a>, 'a) => unit = "toEqual"
+
+// Float equality with slack, for arithmetic where the exact bits aren't the claim:
+// a fit solved one way and stated another agree to the precision anyone can see, not
+// necessarily to the last mantissa bit. Vitest's default is two decimal places, which
+// is a pixel fraction — where the claim needs to be tighter than that, `toBeCloseToWithin`
+// takes the digit count instead. (One external can't have two arities, hence two names.)
+@send external toBeCloseTo: (assertion<float>, float) => unit = "toBeCloseTo"
+@send external toBeCloseToWithin: (assertion<float>, float, int) => unit = "toBeCloseTo"

@@ -76,9 +76,9 @@ type resizeObserver
 @val @scope("globalThis") external resizeObserverCtor: Nullable.t<unit> = "ResizeObserver"
 
 // getBoundingClientRect gives viewport coordinates; that's what hit-testing and
-// the snap maths use, converting to playfield-local left/top only at the end.
-type domRect = {left: float, top: float, width: float, height: float}
-@send external boundingRect: WebDom.element => domRect = "getBoundingClientRect"
+// the snap maths use, converting to playfield-local left/top only at the end. The
+// rect type is `TableLayout`'s, since the maths that compares these lives there.
+@send external boundingRect: WebDom.element => TableLayout.rect = "getBoundingClientRect"
 
 // The card scale is sized to the box the row *actually lays out in* — narrower than
 // the stage by the safe-area cutout (#179 pins `.drop-rows` inside `left`/`right:
@@ -315,116 +315,11 @@ type winShare = {
   share: (~moves: int, ~undos: int) => promise<string>,
 }
 
-// The design footprints, at scale 1. Everything the layout measures in pixels —
-// the fan step, the card box, the empty zone box — is one of these multiplied by
-// the stage's live `scale` (see `make`), so cards, zones and fans all shrink
-// together to fit however many piles a game declares onto a narrow screen.
-
-// How far each Fanned card steps off the one beneath it. The zones sit at the
-// top of the stage and the pile grows downward, so the fan steps *down*, the
-// newest card landing lowest and fully exposed.
-let fanStep = 26.
-
-// Card footprint in playfield pixels. The width is the design size; the height
-// follows from the art's own 5:7 design box (`CardArt.aspect`) rather than being a
-// second literal that has to agree with it. Used by the initial deal, which places
-// cards before they're laid out and so can't read their rects yet.
-let cardW = 80.
-let cardH = cardW *. CardArt.aspect
-
-// The card's corner radius at the design size, from the art's own `rx` over its
-// design-box width. The empty-pile slot traces the card, so this is the slot's
-// radius too — and the zone frame's radius is this plus `zoneInset` (below), which
-// is what makes the two corners concentric. Published to the CSS by `applyScale`
-// so the stylesheet no longer restates either ratio.
-let cardRadius = cardW *. CardArt.cornerRatio
-
-// The empty drop zone's footprint (matches `.drop-zone` in the CSS): the
-// card-sized slot (`cardW` × `cardH`) plus a *uniform* breathing gap on every
-// side (#166 follow-up). Sizing it as `card + 2·inset` on both axes — rather
-// than the old hand-picked 88×124, which left a 4px side gap but a 6px top/bottom
-// one — makes the highlight frame sit an equal distance outside the resting card
-// all the way round, and rounds the frame concentrically (the slot's radius + this
-// inset). A pile's cards centre vertically within the base-height box, and a fanned
-// zone grows *below* it so its outline and highlight wrap the whole pile rather
-// than just the top card's footprint (see reflow).
-let zoneInset = 4.
-let zoneWidth = cardW +. 2. *. zoneInset
-let zoneBaseHeight = cardH +. 2. *. zoneInset
-
-// Concentric with the slot: the frame sits `zoneInset` outside it on every side, so
-// its radius is the slot's plus that inset and the two corners share a centre.
-let zoneRadius = cardRadius +. zoneInset
-
-// Card widths are floored here, so a game with many piles on a narrow phone
-// still deals cards you can read and grab rather than shrinking them away.
-// Between this and `maxScale`, cards fill `fillFraction × width` of the stage
-// split across the piles. The floor is set low enough that eight cascades still
-// fit *with room to spare* on a phone — otherwise the columns hit the floor,
-// overflow the row and butt together with no gap to distribute (the
-// `space-evenly` below has nothing to spread).
-let minScale = 0.4
-
-// The ceiling on card size, as a multiple of the design footprint — the single
-// knob for "how big do cards get on a roomy screen". Every pixel the layout
-// measures (`cardW`/`cardH`, `fanStep`, the zone box, the `cardRadius`/`zoneRadius`
-// corners, `maxColumnGap` and the `--rows-max-w` cap derived from them) is
-// multiplied by `scale`, so raising this grows the whole board in proportion
-// rather than just the cards; the card faces are inline SVG, so they resharpen at
-// any size instead of blurring.
-//
-// Above 1 the design footprint stops being the maximum and becomes what it
-// really is — the size the *fits* are expressed in. Both fits still bind first
-// on a smaller window (a board needs `maxScale × 711px` of width and
-// `maxScale × 526px + 16px` of height to reach the ceiling, for the eight-column
-// deal), so this only takes effect once there's genuinely room, and a laptop
-// that falls short simply settles a little below it rather than clipping.
-let maxScale = 1.35
-
-// The share of the stage width the row of cards fills; the rest is the gaps
-// `space-evenly` opens around and between the columns. Kept well below 1 so the
-// columns breathe — a squared pile's zone stays framed, and the leftover width
-// is real space for `space-evenly` to spread as equal outer/inter-card gaps
-// rather than the columns butting card-to-card.
-let fillFraction = 0.9
-
-// The narrowest stage a row of `columns` piles can be laid into with the cards still
-// clearing the `minScale` floor: `applyScale`'s width target (`fillFraction · avail /
-// columns / cardW`) solved for the floor instead of for the scale.
-//
-// Docking the debug console (#275) takes a strip of that width away from the board, and
-// is *refused* when what's left falls below this — the layout's own arithmetic rather
-// than a guessed pixel breakpoint. Below the floor `applyScale` clamps rather than
-// clipping, so a docked board would still render; it would just render at cards the
-// width fit no longer sized, which is precisely the outcome the refusal exists to
-// prevent.
-//
-// Note what this is and isn't: it's the *width* term of the clamp, so it says nothing
-// about the height term that binds on a short screen. A landscape phone is wide enough
-// on paper to clear this — it just has nothing worth docking beside. Docking there stays
-// out of scope by being keyboard-only rather than by being refused here.
-let minStageWidth = (~columns: int) => minScale *. Int.toFloat(columns) *. cardW /. fillFraction
-
-// The widest each `space-evenly` gap between columns is allowed to open before
-// the row stops spreading (#173). Past the point where the cards have hit their
-// ceiling (`scale` capped at `maxScale`), a wider stage keeps pouring its extra
-// width into these gaps — on a wide desktop that leaves the columns marooned in a sea
-// of green. So the row's width is capped at the point each gap reaches this
-// (see `applyScale`'s `--rows-max-w`), and the leftover stage width becomes equal
-// left/right margins instead. Half a card reads as a generous-but-tidy column
-// gap; the board settles into a solitaire-table shape rather than sprawling.
-let maxColumnGap = 0.25 *. cardW
-
-// Headroom, in cards, the height fit (`applyScale`) leaves below the deepest pile
-// (#—). Card size is now bounded by height as well as width: on a short screen the
-// tallest column — the deepest cascade's fan plus the top row — must fit the safe
-// vertical height, or the fan runs off the bottom. Rather than size to the deal's
-// depth exactly (which would overflow the moment a pile grew), fit the deepest
-// *opening* pile plus this many more cards, so a pile can take on that many before
-// it reaches the edge. Held stable from the opening deal so cards don't resize as
-// piles grow and shrink mid-game. (A pile that grows past this still overflows;
-// the number is a tunable comfort margin, not a hard guarantee.)
-let fanHeadroom = 5
+// The design footprints, the fits they feed, and the hit-test that compares the
+// rects — all of it arithmetic over rects and counts, and all of it in
+// `TableLayout` (#319). Referenced by name below (`TableLayout.cardW`,
+// `TableLayout.fanStep`, …) rather than opened, so a number's home is visible at
+// the site that multiplies it.
 
 // The opening deal animation (#115). The cards fly up from below the stage, one
 // at a time, and these two knobs define the whole feel — everything else (the
@@ -1048,15 +943,13 @@ let make = (
         zones->Array.reduce(0, (m, z) =>
           Math.Int.max(m, Array.length(GameState.cardsInPile(state(), z.index)))
         )
-      let referenceDepth = openingMaxDepth + fanHeadroom
+      let referenceDepth = openingMaxDepth + TableLayout.fanHeadroom
 
-      // How much the design footprints are scaled to fit the stage. Cards fill
-      // `fillFraction × width` split across the busiest row (`fillFraction · width
-      // / widestRow`), capped at `maxScale` so a wide screen doesn't blow the
-      // cards up without bound, and floored so a crowded, narrow one keeps them
-      // legible. Held in a ref because the geometry (reflow, the deal) reads it,
-      // and recomputed from the stage's live width the moment before the deal —
-      // the one point at which the stage is known laid out.
+      // The live scale the design footprints are multiplied by — `TableLayout.scaleFor`
+      // is what computes it (both fits and the clamp); this is where it's kept. Held in
+      // a ref because the geometry (reflow, the deal) reads it, and recomputed from the
+      // stage's live width the moment before the deal — the one point at which the
+      // stage is known laid out.
       let scale = ref(1.)
       // The stage width the layout was last sized to (#172). Recorded by every
       // `applyScale` so a later resize can scale the loose cards — which live only
@@ -1065,6 +958,10 @@ let make = (
       // runs, which also gates the resize relayout below (nothing to reflow yet).
       let lastWidth = ref(0.)
       let applyScale = () => {
+        // Everything this function does is measure, ask and publish. The two fits and
+        // the clamp between them are `TableLayout.scaleFor`; what's left here is the
+        // measuring, which is the part that needs the page.
+        //
         // The stage width already excludes the nav rail — `playfield` is laid out
         // beside it, not under it — so the only term left to subtract is the display
         // cutaway: the safe-area insets `.drop-rows` is pinned inside (#179). Sizing
@@ -1073,58 +970,37 @@ let make = (
         // sized for a stage wider than they actually get and packing together (their
         // `space-evenly` gaps squeezed to nothing). Off a cutout device the insets are
         // 0, so `avail == width` and nothing changes. The cutaway is read here, not
-        // folded into the `--rows-max-w` cap below, which stays a pure spreading limit.
+        // folded into the `--rows-max-w` cap, which stays a pure spreading limit.
         let width = boundingRect(playfield).width
         let cs = getComputedStyle(rows)
         let cutaway = parseFloat(cs["left"]) +. parseFloat(cs["right"])
         let avail = width -. cutaway
-        // Height fit (#—): card size is bounded by height as well as width, so a short
-        // screen (a landscape phone) shrinks cards to keep the tallest column on-screen
-        // instead of letting the fan run off the bottom. The vertical budget mirrors what
-        // reflow stacks into the playfield's live height: each row's base box
-        // (`rowsCount · zoneBaseHeight`) plus the deepest fan (`(referenceDepth − 1) ·
-        // fanStep`), all scaled, above the fixed `top` offset and the inter-row `rowGap`.
-        // Solving `budget ≤ height` for the scale gives a height cap; the smaller of it
-        // and the width target wins. On a tall screen the width target is smaller, so
-        // nothing changes there. A Squared-only board grows no fan, so its fan term is 0.
-        let availH = boundingRect(playfield).height
-        let rowsCount = twoRows ? 2 : 1
-        let fanExtent = hasFanned ? Int.toFloat(referenceDepth - 1) *. fanStep : 0.
-        let heightDenom = Int.toFloat(rowsCount) *. zoneBaseHeight +. fanExtent
+        // The height fit's fixed term (#—): the rows' `top` offset, plus the inter-row
+        // gap on a two-row board. Read off the live computed style rather than restated
+        // as a number, so the stylesheet stays the one place either is written down.
         let vFixed = parseFloat(cs["top"]) +. (twoRows ? parseFloat(cs["rowGap"]) : 0.)
-        if avail > 0. && widestRow > 0 {
-          let widthTarget = fillFraction *. avail /. Int.toFloat(widestRow) /. cardW
-          let heightTarget =
-            availH > 0. && heightDenom > 0. ? (availH -. vFixed) /. heightDenom : widthTarget
-          scale := Math.max(minScale, Math.min(maxScale, Math.min(widthTarget, heightTarget)))
-        }
+
+        TableLayout.scaleFor(
+          ~avail,
+          ~availH=boundingRect(playfield).height,
+          ~vFixed,
+          ~widestRow,
+          ~rowsCount=twoRows ? 2 : 1,
+          ~fanExtent=TableLayout.fanExtent(~hasFanned, ~referenceDepth),
+        )->Option.forEach(next => scale := next)
+
         if width > 0. {
           lastWidth := width
         }
         // Publish every scaled footprint the CSS needs, so `.stacking-card`,
         // `.drop-zone` and `.drop-zone__slot` resize in step with the JS geometry
-        // below. Each of these is a design constant above times the live scale — the
-        // stylesheet consumes them directly and derives nothing, so the proportions
-        // (`cardH / cardW`, the corner ratios, `zoneInset`) are stated once, here,
-        // rather than restated as `calc()` ratio literals that can drift from them.
+        // below — including the `--rows-max-w` cap that stops the columns spreading on
+        // a wide desktop (#173). Which numbers those are, and why they're published
+        // rather than restated as `calc()` ratios in the stylesheet, is
+        // `TableLayout.cssVars`; the `px` suffix goes on here because it is CSS's.
         let s = style(playfield)
-        let px = v => Float.toString(v *. scale.contents) ++ "px"
-        s->setProperty("--card-w", px(cardW))
-        s->setProperty("--card-h", px(cardH))
-        s->setProperty("--card-radius", px(cardRadius))
-        s->setProperty("--zone-w", px(zoneWidth))
-        s->setProperty("--zone-h", px(zoneBaseHeight))
-        s->setProperty("--zone-radius", px(zoneRadius))
-        // Cap the row's width so the columns stop spreading on a wide desktop (#173):
-        // the widest row's zones (`widestRow · zoneWidth`) plus its `widestRow + 1`
-        // `space-evenly` gaps grown to at most `maxColumnGap` each, all at the live
-        // scale. `.drop-rows` takes this as a `max-width` and centres itself, so once
-        // the stage is wider than this the extra width falls into equal left/right
-        // margins rather than ever-wider gaps. Below the cap the value exceeds the
-        // stage width, so the `max-width` is slack and the row spreads as before.
-        s->setProperty(
-          "--rows-max-w",
-          px(Int.toFloat(widestRow) *. zoneWidth +. Int.toFloat(widestRow + 1) *. maxColumnGap),
+        TableLayout.cssVars(~scale=scale.contents, ~widestRow)->Array.forEach(((name, value)) =>
+          s->setProperty(name, Float.toString(value) ++ "px")
         )
       }
 
@@ -1143,28 +1019,17 @@ let make = (
             let stage = boundingRect(container).width
             let cs = getComputedStyle(rows)
             let cutaway = parseFloat(cs["left"]) +. parseFloat(cs["right"])
-            stage -. cutaway -. inset >= minStageWidth(~columns=widestRow)
+            TableLayout.fitsDock(~stage, ~cutaway, ~inset, ~columns=widestRow)
           }
         )
 
-      // The zone the dragged card's rect hits, if any — the shared primitive for
-      // both the live hover highlight and the snap-on-drop decision. Horizontally
-      // it's strict (the card's *centre* must fall inside the zone) so tightly
-      // packed columns stay distinguishable; vertically it's generous (any overlap
-      // at all counts) so a card need only graze a zone's top or bottom to land in
-      // it (#183).
-      let zoneAt = (cardRect: domRect) => {
-        let cx = cardRect.left +. cardRect.width /. 2.
-        let cardTop = cardRect.top
-        let cardBottom = cardRect.top +. cardRect.height
-        zones->Array.find(({el}) => {
-          let r = boundingRect(el)
-          cx >= r.left &&
-          cx <= r.left +. r.width &&
-          cardBottom >= r.top &&
-          cardTop <= r.top +. r.height
-        })
-      }
+      // The zone the dragged card's rect hits, if any — the shared primitive for both
+      // the live hover highlight and the snap-on-drop decision. The rule it applies is
+      // `TableLayout.hits` (strict horizontally, generous vertically — #183); what's
+      // here is the search, which measures each zone's rect as it goes rather than
+      // caching them, since flexbox may have moved one since the last look.
+      let zoneAt = (cardRect: TableLayout.rect) =>
+        zones->Array.find(({el}) => TableLayout.hits(~card=cardRect, ~zone=boundingRect(el)))
 
       // Write a card's live x/y into its style.
       let place = c => {
@@ -1214,12 +1079,15 @@ let make = (
             let cr = boundingRect(c.wrapper)
             let baseX = zr.left +. zr.width /. 2. -. cr.width /. 2. -. pr.left
             let baseY =
-              zr.top +. zoneBaseHeight *. scale.contents /. 2. -. cr.height /. 2. -. pr.top
+              zr.top +.
+              TableLayout.zoneBaseHeight *. scale.contents /. 2. -.
+              cr.height /. 2. -.
+              pr.top
             c.x := baseX
             c.y :=
               switch zone.stacking {
               | Game.Squared => baseY
-              | Game.Fanned => baseY +. Int.toFloat(i) *. fanStep *. scale.contents
+              | Game.Fanned => baseY +. Int.toFloat(i) *. TableLayout.fanStep *. scale.contents
               }
             place(c)
             // Re-tilt the card for where it now rests (#65): stable while the pile
@@ -1277,11 +1145,12 @@ let make = (
         // base height. `zoneAt` hit-tests this same box, so the whole fanned pile
         // becomes the drop target too, not just the foundation.
         let fanExtent = switch zone.stacking {
-        | Game.Fanned if count > 1 => Int.toFloat(count - 1) *. fanStep *. scale.contents
+        | Game.Fanned if count > 1 =>
+          Int.toFloat(count - 1) *. TableLayout.fanStep *. scale.contents
         | _ => 0.
         }
         style(zone.el)->setHeight(
-          Float.toString(zoneBaseHeight *. scale.contents +. fanExtent) ++ "px",
+          Float.toString(TableLayout.zoneBaseHeight *. scale.contents +. fanExtent) ++ "px",
         )
       }
 
@@ -2309,8 +2178,8 @@ let make = (
       let dealFree = () => {
         let pr = boundingRect(playfield)
         let n = Array.length(freeCards)
-        let cw = cardW *. scale.contents
-        let ch = cardH *. scale.contents
+        let cw = TableLayout.cardW *. scale.contents
+        let ch = TableLayout.cardH *. scale.contents
         // Nominal horizontal step, squeezed so a wide cluster still fits the stage.
         let avail = pr.width -. cw -. 32.
         let nominal = Int.toFloat(n - 1) *. 44.
@@ -2422,8 +2291,8 @@ let make = (
         let n = Array.length(cards)
         if !reduceMotion && !skipDealAnimation && n > 0 {
           let pr = boundingRect(playfield)
-          let cw = cardW *. scale.contents
-          let ch = cardH *. scale.contents
+          let cw = TableLayout.cardW *. scale.contents
+          let ch = TableLayout.cardH *. scale.contents
           // The single origin every card launches from: horizontally centred on
           // the stage, seated a card's height below its bottom edge — one stack,
           // in playfield-local coords (matching the cards' left/top).
