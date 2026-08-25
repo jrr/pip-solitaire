@@ -26,6 +26,10 @@
 // attributes. See `VersionBadge` for why the record is spelled out by hand rather
 // than derived by the `@jsx.component` sugar. Layout lives in the stylesheet in
 // TopBar.css; here we build only structure and behaviour.
+
+// This component's stylesheet, in the `components` layer (see src/styles/index.css).
+%%raw(`import "./TopBar.css"`)
+
 type props = {
   onMenu: unit => unit,
   onUndo: unit => unit,

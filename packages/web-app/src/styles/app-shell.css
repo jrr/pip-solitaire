@@ -1,66 +1,68 @@
-#app-root {
-  display: contents;
-}
+@layer foundations {
+  #app-root {
+    display: contents;
+  }
 
-/* #app fills the column so the header can sit at the top while the scene
-   stays centered in the space beneath it. Removing body's
-   `justify-content: center` (above) starts this stack at the top; the
-   header then hugs the top the way #version-badge hugs the bottom. */
-#app {
-  flex: 1;
-  width: 100%;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-}
+  /* #app fills the column so the header can sit at the top while the scene
+     stays centered in the space beneath it. Removing body's
+     `justify-content: center` (above) starts this stack at the top; the
+     header then hugs the top the way #version-badge hugs the bottom. */
+  #app {
+    flex: 1;
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
 
-/* Grows to fill the space under the picker; the shaded band stretches to
-   fill it (`align-items: stretch`) rather than shrink-wrapping its content.
-   Full-bleed: negative horizontal margins cancel the body's horizontal
-   padding (safe-area inset + 1.5rem) so the shaded band spans the page edge
-   to edge, rather than floating in a padded column (issue #59). */
-#scene-area {
-  flex: 1;
-  align-self: stretch;
-  display: flex;
-  align-items: stretch;
-  margin-inline: calc(-1 * (env(safe-area-inset-left) + 1.5rem)) calc(
-      -1 * (env(safe-area-inset-right) + 1.5rem)
-    );
-}
+  /* Grows to fill the space under the picker; the shaded band stretches to
+     fill it (`align-items: stretch`) rather than shrink-wrapping its content.
+     Full-bleed: negative horizontal margins cancel the body's horizontal
+     padding (safe-area inset + 1.5rem) so the shaded band spans the page edge
+     to edge, rather than floating in a padded column (issue #59). */
+  #scene-area {
+    flex: 1;
+    align-self: stretch;
+    display: flex;
+    align-items: stretch;
+    margin-inline: calc(-1 * (env(safe-area-inset-left) + 1.5rem)) calc(
+        -1 * (env(safe-area-inset-right) + 1.5rem)
+      );
+  }
 
-/* The shaded band behind the scene. A conventional full-width section:
-   edge-to-edge shading, horizontal rules top and bottom (no left/right
-   borders), and no corner radius (issue #59). It fills the whole scene
-   area and centers the active scene within it. The band now runs to the
-   bottom edge (body no longer pads there — #199), so it carries the
-   home-indicator clearance itself as `padding-bottom`: the shading still
-   bleeds under the indicator while the playfield inside is inset above it, so
-   the height fit keeps the cards clear. Off a home-indicator device the inset
-   is 0, so the band reaches the very bottom edge and nothing moves. */
-#scene-box {
-  width: 100%;
-  /* padding: 1.5rem; */
-  padding-bottom: env(safe-area-inset-bottom);
-  border-top: 1px solid #22304a;
-  border-bottom: 1px solid #22304a;
-  background: rgba(19, 35, 59, 0.35);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-}
+  /* The shaded band behind the scene. A conventional full-width section:
+     edge-to-edge shading, horizontal rules top and bottom (no left/right
+     borders), and no corner radius (issue #59). It fills the whole scene
+     area and centers the active scene within it. The band now runs to the
+     bottom edge (body no longer pads there — #199), so it carries the
+     home-indicator clearance itself as `padding-bottom`: the shading still
+     bleeds under the indicator while the playfield inside is inset above it, so
+     the height fit keeps the cards clear. Off a home-indicator device the inset
+     is 0, so the band reaches the very bottom edge and nothing moves. */
+  #scene-box {
+    width: 100%;
+    /* padding: 1.5rem; */
+    padding-bottom: env(safe-area-inset-bottom);
+    border-top: 1px solid #22304a;
+    border-bottom: 1px solid #22304a;
+    background: rgba(19, 35, 59, 0.35);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+  }
 
-/* Fills the scene band (`flex: 1`) and centers its scene within it, so a
-   scene that wants to grow — the stacking playfield — can stretch into the
-   whole area rather than shrink-wrapping to a fixed box. Scenes that don't
-   grow stay centered as before. */
-#scene-container {
-  flex: 1;
-  width: 100%;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 0.75rem;
+  /* Fills the scene band (`flex: 1`) and centers its scene within it, so a
+     scene that wants to grow — the stacking playfield — can stretch into the
+     whole area rather than shrink-wrapping to a fixed box. Scenes that don't
+     grow stay centered as before. */
+  #scene-container {
+    flex: 1;
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0.75rem;
+  }
 }

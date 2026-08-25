@@ -19,6 +19,10 @@
 // A component is just a `props => vnode` function (see `VersionBadge` for why the
 // record is spelled out by hand). `value` and `enabled` are spelled out at every
 // call site rather than defaulted, since a props record has no defaults to give.
+
+// This component's stylesheet, in the `components` layer (see src/styles/index.css).
+%%raw(`import "./MenuGameButton.css"`)
+
 type props = {
   label: string,
   value: option<string>,

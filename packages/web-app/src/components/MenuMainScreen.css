@@ -1,23 +1,25 @@
-/* The main menu screen (see MenuMainScreen.res). Everything on it is styled by
-   the components it composes — the header, the game buttons, the section boxes —
-   except its one own rule, the line under the buttons. Moved here with the
-   component (#307); the rule is unchanged. */
+@layer components {
+  /* The main menu screen (see MenuMainScreen.res). Everything on it is styled by
+     the components it composes — the header, the game buttons, the section boxes —
+     except its one own rule, the line under the buttons. Moved here with the
+     component (#307); the rule is unchanged. */
 
-/* The line under the game section's buttons (#98): where a share link just
-   went, or why Share Seed is greyed out — and empty the rest of the time, the
-   seed itself now riding on the button. `min-height` is what makes the empty
-   case work: the slot holds its height, so a confirmation appears and clears
-   without shoving the sections below it. */
-.menu-share-line {
-  margin: 0;
-  /* The two have to agree exactly, or the slot still grows a pixel or two as
-     the text lands: `line-height` sets the height of the line box the text
-     makes, `min-height` the height of the box when there's no text to make
-     one. Stated as a ratio and an em of the same font-size so they can't
-     drift apart. `normal` line-height won't do — it's font-dependent, and
-     can't be matched by a min-height. */
-  line-height: 1.35;
-  min-height: 1.35em;
-  font: 12px "Libre Franklin", sans-serif;
-  color: #94a3b8;
+  /* The line under the game section's buttons (#98): where a share link just
+     went, or why Share Seed is greyed out — and empty the rest of the time, the
+     seed itself now riding on the button. `min-height` is what makes the empty
+     case work: the slot holds its height, so a confirmation appears and clears
+     without shoving the sections below it. */
+  .menu-share-line {
+    margin: 0;
+    /* The two have to agree exactly, or the slot still grows a pixel or two as
+       the text lands: `line-height` sets the height of the line box the text
+       makes, `min-height` the height of the box when there's no text to make
+       one. Stated as a ratio and an em of the same font-size so they can't
+       drift apart. `normal` line-height won't do — it's font-dependent, and
+       can't be matched by a min-height. */
+    line-height: 1.35;
+    min-height: 1.35em;
+    font: 12px "Libre Franklin", sans-serif;
+    color: #94a3b8;
+  }
 }

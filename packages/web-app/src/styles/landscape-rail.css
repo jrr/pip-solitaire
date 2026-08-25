@@ -1,243 +1,253 @@
-/* Landscape-phone chrome (#179 follow-up): a phone held sideways is wide but
-   very short, so the horizontal top bar steals the scarce vertical height the
-   tableau needs. In this regime the app becomes a *row* — a slim vertical rail
-   of the same controls hugging the left edge, the scene filling the rest —
-   handing the reclaimed top band back to the cards. Keyed on a short landscape
-   viewport: phones in landscape are ≤ ~430px tall while tablets are ≥ 768px, so
-   `max-height` cleanly separates them without device sniffing. (Adding
-   `(pointer: coarse)` here would confine the rail to touch devices; since
-   #244 the screenshot report emulates real devices, so the phone shots would
-   still show it — see #204 for whether to make that change.) */
-@media (orientation: landscape) and (max-height: 500px) {
-  /* Reclaim vertical height — the tableau is fighting for every pixel here.
-     Trim the body's top breathing room down to near the safe-area inset; the
-     bottom stays unpadded (the base rule zeroes it — #199) so the shaded band
-     still runs to the bottom edge with the home-indicator clearance carried by
-     #scene-box; the left/right insets stay untouched so a side notch is still
-     cleared. */
-  body {
-    padding-top: calc(env(safe-area-inset-top) + 0.25rem);
+/* In `overrides`, the last layer, because that is what this file is: rules that
+   reach out of one component to restyle three others. It is imported from
+   src/styles/index.css rather than by a component, for the same reason — no one
+   component owns it. */
+@layer overrides {
+  /* Landscape-phone chrome (#179 follow-up): a phone held sideways is wide but
+     very short, so the horizontal top bar steals the scarce vertical height the
+     tableau needs. In this regime the app becomes a *row* — a slim vertical rail
+     of the same controls hugging the left edge, the scene filling the rest —
+     handing the reclaimed top band back to the cards. Keyed on a short landscape
+     viewport: phones in landscape are ≤ ~430px tall while tablets are ≥ 768px, so
+     `max-height` cleanly separates them without device sniffing. (Adding
+     `(pointer: coarse)` here would confine the rail to touch devices; since
+     #244 the screenshot report emulates real devices, so the phone shots would
+     still show it — see #204 for whether to make that change.) */
+  @media (orientation: landscape) and (max-height: 500px) {
+    /* Reclaim vertical height — the tableau is fighting for every pixel here.
+       Trim the body's top breathing room down to near the safe-area inset; the
+       bottom stays unpadded (the base rule zeroes it — #199) so the shaded band
+       still runs to the bottom edge with the home-indicator clearance carried by
+       #scene-box; the left/right insets stay untouched so a side notch is still
+       cleared. */
+    body {
+      padding-top: calc(env(safe-area-inset-top) + 0.25rem);
+    }
+
+    #app {
+      flex-direction: row;
+    }
+
+    /* The rail: the controls stacked down the edge, but split to opposite ends
+       rather than bunched at the top — Menu at the top, Undo at the bottom
+       (#180). `align-self: stretch` lets the rail span the band's full height and
+       `justify-content: space-between` then drives the two buttons to the top and
+       bottom corners; `align-items: stretch` makes them share one width so the
+       pair still reads as a tidy column. With the rail on a cutout edge (below),
+       the centered camera band falls in the gap *between* the two controls, so
+       each lands in a clear corner "wing" and neither sits under the notch.
+
+       The negative left margin now cancels body's `safe-area-inset-left` too, not
+       just the 0.75rem gutter trim: that inset reserves the whole notch *strip*
+       down the edge, but the camera only occupies its centre, so the top/bottom
+       corners of the strip are clear screen. Pulling the rail out by the full
+       inset lands the two controls in those wings — reclaiming the reserved strip
+       where it's physically safe — instead of holding them inboard of it. On a
+       notch-free edge the inset is `0`, so this collapses to the old -0.75rem and
+       the rail hugs the edge exactly as before. The old bottom gap becomes a
+       right gap before the scene. */
+    #top-bar {
+      flex-direction: column;
+      align-self: stretch;
+      align-items: stretch;
+      justify-content: space-between;
+      width: auto;
+      margin: 0 0.5rem 0 calc(-1 * env(safe-area-inset-left) - 0.75rem);
+    }
+
+    /* Clear the Menu button off the top rounded corner. In landscape the
+       notch is on the *side*, so `safe-area-inset-top` is 0 and this top wing
+       gets no inset — the ☰ button would sit in the corner's curve and clip.
+       Undo escapes this only because the bottom home-indicator inset lifts it
+       clear. Borrow that same bottom inset as a top margin so Menu drops into
+       its wing by the identical amount, self-adjusting to whatever the device
+       reports (~20px here) rather than a hardcoded guess. */
+    .top-bar__button--menu {
+      margin-top: env(safe-area-inset-bottom);
+    }
+
+    /* Clear the Undo button off the bottom rounded corner, the mirror of Menu
+       above. body no longer pads its bottom (#199), so the stretched rail runs
+       its bottom-most button (Undo) right into the corner's curve / home
+       indicator; the old body `padding-bottom` used to lift it clear. Borrow the
+       bottom safe-area inset as a bottom margin so Undo lifts into its wing by
+       the same amount Menu drops into the top one, self-adjusting to the device.
+       On a device with no home indicator the inset is 0 and Undo hugs the edge
+       exactly as the rail did before. */
+    .top-bar__button--undo {
+      margin-bottom: env(safe-area-inset-bottom);
+    }
+
+    /* The shaded band starts just right of the rail rather than bleeding under
+       it: drop only the *inline-start* (left) full-bleed margin, keeping the end
+       one so the band still runs to the screen's right edge. */
+    #scene-area {
+      margin-inline-start: 0;
+      /* Pull the band up to the top edge too — the vertical mirror of its flush
+         bottom (#199). A negative block-start margin cancels body's top breathing
+         room (`env(safe-area-inset-top) + 0.25rem`) so the seam runs corner-to-
+         corner instead of floating a few px below the top. #scene-box re-insets
+         the cards by the same amount (its `padding-top` below), so only the
+         shading and the seam bleed up — the cards don't move — exactly as the
+         bottom bleeds under the home indicator while the playfield stays clear. */
+      margin-block-start: calc(-1 * (env(safe-area-inset-top) + 0.25rem));
+    }
+
+    /* The divider turns to match the bar. With the chrome now down the left
+       side, the horizontal top/bottom rules become an orphaned line across the
+       top; swap them for a single vertical rule down the band's left edge,
+       reading as the seam between the rail and the play area. */
+    #scene-box {
+      /* Re-inset the playfield by the amount #scene-area is pulled up (above), so
+         the shaded band and its seam reach the top edge while the cards stay put —
+         the top twin of the base rule's `padding-bottom` home-indicator clearance. */
+      padding-top: calc(env(safe-area-inset-top) + 0.25rem);
+      border-top-width: 0;
+      border-bottom-width: 0;
+      border-left: 1px solid #22304a;
+    }
+
+    /* Pull the tableau up to the top of the reclaimed band — with the top bar
+       gone from overhead there's no reason to hold the zones down. Zeroed here so
+       the only remaining gap above the top row is the zone's own slot-centering
+       inset (~5px), which — plus the trimmed body padding — lands the cards about
+       as far below the top edge as they sit right of the rail divider, roughly
+       symmetric at a phone-landscape size (it needn't track exactly as the window
+       resizes). The base `.drop-rows { top }` rule is in `TableScene.css`, i.e.
+       the `scenes` layer, so this file's `overrides` layer beats it outright; the
+       descendant selector (`.stacking-playfield .drop-rows`) outranks it on
+       specificity too, which is what used to do the work on its own — a media
+       query adds no specificity of its own, so before layers this rule's only
+       other claim was coming later in the assembled sheet.
+
+       The inter-row `gap` is tightened by ~a third here too (16px → 11px), buying
+       back a little of the scarce vertical height for the fans; `applyScale`'s
+       height fit reads this same value, so the cards size to whatever it is. */
+    .stacking-playfield .drop-rows {
+      top: 0;
+      gap: 11px;
+    }
   }
 
-  #app {
-    flex-direction: row;
+  /* Cutout-aware rail side (#179 follow-up). The rules above pin the rail to
+     the left, which is what we want when the notch is on the left (or absent):
+     the rail's dead space rides on the strip that's unsafe anyway, and the cards
+     get the clear right side. Rotate the phone the other way and the notch moves
+     to the *right*, so the rail should follow it there — otherwise the rail sits
+     on the safe left while the right side both loses its inset to the notch and
+     holds the cards, doubly squeezed. `CutoutSide` reads the orientation angle
+     (iOS insets both sides symmetrically, so the insets can't tell the sides
+     apart) and stamps the notch side onto <html> as `data-cutout`; on `right`
+     we mirror the whole landscape row so the rail swings to the right edge and
+     the scene band bleeds left instead. The attribute selector outranks the base
+     id rules on specificity, so these win without `!important`; `left` / `none` /
+     absent all keep the default left rail. */
+  @media (orientation: landscape) and (max-height: 500px) {
+    /* Mirror the flex row: TopBar (first child) swings to the right edge, the
+       scene to the left. */
+    html[data-cutout="right"] #app {
+      flex-direction: row-reverse;
+    }
+
+    /* Mirror the wing placement to the right edge: cancel body's
+       `safe-area-inset-right` (the notch strip on this side) so the rail's two
+       controls ride out into the right-hand corner wings, clear of the centered
+       camera, with the gap-before-scene now on the left. */
+    html[data-cutout="right"] #top-bar {
+      margin: 0 calc(-1 * env(safe-area-inset-right) - 0.75rem) 0 0.5rem;
+    }
+
+    /* Bleed the shaded band to the *left* edge (shading only — the cards stay
+       inside `.drop-rows`' left inset) and stop it at the rail on the right.
+       Restores the left full-bleed the base landscape rule had zeroed. */
+    html[data-cutout="right"] #scene-area {
+      margin-inline-start: calc(-1 * (env(safe-area-inset-left) + 1.5rem));
+      margin-inline-end: 0;
+    }
+
+    /* Move the rail seam to match: the divider goes to the band's right edge. */
+    html[data-cutout="right"] #scene-box {
+      border-left-width: 0;
+      border-right: 1px solid #22304a;
+    }
+
+    /* Mirror the slide-over menu to the rail's side (#180). With the ☰ button
+       now in the *right* wing, a panel that still opens from the left reads as
+       coming from the wrong edge; anchor it to the end of the overlay flex row
+       so it enters from the right instead. Swap its divider and shadow onto the
+       left face (the seam now faces the play area, not the screen edge), and
+       clear the right safe-area inset rather than the left — the panel's own
+       edge is the notch side now. Only in this cutout-right landscape regime;
+       everywhere else the panel keeps its left-anchored default. */
+    html[data-cutout="right"] #menu-overlay {
+      justify-content: flex-end;
+    }
+
+    html[data-cutout="right"] .menu-panel {
+      border-right-width: 0;
+      border-left: 1px solid #22304a;
+      box-shadow: -2px 0 24px rgba(0, 0, 0, 0.45);
+      padding-right: calc(env(safe-area-inset-right) + 1.25rem);
+      padding-left: 1.25rem;
+    }
   }
 
-  /* The rail: the controls stacked down the edge, but split to opposite ends
-     rather than bunched at the top — Menu at the top, Undo at the bottom
-     (#180). `align-self: stretch` lets the rail span the band's full height and
-     `justify-content: space-between` then drives the two buttons to the top and
-     bottom corners; `align-items: stretch` makes them share one width so the
-     pair still reads as a tidy column. With the rail on a cutout edge (below),
-     the centered camera band falls in the gap *between* the two controls, so
-     each lands in a clear corner "wing" and neither sits under the notch.
+  /* "Display content around screen notch" off (#204). The default landscape
+     layout rides the Menu/Undo rail out into the corner "wings" beside the
+     notch — the negative margins above cancel body's `safe-area-inset-*` so the
+     controls reclaim the reserved notch strip where its top/bottom corners are
+     physically clear. That's the intended look on the phones we've tested, but
+     on untested geometry a control could land awkwardly or unreachably, so the
+     Settings toggle stamps `data-notch-wings="off"` on <html> to fall back to a
+     layout clamped entirely inside the browser-reported safe area.
 
-     The negative left margin now cancels body's `safe-area-inset-left` too, not
-     just the 0.75rem gutter trim: that inset reserves the whole notch *strip*
-     down the edge, but the camera only occupies its centre, so the top/bottom
-     corners of the strip are clear screen. Pulling the rail out by the full
-     inset lands the two controls in those wings — reclaiming the reserved strip
-     where it's physically safe — instead of holding them inboard of it. On a
-     notch-free edge the inset is `0`, so this collapses to the old -0.75rem and
-     the rail hugs the edge exactly as before. The old bottom gap becomes a
-     right gap before the scene. */
-  #top-bar {
-    flex-direction: column;
-    align-self: stretch;
-    align-items: stretch;
-    justify-content: space-between;
-    width: auto;
-    margin: 0 0.5rem 0 calc(-1 * env(safe-area-inset-left) - 0.75rem);
-  }
+     These overrides drop only the safe-inset half of each wing margin, leaving
+     the plain gutter trim (and gaps before the scene) intact, so the rail sits
+     just inside the inset instead of out in the wing. The cards and shaded band
+     already sit clear of the notch (iOS insets both landscape sides symmetrically,
+     so the cards are held safe on both — see CutoutSide), so only the rail moves.
 
-  /* Clear the Menu button off the top rounded corner. In landscape the
-     notch is on the *side*, so `safe-area-inset-top` is 0 and this top wing
-     gets no inset — the ☰ button would sit in the corner's curve and clip.
-     Undo escapes this only because the bottom home-indicator inset lifts it
-     clear. Borrow that same bottom inset as a top margin so Menu drops into
-     its wing by the identical amount, self-adjusting to whatever the device
-     reports (~20px here) rather than a hardcoded guess. */
-  .top-bar__button--menu {
-    margin-top: env(safe-area-inset-bottom);
-  }
+     Specificity here needs care. These selectors outrank the *base* `#top-bar`
+     rule comfortably, but they tie with the `html[data-cutout="right"]` mirror
+     rules above — both are (1,1,1) — so a tie breaks on source order and these,
+     being later, win by default. That is only correct where the two rules mean
+     the same thing. Where the mirror rule sets a margin for a different reason
+     (the gap before the scene rather than a wing trim), the override has to
+     exclude the mirrored case explicitly; see the `:not()` below. */
+  @media (orientation: landscape) and (max-height: 500px) {
+    /* Left rail (notch left / absent): keep the -0.75rem gutter trim, drop the
+       `-1 * safe-area-inset-left` that pulled the rail into the notch strip.
 
-  /* Clear the Undo button off the bottom rounded corner, the mirror of Menu
-     above. body no longer pads its bottom (#199), so the stretched rail runs
-     its bottom-most button (Undo) right into the corner's curve / home
-     indicator; the old body `padding-bottom` used to lift it clear. Borrow the
-     bottom safe-area inset as a bottom margin so Undo lifts into its wing by
-     the same amount Menu drops into the top one, self-adjusting to the device.
-     On a device with no home indicator the inset is 0 and Undo hugs the edge
-     exactly as the rail did before. */
-  .top-bar__button--undo {
-    margin-bottom: env(safe-area-inset-bottom);
-  }
+       The `:not([data-cutout="right"])` is load-bearing, not decoration. On a
+       right-hand rail the mirror rule above (`html[data-cutout="right"] #top-bar`)
+       sets `margin-left: 0.5rem` — the *gap before the scene*, not a wing trim —
+       via its `margin` shorthand. Both selectors are (1,1,1), so without this
+       guard the tie broke on source order, this later rule won, and the right-hand
+       rail lost its 0.5rem gap for a -0.75rem pull: the Menu/Undo buttons then
+       overhung the shaded band by 12px, sitting over the play area they're
+       supposed to sit beside. Excluding the mirrored case leaves that rule's
+       margin-left alone (and raises this one to (1,2,1) for the cases it does
+       own). See browser-tests/rail.spec.mjs (`mise run browsertest`) for the check
+       that pins all four regimes. */
+    html[data-notch-wings="off"]:not([data-cutout="right"]) #top-bar {
+      margin-left: -0.75rem;
+    }
 
-  /* The shaded band starts just right of the rail rather than bleeding under
-     it: drop only the *inline-start* (left) full-bleed margin, keeping the end
-     one so the band still runs to the screen's right edge. */
-  #scene-area {
-    margin-inline-start: 0;
-    /* Pull the band up to the top edge too — the vertical mirror of its flush
-       bottom (#199). A negative block-start margin cancels body's top breathing
-       room (`env(safe-area-inset-top) + 0.25rem`) so the seam runs corner-to-
-       corner instead of floating a few px below the top. #scene-box re-insets
-       the cards by the same amount (its `padding-top` below), so only the
-       shading and the seam bleed up — the cards don't move — exactly as the
-       bottom bleeds under the home indicator while the playfield stays clear. */
-    margin-block-start: calc(-1 * (env(safe-area-inset-top) + 0.25rem));
-  }
+    /* Right rail (`data-cutout="right"`): the mirror — keep the gutter trim,
+       drop the `-1 * safe-area-inset-right`. */
+    html[data-notch-wings="off"][data-cutout="right"] #top-bar {
+      margin-right: -0.75rem;
+    }
 
-  /* The divider turns to match the bar. With the chrome now down the left
-     side, the horizontal top/bottom rules become an orphaned line across the
-     top; swap them for a single vertical rule down the band's left edge,
-     reading as the seam between the rail and the play area. */
-  #scene-box {
-    /* Re-inset the playfield by the amount #scene-area is pulled up (above), so
-       the shaded band and its seam reach the top edge while the cards stay put —
-       the top twin of the base rule's `padding-bottom` home-indicator clearance. */
-    padding-top: calc(env(safe-area-inset-top) + 0.25rem);
-    border-top-width: 0;
-    border-bottom-width: 0;
-    border-left: 1px solid #22304a;
-  }
+    /* Stop borrowing the bottom inset to drop/lift Menu and Undo into the
+       top/bottom corner wings; inside the safe area they sit flush at the rail's
+       ends like the non-cutout rail did. */
+    html[data-notch-wings="off"] .top-bar__button--menu {
+      margin-top: 0;
+    }
 
-  /* Pull the tableau up to the top of the reclaimed band — with the top bar
-     gone from overhead there's no reason to hold the zones down. Zeroed here so
-     the only remaining gap above the top row is the zone's own slot-centering
-     inset (~5px), which — plus the trimmed body padding — lands the cards about
-     as far below the top edge as they sit right of the rail divider, roughly
-     symmetric at a phone-landscape size (it needn't track exactly as the window
-     resizes). Descendant selector (`.stacking-playfield .drop-rows`) outranks the
-     base `.drop-rows { top }` rule, which sits later in the sheet and would
-     otherwise win on source order — a media query adds no specificity of its own.
-     The inter-row `gap` is tightened by ~a third here too (16px → 11px), buying
-     back a little of the scarce vertical height for the fans; `applyScale`'s
-     height fit reads this same value, so the cards size to whatever it is. */
-  .stacking-playfield .drop-rows {
-    top: 0;
-    gap: 11px;
-  }
-}
-
-/* Cutout-aware rail side (#179 follow-up). The rules above pin the rail to
-   the left, which is what we want when the notch is on the left (or absent):
-   the rail's dead space rides on the strip that's unsafe anyway, and the cards
-   get the clear right side. Rotate the phone the other way and the notch moves
-   to the *right*, so the rail should follow it there — otherwise the rail sits
-   on the safe left while the right side both loses its inset to the notch and
-   holds the cards, doubly squeezed. `CutoutSide` reads the orientation angle
-   (iOS insets both sides symmetrically, so the insets can't tell the sides
-   apart) and stamps the notch side onto <html> as `data-cutout`; on `right`
-   we mirror the whole landscape row so the rail swings to the right edge and
-   the scene band bleeds left instead. The attribute selector outranks the base
-   id rules on specificity, so these win without `!important`; `left` / `none` /
-   absent all keep the default left rail. */
-@media (orientation: landscape) and (max-height: 500px) {
-  /* Mirror the flex row: TopBar (first child) swings to the right edge, the
-     scene to the left. */
-  html[data-cutout="right"] #app {
-    flex-direction: row-reverse;
-  }
-
-  /* Mirror the wing placement to the right edge: cancel body's
-     `safe-area-inset-right` (the notch strip on this side) so the rail's two
-     controls ride out into the right-hand corner wings, clear of the centered
-     camera, with the gap-before-scene now on the left. */
-  html[data-cutout="right"] #top-bar {
-    margin: 0 calc(-1 * env(safe-area-inset-right) - 0.75rem) 0 0.5rem;
-  }
-
-  /* Bleed the shaded band to the *left* edge (shading only — the cards stay
-     inside `.drop-rows`' left inset) and stop it at the rail on the right.
-     Restores the left full-bleed the base landscape rule had zeroed. */
-  html[data-cutout="right"] #scene-area {
-    margin-inline-start: calc(-1 * (env(safe-area-inset-left) + 1.5rem));
-    margin-inline-end: 0;
-  }
-
-  /* Move the rail seam to match: the divider goes to the band's right edge. */
-  html[data-cutout="right"] #scene-box {
-    border-left-width: 0;
-    border-right: 1px solid #22304a;
-  }
-
-  /* Mirror the slide-over menu to the rail's side (#180). With the ☰ button
-     now in the *right* wing, a panel that still opens from the left reads as
-     coming from the wrong edge; anchor it to the end of the overlay flex row
-     so it enters from the right instead. Swap its divider and shadow onto the
-     left face (the seam now faces the play area, not the screen edge), and
-     clear the right safe-area inset rather than the left — the panel's own
-     edge is the notch side now. Only in this cutout-right landscape regime;
-     everywhere else the panel keeps its left-anchored default. */
-  html[data-cutout="right"] #menu-overlay {
-    justify-content: flex-end;
-  }
-
-  html[data-cutout="right"] .menu-panel {
-    border-right-width: 0;
-    border-left: 1px solid #22304a;
-    box-shadow: -2px 0 24px rgba(0, 0, 0, 0.45);
-    padding-right: calc(env(safe-area-inset-right) + 1.25rem);
-    padding-left: 1.25rem;
-  }
-}
-
-/* "Display content around screen notch" off (#204). The default landscape
-   layout rides the Menu/Undo rail out into the corner "wings" beside the
-   notch — the negative margins above cancel body's `safe-area-inset-*` so the
-   controls reclaim the reserved notch strip where its top/bottom corners are
-   physically clear. That's the intended look on the phones we've tested, but
-   on untested geometry a control could land awkwardly or unreachably, so the
-   Settings toggle stamps `data-notch-wings="off"` on <html> to fall back to a
-   layout clamped entirely inside the browser-reported safe area.
-
-   These overrides drop only the safe-inset half of each wing margin, leaving
-   the plain gutter trim (and gaps before the scene) intact, so the rail sits
-   just inside the inset instead of out in the wing. The cards and shaded band
-   already sit clear of the notch (iOS insets both landscape sides symmetrically,
-   so the cards are held safe on both — see CutoutSide), so only the rail moves.
-
-   Specificity here needs care. These selectors outrank the *base* `#top-bar`
-   rule comfortably, but they tie with the `html[data-cutout="right"]` mirror
-   rules above — both are (1,1,1) — so a tie breaks on source order and these,
-   being later, win by default. That is only correct where the two rules mean
-   the same thing. Where the mirror rule sets a margin for a different reason
-   (the gap before the scene rather than a wing trim), the override has to
-   exclude the mirrored case explicitly; see the `:not()` below. */
-@media (orientation: landscape) and (max-height: 500px) {
-  /* Left rail (notch left / absent): keep the -0.75rem gutter trim, drop the
-     `-1 * safe-area-inset-left` that pulled the rail into the notch strip.
-
-     The `:not([data-cutout="right"])` is load-bearing, not decoration. On a
-     right-hand rail the mirror rule above (`html[data-cutout="right"] #top-bar`)
-     sets `margin-left: 0.5rem` — the *gap before the scene*, not a wing trim —
-     via its `margin` shorthand. Both selectors are (1,1,1), so without this
-     guard the tie broke on source order, this later rule won, and the right-hand
-     rail lost its 0.5rem gap for a -0.75rem pull: the Menu/Undo buttons then
-     overhung the shaded band by 12px, sitting over the play area they're
-     supposed to sit beside. Excluding the mirrored case leaves that rule's
-     margin-left alone (and raises this one to (1,2,1) for the cases it does
-     own). See browser-tests/rail.spec.mjs (`mise run browsertest`) for the check
-     that pins all four regimes. */
-  html[data-notch-wings="off"]:not([data-cutout="right"]) #top-bar {
-    margin-left: -0.75rem;
-  }
-
-  /* Right rail (`data-cutout="right"`): the mirror — keep the gutter trim,
-     drop the `-1 * safe-area-inset-right`. */
-  html[data-notch-wings="off"][data-cutout="right"] #top-bar {
-    margin-right: -0.75rem;
-  }
-
-  /* Stop borrowing the bottom inset to drop/lift Menu and Undo into the
-     top/bottom corner wings; inside the safe area they sit flush at the rail's
-     ends like the non-cutout rail did. */
-  html[data-notch-wings="off"] .top-bar__button--menu {
-    margin-top: 0;
-  }
-
-  html[data-notch-wings="off"] .top-bar__button--undo {
-    margin-bottom: 0;
+    html[data-notch-wings="off"] .top-bar__button--undo {
+      margin-bottom: 0;
+    }
   }
 }

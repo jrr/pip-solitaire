@@ -1,69 +1,71 @@
-/* The single top bar (#109): all chrome across the top, so the thumb arc at
-   the bottom stays clear for dragging cards. A full-width flex row of
-   controls. Sits above the scene band as the first child of #app.
+@layer components {
+  /* The single top bar (#109): all chrome across the top, so the thumb arc at
+     the bottom stays clear for dragging cards. A full-width flex row of
+     controls. Sits above the scene band as the first child of #app.
 
-   The negative left margin (#165) trims the body's extra 1.5rem gutter down
-   to ~0.75rem so the ☰ button hugs the edge closer — while leaving the
-   `env(safe-area-inset-left)` clearance in body's padding untouched, so the
-   bar still clears the notch on a landscape phone. */
-#top-bar {
-  align-self: stretch;
-  width: 100%;
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  margin: 0 0 0.75rem -0.75rem;
-}
+     The negative left margin (#165) trims the body's extra 1.5rem gutter down
+     to ~0.75rem so the ☰ button hugs the edge closer — while leaving the
+     `env(safe-area-inset-left)` clearance in body's padding untouched, so the
+     bar still clears the notch on a landscape phone. */
+  #top-bar {
+    align-self: stretch;
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin: 0 0 0.75rem -0.75rem;
+  }
 
-/* The bar's buttons share the scene controls' look. A disabled button (Undo
-   with nothing to undo — #85) is dimmed and non-interactive. */
-.top-bar__button {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 8px 14px;
-  font: 14px "Libre Franklin", sans-serif;
-  color: #f8fafc;
-  background: #1e293b;
-  border: 1px solid #334155;
-  border-radius: 8px;
-  cursor: pointer;
-  white-space: nowrap;
-}
+  /* The bar's buttons share the scene controls' look. A disabled button (Undo
+     with nothing to undo — #85) is dimmed and non-interactive. */
+  .top-bar__button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 8px 14px;
+    font: 14px "Libre Franklin", sans-serif;
+    color: #f8fafc;
+    background: #1e293b;
+    border: 1px solid #334155;
+    border-radius: 8px;
+    cursor: pointer;
+    white-space: nowrap;
+  }
 
-/* Icon-only top-bar controls (Undo) draw their glyph as an inline SVG
-   rather than a font character, so it renders identically on every
-   platform. `currentColor` ties the fill to the button's text colour. */
-.top-bar__icon {
-  width: 1.25em;
-  height: 1.25em;
-  display: block;
-}
+  /* Icon-only top-bar controls (Undo) draw their glyph as an inline SVG
+     rather than a font character, so it renders identically on every
+     platform. `currentColor` ties the fill to the button's text colour. */
+  .top-bar__icon {
+    width: 1.25em;
+    height: 1.25em;
+    display: block;
+  }
 
-.top-bar__button:disabled {
-  opacity: 0.45;
-  cursor: default;
-}
+  .top-bar__button:disabled {
+    opacity: 0.45;
+    cursor: default;
+  }
 
-/* The Menu button anchors the update pip (below), so it's the positioning
-   context for that absolutely-placed dot. */
-.top-bar__button--menu {
-  position: relative;
-}
+  /* The Menu button anchors the update pip (below), so it's the positioning
+     context for that absolutely-placed dot. */
+  .top-bar__button--menu {
+    position: relative;
+  }
 
-/* The update pip (#165): a small accent-green presence dot on the ☰ Menu
-   button when a new version is waiting — the badge that keeps the update
-   call-to-action (now folded into the menu's About footer) discoverable. A
-   thin ring in the bar's background colour sets it off from the button edge
-   so it reads as a badge. No count — availability only. */
-.top-bar__pip {
-  position: absolute;
-  top: -3px;
-  right: -3px;
-  width: 10px;
-  height: 10px;
-  background: #22c55e;
-  border: 2px solid #0b1220;
-  border-radius: 50%;
-  pointer-events: none;
+  /* The update pip (#165): a small accent-green presence dot on the ☰ Menu
+     button when a new version is waiting — the badge that keeps the update
+     call-to-action (now folded into the menu's About footer) discoverable. A
+     thin ring in the bar's background colour sets it off from the button edge
+     so it reads as a badge. No count — availability only. */
+  .top-bar__pip {
+    position: absolute;
+    top: -3px;
+    right: -3px;
+    width: 10px;
+    height: 10px;
+    background: #22c55e;
+    border: 2px solid #0b1220;
+    border-radius: 50%;
+    pointer-events: none;
+  }
 }

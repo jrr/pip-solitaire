@@ -1,105 +1,107 @@
-/* Raster scene (issue #225): the card-sprite fidelity check — all 52 cards
-   drawn one of three ways (live CardArt <svg>, or either CardRaster
-   bitmap), one rendering at a time, switched by the toolbar or the 1/2/3
-   keys. The comparison is made by *flipping*, not by looking side by side:
-   the grid geometry is identical across the three, so a difference reads
-   as something jumping in place. That only holds if every rendering
-   occupies exactly the same box, which is what `--raster-card-w`
-   (published on the scene root by RasterScene, the one place the number
-   lives) is for — the bitmaps' own CSS width/height are set inline by
-   CardRaster from the same number. */
-.raster-scene {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 0.6rem;
-  width: min(94vw, 760px);
-}
+@layer scenes {
+  /* Raster scene (issue #225): the card-sprite fidelity check — all 52 cards
+     drawn one of three ways (live CardArt <svg>, or either CardRaster
+     bitmap), one rendering at a time, switched by the toolbar or the 1/2/3
+     keys. The comparison is made by *flipping*, not by looking side by side:
+     the grid geometry is identical across the three, so a difference reads
+     as something jumping in place. That only holds if every rendering
+     occupies exactly the same box, which is what `--raster-card-w`
+     (published on the scene root by RasterScene, the one place the number
+     lives) is for — the bitmaps' own CSS width/height are set inline by
+     CardRaster from the same number. */
+  .raster-scene {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.6rem;
+    width: min(94vw, 760px);
+  }
 
-.raster-scene__toolbar {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: 0.5rem;
-}
+  .raster-scene__toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 0.5rem;
+  }
 
-.raster-toggle {
-  font: inherit;
-  font-size: 0.85rem;
-  padding: 0.35rem 0.7rem;
-  border-radius: 999px;
-  border: 1px solid #2d4066;
-  background: #16233a;
-  color: #cbd5e1;
-  cursor: pointer;
-}
+  .raster-toggle {
+    font: inherit;
+    font-size: 0.85rem;
+    padding: 0.35rem 0.7rem;
+    border-radius: 999px;
+    border: 1px solid #2d4066;
+    background: #16233a;
+    color: #cbd5e1;
+    cursor: pointer;
+  }
 
-.raster-toggle--on {
-  border-color: #22c55e;
-  background: #14532d;
-  color: #f0fdf4;
-}
+  .raster-toggle--on {
+    border-color: #22c55e;
+    background: #14532d;
+    color: #f0fdf4;
+  }
 
-.raster-scene__status {
-  margin: 0;
-  font-size: 0.78rem;
-  color: #94a3b8;
-  text-align: center;
-}
+  .raster-scene__status {
+    margin: 0;
+    font-size: 0.78rem;
+    color: #94a3b8;
+    text-align: center;
+  }
 
-/* The key number on each toolbar button, so the 1/2/3 mapping is legible
-   without a legend. */
-.raster-toggle__key {
-  display: inline-block;
-  min-width: 1.1em;
-  margin-right: 0.4em;
-  padding: 0 0.25em;
-  border-radius: 0.25rem;
-  background: #0b1220;
-  color: #94a3b8;
-  font-size: 0.85em;
-  text-align: center;
-}
+  /* The key number on each toolbar button, so the 1/2/3 mapping is legible
+     without a legend. */
+  .raster-toggle__key {
+    display: inline-block;
+    min-width: 1.1em;
+    margin-right: 0.4em;
+    padding: 0 0.25em;
+    border-radius: 0.25rem;
+    background: #0b1220;
+    color: #94a3b8;
+    font-size: 0.85em;
+    text-align: center;
+  }
 
-.raster-toggle--on .raster-toggle__key {
-  background: #052e16;
-  color: #86efac;
-}
+  .raster-toggle--on .raster-toggle__key {
+    background: #052e16;
+    color: #86efac;
+  }
 
-/* `auto-fill` over a single card width so the sheet reflows from a couple
-   per row on a phone up to a dozen on a desktop. Fixed tracks rather than
-   `1fr`, so the columns land in the same places under every rendering —
-   a grid that reflowed between them would swamp the difference being
-   looked for. */
-.raster-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, var(--raster-card-w));
-  justify-content: center;
-  gap: 0.7rem;
-  width: 100%;
-}
+  /* `auto-fill` over a single card width so the sheet reflows from a couple
+     per row on a phone up to a dozen on a desktop. Fixed tracks rather than
+     `1fr`, so the columns land in the same places under every rendering —
+     a grid that reflowed between them would swamp the difference being
+     looked for. */
+  .raster-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, var(--raster-card-w));
+    justify-content: center;
+    gap: 0.7rem;
+    width: 100%;
+  }
 
-.raster-cell {
-  display: flex;
-  align-items: flex-start;
-}
+  .raster-cell {
+    display: flex;
+    align-items: flex-start;
+  }
 
-/* Exactly one card width; `height: auto` lets the live SVG take its 5:7
-   height from the viewBox, which is the same height the bitmaps are given
-   inline. */
-/* Descendant, not child: the sprite is spliced in with `Html.node`, which now
-   puts a `display: contents` host between the cell and the card (see
-   `styles/base.css`). */
-.raster-cell .card-art {
-  width: var(--raster-card-w);
-  height: auto;
-}
+  /* Exactly one card width; `height: auto` lets the live SVG take its 5:7
+     height from the viewBox, which is the same height the bitmaps are given
+     inline. */
+  /* Descendant, not child: the sprite is spliced in with `Html.node`, which now
+     puts a `display: contents` host between the cell and the card (see
+     `styles/base.css`). */
+  .raster-cell .card-art {
+    width: var(--raster-card-w);
+    height: auto;
+  }
 
-/* The sprite's placeholder before the (async) decode lands, so the sheet
-   doesn't reflow underneath the comparison as the 52 bitmaps arrive. */
-.raster-cell__pending {
-  width: var(--raster-card-w);
-  height: calc(var(--raster-card-w) * 1.4);
-  border-radius: calc(var(--raster-card-w) * 0.1);
-  background: #16233a;
+  /* The sprite's placeholder before the (async) decode lands, so the sheet
+     doesn't reflow underneath the comparison as the 52 bitmaps arrive. */
+  .raster-cell__pending {
+    width: var(--raster-card-w);
+    height: calc(var(--raster-card-w) * 1.4);
+    border-radius: calc(var(--raster-card-w) * 0.1);
+    background: #16233a;
+  }
 }

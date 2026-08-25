@@ -1,67 +1,60 @@
-/* The app's stylesheet, assembled from one file per component.
+/* The app's stylesheet: the foundations, and the layer order everything else is
+ * assembled in.
  *
- * This used to be a single 2,036-line `<style>` block inside index.html (#306).
+ * This started as a single 2,036-line `<style>` block inside index.html (#306).
  * Splitting it put each component's rules next to the component that renders
  * them — `components/TopBar.css` beside `TopBar.res`, `TableScene.css` beside
- * `TableScene.res` — so a component is now one place rather than two files a
- * thousand lines apart.
+ * `TableScene.res` — but it left this file naming every one of those sheets in a
+ * deliberate, load-bearing `@import` order, so a component was one place to edit
+ * and two to register. Components now import their own sheets, the way anything
+ * bundled by Vite does:
  *
- * **The order below is load-bearing, and that is why it is written out here
- * rather than left to each component importing its own file.** The cascade
- * still resolves ties on source order, and at least one rule depends on that
- * deliberately: the landscape rail's `:not([data-cutout="right"])` guard in
- * `landscape-rail.css` exists precisely because two (1,1,1) selectors tie and
- * the later one wins (see the comment there, and browser-tests/rail.spec.mjs).
- * Import order here reproduces the old block's order exactly, so the split
- * changed no computed style anywhere.
+ *     %%raw(`import "./TopBar.css"`)     // at the top of components/TopBar.res
  *
- * Four blocks moved, and only because nothing between their old and new homes
- * selects them: `.menu-title` joined `Menu.css` (and has since gone on to
- * `MenuHeader.css` with the component, #307), `#scene-container` joined
- * `app-shell.css`, `.svg-demo-button` joined `SvgScene.css`, and `.menu-footer`
- * joined `AboutFooter.css`. Every other rule kept its position exactly, and the
- * whole split reassembles to the old block line for line — nothing added,
- * dropped or edited.
+ * so adding, renaming or deleting a component doesn't touch this file at all.
  *
- * So: adding a rule goes in the component's own file. Adding a *file* means
- * adding an `@import` here, and thinking about where in the order it belongs.
+ * **What replaces the pinned import order is `@layer`.** That order was real —
+ * move `TopBar.css` after `landscape-rail.css` and the rail's (1,1,1) ties flip,
+ * which browser-tests/rail.spec.mjs catches — and a component-imported sheet has
+ * no fixed position: Vite appends it wherever the module graph reaches it. Layer
+ * order outranks source order, so the four names below decide the cascade and
+ * where a sheet lands in the bundle stops mattering.
+ *
+ *   foundations  faces, custom properties, the reset, the app shell
+ *   components   the chrome: top bar, menu, scene switcher, debug console
+ *   scenes       the board and the demo scenes, card art included
+ *   overrides    the rules that reach across components to restyle another one
+ *
+ * Three things follow from using layers at all, and all three have teeth:
+ *
+ *   - **Every sheet must declare a layer.** An unlayered rule beats every
+ *     layered one no matter how specific, so a sheet that forgets its `@layer`
+ *     wrapper silently wins everything. There is no partial migration here.
+ *
+ *   - **A later layer beats an earlier one even when it is less specific.** This
+ *     is the whole point, and also the trap: `DebugConsole.css` narrows
+ *     `.table-board` with a selector that out-specifies `TableScene.css`'s plain
+ *     `.table-board`, and it only keeps winning because those two rules sit in
+ *     `overrides` and `scenes` respectively. See the note in that file.
+ *
+ *   - **Within one layer the cascade still breaks ties on source order**, and
+ *     that order is now the module graph's rather than a list written here. It
+ *     runs dependency-first, so a component's own sheet lands after the sheets of
+ *     the components it builds on — `CardArt.css` before `TableScene.css`, which
+ *     is the direction those two want anyway. Nothing in the app relies on a tie
+ *     between two sheets *inside* one layer; keep it that way, and reach for the
+ *     next layer out when a rule needs to beat another file.
+ *
+ * The sheets below are the ones no component owns: the foundations, and the
+ * landscape rail. The rail is cross-cutting by nature — it restyles the top bar,
+ * the menu and the board for a short landscape viewport — so it stays one file in
+ * `overrides` rather than being scattered into the three it overrides, and it is
+ * imported here because no single component can be said to own it.
  */
 
-/* Foundations: faces, custom properties, reset, and the shell the scenes sit in. */
+@layer foundations, components, scenes, overrides;
+
 @import "./fonts.css";
 @import "./base.css";
 @import "./app-shell.css";
-
-/* Chrome. `landscape-rail.css` is cross-cutting by nature — it restyles the top
-   bar, the menu and the board for a short landscape viewport — so it stays one
-   file rather than being scattered into the three it overrides. */
-@import "../components/TopBar.css";
 @import "./landscape-rail.css";
-@import "../DebugConsole.css";
-/* The menu, one file per component since the chrome was split up (#307). The
-   order within this block reproduces the old single Menu.css: the header's rules
-   led it, the pane's followed, then the game buttons, the share line, and the
-   rows. `MenuRow.css` takes the slot the toggle/action/nav row files shared —
-   it is the three of them consolidated, since all three drew the same box (see
-   the note there). Nothing outside it selects `.menu-row*`, so it ties with
-   nothing and its position within this block is not load-bearing. */
-@import "../components/MenuHeader.css";
-@import "../components/Menu.css";
-@import "../components/MenuGameButton.css";
-@import "../components/MenuMainScreen.css";
-@import "../components/MenuRow.css";
-@import "../SceneSwitcher.css";
-
-/* Scenes. `CardArt.css` carries the shared `.card-art` base that the gallery,
-   the raster grid and the board all build on, so it precedes those three. */
-@import "../SvgScene.css";
-@import "../GalleryScene.css";
-@import "../CardArt.css";
-@import "../RasterScene.css";
-@import "../TableScene.css";
-@import "../SpinnerScene.css";
-@import "../MotionScene.css";
-
-/* The menu's About footer, last as it was before. */
-@import "../components/VersionBadge.css";
-@import "../components/AboutFooter.css";

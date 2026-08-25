@@ -11,6 +11,10 @@
 // we spell the record out, which is all that sugar expands to anyway.) Layout and
 // colors for `#version-badge` live in VersionBadge.css; here we build
 // only structure and state-dependent text.
+
+// This component's stylesheet, in the `components` layer (see src/styles/index.css).
+%%raw(`import "./VersionBadge.css"`)
+
 type props = {version: string, buildTime: string}
 
 // Zero-pad a date or clock field to two digits (`6` → `"06"`), so the stamp

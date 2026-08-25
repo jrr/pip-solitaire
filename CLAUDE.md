@@ -146,17 +146,34 @@ adding an attribute the app has never used means adding a field there.
 
 CSS is **one file per component**, next to the component that renders it —
 `src/components/TopBar.css` beside `TopBar.res`, `src/TableScene.css` beside
-`TableScene.res`. A rule goes in the file for the thing it styles; the shared
-foundations (faces, reset, app shell, the landscape rail) live in
-`src/styles/`.
+`TableScene.res` — and **each component imports its own sheet**, with a one-line
+`%%raw` at the top of the module:
 
-They are assembled by `src/styles/index.css`, which `index.html` links. **That
-file lists its `@import`s in a deliberate order and components do not import
-their own sheets** — the cascade still breaks ties on source order, and at
-least one rule depends on that (see the `:not([data-cutout="right"])` guard in
-`landscape-rail.css`, pinned by `browser-tests/rail.spec.mjs`). Adding a rule
-needs no thought; adding a *file* means adding an `@import` and deciding where
-in the order it belongs.
+```rescript
+%%raw(`import "./TopBar.css"`)
+```
+
+A rule goes in the file for the thing it styles. The foundations no component
+owns (faces, reset, app shell, the landscape rail) live in `src/styles/` and are
+imported by `src/styles/index.css`, which `index.html` links.
+
+**The cascade is ordered by `@layer`, not by source order.** A component-imported
+sheet has no fixed position in the bundle, so `src/styles/index.css` declares the
+order once — `foundations, components, scenes, overrides` — and every sheet wraps
+its rules in one of those four. Three rules follow, and `src/styles/index.css`
+explains each at length:
+
+- **Every sheet must declare a layer.** An unlayered rule beats every layered one
+  regardless of specificity, so there is no such thing as adding "just one"
+  unlayered file.
+- **A later layer beats an earlier one even when it is less specific.** A rule
+  that reaches out of its own component to restyle another (the landscape rail;
+  the debug console's dock, which narrows the board) goes in `overrides`.
+- **Within a layer, ties still break on source order** — now the module graph's,
+  which runs dependency-first. Nothing relies on such a tie; don't add one.
+
+Adding a rule needs no thought. Adding a *file* means wrapping it in the layer it
+belongs to and importing it from its component.
 
 Font `url()`s are root-relative (`/fonts/…`) so Vite resolves them from
 `public/` — a document-relative `./fonts/…` breaks once the stylesheet is

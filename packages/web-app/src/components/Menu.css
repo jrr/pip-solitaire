@@ -1,113 +1,115 @@
-/* The slide-over pane itself: overlay, backdrop, panel, and the section boxes the
-   screens lay their rows out in (see Menu.res).
+@layer components {
+  /* The slide-over pane itself: overlay, backdrop, panel, and the section boxes the
+     screens lay their rows out in (see Menu.res).
 
-   This file used to hold every rule the menu's contents needed too. Those moved
-   out with the components they style when the chrome was split up (#307) —
-   MenuHeader.css, MenuGameButton.css, MenuMainScreen.css, MenuToggleRow.css,
-   MenuActionRow.css, MenuNavRow.css — and index.css imports them in this file's
-   old position, in their old order. No rule changed. What's left is what `Menu`
-   itself renders, plus `.menu-section`/`.menu-screen`, the layout boxes the screens
-   share and the panel's flex column depends on. */
+     This file used to hold every rule the menu's contents needed too. Those moved
+     out with the components they style when the chrome was split up (#307) —
+     MenuHeader.css, MenuGameButton.css, MenuMainScreen.css, MenuToggleRow.css,
+     MenuActionRow.css, MenuNavRow.css — and each is imported by the component it
+     styles, into this same `components` layer. No rule changed. What's left is what `Menu`
+     itself renders, plus `.menu-section`/`.menu-screen`, the layout boxes the screens
+     share and the panel's flex column depends on. */
 
-/* The slide-over menu (#109): the title, the debug/demo scene rows, and the
-   version info. A full-screen overlay so it floats above the game; `hidden`
-   (set by the chrome model) collapses it entirely when closed. */
-#menu-overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 20;
-  display: flex;
-}
+  /* The slide-over menu (#109): the title, the debug/demo scene rows, and the
+     version info. A full-screen overlay so it floats above the game; `hidden`
+     (set by the chrome model) collapses it entirely when closed. */
+  #menu-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 20;
+    display: flex;
+  }
 
-#menu-overlay[hidden] {
-  display: none;
-}
+  #menu-overlay[hidden] {
+    display: none;
+  }
 
-/* A dim backdrop behind the panel; clicking it closes the menu. */
-.menu-overlay__backdrop {
-  position: absolute;
-  inset: 0;
-  background: rgba(2, 6, 16, 0.6);
-}
+  /* A dim backdrop behind the panel; clicking it closes the menu. */
+  .menu-overlay__backdrop {
+    position: absolute;
+    inset: 0;
+    background: rgba(2, 6, 16, 0.6);
+  }
 
-/* …but it stops at the dock edge while a *side-docked* console is showing (#275),
-   so the two can be up together: the board dims and the log stays readable beside
-   it, which is the whole point of dropping the menu/console exclusion in that one
-   placement (open the menu, flip a debug setting, watch the line it emits). The
-   other three overlap the menu — over the Menu button, or under the panel that
-   slides out, or over both — so there the exclusion still stands and this never
-   has to fire.
+  /* …but it stops at the dock edge while a *side-docked* console is showing (#275),
+     so the two can be up together: the board dims and the log stays readable beside
+     it, which is the whole point of dropping the menu/console exclusion in that one
+     placement (open the menu, flip a debug setting, watch the line it emits). The
+     other three overlap the menu — over the Menu button, or under the panel that
+     slides out, or over both — so there the exclusion still stands and this never
+     has to fire.
 
-   Insetting the *backdrop* rather than raising the console above the menu's
-   `z-index: 20` is deliberate on three counts: the menu panel still wins any
-   overlap the two could ever have, a click in the console isn't a click on the
-   backdrop and so doesn't dismiss the menu, and the layering stays the simple
-   "chrome is modal" rule it has always been. */
-html[data-console-dock="side"] .menu-overlay__backdrop {
-  right: calc(env(safe-area-inset-right) + var(--console-dock-inset, 0px));
-}
+     Insetting the *backdrop* rather than raising the console above the menu's
+     `z-index: 20` is deliberate on three counts: the menu panel still wins any
+     overlap the two could ever have, a click in the console isn't a click on the
+     backdrop and so doesn't dismiss the menu, and the layering stays the simple
+     "chrome is modal" rule it has always been. */
+  html[data-console-dock="side"] .menu-overlay__backdrop {
+    right: calc(env(safe-area-inset-right) + var(--console-dock-inset, 0px));
+  }
 
-html[data-cutout="right"][data-console-dock="side"] .menu-overlay__backdrop {
-  right: 0;
-  left: calc(env(safe-area-inset-left) + var(--console-dock-inset, 0px));
-}
+  html[data-cutout="right"][data-console-dock="side"] .menu-overlay__backdrop {
+    right: 0;
+    left: calc(env(safe-area-inset-left) + var(--console-dock-inset, 0px));
+  }
 
-/* The panel itself: a column that slides in from the left, tall enough to
-   scroll if the scene list grows. Clears the notch/safe areas at the top and
-   left the same way the body does. */
-.menu-panel {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  gap: 1rem;
-  width: min(20rem, 82vw);
-  height: 100%;
-  padding: calc(env(safe-area-inset-top) + 1rem) 1.25rem
-    calc(env(safe-area-inset-bottom) + 1rem)
-    calc(env(safe-area-inset-left) + 1.25rem);
-  background: #0f1a2e;
-  border-right: 1px solid #22304a;
-  box-shadow: 2px 0 24px rgba(0, 0, 0, 0.45);
-  overflow-y: auto;
-  text-align: left;
-}
+  /* The panel itself: a column that slides in from the left, tall enough to
+     scroll if the scene list grows. Clears the notch/safe areas at the top and
+     left the same way the body does. */
+  .menu-panel {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    width: min(20rem, 82vw);
+    height: 100%;
+    padding: calc(env(safe-area-inset-top) + 1rem) 1.25rem
+      calc(env(safe-area-inset-bottom) + 1rem)
+      calc(env(safe-area-inset-left) + 1.25rem);
+    background: #0f1a2e;
+    border-right: 1px solid #22304a;
+    box-shadow: 2px 0 24px rgba(0, 0, 0, 0.45);
+    overflow-y: auto;
+    text-align: left;
+  }
 
-/* The Settings/Debug screens' content wrapper: holds the sections
-   between the header and the About footer, and grows to eat the panel's slack
-   (`flex: 1`) so the *footer* sinks to the foot while the sections stay put at
-   the top. Before this the settings floated in the panel's vertical middle
-   under a tall empty header — the leftover of the main menu's bottom-hugging
-   trick (`.menu-section--bottom`), which these screens no longer use. */
-.menu-screen {
-  display: flex;
-  flex-direction: column;
-  gap: 1rem;
-  flex: 1 1 auto;
-}
+  /* The Settings/Debug screens' content wrapper: holds the sections
+     between the header and the About footer, and grows to eat the panel's slack
+     (`flex: 1`) so the *footer* sinks to the foot while the sections stay put at
+     the top. Before this the settings floated in the panel's vertical middle
+     under a tall empty header — the leftover of the main menu's bottom-hugging
+     trick (`.menu-section--bottom`), which these screens no longer use. */
+  .menu-screen {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    flex: 1 1 auto;
+  }
 
-.menu-section {
-  display: flex;
-  flex-direction: column;
-  gap: 0.4rem;
-}
+  .menu-section {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+  }
 
-/* The first of a screen's bottom-group elements is pushed to the foot of the
-   panel by this auto top margin, so the sections above it stay up top and the
-   empty space grows between the two groups. On the main menu that's the
-   Settings button (#191), just above the About footer; on the Settings screen
-   it's the Settings toggle section, which drags Debug and the footer down with
-   it. (The footer no longer needs its own `margin-top: auto` for this — see
-   `.menu-footer`.) */
-.menu-section--bottom {
-  margin-top: auto;
-}
+  /* The first of a screen's bottom-group elements is pushed to the foot of the
+     panel by this auto top margin, so the sections above it stay up top and the
+     empty space grows between the two groups. On the main menu that's the
+     Settings button (#191), just above the About footer; on the Settings screen
+     it's the Settings toggle section, which drags Debug and the footer down with
+     it. (The footer no longer needs its own `margin-top: auto` for this — see
+     `.menu-footer`.) */
+  .menu-section--bottom {
+    margin-top: auto;
+  }
 
-/* A small muted heading for a menu section (the Settings group, #139), set
-   apart from the tappable rows below it. */
-.menu-section__heading {
-  margin: 0 0 0.1rem;
-  font: 600 12px "Libre Franklin", sans-serif;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
-  color: #64748b;
+  /* A small muted heading for a menu section (the Settings group, #139), set
+     apart from the tappable rows below it. */
+  .menu-section__heading {
+    margin: 0 0 0.1rem;
+    font: 600 12px "Libre Franklin", sans-serif;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: #64748b;
+  }
 }

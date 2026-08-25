@@ -23,8 +23,10 @@ export async function loadJsxModule(entryPath) {
     format: "esm",
     platform: "node",
     // `.res.mjs` isn't a JSX extension, so say so explicitly — same three
-    // settings the app build uses (see vite.config.js).
-    loader: { ".mjs": "jsx" },
+    // settings the app build uses (see vite.config.js). A component also imports
+    // its own stylesheet (see the `%%raw` line at the top of CardArt.res, which
+    // IconArt pulls in); there's no document here to apply it to, so drop it.
+    loader: { ".mjs": "jsx", ".css": "empty" },
     jsx: "automatic",
     jsxImportSource: "preact",
   });

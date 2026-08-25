@@ -19,6 +19,9 @@
 // nodes (see `t`) so the caller can place the rows (inside the menu) apart from
 // the scene box.
 
+// This component's stylesheet, in the `components` layer (see src/styles/index.css).
+%%raw(`import "./SceneSwitcher.css"`)
+
 // The row's class in its two states — plain, and the active scene's highlight.
 let idleClass = "scene-menu__row"
 let activeClass = "scene-menu__row scene-menu__row--active"

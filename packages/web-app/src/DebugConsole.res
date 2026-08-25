@@ -49,6 +49,10 @@
 // subscriber list). The scrollback it has already collected stays on screen — both the
 // ring and the `<ol>` outlive a close — so reopening resumes rather than restarts.
 
+// This component's stylesheet: `components`, apart from the two rules that narrow
+// the board, which are in `overrides` (see src/styles/index.css, and the note there).
+%%raw(`import "./DebugConsole.css"`)
+
 // How many lines the panel keeps. A session's log is unbounded; the panel's view of it
 // isn't — old lines fall off the front of both the ring and the `<ol>` together.
 let capacity = 500

@@ -1,16 +1,18 @@
-/* SVG demo scene (issue #35): the generated card and its control. The
-   card is a real inline <svg> rendered as vnodes by the Html runtime. */
-.svg-card {
-  display: block;
-  /* filter: drop-shadow(0 6px 14px rgba(0, 0, 0, 0.35)); */
-}
+@layer scenes {
+  /* SVG demo scene (issue #35): the generated card and its control. The
+     card is a real inline <svg> rendered as vnodes by the Html runtime. */
+  .svg-card {
+    display: block;
+    /* filter: drop-shadow(0 6px 14px rgba(0, 0, 0, 0.35)); */
+  }
 
-.svg-demo-button {
-  padding: 8px 14px;
-  font: 14px "Libre Franklin", sans-serif;
-  color: #f8fafc;
-  background: #166534;
-  border: none;
-  border-radius: 8px;
-  cursor: pointer;
+  .svg-demo-button {
+    padding: 8px 14px;
+    font: 14px "Libre Franklin", sans-serif;
+    color: #f8fafc;
+    background: #166534;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+  }
 }

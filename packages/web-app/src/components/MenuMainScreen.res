@@ -25,6 +25,10 @@
 //
 // A component is just a `props => vnode` function (see `VersionBadge` for why the
 // record is spelled out by hand).
+
+// This component's stylesheet, in the `components` layer (see src/styles/index.css).
+%%raw(`import "./MenuMainScreen.css"`)
+
 type props = {
   onClose: unit => unit,
   onNewGame: unit => unit,
