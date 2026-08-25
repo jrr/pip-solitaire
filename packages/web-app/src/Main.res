@@ -862,24 +862,28 @@ switch url.shared {
 // URL's `?state=`. `ensureActive` runs first so the board is FreeCell's, and closing
 // the menu is explicit (a no-op if `ensureActive` already closed it on a scene
 // change).
-let debugStates = DebugStates.render(
-  Scenario.scenariosFor(Game.freecell)->Array.map((scenario: Scenario.named): DebugStates.entry => {
-    label: scenario.label,
-    onSelect: () => {
-      switcher.ensureActive("freecell")
-      liveBoard.contents->Option.forEach(board => board.loadState(scenario.build(Game.freecell)))
-      // Say which deal the board is now showing, the menu twin of the `?state=` rule
-      // above (#264): a posed position offers the deal it's been shown to descend from,
-      // and nothing otherwise. This runs *after* the load because the rebuild it
-      // triggers reports `None` through `~onDeal` on its way past — on a plain open
-      // that resolves to the saved game's seed, which is the board this load has just
-      // replaced. Correcting it here is what stops a debug jump from leaving the Share
-      // buttons pointing at the deal the player was on a moment ago.
-      publishDeal(scenario.seed)
-      closeMenu.contents()
-    },
-  }),
-)
+//
+// A list of entries rather than a built node: `<DebugStates>` renders them (it used
+// to hand back real DOM for the menu to splice). Module-level, because nothing about
+// a row depends on the chrome model — the same array is handed down on every render.
+let debugStates = Scenario.scenariosFor(
+  Game.freecell,
+)->Array.map((scenario: Scenario.named): DebugStates.entry => {
+  label: scenario.label,
+  onSelect: () => {
+    switcher.ensureActive("freecell")
+    liveBoard.contents->Option.forEach(board => board.loadState(scenario.build(Game.freecell)))
+    // Say which deal the board is now showing, the menu twin of the `?state=` rule
+    // above (#264): a posed position offers the deal it's been shown to descend from,
+    // and nothing otherwise. This runs *after* the load because the rebuild it
+    // triggers reports `None` through `~onDeal` on its way past — on a plain open
+    // that resolves to the saved game's seed, which is the board this load has just
+    // replaced. Correcting it here is what stops a debug jump from leaving the Share
+    // buttons pointing at the deal the player was on a moment ago.
+    publishDeal(scenario.seed)
+    closeMenu.contents()
+  },
+})
 
 // Open a named game — and optionally one of its named positions — on the board: what the
 // console's `deal <game> [position]` does now that a game id means the same thing here as

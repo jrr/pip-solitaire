@@ -55,7 +55,7 @@ let debug: MenuDebugScreen.props = {
   onShareGame: () => (),
   // The externally-owned nodes the menu splices in; empty stand-ins here.
   debugScenes: Html.make("div"),
-  debugStates: Html.make("div"),
+  debugStates: [],
 }
 
 let about: AboutFooter.props = {

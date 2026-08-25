@@ -14,6 +14,13 @@
 //     positions (`debugStates`, "states") a tap drops the board into (`Scenario`),
 //     the menu twin of `?state=`.
 //
+// The two groups arrive differently, and the difference is the point. `debugScenes`
+// is a real DOM node `SceneSwitcher` owns and keeps writing to (it highlights the
+// active row as scenes change), so it's spliced in untouched. `debugStates` is a list
+// of *entries* rendered by `<DebugStates>` — it used to be a spliced node too, built
+// by hand, and became data the compiler can check once the runtime could diff a list
+// (see that file).
+//
 // A component is just a `props => vnode` function (see `VersionBadge` for why the
 // record is spelled out by hand).
 type props = {
@@ -32,10 +39,12 @@ type props = {
   // description while it's up, so the row doesn't change height as it comes and goes.
   shareStatus: option<string>,
   onShareGame: unit => unit,
-  // Externally-owned real DOM nodes (SceneSwitcher owns them), spliced with
-  // `Html.node` so the diff leaves them be across open/close re-renders.
+  // An externally-owned real DOM node (SceneSwitcher owns it and keeps writing to
+  // it — the active scene's row is highlighted as scenes change), spliced with
+  // `Html.node` so the diff leaves it be across open/close re-renders.
   debugScenes: Html.element,
-  debugStates: Html.element,
+  // The named positions, as data rather than as a node: `<DebugStates>` renders them.
+  debugStates: array<DebugStates.entry>,
 }
 
 // The "Share game state" row's description. The status line takes over the
@@ -92,7 +101,7 @@ let make = ({
         onClick=onShareGame
       />
       {Html.node(debugScenes)}
-      {Html.node(debugStates)}
+      <DebugStates entries=debugStates />
     </MenuSection>
   </div>
 </>
