@@ -46,6 +46,25 @@ type pointerEvent
 @send
 external onPointer: (WebDom.element, string, pointerEvent => unit) => unit = "addEventListener"
 
+// Touch bindings, for the double-tap-zoom refusal below (`suppressDoubleTapZoom`).
+// Everything else on the board speaks Pointer Events; that one gesture has to be
+// answered in the touch layer, because `preventDefault()` on a pointer event never
+// reaches WebKit's zoom gesture and on a `touchend` it does.
+type touchList
+@get external touchCount: touchList => int = "length"
+type touchEvent
+@get external touches: touchEvent => touchList = "touches"
+@get external changedTouches: touchEvent => touchList = "changedTouches"
+@get external touchTime: touchEvent => float = "timeStamp"
+@send external preventDefault: touchEvent => unit = "preventDefault"
+// Bound with an options object so the listener can be registered explicitly
+// non-passive: a passive listener's `preventDefault()` is dropped on the floor,
+// and the refusal *is* the point here, so it is stated rather than left to the
+// per-event default.
+@send
+external onTouch: (WebDom.element, string, touchEvent => unit, {"passive": bool}) => unit =
+  "addEventListener"
+
 // The initial deal is centred on the stage's live size, which isn't known until
 // the stage is in the document and laid out. On first load the scene mounts while
 // still detached (see SceneSwitcher), so the deal is deferred to the next frame,
@@ -527,6 +546,53 @@ let flyHome = (~wrapper, ~dx, ~dy, ~flight, ~delay) =>
 let doubleTapMs = 300.
 let doubleTapMoveTol = 12.
 
+// The same gesture, seen from the browser's side. `.stacking-playfield` carries
+// `touch-action: none` (TableScene.css) and `html, body` carry `manipulation`
+// (styles/base.css) — between them the standards answer to double-tap-to-zoom,
+// and what Chrome and desktop Safari honour. iOS does not: in the home-screen web
+// app a double-tapped card sends the card home *and* scales the whole viewport,
+// `touch-action` notwithstanding. So the zoom is refused a second way, the one
+// that predates `touch-action` and that WebKit does observe — `preventDefault()`
+// on the second `touchend` of a pair.
+//
+// The one-line alternative is `user-scalable=no` in the meta viewport, which
+// settles it outright but takes pinch-zoom with it; index.html says why pinch is
+// kept (#113).
+//
+// The window is deliberately wider than `doubleTapMs`, and unlike the send-home
+// gesture it is blind to *where* the two taps landed. Both err the same way: a
+// pair the browser reads as a double-tap but the game doesn't would otherwise
+// zoom the page and move no card. Over-refusing costs nothing here, because the
+// only default being suppressed is the synthesised `click` and nothing inside the
+// playfield listens for one — the win overlay's buttons and the Finish button
+// hang off `boardHost` beside it, not within it.
+let zoomSuppressMs = 500.
+
+// Refuse the browser's double-tap zoom on `el`, leaving pinch alone. Only a lone
+// finger lifting off an otherwise empty screen is considered: the first finger of
+// a pinch lifts with the second still down and is skipped outright. (The second
+// one lifts alone and so can seed a pair, which is harmless — at worst it eats a
+// click the playfield never listened for.)
+let suppressDoubleTapZoom = el => {
+  let lastTapAt = ref(-1000.)
+  el->onTouch(
+    "touchend",
+    ev =>
+      if touchCount(touches(ev)) == 0 && touchCount(changedTouches(ev)) == 1 {
+        let now = touchTime(ev)
+        if now -. lastTapAt.contents <= zoomSuppressMs {
+          preventDefault(ev)
+          // Reset so a third tap opens a fresh pair rather than chaining off this
+          // one — the same shape as the send-home bookkeeping in the pointer loop.
+          lastTapAt := -1000.
+        } else {
+          lastTapAt := now
+        }
+      },
+    {"passive": false},
+  )
+}
+
 // A resting card gets a slight, hand-placed tilt (#65) so the tableau reads as
 // dealt by a person rather than stamped down by a machine. The angle is
 // *deterministic* — a cheap hash of the card's identity and where it now rests —
@@ -904,6 +970,9 @@ let make = (
       let playfield = WebDom.createElement("div")
       playfield->WebDom.setAttribute("class", "stacking-playfield")
       boardHost->WebDom.appendChild(playfield)->ignore
+      // iOS ignores the stage's `touch-action: none` and zooms the viewport on a
+      // double-tapped card, so the gesture is refused in the touch layer as well.
+      suppressDoubleTapZoom(playfield)
 
       // The drop zones, laid out in role-grouped rows (#94) so a sixteen-pile
       // FreeCell board is playable: free cells and foundations across the top,
