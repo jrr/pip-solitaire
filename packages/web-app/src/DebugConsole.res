@@ -23,7 +23,7 @@
 // automatic breakpoint — resize the window and a silent reversal would undo the choice
 // you just made — and the side dock alone is *refused* in a window too narrow for the
 // board to give up the width, which the cycle steps over rather than sticking on
-// (`ConsoleDock`, `TableScene.minStageWidth`). The layout of all four lives in the
+// (`ConsoleDock`, `TableLayout.minStageWidth`). The layout of all four lives in the
 // stylesheet; what this module does with the placement is take pointer events natively
 // where the panel isn't covering a playable board, rather than forwarding wheel turns by
 // hand (see `apply` below).

@@ -120,9 +120,9 @@ describe("ConsoleDock (#275)", () => {
   test("a desktop window has room for the dock; a phone has not", () => {
     // The refusal test, in the terms the chrome asks it in: the stage gives up the
     // dock's width, and what's left has to keep an eight-column FreeCell board above
-    // `minScale` (`TableScene.minStageWidth`). No pixel breakpoint is named on either
+    // `minScale` (`TableLayout.minStageWidth`). No pixel breakpoint is named on either
     // side — both numbers come from the layout's own constants.
-    let roomFor = stage => stage -. ConsoleDock.width >= TableScene.minStageWidth(~columns=8)
+    let roomFor = stage => stage -. ConsoleDock.width >= TableLayout.minStageWidth(~columns=8)
     expect(roomFor(1440.))->toBe(true)
     expect(roomFor(390.))->toBe(false)
   })
