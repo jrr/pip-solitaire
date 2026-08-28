@@ -389,34 +389,49 @@ let reduce = (~game: Game.t, state: GameState.t, action: action): result<GameSta
 // The rank a foundation has climbed to in `suit` — the `rankValue` of that suit's
 // top foundation card, or 0 when the suit hasn't been founded yet (no Ace home).
 // A foundation is built in a single suit, so at most one foundation pile is topped
-// by `suit`; that top card is the suit's progress. The safe rule below reads two
-// of these — the opposite-colour foundations — to decide whether a card is safe.
+// by `suit`; that top card is the suit's progress. The safe rule below reads one of
+// these per opposite-colour suit (see `oppositeColorSuits`) to decide whether a card
+// is safe.
 let foundationRank = (~game: Game.t, state: GameState.t, suit: suit): int =>
   Game.pileIndices(game, Game.Foundation)
   ->Array.filterMap(i => GameState.topOf(state, i))
   ->Array.find(c => c.suit == suit)
   ->Option.mapOr(0, c => Rules.rankValue(c.rank))
 
+// The suits on this board of the *opposite* colour to `card` — the ones the safe
+// rule below waits on. Read off `game.deck` rather than written out as the literal
+// pairs (#351): for `Cards.standard` this yields exactly `[Spades, Clubs]` for a red
+// card and `[Hearts, Diamonds]` for a black one, so it's a strict generalization and
+// FreeCell's behaviour is unchanged. On a deck missing a suit the literal pairs named
+// a suit no foundation could ever hold, whose `foundationRank` therefore stayed 0
+// forever — auto-collect would quietly stall above the Twos. Asking the deck can't
+// name a suit that isn't in play.
+let oppositeColorSuits = (~game: Game.t, card: card): array<suit> => {
+  let mine = Rules.color(card.suit)
+  game.deck.suits->Array.filter(s => Rules.color(s) != mine)
+}
+
 // Is `card` *safe* to auto-collect home (#125)? Two things must hold, and it's
 // deliberately stricter than `foundationTarget` alone: a foundation must currently
 // *accept* the card, *and* sending it home can never strand a card that still
 // needs it on a cascade — the conservative standard rule. A card of rank r is safe
-// once **both** opposite-colour foundations have reached at least rank r − 1 (so no
+// once **every** opposite-colour foundation has reached at least rank r − 1 (so no
 // in-play card could still want to stack on it in a descending cascade), with Aces
 // and Twos always safe — nothing is ever built down onto them. This is the
 // predicate the `autoCollect` fixpoint sends cards home by.
+//
+// A deck with no opposite-colour suit at all makes that condition vacuous, which is
+// the right answer rather than an accident: with nothing of the other colour in play,
+// no descending cascade can ever want the card back.
 let isSafeToCollect = (~game: Game.t, state: GameState.t, card: card): bool =>
   switch foundationTarget(~game, state, card) {
   | None => false // no foundation will take it — not collectable at all
   | Some(_) =>
     let r = Rules.rankValue(card.rank)
-    // Aces and Twos are always safe; a higher card only once both opposite-colour
-    // foundations are within one rank of it.
+    // Aces and Twos are always safe; a higher card only once the opposite-colour
+    // foundations are all within one rank of it.
     r <= 2 ||
-      switch Rules.color(card.suit) {
-      | Rules.Red => [Spades, Clubs]
-      | Rules.Black => [Hearts, Diamonds]
-      }->Array.every(s => foundationRank(~game, state, s) >= r - 1)
+      oppositeColorSuits(~game, card)->Array.every(s => foundationRank(~game, state, s) >= r - 1)
   }
 
 // Auto-collect (#125): repeatedly send every *safe* card home until none remain —

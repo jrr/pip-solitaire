@@ -80,6 +80,15 @@ type rec t = {
   id: string, // stable scene id (also the picker / localStorage key)
   name: string, // human label shown in the scene picker
   piles: array<pile>,
+  // **The cards this board is played with** (#351) — a `Cards.deck`, i.e. a subset
+  // of one pack. Board-level rather than ambient because two rules downstream need
+  // it and used to assume the 52 instead: `Rules.isCompleteRun` (how long a finished
+  // foundation is, and what tops it) and `Reducer.isSafeToCollect` (which suits are
+  // the *opposite colour* ones a card must wait for). Both now read it here, so a
+  // board that isn't the full pack decides correctly rather than silently stalling.
+  //
+  // `Cards.standard` for FreeCell, so nothing about today's game changes.
+  deck: Cards.deck,
   // The **deal number that reproduces this board**, when there is one. Originally the
   // seed was an *input* to the deal and nothing more: `freecellDeal` used it and
   // dropped it, so a dealt board couldn't say which number produced it. Carrying it
@@ -136,11 +145,14 @@ let freecellSeed = 1 // deal #1, the fixed board scenarios and screenshots deriv
 // (#349): a FreeCell board knows how to lay out another FreeCell board, which is what
 // lets a caller re-deal the game in hand without naming the game.
 let rec freecellDeal = (~seed: int): t => {
+  // FreeCell plays with the whole pack; the board carries it so the rules can read
+  // it back rather than assume it (#351).
+  let deck = Cards.standard
   // The 52 shuffled and dealt round-robin across the eight cascades — the
   // standard opening. Each column becomes an unbounded, alternating-colour
   // *descending* cascade (`Rules.cascade`).
   let cascades =
-    Cards.shuffle(~seed)
+    Cards.shuffle(~deck, ~seed)
     ->Cards.deal(~piles=8, _)
     ->Array.map(column => {
       role: Cascade,
@@ -172,6 +184,9 @@ let rec freecellDeal = (~seed: int): t => {
     // Free cells and foundations first (the view groups them across the top by
     // role, #94), the eight dealt cascades below.
     piles: cells->Array.concat(foundations)->Array.concat(cascades),
+    // The pack the cascades were dealt from, kept so `isCompleteRun` and
+    // `isSafeToCollect` read the deck instead of assuming it (#351).
+    deck,
     // The deal number that laid this board out, kept so the app can report it and
     // link back to it (#98). `freecellDeal(~seed)` is exactly what a `?seed=` open
     // calls, so the round trip holds.

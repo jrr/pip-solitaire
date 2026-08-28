@@ -135,12 +135,22 @@ let isRun = (rule: rule, cards: array<card>): bool =>
   )
   ->Array.every(x => x)
 
-// Has a pile completed a full run? True when it holds all thirteen ranks
-// Ace→King, i.e. thirteen cards ending on the King — the "done" moment a
-// foundation builds toward (#76). This only *signals* a finished pile; full win
-// detection across every foundation is later.
-let isCompleteRun = (cards: array<card>): bool =>
+// Has a pile completed a full run? True when it holds *as many cards as `deck` has
+// ranks*, topped by the deck's highest rank — the "done" moment a foundation builds
+// toward (#76). This only *signals* a finished pile; win detection across every
+// foundation is `GameState.hasWon`.
+//
+// The deck is a parameter rather than the ambient pack (#351): this used to read
+// `top.rank == King && Array.length(cards) == 13`, which quietly hard-coded the
+// 52-card deck into what "complete" means. For `Cards.standard` the two say exactly
+// the same thing — thirteen ranks, King highest — so FreeCell is unchanged.
+//
+// "Highest" is by `rankValue`, not by position in `deck.ranks`, so a deck listing
+// its ranks out of order still answers the same.
+let isCompleteRun = (~deck: Cards.deck, cards: array<card>): bool => {
+  let highest = deck.ranks->Array.reduce(0, (best, rank) => Math.Int.max(best, rankValue(rank)))
   switch cards->Array.get(Array.length(cards) - 1) {
-  | Some(top) => top.rank == King && Array.length(cards) == 13
-  | None => false
+  | Some(top) => rankValue(top.rank) == highest && Array.length(cards) == Array.length(deck.ranks)
+  | None => false // an empty pile is never complete — not even for an empty deck
   }
+}

@@ -14,6 +14,10 @@
 // Everything here is pure and testable: the shuffle is driven by an explicit
 // little PRNG rather than `Math.random` (banned on this codebase's pure paths),
 // so a seed reproduces a permutation exactly.
+//
+// Since #351 the pack is also a *parameter*: `deck` describes which suits and
+// ranks a board plays with, `standard` is today's four × thirteen, and `shuffle`
+// takes one. `all` stays the whole pack for the callers that genuinely want it.
 
 open Card
 
@@ -23,8 +27,37 @@ open Card
 let suits = [Spades, Hearts, Diamonds, Clubs]
 let ranks = [Ace, Two, Three, Four, Five, Six, Seven, Eight, Nine, Ten, Jack, Queen, King]
 
-// The full 52-card deck: every rank in every suit, exactly once.
-let all = suits->Array.flatMap(suit => ranks->Array.map(rank => {suit, rank}))
+// --- The deck as a parameter (#351) ------------------------------------------
+// Which cards a board is played with, described as a **subset of one pack**: the
+// suits it uses and the ranks it uses, whose Cartesian product is its cards. A
+// value rather than the ambient 52, because the rules downstream used to *assume*
+// the pack — "complete" meant literally thirteen cards ending on a King, and "safe
+// to auto-collect" named all four suits by hand — which silently mis-decides on any
+// board that isn't the full pack.
+//
+// Deliberately **not** multi-deck: two copies of one card would break
+// `GameState.sameCard`'s structural identity (a limitation that module's own
+// comment already parks as later work). A subset of one pack keeps identity
+// exactly as it is — every `{suit, rank}` still appears at most once.
+//
+// Order is meaningful: `ranks` runs low to high (it's the run a foundation climbs),
+// and `suits`/`ranks` together fix the enumeration order of `cardsOf`.
+type deck = {suits: array<suit>, ranks: array<rank>}
+
+// The ordinary pack: four suits × thirteen ranks. What every board plays with
+// today, and what `all` is built from.
+let standard: deck = {suits, ranks}
+
+// The cards `deck` describes: every one of its ranks in every one of its suits,
+// exactly once — suits grouped, ranks ascending within each. A fresh array each
+// call, so a caller may shuffle or otherwise mutate what it gets back.
+let cardsOf = (deck: deck): array<card> =>
+  deck.suits->Array.flatMap(suit => deck.ranks->Array.map(rank => {suit, rank}))
+
+// The full 52-card deck: every rank in every suit, exactly once. Still the whole
+// pack, named as such — the card gallery and the `Scenario` builders want *the
+// pack* and should keep saying so.
+let all = cardsOf(standard)
 
 // --- Deterministic seeded shuffle --------------------------------------------
 // A tiny xorshift32 PRNG plus a Fisher–Yates shuffle. All the state lives in a
@@ -52,12 +85,13 @@ let seedState = (seed: int): int => {
   s == 0 ? 1 : s
 }
 
-// The 52 dealt in a reproducible order for `seed`: same seed → same permutation,
-// and a permutation always — every card of `all` exactly once, none dropped or
-// duplicated (Fisher–Yates only ever swaps, over a copy so `all` is untouched).
-// `seed` is the future "deal number".
-let shuffle = (~seed: int): array<card> => {
-  let cards = all->Array.copy
+// `deck` dealt in a reproducible order for `seed`: same seed → same permutation,
+// and a permutation always — every card of the deck exactly once, none dropped or
+// duplicated (Fisher–Yates only ever swaps, over `cardsOf`'s fresh array so no
+// shared value is disturbed). `seed` is the "deal number"; `deck` defaults to the
+// full pack, so the 52-card call site reads exactly as it did.
+let shuffle = (~deck: deck=standard, ~seed: int): array<card> => {
+  let cards = cardsOf(deck)
   let state = ref(seedState(seed))
   // Fisher–Yates from the top: pick each slot's occupant from those not yet placed.
   for i in Array.length(cards) - 1 downto 1 {
