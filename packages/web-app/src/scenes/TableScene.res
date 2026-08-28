@@ -624,6 +624,7 @@ let make = (
 ): Scene.t => {
   id: game.id,
   label: game.name,
+  kind: Game,
   mount: container => {
     // The board lives in its own host so a New Game re-deal can tear the whole
     // board down and rebuild it — fresh zones and card nodes, no stale leftovers

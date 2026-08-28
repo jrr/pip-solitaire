@@ -14,4 +14,4 @@ let view =
     {Deck.allCards->Array.map(card => CardArt.svg(card))->Html.array}
   </div>
 
-let make = (): Scene.t => Scene.static(~id="gallery", ~label="Gallery", view)
+let make = (): Scene.t => Scene.static(~id="gallery", ~label="Gallery", ~kind=Demo, view)

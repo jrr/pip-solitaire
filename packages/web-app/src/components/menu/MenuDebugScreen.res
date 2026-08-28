@@ -9,18 +9,24 @@
 //   - the **Safe-area overlay** toggle (`cutoutDebug`) and the **Console logging**
 //     toggle (`debugLog`, #213 — narrates the UI↔core traffic to the JS console);
 //   - **Share game state** (`ShareLink`), the action row;
-//   - the two collapsible groups that were the old "Debug scenes"/"Debug states": the
-//     debug/demo scenes (`debugScenes`, labelled "scenes") and the named starting
-//     positions (`debugStates`, "states") a tap drops the board into (`Scenario`),
-//     the menu twin of `?state=`.
+//   - the collapsible groups that were the old "Debug scenes"/"Debug states": the
+//     games that aren't the one in the main menu (`gameScenes`, labelled "games"),
+//     the demo scenes (`debugScenes`, "scenes") and the named starting positions
+//     (`debugStates`, "states") a tap drops the board into (`Scenario`), the menu
+//     twin of `?state=`.
 //
-// The two groups arrive the same way and are drawn by the same component: a list of
-// `<MenuDisclosure>` entries each, one from `SceneSwitcher` and one from `Main`. They
+// The groups arrive the same way and are drawn by the same component: a list of
+// `<MenuDisclosure>` entries each, two from `SceneSwitcher` and one from `Main`. They
 // didn't used to. The scene list was a real DOM node the switcher owned and kept
 // writing to (it highlighted the active row by hand), spliced in with `Html.node`;
 // the state list was `<DebugStates>`, twelve lines of JSX describing that same tree a
 // second time. #336 made the markup one component and the highlight a `selected`
-// field, which is what left this screen with two calls that differ in their data.
+// field, which is what left this screen with calls that differ only in their data.
+//
+// The "games" group is the odd one: it is placed only when it has entries (#352), so
+// with FreeCell the only game this screen renders exactly as it did before — two
+// groups, scenes then states. It exists so that a *second* game lands among the games
+// rather than under "scenes", between Gallery and Motion, filed as a render demo.
 //
 // A component is just a `props => vnode` function (see `VersionBadge` for why the
 // record is spelled out by hand).
@@ -40,7 +46,13 @@ type props = {
   // description while it's up, so the row doesn't change height as it comes and goes.
   shareStatus: option<string>,
   onShareGame: unit => unit,
-  // The debug/demo scenes, one entry per scene, with the mounted one `selected`.
+  // The games that don't have a row in the main menu, one entry each, with the
+  // mounted one `selected`. Empty while FreeCell is the only game, and an empty group
+  // isn't placed at all.
+  gameScenes: array<MenuDisclosure.entry>,
+  // Whether that group opens expanded, on the same rule as `debugScenesOpen`.
+  gameScenesOpen: bool,
+  // The demo scenes, one entry per scene, with the mounted one `selected`.
   debugScenes: array<MenuDisclosure.entry>,
   // Whether that group opens expanded — `SceneSwitcher`'s call, made when the app
   // opened on a scene that lives inside it (`?scene=gallery`).
@@ -72,6 +84,8 @@ let make = ({
   shareEnabled,
   shareStatus,
   onShareGame,
+  gameScenes,
+  gameScenesOpen,
   debugScenes,
   debugScenesOpen,
   debugStates,
@@ -104,6 +118,12 @@ let make = ({
         enabled=shareEnabled
         onClick=onShareGame
       />
+      // Placed only when there is something in it: an empty `<details>` is a summary
+      // that opens onto nothing, and today — one game, the one already in the main
+      // menu — that is what it would be.
+      {Array.length(gameScenes) == 0
+        ? Html.empty
+        : <MenuDisclosure summary="games" entries=gameScenes open_=gameScenesOpen />}
       <MenuDisclosure summary="scenes" entries=debugScenes open_=debugScenesOpen />
       <MenuDisclosure summary="states" entries=debugStates />
     </MenuSection>

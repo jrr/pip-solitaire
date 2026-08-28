@@ -58,6 +58,7 @@ let statusText = (state: Motion.state) =>
 let make = (): Scene.t => {
   id: "motion",
   label: "Motion",
+  kind: Demo,
   mount: container => {
     // ---- DOM ----
     let el = (tag, className) => {

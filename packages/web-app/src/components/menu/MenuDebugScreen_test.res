@@ -11,10 +11,11 @@
 //    otherwise, shoving the scene lists below it.
 // 3. **It's disabled while there's nothing to share** — a scene with no game, or the
 //    moment between opening the screen and the encode resolving — and says which.
-// 4. **Both lists land, as their own groups, scenes first and then states.** They
-//    are the same component now (`<MenuDisclosure>`, #336), which is exactly why the
-//    screen has to be pinned on giving each its own entries: two calls that differ
-//    only in their data are two calls that can be crossed.
+// 4. **Each list lands as its own group, in order.** They are the same component now
+//    (`<MenuDisclosure>`, #336), which is exactly why the screen has to be pinned on
+//    giving each its own entries: calls that differ only in their data are calls that
+//    can be crossed. The "games" group (#352) is placed only when it has entries, so
+//    the default here — no extra games — is still scenes then states.
 // 5. **Back goes one step, to Settings** — not all the way out of the pane.
 //
 // Rendered through `Html.create` like the other component tests here (see
@@ -33,6 +34,8 @@ let debugStates: array<MenuDisclosure.entry> = [
 ]
 
 let render = (
+  ~gameScenes: array<MenuDisclosure.entry>=[],
+  ~gameScenesOpen=false,
   ~debugScenesOpen=false,
   ~shareEnabled=true,
   ~shareStatus=None,
@@ -54,6 +57,8 @@ let render = (
       shareEnabled,
       shareStatus,
       onShareGame,
+      gameScenes,
+      gameScenesOpen,
       debugScenes,
       debugScenesOpen,
       debugStates,
@@ -129,13 +134,46 @@ describe("MenuDebugScreen (#307)", () => {
     expect(rowsIn(1))->toEqual(["Mid-game", "Almost won"])
   })
 
-  test("opens the scenes group when the switcher says the app landed inside it", () => {
+  test("places the games group above the other two, when there is one (#352)", () => {
+    // A second game belongs among the games, not under "scenes" between Gallery and
+    // Motion — which is where the switcher's old primary-vs-rest split put it.
+    let screen = render(~gameScenes=[{label: "Klondike", onSelect: () => ()}])
+    expect(screen->findAll(".scene-menu__group > summary")->Array.map(text))->toEqual([
+      "games",
+      "scenes",
+      "states",
+    ])
+    expect(
+      screen
+      ->findAll(".scene-menu__group")
+      ->Array.get(0)
+      ->Option.mapOr(
+        ["<no games group>"],
+        group => group->findAll(".scene-menu__group-body .menu-row")->Array.map(text),
+      ),
+    )->toEqual(["Klondike"])
+  })
+
+  test("leaves the games group out entirely when it's empty", () => {
+    // Today's shape: FreeCell is the only game and it already has the main menu's
+    // games row, so this screen renders exactly as it did before #352 — an empty
+    // `<details>` would be a summary opening onto nothing.
+    expect(render()->findAll(".scene-menu__group > summary")->Array.map(text))->toEqual([
+      "scenes",
+      "states",
+    ])
+  })
+
+  test("opens whichever group the switcher says the app landed inside", () => {
     // A `?scene=gallery` deep link: the highlighted row has to be visible rather
-    // than hidden behind a collapsed disclosure. The states group is unaffected.
+    // than hidden behind a collapsed disclosure. The other groups are unaffected.
     let open_ = screen =>
       screen->findAll(".scene-menu__group")->Array.map(group => group->hasAttr("open"))
     expect(render(~debugScenesOpen=true)->open_)->toEqual([true, false])
     expect(render(~debugScenesOpen=false)->open_)->toEqual([false, false])
+    let games: array<MenuDisclosure.entry> = [{label: "Klondike", onSelect: () => ()}]
+    expect(render(~gameScenes=games, ~gameScenesOpen=true)->open_)->toEqual([true, false, false])
+    expect(render(~gameScenes=games, ~debugScenesOpen=true)->open_)->toEqual([false, true, false])
   })
 
   test("goes back one step, to Settings — not all the way out", () => {
