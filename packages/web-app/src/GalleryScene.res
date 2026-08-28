@@ -5,8 +5,8 @@
 //
 // The grid is static, so there's no real Elm state here — but rendering typed
 // vnodes still goes through `Html.mount`, so a trivial unit-state loop hosts the
-// grid the same way SvgScene hosts its card. The switcher clears the container
-// when another scene is picked, so there's no extra teardown.
+// grid. The switcher clears the container when another scene is picked, so there's
+// no extra teardown.
 
 // This component's stylesheet, in the `scenes` layer (see src/styles/index.css).
 %%raw(`import "./GalleryScene.css"`)

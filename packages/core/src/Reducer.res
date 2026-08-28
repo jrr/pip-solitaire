@@ -9,8 +9,8 @@
 // for now.
 //
 // The shapes:
-//   - `Game.t` is the *board definition* — each pile's `rule` and the game's
-//     `free` flag. Static across a game.
+//   - `Game.t` is the *board definition* — each pile's `rule` and capacity.
+//     Static across a game.
 //   - `GameState.t` is the *dynamic* snapshot — where each card rests. It
 //     deliberately carries no rules, so the reducer must be handed the `game`
 //     too: it closes over both, `reduce(~game, state, action)`.
@@ -20,12 +20,11 @@
 
 open Card
 
-// Where a `Move` sends a card: onto a specific pile, or loose onto the table
-// (only legal when the game is `free`). `ToPile`/`ToTable` leave room for `Deal`
-// and `Undo` to join `action` later.
-type target =
-  | ToPile(int)
-  | ToTable
+// Where a `Move` sends a card: onto a specific pile. A one-armed variant rather
+// than a bare `int` because it names what the index *means* at every call site,
+// and because a second destination kind would join it here (a loose table was one,
+// retired with the demo boards in #342).
+type target = ToPile(int)
 
 // The moves the current games allow. A `Move` is one card; a `MoveRun` is the
 // FreeCell **supermove** (#123) — an ordered run of `cards` (bottom-first, the way
@@ -47,13 +46,12 @@ type action =
   | MoveColumn({from: int, to: int})
 
 // Why a move was rejected. Distinguishing these lets a driver react precisely —
-// a rule refusal flashes red, a not-`free` loose drop snaps the card home — and
-// keeps `Ok`/`Error` meaning "did the state change lawfully?", never "was it a
-// no-op?" (an identity re-drop is a lawful `Ok`).
+// a rule refusal flashes red, a too-long run says so — and keeps `Ok`/`Error`
+// meaning "did the state change lawfully?", never "was it a no-op?" (an identity
+// re-drop is a lawful `Ok`).
 type moveError =
   | Rejected // the destination pile's rule refused the card
   | PileFull // the destination pile is at its capacity (#93 — e.g. a full free cell)
-  | LooseNotAllowed // a loose drop when the game isn't `free`
   | NoSuchPile // the target pile index is out of range
   | CardNotFound // the card isn't anywhere in this state
   | NotARun // a `MoveRun`'s cards aren't a legal ordered run (#123)
@@ -328,27 +326,10 @@ let reduce = (~game: Game.t, state: GameState.t, action: action): result<GameSta
         }
       }
     }
-  | Move({card, to: ToTable}) =>
-    if !game.free {
-      // A game that confines cards to piles rejects every loose drop (#63).
-      Error(LooseNotAllowed)
-    } else {
-      switch GameState.locationOf(state, card) {
-      | None => Error(CardNotFound)
-      | Some(Loose) => Ok(state) // already loose: identity re-drop
-      // Buried is buried wherever the card was headed — the table included.
-      | Some(InPile(_, _)) if !isFree(state, card) => Error(CardBuried)
-      | Some(InPile(_, _)) =>
-        let lifted = liftCard(state, card)
-        Ok({...lifted, loose: Array.concat(lifted.loose, [card])})
-      }
-    }
   // The supermove (#123): an ordered run moved as one gesture. Accepted only when
   // every card is in play, the `cards` are a legal run in order, the destination
   // `accepts` the run's bottom card, and the run fits the supermove limit — each
-  // failure carrying its own `moveError` so a driver can say precisely why. A run
-  // only ever moves *between piles*; there's no loose supermove.
-  | MoveRun({to: ToTable}) => Error(LooseNotAllowed)
+  // failure carrying its own `moveError` so a driver can say precisely why.
   | MoveRun({cards, to: ToPile(i)}) =>
     switch game.piles->Array.get(i) {
     | None => Error(NoSuchPile)

@@ -7,208 +7,11 @@ test("greeting returns the expected message", () => {
 
 // The modelled games (#62): assert the rules the presentation layer reads back.
 describe("Game", () => {
-  test(
-    "the stacking demo is two piles (squared, then fanned), free, dealt an Ace→King run",
-    () => {
-      expect(Game.stacking.piles->Array.map(p => p.stacking))->toEqual([Game.Squared, Game.Fanned])
-      expect(Game.stacking.free)->toBe(true)
-      // The whole run is dealt loose, low-to-high, so it can be assembled onto a
-      // pile: thirteen cards, Ace→King, each the opposite colour of the one below.
-      expect(Game.stacking.loose->Array.map(c => c.rank))->toEqual([
-        Ace,
-        Two,
-        Three,
-        Four,
-        Five,
-        Six,
-        Seven,
-        Eight,
-        Nine,
-        Ten,
-        Jack,
-        Queen,
-        King,
-      ])
-      let colours = Game.stacking.loose->Array.map(c => Rules.color(c.suit))
-      expect(colours->Array.every(c => c == Rules.Red || c == Rules.Black))->toBe(true)
-      // No two neighbours share a colour, so every step up the run is a legal drop.
-      let alternates =
-        colours
-        ->Array.mapWithIndex((c, i) => i == 0 || c != colours->Array.getUnsafe(i - 1))
-        ->Array.every(x => x)
-      expect(alternates)->toBe(true)
-    },
-  )
-
-  test("the stacking demo confines drops to a legal Ace→King run", () => {
-    // Both piles enforce the tableau rule; take the first and stack the dealt run
-    // end-to-end onto it: each card lands on the one below it (an empty pile
-    // founds the run).
-    let rule = (Game.stacking.piles->Array.getUnsafe(0)).rule
-    let run = Game.stacking.loose
-    let legal =
-      run->Array.mapWithIndex(
-        (c, i) => Rules.accepts(rule, c, i == 0 ? None : Some(run->Array.getUnsafe(i - 1))),
-      )
-    expect(legal->Array.every(x => x))->toBe(true)
-    // A same-colour or non-consecutive drop is rejected.
-    expect(Rules.accepts(rule, {suit: Spades, rank: Two}, Some({suit: Clubs, rank: Ace})))->toBe(
-      false,
-    )
-    expect(Rules.accepts(rule, {suit: Hearts, rank: Four}, Some({suit: Clubs, rank: Ace})))->toBe(
-      false,
-    )
-  })
-
-  test("foundations pairs a same-suit foundation with an alternating tableau", () => {
-    let piles = Game.foundations.piles
-    expect(piles->Array.map(p => p.rule))->toEqual([Rules.foundation, Rules.tableau])
-    // The dealt Hearts Ace→King run stacks end-to-end onto the foundation and
-    // completes it, ending on the King.
-    let hearts = Game.foundations.loose->Array.filter(c => c.suit == Hearts)
-    let foundationRule = (piles->Array.getUnsafe(0)).rule
-    let legal =
-      hearts->Array.mapWithIndex(
-        (c, i) =>
-          Rules.accepts(foundationRule, c, i == 0 ? None : Some(hearts->Array.getUnsafe(i - 1))),
-      )
-    expect(legal->Array.every(x => x))->toBe(true)
-    expect(Rules.isCompleteRun(hearts))->toBe(true)
-    // The foundation rejects an off-suit card even when the rank ascends, and
-    // opens accepting only an Ace.
-    expect(
-      Rules.accepts(foundationRule, {suit: Spades, rank: Two}, Some({suit: Hearts, rank: Ace})),
-    )->toBe(false)
-    expect(Rules.accepts(foundationRule, {suit: Hearts, rank: King}, None))->toBe(false)
-  })
-
-  test("four-fans is free-arrangement: any card lands on any pile", () => {
-    // The un-ordered demo uses the permissive rule, so no drop is rejected.
-    let rule = (Game.fourFans.piles->Array.getUnsafe(0)).rule
-    expect(Rules.accepts(rule, {suit: Spades, rank: King}, Some({suit: Spades, rank: Two})))->toBe(
-      true,
-    )
-  })
-
-  test("four-fans is four fanned piles, not free, opening with cards in each pile", () => {
-    expect(Game.fourFans.piles->Array.map(p => p.stacking))->toEqual([
-      Game.Fanned,
-      Game.Fanned,
-      Game.Fanned,
-      Game.Fanned,
-    ])
-    expect(Game.fourFans.free)->toBe(false)
-    // Every pile opens holding a few cards, and nothing is dealt loose.
-    expect(Game.fourFans.piles->Array.every(p => Array.length(p.cards) > 0))->toBe(true)
-    expect(Game.fourFans.loose)->toEqual([])
-  })
-
   test("every game is listed with a stable id and a non-empty name", () => {
-    expect(Game.all->Array.map(g => g.id))->toEqual([
-      "stacking",
-      "foundations",
-      "four-fans",
-      "free-cells",
-      "mixed-roles",
-      "cascade",
-      "shuffled-deal",
-      "freecell",
-    ])
+    // FreeCell alone since #342 retired the demo boards; the list is still what the
+    // scene picker and the CLI's `games` enumerate.
+    expect(Game.all->Array.map(g => g.id))->toEqual(["freecell"])
     expect(Game.all->Array.every(g => g.name != ""))->toBe(true)
-  })
-
-  test("free-cells is four capacity-1 Free cells, free, with loose cards to park", () => {
-    // Each cell is a permissive (`Free`) pile capped at one card of any suit.
-    expect(Game.freeCells.piles->Array.map(p => p.rule))->toEqual([
-      Rules.Free,
-      Rules.Free,
-      Rules.Free,
-      Rules.Free,
-    ])
-    expect(Game.freeCells.piles->Array.map(p => p.capacity))->toEqual([
-      Some(1),
-      Some(1),
-      Some(1),
-      Some(1),
-    ])
-    // Free drops are allowed, the cells open empty, and there are loose cards to
-    // park (no more than there are cells, so the whole deal can be stored).
-    expect(Game.freeCells.free)->toBe(true)
-    expect(Game.freeCells.piles->Array.every(p => Array.length(p.cards) == 0))->toBe(true)
-    expect(Array.length(Game.freeCells.loose) > 0)->toBe(true)
-  })
-
-  test("the cascade demo confines drops to a legal King→Ace descending run", () => {
-    // Both piles enforce the cascade rule (build *down*); take the first and
-    // stack the dealt run end-to-end onto it: each card lands on the one below it
-    // (an empty pile founds the run).
-    let rule = (Game.cascade.piles->Array.getUnsafe(0)).rule
-    let run = Game.cascade.loose
-    // The run descends King→Ace in alternating colours, so every step down is a
-    // legal drop.
-    expect(run->Array.map(c => c.rank))->toEqual([
-      King,
-      Queen,
-      Jack,
-      Ten,
-      Nine,
-      Eight,
-      Seven,
-      Six,
-      Five,
-      Four,
-      Three,
-      Two,
-      Ace,
-    ])
-    let legal =
-      run->Array.mapWithIndex(
-        (c, i) => Rules.accepts(rule, c, i == 0 ? None : Some(run->Array.getUnsafe(i - 1))),
-      )
-    expect(legal->Array.every(x => x))->toBe(true)
-    // A same-colour or non-descending drop is rejected.
-    expect(Rules.accepts(rule, {suit: Spades, rank: Jack}, Some({suit: Clubs, rank: Queen})))->toBe(
-      false,
-    )
-    expect(Rules.accepts(rule, {suit: Hearts, rank: Ten}, Some({suit: Clubs, rank: Queen})))->toBe(
-      false,
-    )
-  })
-
-  test("the shuffled-deal demo lays a whole reproducible deck across eight piles", () => {
-    // Eight permissive cascades, free, nothing loose — every card is dealt into a
-    // pile.
-    expect(Game.shuffledDeal.piles->Array.length)->toBe(8)
-    expect(Game.shuffledDeal.piles->Array.map(p => p.rule))->toEqual([
-      Rules.Free,
-      Rules.Free,
-      Rules.Free,
-      Rules.Free,
-      Rules.Free,
-      Rules.Free,
-      Rules.Free,
-      Rules.Free,
-    ])
-    expect(Game.shuffledDeal.free)->toBe(true)
-    expect(Game.shuffledDeal.loose)->toEqual([])
-    // The whole 52-card deck is dealt out, none lost or duplicated: the pooled
-    // pile cards are a permutation of `Cards.all`.
-    let dealt = Game.shuffledDeal.piles->Array.flatMap(p => p.cards)
-    expect(dealt->Array.length)->toBe(52)
-    expect(
-      Cards.all->Array.every(card => dealt->Array.some(c => GameState.sameCard(c, card))),
-    )->toBe(true)
-    // Round-robin across eight piles spreads 52 as 7,7,7,7,6,6,6,6.
-    expect(Game.shuffledDeal.piles->Array.map(p => Array.length(p.cards)))->toEqual([
-      7,
-      7,
-      7,
-      7,
-      6,
-      6,
-      6,
-      6,
-    ])
   })
 
   // The assembled FreeCell board (#97): the four enablers (#93 capacity, #94
@@ -273,8 +76,6 @@ describe("Game", () => {
             expect(p.stacking)->toEqual(Game.Fanned)
           },
         )
-        // Cards only ever rest in piles — no loose table.
-        expect(board.free)->toBe(false)
       },
     )
 
@@ -300,7 +101,6 @@ describe("Game", () => {
         expect(
           Game.pilesOf(board, Game.Foundation)->Array.every(p => Array.length(p.cards) == 0),
         )->toBe(true)
-        expect(board.loose)->toEqual([])
       },
     )
 
@@ -347,20 +147,6 @@ describe("Game", () => {
     )
 
     test(
-      "a board with no reproducible deal reports no seed (#98)",
-      () => {
-        // The fixed-layout demos have no deal number, so anything offering to share
-        // a deal can read the field instead of special-casing games by id.
-        expect(Game.stacking.seed)->toEqual(None)
-        expect(Game.cascade.seed)->toEqual(None)
-        // `shuffledDeal` *is* built from a seeded shuffle, but its seed doesn't round
-        // trip — `?seed=` opens FreeCell, so handing that number out would address a
-        // different board. It reports `None` for that reason, not by oversight.
-        expect(Game.shuffledDeal.seed)->toEqual(None)
-      },
-    )
-
-    test(
       "plays a scripted sequence of legal and illegal single-card moves through the reducer",
       () => {
         let board = Game.freecell
@@ -382,7 +168,6 @@ describe("Game", () => {
           ->showing({suit: Spades, rank: Ace}, ~on=cascades->Array.getUnsafe(3))
           ->showing({suit: Spades, rank: Two}, ~on=cascades->Array.getUnsafe(4))
           ->showing({suit: Hearts, rank: Three}, ~on=cascades->Array.getUnsafe(5))
-          ->showing({suit: Clubs, rank: Five}, ~on=cascades->Array.getUnsafe(6))
 
         // Park a card in an empty free cell — a `Free`, capacity-1 slot takes any
         // single card.
@@ -450,15 +235,6 @@ describe("Game", () => {
           ),
         )->toEqual(Error(Reducer.Rejected))
 
-        // A loose drop is refused outright — FreeCell isn't `free`.
-        expect(
-          Reducer.reduce(
-            ~game=board,
-            afterPark,
-            Move({card: {suit: Clubs, rank: Five}, to: ToTable}),
-          ),
-        )->toEqual(Error(Reducer.LooseNotAllowed))
-
         // The cascade rule builds *down* in alternating colour: derive a legal
         // follow-up (and an illegal same-colour one) from a cascade's own top
         // card, so the check holds for whatever the shuffle dealt.
@@ -492,72 +268,50 @@ describe("Game", () => {
     )
   })
 
-  // Pile roles (#94): each pile declares its FreeCell role, and `Game` addresses
-  // a group by role. Existing scenes are tagged (no behaviour change), and the
-  // mixed-roles scene shows the three roles on one board.
+  // Addressing piles by role (#94): the two helpers every group-targeted query is
+  // built on — the deal, auto-to-foundation, win detection, the supermove limit.
+  // A little three-role board makes the ordering and the absent-role case legible
+  // without leaning on FreeCell's sixteen piles (which the `freecell` describe
+  // above already covers).
   describe("roles", () => {
-    test(
-      "existing scenes tag their piles by role",
-      () => {
-        // The stacking demo is two cascades.
-        expect(Game.stacking.piles->Array.map(p => p.role))->toEqual([Game.Cascade, Game.Cascade])
-        // Foundations pairs a Foundation with a Cascade.
-        expect(Game.foundations.piles->Array.map(p => p.role))->toEqual([
-          Game.Foundation,
-          Game.Cascade,
-        ])
-        // Four-fans is four free-arrangement cascades.
-        expect(Game.fourFans.piles->Array.map(p => p.role))->toEqual([
-          Game.Cascade,
-          Game.Cascade,
-          Game.Cascade,
-          Game.Cascade,
-        ])
-        // Free-cells is four FreeCell cells.
-        expect(Game.freeCells.piles->Array.map(p => p.role))->toEqual([
-          Game.FreeCell,
-          Game.FreeCell,
-          Game.FreeCell,
-          Game.FreeCell,
-        ])
-      },
-    )
-
-    test(
-      "mixed-roles shows Cascade / FreeCell / Foundation on one board",
-      () => {
-        // A Foundation and two FreeCell cells across the top, a Cascade below.
-        expect(Game.mixedRoles.piles->Array.map(p => p.role))->toEqual([
-          Game.Foundation,
-          Game.FreeCell,
-          Game.FreeCell,
-          Game.Cascade,
-        ])
-        expect(Game.mixedRoles.free)->toBe(true)
-      },
-    )
+    let rolesGame: Game.t = {
+      id: "roles",
+      name: "Roles",
+      piles: [
+        {role: Foundation, stacking: Squared, rule: Rules.foundation, capacity: None, cards: []},
+        {role: FreeCell, stacking: Squared, rule: Rules.Free, capacity: Some(1), cards: []},
+        {role: FreeCell, stacking: Squared, rule: Rules.Free, capacity: Some(1), cards: []},
+        {role: Cascade, stacking: Fanned, rule: Rules.cascade, capacity: None, cards: []},
+      ],
+      seed: None,
+    }
+    // A board with only cascades, for the absent-role case.
+    let cascadesOnly: Game.t = {
+      ...rolesGame,
+      piles: [{role: Cascade, stacking: Fanned, rule: Rules.cascade, capacity: None, cards: []}],
+    }
 
     test(
       "pileIndices returns the positions of every pile with a role, in board order",
       () => {
-        expect(Game.pileIndices(Game.mixedRoles, Game.Foundation))->toEqual([0])
-        expect(Game.pileIndices(Game.mixedRoles, Game.FreeCell))->toEqual([1, 2])
-        expect(Game.pileIndices(Game.mixedRoles, Game.Cascade))->toEqual([3])
+        expect(Game.pileIndices(rolesGame, Game.Foundation))->toEqual([0])
+        expect(Game.pileIndices(rolesGame, Game.FreeCell))->toEqual([1, 2])
+        expect(Game.pileIndices(rolesGame, Game.Cascade))->toEqual([3])
         // A role absent from a board yields no indices.
-        expect(Game.pileIndices(Game.stacking, Game.Foundation))->toEqual([])
+        expect(Game.pileIndices(cascadesOnly, Game.Foundation))->toEqual([])
       },
     )
 
     test(
       "pilesOf returns the piles with a role, in board order",
       () => {
-        let cells = Game.pilesOf(Game.mixedRoles, Game.FreeCell)
+        let cells = Game.pilesOf(rolesGame, Game.FreeCell)
         expect(cells->Array.length)->toBe(2)
         // Every returned pile is a FreeCell, and they are the capacity-1 cells.
         expect(cells->Array.every(p => p.role == Game.FreeCell))->toBe(true)
         expect(cells->Array.map(p => p.capacity))->toEqual([Some(1), Some(1)])
         // A role absent from a board yields no piles.
-        expect(Game.pilesOf(Game.stacking, Game.Foundation))->toEqual([])
+        expect(Game.pilesOf(cascadesOnly, Game.Foundation))->toEqual([])
       },
     )
   })
@@ -566,67 +320,85 @@ describe("Game", () => {
 // The immutable game-state snapshot (#77): where each card rests, derived from a
 // board definition and read back through pure queries — no view, no behaviour.
 describe("GameState", () => {
-  test("initial places each pile's dealt cards and the loose deal", () => {
-    // four-fans opens with cards already dealt into every pile and nothing loose.
-    let state = GameState.initial(Game.fourFans)
-    expect(GameState.cardsInPile(state, 0))->toEqual([
-      {suit: Clubs, rank: Two},
+  // A hand-built board whose opening deal is written down here, so the queries are
+  // read against a layout the test states outright rather than against whatever a
+  // shuffle produced: two empty free cells, then two cascades opening with cards.
+  let dealt: Game.t = {
+    id: "dealt",
+    name: "Dealt",
+    piles: [
+      {role: FreeCell, stacking: Squared, rule: Rules.Free, capacity: Some(1), cards: []},
+      {role: FreeCell, stacking: Squared, rule: Rules.Free, capacity: Some(1), cards: []},
+      {
+        role: Cascade,
+        stacking: Fanned,
+        rule: Rules.cascade,
+        capacity: None,
+        cards: [{suit: Spades, rank: Six}, {suit: Diamonds, rank: Five}],
+      },
+      {
+        role: Cascade,
+        stacking: Fanned,
+        rule: Rules.cascade,
+        capacity: None,
+        cards: [{suit: Hearts, rank: Nine}, {suit: Spades, rank: Eight}],
+      },
+    ],
+    seed: None,
+  }
+
+  test("initial places each pile's dealt cards, and nothing rests loose", () => {
+    let state = GameState.initial(dealt)
+    expect(GameState.cardsInPile(state, 2))->toEqual([
+      {suit: Spades, rank: Six},
       {suit: Diamonds, rank: Five},
     ])
+    // The cells open empty, and no card rests outside a pile.
+    expect(GameState.cardsInPile(state, 0))->toEqual([])
     expect(state.loose)->toEqual([])
-    // the stacking demo opens with empty piles and the whole run dealt loose.
-    let stacking = GameState.initial(Game.stacking)
-    expect(GameState.cardsInPile(stacking, 0))->toEqual([])
-    expect(GameState.cardsInPile(stacking, 1))->toEqual([])
-    expect(Array.length(stacking.loose))->toBe(13)
   })
 
   test("cardsInPile preserves the dealt order, bottom-first", () => {
-    let state = GameState.initial(Game.fourFans)
-    expect(GameState.cardsInPile(state, 2))->toEqual([
-      {suit: Clubs, rank: Queen},
-      {suit: Hearts, rank: Three},
+    let state = GameState.initial(dealt)
+    expect(GameState.cardsInPile(state, 3))->toEqual([
+      {suit: Hearts, rank: Nine},
+      {suit: Spades, rank: Eight},
     ])
   })
 
   test("cardsInPile returns a copy, so mutating it can't corrupt the snapshot", () => {
-    let state = GameState.initial(Game.fourFans)
-    let cards = GameState.cardsInPile(state, 0)
+    let state = GameState.initial(dealt)
+    let cards = GameState.cardsInPile(state, 2)
     cards->Array.push({suit: Spades, rank: King})
     // the snapshot is unchanged by the caller's mutation.
-    expect(Array.length(GameState.cardsInPile(state, 0)))->toBe(2)
+    expect(Array.length(GameState.cardsInPile(state, 2)))->toBe(2)
   })
 
   test("topOf is the last card of a pile, None when empty or out of range", () => {
-    let state = GameState.initial(Game.fourFans)
-    expect(GameState.topOf(state, 0))->toEqual(Some({suit: Diamonds, rank: Five}))
-    let stacking = GameState.initial(Game.stacking)
-    expect(GameState.topOf(stacking, 0))->toEqual(None) // an empty pile has no top
+    let state = GameState.initial(dealt)
+    expect(GameState.topOf(state, 2))->toEqual(Some({suit: Diamonds, rank: Five}))
+    expect(GameState.topOf(state, 0))->toEqual(None) // an empty cell has no top
     expect(GameState.topOf(state, 99))->toEqual(None) // out-of-range index
   })
 
   test("locationOf round-trips a card to its pile and slot", () => {
-    let state = GameState.initial(Game.fourFans)
-    // pile 1 opens holding Hearts Nine (bottom) then Spades Jack (top).
+    let state = GameState.initial(dealt)
+    // pile 3 opens holding Hearts Nine (bottom) then Spades Eight (top).
     expect(GameState.locationOf(state, {suit: Hearts, rank: Nine}))->toEqual(
-      Some(GameState.InPile(1, 0)),
+      Some(GameState.InPile(3, 0)),
     )
-    expect(GameState.locationOf(state, {suit: Spades, rank: Jack}))->toEqual(
-      Some(GameState.InPile(1, 1)),
+    expect(GameState.locationOf(state, {suit: Spades, rank: Eight}))->toEqual(
+      Some(GameState.InPile(3, 1)),
     )
   })
 
-  test("locationOf reports a loose card as Loose and an absent card as None", () => {
-    let stacking = GameState.initial(Game.stacking)
-    expect(GameState.locationOf(stacking, {suit: Spades, rank: Ace}))->toEqual(
-      Some(GameState.Loose),
-    )
-    // Diamonds King is dealt nowhere in the stacking demo.
-    expect(GameState.locationOf(stacking, {suit: Diamonds, rank: King}))->toEqual(None)
+  test("locationOf reports a card this board never dealt as None", () => {
+    let state = GameState.initial(dealt)
+    expect(GameState.locationOf(state, {suit: Diamonds, rank: King}))->toEqual(None)
   })
 
   test("every dealt card round-trips: locationOf then back through cardsInPile", () => {
-    let state = GameState.initial(Game.fourFans)
+    let state = GameState.initial(Game.freecell)
     state.piles->Array.forEachWithIndex(
       (cards, i) =>
         cards->Array.forEachWithIndex(
@@ -647,51 +419,6 @@ describe("Rules", () => {
     expect(Rules.color(Diamonds))->toBe(Rules.Red)
     expect(Rules.color(Spades))->toBe(Rules.Black)
     expect(Rules.color(Clubs))->toBe(Rules.Black)
-  })
-
-  // The #75 rule, now expressed as data (`Rules.tableau`) and weighed by the one
-  // shared `accepts` predicate.
-  describe("tableau (alternating colour, ascending)", () => {
-    let accepts = (c, onto) => Rules.accepts(Rules.tableau, c, onto)
-
-    test(
-      "any card founds an empty pile",
-      () => {
-        expect(accepts({suit: Spades, rank: King}, None))->toBe(true)
-        expect(accepts({suit: Hearts, rank: Ace}, None))->toBe(true)
-      },
-    )
-
-    test(
-      "the opposite colour, one rank higher, stacks",
-      () => {
-        // black Ace ← red Two, red Two ← black Three.
-        expect(accepts({suit: Hearts, rank: Two}, Some({suit: Spades, rank: Ace})))->toBe(true)
-        expect(accepts({suit: Clubs, rank: Three}, Some({suit: Hearts, rank: Two})))->toBe(true)
-      },
-    )
-
-    test(
-      "same colour is rejected even when the rank ascends",
-      () => {
-        expect(accepts({suit: Clubs, rank: Two}, Some({suit: Spades, rank: Ace})))->toBe(false)
-      },
-    )
-
-    test(
-      "a non-consecutive rank is rejected even when the colour alternates",
-      () => {
-        expect(accepts({suit: Hearts, rank: Three}, Some({suit: Spades, rank: Ace})))->toBe(false)
-      },
-    )
-
-    test(
-      "a descending or equal rank is rejected",
-      () => {
-        expect(accepts({suit: Hearts, rank: Ace}, Some({suit: Spades, rank: Two})))->toBe(false)
-        expect(accepts({suit: Hearts, rank: Two}, Some({suit: Spades, rank: Two})))->toBe(false)
-      },
-    )
   })
 
   // A foundation (`Rules.foundation`): build up by suit from the Ace.
@@ -878,30 +605,47 @@ describe("Rules", () => {
 // immutable state + action + pure reducer, illegal actions rejected — as tests.
 describe("Reducer", () => {
   // A tiny hand-built board so the tests own their setup: a foundation (Ace-only,
-  // same-suit ascending) then a tableau (alternating colour, ascending), free
-  // drops allowed. Piles open empty; the cards under test are dealt loose.
+  // same-suit ascending) at pile 0 and a cascade (alternating colour, descending)
+  // at pile 1, both opening empty. Everything the moves below reach for is parked
+  // alone on a permissive staging column of its own (piles 2 up), so every card is
+  // present *and* liftable — a rejection is then the destination's *rule* refusing
+  // it, never a missing or buried card.
+  let staged = [
+    {suit: Hearts, rank: Ace},
+    {suit: Hearts, rank: Two},
+    {suit: Hearts, rank: Three},
+    {suit: Diamonds, rank: Two},
+    {suit: Spades, rank: Ace},
+    {suit: Spades, rank: Ten},
+    {suit: Hearts, rank: Jack},
+  ]
   let game: Game.t = {
     id: "test",
     name: "Test",
     piles: [
-      {role: Foundation, stacking: Squared, rule: Rules.foundation, capacity: None, cards: []},
-      {role: Cascade, stacking: Fanned, rule: Rules.tableau, capacity: None, cards: []},
-    ],
-    free: true,
-    // Everything the moves below reach for is dealt loose, so a rejection is the
-    // *rule* refusing a present card — never a missing one.
-    loose: [
-      {suit: Hearts, rank: Ace},
-      {suit: Hearts, rank: Two},
-      {suit: Hearts, rank: Three},
-      {suit: Diamonds, rank: Two},
-      {suit: Spades, rank: Ace},
-      {suit: Spades, rank: Ten},
-      {suit: Hearts, rank: Nine},
-    ],
-    caption: None,
+      (
+        {
+          role: Foundation,
+          stacking: Squared,
+          rule: Rules.foundation,
+          capacity: None,
+          cards: [],
+        }: Game.pile
+      ),
+      {role: Cascade, stacking: Fanned, rule: Rules.cascade, capacity: None, cards: []},
+    ]->Array.concat(
+      staged->Array.map((card): Game.pile => {
+        role: Cascade,
+        stacking: Squared,
+        rule: Rules.Free,
+        capacity: None,
+        cards: [card],
+      }),
+    ),
     seed: None,
   }
+  // The staging column a card opens on, so a test can name where it started.
+  let stagedAt = (card: Card.card) => 2 + staged->Array.findIndex(c => GameState.sameCard(c, card))
 
   // The reducer must never mutate its input; assert the source snapshot is
   // unchanged after every transition below by re-deriving it fresh per test.
@@ -916,14 +660,14 @@ describe("Reducer", () => {
       expect(GameState.locationOf(next, {suit: Hearts, rank: Ace}))->toEqual(
         Some(GameState.InPile(0, 0)),
       )
-      // the card is lifted off the loose table…
-      expect(next.loose->Array.some(c => GameState.sameCard(c, {suit: Hearts, rank: Ace})))->toBe(
-        false,
-      )
+      // the card is lifted off its staging column…
+      expect(GameState.cardsInPile(next, stagedAt({suit: Hearts, rank: Ace})))->toEqual([])
       // …and the input snapshot is untouched: a fresh value was returned, with
-      // the card still resting loose where it began and the pile still empty.
+      // the card still resting where it began and the foundation still empty.
       expect(GameState.topOf(state, 0))->toEqual(None)
-      expect(GameState.locationOf(state, {suit: Hearts, rank: Ace}))->toEqual(Some(GameState.Loose))
+      expect(GameState.locationOf(state, {suit: Hearts, rank: Ace}))->toEqual(
+        Some(GameState.InPile(stagedAt({suit: Hearts, rank: Ace}), 0)),
+      )
     | Error(_) => expect(true)->toBe(false) // should have succeeded
     }
   })
@@ -962,7 +706,7 @@ describe("Reducer", () => {
   })
 
   test("only an Ace may open the foundation (empty-pile rule)", () => {
-    // Hearts Two onto the empty foundation is rejected; the tableau (AnyCard)
+    // Hearts Two onto the empty foundation is rejected; the cascade (AnyCard)
     // would take it, proving the empty-pile rule is per-pile.
     let state = fresh()
     expect(
@@ -970,9 +714,9 @@ describe("Reducer", () => {
     )->toEqual(Error(Reducer.Rejected))
   })
 
-  test("descending onto an ascending pile is rejected (wrong direction)", () => {
-    // Tableau founded with Spades Ten; a red Nine is the opposite colour but one
-    // rank *lower* — the tableau only climbs, so the descending step is rejected.
+  test("ascending onto a descending pile is rejected (wrong direction)", () => {
+    // Cascade founded with Spades Ten; a red Jack is the opposite colour but one
+    // rank *higher* — a cascade only descends, so the ascending step is rejected.
     let state = fresh()
     let afterTen = switch Reducer.reduce(
       ~game,
@@ -983,40 +727,8 @@ describe("Reducer", () => {
     | Error(_) => state
     }
     expect(
-      Reducer.reduce(~game, afterTen, Move({card: {suit: Hearts, rank: Nine}, to: ToPile(1)})),
+      Reducer.reduce(~game, afterTen, Move({card: {suit: Hearts, rank: Jack}, to: ToPile(1)})),
     )->toEqual(Error(Reducer.Rejected))
-  })
-
-  test("a loose drop is rejected when the game isn't free", () => {
-    // four-fans confines cards to piles (`free: false`): dropping a card loose is
-    // rejected outright, whatever the card.
-    let state = GameState.initial(Game.fourFans)
-    expect(
-      Reducer.reduce(
-        ~game=Game.fourFans,
-        state,
-        Move({card: {suit: Clubs, rank: Two}, to: ToTable}),
-      ),
-    )->toEqual(Error(Reducer.LooseNotAllowed))
-  })
-
-  test("a loose drop succeeds when the game is free", () => {
-    // Move a card from a pile out onto the table (`free: true`).
-    let state = fresh()
-    let onPile = switch Reducer.reduce(
-      ~game,
-      state,
-      Move({card: {suit: Spades, rank: Ace}, to: ToPile(1)}),
-    ) {
-    | Ok(s) => s
-    | Error(_) => state
-    }
-    switch Reducer.reduce(~game, onPile, Move({card: {suit: Spades, rank: Ace}, to: ToTable})) {
-    | Ok(next) =>
-      expect(GameState.locationOf(next, {suit: Spades, rank: Ace}))->toEqual(Some(GameState.Loose))
-      expect(GameState.topOf(next, 1))->toEqual(None) // lifted back off the pile
-    | Error(_) => expect(true)->toBe(false)
-    }
   })
 
   test("moving a card to where it already rests is an identity Ok", () => {
@@ -1059,28 +771,38 @@ describe("Reducer", () => {
   })
 
   test("a completed foundation reports via Rules.isCompleteRun", () => {
-    // Deal a whole Hearts Ace→King run loose and stack it onto the foundation
-    // via the reducer; the finished pile is a complete run.
+    // Park a whole Hearts Ace→King run one card per staging column, then stack it
+    // onto the foundation via the reducer; the finished pile is a complete run.
+    let heartsRun =
+      [Ace, Two, Three, Four, Five, Six, Seven, Eight, Nine, Ten, Jack, Queen, King]->Array.map(
+        rank => {suit: Hearts, rank},
+      )
     let runGame: Game.t = {
       ...game,
-      loose: [
-        Ace,
-        Two,
-        Three,
-        Four,
-        Five,
-        Six,
-        Seven,
-        Eight,
-        Nine,
-        Ten,
-        Jack,
-        Queen,
-        King,
-      ]->Array.map(rank => {suit: Hearts, rank}),
+      piles: [
+        (
+          {
+            role: Foundation,
+            stacking: Squared,
+            rule: Rules.foundation,
+            capacity: None,
+            cards: [],
+          }: Game.pile
+        ),
+      ]->Array.concat(
+        heartsRun->Array.map(
+          (card): Game.pile => {
+            role: Cascade,
+            stacking: Squared,
+            rule: Rules.Free,
+            capacity: None,
+            cards: [card],
+          },
+        ),
+      ),
     }
     let state = ref(GameState.initial(runGame))
-    runGame.loose->Array.forEach(
+    heartsRun->Array.forEach(
       card =>
         switch Reducer.reduce(~game=runGame, state.contents, Move({card, to: ToPile(0)})) {
         | Ok(next) => state := next
@@ -1107,7 +829,8 @@ describe("Reducer", () => {
 
   // Pile capacity → free cells (#93): a capped `Free` pile holds exactly one
   // card. A tiny board of one capacity-1 cell (pile 0) beside an uncapped `Free`
-  // pile (pile 1), with two cards dealt loose to move around.
+  // pile (pile 1), with two cards each parked alone on a column of their own
+  // (piles 2 and 3) so both are liftable.
   describe("capacity", () => {
     let capGame: Game.t = {
       id: "cap",
@@ -1115,10 +838,21 @@ describe("Reducer", () => {
       piles: [
         {role: FreeCell, stacking: Squared, rule: Rules.Free, capacity: Some(1), cards: []},
         {role: Cascade, stacking: Squared, rule: Rules.Free, capacity: None, cards: []},
+        {
+          role: Cascade,
+          stacking: Squared,
+          rule: Rules.Free,
+          capacity: None,
+          cards: [{suit: Spades, rank: Ace}],
+        },
+        {
+          role: Cascade,
+          stacking: Squared,
+          rule: Rules.Free,
+          capacity: None,
+          cards: [{suit: Hearts, rank: King}],
+        },
       ],
-      free: true,
-      loose: [{suit: Spades, rank: Ace}, {suit: Hearts, rank: King}],
-      caption: None,
       seed: None,
     }
     let fresh = () => GameState.initial(capGame)
@@ -1160,10 +894,10 @@ describe("Reducer", () => {
             Move({card: {suit: Hearts, rank: King}, to: ToPile(0)}),
           ),
         )->toEqual(Error(Reducer.PileFull))
-        // The failed drop changed nothing: the King is still loose, the cell still
-        // holds only the Ace.
+        // The failed drop changed nothing: the King is still on its own column, the
+        // cell still holds only the Ace.
         expect(GameState.locationOf(filled, {suit: Hearts, rank: King}))->toEqual(
-          Some(GameState.Loose),
+          Some(GameState.InPile(3, 0)),
         )
         expect(Array.length(GameState.cardsInPile(filled, 0)))->toBe(1)
       },
@@ -1199,7 +933,7 @@ describe("Reducer", () => {
     test(
       "an unbounded pile (capacity None) keeps accepting past one card",
       () => {
-        // Pile 1 is uncapped, so both loose cards stack onto it — no PileFull.
+        // Pile 1 is uncapped, so both staged cards stack onto it — no PileFull.
         let state = fresh()
         let afterAce = switch Reducer.reduce(
           ~game=capGame,
@@ -1272,10 +1006,22 @@ describe("Reducer", () => {
     test(
       "returns None on a board with no foundations",
       () => {
-        // The stacking demo is all cascades — no Foundation pile to send a card to.
-        let state = GameState.initial(Game.stacking)
+        // All cascades — no Foundation pile to send a card to.
+        let noFoundations: Game.t = {
+          ...game,
+          piles: [
+            {
+              role: Cascade,
+              stacking: Fanned,
+              rule: Rules.cascade,
+              capacity: None,
+              cards: [{suit: Spades, rank: Ace}],
+            },
+          ],
+        }
+        let state = GameState.initial(noFoundations)
         expect(
-          Reducer.foundationTarget(~game=Game.stacking, state, {suit: Spades, rank: Ace}),
+          Reducer.foundationTarget(~game=noFoundations, state, {suit: Spades, rank: Ace}),
         )->toEqual(None)
       },
     )
@@ -1323,9 +1069,6 @@ describe("Reducer", () => {
         {role: Cascade, stacking: Fanned, rule: Rules.cascade, capacity: None, cards: []},
         {role: Cascade, stacking: Fanned, rule: Rules.cascade, capacity: None, cards: []},
       ],
-      free: true,
-      loose: [],
-      caption: None,
       seed: None,
     }
     // A hand-built snapshot from the four piles' contents, so a test can pose any
@@ -1395,8 +1138,8 @@ describe("Reducer", () => {
         // The property the double-tap send-home now routes through: taking the first
         // `Foundation` move in `validMoves` lands on the very pile `foundationTarget`
         // picks. On a two-foundation board (both empty, so both accept an Ace) with a
-        // lone A♠ loose — `validMoves` lists both foundations in board order, and its
-        // first is what `foundationTarget` returns.
+        // lone A♠ topping a column of its own — `validMoves` lists both foundations in
+        // board order, and its first is what `foundationTarget` returns.
         let twoFoundations: Game.t = {
           id: "2f",
           name: "2F",
@@ -1415,13 +1158,17 @@ describe("Reducer", () => {
               capacity: None,
               cards: [],
             },
+            {
+              role: Cascade,
+              stacking: Fanned,
+              rule: Rules.cascade,
+              capacity: None,
+              cards: [{suit: Spades, rank: Ace}],
+            },
           ],
-          free: true,
-          loose: [],
-          caption: None,
           seed: None,
         }
-        let state: GameState.t = {piles: [[], []], loose: [{suit: Spades, rank: Ace}]}
+        let state = GameState.initial(twoFoundations)
         // Both empty foundations accept the Ace, so there are two foundation moves…
         let foundationMoves =
           Reducer.validMoves(~game=twoFoundations, state, {suit: Spades, rank: Ace})->Array.filter(
@@ -1457,9 +1204,6 @@ describe("Reducer", () => {
         {role: Cascade, stacking: Fanned, rule: Rules.Free, capacity: None, cards: []},
         {role: Cascade, stacking: Fanned, rule: Rules.Free, capacity: None, cards: []},
       ],
-      free: false,
-      loose: [],
-      caption: None,
       seed: None,
     }
     // A hand-built snapshot from the six piles' contents (foundations 0–3, then two
@@ -1599,9 +1343,13 @@ describe("Reducer", () => {
     test(
       "a board with no foundations is left untouched",
       () => {
-        // The stacking demo is all cascades — nothing is ever safe to collect.
-        let state = GameState.initial(Game.stacking)
-        let (settled, moved) = Reducer.autoCollect(~game=Game.stacking, state)
+        // All cascades and no foundation — nothing is ever safe to collect.
+        let noFoundations: Game.t = {
+          ...acGame,
+          piles: acGame.piles->Array.filter(p => p.role != Game.Foundation),
+        }
+        let state = stateOf([[{suit: Spades, rank: Ace}], []])
+        let (settled, moved) = Reducer.autoCollect(~game=noFoundations, state)
         expect(moved)->toEqual([])
         expect(settled)->toEqual(state)
       },
@@ -1638,9 +1386,6 @@ describe("Reducer", () => {
           },
         ),
       ),
-      free: false,
-      loose: [],
-      caption: None,
       seed: None,
     }
     // A snapshot from four foundation runs then the cascade contents, padded to the
@@ -1711,8 +1456,17 @@ describe("Reducer", () => {
     test(
       "a board with no foundations is never finishable",
       () => {
-        let state = GameState.initial(Game.stacking)
-        expect(Reducer.canFinish(~game=Game.stacking, state))->toBe(false)
+        // The same board with its four foundations dropped: the drain wins nothing,
+        // so `hasWon`'s non-empty guard keeps it un-finishable.
+        let noFoundations: Game.t = {
+          ...finGame,
+          piles: finGame.piles->Array.filter(p => p.role != Game.Foundation),
+        }
+        let state: GameState.t = {
+          piles: Cards.suits->Array.map(fullSuit),
+          loose: [],
+        }
+        expect(Reducer.canFinish(~game=noFoundations, state))->toBe(false)
       },
     )
   })
@@ -1733,9 +1487,6 @@ describe("Reducer", () => {
         {role: Cascade, stacking: Fanned, rule: Rules.cascade, capacity: None, cards: []},
         {role: Cascade, stacking: Fanned, rule: Rules.cascade, capacity: None, cards: []},
       ],
-      free: false,
-      loose: [],
-      caption: None,
       seed: None,
     }
     // A distinct single-card filler, so "occupied" piles hold real, unique cards.
@@ -1929,16 +1680,6 @@ describe("Reducer", () => {
             )->toEqual(Error(Reducer.NoSuchPile))
           },
         )
-
-        test(
-          "a run has nowhere loose to go — MoveRun to the table is refused",
-          () => {
-            let state = stateOf([[], [], run4, [], [], []])
-            expect(
-              Reducer.reduce(~game=smGame, state, MoveRun({cards: run4, to: ToTable})),
-            )->toEqual(Error(Reducer.LooseNotAllowed))
-          },
-        )
       },
     )
   })
@@ -1957,8 +1698,8 @@ describe("Reducer", () => {
     let kh = {suit: Hearts, rank: King}
     let qc = {suit: Clubs, rank: Queen}
     let fc = {suit: Clubs, rank: Four}
-    // Two free cells then four cascades, and `free` so a loose drop is reachable —
-    // enough empties that the supermove limit is never the reason a run bounces.
+    // Two free cells then four cascades — enough empties that the supermove limit is
+    // never the reason a run bounces.
     let liftGame: Game.t = {
       id: "lift",
       name: "Lift",
@@ -1970,9 +1711,6 @@ describe("Reducer", () => {
         {role: Cascade, stacking: Fanned, rule: Rules.cascade, capacity: None, cards: []},
         {role: Cascade, stacking: Fanned, rule: Rules.cascade, capacity: None, cards: []},
       ],
-      free: true,
-      loose: [],
-      caption: None,
       seed: None,
     }
     let stateOf = (piles): GameState.t => {GameState.piles, loose: []}
@@ -2003,31 +1741,19 @@ describe("Reducer", () => {
     )
 
     test(
-      "a buried card can't be sent loose either",
+      "buriedness is judged before the destination, wherever the card was headed",
       () => {
-        // Buried is buried wherever the card was headed: this game *is* `free`, so
-        // the table would take it, and the card still can't be pulled out.
+        // An empty free cell takes any single card, so the cell is willing — and the
+        // Q♠ still can't be pulled out from under the J♥.
         let buried = stateOf([[], [], [qs, jh], [], [], []])
-        expect(Reducer.reduce(~game=liftGame, buried, Move({card: qs, to: ToTable})))->toEqual(
+        expect(Reducer.reduce(~game=liftGame, buried, Move({card: qs, to: ToPile(0)})))->toEqual(
           Error(Reducer.CardBuried),
         )
         // The card on top of it is free, and goes.
-        switch Reducer.reduce(~game=liftGame, buried, Move({card: jh, to: ToTable})) {
-        | Ok(next) => expect(next.loose)->toEqual([jh])
-        | Error(_) => expect(true)->toBe(false)
-        }
-      },
-    )
-
-    test(
-      "a loose card is always free to move",
-      () => {
-        // Nothing can rest on a card lying on the table, so `isFree` holds for it.
-        let state: GameState.t = {piles: [[], [], [], [kh], [], []], loose: [qs]}
-        switch Reducer.reduce(~game=liftGame, state, Move({card: qs, to: ToPile(3)})) {
+        switch Reducer.reduce(~game=liftGame, buried, Move({card: jh, to: ToPile(0)})) {
         | Ok(next) =>
-          expect(GameState.cardsInPile(next, 3))->toEqual([kh, qs])
-          expect(next.loose)->toEqual([])
+          expect(GameState.cardsInPile(next, 0))->toEqual([jh])
+          expect(GameState.cardsInPile(next, 2))->toEqual([qs])
         | Error(_) => expect(true)->toBe(false)
         }
       },
@@ -2126,9 +1852,6 @@ describe("Reducer", () => {
           },
         ),
       ),
-      free: false,
-      loose: [],
-      caption: None,
       seed: None,
     }
     let fresh = () => GameState.initial(mcGame)

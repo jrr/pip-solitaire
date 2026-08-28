@@ -648,16 +648,16 @@ test("deal <game> brings up that game's board", async ({ page }) => {
   await settleBoard(page)
   await openConsole(page)
 
-  await runCommand(page, "deal four-fans")
-  // Four fans, so four piles — a board FreeCell's sixteen zones can't be mistaken for —
-  // and the demo's own caption under it.
-  await expect(page.locator(".drop-zone")).toHaveCount(4)
-  await expect(page.locator(".stacking-caption")).toContainText("they can only rest in a pile")
+  // Somewhere else first, so the board really has to change back.
+  await runCommand(page, "deal 24680")
+  await settleBoard(page)
 
-  // …and back, by name. FreeCell's canonical board is deal #1 in both front ends, so a
-  // bare `deal freecell` is `deal 1` — which is what the chrome should now be offering.
+  // By name. FreeCell's canonical board is deal #1 in both front ends, so a bare
+  // `deal freecell` is `deal 1` — which is what the chrome should now be offering,
+  // over the sixteen zones the board lays out.
   await runCommand(page, "deal freecell")
   await settleBoard(page)
+  await expect(page.locator(".drop-zone")).toHaveCount(16)
   await page.getByRole("button", { name: "Open menu" }).click()
   await expect(page.getByRole("button", { name: /^Share Seed/ })).toHaveText("Share Seed 1")
 })

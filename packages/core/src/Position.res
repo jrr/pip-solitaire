@@ -484,8 +484,8 @@ let describeMove = (move: move): string => {
 
 // The position a real snapshot is in, or `None` when the board isn't a FreeCell
 // one — four free cells, four foundations, eight cascades is all this model can
-// say, so a card-table demo (or any other shape) gets an honest `None` rather
-// than a board with pieces missing.
+// say, so any other shape gets an honest `None` rather than a board with pieces
+// missing.
 let ofGameState = (~game: Game.t, state: GameState.t): option<t> => {
   let cellPiles = Game.pileIndices(game, Game.FreeCell)
   let foundationPiles = Game.pileIndices(game, Game.Foundation)

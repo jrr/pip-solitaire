@@ -91,10 +91,13 @@ describe("Position", () => {
 
   test("a board that isn't FreeCell-shaped packs to nothing at all", () => {
     // The model can only say four cells, four foundations and eight columns, so a
-    // card-table demo gets an honest `None` rather than a board with pieces missing.
-    expect(Position.ofGameState(~game=Game.stacking, GameState.initial(Game.stacking)))->toEqual(
-      None,
-    )
+    // board of any other shape gets an honest `None` rather than one with pieces
+    // missing. Here: the same deal with the free cells and foundations taken away.
+    let cascadesOnly: Game.t = {
+      ...game,
+      piles: Game.pilesOf(game, Game.Cascade),
+    }
+    expect(Position.ofGameState(~game=cascadesOnly, GameState.initial(cascadesOnly)))->toEqual(None)
   })
 
   test("every move the model offers is a move the reducer accepts", () => {

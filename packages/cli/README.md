@@ -27,7 +27,7 @@ after `--` to the built script):
 
 ```
 mise run cli -- list
-mise run cli -- show stacking
+mise run cli -- show freecell
 ```
 
 ## `play`: one verb, two shapes
@@ -40,24 +40,24 @@ printed as you play it. `quit` (or `exit`, or Ctrl-D) leaves.
 
 ```
 mise run cli -- play
-mise run cli -- play stacking     # deals that game first, straight onto the board
+mise run cli -- play freecell     # deals that game first, straight onto the board
 ```
 
 **A pipe or a file → batch.** Reads all of stdin to EOF, folds the whole script
 through the pure `Repl` interpreter, and prints the transcript at once.
 
 ```
-mise run cli -- play < packages/cli/examples/stacking-run.txt
+mise run cli -- play < some-script.txt
 
-printf 'deal stacking\nmove AS 1\nprint\n' | mise run cli -- play
+printf 'deal freecell sendhome\nmove C1 F1\nprint\n' | mise run cli -- play
 ```
 
 The two shapes print the **same transcript**: `Repl.prompt` is written *before*
 the read on a terminal and *behind* the line in a batch fold, and the live loop
 doesn't echo (your own typing is the echo), so a session on screen matches a piped
-transcript of the same commands line for line. That's what keeps the files in
-`examples/` readable as session logs — and it means one of them can be pasted
-straight into a live prompt and simply play.
+transcript of the same commands line for line. That's what keeps a script file
+readable as a session log — and it means one can be pasted straight into a live
+prompt and simply play.
 
 ### `--script`: pinning the batch shape
 
@@ -79,8 +79,7 @@ Neither the *grammar* nor the *board drawing* is the CLI's own: `Command.res` an
 `Render.res` both live in `core`, shared with the web app's debug console (#273),
 which types the same commands at the same reducer and prints the same board.
 `Repl` is the half that needs a session — the game in play, the history to undo
-over, the board to print — and the transcripts in `examples/` are the regression
-net for both.
+over, the board to print.
 
 Colour is the one thing the two ask for differently: `Render` writes it as ANSI
 escapes, which a terminal paints and a browser panel would show as garbage, so
@@ -103,7 +102,6 @@ deal <game> [position]   deal a named game, at a named position if given
 new                      deal a fresh game
 redeal / restart         play the current deal again from the start (same board)
 move <what> <where>      move a card   (e.g. move AS T3, mv 2H 3C, m C1 F1)
-move <card> table        move a card loose onto the table (free games only)
 moverun <what> <where>   supermove an ordered run: its cards bottom-first, or
                          the column it's showing in (moverun T6 T2)
 home <card>              send a card to its foundation, if one will take it
@@ -133,7 +131,7 @@ quit / exit              end an interactive session (Ctrl-D does it too)
 - **The board names its deal**: a dealt FreeCell board prints `FreeCell — deal
   #12345`, so the number you'd need to open it again (here or in the browser) is
   on screen rather than only in what you typed. A posed position names only a
-  deal it has been *proved* to descend from, and a fixed-layout demo names none.
+  deal it has been *proved* to descend from, and stays quiet otherwise.
 - **`set` changes the driver's flags** (`Options`) for the rest of the session —
   `set autocollect off`, `set reorder on`. It's shared with the web console,
   where it's the only way to reach the column-reorder house rule at all: that one
@@ -164,7 +162,7 @@ quit / exit              end an interactive session (Ctrl-D does it too)
   - **a pile index** (`0`, `1`, …), the absolute position in the model — what the
     reducer itself speaks, and unchanged.
 
-  The same three work for `moverun`'s destination. The table is the word `table`.
+  The same three work for `moverun`'s destination.
 - **What to move can be said as a place, too.** A card names itself (`move 8H T3`),
   but the board prints `C1` over the cell and prints nothing over "the Ten of Clubs
   currently in it" — so a slot name or a pile index in the *first* position means
@@ -186,28 +184,9 @@ quit / exit              end an interactive session (Ctrl-D does it too)
 - **Comments**: a line whose first non-space character is `#` is skipped
   entirely (not echoed, not run), so a piped script can document itself. Blank
   lines are skipped too. Both hold at a live prompt as well, which is why a whole
-  example file can be pasted into one.
+  script file can be pasted into one.
 - **`quit` in a script** ends the transcript where it appears and leaves the rest
   of the input unread, the way `exit` ends a shell script.
-- Illegal moves are **rejected with a reason** (wrong rank/colour, no loose
-  drops in a piles-only game, no such pile, card not in play) rather than
-  silently ignored — that's the whole point of the reducer returning a typed
-  `moveError`.
-
-## Examples
-
-Ready-to-pipe scripts live in [`examples/`](./examples):
-
-| File | Shows |
-| --- | --- |
-| [`stacking-run.txt`](./examples/stacking-run.txt) | Building a full Ace→King run onto a fanned tableau pile. |
-| [`stacking-rejected.txt`](./examples/stacking-rejected.txt) | A move refused by the stacking rule, with its reason. |
-| [`foundations.txt`](./examples/foundations.txt) | Two pile rules on one board — a same-suit foundation and an alternating-colour tableau. |
-| [`four-fans.txt`](./examples/four-fans.txt) | A piles-only game refusing a loose drop onto the table. |
-
-Each file is self-documenting (leading `#` comments explain what it does), so
-reading one is the fastest way to learn the command language:
-
-```
-mise run cli -- play < packages/cli/examples/foundations.txt
-```
+- Illegal moves are **rejected with a reason** (wrong rank/colour, a full free
+  cell, no such pile, a buried card) rather than silently ignored — that's the
+  whole point of the reducer returning a typed `moveError`.

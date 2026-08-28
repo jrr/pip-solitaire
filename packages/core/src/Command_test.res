@@ -47,14 +47,6 @@ describe("Command.parse", () => {
     )
 
     test(
-      "move <card> table is the loose drop",
-      () =>
-        expect(Command.parse("move AS table"))->toEqual(
-          Command.Dispatch(Reducer.Move({card: ace(Spades), to: Reducer.ToTable})),
-        ),
-    )
-
-    test(
       "moverun takes its cards bottom-first, the target last",
       () =>
         expect(Command.parse("moverun 8H 7S 5"))->toEqual(
@@ -337,7 +329,7 @@ describe("Command.parse", () => {
         },
     )
 
-    // A destination that's none of the four things a destination can be. The complaint
+    // A destination that's none of the three things a destination can be. The complaint
     // lists them, because a refusal that only says "no" sends the reader to the source.
     test(
       "a token that names no place to move to is reported as such, listing what does",
@@ -348,7 +340,6 @@ describe("Command.parse", () => {
           expect(message->String.includes("pile index"))->toBe(true)
           expect(message->String.includes("T3"))->toBe(true)
           expect(message->String.includes("9S"))->toBe(true)
-          expect(message->String.includes(`"table"`))->toBe(true)
         | _ => expect("not a usage")->toBe("usage")
         },
     )
@@ -419,8 +410,8 @@ describe("Command.resolveDeal", () => {
   )
 
   test("a game id names that game, at its opening layout", () =>
-    switch resolve(~game="stacking", ()) {
-    | Command.Named({game, position: None}) => expect(game.id)->toBe("stacking")
+    switch resolve(~game="freecell", ()) {
+    | Command.Named({game, position: None}) => expect(game.id)->toBe("freecell")
     | _ => expect("not a named game")->toBe("named game")
     }
   )
@@ -559,12 +550,11 @@ describe("Command.parseTarget", () => {
   test("an index is a pile", () =>
     expect(Command.parseTarget("7"))->toEqual(Some(Reducer.ToPile(7)))
   )
-  test("table, loose and t all name the table", () => {
-    expect(Command.parseTarget("table"))->toEqual(Some(Reducer.ToTable))
-    expect(Command.parseTarget("LOOSE"))->toEqual(Some(Reducer.ToTable))
-    expect(Command.parseTarget("t"))->toEqual(Some(Reducer.ToTable))
+  test("anything else is no target at all", () => {
+    expect(Command.parseTarget("qq"))->toEqual(None)
+    // A slot label isn't a *target* — `parseWhere` reads those, one grammar on.
+    expect(Command.parseTarget("T3"))->toEqual(None)
   })
-  test("anything else is no target at all", () => expect(Command.parseTarget("qq"))->toEqual(None))
 })
 
 describe("Command.describeRejection", () => {
@@ -724,16 +714,21 @@ describe("Command.resolveWhere", () => {
     }
   )
 
-  test("a board with none of a role says so rather than counting to zero", () =>
+  test("a board with none of a role says so rather than counting to zero", () => {
+    // The same board with its free cells dropped: `C1` then names nothing at all.
+    let cellless: Game.t = {
+      ...game,
+      piles: game.piles->Array.filter(p => p.role != Game.FreeCell),
+    }
     switch Command.resolveWhere(
-      ~game=Game.stacking,
-      GameState.initial(Game.stacking),
+      ~game=cellless,
+      GameState.initial(cellless),
       Command.Slot({role: Game.FreeCell, ordinal: 1}),
     ) {
     | Ok(_) => expect(true)->toBe(false)
     | Error(message) => expect(message->String.includes("no free cells"))->toBe(true)
     }
-  )
+  })
 
   // The point of the card destination: name what you can see, not the index you'd
   // have to count out. Deal #1's cascades each show their last dealt card.
@@ -762,16 +757,16 @@ describe("Command.resolveWhere", () => {
 
   // An empty foundation shows nothing, so no card names it — that's what the labels
   // are for, and what the refusal should send the reader to.
+  // A board of four empty free cells and nothing else — it holds no cards at all, which
+  // is what the "isn't in play" arm and the ambiguity guard below both need.
+  let cellsOnly: Game.t = {...game, piles: Game.pilesOf(game, Game.FreeCell)}
+
   test("a card that isn't showing anywhere is refused", () => {
     // Every card is dealt into a cascade on a fresh FreeCell board, so this asks about
     // a card that exists but is covered — the "isn't in play" arm needs a board that
     // doesn't hold it at all.
-    let missing = GameState.initial(Game.freeCells)
-    switch Command.resolveWhere(
-      ~game=Game.freeCells,
-      missing,
-      Command.Onto({suit: Hearts, rank: Two}),
-    ) {
+    let missing = GameState.initial(cellsOnly)
+    switch Command.resolveWhere(~game=cellsOnly, missing, Command.Onto({suit: Hearts, rank: Two})) {
     | Ok(_) => expect(true)->toBe(false)
     | Error(message) => expect(message->String.includes("isn't in play"))->toBe(true)
     }
@@ -784,10 +779,10 @@ describe("Command.resolveWhere", () => {
   test("a card showing on more than one pile is ambiguous, and says which", () => {
     let twice = {suit: Clubs, rank: Three}
     let doubled: GameState.t = {
-      piles: Game.freeCells.piles->Array.mapWithIndex((_, i) => i < 2 ? [twice] : []),
+      piles: cellsOnly.piles->Array.mapWithIndex((_, i) => i < 2 ? [twice] : []),
       loose: [],
     }
-    switch Command.resolveWhere(~game=Game.freeCells, doubled, Command.Onto(twice)) {
+    switch Command.resolveWhere(~game=cellsOnly, doubled, Command.Onto(twice)) {
     | Ok(_) => expect(true)->toBe(false)
     | Error(message) =>
       expect(message->String.includes("Ambiguous"))->toBe(true)
@@ -796,16 +791,13 @@ describe("Command.resolveWhere", () => {
     }
   })
 
-  // The one destination that needs no board still passes through unchanged, so a
-  // resolved move and an index-typed one are the same dispatch.
-  test("an index or the table passes straight through", () => {
+  // The destination that needs no board still passes through unchanged, so a resolved
+  // move and an index-typed one are the same dispatch.
+  test("an index passes straight through", () =>
     expect(Command.resolveWhere(~game, state, Command.At(Reducer.ToPile(3))))->toEqual(
       Ok(Reducer.ToPile(3)),
     )
-    expect(Command.resolveWhere(~game, state, Command.At(Reducer.ToTable)))->toEqual(
-      Ok(Reducer.ToTable),
-    )
-  })
+  )
 
   // One card is a `Move`, several are the supermove — the same actions the index-typed
   // commands parse to, which is what makes a resolved destination not a second kind of
@@ -988,7 +980,6 @@ describe("Command.reason", () => {
     [
       Reducer.Rejected,
       Reducer.PileFull,
-      Reducer.LooseNotAllowed,
       Reducer.NoSuchPile,
       Reducer.CardNotFound,
       Reducer.NotARun,
