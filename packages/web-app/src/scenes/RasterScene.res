@@ -179,6 +179,7 @@ type keyEvent
 let make = (~rendering=Sprite): Scene.t => {
   id: "raster",
   label: "Raster",
+  kind: Demo,
   mount: container => {
     // A build takes a moment (52 decodes), and two things can happen inside that
     // moment: the scene can be torn down, and the rendering can be changed.

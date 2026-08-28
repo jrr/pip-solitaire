@@ -9,9 +9,19 @@
 // container after tearing a scene down, so a scene whose nodes carry no extra
 // resources can just return `() => ()`.
 
+// What a scene *is*, as opposed to where it happens to sit in the menu (#352). The
+// switcher used to group on "is this the launch default?", which reads as
+// games-vs-demos only for as long as there is exactly one game: a second one would
+// have landed in the "scenes" disclosure between Gallery and Motion, filed as a
+// render demo. A scene says which it is, and the switcher groups on that.
+type kind =
+  | Game // a playable table (`TableScene`, one per `Game.all` entry)
+  | Demo // a debug/render demo (Gallery, Raster, Motion)
+
 type t = {
   id: string,
   label: string,
+  kind: kind,
   mount: WebDom.element => unit => unit,
 }
 
@@ -29,9 +39,10 @@ type t = {
 // to the full form without anything else changing. Teardown is `() => ()`
 // because the switcher clears the container itself when another scene is
 // picked.
-let static = (~id, ~label, view: Html.vnode): t => {
+let static = (~id, ~label, ~kind, view: Html.vnode): t => {
   id,
   label,
+  kind,
   mount: container => {
     Html.renderInto(view, container)
     () => ()

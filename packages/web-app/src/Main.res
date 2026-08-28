@@ -1079,6 +1079,8 @@ let debugScreen = (model, dispatch): MenuDebugScreen.props => {
     ),
   // Asked afresh on every render: the entry for the scene that's mounted now is the
   // `selected` one, and that's what puts the highlight in the menu.
+  gameScenes: switcher.gameScenes(),
+  gameScenesOpen: switcher.gameScenesOpen,
   debugScenes: switcher.debugScenes(),
   debugScenesOpen: switcher.debugScenesOpen,
   debugStates,
