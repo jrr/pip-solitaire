@@ -2,13 +2,14 @@
 // not tear it down and mount it again. A fake scene that counts its mounts is enough
 // to check this in jsdom; no layout or input engine needed.
 //
-// The primary game's row is still a real DOM button the switcher owns, so that one
-// is clicked. The debug/demo scenes left as data in #336 — a list of
-// `<MenuDisclosure>` entries — so those are exercised by running an entry's
-// `onSelect`, which is the very thunk the rendered row is wired to.
+// Nothing here clicks a button any more. The switcher builds no menu DOM at all (#337
+// finished what #336 started), so what's exercised is the data it hands over: a
+// primary scene is `select`ed by id, exactly as the row the chrome draws does it, and
+// a debug/demo scene by running its entry's `onSelect` — the very thunk that row is
+// wired to. Which scene is current is likewise read rather than looked at: `active`
+// for the seed the chrome opens with, `entry.selected` for the group's highlight.
 
 open Vitest
-open TestDom
 
 let countingScene = (~id, ~mounts): Scene.t => {
   id,
@@ -19,8 +20,26 @@ let countingScene = (~id, ~mounts): Scene.t => {
   },
 }
 
-describe("SceneSwitcher rows", () => {
-  test("tapping the showing scene's own row doesn't re-mount it", () => {
+describe("SceneSwitcher's games list", () => {
+  test("hands the primary game over as data, and says it's the one showing", () => {
+    // The scene list minus the demos, plus the id the chrome seeds its model with —
+    // that pairing is the whole of the menu's highlight now.
+    let mounts = ref(0)
+    let switcher = SceneSwitcher.render(
+      ~default="freecell",
+      [countingScene(~id="freecell", ~mounts), countingScene(~id="gallery", ~mounts)],
+    )
+    expect(switcher.primaryScenes->Array.map(scene => (scene.id, scene.label)))->toEqual([
+      ("freecell", "freecell"),
+    ])
+    expect(switcher.active)->toEqual(Some("freecell"))
+    // Off to a scene in the debug group: the primary game stops being the active one,
+    // which is what un-highlights its row.
+    switcher.ensureActive("gallery")
+    expect(switcher.active)->toEqual(Some("freecell")) // a seed, not a live reading
+  })
+
+  test("selecting the showing scene's own id doesn't re-mount it", () => {
     let mounts = ref(0)
     let switcher = SceneSwitcher.render(
       ~default="freecell",
@@ -28,10 +47,7 @@ describe("SceneSwitcher rows", () => {
     )
     // The initial mount.
     expect(mounts.contents)->toBe(1)
-    switch switcher.controls->find(".menu-row") {
-    | Some(row) => row->click
-    | None => expect("the freecell row")->toBe("but it wasn't rendered")
-    }
+    switcher.select("freecell")
     expect(mounts.contents)->toBe(1)
   })
 
@@ -45,58 +61,45 @@ describe("SceneSwitcher rows", () => {
       ~onReselect=() => reselects := reselects.contents + 1,
       [countingScene(~id="freecell", ~mounts)],
     )
-    switch switcher.controls->find(".menu-row") {
-    | Some(row) => row->click
-    | None => expect("the freecell row")->toBe("but it wasn't rendered")
-    }
+    switcher.select("freecell")
     expect(reselects.contents)->toBe(1)
     expect(mounts.contents)->toBe(1)
   })
 
-  test("selecting a different scene does mount it", () => {
-    // The guard is "don't re-mount what's already up", not "don't mount" — an entry
-    // for another scene still switches to it, and reports an activation rather than
-    // a reselect.
+  test("selecting a different scene does mount it, and reports the change", () => {
+    // The guard is "don't re-mount what's already up", not "don't mount" — another
+    // scene still switches to it, and reports an activation rather than a reselect.
+    // That activation report is how the chrome's model learns which row to highlight.
     let freecell = ref(0)
     let demo = ref(0)
     let reselects = ref(0)
+    let activated = []
     let switcher = SceneSwitcher.render(
       ~default="freecell",
+      ~onActivate=(scene: Scene.t) => activated->Array.push(scene.id),
       ~onReselect=() => reselects := reselects.contents + 1,
       [countingScene(~id="freecell", ~mounts=freecell), countingScene(~id="demo", ~mounts=demo)],
     )
-    // The non-primary scene is an entry in the debug group, not a row in the games
-    // list — the games list holds the primary game alone.
-    expect(switcher.controls->findAll(".menu-row")->Array.length)->toBe(1)
+    expect(activated)->toEqual(["freecell"])
+    // The non-primary scene is an entry in the debug group, not one of the games —
+    // the games list holds the primary game alone.
     switch switcher.debugScenes()->Array.get(0) {
     | Some(entry) => entry.onSelect()
     | None => expect("the demo entry")->toBe("but there wasn't one")
     }
     expect(demo.contents)->toBe(1)
     expect(reselects.contents)->toBe(0)
+    expect(activated)->toEqual(["freecell", "demo"])
   })
 
-  test("marks the showing scene's row the way <MenuRow selected> does", () => {
-    // The row is still built here by hand, so what it must not do is drift from the
-    // component the rest of the menu uses (#335): the same `menu-row` classes, and
-    // `aria-current` on the current row — absent, not "false", on one that isn't.
+  test("an id that names no scene selects nothing", () => {
     let mounts = ref(0)
     let switcher = SceneSwitcher.render(
       ~default="freecell",
-      [countingScene(~id="freecell", ~mounts), countingScene(~id="gallery", ~mounts)],
+      [countingScene(~id="freecell", ~mounts)],
     )
-    switch switcher.controls->find(".menu-row") {
-    | Some(row) =>
-      expect(row->classes)->toBe("menu-row menu-row--action menu-row--active")
-      expect(row->attr("aria-current"))->toBe(Some("true"))
-      expect(row->textIn(".menu-row__label"))->toBe("freecell")
-      // Off to a scene in the debug group: the primary row stops being current, and
-      // drops the attribute rather than reporting a negative.
-      switcher.ensureActive("gallery")
-      expect(row->classes)->toBe("menu-row menu-row--action")
-      expect(row->hasAttr("aria-current"))->toBe(false)
-    | None => expect("the freecell row")->toBe("but it wasn't rendered")
-    }
+    switcher.select("nope")
+    expect(mounts.contents)->toBe(1)
   })
 })
 
@@ -130,5 +133,17 @@ describe("SceneSwitcher's debug group (#336)", () => {
     expect(
       SceneSwitcher.render(~default="freecell", ~forced="gallery", scenes).debugScenesOpen,
     )->toBe(true)
+  })
+
+  test("reports the scene a deep link lands on as the active one", () => {
+    // What the chrome seeds its model with on a `?scene=` open: the forced scene, so
+    // the games row it *isn't* opens un-highlighted.
+    let mounts = ref(0)
+    let switcher = SceneSwitcher.render(
+      ~default="freecell",
+      ~forced="gallery",
+      [countingScene(~id="freecell", ~mounts), countingScene(~id="gallery", ~mounts)],
+    )
+    expect(switcher.active)->toEqual(Some("gallery"))
   })
 })

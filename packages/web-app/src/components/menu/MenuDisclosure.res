@@ -26,11 +26,12 @@
 // currently in effect. Only the scene rows have a `selected` row — a scene is
 // mounted, so one of them is always the one you're looking at; the state rows are
 // jumps that leave nothing behind to highlight, and simply omit it.
-type entry = {
-  label: string,
-  onSelect: unit => unit,
-  selected?: bool,
-}
+//
+// An alias since #337, which needed the very same record for the *ungrouped* rows on
+// the main screen and so moved it to `MenuRow`, where the row it describes is. The
+// name stays here because a disclosure's callers say `entry` and there is no second
+// meaning for it to collide with.
+type entry = MenuRow.entry
 
 type props = {
   // The disclosure's own label: "scenes", "states".

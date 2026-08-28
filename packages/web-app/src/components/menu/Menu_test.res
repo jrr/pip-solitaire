@@ -82,7 +82,7 @@ let render = (~seed, ~status): Html.element =>
         shareDealSeed: seed,
         shareDealStatus: status,
         onShareDeal: () => (),
-        games: Html.make("div"),
+        games: [],
         onOpenSettings: () => (),
       },
       settings,

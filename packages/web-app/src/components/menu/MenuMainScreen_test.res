@@ -12,8 +12,10 @@
 // 2. **The share line is always there.** Empty most of the time, but rendered — a
 //    confirmation that appeared out of nothing would shove every section below it
 //    down the panel as it came and went.
-// 3. **The Games rows are spliced, not rebuilt.** SceneSwitcher owns that node; the
-//    screen must hand back the very same element it was given.
+// 3. **The Games rows are drawn from the list handed in** (#337), in order, as
+//    `<MenuRow>`s, with the highlight on whichever one says it's selected. They used to
+//    be a node SceneSwitcher built and this screen spliced in unchanged; what replaced
+//    that splice is this list, so this is where the switcher's rows are now pinned.
 // 4. **The Settings button sits in the bottom group.** `menu-section--bottom` is what
 //    pushes it to the foot of the panel; without the class it drifts up under Games.
 //
@@ -22,8 +24,6 @@
 open Vitest
 open TestDom
 
-let games = Html.make("div")
-
 let render = (
   ~shareDealSeed=None,
   ~shareDealStatus=None,
@@ -31,6 +31,7 @@ let render = (
   ~onRestart=() => (),
   ~onShareDeal=() => (),
   ~onOpenSettings=() => (),
+  ~games: array<MenuRow.entry>=[],
 ) =>
   Html.create(
     MenuMainScreen.make({
@@ -86,11 +87,28 @@ describe("MenuMainScreen (#307)", () => {
     )->toBe("Link copied to clipboard.")
   })
 
-  test("splices SceneSwitcher's own rows in rather than rebuilding them", () => {
-    // The very same node, so the switcher's subtree is left alone across
-    // open/close re-renders.
-    let screen = render()
-    expect(screen->contains(games))->toBe(true)
+  test("draws the games it's given as rows, marking the one that's showing", () => {
+    // The switcher's rows, now that they arrive as data (#337): the labels in order,
+    // and the highlight — `menu-row--active` plus `aria-current` — on the scene
+    // mounted. A second game would list beneath the first, which is what this section
+    // is a section for.
+    let taps = []
+    let screen = render(
+      ~games=[
+        {label: "freecell", selected: true, onSelect: () => taps->Array.push("freecell")},
+        {label: "spider", selected: false, onSelect: () => taps->Array.push("spider")},
+      ],
+    )
+    let rows = screen->findAll("nav .menu-row")
+    expect(rows->Array.map(text))->toEqual(["freecell", "spider"])
+    expect(rows->Array.map(classes))->toEqual([
+      "menu-row menu-row--action menu-row--active",
+      "menu-row menu-row--action",
+    ])
+    expect(rows->Array.map(row => row->attr("aria-current")))->toEqual([Some("true"), None])
+    // …and each row runs its own action.
+    rows->Array.forEach(click)
+    expect(taps)->toEqual(["freecell", "spider"])
   })
 
   test("hangs the Settings button off the bottom group, above the About footer", () => {

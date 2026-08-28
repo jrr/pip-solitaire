@@ -1,9 +1,9 @@
-// The scene switcher: a list of tappable rows (surfaced in the menu, #109) that
-// select which scene is mounted into a separate shared container.
-// Selecting a scene tears the current one down, clears the container, and mounts
-// the chosen one — exactly one scene is live at a time. This is the mount/teardown
-// engine kept from the old `<select>` picker; only its control surface changed
-// from a drop-down to menu rows.
+// The scene switcher: which scene is mounted into a shared container, and the list
+// of them the menu offers as tappable rows (#109). Selecting a scene tears the
+// current one down, clears the container, and mounts the chosen one — exactly one
+// scene is live at a time. This is the mount/teardown engine kept from the old
+// `<select>` picker, and by now it is *all* this module is: the control surface went
+// from a drop-down to menu rows, and then (#336, #337) to rows the menu draws itself.
 //
 // The rows aren't a flat list: the primary game (the launch `~default`, FreeCell)
 // sits as a single row in the menu's "games" section, and the debug/demo scenes are
@@ -15,57 +15,52 @@
 // home), or the `~forced` scene the URL names (`?scene=`); there is no longer any
 // "resume the last scene on reload" behaviour, so nothing is persisted.
 //
-// `render` hands the row controls and the scene container back separately (see `t`)
-// so the caller can place the rows (inside the menu) apart from the scene box. The
-// disclosure itself is no longer among them: the debug/demo scenes leave here as
-// *data* — a list of `{label, onSelect}` — and `<MenuDisclosure>` draws them (#336).
-// This module used to build that `<details>`, its `<summary>` and its body by hand,
-// beside a `DebugStates` that described the same tree in twelve lines of JSX.
+// `render` hands the menu's scene lists and the scene container back separately (see
+// `t`) so the caller can place the rows (inside the menu) apart from the scene box.
+// **It builds no menu DOM at all.** The debug/demo scenes left as *data* — a list of
+// `{label, onSelect}` for `<MenuDisclosure>` to draw — in #336, and the primary game's
+// row followed in #337; before that this module built a `<details>`, its `<summary>`
+// and its body by hand beside a `DebugStates` that described the same tree in twelve
+// lines of JSX, and then, once that was gone, a `<div id="scene-menu">` holding one
+// hand-classed `<button>` for a menu that renders through a diff.
+//
+// The highlight went the same way. A row's `--active` class was rewritten in place by
+// walking every row on each activation — the job the diff exists to do, done by hand
+// because the rows sat outside it. Now which scene is mounted is a *value* this module
+// reports (`active`, and each entry's `selected`), and the menu re-renders from it.
 
-// This component's stylesheet, in the `components` layer (see src/styles/index.css).
-%%raw(`import "./SceneSwitcher.css"`)
-
-// The primary game's row, built by hand because this module owns it as live DOM
-// (#337 hands it to `<MenuRow>` along with the rest). What it renders is exactly
-// what `<MenuRow>` renders for a plain row: the `menu-row` box, and the label
-// inside the `__text`/`__label` stack that left-aligns it. The classes come from
-// `MenuRow.classesFor` rather than being spelled out again, so there is one
-// spelling of them; this file's own `.scene-menu__row` is gone (#335).
-let buildRow = (scene: Scene.t) => {
-  let row = WebDom.createElement("button")
-  row->WebDom.setAttribute("type", "button")
-  let text = WebDom.createElement("span")
-  text->WebDom.setAttribute("class", "menu-row__text")
-  let label = WebDom.createElement("span")
-  label->WebDom.setAttribute("class", "menu-row__label")
-  label->WebDom.setTextContent(scene.label)
-  text->WebDom.appendChild(label)->ignore
-  row->WebDom.appendChild(text)->ignore
-  row
-}
-
-// Mark (or unmark) a row as the scene currently showing, the way
-// `<MenuRow selected>` renders it: the `--active` modifier, and `aria-current`
-// *removed* rather than set to "false" — an absent enumerated attribute is what
-// says "not the current one".
-let markSelected = (row, selected) => {
-  row->WebDom.setAttribute("class", MenuRow.classesFor(~selected, MenuRow.Nothing))
-  if selected {
-    row->WebDom.setAttribute("aria-current", "true")
-  } else {
-    row->WebDom.removeAttribute("aria-current")
-  }
-}
+// A scene the menu can offer, as data: the label a row shows and the id `select`
+// takes. Not `MenuRow.entry`, deliberately — the chrome pairs these with the active
+// id to decide the highlight and closes over `select` itself, so what crosses this
+// boundary is the scene, not a row already decided.
+type choice = {id: string, label: string}
 
 // The switcher's pieces, handed back separately so the caller can place them
-// independently (#185): the `controls` hold the primary game row(s) and go in the
-// menu's "games" section up top, while the debug/demo scenes go in the "debug"
-// section pushed to the bottom, as one `<MenuDisclosure>` beside the debug-states
-// group. The `scene` container is what the scene band wraps. `ensureActive` lets the
-// chrome bring a scene forward by id (the debug "states" menu uses it to surface
-// FreeCell before forcing a named position onto it).
+// independently (#185): the primary game row(s) go in the menu's "games" section up
+// top, while the debug/demo scenes go in the "debug" section pushed to the bottom, as
+// one `<MenuDisclosure>` beside the debug-states group. The `scene` container is the
+// one real node here, and the only thing that has to be one — a scene mounts a foreign
+// subtree into it, which is what `Html.node` is for. `ensureActive` lets the chrome
+// bring a scene forward by id (the debug "states" menu uses it to surface FreeCell
+// before forcing a named position onto it).
 type t = {
-  controls: WebDom.element, // the primary game row(s) (placed in the menu's "games" section)
+  // The scenes the menu names at top level — as data, for the chrome to render as
+  // `<MenuRow>`s. Fixed for the life of the app (the scene list is), so an array
+  // rather than the thunk `debugScenes` needs: what *changes* is which one is
+  // current, and that is `active` below.
+  primaryScenes: array<choice>,
+  // The scene mounted at the moment `render` returned — the caller's *seed*, not a
+  // live reading. It exists because the initial activation happens in here, during
+  // module init, before the chrome's `dispatch` does: `Main` reads this into its
+  // model and every later change arrives through `~onActivate`. (`Main` solves the
+  // same ordering problem twice more, for values that can only come from a callback,
+  // with the `initialCanUndo`/`initialDealSeed` refs; this one the switcher knows
+  // itself and can simply hand over.) `None` only when there are no scenes at all.
+  active: option<string>,
+  // Show the scene with this id — what a games row's tap runs. Same rule as
+  // `ensureActive`, and see `select` below for why tapping the current one must not
+  // re-mount it. An unknown id does nothing.
+  select: string => unit,
   // The debug/demo scenes as menu entries. A thunk rather than an array, because
   // which entry is `selected` is whichever scene is mounted *at the moment the menu
   // renders* — the chrome calls this while building the Debug screen's props, and a
@@ -78,7 +73,7 @@ type t = {
   ensureActive: string => unit, // mount the scene with this id, unless it's already current
 }
 
-// Build the switcher UI and return its two pieces. When `scenes` is empty the
+// Build the switcher and return its pieces. When `scenes` is empty the
 // container simply stays empty. Otherwise the initial scene is the first of these
 // that names a real scene: the `~forced` id (from the URL's `?scene=`, so a link
 // always lands where it says), then the launch `~default` (FreeCell), then the
@@ -87,11 +82,11 @@ type t = {
 // `~onActivate` is called at the *start* of every activation (the initial mount
 // and each row tap that changes scene) with the scene about to mount — the chrome
 // uses it to reset any per-scene action it tracks (the top bar's New Game hook,
-// which the mounting scene then re-publishes if it's re-dealable) and to close the
-// menu. `~onReselect` is its counterpart for the tap that *doesn't* switch scene —
-// the current scene's own row — where nothing mounts and so no hook may be reset
-// (the live board's New Game/Undo hooks must keep pointing at it); the chrome
-// wires it to close the menu alone.
+// which the mounting scene then re-publishes if it's re-dealable), to record which
+// scene is now current, and to close the menu. `~onReselect` is its counterpart for
+// the tap that *doesn't* switch scene — the current scene's own row — where nothing
+// mounts and so no hook may be reset (the live board's New Game/Undo hooks must keep
+// pointing at it); the chrome wires it to close the menu alone.
 let render = (
   ~default: option<string>=?,
   ~forced: option<string>=?,
@@ -99,20 +94,15 @@ let render = (
   ~onReselect: option<unit => unit>=?,
   scenes: array<Scene.t>,
 ): t => {
-  // A plain container for the rows; the menu wraps it in a labelled <nav>, so
-  // this stays a simple <div> rather than nesting one landmark inside another.
-  let nav = WebDom.createElement("div")
-  nav->WebDom.setAttribute("id", "scene-menu")
-
   let container = WebDom.createElement("section")
   container->WebDom.setAttribute("id", "scene-container")
 
   // Teardown for the currently mounted scene; a noop until one is mounted.
   let teardown = ref(() => ())
 
-  // Which scene is which is decided up front, because it decides what gets built:
-  // the primary game is a real row in `nav`, every other scene is an entry in the
-  // "scenes" disclosure the menu renders.
+  // Which scene is which is decided up front, because it decides which of the two
+  // lists below a scene is handed over in: the primary game goes to the menu's
+  // "games" section, every other scene to the "scenes" disclosure under Debug.
   //
   // Initial scene: the forced (URL) id if it names a scene, else the launch
   // default, else the first.
@@ -131,32 +121,27 @@ let render = (
 
   let isPrimary = (scene: Scene.t) => primaryId == Some(scene.id)
 
-  // One row button per *primary* scene, remembered alongside its scene so the
-  // active row can be highlighted and a tap can look its scene back up. These are
-  // the only real DOM the switcher still owns on the menu side; the debug scenes
-  // are handed over as data below.
-  let rows =
+  // The scenes the menu names at top level, as data. Nothing is built for them here:
+  // the chrome draws each as a `<MenuRow>` and the highlight follows from the active
+  // id, so there is no row to walk and no class to rewrite (#337).
+  let primaryScenes =
     scenes
     ->Array.filter(isPrimary)
-    ->Array.map(scene => {
-      let row = buildRow(scene)
-      markSelected(row, false)
-      nav->WebDom.appendChild(row)->ignore
-      (scene, row)
-    })
+    ->Array.map((scene): choice => {id: scene.id, label: scene.label})
 
   // The id of the scene currently mounted, so `ensureActive` can skip a redundant
   // re-mount when the wanted scene is already showing.
   let activeId = ref(None)
 
   let activate = (scene: Scene.t) => {
+    // The chrome hears which scene is coming *before* it mounts, which is also how it
+    // learns to move the menu's highlight — one report for both, since a scene change
+    // is exactly the thing both are about.
     onActivate->Option.forEach(f => f(scene))
     teardown.contents()
     WebDom.clear(container)
     teardown := scene.mount(container)
     activeId := Some(scene.id)
-    // Mark the active row so the menu shows which scene is current.
-    rows->Array.forEach(((s, row)) => markSelected(row, s.id == scene.id))
   }
 
   // Selecting a scene activates it — unless that scene is the one already showing,
@@ -172,8 +157,6 @@ let render = (
     } else {
       activate(scene)
     }
-
-  rows->Array.forEach(((scene, row)) => row->WebDom.addEventListener("click", () => select(scene)))
 
   // The "scenes" group's entries: every scene that isn't the primary game, as menu
   // data for `<MenuDisclosure>` to draw (#336). It lives under the menu's "debug"
@@ -213,5 +196,16 @@ let render = (
       byId(id)->Option.forEach(activate)
     }
 
-  {controls: nav, debugScenes, debugScenesOpen, scene: container, ensureActive}
+  {
+    primaryScenes,
+    active: activeId.contents,
+    // By id, because that is what the chrome holds: the row it draws came from a
+    // `choice`, and looking the scene back up here keeps `Scene.t` — mount function
+    // and all — inside this module.
+    select: id => byId(id)->Option.forEach(select),
+    debugScenes,
+    debugScenesOpen,
+    scene: container,
+    ensureActive,
+  }
 }
