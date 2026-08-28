@@ -248,19 +248,22 @@ type shakeControl = {
 // the table, and a stale closure over a torn-down build isn't something a caller can
 // hold even by accident.
 //
-// `newGame` and `loadGame` are the two a board can genuinely lack: both open a board
+// `newGame` and `loadDeal` are the two a board can genuinely lack: both open a board
 // the caller names — a fresh seed, a chosen deal number — which only a *re-dealable*
-// game has (`~newDeal`; FreeCell today). A fixed-layout demo answers `None`, which is
-// what lets the menu and the console's `deal` say so rather than silently doing
-// nothing. Everything else is offered by every card table.
+// game has (`~newDeal`, and the game's own `Game.t.deal`; FreeCell today). A
+// fixed-layout demo answers `None`, which is what lets the menu and the console's
+// `deal` say so rather than silently doing nothing. Everything else is offered by every
+// card table.
 type controls = {
   // Re-deal onto a fresh seed (#108/#156) — the menu's New Game, and the console's
   // bare `deal`.
   newGame: option<unit => unit>,
-  // Re-deal onto a *named* game (#273) — the addressed twin of `newGame`, behind the
-  // console's `deal <n>`. The caller turns the number into a `Game.t`, since only it
-  // knows a deal number is a seeded FreeCell shuffle.
-  loadGame: option<Game.t => unit>,
+  // Re-deal onto a *chosen* deal number (#273) — the addressed twin of `newGame`,
+  // behind the console's `deal <n>`. The number is turned into a board here, by the
+  // game on the table (`Game.t.deal`, #349): the caller has a number and a board, and
+  // needn't know that a deal number is a seeded FreeCell shuffle to put the two
+  // together.
+  loadDeal: option<int => unit>,
   // Replay the deal now on the table (#156) — the menu's Restart, and the console's
   // `redeal`. Every card table offers it: a fixed-layout demo restarts to its own deal.
   restart: unit => unit,
@@ -2341,18 +2344,20 @@ let make = (
     // Everything here is written to survive a re-deal, which is the whole reason a
     // mount-scope hand-over is safe:
     //
-    //   - the four rebuilds (`newGame`, `loadGame`, `restart`, `loadState`) and the
+    //   - the four rebuilds (`newGame`, `loadDeal`, `restart`, `loadState`) and the
     //     share-link restore call `buildBoard` directly, which clears the host and
     //     builds a fresh board in place — so they're about the *scene*, not a build;
     //   - `readHistory`, `undo`, `runCommand`, `relayout` and `dockFit` dispatch
     //     through mount-scope refs that each build repoints at its own board;
     //   - `shake` drives the live board's nodes through `boardOps`, the same way.
     //
-    // The two re-deals that open a board the caller names ride `~newDeal`: a fresh seed
-    // for `newGame` (#109 — the menu's New Game and the console's bare `deal`), and a
-    // caller-supplied `Game.t` for `loadGame` (#273 — `deal <n>`, where the driver turns
-    // the number into a board because only it knows a deal is a seeded FreeCell
-    // shuffle). A fixed-layout demo has no seed to vary and offers neither.
+    // The two re-deals that open a board the caller names are the re-dealable game's: a
+    // fresh seed for `newGame` (#109 — the menu's New Game and the console's bare
+    // `deal`), invented by the driver and handed over as `~newDeal`, and a *chosen* one
+    // for `loadDeal` (#273 — `deal <n>`), laid out by the game itself (`Game.t.deal`,
+    // #349) now that a board knows how to deal another of its own. A fixed-layout demo
+    // has no seed to vary and offers neither — `~newDeal` is still what says so, since
+    // it's the driver that decides whether a board may be re-dealt at all.
     //
     // `restart` (#156) is offered by *every* card table — a demo restarts to its own
     // opening deal — and rebuilds from `currentGame`, the deal actually on the table, so
@@ -2370,7 +2375,10 @@ let make = (
     | Some(publish) =>
       publish({
         newGame: newDeal->Option.map(freshDeal => () => buildBoard(freshDeal())),
-        loadGame: newDeal->Option.map(_ => chosen => buildBoard(chosen)),
+        loadDeal: switch (newDeal, game.deal) {
+        | (Some(_), Some(deal)) => Some(seed => buildBoard(deal(seed)))
+        | _ => None
+        },
         restart: () => buildBoard(currentGame.contents),
         loadState: state => buildBoard(~initial=state, ~persistThis=false, game),
         loadHistory: restored => buildBoard(~history=restored, game),
