@@ -1,6 +1,6 @@
-// The card SVG generator: a `Deck.card` in, an inline `<svg>` vnode out. Like
-// SvgScene, these are typed vnodes rendered through `Html` — never `innerHTML`
-// strings — so a card is an ordinary node the diff can patch.
+// The card SVG generator: a `Deck.card` in, an inline `<svg>` vnode out. These are
+// typed vnodes rendered through `Html` — never `innerHTML` strings — so a card is
+// an ordinary node the diff can patch.
 //
 // This is the rudimentary first cut called for by #36: a rounded-rect frame,
 // the rank glyph — with a small suit pip (#223) pinned to the far right so the

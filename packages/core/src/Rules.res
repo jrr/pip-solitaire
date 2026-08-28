@@ -60,39 +60,34 @@ let rankValue = rank =>
 
 // Which way an ordered pile climbs the Ace→King run, rank by rank.
 type direction =
-  | Up // ascends: each card one rank higher (foundations; #75's tableau)
-  | Down // descends: each card one rank lower (a future FreeCell cascade)
+  | Up // ascends: each card one rank higher (a foundation)
+  | Down // descends: each card one rank lower (a FreeCell cascade)
 
 // How an ordered pile constrains a newcomer's colour/suit against the card below.
 type colorRule =
   | Any // colour is unconstrained
-  | Alternating // opposite colour of the card below (#75's tableau)
+  | Alternating // opposite colour of the card below (a FreeCell cascade)
   | SameSuit // same suit as the card below (a foundation, building up by suit)
 
 // What may land on an *empty* pile — its opening move.
 type emptyRule =
-  | AnyCard // any card founds the pile (#75's tableau)
+  | AnyCard // any card founds the pile (a FreeCell cascade)
   | AceOnly // only an Ace opens the pile (a foundation builds up from the Ace)
 
 // A pile's rule, as data. `Ordered` climbs (or descends) rank by rank under a
-// colour and empty-pile constraint; `Free` accepts anything (the
-// free-arrangement card-table demos, which don't order their piles).
+// colour and empty-pile constraint; `Free` accepts anything (a free cell, which
+// takes any single card).
 type rule =
   | Ordered({direction: direction, color: colorRule, empty: emptyRule})
   | Free
-
-// #75's tableau, now as data: climb Ace→King, each card the opposite colour of
-// the one below, any card founding the empty pile.
-let tableau = Ordered({direction: Up, color: Alternating, empty: AnyCard})
 
 // A foundation: build up by suit from the Ace — same suit, one rank higher each
 // time, and only an Ace may open the empty pile.
 let foundation = Ordered({direction: Up, color: SameSuit, empty: AceOnly})
 
-// A FreeCell cascade (M2): build *down* in alternating colour — a black Six
+// A FreeCell cascade (#95): build *down* in alternating colour — a black Six
 // lands on a red Seven — with any card founding an empty column. The mirror
-// image of the ascending `tableau`, and the first (and only) user of the `Down`
-// direction.
+// image of the ascending `foundation`, and the only user of the `Down` direction.
 let cascade = Ordered({direction: Down, color: Alternating, empty: AnyCard})
 
 // May `candidate` be stacked on a pile governed by `rule` whose current top card

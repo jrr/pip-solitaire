@@ -32,20 +32,21 @@ let stripColor = s => s->String.replaceAll(esc, "")->String.replaceRegExp(ansi, 
 
 describe("Render.stateBoard", () => {
   test("shows a card after the reducer has moved it onto a pile", () => {
-    let game = Game.stacking
-    let state = GameState.initial(game)
-    // Found pile 0 with the Ace of Spades via the reducer.
-    let moved = switch Reducer.reduce(
-      ~game,
-      state,
-      Move({card: {suit: Spades, rank: Ace}, to: ToPile(0)}),
-    ) {
+    let game = Game.freecell
+    let state = Scenario.freecellSendHome(game)
+    // Send the first free cell's card home to its foundation via the reducer.
+    let cell = Game.pileIndices(game, Game.FreeCell)->Array.getUnsafe(0)
+    let card = GameState.topOf(state, cell)->Option.getOrThrow
+    let foundation = Reducer.foundationTarget(~game, state, card)->Option.getOrThrow
+    let moved = switch Reducer.reduce(~game, state, Move({card, to: ToPile(foundation)})) {
     | Ok(next) => next
     | Error(_) => state
     }
     let board = Render.stateBoard(~game, moved)
     expect(has(board, game.name))->toBe(true)
-    expect(has(board, `A♠`))->toBe(true)
+    // The cell it left is drawn as an empty slot; the card is now on a foundation.
+    expect(GameState.topOf(moved, foundation))->toEqual(Some(card))
+    expect(has(board, Render.toPlain([Render.cardSpans([card])])))->toBe(true)
   })
 
   // The title names the deal when the caller knows one — the fact you need to open the
@@ -86,10 +87,10 @@ describe("Render colour", () => {
   })
 
   // A board with a red card in a fanned pile exercises the peeking face lines too, not
-  // just the full cards a squared pile shows.
+  // just the full cards a squared pile shows. FreeCell's cascades open seven deep, so
+  // the opening deal is exactly that.
   test("holds for a fanned pile of many cards", () => {
-    let fanned = Game.stacking
-    expect(stripColor(Render.board(~color=true, fanned)))->toBe(Render.board(fanned))
+    expect(stripColor(Render.board(~color=true, game)))->toBe(Render.board(game))
   })
 })
 
@@ -107,7 +108,7 @@ describe("Render layout", () => {
   // same kind of thing: the free cells and foundations sit above the tableau, the way
   // the web table lays them out (#94).
   test("a FreeCell board is drawn in two rows, cells and foundations above", () => {
-    // Title, top row, bottom row — no loose cards on a FreeCell board.
+    // Title, top row, bottom row.
     expect(Array.length(sections))->toBe(3)
     let top = sections->Array.getUnsafe(1)
     let bottom = sections->Array.getUnsafe(2)
@@ -120,15 +121,19 @@ describe("Render layout", () => {
     expect(has(bottom, `♠`) || has(bottom, `♥`))->toBe(true)
   })
 
-  // A board carrying only one of the two groups keeps its single row, laid out exactly
-  // as it always was.
+  // A board carrying only one of the two groups keeps its single row: `roleRows` only
+  // splits when both halves are non-empty.
   test("a board with one group of piles keeps its single row", () => {
-    let demo = Game.stacking
-    let rows = Render.stateBoard(~game=demo, GameState.initial(demo))->String.split("\n\n")
-    // Title, the one pile row, and the loose cards dealt beneath it.
-    expect(Array.length(rows))->toBe(3)
+    let cascadesOnly: Game.t = {
+      ...game,
+      piles: game.piles->Array.filter(p => p.role == Game.Cascade),
+    }
+    let rows =
+      Render.stateBoard(~game=cascadesOnly, GameState.initial(cascadesOnly))->String.split("\n\n")
+    // Title and the one pile row.
+    expect(Array.length(rows))->toBe(2)
     expect(has(rows->Array.getUnsafe(1), "T1"))->toBe(true)
-    expect(has(rows->Array.getUnsafe(1), "T2"))->toBe(true)
+    expect(has(rows->Array.getUnsafe(1), "T8"))->toBe(true)
   })
 
   // Every column is headed by the name that slot answers to, and every name is there
@@ -307,7 +312,7 @@ describe("Render.text", () => {
 // its own medium (a dark panel) rather than the terminal's or the card table's — and it
 // needs nothing from `core` but the spans.
 describe("Render portability", () => {
-  let game = Game.stacking
+  let game = Game.freecell
   let lines = Render.boardLines(game)
 
   let className = (ink: Render.ink) =>
@@ -373,12 +378,6 @@ describe("Render.action", () => {
 
   test("a column reorder names both columns", () =>
     expect(say(Reducer.MoveColumn({from: 9, to: 11})))->toBe("movecol T2 → T4")
-  )
-
-  test("the table is named as the table", () =>
-    expect(say(Reducer.Move({card: {suit: Hearts, rank: Two}, to: Reducer.ToTable})))->toBe(
-      "move 2♥ → table",
-    )
   )
 
   // A pile the board prints no label over falls back to its index rather than to

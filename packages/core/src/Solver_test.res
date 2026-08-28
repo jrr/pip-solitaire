@@ -107,9 +107,11 @@ describe("Solver", () => {
   })
 
   test("a board the model can't hold has no plan", () => {
-    // Not "unsolvable" — unrepresentable. A card-table demo isn't FreeCell, and
-    // the solver says so rather than searching some board it made up.
-    expect(Solver.plan(~game=Game.stacking, GameState.initial(Game.stacking)))->toEqual(None)
+    // Not "unsolvable" — unrepresentable. A board without FreeCell's cells and
+    // foundations isn't FreeCell, and the solver says so rather than searching some
+    // board it made up.
+    let cascadesOnly: Game.t = {...game, piles: Game.pilesOf(game, Game.Cascade)}
+    expect(Solver.plan(~game=cascadesOnly, GameState.initial(cascadesOnly)))->toEqual(None)
   })
 
   test("a hint is the next move, as an action the reducer takes", () => {
@@ -254,7 +256,8 @@ describe("Solver", () => {
     test(
       "a board the model can't hold is refused, not searched",
       () => {
-        expect(Solver.autoplay(~game=Game.stacking, GameState.initial(Game.stacking)))->toEqual(
+        let cascadesOnly: Game.t = {...game, piles: Game.pilesOf(game, Game.Cascade)}
+        expect(Solver.autoplay(~game=cascadesOnly, GameState.initial(cascadesOnly)))->toEqual(
           Solver.NotFreeCell,
         )
       },

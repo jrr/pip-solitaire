@@ -133,9 +133,11 @@ test("a resumed game can still say which seed it is", async ({ page }) => {
 })
 
 test("says so on a board with no seed, rather than offering one", async ({ page }) => {
-  // A fixed-layout demo isn't reproducible from a number, so the button is disabled
-  // and the line explains — never a link to a board the sender isn't looking at.
-  await page.goto("/?scene=stacking&animate=off")
+  // A posed position only names a deal it has been *proved* to descend from, and
+  // `midgame` is assembled from the deck rather than played to — so it has no deal
+  // number. The button is disabled and the line explains, rather than offering a link
+  // to a board the sender isn't looking at.
+  await page.goto("/?scene=freecell&state=midgame&animate=off")
   await settleBoard(page)
 
   await openMenu(page)

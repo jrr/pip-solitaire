@@ -1,15 +1,14 @@
 // A card table that *interprets a modelled game* (`Game.t` from core) rather
-// than hard-coding one board. Grown out of the drag-and-drop spike (#21) and the
-// stacking demo (#56), and now driven by data (#62): the piles, their stacking
-// behaviours and the opening deal all come from the game, so a new game is a new
-// value in `Game`, not new code here.
+// than hard-coding one board. Grown out of the drag-and-drop spike (#21), and
+// driven by data since #62: the piles, their stacking behaviours and the opening
+// deal all come from the game, so a new game is a new value in `Game`, not new
+// code here.
 //
 // The view holds its own presentation assumptions — the piles hang from the top
-// of the stage and grow downward; the loose cards are dealt as a sloppy cluster
-// below them — and applies them to whatever the model describes, be it two piles
-// or sixteen. The piles are grouped into rows by role (#94/#97): free cells and
-// foundations across the top, cascades below, so a full FreeCell board is
-// playable; a single-role board (every other demo) is just one row, as before.
+// of the stage and grow downward — and applies them to whatever the model
+// describes, be it two piles or sixteen. The piles are grouped into rows by role
+// (#94/#97): free cells and foundations across the top, cascades below, so a full
+// FreeCell board is playable; a single-role board is just one row.
 //
 // Dragging is transient *view* state (where a finger is right now), so unlike
 // the other scenes this one is built with plain imperative DOM bindings rather
@@ -201,7 +200,7 @@ type dropZone = {
 // A draggable card node: its identity, its element, its live playfield-local
 // position, and whether it may be picked up right now. Where it *rests* is no
 // longer stored here — that comes from `GameState`; only the top card of a pile
-// (or a loose card) ends up `draggable`, set each reflow.
+// ends up `draggable`, set each reflow.
 type card = {
   // The card's identity (suit/rank), the bridge between a `GameState` pile —
   // structural `{suit, rank}` cards — and this DOM node (see `nodeFor`).
@@ -437,8 +436,8 @@ let doubleTapMoveTol = 12.
 // doesn't twitch to a new angle every time a neighbour moves), it *does* change
 // when the card is placed somewhere new (so a drop re-tilts it, as a fresh
 // placement would), and it needs no `Math.random`, keeping every render — the
-// screenshots included — reproducible, in the same spirit as the loose deal's
-// deterministic jitter above. Kept small so cards still read and stack cleanly.
+// screenshots included — reproducible. Kept small so cards still read and stack
+// cleanly.
 let maxCardTilt = 2.5
 let suitOrdinal = (suit: Deck.suit) =>
   switch suit {
@@ -463,11 +462,11 @@ let rankOrdinal = (rank: Deck.rank) =>
   | Queen => 11
   | King => 12
   }
-// The tilt in degrees for `card` resting at (`pile`, `slot`). `pile`/`slot` are
-// the resting place (a non-negative pile index and slot, or the loose-cluster
-// sentinels below), so the primes below fold the identity and place into a value
-// spread across `[-maxCardTilt, maxCardTilt)` without neighbouring cards or slots
-// sharing an angle. All inputs are non-negative, so the `mod` stays positive.
+// The tilt in degrees for `card` resting at (`pile`, `slot`) — its resting place,
+// as a pile index and a slot within it. The primes below fold the identity and the
+// place into a value spread across `[-maxCardTilt, maxCardTilt)` without
+// neighbouring cards or slots sharing an angle. All inputs are non-negative, so
+// the `mod` stays positive.
 let cardTilt = (~card: Deck.card, ~pile, ~slot) => {
   let h = suitOrdinal(card.suit) * 17 + rankOrdinal(card.rank) * 5 + pile * 23 + slot * 11
   let unit = Int.toFloat(Int.mod(h, 100)) /. 100.
@@ -507,11 +506,6 @@ let clearTiltTiming = wrapper => {
 // angle is a dead-square 0°, so `--card-rot` snaps every card back to true — the
 // `.card-art` transition easing it there — without any other layout change.
 let tiltFor = (~enabled, ~card, ~pile, ~slot) => enabled ? cardTilt(~card, ~pile, ~slot) : 0.
-
-// The loose cluster isn't a pile, so its cards tilt off this sentinel "pile"
-// (a large constant that can't collide with a real pile index) plus their
-// cluster index as the slot.
-let looseTiltPile = 1000
 
 // Build a scene that plays `game`: its id/label name the scene in the picker,
 // and its piles and opening deal drive everything below.
@@ -812,9 +806,8 @@ let make = (
       // FreeCell board is playable: free cells and foundations across the top,
       // cascades below. The rows stack in a flex *column* (`.drop-rows`), so the
       // cascade row is pushed clear of the top row automatically and its fans grow
-      // into the space beneath. A board that carries only one of the two groups —
-      // every existing card-table demo — collapses to a single row, laid out
-      // exactly as before. Each row lays itself out with flexbox, so a zone's live
+      // into the space beneath. A board that carries only one of the two groups
+      // collapses to a single row. Each row lays itself out with flexbox, so a zone's live
       // rect (read at drop time) reflects wherever the browser placed it — nothing
       // cached up front to go stale on resize.
       let rows = WebDom.createElement("div")
@@ -959,11 +952,9 @@ let make = (
       // stage's live width the moment before the deal — the one point at which the
       // stage is known laid out.
       let scale = ref(1.)
-      // The stage width the layout was last sized to (#172). Recorded by every
-      // `applyScale` so a later resize can scale the loose cards — which live only
-      // as pixel x/y and so aren't touched by `reflowAll` — by the width ratio,
-      // keeping them where they sit proportionally. Zero until the first `deal`
-      // runs, which also gates the resize relayout below (nothing to reflow yet).
+      // The stage width the layout was last sized to (#172). Zero until the first
+      // `deal` runs, which is what gates the resize relayout below (nothing to
+      // reflow yet).
       let lastWidth = ref(0.)
       let applyScale = () => {
         // Everything this function does is measure, ask and publish. The two fits and
@@ -1854,8 +1845,8 @@ let make = (
         // *span* being carried — the run this card heads, bottom-first (`self` at
         // index 0), each node paired with its position at grab time. A move is
         // "each start position + how far the pointer has travelled since". `None`
-        // when not dragging. A single card (a loose card, or a lone top card) is
-        // just a span of one, so the old single-card drag is the length-1 case here.
+        // when not dragging. A lone top card is just a span of one, so the ordinary
+        // single-card drag is the length-1 case here.
         let grab = ref(None)
 
         // Send-home double-tap bookkeeping (#122). `movedFar` records whether the
@@ -1922,7 +1913,7 @@ let make = (
             // their bounds.
             wrapper->setPointerCapture(pointerId(ev))
             // Gather the span this card heads: itself and every card resting above
-            // it in its pile, bottom-first. A loose or lone card is a span of one.
+            // it in its pile, bottom-first. A lone card is a span of one.
             let span = switch GameState.locationOf(state(), self.data) {
             | Some(GameState.InPile(pileIdx, slot)) =>
               let pile = GameState.cardsInPile(state(), pileIdx)
@@ -1965,7 +1956,7 @@ let make = (
           }
         )
 
-        // Send this card home (#122): a top-of-pile or loose card whose foundation
+        // Send this card home (#122): a top-of-pile card whose foundation
         // will take it flies straight to that foundation — the FreeCell shortcut for
         // the tedium of dragging every card home one at a time. Both eligibility and
         // legality come from the shared `core` primitive `validMoves` (#196): it lists
@@ -2081,58 +2072,48 @@ let make = (
             spanStarts->Array.forEach(((c, _, _)) => classList(c.wrapper)->removeClass("dragging"))
             let spanCards = spanStarts->Array.map(((c, _, _)) => c.data)
             // Where the grabbed card's centre was released decides the *action*:
-            // onto a zone is a `Move`/`MoveRun` to that pile; a miss is a move to
-            // the loose table. The reducer — not the view — rules on it against the
-            // game's rules and `free` flag, so `core` owns every rest position (#83).
-            let target = switch zoneAt(boundingRect(wrapper)) {
-            | Some(zone) => Reducer.ToPile(zone.index)
-            | None => Reducer.ToTable
-            }
-            // One card dispatches the unchanged single-card `Move`; a span of two or
-            // more dispatches the supermove `MoveRun` (#123).
-            let action =
-              Array.length(spanCards) <= 1
-                ? Reducer.Move({card: self.data, to: target})
-                : Reducer.MoveRun({cards: spanCards, to: target})
-            let before = state()
-            switch dispatch(action) {
-            // Lawful move (including the identity re-drop): the session has adopted it,
-            // auto-collected any now-safe cards behind it (#125) so the whole cascade
-            // settles in one pass, and recorded the settled position as one undoable step
-            // (#85) — so a move and its collection undo together. Reflow every pile from
-            // it: cards that joined a pile snap to their slots, a card left loose stays
-            // at the pixel it was dropped.
-            | Session.Settled(_) =>
-              // …unless nothing changed (dropping a card back where it started is a
-              // no-op, #215), which records no step and so leaves nothing to save.
-              if !GameState.equal(state(), before) {
-                afterChange()
-              }
-              reflowAll()
-
-              // A move that completes every foundation ends the game (#121): raise
-              // the win overlay following the accepted `reduce` (and any auto-collect
-              // that played the final cards).
-              if Session.hasWon(session.contents) {
-                showWin()
-              }
-              // Recompute the "Finish" button (#132): a move can make the board
-              // drainable (show it) or, via auto-collect, no longer so (hide it).
-              updateFinishButton()
-            // Illegal move: bounce the span back where it came from. Cards that rest
-            // in a pile return to their slots when that pile reflows; a loose card (a
-            // rejected drop in a `free` game) returns to where the drag began.
-            | _ =>
-              switch GameState.locationOf(state(), self.data) {
-              | Some(GameState.InPile(_, _)) => reflowAll()
-              | _ =>
-                switch spanStarts->Array.get(0) {
-                | Some((c, sx, sy)) =>
-                  c.x := sx
-                  c.y := sy
-                  place(c)
-                | None => ()
+            // onto a zone is a `Move`/`MoveRun` to that pile. Released over no zone
+            // at all there is no move to make — a card only ever rests in a pile —
+            // so nothing is dispatched and the span reflows home. Every drop that
+            // *is* a move goes to the reducer, so `core` owns every rest position
+            // (#83).
+            switch zoneAt(boundingRect(wrapper)) {
+            | None => reflowAll()
+            | Some(zone) =>
+              let target = Reducer.ToPile(zone.index)
+              // One card dispatches the unchanged single-card `Move`; a span of two or
+              // more dispatches the supermove `MoveRun` (#123).
+              let action =
+                Array.length(spanCards) <= 1
+                  ? Reducer.Move({card: self.data, to: target})
+                  : Reducer.MoveRun({cards: spanCards, to: target})
+              let before = state()
+              switch dispatch(action) {
+              // Lawful move (including the identity re-drop): the session has adopted it,
+              // auto-collected any now-safe cards behind it (#125) so the whole cascade
+              // settles in one pass, and recorded the settled position as one undoable step
+              // (#85) — so a move and its collection undo together. Reflow every pile from
+              // it, so the cards that joined a pile snap to their slots.
+              | Session.Settled(_) =>
+                // …unless nothing changed (dropping a card back where it started is a
+                // no-op, #215), which records no step and so leaves nothing to save.
+                if !GameState.equal(state(), before) {
+                  afterChange()
                 }
+                reflowAll()
+
+                // A move that completes every foundation ends the game (#121): raise
+                // the win overlay following the accepted `reduce` (and any auto-collect
+                // that played the final cards).
+                if Session.hasWon(session.contents) {
+                  showWin()
+                }
+                // Recompute the "Finish" button (#132): a move can make the board
+                // drainable (show it) or, via auto-collect, no longer so (hide it).
+                updateFinishButton()
+              // Illegal move: bounce the span back where it came from — every card
+              // rests in a pile, so reflowing returns each to its slot.
+              | _ => reflowAll()
               }
             }
             clearHover()
@@ -2167,57 +2148,10 @@ let make = (
 
       // A DOM node for every card a pile opens holding (#63) — where each rests is
       // already recorded in `state`, so no zone pairing is needed here, just the
-      // nodes (which register themselves in `nodes`). Created before the loose cards
-      // so a later loose card layers on top.
+      // nodes (which register themselves in `nodes`).
       game.piles->Array.forEach((pile: Game.pile) =>
         pile.cards->Array.forEach(card => makeCard(card)->ignore)
       )
-
-      let freeCards = game.loose->Array.map(makeCard)
-
-      // Deal the free cards as a loose, staggered cluster in the lower-middle of
-      // the stage — below the zones, so they're dragged *up* into the piles.
-      // Everything is derived from the stage's live size, so the cluster stays
-      // centred and works for any number of cards: the cards spread out from the
-      // centre with a step that's squeezed to fit the width, and a deterministic
-      // per-card jitter plus an alternating vertical stagger keep it sloppy rather
-      // than a rigid line. The step and stagger together guarantee neighbouring
-      // cards each keep a visible edge, so none is completely occluded.
-      let dealFree = () => {
-        let pr = boundingRect(playfield)
-        let n = Array.length(freeCards)
-        let cw = TableLayout.cardW *. scale.contents
-        let ch = TableLayout.cardH *. scale.contents
-        // Nominal horizontal step, squeezed so a wide cluster still fits the stage.
-        let avail = pr.width -. cw -. 32.
-        let nominal = Int.toFloat(n - 1) *. 44.
-        let spread = nominal < avail ? nominal : avail > 0. ? avail : 0.
-        let stepX = n > 1 ? spread /. Int.toFloat(n - 1) : 0.
-        // Sit the cluster around 60% down the stage (but clear of the top zones),
-        // scaling with the stage yet never riding up over the piles on a short one.
-        let frac = pr.height *. 0.6
-        let centerY = frac > 205. ? frac : 205.
-        freeCards->Array.forEachWithIndex((c, i) => {
-          let jitterX = Int.toFloat(Int.mod(i * 37, 21)) -. 10.
-          let jitterY = Int.toFloat(Int.mod(i * 53, 17)) -. 8.
-          let stagger = Int.mod(i, 2) == 0 ? 16. : -16.
-          c.x := pr.width /. 2. -. spread /. 2. +. Int.toFloat(i) *. stepX -. cw /. 2. +. jitterX
-          c.y := centerY -. ch /. 2. +. stagger +. jitterY
-          place(c)
-          // Tilt the loose cards too (#65), off the loose sentinel "pile" so the
-          // scattered cluster reads as hand-strewn rather than machine-aligned —
-          // unless the player has turned the hand-placed look off.
-          applyTilt(
-            c.wrapper,
-            ~degrees=tiltFor(
-              ~enabled=tiltEnabled.contents,
-              ~card=c.data,
-              ~pile=looseTiltPile,
-              ~slot=i,
-            ),
-          )
-        })
-      }
 
       // The shake jostle (#235): a vigorous shake nudges every card a little off its
       // resting spot, so the tableau ends messier than it was dealt. Each nudge is a
@@ -2238,16 +2172,11 @@ let make = (
       }
 
       // Re-lay every resting card onto its deterministic spot: reflow the piles against
-      // their zones and re-strew the loose cluster, both reading `tiltEnabled` live.
-      // One function because it's one board state — the clean deal — reached from two
-      // directions: it's what the tilt switch asks for (`controls.relayout`, #65), so a
-      // flip re-tilts or squares the board in place rather than waiting for the next
-      // move, and it's what ends a shake (#235), so turning Wiggle Waggle off snaps the
-      // mess back to exactly that board.
-      let squareUp = () => {
-        reflowAll()
-        dealFree()
-      }
+      // their zones, reading `tiltEnabled` live. It's what the tilt switch asks for
+      // (`controls.relayout`, #65), so a flip re-tilts or squares the board in place
+      // rather than waiting for the next move, and it's what ends a shake (#235), so
+      // turning Wiggle Waggle off snaps the mess back to exactly that board.
+      let squareUp = () => reflowAll()
 
       // Publish this build's shake operations into the mount-scope `boardOps` ref, so
       // the persistent subscription drives the live board's nodes (a New Game rebuild
@@ -2260,9 +2189,9 @@ let make = (
       let dealPiles = () => reflowAll()
 
       // The order the cards fly in: a real dealer's pass — round-robin across the
-      // piles by slot (every pile's first card, then every pile's second, …), with
-      // the loose cards last. This is just the sequence the staggered start delays
-      // below run over; the cards are already at their final resting spots.
+      // piles by slot (every pile's first card, then every pile's second, …). This is
+      // just the sequence the staggered start delays below run over; the cards are
+      // already at their final resting spots.
       let dealSequence = () => {
         let piles = zones->Array.map(z => GameState.cardsInPile(state(), z.index))
         let depth = piles->Array.reduce(0, (m, p) => Math.Int.max(m, Array.length(p)))
@@ -2279,7 +2208,6 @@ let make = (
             }
           )
         }
-        freeCards->Array.forEach(c => ordered->Array.push(c))
         ordered
       }
 
@@ -2334,38 +2262,24 @@ let make = (
         // `withSnapSuppressed`); the transform fly-up runs on past that window.
         withSnapSuppressed(() => {
           dealPiles()
-          dealFree()
           animateDeal()
         })
       }
 
       // Re-run the layout for the stage's current size (#172) — a resize snaps the
       // piled cards to the resized zones and rescales them, *without* re-animating
-      // the opening deal. The pile cards follow the zones' live rects (`reflowAll`);
-      // the loose cards, which `reflowAll` doesn't touch (they hold only pixel x/y),
-      // scale by the width ratio so they keep their spot proportionally as the cards
-      // around them shrink or grow by that same factor. The left/top snap transition
-      // is suppressed so the cards track the zones immediately rather than easing
-      // after every resize step (`withSnapSuppressed`). Gated on a prior deal
-      // (`lastWidth > 0`, set by `applyScale`), so the observer's initial callback —
-      // before the deferred opening deal has sized anything — is a harmless no-op,
-      // and so the ratio never divides by a zero start width.
+      // the opening deal. The cards follow the zones' live rects (`reflowAll`). The
+      // left/top snap transition is suppressed so they track the zones immediately
+      // rather than easing after every resize step (`withSnapSuppressed`). Gated on a
+      // prior deal (`lastWidth > 0`, set by `applyScale`), so the observer's initial
+      // callback — before the deferred opening deal has sized anything — is a harmless
+      // no-op.
       let relayoutForResize = () => {
         let width = boundingRect(playfield).width
         if width > 0. && lastWidth.contents > 0. {
-          let ratio = width /. lastWidth.contents
           withSnapSuppressed(() => {
             applyScale()
             reflowAll()
-            nodes->Array.forEach(c =>
-              switch GameState.locationOf(state(), c.data) {
-              | Some(GameState.Loose) =>
-                c.x := c.x.contents *. ratio
-                c.y := c.y.contents *. ratio
-                place(c)
-              | _ => ()
-              }
-            )
           })
         }
       }
@@ -2376,8 +2290,8 @@ let make = (
 
       // Deal now if the stage is already laid out (a later scene switch); otherwise
       // on the next frame, before the first paint, once the detached-at-mount stage
-      // has been inserted and sized (the first page load). Both the pile cards and
-      // the loose cards need the stage's live rects, so both wait on this.
+      // has been inserted and sized (the first page load). The cards need the stage's
+      // live rects, so the deal waits on this.
       boundingRect(playfield).width > 0. ? deal() : requestAnimationFrame(deal)->ignore
 
       // Come back to a won board (#177): a resumed game saved in its victory state
@@ -2407,17 +2321,6 @@ let make = (
       liveRunCommand := runCommand
       liveRelayout := squareUp
       reportHistory()
-
-      // The caption is the game's own prose (`Game.caption`); a game without one
-      // simply shows no caption.
-      switch game.caption {
-      | Some(text) =>
-        let caption = WebDom.createElement("p")
-        caption->WebDom.setAttribute("class", "stacking-caption")
-        caption->WebDom.setTextContent(text)
-        boardHost->WebDom.appendChild(caption)->ignore
-      | None => ()
-      }
 
       // Persist this freshly-built board (#177) when saving is on: the opening deal,
       // a New Game, or a Restart each *become* the saved game, so a later reload

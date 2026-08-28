@@ -33,7 +33,6 @@
 //   redeal / restart     play the current deal again from its opening layout
 //   move <card> <where>  dispatch a Move onto a slot, a card, or a pile index
 //   mv / m               the same verb, for the command you type most
-//   move <card> table    dispatch a Move loose onto the table (free games only)
 //   movecol <from> <to>  reorder the cascade columns — insert-and-shift (#159)
 //   autoplay             let the solver play the rest of the game (#291)
 //   undo / redo          step back and forth over the history of accepted moves (#85)
@@ -46,11 +45,11 @@
 // A card is addressed by its compact identity (`AS`, `TH`, `KD` — see `CardText`).
 // A *destination* is said three ways (see `Command.where`): the slot name printed above
 // the column (`T3`, `C1`, `F2` — see `Slot`), the card to land on (`move 2H 3C`), or the
-// absolute pile index. The table is the word `table`.
+// absolute pile index.
 //
 // A line whose first non-space character is `#` is a comment: it's skipped
-// entirely (not echoed, not run), so a piped script can document itself — see
-// `packages/cli/examples/`. Blank lines are skipped too.
+// entirely (not echoed, not run), so a piped script can document itself. Blank lines
+// are skipped too.
 
 open Card
 
@@ -173,32 +172,11 @@ let transcript = (s: Session.t, outcome: Session.outcome): string =>
   ->Array.map(Render.toAnsi)
   ->Array.join("\n\n")
 
-// Which commands address a *dealt board*, and which game each suggests dealing when
-// there isn't one yet. Asked before the command runs, so "deal a game first" is
-// answered ahead of any complaint about the arguments — that ordering is why
-// `Command.Usage` carries the verb it choked on rather than just the prose.
-let dealFirstHint = (command: Command.t): option<string> =>
-  switch command {
-  | Command.Undo
-  | Command.Redo
-  | Command.Print
-  | Command.Dispatch(Reducer.Move(_))
-  | Command.MoveTo({from: Command.Cards([_])})
-  | Command.MoveTo({from: Command.Top(_)}) =>
-    Some("stacking")
-  | Command.Dispatch(Reducer.MoveRun(_))
-  | Command.Dispatch(Reducer.MoveColumn(_))
-  | Command.MoveTo(_)
-  | Command.Home(_)
-  | Command.Finish
-  | Command.Autoplay =>
-    Some("freecell")
-  | Command.Usage({verb: "move"}) => Some("stacking")
-  | Command.Usage(_) => Some("freecell")
-  // There's no "current deal" to play again before one has been dealt.
-  | Command.Redeal => Some("freecell")
-  | _ => None
-  }
+// What "deal a game first" points at. It used to differ by verb — a plain `move`
+// suggested a demo board, a `moverun` FreeCell — but FreeCell is the only game there is
+// (#342), so every board verb is answered with the same one. Asked before the command
+// runs, so this is said ahead of any complaint about the arguments.
+let dealFirstHint = "freecell"
 
 // Interpret one already-parsed command against the current session, returning the
 // updated session and the text to show. Pure: no I/O — the caller prints the text and
@@ -231,10 +209,7 @@ let stepCommand = (
   let onBoard = run =>
     switch session {
     | Some(s) => run(Session.withOptions(s, options))
-    | None => (
-        session,
-        `Deal a game first (try \`deal ${dealFirstHint(command)->Option.getOr("stacking")}\`).`,
-      )
+    | None => (session, `Deal a game first (try \`deal ${dealFirstHint}\`).`)
     }
   let onSession = (s: Session.t) => {
     let (s', outcome) = Session.step(~clock, s, command)
@@ -320,8 +295,8 @@ type outcome =
 
 // Decide one line. `#` comments and blanks are dropped *before* parsing, because a
 // comment isn't part of the grammar at all (`# note` would otherwise read as an
-// unknown verb) — which is what lets a piped example script annotate itself, and what
-// lets a whole such script be pasted into a live prompt and simply play.
+// unknown verb) — which is what lets a piped script annotate itself, and what lets a
+// whole such script be pasted into a live prompt and simply play.
 let consider = (
   ~options: Options.t,
   ~newSeed: unit => int=() => Game.freecellSeed,

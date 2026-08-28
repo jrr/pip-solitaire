@@ -155,16 +155,9 @@ let digits = (token: string): option<int> =>
     ? Int.fromString(token)
     : None
 
-// A move target from its text: a pile index, or the table by name.
+// A move target from its text: a pile index.
 let parseTarget = (token: string): option<Reducer.target> =>
-  switch token->String.toLowerCase {
-  | "table" | "loose" | "t" => Some(Reducer.ToTable)
-  | s =>
-    switch digits(s) {
-    | Some(i) => Some(Reducer.ToPile(i))
-    | None => None
-    }
-  }
+  digits(token)->Option.map(i => Reducer.ToPile(i))
 
 // Read a destination token. Indices first (a bare number has always been one), then a
 // slot label, then a card identity — the three grammars don't overlap, because a label
@@ -203,7 +196,7 @@ let notACard = (token: string) => `Not a card: "${token}" (try AS, TH, KD).`
 let notASource = (token: string) =>
   `Not a card or a place to move from: "${token}" (a card like AS, a column like T3 or C1, or a pile index).`
 let notAPile = (token: string) =>
-  `Not a place to move to: "${token}" (a pile index, a column like T3, the card to land on like 9S, or "table").`
+  `Not a place to move to: "${token}" (a pile index, a column like T3, or the card to land on like 9S).`
 
 let settingNames = () => Options.all->Array.map(Options.name)->Array.join(", ")
 let notASetting = (token: string) => `Not a setting: "${token}" (${settingNames()}).`
@@ -550,7 +543,7 @@ let resolveWhere = (~game: Game.t, state: GameState.t, where: where): result<
 // (the label is over the column; the card's name is not).
 
 // What to call a place in a refusal: its label where the board prints one, and its bare
-// index where it doesn't (a loose-table game's piles have no slot names).
+// index where it doesn't.
 let placeLabel = (~game: Game.t, place: place): string =>
   switch place {
   | InSlot({role, ordinal}) => Slot.format(~role, ~ordinal)
@@ -687,7 +680,6 @@ let reason = (err: Reducer.moveError): string =>
   switch err {
   | Reducer.Rejected => "can't stack there"
   | Reducer.PileFull => "that pile is full"
-  | Reducer.LooseNotAllowed => "this game keeps cards in piles — no loose drops"
   | Reducer.NoSuchPile => "no such pile"
   | Reducer.CardNotFound => "that card isn't in play"
   | Reducer.NotARun => "those cards aren't an ordered run"
@@ -798,7 +790,6 @@ type helpRow = (string, string)
 // The board verbs both front ends offer, in the order they're worth learning.
 let boardHelp: array<helpRow> = [
   ("move <what> <where>", "move a card (`mv`/`m` for short) — see the two columns below"),
-  ("move <card> table", "move a card loose onto the table (free games only)"),
   (
     "moverun <what> <where>",
     "supermove an ordered run: its cards bottom-first, or the column it's showing in (moverun T6 T2)",
@@ -848,7 +839,6 @@ A destination is one of:
   a slot name    the label above the column — T3 (tableau), C1 (free cell), F2 (foundation)
   a card         the card to land on, wherever it is — move 2H 3C
   a pile index   the absolute position — move 2H 11
-  table          loose on the table (free games only)
 Any verb may be shortened to an unambiguous prefix: p prints, u undoes, de 12345 deals.`
 
 let rec padTo = (s: string, width: int): string =>

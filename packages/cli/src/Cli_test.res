@@ -49,14 +49,22 @@ describe("Render, from the driver", () => {
 // terminal (#84's "done when").
 describe("Repl.run", () => {
   test("deals, makes a legal move, rejects an illegal one, and prints the board", () => {
-    let transcript = Repl.run(["deal stacking", "move AS 0", "move 3C 0", "move 2H 0", "print"]) // Ace of Spades founds the empty tableau pile — legal // black Three onto black Ace: same colour — rejected // red Two onto black Ace: opposite colour, next rank — legal
+    // The send-home scenario parks each suit's Three in a free cell over an Ace–Two
+    // foundation: F1 is the Spades foundation, so 3♠ goes home and 3♥ does not.
+    let transcript = Repl.run([
+      "deal freecell sendhome",
+      "move 3S F1", // same suit, the next rank up — legal
+      "move 3H F1", // right rank, wrong suit — rejected
+      "move 3H F2", // the Hearts foundation takes it — legal
+      "print",
+    ])
     // The commands are echoed behind a prompt…
-    expect(has(transcript, "pip> move AS 0"))->toBe(true)
+    expect(has(transcript, "pip> move 3S F1"))->toBe(true)
     // …the illegal move is rejected, with a reason…
-    expect(has(transcript, "Rejected: 3C can't stack there."))->toBe(true)
+    expect(has(transcript, "Rejected: 3H can't stack there."))->toBe(true)
     // …and the final board shows both legally-placed cards.
-    expect(has(transcript, `A♠`))->toBe(true)
-    expect(has(transcript, `2♥`))->toBe(true)
+    expect(has(transcript, `3♠`))->toBe(true)
+    expect(has(transcript, `3♥`))->toBe(true)
   })
 
   // The three ways to say *where* (#the shared `Command.where`), through the driver.
@@ -236,27 +244,13 @@ describe("Repl.run", () => {
     )
   })
 
-  test("a loose drop is rejected when the game confines cards to piles", () => {
-    // four-fans opens with cards in its piles and `free: false`.
-    let transcript = Repl.run(["deal four-fans", "move 2C table"])
-    expect(has(transcript, "no loose drops"))->toBe(true)
-  })
-
   test("announces a win once every foundation is complete", () => {
-    // The foundations demo deals a whole Hearts Ace→King run loose beside a single
-    // foundation; stacking it end-to-end onto pile 0 completes the only foundation
-    // and wins (#121).
-    let heartsRun =
-      ["AH", "2H", "3H", "4H", "5H", "6H", "7H", "8H", "9H", "TH", "JH", "QH", "KH"]->Array.map(
-        c => `move ${c} 0`,
-      )
-    let transcript = Repl.run(Array.concat(["deal foundations"], heartsRun))
+    // The near-won scenario is a single legal move short of a win: the last suit's
+    // King sits alone in the first free cell, its foundation built to the Queen (#121).
+    let transcript = Repl.run(["deal freecell almost-won", "move KC F4"])
     expect(has(transcript, "You win"))->toBe(true)
-    // …and the win isn't declared before the run is finished.
-    let almost = Repl.run(
-      Array.concat(["deal foundations"], heartsRun->Array.slice(~start=0, ~end=12)),
-    )
-    expect(has(almost, "You win"))->toBe(false)
+    // …and the win isn't declared before that last card is played.
+    expect(has(Repl.run(["deal freecell almost-won"]), "You win"))->toBe(false)
   })
 
   // What the game cost, under the win line (#289/#302 via #298). The terminal reports
@@ -264,21 +258,16 @@ describe("Repl.run", () => {
   // count — which is the whole point of the extraction: the web app's victory panel
   // reads the same two numbers off the same record.
   test("the win report says what the game took", () => {
-    let heartsRun =
-      ["AH", "2H", "3H", "4H", "5H", "6H", "7H", "8H", "9H", "TH", "JH", "QH", "KH"]->Array.map(
-        c => `move ${c} 0`,
-      )
-    let transcript = Repl.run(Array.concat(["deal foundations"], heartsRun))
-    // Thirteen cards stacked, and the clock a folded script honestly reports: none.
+    let win = ["deal freecell almost-won", "move KC F4"]
+    let transcript = Repl.run(win)
+    // One card played, and the clock a folded script honestly reports: none.
     // (`Repl`'s default clock is stopped for the same reason its default seed is fixed —
     // `Cli.res` hands a real one to a real sitting.)
-    expect(has(transcript, "0:00 · 13 moves · 0 undos"))->toBe(true)
+    expect(has(transcript, "0:00 · 1 move · 0 undos"))->toBe(true)
     // Stepping back out of the victory and winning it again reports the detour rather
     // than pretending it away: the undo is on the record and the move is not given back.
-    let wonAgain = Repl.run(
-      Array.concat(["deal foundations"], heartsRun)->Array.concat(["undo", "redo"]),
-    )
-    expect(has(wonAgain, "0:00 · 14 moves · 1 undo"))->toBe(true)
+    let wonAgain = Repl.run(win->Array.concat(["undo", "redo"]))
+    expect(has(wonAgain, "0:00 · 2 moves · 1 undo"))->toBe(true)
   })
 
   // …and the autoplay tally, which is the one fact about a game that has to survive
@@ -460,14 +449,11 @@ describe("Repl.run", () => {
       },
     )
 
-    test(
-      "refuses a board it doesn't know how to play",
-      () => {
-        // The card-table demo isn't FreeCell, so there's no position to pack it into.
-        let transcript = Repl.run(["deal stacking", "autoplay"])
-        expect(has(transcript, "only plays FreeCell"))->toBe(true)
-      },
-    )
+    // A board the solver can't pack is refused rather than searched — the
+    // `Solver.NotFreeCell` arm, in the words this driver would print. Every board the
+    // terminal can deal is FreeCell now (#342), so the refusal is exercised against
+    // `Solver` directly in `core` and against a hand-shaped board in the web app's
+    // `TableScene_test`; what's left here is the wording.
 
     test(
       "guides the user before a game is dealt",
@@ -560,21 +546,24 @@ describe("Repl.run", () => {
     expect(has(Repl.run(["deal nope"]), "Unknown game"))->toBe(true)
   })
 
-  test("reports out-of-range piles and cards that aren't in play", () => {
-    expect(has(Repl.run(["deal stacking", "move AS 99"]), "no such pile"))->toBe(true)
-    // The King of Diamonds isn't dealt anywhere in the stacking demo.
-    expect(has(Repl.run(["deal stacking", "move KD 0"]), "isn't in play"))->toBe(true)
+  test("reports out-of-range piles and cards a hand can't lift", () => {
+    // The supermove board is a known layout: 9♠…5♠ lie as a run on T1, so 5♠ tops it
+    // and 9♠ is pinned at the bottom.
+    expect(has(Repl.run(["deal freecell supermove", "move 5S 99"]), "no such pile"))->toBe(true)
+    // Every card of a FreeCell deal is on the board, so the card-side refusal a full
+    // deck can reach is buriedness (`CardNotFound` is covered in `core`).
+    expect(has(Repl.run(["deal freecell supermove", "move 9S C1"]), "buried"))->toBe(true)
   })
 
-  // `#` comments let the piped example scripts (packages/cli/examples/) document
-  // themselves: a comment is neither echoed nor run.
+  // `#` comments let a piped script document itself: a comment is neither echoed nor
+  // run.
   test("skips `#` comment lines entirely — not echoed, not run", () => {
-    let transcript = Repl.run(["# deal a game", "deal stacking", "  # indented note", "print"])
+    let transcript = Repl.run(["# deal a game", "deal freecell", "  # indented note", "print"])
     // The comments are absent from the transcript…
     expect(has(transcript, "deal a game"))->toBe(false)
     expect(has(transcript, "indented note"))->toBe(false)
     // …while the real commands still run and echo.
-    expect(has(transcript, "pip> deal stacking"))->toBe(true)
+    expect(has(transcript, "pip> deal freecell"))->toBe(true)
     expect(has(transcript, "pip> print"))->toBe(true)
   })
 
@@ -614,16 +603,16 @@ describe("Repl.run", () => {
   // A mistyped deal used to drop the session — the most destructive thing you could
   // enter. It now says what it couldn't read and leaves the game alone.
   test("a deal it can't read keeps the game already in play", () => {
-    let transcript = Repl.run(["deal stacking", "deal nope", "print"])
+    let transcript = Repl.run(["deal freecell", "deal nope", "print"])
     expect(has(transcript, "Unknown game: nope"))->toBe(true)
     // The board is still there to print — no "Deal a game first".
     expect(has(transcript, "Deal a game first"))->toBe(false)
-    expect(has(transcript, "Stacking"))->toBe(true)
+    expect(has(transcript, "FreeCell"))->toBe(true)
   })
 
   // `quit` ends the transcript where it appears, the way `exit` ends a shell script.
   test("quit ends the transcript and leaves the rest of the script unread", () => {
-    let transcript = Repl.run(["deal stacking", "quit", "games", "print"])
+    let transcript = Repl.run(["deal freecell", "quit", "games", "print"])
     // The quit itself is echoed — a transcript should say why it stopped…
     expect(has(transcript, "pip> quit"))->toBe(true)
     // …and nothing after it ran or echoed.
@@ -644,16 +633,19 @@ describe("Repl redeal", () => {
     })
 
   test("puts the cards back and leaves nothing to undo", () => {
-    let as_ = {suit: Spades, rank: Ace}
-    let played = runToSession(["deal stacking", "move AS 0"])
-    expect(played->Option.flatMap(s => GameState.locationOf(Session.present(s), as_)))->toEqual(
-      Some(GameState.InPile(0, 0)),
-    )
+    // Park whatever is showing on T1 in the first (empty) free cell — a move any deal
+    // allows — then take it back. Said by slot rather than by card, so the test doesn't
+    // have to know which card the shuffle dealt there.
+    let dealt = runToSession(["deal freecell"])
+    let (played, _) = Repl.step(~options=Options.default, dealt, "move T1 C1")
     let (restarted, _) = Repl.step(~options=Options.default, played, "redeal")
-    // Back where the deal put it…
-    expect(restarted->Option.flatMap(s => GameState.locationOf(Session.present(s), as_)))->toEqual(
-      Some(GameState.Loose),
-    )
+    switch (dealt, played, restarted) {
+    | (Some(before), Some(after), Some(again)) =>
+      expect(GameState.equal(Session.present(before), Session.present(after)))->toBe(false)
+      // Back where the deal put every card…
+      expect(GameState.equal(Session.present(again), Session.present(before)))->toBe(true)
+    | _ => expect("no session")->toBe("session")
+    }
     // …and the history starts here: a restart isn't an undo you can step back through.
     let (_, text) = Repl.step(~options=Options.default, restarted, "undo")
     expect(has(text, "Nothing to undo"))->toBe(true)
@@ -702,10 +694,6 @@ describe("Render deal number", () => {
     expect(has(Repl.run(["deal freecell almost-won"]), "deal #264"))->toBe(true)
     expect(has(Repl.run(["deal freecell midgame"]), "deal #"))->toBe(false)
   })
-
-  test("a game with no seed behind it names none", () =>
-    expect(has(Repl.run(["deal stacking"]), "deal #"))->toBe(false)
-  )
 
   test("a redeal keeps naming the board it replays", () =>
     expect(has(Repl.run(["deal 777", "move AS 0", "redeal"]), "deal #777"))->toBe(true)
@@ -798,9 +786,9 @@ describe("Repl.consider", () => {
   // prompt wipes the terminal, a transcript echoes the line and prints nothing.
   test("clear is handed to the loop rather than answered here", () => {
     expect(consider("clear"))->toEqual(Repl.Cleared)
-    let transcript = Repl.run(["deal stacking", "clear", "print"])
+    let transcript = Repl.run(["deal freecell", "clear", "print"])
     expect(has(transcript, "pip> clear"))->toBe(true)
-    expect(has(transcript, "Stacking"))->toBe(true)
+    expect(has(transcript, "FreeCell"))->toBe(true)
   })
 
   test("anything else runs, carrying the session and the text to show", () =>
@@ -816,76 +804,85 @@ describe("Repl.consider", () => {
 // `Repl.step`, inspecting the session's `present` state rather than the ASCII art
 // so the assertions pin the actual card positions.
 describe("Repl undo/redo", () => {
+  // Auto-collect off throughout, so a step is exactly the move that was typed and the
+  // positions asserted below are the ones the command put the card in — with it on,
+  // a single `home`-able move drags a whole cascade of collections behind it (#125),
+  // which is that feature's business and not this one's.
+  let options = {...Options.default, autoCollect: false}
+
   // Fold a script of commands into the resulting session (the state assertions
   // read positions off `Session.present`).
   let runToSession = (cmds: array<string>): option<Session.t> =>
     cmds->Array.reduce(None, (acc, cmd) => {
-      let (next, _) = Repl.step(~options=Options.default, acc, cmd)
+      let (next, _) = Repl.step(~options, acc, cmd)
       next
     })
 
   let locationOf = (s: option<Session.t>, card) =>
     s->Option.flatMap(s => GameState.locationOf(Session.present(s), card))
 
+  // The send-home board is a known layout: each suit's foundation built to the Two
+  // (F1–F4 are piles 4–7, in the suit order Spades, Hearts, Diamonds, Clubs) with that
+  // suit's Three parked alone in a free cell (C1–C4 are piles 0–3). So 3♠ starts at
+  // pile 0 slot 0 and lands on pile 4 slot 2.
+  let deal = "deal freecell sendhome"
+  let threeS = {suit: Spades, rank: Three}
+  let threeH = {suit: Hearts, rank: Three}
+
   test("apply → undo returns the prior state exactly, and redo replays it", () => {
-    let as_ = {suit: Spades, rank: Ace}
-    // Deal stacking (the run is dealt loose) and found pile 0 with the Ace.
-    let afterMove = runToSession(["deal stacking", "move AS 0"])
-    expect(locationOf(afterMove, as_))->toEqual(Some(GameState.InPile(0, 0)))
-    // Undo puts the Ace back exactly where it rested before the move — loose.
-    let (undone, _) = Repl.step(~options=Options.default, afterMove, "undo")
-    expect(locationOf(undone, as_))->toEqual(Some(GameState.Loose))
-    // Redo replays the move, landing the Ace back on pile 0.
-    let (redone, _) = Repl.step(~options=Options.default, undone, "redo")
-    expect(locationOf(redone, as_))->toEqual(Some(GameState.InPile(0, 0)))
+    let afterMove = runToSession([deal, "move 3S F1"])
+    expect(locationOf(afterMove, threeS))->toEqual(Some(GameState.InPile(4, 2)))
+    // Undo puts the Three back exactly where it rested before the move — its cell.
+    let (undone, _) = Repl.step(~options, afterMove, "undo")
+    expect(locationOf(undone, threeS))->toEqual(Some(GameState.InPile(0, 0)))
+    // Redo replays the move, landing the Three back on its foundation.
+    let (redone, _) = Repl.step(~options, undone, "redo")
+    expect(locationOf(redone, threeS))->toEqual(Some(GameState.InPile(4, 2)))
   })
 
   test("a no-op move records no undoable step (#215)", () => {
-    let as_ = {suit: Spades, rank: Ace}
-    // Found pile 0 with the Ace (one real step), then re-drop it onto pile 0 — a
-    // lawful no-op that must not push a second state onto the undo stack.
-    let session = runToSession(["deal stacking", "move AS 0", "move AS 0"])
-    expect(locationOf(session, as_))->toEqual(Some(GameState.InPile(0, 0)))
-    // A single undo returns to the opening deal (the Ace loose): the no-op left
-    // only the *one* founding move on the stack, not two.
-    let (undone, _) = Repl.step(~options=Options.default, session, "undo")
-    expect(locationOf(undone, as_))->toEqual(Some(GameState.Loose))
-    let (_, text) = Repl.step(~options=Options.default, undone, "undo")
+    // Send the Three home (one real step), then re-drop it onto the same foundation —
+    // a lawful no-op that must not push a second state onto the undo stack.
+    let session = runToSession([deal, "move 3S F1", "move 3S F1"])
+    expect(locationOf(session, threeS))->toEqual(Some(GameState.InPile(4, 2)))
+    // A single undo returns to the opening pose: the no-op left only the *one* real
+    // move on the stack, not two.
+    let (undone, _) = Repl.step(~options, session, "undo")
+    expect(locationOf(undone, threeS))->toEqual(Some(GameState.InPile(0, 0)))
+    let (_, text) = Repl.step(~options, undone, "undo")
     expect(has(text, "Nothing to undo"))->toBe(true)
   })
 
   test("undo past the start of a game is a no-op", () => {
-    let dealt = runToSession(["deal stacking"])
-    let (undone, text) = Repl.step(~options=Options.default, dealt, "undo")
+    let dealt = runToSession([deal])
+    let (undone, text) = Repl.step(~options, dealt, "undo")
     expect(has(text, "Nothing to undo"))->toBe(true)
-    // The opening deal is unchanged — the Ace is still loose.
-    expect(locationOf(undone, {suit: Spades, rank: Ace}))->toEqual(Some(GameState.Loose))
+    // The opening pose is unchanged — the Three is still in its cell.
+    expect(locationOf(undone, threeS))->toEqual(Some(GameState.InPile(0, 0)))
   })
 
   test("a fresh move after an undo clears the redo future", () => {
-    // Move the Ace onto pile 0, undo it, then make a *different* move (onto pile 1).
-    let branched = runToSession(["deal stacking", "move AS 0", "undo", "move AS 1"])
-    expect(locationOf(branched, {suit: Spades, rank: Ace}))->toEqual(Some(GameState.InPile(1, 0)))
+    // Send the ♠3 home, undo it, then make a *different* move (the ♥3 to its own
+    // foundation).
+    let branched = runToSession([deal, "move 3S F1", "undo", "move 3H F2"])
+    expect(locationOf(branched, threeH))->toEqual(Some(GameState.InPile(5, 2)))
+    expect(locationOf(branched, threeS))->toEqual(Some(GameState.InPile(0, 0)))
     // The undone move is gone — there's nothing to redo onto the abandoned branch.
-    let (_, text) = Repl.step(~options=Options.default, branched, "redo")
+    let (_, text) = Repl.step(~options, branched, "redo")
     expect(has(text, "Nothing to redo"))->toBe(true)
   })
 
   test("undo steps back out of a win (works even from victory)", () => {
-    // Win the foundations demo by stacking the whole Hearts run home, exactly as
-    // the win test above does.
-    let heartsRun =
-      ["AH", "2H", "3H", "4H", "5H", "6H", "7H", "8H", "9H", "TH", "JH", "QH", "KH"]->Array.map(
-        c => `move ${c} 0`,
-      )
-    let won = runToSession(Array.concat(["deal foundations"], heartsRun))
+    // Win from the near-won pose with its one pending King, exactly as the win test
+    // above does.
+    let won = runToSession(["deal freecell almost-won", "move KC F4"])
     switch won {
     | Some(s) => expect(GameState.hasWon(s.game, Session.present(s)))->toBe(true)
     | None => expect(true)->toBe(false)
     }
     // Undo from the won position: the game is no longer won, and the win line is
     // gone from the restored board — the victory is just another undoable state.
-    let (undone, text) = Repl.step(~options=Options.default, won, "undo")
+    let (undone, text) = Repl.step(~options, won, "undo")
     expect(has(text, "You win"))->toBe(false)
     switch undone {
     | Some(s) => expect(GameState.hasWon(s.game, Session.present(s)))->toBe(false)

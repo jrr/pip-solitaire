@@ -311,18 +311,18 @@ describe("TableScene published controls (#300)", () => {
     },
   )
 
-  test("a board that isn't re-dealable offers neither re-deal", () => {
-    // `newGame` and `loadGame` both open a board named by a seed, which only a
-    // re-dealable game has (`~newDeal`). The fixed-layout demos have none, and answering
-    // `None` is what lets the menu's New Game and the console's `deal <n>` say so rather
-    // than silently doing nothing.
+  test("a board mounted without a re-deal offers neither re-deal", () => {
+    // `newGame` and `loadGame` both open a board named by a seed, which only a scene
+    // handed a `~newDeal` can produce. Without one, answering `None` is what lets the
+    // menu's New Game and the console's `deal <n>` say so rather than silently doing
+    // nothing.
     let board = ref(None)
     let container = host("div")
-    let scene = TableScene.make(~publish=published => board := Some(published), Game.stacking)
+    let scene = TableScene.make(~publish=published => board := Some(published), Game.freecell)
     let _teardown = scene.mount(container)
     expect(live(board).newGame->Option.isNone)->toBe(true)
     expect(live(board).loadGame->Option.isNone)->toBe(true)
-    // Restart is offered by every card table, though — a demo restarts to its own deal.
+    // Restart is offered by every card table, though — it restarts to its own deal.
     live(board).restart()
     expect(countOf(container, ".stacking-card") > 0)->toBe(true)
   })
@@ -767,10 +767,13 @@ describe("TableScene autoplay (#291)", () => {
   })
 
   test("a board the solver doesn't understand is told so", () => {
-    // The card-table demo isn't four cells, four foundations and eight columns, so
-    // there's no position to pack it into — an honest refusal rather than a wrong
-    // answer, in the words both front ends use.
-    let game = Game.stacking
+    // A board without FreeCell's cells and foundations isn't four cells, four
+    // foundations and eight columns, so there's no position to pack it into — an
+    // honest refusal rather than a wrong answer, in the words both front ends use.
+    let game: Game.t = {
+      ...Game.freecell,
+      piles: Game.pilesOf(Game.freecell, Game.Cascade),
+    }
     let board = ref(None)
     let container = host("div")
     let scene = TableScene.make(~publish=published => board := Some(published), game)

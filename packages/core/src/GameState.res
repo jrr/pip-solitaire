@@ -15,8 +15,8 @@
 //   - `Game.t` is the *board definition* — the piles and the rules they enforce,
 //     static across a game. The "empty board".
 //   - `GameState.t` is the *dynamic* snapshot — where each card rests right now.
-//     The opening deal, which used to be baked into `Game.t` (`loose` +
-//     `pile.cards`), becomes just the *initial* `GameState` derived from a board.
+//     The opening deal, which used to be baked into `Game.t` (`pile.cards`),
+//     becomes just the *initial* `GameState` derived from a board.
 //
 // Card identity for lookups is structural `{suit, rank}` — unique within a
 // single deck — so the queries below key off a `card` value directly via `==`.
@@ -48,12 +48,13 @@ type t = {
 }
 
 // The opening layout derived from a board definition: each pile starts holding
-// the cards the board deals it, and `loose` holds the board's opening loose deal.
-// Inner arrays are copied so the snapshot never shares mutable storage with the
-// board value — the state is a value of its own from the moment it's built.
+// the cards the board deals it, and nothing rests loose — FreeCell keeps every
+// card in a pile. Inner arrays are copied so the snapshot never shares mutable
+// storage with the board value — the state is a value of its own from the moment
+// it's built.
 let initial = (game: Game.t): t => {
   piles: game.piles->Array.map(p => p.cards->Array.copy),
-  loose: game.loose->Array.copy,
+  loose: [],
 }
 
 // The cards resting in pile `i`, bottom-first — a copy, so a caller can't reach
@@ -118,9 +119,9 @@ let equal = (a: t, b: t): bool => {
 // check whether each is finished (`Rules.isCompleteRun`, #76), so how the cards
 // got there — a drag, a later auto-to-foundation — is beside the point.
 //
-// A board with *no* foundations (the card-table demos) is never won: `Array.every`
-// over an empty group is vacuously true, so the explicit non-empty guard keeps a
-// foundation-less board from reading as an instant win.
+// A board with *no* foundations is never won: `Array.every` over an empty group is
+// vacuously true, so the explicit non-empty guard keeps a foundation-less board
+// from reading as an instant win.
 let hasWon = (game: Game.t, state: t): bool => {
   let foundations = Game.pileIndices(game, Game.Foundation)
   Array.length(foundations) > 0 &&

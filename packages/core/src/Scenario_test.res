@@ -194,14 +194,16 @@ describe("Scenario", () => {
     )
   })
 
+  // A board `Scenario` knows nothing about — the registry is keyed by `game.id`, so
+  // any other id has no named positions at all.
+  let otherBoard: Game.t = {...Game.freecell, id: "other", name: "Other"}
+
   test("an unknown scenario, or one that doesn't fit the board, is None", () => {
     expect(Scenario.forName(Game.freecell, "no-such-scenario"))->toEqual(None)
-    // "midgame" is a FreeCell position; it doesn't apply to the stacking demo.
-    expect(Scenario.forName(Game.stacking, "midgame"))->toEqual(None)
-    // "almost-won" is likewise a FreeCell position only.
-    expect(Scenario.forName(Game.stacking, "almost-won"))->toEqual(None)
-    // "supermove" too — a FreeCell position, not applicable to the stacking demo.
-    expect(Scenario.forName(Game.stacking, "supermove"))->toEqual(None)
+    // Every FreeCell position is FreeCell's; another board answers to none of them.
+    expect(Scenario.forName(otherBoard, "midgame"))->toEqual(None)
+    expect(Scenario.forName(otherBoard, "almost-won"))->toEqual(None)
+    expect(Scenario.forName(otherBoard, "supermove"))->toEqual(None)
   })
 
   // The enumerable registry (`scenariosFor`) is what a picker lists — the web-app's
@@ -235,7 +237,7 @@ describe("Scenario", () => {
     test(
       "a board with no scenarios lists none",
       () => {
-        expect(Scenario.scenariosFor(Game.stacking))->toEqual([])
+        expect(Scenario.scenariosFor(otherBoard))->toEqual([])
       },
     )
   })
@@ -282,9 +284,13 @@ describe("hasWon", () => {
   })
 
   test("a board with no foundations is never won", () => {
-    // The stacking demo has no foundation piles, so completing its piles can't win —
+    // Strip the foundations off and completing every remaining pile can't win —
     // guarding against a vacuous `every`-over-nothing win.
-    expect(GameState.hasWon(Game.stacking, GameState.initial(Game.stacking)))->toBe(false)
+    let noFoundations: Game.t = {
+      ...game,
+      piles: game.piles->Array.filter(p => p.role != Game.Foundation),
+    }
+    expect(GameState.hasWon(noFoundations, GameState.initial(noFoundations)))->toBe(false)
   })
 })
 

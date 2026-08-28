@@ -11,9 +11,9 @@
 //
 // Three visual conventions carry the model's state, mirroring how the web-app's
 // styling distinguishes cards:
-//   - Line weight tells you what a slot *is*. A card resting free on the table
-//     gets a heavy frame (┏━┓); a card placed in a pile gets a light one (┌─┐);
-//     an empty pile shows a double frame (╔═╗) where its cards would land.
+//   - Line weight tells you what a slot *is*. A card placed in a pile gets a light
+//     frame (┌─┐); an empty pile shows a double frame (╔═╗) where its cards would
+//     land.
 //   - Colour tells suit: hearts and diamonds are drawn red, spades and clubs
 //     plain, the terminal analogue of the red/black pips on a real deck. The suit is
 //     still legible without it: the pip glyphs differ.
@@ -149,7 +149,7 @@ let rankLabel = rank =>
   }
 
 // A box-drawing frame: the six characters that draw a card's border. Swapping
-// the style is how a card's state (free / placed / empty) changes its outline.
+// the style is how a slot's state (placed / empty) changes its outline.
 type frame = {
   topLeft: string,
   topRight: string,
@@ -159,7 +159,7 @@ type frame = {
   vertical: string,
 }
 
-// Light for a placed card, heavy for a free card, double for an empty pile.
+// Light for a placed card, double for an empty pile.
 let placed = {
   topLeft: `┌`,
   topRight: `┐`,
@@ -167,14 +167,6 @@ let placed = {
   bottomRight: `┘`,
   horizontal: `─`,
   vertical: `│`,
-}
-let free = {
-  topLeft: `┏`,
-  topRight: `┓`,
-  bottomLeft: `┗`,
-  bottomRight: `┛`,
-  horizontal: `━`,
-  vertical: `┃`,
 }
 let empty = {
   topLeft: `╔`,
@@ -221,7 +213,6 @@ let pileName = (~game: Game.t, i: int): string =>
 // Where a move sends its cards, as the board names the place.
 let placeName = (~game: Game.t, target: Reducer.target): string =>
   switch target {
-  | Reducer.ToTable => "table"
   | Reducer.ToPile(i) => pileName(~game, i)
   }
 
@@ -309,7 +300,7 @@ let pileColumn = (pile: Game.pile): array<line> => columnFor(pile.stacking, pile
 // --- Layout -------------------------------------------------------------------
 
 // A column of card lines is `colWidth` visible columns wide (a cell plus its two
-// borders); the gap that separates neighbouring piles / loose cards.
+// borders); the gap that separates neighbouring piles.
 let colWidth = cellWidth + 2
 let gap = 3
 
@@ -351,20 +342,10 @@ let headed = (~label: option<string>, column: array<line>): array<line> =>
   | None => column
   }
 
-// Indent each line of a block so it sits centred within `width` (the loose
-// cards, dealt centred beneath the piles as they are on the web table).
+// Indent each line of a block so it sits centred within `width` — how a lone pile
+// is placed in a row of its own.
 let center = (block: array<line>, width): array<line> =>
   block->Array.map(line => concat([pad((width - visibleWidth(line)) / 2), line]))
-
-// Lay equal-height card blocks side by side with a fixed gap (the loose cards).
-let joinBlocks = (blocks: array<array<line>>): array<line> =>
-  switch blocks[0] {
-  | None => []
-  | Some(first) =>
-    first->Array.mapWithIndex((_, row) =>
-      blocks->Array.map(b => b->Array.getUnsafe(row))->joinLines(pad(gap))
-    )
-  }
 
 // The pile row: the columns spread across `width` like the web table's flexbox
 // `space-between` — the first pile hugs the left edge, the last the right, and
@@ -396,27 +377,18 @@ let spaceBetween = (columns: array<array<line>>, width): array<line> => {
 let blankRow: line = []
 
 // Lay a board out like the web table: the titled rows of pile columns stacked one above
-// the next, and the loose cards (already framed) centred beneath them. The board is as
-// wide as its widest row, so a narrower row is spread within that width rather than
-// setting its own. Both the static-`Game` and live-`GameState` renderers assemble their
-// rows and loose cards then hand them here, so the layout lives in one place.
-let assemble = (
-  ~title: string,
-  ~rows: array<array<array<line>>>,
-  ~freeCards: array<array<line>>,
-): array<line> => {
+// the next. The board is as wide as its widest row, so a narrower row is spread within
+// that width rather than setting its own. Both the static-`Game` and live-`GameState`
+// renderers assemble their rows then hand them here, so the layout lives in one place.
+let assemble = (~title: string, ~rows: array<array<array<line>>>): array<line> => {
   // Every row is laid out to one width — the widest of them — so the rows line up with
   // each other rather than each floating at its own scale.
-  let width =
-    rows->Array.reduce(rowWidth(Array.length(freeCards)), (w, row) =>
-      Math.Int.max(w, rowWidth(Array.length(row)))
-    )
+  let width = rows->Array.reduce(0, (w, row) => Math.Int.max(w, rowWidth(Array.length(row))))
 
   let cardRows =
     rows->Array.filter(row => Array.length(row) > 0)->Array.map(row => spaceBetween(row, width))
-  let loose = Array.length(freeCards) == 0 ? [] : [center(joinBlocks(freeCards), width)]
 
-  let sections = [[[{text: title, ink: Title}]]]->Array.concat(cardRows)->Array.concat(loose)
+  let sections = [[[{text: title, ink: Title}]]]->Array.concat(cardRows)
   // One blank row between sections; none before the first.
   sections
   ->Array.mapWithIndex((section, i) => i == 0 ? section : Array.concat([blankRow], section))
@@ -447,8 +419,7 @@ let titleFor = (~game: Game.t, ~deal: option<int>): string =>
 // sixteen columns in one row is wider than a window, and the two halves aren't the same
 // kind of thing anyway.
 //
-// A board carrying only one of the two groups — every card-table demo — keeps its single
-// row, laid out exactly as before.
+// A board carrying only one of the two groups keeps its single row.
 let roleRows = (~game: Game.t, columns: array<array<line>>): array<array<array<line>>> => {
   let isCascade = i =>
     switch game.piles->Array.get(i) {
@@ -472,7 +443,6 @@ let boardLines = (game: Game.t): array<line> =>
   assemble(
     ~title=titleFor(~game, ~deal=game.seed),
     ~rows=roleRows(~game, headedColumns(~game, game.piles->Array.map(pileColumn))),
-    ~freeCards=game.loose->Array.map(c => fullCard(free, c)),
   )
 
 // The same layout over a *live* `GameState.t` — so the renderer shows any state
@@ -491,7 +461,6 @@ let stateLines = (~game: Game.t, ~deal: option<int>=?, state: GameState.t): arra
         ),
       ),
     ),
-    ~freeCards=state.loose->Array.map(c => fullCard(free, c)),
   )
 
 // --- Painting -----------------------------------------------------------------
