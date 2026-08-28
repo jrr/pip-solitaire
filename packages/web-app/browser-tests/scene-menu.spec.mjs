@@ -47,6 +47,11 @@ const openDebugScreen = async (page) => {
 const sceneGroup = (page) => page.locator(".scene-menu__group").filter({ hasText: "scenes" })
 const sceneRow = (page, name) => sceneGroup(page).getByRole("button", { name })
 
+// …and the "games" disclosure beside it, which holds the games that don't get the
+// main menu's single top-level row (#352, first occupied by #350's short decks).
+const gameGroup = (page) => page.locator(".scene-menu__group").filter({ hasText: "games" })
+const gameGroupRow = (page, name) => gameGroup(page).getByRole("button", { name })
+
 test("tapping the game you're already playing doesn't re-deal it", async ({ page }) => {
   await page.goto("/?seed=24680&animate=off")
   await settleBoard(page)
@@ -66,6 +71,40 @@ test("tapping the game you're already playing doesn't re-deal it", async ({ page
   // The tap is acknowledged — the menu closes — and that is all it does.
   await expect(page.locator("#menu-overlay")).toBeHidden()
   await expect(page.locator("#scene-container .table-board[data-pinned='yes']")).toHaveCount(1)
+})
+
+// The placement half of #350: three games in `Game.all`, and the main menu still
+// leads with one. `SceneSwitcher_test` pins the grouping rule against fake scenes;
+// what it can't say is where the *real* boards land once there is more than one, which
+// is the thing the issue is explicit about — the menu keeps exactly one game button
+// and the siblings live under Debug.
+test("the short-deck games sit under Debug, leaving one game button up top", async ({ page }) => {
+  await page.goto("/?scene=micro&animate=off")
+  await settleBoard(page)
+
+  await openMenu(page)
+  // One row in the Games section, and it's FreeCell's — not one per `Game.all` entry.
+  await expect(page.locator("nav[aria-label='Games']").getByRole("button")).toHaveCount(1)
+  await expect(gameRow(page, "FreeCell")).toBeVisible()
+  // Nothing up here is current: the board showing is Micro, which lives below.
+  await expect(gameRow(page, "FreeCell")).not.toHaveAttribute("aria-current", "true")
+
+  await openDebugScreen(page)
+  // The group is placed (it has entries now), opened onto the mounted board, and
+  // holds both siblings with only the mounted one marked.
+  await expect(gameGroup(page)).toHaveAttribute("open", "")
+  await expect(gameGroupRow(page, "Micro FreeCell")).toHaveAttribute("aria-current", "true")
+  await expect(gameGroupRow(page, "Mini FreeCell")).not.toHaveAttribute("aria-current", "true")
+  // …and they're games, not demos: neither is filed in the "scenes" group.
+  await expect(sceneGroup(page).getByRole("button", { name: "Mini FreeCell" })).toHaveCount(0)
+
+  // Tapping a sibling mounts it, and the highlight follows.
+  await gameGroupRow(page, "Mini FreeCell").click()
+  await settleBoard(page)
+  await openMenu(page)
+  await openDebugScreen(page)
+  await expect(gameGroupRow(page, "Mini FreeCell")).toHaveAttribute("aria-current", "true")
+  await expect(gameGroupRow(page, "Micro FreeCell")).not.toHaveAttribute("aria-current", "true")
 })
 
 test("a ?scene= link opens the group it lands in, with that scene marked", async ({ page }) => {

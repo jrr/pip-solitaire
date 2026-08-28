@@ -2,8 +2,9 @@
 // This is the "several supported games" seam (#62) — a board described
 // declaratively so the view can interpret it dynamically instead of hard-coding
 // zones and an opening deal. A new game is a new value here, not new view code.
-// FreeCell is the one game today (#342 retired the demo boards that proved the
-// seam on the way here), so the type is what a second game would slot into.
+// #350 is that claim collected on: `mini` and `micro` are two more boards and
+// nothing else — no view code, no reducer branch, no new rule — which is what the
+// seam was for.
 //
 // What a game says:
 //   - `piles` — the drop zones, each with a stacking behaviour (how a second
@@ -119,6 +120,7 @@ type rec t = {
   deal: option<int => t>,
 }
 
+// --- The FreeCell family ------------------------------------------------------
 // The assembled FreeCell board (#97), where four enablers converge: pile
 // capacity (#93), roles (#94), the cascade rule (#95) and the seeded deck (#96)
 // make a real FreeCell just a `Game.t` value — no game-specific reducer code. The
@@ -136,24 +138,39 @@ type rec t = {
 // lands nowhere bounces back. Everything else is the shared machinery —
 // `Reducer.reduce` / `canDrop` handle moves with each pile enforcing its own rule
 // and capacity.
+//
+// Since #350 that description covers *three* boards, not one. `mini` and `micro`
+// are FreeCell in every mechanic and differ only in the **deck** they play with and
+// **how many** piles of each role they have — so the shape is written once, in
+// `freecellShaped` below, and each board is that shape with its own numbers. Nothing
+// downstream branches on which: `Slot`'s labels count within a role, `Reducer`'s
+// supermove limit reads the role groups, and `Rules.isCompleteRun` /
+// `Reducer.isSafeToCollect` read `deck` (#351), so a short deck decides correctly
+// rather than stalling.
 let freecellSeed = 1 // deal #1, the fixed board scenarios and screenshots derive from
 
-// Build a FreeCell board for deal `seed`. The cascades hold the dealt deck; the
-// free cells and foundations open empty.
+// Build one board of the family: `cascades` columns holding `deck` dealt from `seed`,
+// plus `cells` empty free cells and `foundations` empty foundations.
 //
 // `let rec` because the board it hands back carries this very function as its `deal`
-// (#349): a FreeCell board knows how to lay out another FreeCell board, which is what
-// lets a caller re-deal the game in hand without naming the game.
-let rec freecellDeal = (~seed: int): t => {
-  // FreeCell plays with the whole pack; the board carries it so the rules can read
-  // it back rather than assume it (#351).
-  let deck = Cards.standard
-  // The 52 shuffled and dealt round-robin across the eight cascades — the
-  // standard opening. Each column becomes an unbounded, alternating-colour
-  // *descending* cascade (`Rules.cascade`).
-  let cascades =
+// (#349): a board knows how to lay out another board *of its own game* — same id, same
+// deck, same counts, a new seed — which is what lets a caller re-deal the game in hand
+// without naming the game.
+let rec freecellShaped = (
+  ~id: string,
+  ~name: string,
+  ~deck: Cards.deck,
+  ~cascades: int,
+  ~cells: int,
+  ~foundations: int,
+  ~seed: int,
+): t => {
+  // The deck shuffled and dealt round-robin across the cascades — the standard
+  // opening, spread as evenly as the counts allow. Each column becomes an unbounded,
+  // alternating-colour *descending* cascade (`Rules.cascade`).
+  let cascadePiles =
     Cards.shuffle(~deck, ~seed)
-    ->Cards.deal(~piles=8, _)
+    ->Cards.deal(~piles=cascades, _)
     ->Array.map(column => {
       role: Cascade,
       stacking: Fanned,
@@ -161,17 +178,17 @@ let rec freecellDeal = (~seed: int): t => {
       capacity: None,
       cards: column,
     })
-  // Four capacity-1 `Free` cells and four same-suit foundations, all opening
-  // empty. Built by mapping over an index array so each pile gets its own fresh
-  // `cards` array rather than sharing one.
-  let cells = [0, 1, 2, 3]->Array.map(_ => {
+  // The capacity-1 `Free` cells and the same-suit foundations, all opening empty.
+  // Built from an initializer so each pile gets its own fresh `cards` array rather
+  // than sharing one.
+  let cellPiles = Array.fromInitializer(~length=cells, _ => {
     role: FreeCell,
     stacking: Squared,
     rule: Rules.Free,
     capacity: Some(1),
     cards: [],
   })
-  let foundations = [0, 1, 2, 3]->Array.map(_ => {
+  let foundationPiles = Array.fromInitializer(~length=foundations, _ => {
     role: Foundation,
     stacking: Squared,
     rule: Rules.foundation,
@@ -179,32 +196,105 @@ let rec freecellDeal = (~seed: int): t => {
     cards: [],
   })
   {
-    id: "freecell",
-    name: "FreeCell",
+    id,
+    name,
     // Free cells and foundations first (the view groups them across the top by
-    // role, #94), the eight dealt cascades below.
-    piles: cells->Array.concat(foundations)->Array.concat(cascades),
+    // role, #94), the dealt cascades below.
+    piles: cellPiles->Array.concat(foundationPiles)->Array.concat(cascadePiles),
     // The pack the cascades were dealt from, kept so `isCompleteRun` and
     // `isSafeToCollect` read the deck instead of assuming it (#351).
     deck,
     // The deal number that laid this board out, kept so the app can report it and
-    // link back to it (#98). `freecellDeal(~seed)` is exactly what a `?seed=` open
-    // calls, so the round trip holds.
+    // link back to it (#98). Re-dealing this game with this number is exactly what a
+    // `?seed=` open calls, so the round trip holds.
     seed: Some(seed),
-    // …and the way back out: another deal of this same game (#349). FreeCell is a
-    // seeded shuffle, so every number lays out a real board — the board is re-dealable,
-    // and says so here rather than being recognised by id somewhere else.
-    deal: Some(seed => freecellDeal(~seed)),
+    // …and the way back out: another deal of this same game (#349). Every board here is
+    // a seeded shuffle, so every number lays out a real board — the board is
+    // re-dealable, and says so here rather than being recognised by id somewhere else.
+    deal: Some(seed => freecellShaped(~id, ~name, ~deck, ~cascades, ~cells, ~foundations, ~seed)),
   }
 }
+
+// Build a FreeCell board for deal `seed`: the whole pack across eight cascades, four
+// cells, four foundations.
+let freecellDeal = (~seed: int): t =>
+  freecellShaped(
+    ~id="freecell",
+    ~name="FreeCell",
+    // FreeCell plays with the whole pack; the board carries it so the rules can read
+    // it back rather than assume it (#351).
+    ~deck=Cards.standard,
+    ~cascades=8,
+    ~cells=4,
+    ~foundations=4,
+    ~seed,
+  )
 
 // The default board: deal #1.
 let freecell = freecellDeal(~seed=freecellSeed)
 
-// Every supported game, in picker order — FreeCell alone (#342). Kept as an array
-// because it's what the scene picker and the CLI's `games`/`deal <id>` enumerate;
-// a second game joins it here.
-let all = [freecell]
+// --- The short-deck siblings (#350) ------------------------------------------
+// Two small boards that make a second and third `Game.t` real without inventing a
+// stock, a tap action or a new rule: every rule is already expressible in
+// `Rules.rule` and every pile is one of the three existing roles. What they change is
+// the deck — which is precisely what #351 turned into a parameter — and the counts.
+//
+// **Two free cells** on both, measured rather than picked — #350 carries the table.
+// Over deals 1–200, by exhaustive single-card search (exact for reachability): one
+// cell solves 141/200 `mini` and 102/200 `micro`; two solves 198 and 196; three all 200.
+// One cell is punishing and three is never a puzzle. For `mini` the count is a real
+// trade — a single cell would narrow its widest row to 5 and grow its cards 20%, at
+// 70% solvable, which isn't worth it — while `micro` pays nothing, since 2 cells + 2
+// foundations is still 4 across.
+
+// **Mini FreeCell** — Ace through Five in all four suits (20 cards) across four
+// five-card cascades, with two cells and four foundations. A foundation is complete
+// at the Five, which `Rules.isCompleteRun` reads off the deck rather than assuming a
+// King. Widest row: six (2 cells + 4 foundations).
+let miniDeck: Cards.deck = {suits: Cards.suits, ranks: [Ace, Two, Three, Four, Five]}
+
+let miniDeal = (~seed: int): t =>
+  freecellShaped(
+    ~id="mini",
+    ~name="Mini FreeCell",
+    ~deck=miniDeck,
+    ~cascades=4,
+    ~cells=2,
+    ~foundations=4,
+    ~seed,
+  )
+
+// **Micro FreeCell** — Ace through Eight in the two suits ♠♥ (16 cards) across four
+// four-card cascades, with two cells and two foundations, one per suit. The
+// two-suit deck is the case that would have stalled auto-collect above a Two before
+// #351: `Reducer.isSafeToCollect` asks the deck which suits are the opposite-colour
+// ones to wait for, and here that's a single suit rather than the two a full pack
+// has. Widest row: four (2 cells + 2 foundations), the same as its cascades.
+let microDeck: Cards.deck = {
+  suits: [Spades, Hearts],
+  ranks: [Ace, Two, Three, Four, Five, Six, Seven, Eight],
+}
+
+let microDeal = (~seed: int): t =>
+  freecellShaped(
+    ~id="micro",
+    ~name="Micro FreeCell",
+    ~deck=microDeck,
+    ~cascades=4,
+    ~cells=2,
+    ~foundations=2,
+    ~seed,
+  )
+
+// Deal #1 of each, the canonical opening the way `freecell` takes `freecellSeed`.
+let mini = miniDeal(~seed=freecellSeed)
+let micro = microDeal(~seed=freecellSeed)
+
+// Every supported game, in picker order — FreeCell first (it's `default`, and the one
+// the menu surfaces at top level), then the two short-deck siblings (#350). Kept as an
+// array because it's what the scene picker and the CLI's `games`/`deal <id>` enumerate;
+// a further game joins it here.
+let all = [freecell, mini, micro]
 
 // The game a `deal` that names none lays out — a bare `deal`/`new`, and a bare deal
 // *number* (`deal 12345`), both of which say which board without saying which game.
