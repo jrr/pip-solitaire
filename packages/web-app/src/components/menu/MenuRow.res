@@ -18,6 +18,14 @@
 // They keep their own files and their own tests, which is where the reasoning about
 // each variant belongs.
 //
+// **The scene rows were the fifth copy**, and the one outside the menu's own
+// components: `SceneSwitcher`'s `.scene-menu__row` was the same box in a third
+// stylesheet, with one thing none of the four had — a *selected* highlight for the
+// scene currently mounted. #334 merged the box through the `--control-*` tokens;
+// the highlight is `selected` below (#335), which is what let those rows become
+// `<MenuRow>`s at all. `<MenuDisclosure>` draws its rows here now; the switcher
+// still builds the primary game's by hand, and #337 finishes that.
+//
 // A component is just a `props => vnode` function (see `VersionBadge` for why the
 // record is spelled out by hand).
 
@@ -50,6 +58,15 @@ type props = {
   // Defaults to true. Drives the *real* `disabled` attribute, so a disabled row
   // emits no click at all and the handler guard below is belt and braces.
   enabled?: bool,
+  // Defaults to false: this row is the one currently in effect, out of a set of
+  // rows that pick between alternatives — the mounted scene among the scene rows.
+  //
+  // A prop rather than a fourth `trailing`, because it is orthogonal to what sits
+  // at the row's right-hand end: a `Switch` row could perfectly well be the
+  // selected one, and a variant would make those two states mutually exclusive for
+  // no reason. `MenuDisclosure`'s `entry` arrived at the same shape independently
+  // (#336) and now hands it straight through.
+  selected?: bool,
   onClick: unit => unit,
 }
 
@@ -57,13 +74,21 @@ type props = {
 // heavier weight, `--action` carries the disabled styling, and `--switch` pairs
 // with `--on` for the track. Naming every kind is also what lets a screen's test
 // ask for "the toggles" or "the action row" without matching the other rows.
-let classesFor = trailing =>
-  switch trailing {
+//
+// `--active` is appended to whichever kind the row is, rather than replacing it —
+// the highlight is a state the row is *in*, not a kind it is. Exported with a
+// labelled argument because `SceneSwitcher` still writes this class list onto a
+// button it builds by hand, and there should be one spelling of it (#337 hands
+// that DOM here too).
+let classesFor = (~selected=false, trailing) => {
+  let kind = switch trailing {
   | Switch(true) => "menu-row menu-row--switch menu-row--on"
   | Switch(false) => "menu-row menu-row--switch"
   | Chevron => "menu-row menu-row--nav"
   | Nothing => "menu-row menu-row--action"
   }
+  selected ? kind ++ " menu-row--active" : kind
+}
 
 let roleFor = trailing =>
   switch trailing {
@@ -79,16 +104,26 @@ let checkedFor = trailing =>
   | Chevron | Nothing => None
   }
 
+// The same absent-rather-than-"false" rule as `checkedFor`, and for the same
+// reason: `aria-current` is an enumerated attribute, and every row that isn't the
+// current one simply doesn't carry it.
+//
+// `aria-current` rather than `aria-selected`: these rows are navigation — a tap
+// changes what's mounted — not options in a listbox.
+let currentFor = selected => selected ? Some("true") : None
+
 let make = (props: props) => {
   let trailing = props.trailing->Option.getOr(Nothing)
   let enabled = props.enabled->Option.getOr(true)
+  let selected = props.selected->Option.getOr(false)
 
   <button
-    className={classesFor(trailing)}
+    className={classesFor(~selected, trailing)}
     type_="button"
     disabled={!enabled}
     role=?{roleFor(trailing)}
     ariaChecked=?{checkedFor(trailing)}
+    ariaCurrent=?{currentFor(selected)}
     onClick={_ =>
       if enabled {
         props.onClick()

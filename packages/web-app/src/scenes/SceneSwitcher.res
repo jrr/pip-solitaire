@@ -25,9 +25,37 @@
 // This component's stylesheet, in the `components` layer (see src/styles/index.css).
 %%raw(`import "./SceneSwitcher.css"`)
 
-// The row's class in its two states — plain, and the active scene's highlight.
-let idleClass = "scene-menu__row"
-let activeClass = "scene-menu__row scene-menu__row--active"
+// The primary game's row, built by hand because this module owns it as live DOM
+// (#337 hands it to `<MenuRow>` along with the rest). What it renders is exactly
+// what `<MenuRow>` renders for a plain row: the `menu-row` box, and the label
+// inside the `__text`/`__label` stack that left-aligns it. The classes come from
+// `MenuRow.classesFor` rather than being spelled out again, so there is one
+// spelling of them; this file's own `.scene-menu__row` is gone (#335).
+let buildRow = (scene: Scene.t) => {
+  let row = WebDom.createElement("button")
+  row->WebDom.setAttribute("type", "button")
+  let text = WebDom.createElement("span")
+  text->WebDom.setAttribute("class", "menu-row__text")
+  let label = WebDom.createElement("span")
+  label->WebDom.setAttribute("class", "menu-row__label")
+  label->WebDom.setTextContent(scene.label)
+  text->WebDom.appendChild(label)->ignore
+  row->WebDom.appendChild(text)->ignore
+  row
+}
+
+// Mark (or unmark) a row as the scene currently showing, the way
+// `<MenuRow selected>` renders it: the `--active` modifier, and `aria-current`
+// *removed* rather than set to "false" — an absent enumerated attribute is what
+// says "not the current one".
+let markSelected = (row, selected) => {
+  row->WebDom.setAttribute("class", MenuRow.classesFor(~selected, MenuRow.Nothing))
+  if selected {
+    row->WebDom.setAttribute("aria-current", "true")
+  } else {
+    row->WebDom.removeAttribute("aria-current")
+  }
+}
 
 // The switcher's pieces, handed back separately so the caller can place them
 // independently (#185): the `controls` hold the primary game row(s) and go in the
@@ -111,10 +139,8 @@ let render = (
     scenes
     ->Array.filter(isPrimary)
     ->Array.map(scene => {
-      let row = WebDom.createElement("button")
-      row->WebDom.setAttribute("type", "button")
-      row->WebDom.setAttribute("class", idleClass)
-      row->WebDom.setTextContent(scene.label)
+      let row = buildRow(scene)
+      markSelected(row, false)
       nav->WebDom.appendChild(row)->ignore
       (scene, row)
     })
@@ -130,9 +156,7 @@ let render = (
     teardown := scene.mount(container)
     activeId := Some(scene.id)
     // Mark the active row so the menu shows which scene is current.
-    rows->Array.forEach(((s, row)) =>
-      row->WebDom.setAttribute("class", s.id == scene.id ? activeClass : idleClass)
-    )
+    rows->Array.forEach(((s, row)) => markSelected(row, s.id == scene.id))
   }
 
   // Selecting a scene activates it — unless that scene is the one already showing,

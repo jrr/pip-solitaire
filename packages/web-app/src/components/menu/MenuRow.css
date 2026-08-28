@@ -45,6 +45,23 @@
     font-weight: 600;
   }
 
+  /* The row that is currently in effect, out of a set that picks between
+     alternatives: the mounted scene among the scene rows. These three declarations
+     are `SceneSwitcher.css`'s `.scene-menu__row--active`, arriving here with the
+     rows they highlight (#335) — the switcher's own `.scene-menu__row` was the same
+     `--control-*` box as `.menu-row` (#334), so what was left to move was the
+     highlight alone.
+
+     After the kind modifiers on purpose: `--active` and `--nav`/`--action` are the
+     same specificity and both apply at once, so the highlight's colours have to be
+     the later rule to win. It's a state the row is *in* rather than a kind it is,
+     and the class list carries both. */
+  .menu-row--active {
+    color: #f0fdf4;
+    background: #166534;
+    border-color: #22c55e;
+  }
+
   /* Only an action row is ever disabled — while there's no link to hand over, say
      (no game on screen, or the encode still in flight). The muted styling and
      `cursor: default` that announce it were the same two declarations `.menu-button`

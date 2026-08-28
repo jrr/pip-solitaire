@@ -5,7 +5,8 @@
     /* **The chrome's control box, stated once** (#334). Four selectors across three
        sheets each spelled out the same padded, bordered, dark-blue box from
        scratch — `.menu-row` (MenuRow.css), `.menu-button` (MenuGameButton.css),
-       `.scene-menu__row` (SceneSwitcher.css) and `.scene-menu__group-label`
+       `.scene-menu__row` (SceneSwitcher.css, folded into `.menu-row` itself in
+       #335 once the scene rows became `<MenuRow>`s) and `.scene-menu__group-label`
        (MenuDisclosure.css, which the group rules moved to in #336). Two of
        them said so in prose: the menu row described itself as "a full-width control
        styled like the scene rows", the game button as "styled like the scene

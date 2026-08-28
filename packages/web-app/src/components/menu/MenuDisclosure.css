@@ -6,8 +6,10 @@
      with the same gap as the rows.
 
      These rules came from `SceneSwitcher.css` with the markup they style (#336).
-     They still say `scene-menu__` because the *rows* inside the group are still
-     that file's `.scene-menu__row`; those become `<MenuRow>`s in #335. */
+     They keep the `scene-menu__` prefix they arrived with: the rows inside the
+     group are `<MenuRow>`s as of #335 and carry that component's classes, so
+     nothing named here collides with anything, and renaming them would be churn
+     across this sheet and the screen tests that select on them. */
   .scene-menu__group {
     display: flex;
     flex-direction: column;
