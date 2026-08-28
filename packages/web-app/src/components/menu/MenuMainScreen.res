@@ -13,8 +13,10 @@
 //     menu open, because the line under the buttons reporting where the link went is
 //     the only confirmation there is, and it's the only one that ever renders
 //     *disabled* — on a board with no seed to name;
-//   - a **"Games"** section — SceneSwitcher's primary game row(s), spliced in as the
-//     `games` node: FreeCell (the game) as a top-level row (#135);
+//   - a **"Games"** section — the games this build offers as top-level rows, FreeCell
+//     among them (#135). They arrive as `games`, a list of `MenuRow.entry` the
+//     switcher's scene list is turned into, and are drawn here (#337); they used to be
+//     a real node the switcher built and this screen spliced in with `Html.node`;
 //   - --- the space between top and bottom grows here (`menu-section--bottom`) ---
 //   - a single **Settings** button (`onOpenSettings`) low in the menu, just above the
 //     About footer — it takes over the pane with the Settings screen (#191).
@@ -42,10 +44,11 @@ type props = {
   // The transient line under the buttons reporting where the link went.
   shareDealStatus: option<string>,
   onShareDeal: unit => unit,
-  // SceneSwitcher's own rows: an externally-owned real DOM node (the switcher owns
-  // them), spliced with `Html.node` so the diff leaves them be across open/close
-  // re-renders.
-  games: Html.element,
+  // The games to list, in order, with `selected` on whichever one is showing. Data
+  // rather than the switcher's own DOM (#337): the scene it has mounted is a value
+  // the chrome holds, so the highlight moves the way every other row's state does —
+  // through the diff, on the next render.
+  games: array<MenuRow.entry>,
   onOpenSettings: unit => unit,
 }
 
@@ -97,7 +100,15 @@ let make = ({
       {Html.string(seedLine(~seed=shareDealSeed, ~status=shareDealStatus))}
     </p>
   </MenuSection>
-  <MenuSection label="Games" heading="Games" tag=Nav> {Html.node(games)} </MenuSection>
+  <MenuSection label="Games" heading="Games" tag=Nav>
+    {games
+    ->Array.map(entry =>
+      <MenuRow
+        label={entry.label} selected=?{entry.selected} onClick={entry.onSelect} key={entry.label}
+      />
+    )
+    ->Html.array}
+  </MenuSection>
   <MenuSection modifier="menu-section--bottom">
     <button className="menu-button" onClick={_ => onOpenSettings()} type_="button">
       {Html.string("Settings")}

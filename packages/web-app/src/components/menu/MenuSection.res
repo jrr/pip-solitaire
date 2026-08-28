@@ -10,8 +10,8 @@
 // word since nothing else here does. `children` is an ordinary field on the props
 // record, filled by the JSX transform from whatever sits between the tags:
 //
-//   <MenuSection label="Games" tag=Nav>   →  children = that one vnode
-//     {Html.node(games)}
+//   <MenuSection modifier="menu-section--bottom">  →  children = that one vnode
+//     <button className="menu-button">…</button>
 //   </MenuSection>
 //
 //   <MenuSection label="Debug" tag=Nav>   →  children = an array of vnodes,

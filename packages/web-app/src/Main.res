@@ -11,10 +11,11 @@
 //     retired Home scene), a **game** section (New · Restart · Share Seed, #156/#98), the
 //     debug/demo scene list as tappable rows, and the About footer (build/version
 //     info plus the conditional "Update" button beside it, #165).
-// The scene area underneath is still the imperative `SceneSwitcher`; its scene
-// container and its row controls are spliced into the view untouched with
-// `Html.node` (the container into the scene band, the rows into the menu), which
-// is exactly how a JSX chrome wraps a subtree it doesn't own.
+// The scene area underneath is still the imperative `SceneSwitcher`, and its scene
+// container is spliced into the scene band untouched with `Html.node`, which is
+// exactly how a JSX chrome wraps a subtree it doesn't own. That container is now the
+// *only* node it hands over: the menu's scene rows left as data (#336, #337), so the
+// switcher is the mount/teardown engine and nothing else.
 
 @val @scope("document") external body: Html.element = "body"
 
@@ -98,6 +99,13 @@ type model = {
   // `revealed` is persisted; the tap count is session state, cleared on the way out
   // of the Settings screen so a half-finished run can't be resumed later.
   hidden: HiddenOptions.t,
+  // Which scene is mounted (#337). The menu's games rows render their highlight from
+  // this, so a scene change moves it through the diff rather than through a class
+  // rewritten on a button the switcher kept hold of. Seeded from `switcher.active`
+  // (the initial mount happens before this loop exists) and moved by `SceneActivated`
+  // after that. `option` because a build with no scenes at all would have nothing
+  // mounted; in practice there is always one.
+  activeScene: option<string>,
   canUndo: bool,
   // The adaptive Settings refresh control (#112). `refreshMode` is `None` until
   // `Refresh.detect` resolves (and stays effectively hidden on an unsupported
@@ -150,6 +158,7 @@ type msg =
   | ToggleCutoutDebug // the menu's safe-area overlay switch (debug)
   | ToggleDebugLog // the Debug screen's console-logging switch (#213)
   | SettingsTitleTapped // a tap on the Settings screen's title — ten reveal the hidden settings
+  | SceneActivated(string) // the switcher mounted a scene — which one the menu highlights (#337)
   | HistoryChanged(bool) // whether the board can undo after a move (#85)
   | RefreshDetected(Refresh.mode) // service-worker presence detected — sets the button's shape (#112)
   | RefreshStarted // the refresh button was tapped — start spinning the button (#112/#201)
@@ -247,10 +256,16 @@ let publishDeal = (seed: option<int>): unit => {
   reportDeal.contents(seed)
 }
 
-// Closing the menu means dispatching into the loop, but a scene row is an
-// imperative listener built before `dispatch` exists (like `updateSW`). It
-// reaches the loop through this ref, filled in just after mount.
+// Closing the menu means dispatching into the loop, but the switcher's activation
+// callback runs before `dispatch` exists (like `updateSW`) — the initial scene mounts
+// during module init. It reaches the loop through this ref, filled in just after mount.
 let closeMenu: ref<unit => unit> = ref(() => ())
+
+// The scene the switcher just mounted, on its way to the model's `activeScene` (#337).
+// Same ref-until-mounted arrangement as `closeMenu`, and it can afford to *drop* the
+// opening report the way `reportHistory` can't: the initial scene is `switcher.active`,
+// which `init` reads directly, so the pre-dispatch default has nothing to remember.
+let reportScene: ref<string => unit> = ref(_ => ())
 
 // The live driver preferences (#139), seeded from the persisted settings (#134's
 // auto-collect defaults on). This is the same ref the board reads at each
@@ -407,6 +422,10 @@ let update = (msg, model) =>
         Preferences.saveConsoleDock(consoleDock)
       },
     )
+  // A scene mounted (#337). Only ever a scene *change* — the switcher answers a tap on
+  // the row of the scene already showing with `~onReselect` instead, precisely so the
+  // live board isn't torn down — so there's no no-change guard here to write.
+  | SceneActivated(id) => ({...model, activeScene: Some(id)}, Html.noEffect)
   | HistoryChanged(canUndo) =>
     canUndo == model.canUndo ? (model, Html.noEffect) : ({...model, canUndo}, Html.noEffect) // no change — don't re-render
   | CloseMenu =>
@@ -594,9 +613,9 @@ let update = (msg, model) =>
   }
 
 // The scene area (switcher + demos) is built imperatively and owns its own
-// subtree. `render` hands back the row controls (placed in the menu) and the
-// scene container (wrapped by the scene band) as two separate real DOM nodes; the
-// view splices each in with `Html.node` and never re-renders them.
+// subtree. `render` hands back one real DOM node — the scene container, wrapped by
+// the scene band and spliced in with `Html.node`, never re-rendered — plus the menu's
+// scene lists as plain data for the chrome to draw (#336, #337).
 //
 // The app always opens on the FreeCell board: `~default="freecell"` is the launch
 // scene, replacing the old "resume the last scene" behaviour — the game is always
@@ -785,7 +804,7 @@ let switcher = SceneSwitcher.render(
   // its own; a demo scene publishes none, which is how the chrome knows there's nothing
   // to drive), reset the two things the board *reports* rather than offers, and close
   // the menu after a row tap.
-  ~onActivate=_scene => {
+  ~onActivate=scene => {
     // One line, and it can't be incomplete (#300): where this used to null eleven hooks
     // by name — and a twelfth that nobody added to the list would have gone on driving
     // the torn-down board — the whole published surface goes at once. The outgoing
@@ -798,6 +817,9 @@ let switcher = SceneSwitcher.render(
     // …and clear the deal number with it (#98), so the Share buttons are dark for the
     // moment between scenes; the mounting scene reports its own (a demo reports none).
     publishDeal(None)
+    // Move the menu's highlight to the scene coming up (#337). The switcher no longer
+    // owns a row to mark, so this report *is* the highlight.
+    reportScene.contents(scene.id)
     closeMenu.contents()
   },
   // A tap on the row for the game already showing: nothing mounts, so nothing above
@@ -961,7 +983,15 @@ let mainScreen = (model, dispatch): MenuMainScreen.props => {
       })
       ->ignore
     ),
-  games: switcher.controls,
+  // The games list (#337): the switcher's primary scenes, paired with the one the model
+  // says is mounted. The switcher hands over scenes, not rows — which of them is
+  // current is the chrome's to know, being what a re-render has to reflect — so the
+  // `selected` flag and the tap are joined up here.
+  games: switcher.primaryScenes->Array.map((scene): MenuRow.entry => {
+    label: scene.label,
+    selected: model.activeScene == Some(scene.id),
+    onSelect: () => switcher.select(scene.id),
+  }),
   onOpenSettings: () => {
     // Re-detect the service-worker state each time Settings opens, so the button
     // reflects a worker that registered (or self-destructed) since page load.
@@ -1180,6 +1210,12 @@ let dispatch = Html.mount(
     // The hidden settings open showing or not according to whether this device has
     // ever completed the ten-tap unlock; the tap run always starts fresh.
     hidden: HiddenOptions.initial(~revealed=Preferences.loadRevealHidden()),
+    // The scene the switcher mounted on its way up (#337) — read straight off it,
+    // since the mount above happened before this loop existed and so before any
+    // message could carry the news. Every later change arrives as `SceneActivated`.
+    // Unlike `canUndo` and `dealSeed` below this needs no capturing ref: the value is
+    // the switcher's own, not something a board reported into a callback.
+    activeScene: switcher.active,
     // Seeded from the board's opening history report (#177): a fresh deal reports
     // `false` (nothing to undo yet), but a resumed game with a restored undo stack
     // reports `true`, and that report already fired during the switcher's initial
@@ -1206,8 +1242,10 @@ let dispatch = Html.mount(
   ~view,
 )
 
-// Now that `dispatch` exists, let a scene row close the menu through it.
+// Now that `dispatch` exists, let a scene row close the menu through it — and let a
+// scene change move the menu's highlight (#337) the same way.
 closeMenu := (() => dispatch(CloseMenu))
+reportScene := (id => dispatch(SceneActivated(id)))
 
 // …and arm the debug console's keys (#271): ` drops it over the board, ` or Escape puts
 // it away. A window listener, so it works wherever the focus happens to be — the board

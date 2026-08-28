@@ -23,8 +23,8 @@
 // stylesheet, with one thing none of the four had — a *selected* highlight for the
 // scene currently mounted. #334 merged the box through the `--control-*` tokens;
 // the highlight is `selected` below (#335), which is what let those rows become
-// `<MenuRow>`s at all. `<MenuDisclosure>` draws its rows here now; the switcher
-// still builds the primary game's by hand, and #337 finishes that.
+// `<MenuRow>`s at all. `<MenuDisclosure>` draws its rows, and as of #337 so does the
+// main screen's games list — the switcher no longer builds any DOM for the menu.
 //
 // A component is just a `props => vnode` function (see `VersionBadge` for why the
 // record is spelled out by hand).
@@ -47,6 +47,25 @@ type trailing =
   | Switch(bool)
   | Chevron
   | Nothing
+
+// **A row as data**, for the lists whose rows a *caller* knows and a component draws:
+// what the row says, what a tap runs, and whether it's the one currently in effect.
+// `<MenuDisclosure>`'s entries are these (#336) and so is the main screen's games list
+// (#337) — the same three fields, because they are the same thing seen twice: scenes,
+// split across two groups of the menu.
+//
+// It lives here rather than in either of those, being the data one `<MenuRow>` is
+// rendered from; `MenuDisclosure.entry` is an alias, so the name those callers already
+// use still means this.
+//
+// `selected` is optional because a list can have nothing to highlight at all: the
+// scene rows always have a current one (a scene is mounted), the debug *state* rows
+// are jumps that leave nothing behind, and they simply omit it.
+type entry = {
+  label: string,
+  onSelect: unit => unit,
+  selected?: bool,
+}
 
 type props = {
   label: string,
