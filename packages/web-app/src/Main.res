@@ -46,7 +46,8 @@ external registerSW: registerSWOptions => bool => promise<unit> = "registerSW"
 // --- Chrome components -------------------------------------------------------
 // The capitalized components used by the view below — `<TopBar/>`, `<Menu/>`,
 // and (nested inside the menu) `<VersionBadge/>` — live under
-// `src/components/`. Each is a `props => vnode` function; capitalized JSX lowers
+// `src/components/` (the menu's own under `components/menu/`). Each is a
+// `props => vnode` function; capitalized JSX lowers
 // `<TopBar .../>` to `Html.jsx(TopBar.make, props)`, filling the module's `props`
 // record from the attributes. See those files for why the record is spelled out
 // by hand instead of derived by the `@jsx.component` sugar.

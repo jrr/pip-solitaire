@@ -33,7 +33,7 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 // (`"preserve": true`, see src/Html.res), which bare Node can't parse, so the
 // module comes through esbuild rather than through a plain `import`.
 const { standardSvg, maskableSvg, fullBleedSvg } = await loadJsxModule(
-  join(HERE, "..", "..", "src", "IconArt.res.mjs"),
+  join(HERE, "..", "..", "src", "cards", "IconArt.res.mjs"),
 );
 const OUT_DIR = join(HERE, "..", "..", "public");
 

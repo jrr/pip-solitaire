@@ -127,7 +127,7 @@ Developers get format-on-save automatically via the workspace settings in
 
 The web app's UI is ReScript JSX compiled in **preserve mode** onto **Preact**:
 the compiler emits real JSX into the `.res.mjs` output and the bundler lowers it
-(see `packages/web-app/src/Html.res`, which holds the bindings and the reasoning).
+(see `packages/web-app/src/runtime/Html.res`, which holds the bindings and the reasoning).
 Two consequences worth knowing before you touch the build:
 
 - **The same three esbuild settings live in three places** — `vite.config.js`
@@ -142,10 +142,40 @@ Two consequences worth knowing before you touch the build:
 Attributes are typed props on `Html.elementProps`, not a generic string map:
 adding an attribute the app has never used means adding a field there.
 
+## Where things live
+
+`src/` is filed by **who owns the DOM**, which is the distinction the code
+actually enforces. Module names are flat regardless of nesting (`namespace: true`
+with `subdirs: true`), so a directory is a filing decision, not a namespace — and
+a file can be moved without touching a single import.
+
+```
+src/
+  Main.res         the entry point; `index.html` links this path, so it stays put
+  runtime/         Html, StaticRender, and the DOM bindings (WebDom, TestDom)
+  components/      pure `props => vnode`; `menu/` holds the slide-over's own
+  scenes/          the imperative layer: Scene, SceneSwitcher, the board, the demos
+  cards/           pure producers of card vnodes and bitmaps; the app icon too
+  platform/        no DOM — storage, navigator, permissions, document-root attrs
+  debug/           dev chrome that owns live DOM (console, log, overlays)
+  styles/  fonts/  the foundations no component owns
+```
+
+**`components/` has an entry condition**, and it is load-bearing: everything in
+there is reachable from `Html.create`, which renders once and throws its host
+away, so those modules must stay pure — no hooks, ever (see the note in
+`runtime/Html.res`). `debug/DebugConsole.res` is the near miss: it renders a
+component shell but owns module-level live DOM, so it is filed by what it owns
+rather than by its shape.
+
+Two paths are coupled and will not follow a move on their own: `index.html`
+names `./src/Main.res.mjs` and `./src/styles/index.css`, and
+`scripts/generate/icons.mjs` names `src/cards/IconArt.res.mjs`.
+
 ## Styling
 
 CSS is **one file per component**, next to the component that renders it —
-`src/components/TopBar.css` beside `TopBar.res`, `src/TableScene.css` beside
+`src/components/TopBar.css` beside `TopBar.res`, `src/scenes/TableScene.css` beside
 `TableScene.res` — and **each component imports its own sheet**, with a one-line
 `%%raw` at the top of the module:
 
