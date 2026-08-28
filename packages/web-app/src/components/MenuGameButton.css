@@ -24,26 +24,31 @@
      a row too narrow for its buttons wraps rather than squeezing them. That's the
      ordinary case here: "Share Seed" plus a six-digit seed is wider than the panel
      has left beside New and Restart, so it takes the second line and grows to fill
-     it. Disabled — Share Seed on a board with no seed — is muted and inert (see
-     MenuGameButton). The Settings button at the foot of the main menu borrows this
-     class too. */
+     it. Disabled — Share Seed on a board with no seed — is muted and inert (the
+     rule for that is in `Menu.css`, shared with the disabled menu row). The
+     Settings button at the foot of the main menu borrows this class too.
+
+     "Styled like the scene rows/toggle" is now literal rather than a claim in a
+     comment: the box is the `--control-*` tokens in `styles/base.css` (#334), and
+     what's left here is what makes this a *button* rather than a row — it splits
+     the group's width, holds a legibility floor, centres its label, and is set in
+     the heavier weight. */
   .menu-button {
     flex: 1 1 auto;
     min-width: 6.5rem;
     text-align: center;
     white-space: nowrap;
-    padding: 10px 12px;
-    font: 600 14px "Libre Franklin", sans-serif;
-    color: #e2e8f0;
-    background: #16233b;
-    border: 1px solid #22304a;
-    border-radius: 8px;
+    padding: var(--control-pad);
+    /* `font` is a shorthand, so it resets `font-weight` to `normal`: the button's
+       600 has to *follow* it. Written the other way round the weight would be
+       silently thrown away and the buttons would render at the rows' weight. */
+    font: var(--control-font);
+    font-weight: 600;
+    color: var(--control-ink);
+    background: var(--control-bg);
+    border: var(--control-border);
+    border-radius: var(--control-radius);
     cursor: pointer;
-  }
-
-  .menu-button:disabled {
-    opacity: 0.5;
-    cursor: default;
   }
 
   /* A number a game button carries as *data* rather than prose (#98): the seed

@@ -18,19 +18,23 @@
   /* A full-width control styled like the scene rows: label on the left, and
      whatever the row's kind puts on the right. It's a <button> throughout — the
      Html runtime only wires clicks, so a switch is a button with a role rather
-     than a checkbox. */
+     than a checkbox.
+
+     "Styled like the scene rows" is now literal rather than a claim in a comment:
+     the box is the `--control-*` tokens in `styles/base.css` (#334), and what's
+     left here is the row's own flex layout. */
   .menu-row {
     display: flex;
     align-items: center;
     justify-content: space-between;
     gap: 0.75rem;
     width: 100%;
-    padding: 10px 12px;
-    font: 14px "Libre Franklin", sans-serif;
-    color: #e2e8f0;
-    background: #16233b;
-    border: 1px solid #22304a;
-    border-radius: 8px;
+    padding: var(--control-pad);
+    font: var(--control-font);
+    color: var(--control-ink);
+    background: var(--control-bg);
+    border: var(--control-border);
+    border-radius: var(--control-radius);
     cursor: pointer;
   }
 
@@ -43,11 +47,9 @@
 
   /* Only an action row is ever disabled — while there's no link to hand over, say
      (no game on screen, or the encode still in flight). The muted styling and
-     `cursor: default` announce it. */
-  .menu-row--action:disabled {
-    opacity: 0.5;
-    cursor: default;
-  }
+     `cursor: default` that announce it were the same two declarations `.menu-button`
+     carried, so they now sit once in `Menu.css` — the sheet for the menu as a
+     whole, which is the smallest thing that owns both kinds of control (#334). */
 
   /* The label + description stack on the left. The label leads; the muted
      description under it says what the row does. `min-width: 0` lets a long

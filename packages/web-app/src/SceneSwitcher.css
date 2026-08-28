@@ -8,15 +8,18 @@
     gap: 0.3rem;
   }
 
+  /* The box is the chrome's shared control box — the `--control-*` tokens in
+     `styles/base.css` (#334). Two of the menu's own components described their box
+     as "styled like the scene rows"; this is the row they meant. */
   .scene-menu__row {
     width: 100%;
     text-align: left;
-    padding: 10px 12px;
-    font: 14px "Libre Franklin", sans-serif;
-    color: #e2e8f0;
-    background: #16233b;
-    border: 1px solid #22304a;
-    border-radius: 8px;
+    padding: var(--control-pad);
+    font: var(--control-font);
+    color: var(--control-ink);
+    background: var(--control-bg);
+    border: var(--control-border);
+    border-radius: var(--control-radius);
     cursor: pointer;
   }
 
@@ -37,17 +40,18 @@
   }
 
   /* The "Debug" disclosure header, styled as a muted row like the ones it
-     hides, with a caret (below) as its open/closed affordance. */
+     hides, with a caret (below) as its open/closed affordance. Same control box as
+     the rows; the muted ink is the one thing it takes differently. */
   .scene-menu__group-label {
     display: flex;
     align-items: center;
     gap: 0.5rem;
-    padding: 10px 12px;
-    font: 14px "Libre Franklin", sans-serif;
-    color: #94a3b8;
-    background: #16233b;
-    border: 1px solid #22304a;
-    border-radius: 8px;
+    padding: var(--control-pad);
+    font: var(--control-font);
+    color: var(--control-ink-muted);
+    background: var(--control-bg);
+    border: var(--control-border);
+    border-radius: var(--control-radius);
     cursor: pointer;
     /* Drop the platform's default disclosure triangle in favour of our own
        caret below: `list-style` covers Firefox's `::marker`, the WebKit
