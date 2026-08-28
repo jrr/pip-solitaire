@@ -1,35 +1,17 @@
 @layer components {
   /* The scene list: SceneSwitcher's row controls (#109), replacing the old
      <select> picker. Each scene is a tappable row; the active scene is
-     highlighted so the menu shows where you are. */
+     highlighted so the menu shows where you are.
+
+     The stacking is all that's left here. The rows themselves are `.menu-row`
+     (MenuRow.css) — this file's `.scene-menu__row` was already the same
+     `--control-*` box (#334), and its `--active` highlight moved there as
+     `.menu-row--active` in #335, so there is nothing about a scene row that
+     differs from a menu row any more. The switcher still builds the primary
+     game's row by hand; #337 hands that DOM to `<MenuRow>` as well. */
   #scene-menu {
     display: flex;
     flex-direction: column;
     gap: 0.3rem;
-  }
-
-  /* The box is the chrome's shared control box — the `--control-*` tokens in
-     `styles/base.css` (#334). Two of the menu's own components described their box
-     as "styled like the scene rows"; this is the row they meant.
-
-     A row is also what `<MenuDisclosure>` puts inside a group, which is why this
-     class outlived the group rules that moved out to it (#336): the rows become
-     `<MenuRow>`s in #335, and this file goes with them. */
-  .scene-menu__row {
-    width: 100%;
-    text-align: left;
-    padding: var(--control-pad);
-    font: var(--control-font);
-    color: var(--control-ink);
-    background: var(--control-bg);
-    border: var(--control-border);
-    border-radius: var(--control-radius);
-    cursor: pointer;
-  }
-
-  .scene-menu__row--active {
-    color: #f0fdf4;
-    background: #166534;
-    border-color: #22c55e;
   }
 }

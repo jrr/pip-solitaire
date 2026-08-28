@@ -44,14 +44,6 @@ type props = {
   open_?: bool,
 }
 
-// The row's class in its two states — plain, and the active scene's highlight.
-// Still `SceneSwitcher.css`'s `.scene-menu__row`: the rows become `<MenuRow>`s in
-// #335, and the group's own classes moved here ahead of them.
-let rowClass = entry =>
-  entry.selected->Option.getOr(false)
-    ? "scene-menu__row scene-menu__row--active"
-    : "scene-menu__row"
-
 let make = (props: props) => {
   // Absent rather than `open={false}` for the closed case, and that's the whole
   // trick that lets a reader's choice survive a re-render: Preact writes a prop
@@ -65,14 +57,14 @@ let make = (props: props) => {
     <div className="scene-menu__group-body">
       {props.entries
       ->Array.map(entry =>
-        <button
-          className={rowClass(entry)}
-          type_="button"
-          onClick={_ => entry.onSelect()}
-          key={entry.label}
-        >
-          {Html.string(entry.label)}
-        </button>
+        // The same `<MenuRow>` the rest of the menu is built from (#335). It used to
+        // be a hand-classed `<button>` with a `rowClass` helper computing the
+        // highlight, which was this component prototyping `MenuRow`'s `selected`
+        // prop before that prop existed; `selected` now goes straight through, and
+        // brings `aria-current` with it.
+        <MenuRow
+          label={entry.label} selected=?{entry.selected} onClick={entry.onSelect} key={entry.label}
+        />
       )
       ->Html.array}
     </div>

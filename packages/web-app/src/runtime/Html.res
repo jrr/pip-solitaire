@@ -106,6 +106,7 @@ type elementProps = {
   @as("aria-live") ariaLive?: string,
   @as("aria-busy") ariaBusy?: string,
   @as("aria-checked") ariaChecked?: string,
+  @as("aria-current") ariaCurrent?: string,
   @as("aria-disabled") ariaDisabled?: string,
   // --- data-*, read by the browser tests and by CSS ---
   @as("data-rendering") dataRendering?: string,

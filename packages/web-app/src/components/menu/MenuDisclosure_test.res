@@ -32,7 +32,7 @@ let render = (~summary="states", ~open_=?, entries: array<MenuDisclosure.entry>)
 let labelled = (label, onSelect): MenuDisclosure.entry => {label, onSelect}
 let inert = label => labelled(label, () => ())
 
-let rowLabels = group => group->findAll(".scene-menu__row")->Array.map(text)
+let rowLabels = group => group->findAll(".menu-row")->Array.map(text)
 
 describe("MenuDisclosure (#336)", () => {
   test("is a native disclosure, labelled and closed", () => {
@@ -77,25 +77,34 @@ describe("MenuDisclosure (#336)", () => {
       labelled("Almost won", () => log->Array.push("almost")),
       labelled("Finish", () => log->Array.push("finish")),
     ])
-    group->findAll(".scene-menu__row")->Array.forEach(click)
+    group->findAll(".menu-row")->Array.forEach(click)
     expect(log)->toEqual(["mid", "almost", "finish"])
   })
 
   test("highlights the selected row, and only that one", () => {
     // The scene rows' active highlight, which used to be a class the switcher wrote
-    // onto its own buttons as scenes changed.
+    // onto its own buttons as scenes changed. It's `<MenuRow selected>` now (#335),
+    // so the announcement comes with the class.
     let group = render([
       {label: "Gallery", onSelect: () => (), selected: false},
       {label: "Raster", onSelect: () => (), selected: true},
       inert("Motion"),
     ])
-    expect(group->findAll(".scene-menu__row--active")->Array.map(text))->toEqual(["Raster"])
+    expect(group->findAll(".menu-row--active")->Array.map(text))->toEqual(["Raster"])
+    expect(group->findAll("[aria-current]")->Array.map(text))->toEqual(["Raster"])
+  })
+
+  test("draws its rows as the menu's own row component", () => {
+    // Not a hand-classed <button> with a `rowClass` helper any more (#335): the
+    // rows are `<MenuRow>`s, which is what the label stack here is — and what the
+    // highlight and its `aria-current` above come from.
+    expect(render([inert("Mid-game")])->textIn(".menu-row .menu-row__label"))->toBe("Mid-game")
   })
 
   test("makes each row a real button, not a clickable div", () => {
     // `type="button"` matters inside a form-less panel too: it's what a keyboard
     // reaches with Tab and activates with Enter or Space.
-    let rows = render([inert("Mid-game")])->findAll(".scene-menu__row")
+    let rows = render([inert("Mid-game")])->findAll(".menu-row")
     expect(rows->Array.map(tag))->toEqual(["BUTTON"])
     expect(rows->Array.map(row => row->attrOr("type")))->toEqual(["button"])
   })

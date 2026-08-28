@@ -28,7 +28,7 @@ describe("SceneSwitcher rows", () => {
     )
     // The initial mount.
     expect(mounts.contents)->toBe(1)
-    switch switcher.controls->find(".scene-menu__row") {
+    switch switcher.controls->find(".menu-row") {
     | Some(row) => row->click
     | None => expect("the freecell row")->toBe("but it wasn't rendered")
     }
@@ -45,7 +45,7 @@ describe("SceneSwitcher rows", () => {
       ~onReselect=() => reselects := reselects.contents + 1,
       [countingScene(~id="freecell", ~mounts)],
     )
-    switch switcher.controls->find(".scene-menu__row") {
+    switch switcher.controls->find(".menu-row") {
     | Some(row) => row->click
     | None => expect("the freecell row")->toBe("but it wasn't rendered")
     }
@@ -67,13 +67,36 @@ describe("SceneSwitcher rows", () => {
     )
     // The non-primary scene is an entry in the debug group, not a row in the games
     // list — the games list holds the primary game alone.
-    expect(switcher.controls->findAll(".scene-menu__row")->Array.length)->toBe(1)
+    expect(switcher.controls->findAll(".menu-row")->Array.length)->toBe(1)
     switch switcher.debugScenes()->Array.get(0) {
     | Some(entry) => entry.onSelect()
     | None => expect("the demo entry")->toBe("but there wasn't one")
     }
     expect(demo.contents)->toBe(1)
     expect(reselects.contents)->toBe(0)
+  })
+
+  test("marks the showing scene's row the way <MenuRow selected> does", () => {
+    // The row is still built here by hand, so what it must not do is drift from the
+    // component the rest of the menu uses (#335): the same `menu-row` classes, and
+    // `aria-current` on the current row — absent, not "false", on one that isn't.
+    let mounts = ref(0)
+    let switcher = SceneSwitcher.render(
+      ~default="freecell",
+      [countingScene(~id="freecell", ~mounts), countingScene(~id="gallery", ~mounts)],
+    )
+    switch switcher.controls->find(".menu-row") {
+    | Some(row) =>
+      expect(row->classes)->toBe("menu-row menu-row--action menu-row--active")
+      expect(row->attr("aria-current"))->toBe(Some("true"))
+      expect(row->textIn(".menu-row__label"))->toBe("freecell")
+      // Off to a scene in the debug group: the primary row stops being current, and
+      // drops the attribute rather than reporting a negative.
+      switcher.ensureActive("gallery")
+      expect(row->classes)->toBe("menu-row menu-row--action")
+      expect(row->hasAttr("aria-current"))->toBe(false)
+    | None => expect("the freecell row")->toBe("but it wasn't rendered")
+    }
   })
 })
 

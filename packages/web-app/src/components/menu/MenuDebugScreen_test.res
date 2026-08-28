@@ -122,7 +122,7 @@ describe("MenuDebugScreen (#307)", () => {
     ])
     let rowsIn = index =>
       switch screen->findAll(".scene-menu__group")->Array.get(index) {
-      | Some(group) => group->findAll(".scene-menu__group-body .scene-menu__row")->Array.map(text)
+      | Some(group) => group->findAll(".scene-menu__group-body .menu-row")->Array.map(text)
       | None => ["<no such group>"]
       }
     expect(rowsIn(0))->toEqual(["Gallery", "Raster"])

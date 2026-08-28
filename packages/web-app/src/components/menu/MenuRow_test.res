@@ -17,14 +17,24 @@
 // 3. **A missing description renders nothing at all**, rather than an empty
 //    element — `<MenuWiggleRow>` depends on that: a healthy switch shows just its
 //    title, and a stray empty `desc` span would put a gap under it.
+// 4. **`selected` is orthogonal to the kind, in the class list and in ARIA.** It
+//    marks the row currently in effect out of a set (the mounted scene), so it has
+//    to sit *alongside* the kind modifier rather than replace it, and `aria-current`
+//    follows the same absent-not-"false" rule as `aria-checked` above.
 //
 // Rendered through `Html.create` like the other component tests here (see
 // `AboutFooter_test`), which needs no DOM beyond what jsdom gives.
 open Vitest
 open TestDom
 
-let render = (~label="Auto-collect", ~desc=?, ~trailing=?, ~enabled=?, ~onClick=() => ()) =>
-  Html.create(MenuRow.make({label, ?desc, ?trailing, ?enabled, onClick}))
+let render = (
+  ~label="Auto-collect",
+  ~desc=?,
+  ~trailing=?,
+  ~enabled=?,
+  ~selected=?,
+  ~onClick=() => (),
+) => Html.create(MenuRow.make({label, ?desc, ?trailing, ?enabled, ?selected, onClick}))
 
 let has = (row, selector) => row->find(selector)->Option.isSome
 let text = (row, selector) => row->textIn(selector)
@@ -74,6 +84,31 @@ describe("MenuRow", () => {
     expect(render(~trailing=MenuRow.Chevron)->attr("role"))->toBe(None)
     expect(render(~trailing=MenuRow.Chevron)->attr("aria-checked"))->toBe(None)
     expect(render()->attr("aria-checked"))->toBe(None)
+  })
+
+  test("marks the selected row alongside its kind, not instead of it", () => {
+    // The highlight is a state the row is *in*, so `--active` is appended to
+    // whichever kind it is; a scene row is an action row that happens to be current.
+    expect(render(~selected=true)->classes)->toBe("menu-row menu-row--action menu-row--active")
+    // Orthogonal to the trailing, which is the whole reason this is a prop rather
+    // than a fourth `trailing`: a switch row can be the selected one too.
+    expect(render(~selected=true, ~trailing=MenuRow.Switch(true))->classes)->toBe(
+      "menu-row menu-row--switch menu-row--on menu-row--active",
+    )
+    // Unselected is the default, and adds nothing.
+    expect(render(~selected=false)->classes)->toBe("menu-row menu-row--action")
+    expect(render()->classes)->toBe("menu-row menu-row--action")
+  })
+
+  test("announces the selected row with aria-current, and says nothing otherwise", () => {
+    // Navigation rows — a tap changes what's mounted — so `aria-current`, not
+    // `aria-selected`.
+    expect(render(~selected=true)->attr("aria-current"))->toBe(Some("true"))
+    // Absent, not "false", exactly as with `aria-checked` above: an enumerated
+    // attribute that isn't there is how the other rows say they aren't the current
+    // one, and it's what keeps them from each announcing a negative.
+    expect(render(~selected=false)->attr("aria-current"))->toBe(None)
+    expect(render()->hasAttr("aria-current"))->toBe(false)
   })
 
   test("hides the chevron from assistive tech, so the row is named by its label", () => {
