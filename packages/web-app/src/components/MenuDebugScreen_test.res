@@ -11,9 +11,10 @@
 //    otherwise, shoving the scene lists below it.
 // 3. **It's disabled while there's nothing to share** — a scene with no game, or the
 //    moment between opening the screen and the encode resolving — and says which.
-// 4. **The two lists arrive differently, and both land.** The scene list is a node
-//    SceneSwitcher owns, so the screen must hand back the very element it was given;
-//    the state list is data, rendered by `<DebugStates>`. Scenes first, then states.
+// 4. **Both lists land, as their own groups, scenes first and then states.** They
+//    are the same component now (`<MenuDisclosure>`, #336), which is exactly why the
+//    screen has to be pinned on giving each its own entries: two calls that differ
+//    only in their data are two calls that can be crossed.
 // 5. **Back goes one step, to Settings** — not all the way out of the pane.
 //
 // Rendered through `Html.create` like the other component tests here (see
@@ -21,14 +22,18 @@
 open Vitest
 open TestDom
 
-let debugScenes = Html.make("div")
+let debugScenes: array<MenuDisclosure.entry> = [
+  {label: "Gallery", onSelect: () => ()},
+  {label: "Raster", onSelect: () => ()},
+]
 
-let debugStates: array<DebugStates.entry> = [
+let debugStates: array<MenuDisclosure.entry> = [
   {label: "Mid-game", onSelect: () => ()},
   {label: "Almost won", onSelect: () => ()},
 ]
 
 let render = (
+  ~debugScenesOpen=false,
   ~shareEnabled=true,
   ~shareStatus=None,
   ~cutoutDebug=false,
@@ -50,6 +55,7 @@ let render = (
       shareStatus,
       onShareGame,
       debugScenes,
+      debugScenesOpen,
       debugStates,
     }),
   )
@@ -108,16 +114,28 @@ describe("MenuDebugScreen (#307)", () => {
     expect(taps.contents)->toBe(1)
   })
 
-  test("splices the scene list in rather than rebuilding it, and renders the states", () => {
+  test("renders the two groups, scenes first, each with its own entries", () => {
     let screen = render()
-    // The very same node, so the switcher's subtree is left alone across open/close
-    // re-renders.
-    expect(screen->contains(debugScenes))->toBe(true)
-    // …and the states are the screen's own markup, one row per entry, in order.
-    expect(screen->findAll(".scene-menu__group-body .scene-menu__row")->Array.map(text))->toEqual([
-      "Mid-game",
-      "Almost won",
+    expect(screen->findAll(".scene-menu__group > summary")->Array.map(text))->toEqual([
+      "scenes",
+      "states",
     ])
+    let rowsIn = index =>
+      switch screen->findAll(".scene-menu__group")->Array.get(index) {
+      | Some(group) => group->findAll(".scene-menu__group-body .scene-menu__row")->Array.map(text)
+      | None => ["<no such group>"]
+      }
+    expect(rowsIn(0))->toEqual(["Gallery", "Raster"])
+    expect(rowsIn(1))->toEqual(["Mid-game", "Almost won"])
+  })
+
+  test("opens the scenes group when the switcher says the app landed inside it", () => {
+    // A `?scene=gallery` deep link: the highlighted row has to be visible rather
+    // than hidden behind a collapsed disclosure. The states group is unaffected.
+    let open_ = screen =>
+      screen->findAll(".scene-menu__group")->Array.map(group => group->hasAttr("open"))
+    expect(render(~debugScenesOpen=true)->open_)->toEqual([true, false])
+    expect(render(~debugScenesOpen=false)->open_)->toEqual([false, false])
   })
 
   test("goes back one step, to Settings — not all the way out", () => {

@@ -14,12 +14,13 @@
 //     positions (`debugStates`, "states") a tap drops the board into (`Scenario`),
 //     the menu twin of `?state=`.
 //
-// The two groups arrive differently, and the difference is the point. `debugScenes`
-// is a real DOM node `SceneSwitcher` owns and keeps writing to (it highlights the
-// active row as scenes change), so it's spliced in untouched. `debugStates` is a list
-// of *entries* rendered by `<DebugStates>` — it used to be a spliced node too, built
-// by hand, and became data the compiler can check once the runtime could diff a list
-// (see that file).
+// The two groups arrive the same way and are drawn by the same component: a list of
+// `<MenuDisclosure>` entries each, one from `SceneSwitcher` and one from `Main`. They
+// didn't used to. The scene list was a real DOM node the switcher owned and kept
+// writing to (it highlighted the active row by hand), spliced in with `Html.node`;
+// the state list was `<DebugStates>`, twelve lines of JSX describing that same tree a
+// second time. #336 made the markup one component and the highlight a `selected`
+// field, which is what left this screen with two calls that differ in their data.
 //
 // A component is just a `props => vnode` function (see `VersionBadge` for why the
 // record is spelled out by hand).
@@ -39,12 +40,14 @@ type props = {
   // description while it's up, so the row doesn't change height as it comes and goes.
   shareStatus: option<string>,
   onShareGame: unit => unit,
-  // An externally-owned real DOM node (SceneSwitcher owns it and keeps writing to
-  // it — the active scene's row is highlighted as scenes change), spliced with
-  // `Html.node` so the diff leaves it be across open/close re-renders.
-  debugScenes: Html.element,
-  // The named positions, as data rather than as a node: `<DebugStates>` renders them.
-  debugStates: array<DebugStates.entry>,
+  // The debug/demo scenes, one entry per scene, with the mounted one `selected`.
+  debugScenes: array<MenuDisclosure.entry>,
+  // Whether that group opens expanded — `SceneSwitcher`'s call, made when the app
+  // opened on a scene that lives inside it (`?scene=gallery`).
+  debugScenesOpen: bool,
+  // The named positions. No `selected`: a state row is a jump, and leaves nothing
+  // behind for the menu to point at.
+  debugStates: array<MenuDisclosure.entry>,
 }
 
 // The "Share game state" row's description. The status line takes over the
@@ -70,6 +73,7 @@ let make = ({
   shareStatus,
   onShareGame,
   debugScenes,
+  debugScenesOpen,
   debugStates,
 }) => <>
   <MenuHeader
@@ -100,8 +104,8 @@ let make = ({
         enabled=shareEnabled
         onClick=onShareGame
       />
-      {Html.node(debugScenes)}
-      <DebugStates entries=debugStates />
+      <MenuDisclosure summary="scenes" entries=debugScenes open_=debugScenesOpen />
+      <MenuDisclosure summary="states" entries=debugStates />
     </MenuSection>
   </div>
 </>

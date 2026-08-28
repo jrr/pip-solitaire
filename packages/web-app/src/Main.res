@@ -861,12 +861,13 @@ switch url.shared {
 // the menu is explicit (a no-op if `ensureActive` already closed it on a scene
 // change).
 //
-// A list of entries rather than a built node: `<DebugStates>` renders them (it used
-// to hand back real DOM for the menu to splice). Module-level, because nothing about
-// a row depends on the chrome model — the same array is handed down on every render.
+// A list of entries rather than a built node: `<MenuDisclosure>` renders them — the
+// same component the switcher's "scenes" group is drawn with (#336). Module-level,
+// because nothing about a row depends on the chrome model — the same array is handed
+// down on every render.
 let debugStates = Scenario.scenariosFor(
   Game.freecell,
-)->Array.map((scenario: Scenario.named): DebugStates.entry => {
+)->Array.map((scenario: Scenario.named): MenuDisclosure.entry => {
   label: scenario.label,
   onSelect: () => {
     switcher.ensureActive("freecell")
@@ -1034,7 +1035,10 @@ let debugScreen = (model, dispatch): MenuDebugScreen.props => {
       })
       ->ignore
     ),
-  debugScenes: switcher.debugScenes,
+  // Asked afresh on every render: the entry for the scene that's mounted now is the
+  // `selected` one, and that's what puts the highlight in the menu.
+  debugScenes: switcher.debugScenes(),
+  debugScenesOpen: switcher.debugScenesOpen,
   debugStates,
 }
 
