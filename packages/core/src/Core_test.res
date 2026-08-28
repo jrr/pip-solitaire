@@ -147,6 +147,39 @@ describe("Game", () => {
     )
 
     test(
+      "a board says how to deal another of its own game (#349)",
+      () => {
+        // The inverse of `seed`, and the half that used to be missing: `seed` says which
+        // number produced *this* board, `deal` says how to produce the next one. So
+        // "deal me another" is a question the board in hand answers — no caller has to
+        // name FreeCell's deal function to ask it.
+        let cards = (game: Game.t) => game.piles->Array.map(p => p.cards)
+        let another = Game.freecell.deal->Option.getOrThrow
+        let dealt = another(4242)
+        expect(dealt.id)->toBe(Game.freecell.id)
+        expect(dealt.seed)->toEqual(Some(4242))
+        expect(cards(dealt))->toEqual(cards(Game.freecellDeal(~seed=4242)))
+        // …and the board that comes back can deal again, which is what makes re-dealing
+        // repeatable rather than a one-shot: New Game after New Game after New Game.
+        let again = dealt.deal->Option.getOrThrow
+        expect(cards(again(9)))->toEqual(cards(Game.freecellDeal(~seed=9)))
+
+        // `dealt` is that capability applied, and the answer for a board with no deal to
+        // vary is the board itself — a caller asking for the next board of a fixed game
+        // gets a board rather than an exception.
+        expect(cards(Game.dealt(Game.freecell, ~seed=4242)))->toEqual(cards(dealt))
+        expect(Game.dealt({...Game.freecell, deal: None}, ~seed=4242).seed)->toEqual(
+          Some(Game.freecellSeed),
+        )
+
+        // The game a deal *number* belongs to when nothing names a game — what a bare
+        // `deal`/`deal 12345` lays out. FreeCell today, and re-dealable by definition.
+        expect(Game.default.id)->toBe(Game.freecell.id)
+        expect(Game.default.deal->Option.isSome)->toBe(true)
+      },
+    )
+
+    test(
       "plays a scripted sequence of legal and illegal single-card moves through the reducer",
       () => {
         let board = Game.freecell
@@ -284,6 +317,7 @@ describe("Game", () => {
         {role: Cascade, stacking: Fanned, rule: Rules.cascade, capacity: None, cards: []},
       ],
       seed: None,
+      deal: None,
     }
     // A board with only cascades, for the absent-role case.
     let cascadesOnly: Game.t = {
@@ -345,6 +379,7 @@ describe("GameState", () => {
       },
     ],
     seed: None,
+    deal: None,
   }
 
   test("initial places each pile's dealt cards, and nothing rests loose", () => {
@@ -643,6 +678,7 @@ describe("Reducer", () => {
       }),
     ),
     seed: None,
+    deal: None,
   }
   // The staging column a card opens on, so a test can name where it started.
   let stagedAt = (card: Card.card) => 2 + staged->Array.findIndex(c => GameState.sameCard(c, card))
@@ -854,6 +890,7 @@ describe("Reducer", () => {
         },
       ],
       seed: None,
+      deal: None,
     }
     let fresh = () => GameState.initial(capGame)
 
@@ -1070,6 +1107,7 @@ describe("Reducer", () => {
         {role: Cascade, stacking: Fanned, rule: Rules.cascade, capacity: None, cards: []},
       ],
       seed: None,
+      deal: None,
     }
     // A hand-built snapshot from the four piles' contents, so a test can pose any
     // board it likes.
@@ -1167,6 +1205,7 @@ describe("Reducer", () => {
             },
           ],
           seed: None,
+          deal: None,
         }
         let state = GameState.initial(twoFoundations)
         // Both empty foundations accept the Ace, so there are two foundation moves…
@@ -1205,6 +1244,7 @@ describe("Reducer", () => {
         {role: Cascade, stacking: Fanned, rule: Rules.Free, capacity: None, cards: []},
       ],
       seed: None,
+      deal: None,
     }
     // A hand-built snapshot from the six piles' contents (foundations 0–3, then two
     // Free cascades 4–5), so a test can pose any foundation heights it likes.
@@ -1387,6 +1427,7 @@ describe("Reducer", () => {
         ),
       ),
       seed: None,
+      deal: None,
     }
     // A snapshot from four foundation runs then the cascade contents, padded to the
     // board's eight cascades so the pile count always lines up.
@@ -1488,6 +1529,7 @@ describe("Reducer", () => {
         {role: Cascade, stacking: Fanned, rule: Rules.cascade, capacity: None, cards: []},
       ],
       seed: None,
+      deal: None,
     }
     // A distinct single-card filler, so "occupied" piles hold real, unique cards.
     let f = i => [Cards.all->Array.getUnsafe(i)]
@@ -1712,6 +1754,7 @@ describe("Reducer", () => {
         {role: Cascade, stacking: Fanned, rule: Rules.cascade, capacity: None, cards: []},
       ],
       seed: None,
+      deal: None,
     }
     let stateOf = (piles): GameState.t => {GameState.piles, loose: []}
 
@@ -1853,6 +1896,7 @@ describe("Reducer", () => {
         ),
       ),
       seed: None,
+      deal: None,
     }
     let fresh = () => GameState.initial(mcGame)
 

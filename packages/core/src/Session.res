@@ -463,17 +463,22 @@ let deal = (
     Some(open_(~clock, ~options, ~seed, game, state)),
     {change: Dealt, reply: []},
   )
+  // The two readings that name a number but no game — a bare `deal` (a number invented
+  // for it) and `deal 12345` — both lay out that deal of the default game (#349). Which
+  // game a plain number belongs to is `Game`'s to say, not this interpreter's: it asks
+  // `Game.default` for another board rather than naming FreeCell's deal function, so a
+  // second seeded game costs nothing here.
+  let numbered = seed => {
+    let dealt = Game.dealt(Game.default, ~seed)
+    opened(~seed=dealt.seed, dealt, GameState.initial(dealt))
+  }
   switch Command.resolveDeal(~game, ~scenario) {
-  // A dealt board reports the number that dealt it (`Game.freecellDeal` records it), a
+  // A dealt board reports the number that dealt it (`Game.t`'s `seed` records it), a
   // named game its own, and a posed position the deal it descends from — which for all
   // but `almost-won` is none, so the board says nothing rather than naming a deal it
   // didn't come from.
-  | Command.Fresh =>
-    let dealt = Game.freecellDeal(~seed=newSeed())
-    opened(~seed=dealt.seed, dealt, GameState.initial(dealt))
-  | Command.Numbered({seed}) =>
-    let dealt = Game.freecellDeal(~seed)
-    opened(~seed=dealt.seed, dealt, GameState.initial(dealt))
+  | Command.Fresh => numbered(newSeed())
+  | Command.Numbered({seed}) => numbered(seed)
   | Command.Named({game, position: None}) => opened(~seed=game.seed, game, GameState.initial(game))
   | Command.Named({game, position: Some(position)}) =>
     opened(~seed=position.seed, game, position.build(game))

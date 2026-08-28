@@ -621,26 +621,30 @@ let update = (msg, model) =>
 // scene, replacing the old "resume the last scene" behaviour — the game is always
 // home. An explicit `?scene=` still wins (`~forced`), and `?state=` still forces a
 // scenario, so the screenshot report's `?scene=freecell&state=midgame` lands
-// exactly where it says. `Game.all` is the source of truth for the game scenes;
-// only FreeCell (a seeded shuffle) is re-dealable.
+// exactly where it says. `Game.all` is the source of truth for the game scenes; which
+// of them is re-dealable is the game's own answer (`Game.t.deal`) — FreeCell's seeded
+// shuffle today.
 let url = AppUrl.parse()
 
 // A fresh seed for each New Game (#108). The seed is the future "deal number"
-// (#98): random for now, so every re-deal lays out a different FreeCell board;
-// a deal-number entry point can later supply a chosen seed to this same
-// `freecellDeal`. `Math.random` is fine here — this is the impure view layer,
-// not `core`'s deterministic deal path.
+// (#98): random for now, so every re-deal lays out a different board; a deal-number
+// entry point can later supply a chosen seed to the game's own `deal`. `Math.random`
+// is fine here — this is the impure view layer, not `core`'s deterministic deal path.
 let randomSeed = () => (Math.random() *. 1_000_000.)->Float.toInt
 
-// Only FreeCell is re-dealable: it's built from a seeded shuffle, so a new seed
-// gives a genuinely new board. The fixed-layout demos have no seed to vary, so the
-// board they publish offers no `newGame` and no `loadGame` — the scene's `~newDeal`
+// Only a *re-dealable* game gets a new board out of a new seed: one built from a seeded
+// shuffle, which is FreeCell today. The fixed-layout demos have no deal to vary, so the
+// board they publish offers no `newGame` and no `loadDeal` — the scene's `~newDeal`
 // is what decides both (see `TableScene.controls`).
 let gameScene = (game: Game.t) => {
-  let isFreecell = game.id == Game.freecell.id
-  // A *plain* FreeCell open is the only place save-and-resume applies (#177): the
-  // app's primary game, opened without a URL asking for a specific position. A
-  // `?state=` scenario or a `?seed=` deal link addresses an exact board, so it opens
+  // The question every decision below turns on, asked of the game in hand rather than of
+  // its id (#349): can this board deal another of itself? A second seeded game answers
+  // yes on the day it's added, with no edit here.
+  let canDeal = game.deal->Option.isSome
+  // A *plain* open of a re-dealable game is the only place save-and-resume applies
+  // (#177): the app's primary kind of game — one you can be handed a fresh board of —
+  // opened without a URL asking for a specific position. A `?state=` scenario or a
+  // `?seed=` deal link addresses an exact board, so it opens
   // that board and leaves any saved game strictly alone — neither resumed nor
   // overwritten (the issue's "a `?state=` link doesn't disturb a saved game", and the
   // same for the screenshot report's `?seed=`/`?state=` shots, which must stay
@@ -651,9 +655,9 @@ let gameScene = (game: Game.t) => {
   // **takes over** — becoming the saved game, with play from there saving as usual,
   // exactly as if it had been dealt here. Opening someone's link adopts their game
   // rather than borrowing it, so the two halves are gated separately below.
-  let sharedOpen = isFreecell && url.shared->Option.isSome
+  let sharedOpen = canDeal && url.shared->Option.isSome
   let plainOpen =
-    isFreecell && url.state->Option.isNone && url.seed->Option.isNone && url.shared->Option.isNone
+    canDeal && url.state->Option.isNone && url.seed->Option.isNone && url.shared->Option.isNone
   // Resume a saved game when there is one and this is a plain open; otherwise `None`
   // (nothing saved, corrupt/old data, or a URL-addressed board) means deal fresh.
   // Storage is read when the scene *mounts*, not here where it's built: a scene can
@@ -662,14 +666,14 @@ let gameScene = (game: Game.t) => {
   // mount would restore over the game actually being played.
   let loadHistory = () => plainOpen ? SavedGame.load(game.id) : None
 
-  // Open FreeCell from a fresh random seed on each load too (#108/#98), so a plain
-  // reload with nothing saved lays out a new board instead of always deal #1 —
+  // Open a re-dealable game from a fresh random seed on each load too (#108/#98), so a
+  // plain reload with nothing saved lays out a new board instead of always deal #1 —
   // matching what New Game does. A `?seed=` pins that deal number instead (#98), so a
   // link — and the screenshot report's dealt-board shot — lands on the same board
-  // every time. The fixed module-level `Game.freecell` (seed 1) stays the
+  // every time. The game value as `Game.all` holds it (FreeCell's is deal #1) stays the
   // deterministic fallback for a forced `?state=` scenario, which screenshots depend
-  // on: when a state is forced we mount the fixed deal so `Scenario.forName` derives
-  // from the exact same board the report expects. The fixed-layout demos have no seed
+  // on: when a state is forced we mount that fixed deal so `Scenario.forName` derives
+  // from the exact same board the report expects. The fixed-layout demos have no deal
   // to vary, so they mount as-is. When a saved game is resumed the opening deal only
   // supplies the 52 card nodes; every resting position comes from the restored history.
   //
@@ -681,9 +685,11 @@ let gameScene = (game: Game.t) => {
   // same reason. Both are mitigations, not a fix — see #259, which measures the gap
   // (sub-millisecond, so one render frame) and weighs the ways to close it.
   let addressed = url.state->Option.isSome || url.shared->Option.isSome
-  let opening =
-    isFreecell && !addressed ? Game.freecellDeal(~seed=url.seed->Option.getOr(randomSeed())) : game
-  let newDeal = isFreecell ? Some(() => Game.freecellDeal(~seed=randomSeed())) : None
+  let opening = switch game.deal {
+  | Some(deal) if !addressed => deal(url.seed->Option.getOr(randomSeed()))
+  | _ => game
+  }
+  let newDeal = game.deal->Option.map(deal => () => deal(randomSeed()))
   TableScene.make(
     ~initial=?url.state->Option.flatMap(name => Scenario.forName(game, name)),
     // Restore the saved undo/redo stack (#177) and, when saving applies, hand the
@@ -868,7 +874,12 @@ switch url.shared {
         // dealt from a number here, and a later resume asking "which deal is this?"
         // has to be told there isn't one rather than handed the last one this device
         // dealt for itself.
-        SavedGame.clearSeed(Game.freecell.id)
+        //
+        // The key is the *board being played*, not a hardcoded game (#349): `SavedGame`
+        // is keyed by game id and this was the one place that reached past the key.
+        // Scene ids *are* game ids (`TableScene`'s `id: game.id`), so the scene this
+        // link opened onto names the seed to clear.
+        switcher.active->Option.forEach(SavedGame.clearSeed)
         liveBoard.contents->Option.forEach(board => board.loadHistory(restored))
       | None => DebugLog.message("share link: could not decode the shared game")
       }
@@ -930,13 +941,13 @@ let openNamedDeal = (~game: Game.t, ~position: option<Scenario.named>): string =
     }
   | None =>
     // No position named, so the scene now showing *is* the answer. For a seeded game
-    // that still leaves which deal: pin its canonical one, so `deal freecell` means
-    // `deal 1` here exactly as it does in the CLI, rather than whatever random board the
-    // mount happened to invent. A fixed-layout demo has no seed and needs nothing more —
-    // mounting its scene dealt it.
-    switch (game.seed, liveBoard.contents->Option.flatMap(board => board.loadGame)) {
-    | (Some(_), Some(load)) =>
-      load(game)
+    // that still leaves which deal: pin its canonical one — the number the `Game.all`
+    // value reports — so `deal freecell` means `deal 1` here exactly as it does in the
+    // CLI, rather than whatever random board the mount happened to invent. A
+    // fixed-layout demo has no seed and needs nothing more — mounting its scene dealt it.
+    switch (game.seed, liveBoard.contents->Option.flatMap(board => board.loadDeal)) {
+    | (Some(seed), Some(load)) =>
+      load(seed)
       ""
     | _ => ""
     }
@@ -1319,12 +1330,14 @@ DebugConsole.setRunner(line => {
         []
       | None => Render.text("Nothing to deal on this scene.")
       }
-    // `deal <n>` opens a *chosen* deal number. Turning the number into a board stays out
-    // here, because only the driver knows a deal number is a seeded FreeCell shuffle.
+    // `deal <n>` opens a *chosen* deal number, on the board it's typed at: the number
+    // goes straight to the live board, which lays it out with its own game's deal
+    // (#349). This used to build the board out here from `Game.freecellDeal`, which
+    // meant a console command deciding for itself which game a number belonged to.
     | Command.Numbered({seed}) =>
-      switch liveBoard.contents->Option.flatMap(board => board.loadGame) {
+      switch liveBoard.contents->Option.flatMap(board => board.loadDeal) {
       | Some(load) =>
-        load(Game.freecellDeal(~seed))
+        load(seed)
         []
       | None => Render.text("This scene doesn't play a numbered deal.")
       }

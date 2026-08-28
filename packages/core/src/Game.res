@@ -18,6 +18,9 @@
 //     foundation — side by side.
 //   - `seed` — the deal number that reproduces this board, when it has one, so a
 //     dealt board can say where it came from.
+//   - `deal` — how to lay out *another* board of the same game, from a deal number.
+//     The inverse of `seed`, and the reason nothing outside this module has to name
+//     `freecellDeal` to mean "a fresh board of whatever is being played" (#349).
 //
 // The view (`TableScene`) reads all of this and lays the board out on its own
 // terms — "piles hang from the top of the stage and grow downward".
@@ -71,7 +74,9 @@ type pile = {
   cards: array<card>,
 }
 
-type t = {
+// `type rec` because a board carries its own `deal` (below), which hands back another
+// board: the one place this type refers to itself.
+type rec t = {
   id: string, // stable scene id (also the picker / localStorage key)
   name: string, // human label shown in the scene picker
   piles: array<pile>,
@@ -88,6 +93,21 @@ type t = {
   // to share a deal can then just read this field rather than special-casing a game
   // by id.
   seed: option<int>,
+  // **How to lay out another board of this game**, from a deal number (#349) — the
+  // inverse of `seed`, and the half that was missing. `seed` says which number produced
+  // *this* board; `deal` says how to produce the next one, so "deal me another" is a
+  // question a board can answer about itself.
+  //
+  // `None` for a fixed board with no deal to vary — the same boards that answer `None`
+  // to `TableScene`'s `~newDeal`. So `deal->Option.isSome` reads as the *capability*
+  // ("is this board re-dealable?") that callers used to spell as an identity check
+  // against `freecell.id`, which is why a second seeded game now costs no edit in
+  // `Main` or `Session`.
+  //
+  // A function on the record, deliberately: nothing compares a `Game.t` with
+  // whole-record `==`, so it costs no structural equality, and it keeps the answer with
+  // the value that knows it rather than in a table of ids somewhere else.
+  deal: option<int => t>,
 }
 
 // The assembled FreeCell board (#97), where four enablers converge: pile
@@ -111,7 +131,11 @@ let freecellSeed = 1 // deal #1, the fixed board scenarios and screenshots deriv
 
 // Build a FreeCell board for deal `seed`. The cascades hold the dealt deck; the
 // free cells and foundations open empty.
-let freecellDeal = (~seed: int): t => {
+//
+// `let rec` because the board it hands back carries this very function as its `deal`
+// (#349): a FreeCell board knows how to lay out another FreeCell board, which is what
+// lets a caller re-deal the game in hand without naming the game.
+let rec freecellDeal = (~seed: int): t => {
   // The 52 shuffled and dealt round-robin across the eight cascades — the
   // standard opening. Each column becomes an unbounded, alternating-colour
   // *descending* cascade (`Rules.cascade`).
@@ -152,6 +176,10 @@ let freecellDeal = (~seed: int): t => {
     // link back to it (#98). `freecellDeal(~seed)` is exactly what a `?seed=` open
     // calls, so the round trip holds.
     seed: Some(seed),
+    // …and the way back out: another deal of this same game (#349). FreeCell is a
+    // seeded shuffle, so every number lays out a real board — the board is re-dealable,
+    // and says so here rather than being recognised by id somewhere else.
+    deal: Some(seed => freecellDeal(~seed)),
   }
 }
 
@@ -162,6 +190,22 @@ let freecell = freecellDeal(~seed=freecellSeed)
 // because it's what the scene picker and the CLI's `games`/`deal <id>` enumerate;
 // a second game joins it here.
 let all = [freecell]
+
+// The game a `deal` that names none lays out — a bare `deal`/`new`, and a bare deal
+// *number* (`deal 12345`), both of which say which board without saying which game.
+// Named here so the front ends can ask for "the default game" rather than each deciding
+// for itself that a number means FreeCell (#349); the day a second seeded game arrives,
+// this is the line that says which one a plain number belongs to.
+let default = freecell
+
+// Another board of `game`, laid out from deal number `seed` — its `deal` capability
+// applied. A game with no deal to vary has only the one board, so it answers with
+// itself: a caller asking for "the next board of this game" always gets a board.
+let dealt = (game: t, ~seed: int): t =>
+  switch game.deal {
+  | Some(deal) => deal(seed)
+  | None => game
+  }
 
 // --- Addressing piles by role (#94) ------------------------------------------
 // Callers target a *group* of piles by role — the deal fills only the cascades,

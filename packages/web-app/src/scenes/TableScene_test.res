@@ -311,17 +311,40 @@ describe("TableScene published controls (#300)", () => {
     },
   )
 
+  test("`loadDeal` opens the number it's given, laid out by the game on the table", () => {
+    // The console's `deal <n>` (#273). Turning the number into a board is the *game's*
+    // job now (`Game.t.deal`, #349) rather than the driver's: the chrome hands over a
+    // number and the board deals its own game from it, so nothing out there has to know
+    // that a deal number is a seeded FreeCell shuffle.
+    let saved = ref(None)
+    let board = ref(None)
+    let container = host("div")
+    let scene = TableScene.make(
+      ~persist=s => saved := Some(s),
+      ~newDeal=() => Game.freecellDeal(~seed=7),
+      ~publish=published => board := Some(published),
+      Game.freecell,
+    )
+    let _teardown = scene.mount(container)
+    (live(board).loadDeal->Option.getOrThrow)(24680)
+    // The board on the table is deal 24680 of the game the scene plays, card for card.
+    let onTable: SaveState.t = saved.contents->Option.getOrThrow
+    let present = History.present(onTable.history)
+    expect(present.piles)->toEqual(GameState.initial(Game.freecellDeal(~seed=24680)).piles)
+  })
+
   test("a board mounted without a re-deal offers neither re-deal", () => {
-    // `newGame` and `loadGame` both open a board named by a seed, which only a scene
-    // handed a `~newDeal` can produce. Without one, answering `None` is what lets the
-    // menu's New Game and the console's `deal <n>` say so rather than silently doing
-    // nothing.
+    // `newGame` and `loadDeal` both open a board named by a seed, which only a scene
+    // handed a `~newDeal` can produce — the driver's say on whether this board may be
+    // re-dealt at all, even for a game that knows how to deal another of itself.
+    // Without one, answering `None` is what lets the menu's New Game and the console's
+    // `deal <n>` say so rather than silently doing nothing.
     let board = ref(None)
     let container = host("div")
     let scene = TableScene.make(~publish=published => board := Some(published), Game.freecell)
     let _teardown = scene.mount(container)
     expect(live(board).newGame->Option.isNone)->toBe(true)
-    expect(live(board).loadGame->Option.isNone)->toBe(true)
+    expect(live(board).loadDeal->Option.isNone)->toBe(true)
     // Restart is offered by every card table, though — it restarts to its own deal.
     live(board).restart()
     expect(countOf(container, ".stacking-card") > 0)->toBe(true)
