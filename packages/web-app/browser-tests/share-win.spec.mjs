@@ -91,18 +91,23 @@ test("a won game shares the deal it came from, and that link deals it", async ({
 
   const shared = await page.evaluate(() => navigator.clipboard.readText())
 
-  // The message: the suits that make it recognisable in a chat, the deal that was
-  // beaten, and what it cost — one move, since a forced position starts a fresh tally
-  // (#289). No undos were used, so the message says nothing about them.
+  // The message: the suits that make it recognisable in a chat, the game it was won on
+  // and the deal that was beaten, and what it cost — one move, since a forced position
+  // starts a fresh tally (#289). No undos were used, so the message says nothing about
+  // them. The game's name is read off the game since #353, not spelled into the string,
+  // so what's checked here is that the board on the table is the one being named.
   expect(shared).toContain(`♣️♥️♠️♦️ Pip FreeCell #${ALMOST_WON_DEAL}`)
   expect(shared).toContain("Solved in 1 move")
   expect(shared).not.toContain("undo")
 
   // …and the link. It has to be the *deal*, not the position: a link to the board as
   // it stands would hand the recipient a solved game, which is the one thing this share
-  // must never do.
+  // must never do. It's the same link the menu's Share Seed builds, down to leaving
+  // `?scene=` out for the default game (#353) — one function builds both.
   const url = new URL(shared.slice(shared.indexOf("http")))
   expect(url.searchParams.get("seed")).toBe(ALMOST_WON_DEAL)
+  expect(url.searchParams.get("scene")).toBe(null)
+  expect(url.search).toBe(`?seed=${ALMOST_WON_DEAL}`)
   expect(url.hash).toBe("")
 
   // The round trip, as the recipient makes it: the link deals the board the sender's
@@ -111,6 +116,28 @@ test("a won game shares the deal it came from, and that link deals it", async ({
   await settleBoard(page)
   await expect(page.locator(".win-overlay")).toHaveCount(0)
   expect(await readBoard(page)).toEqual(dealt)
+})
+
+test("the deal it hands over reads the same spelled out in full", async ({ page }) => {
+  // The other half of #353, from the victory share's side: the link is short because
+  // FreeCell is the game a nameless deal number belongs to, not because a deal number
+  // can only mean FreeCell. Spelled out — `?scene=freecell&seed=264`, the shape a
+  // *second* game's link would take — it opens the very same board, so the two forms
+  // are one link and the short one is a shortening.
+  await page.goto(`/?seed=${ALMOST_WON_DEAL}&animate=off`)
+  await settleBoard(page)
+  const bare = await readBoard(page)
+
+  await page.goto(`/?scene=freecell&seed=${ALMOST_WON_DEAL}&animate=off`)
+  await settleBoard(page)
+  expect(await readBoard(page)).toEqual(bare)
+
+  // …and the board that opened names deal 264 back, so the round trip closes on a game
+  // that knows which deal it is rather than merely on identical card positions.
+  await page.getByRole("button", { name: "Open menu" }).click()
+  await expect(page.getByRole("button", { name: /^Share Seed/ })).toHaveText(
+    `Share Seed ${ALMOST_WON_DEAL}`,
+  )
 })
 
 test("a scenario with no deal behind it offers no share", async ({ page }) => {

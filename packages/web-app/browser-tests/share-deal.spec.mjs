@@ -10,6 +10,12 @@
 // Browser-only for a second reason: `navigator.clipboard` doesn't exist in jsdom at
 // all, so "the link actually reaches the player" is unaskable there. Here it's the
 // whole point, and Playwright can grant the permission a real user grants.
+//
+// Since #353 the link also says *which game* the number is a deal of (`?scene=`), and
+// omits it for the default one — so the round trip has a second half worth making:
+// a bare `?seed=` has to keep opening FreeCell, which is the shape of every deal link
+// shared before that change. That's the last test below, and a page load is the only
+// place it can be asked.
 
 import { expect, test } from "@playwright/test"
 import { settleBoard } from "./lib/board.mjs"
@@ -77,8 +83,11 @@ test("shares a link to the deal on the table, and that link reopens it", async (
   expect((await shareLine(page).boundingBox()).height).toBe(before.height)
 
   // The link says which board to deal and nothing else — legible, and short enough
-  // to be read off one screen and typed into another.
+  // to be read off one screen and typed into another. FreeCell is the game a deal
+  // number belongs to when none is named, so the link doesn't spend characters saying
+  // so (#353): `?scene=` appears only for another game.
   expect(new URL(url).searchParams.get("seed")).toBe("24680")
+  expect(new URL(url).searchParams.get("scene")).toBe(null)
   expect(new URL(url).hash).toBe("")
 
   // The round trip, as the recipient makes it: open what was shared, cold.
@@ -130,6 +139,35 @@ test("a resumed game can still say which seed it is", async ({ page }) => {
   await settleBoard(page)
   await openMenu(page)
   await expect(shareButton(page)).toHaveText(dealt)
+})
+
+test("a bare `?seed=` still opens FreeCell — every link shared before #353", async ({ page }) => {
+  // **The compatibility case**, and the reason it's written as one. A deal link is now
+  // `?scene=<id>&seed=<n>`, with the scene omitted for the default game — so the bare
+  // `?seed=7` form isn't a legacy spelling being tolerated, it's the *current* spelling
+  // for FreeCell, and every link anyone shared before the change is byte-identical to
+  // one shared today. It holds because `SceneSwitcher`'s `~default` is `Game.default.id`
+  // and that's the same game `urlForDeal` omits the scene for, not because anything
+  // branches on a missing parameter.
+  await page.goto("/?seed=7&animate=off")
+  await settleBoard(page)
+  const bare = await readBoard(page)
+  expect(bare.length).toBe(52)
+
+  // Spelled out in full, the same link opens the same board — the two forms are one
+  // link, which is what makes omitting the scene a shortening rather than a meaning.
+  await page.goto("/?scene=freecell&seed=7&animate=off")
+  await settleBoard(page)
+  expect(await readBoard(page)).toEqual(bare)
+
+  // …and it's FreeCell that opened, not merely *a* board: the menu's Share Seed offers
+  // deal 7 back, and hands over the short form again.
+  await openMenu(page)
+  await expect(shareButton(page)).toHaveText("Share Seed 7")
+  const url = new URL(await shareDeal(page))
+  expect(url.searchParams.get("seed")).toBe("7")
+  expect(url.searchParams.get("scene")).toBe(null)
+  expect(url.search).toBe("?seed=7")
 })
 
 test("says so on a board with no seed, rather than offering one", async ({ page }) => {

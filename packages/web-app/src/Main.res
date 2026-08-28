@@ -129,7 +129,8 @@ type model = {
   // reporting where its link went. `None` greys the button out — a demo scene, or a
   // game resumed from a save with no deal number recorded. Unlike `shareUrl` above
   // there's nothing to prepare: the link is a `?seed=` string built on the press
-  // (`ShareLink.urlForDeal`), so only the number has to be to hand.
+  // (`ShareLink.urlForDeal`), so only the number has to be to hand — that, and the game
+  // it's a deal of, which the press reads off `liveGame` rather than the model (#353).
   dealSeed: option<int>,
   shareDealStatus: option<string>,
 }
@@ -255,6 +256,18 @@ let publishDeal = (seed: option<int>): unit => {
   liveDealSeed := seed
   reportDeal.contents(seed)
 }
+
+// The *game* the board on the table is a board of (#353), the companion to
+// `liveDealSeed`: a deal link now says which game its number belongs to, so a share
+// needs both halves. Set beside `liveBoard` as a card table mounts (`gameScene` closes
+// over its own game) and cleared with it on a scene change, so the two can't disagree
+// about which board is on screen.
+//
+// A `ref` rather than a field on the model, deliberately. The win overlay's share is
+// built by the board outside the loop and asks at the press, exactly as it does for the
+// number — and a `Game.t` carries functions (`deal`), so putting one in the model would
+// invite a whole-record `==` that `Game` says nothing does.
+let liveGame: ref<option<Game.t>> = ref(None)
 
 // Closing the menu means dispatching into the loop, but the switcher's activation
 // callback runs before `dispatch` exists (like `updateSW`) — the initial scene mounts
@@ -718,6 +731,10 @@ let gameScene = (game: Game.t) => {
     // shake to a board that mounts after the switch was flipped.
     ~publish=board => {
       liveBoard := Some(board)
+      // …and which game it's a board of (#353), for the two share links that now name
+      // it. This is the one place that knows: the scene publishes controls, not the
+      // `Game.t` they were built from, and `gameScene` has it in hand right here.
+      liveGame := Some(game)
       if shakeActive.contents {
         board.shake.start()
       }
@@ -782,9 +799,11 @@ let gameScene = (game: Game.t) => {
       share: (~moves, ~undos) =>
         switch liveDealSeed.contents {
         | Some(seed) =>
+          // The game is this scene's own, not `liveGame`'s: the overlay is over *this*
+          // board, and the two say the same thing anyway (#353).
           ShareLink.deliver(
-            ~text=ShareLink.victoryMessage(~seed, ~moves, ~undos),
-            ShareLink.urlForDeal(seed),
+            ~text=ShareLink.victoryMessage(~game, ~seed, ~moves, ~undos),
+            ShareLink.urlForDeal(~game, ~seed),
           )->Promise.thenResolve(ShareLink.message)
         // Unreachable: the button is only built when `available` says yes, and nothing
         // can re-deal the board while the overlay covers it. Reporting the failure
@@ -804,7 +823,12 @@ let gameScene = (game: Game.t) => {
   )
 }
 let switcher = SceneSwitcher.render(
-  ~default="freecell",
+  // The launch scene, spelled as the game `core` says a nameless deal number belongs to
+  // rather than as the literal `"freecell"` (#353). That's the same fact twice
+  // otherwise, and the two halves of one property: `urlForDeal` omits `?scene=` for
+  // `Game.default`, so a bare `?seed=7` has to land on `Game.default`'s scene for the
+  // link to mean what it says. Written this way the round trip can't drift.
+  ~default=Game.default.id,
   ~forced=?url.scene,
   // Drop the outgoing board before each scene mounts (a mounting card table publishes
   // its own; a demo scene publishes none, which is how the chrome knows there's nothing
@@ -817,6 +841,9 @@ let switcher = SceneSwitcher.render(
     // board's shake subscription is already detached by its own teardown, and
     // `~publish` re-applies `shakeActive` to whichever board mounts next.
     liveBoard := None
+    // …and the game that board was a board of (#353), which goes with it: a demo scene
+    // publishes neither, and the two must never be one scene apart.
+    liveGame := None
     // Reset the top bar's Undo to disabled; the mounting scene reports its own
     // history (#85).
     reportHistory.contents(false)
@@ -986,14 +1013,21 @@ let mainScreen = (model, dispatch): MenuMainScreen.props => {
     // desktop browser — where the link goes quietly onto the clipboard with no OS
     // sheet to acknowledge it — closing over it would leave nothing to see. It
     // clears itself a few seconds later so it can't go stale.
-    model.dealSeed->Option.forEach(seed =>
-      ShareLink.deliver(ShareLink.urlForDeal(seed))
+    //
+    // Both halves of the link have to be to hand at once (#353): the number the model
+    // carries, and the game the live board is a board of. A seed with no game behind it
+    // is the moment between two scenes, and there's nothing to share then anyway — the
+    // button is dark, so this is a guard rather than a case.
+    switch (liveGame.contents, model.dealSeed) {
+    | (Some(game), Some(seed)) =>
+      ShareLink.deliver(ShareLink.urlForDeal(~game, ~seed))
       ->Promise.thenResolve(outcome => {
         dispatch(ShareDealStatus(Some(ShareLink.message(outcome))))
         setTimeout(() => dispatch(ShareDealStatus(None)), shareStatusMs)->ignore
       })
       ->ignore
-    ),
+    | _ => ()
+    },
   // The games list (#337): the switcher's primary scenes, paired with the one the model
   // says is mounted. The switcher hands over scenes, not rows — which of them is
   // current is the chrome's to know, being what a re-render has to reflect — so the

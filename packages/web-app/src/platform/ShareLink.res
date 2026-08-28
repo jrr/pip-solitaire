@@ -38,8 +38,8 @@
 //
 // There are **two things worth sharing**, and this module builds a link for each:
 // the game state above, and the *deal* (`urlForDeal`, #98) — a link that says which
-// board to lay out and nothing more, so both players start level. They differ in
-// what they carry, so they differ in where they ride and what they cost; see
+// game and which board to lay out and nothing more, so both players start level. They
+// differ in what they carry, so they differ in where they ride and what they cost; see
 // `urlForDeal`. Delivery is common to both — whatever the link says, getting it to
 // the player is the same problem.
 //
@@ -55,6 +55,13 @@ let fragmentKey = "g"
 // The query parameter carrying a shared *deal* (#98), same arrangement: `AppUrl`
 // parses it, this module writes it, so the spelling lives in one place.
 let dealKey = "seed"
+
+// …and the one naming *which game* that deal is a deal of (#353). `AppUrl` has parsed
+// `?scene=` since the beginning — it's how the screenshot report points at a board —
+// so a deal link for a second game needs no new knob, only this module writing the one
+// that's already there. Same arrangement as the two above: `AppUrl` reads it, this
+// module writes it, one spelling.
+let sceneKey = "scene"
 
 @val @scope(("window", "location")) external origin: string = "origin"
 @val @scope(("window", "location")) external pathname: string = "pathname"
@@ -74,8 +81,8 @@ let urlFor = async (saved: SaveState.t): option<string> =>
     origin ++ pathname ++ "#" ++ fragmentKey ++ "=" ++ blob
   )
 
-// A shareable URL for deal number `seed`: this page plus `?seed=`, which opens
-// FreeCell dealt from that exact shuffle (`Game.freecellDeal`, via `AppUrl`).
+// A shareable URL for deal number `seed` of `game`: this page plus `?seed=`, which
+// opens that game dealt from that exact shuffle (`Game.t.deal`, via `AppUrl`).
 //
 // Deliberately a *different* share from `urlFor` above rather than a cheaper one.
 // That link carries a position — this game, mid-play, undo stack and all — so the
@@ -94,12 +101,31 @@ let urlFor = async (saved: SaveState.t): option<string> =>
 // gesture's transient activation intact (see `deliver`), rather than having to be
 // prepared in advance.
 //
-// The page's own query is dropped for the same reason `urlFor` drops it: whatever
-// `?scene=`/`?state=`/`?seed=` got this board on screen, the deal number now says
-// it in full. `pathname` stays, so a link shared from a GitHub Pages subpath — or a
-// PR preview's deeper one — opens that same build.
-let urlForDeal = (seed: int): string =>
-  origin ++ pathname ++ "?" ++ dealKey ++ "=" ++ Int.toString(seed)
+// The page's own query is dropped rather than kept, for nearly the reason `urlFor`
+// drops it: whatever `?state=`/`?seed=` got this board on screen, the deal number now
+// says it in full. `pathname` stays, so a link shared from a GitHub Pages subpath — or
+// a PR preview's deeper one — opens that same build.
+//
+// **`?scene=` is the exception, and it's why this takes a game (#353.)** The other
+// parameters say something the deal number supersedes; that one says *which board the
+// number is a deal of*, which the number can't say by itself. Dropping it was harmless
+// only while there was one seeded game to mean, so it's written back here — and written
+// from the game in hand rather than copied off the current URL, since the board on the
+// table is what's being shared and the query that opened the page may be a scene ago.
+//
+// **The default game omits it**, and that's the load-bearing half. `Game.default` is
+// what a deal number with no game named belongs to (it's the line in `core` that says
+// so, and the switcher's launch scene reads from it), so spelling it out would be a
+// link saying twice what it already says once. Two things follow, in order of weight:
+// every deal link this app has ever emitted stays byte-identical, so a `?seed=7`
+// written before this change and one written after are the same string; and `?seed=7`
+// stays short and legible, which the note above calls half the point of a deal number —
+// it survives being read off one screen and typed into another by hand, and
+// `?scene=freecell&seed=7` does not.
+let urlForDeal = (~game: Game.t, ~seed: int): string => {
+  let scene = game.id == Game.default.id ? "" : sceneKey ++ "=" ++ game.id ++ "&"
+  origin ++ pathname ++ "?" ++ scene ++ dealKey ++ "=" ++ Int.toString(seed)
+}
 
 // The message a won game shares (#264) — the boast the win overlay's Share button
 // hands over, in the shape the Wordle-likes made familiar: a line naming the game
@@ -127,8 +153,14 @@ let urlForDeal = (seed: int): string =>
 // The URL is deliberately *not* in this string: `deliver` adds it, once, on whichever
 // route it takes — as the share sheet's own `url` field, or appended for the
 // clipboard. Composing it here as well is how a link ends up in the message twice.
-let victoryMessage = (~seed: int, ~moves: int, ~undos: int): string =>
-  "♣️♥️♠️♦️ Pip FreeCell #" ++
+//
+// The game is *named* rather than spelled (#353): "Pip FreeCell #264" is the game's own
+// `name`, so the boast says which board was beaten for the same reason the link does,
+// and from the same value. A second game needs no edit here.
+let victoryMessage = (~game: Game.t, ~seed: int, ~moves: int, ~undos: int): string =>
+  "♣️♥️♠️♦️ Pip " ++
+  game.name ++
+  " #" ++
   Int.toString(seed) ++
   "\nSolved in " ++
   Stats.moveLabel(moves) ++ (undos > 0 ? " (" ++ Stats.undoLabel(undos) ++ ")" : "")
