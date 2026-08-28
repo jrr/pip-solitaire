@@ -106,7 +106,8 @@ describe("Scenario", () => {
         let foundations =
           Game.pileIndices(game, Game.Foundation)->Array.map(i => state.piles->Array.getUnsafe(i))
         // Three foundations are complete Ace→King runs; the fourth stops at the Queen.
-        let complete = foundations->Array.filter(Rules.isCompleteRun)
+        let complete =
+          foundations->Array.filter(cards => Rules.isCompleteRun(~deck=game.deck, cards))
         expect(Array.length(complete))->toBe(3)
         // Exactly one card sits in the free cells — the pending King — and it's a King.
         let cellCards =

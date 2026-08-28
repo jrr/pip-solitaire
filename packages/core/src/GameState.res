@@ -113,11 +113,12 @@ let equal = (a: t, b: t): bool => {
 }
 
 // Has the game been won (#121)? True when every foundation on the board holds a
-// complete Ace→King run — the natural end of a FreeCell game, and the "done"
-// marker of M2 (#98). Win detection just *observes* the foundations: it targets
-// the foundation group by role (`Game.pileIndices`, #94) and asks the per-pile
-// check whether each is finished (`Rules.isCompleteRun`, #76), so how the cards
-// got there — a drag, a later auto-to-foundation — is beside the point.
+// complete run of the board's own deck — for FreeCell's `Cards.standard`, an
+// Ace→King run: the natural end of a game, and the "done" marker of M2 (#98). Win
+// detection just *observes* the foundations: it targets the foundation group by
+// role (`Game.pileIndices`, #94) and asks the per-pile check whether each is
+// finished (`Rules.isCompleteRun`, #76, against `game.deck` — #351), so how the
+// cards got there — a drag, a later auto-to-foundation — is beside the point.
 //
 // A board with *no* foundations is never won: `Array.every` over an empty group is
 // vacuously true, so the explicit non-empty guard keeps a foundation-less board
@@ -125,5 +126,5 @@ let equal = (a: t, b: t): bool => {
 let hasWon = (game: Game.t, state: t): bool => {
   let foundations = Game.pileIndices(game, Game.Foundation)
   Array.length(foundations) > 0 &&
-    foundations->Array.every(i => Rules.isCompleteRun(cardsInPile(state, i)))
+    foundations->Array.every(i => Rules.isCompleteRun(~deck=game.deck, cardsInPile(state, i)))
 }

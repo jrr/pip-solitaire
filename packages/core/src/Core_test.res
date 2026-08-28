@@ -309,6 +309,7 @@ describe("Game", () => {
   describe("roles", () => {
     let rolesGame: Game.t = {
       id: "roles",
+      deck: Cards.standard,
       name: "Roles",
       piles: [
         {role: Foundation, stacking: Squared, rule: Rules.foundation, capacity: None, cards: []},
@@ -359,6 +360,7 @@ describe("GameState", () => {
   // shuffle produced: two empty free cells, then two cascades opening with cards.
   let dealt: Game.t = {
     id: "dealt",
+    deck: Cards.standard,
     name: "Dealt",
     piles: [
       {role: FreeCell, stacking: Squared, rule: Rules.Free, capacity: Some(1), cards: []},
@@ -613,14 +615,14 @@ describe("Rules", () => {
     test(
       "a full Ace→King run is complete",
       () => {
-        expect(Rules.isCompleteRun(fullRun))->toBe(true)
+        expect(Rules.isCompleteRun(~deck=Cards.standard, fullRun))->toBe(true)
       },
     )
 
     test(
       "an empty pile is not complete",
       () => {
-        expect(Rules.isCompleteRun([]))->toBe(false)
+        expect(Rules.isCompleteRun(~deck=Cards.standard, []))->toBe(false)
       },
     )
 
@@ -629,7 +631,55 @@ describe("Rules", () => {
       () => {
         // Ace→Queen: twelve cards, not yet done.
         let almost = fullRun->Array.slice(~start=0, ~end=12)
-        expect(Rules.isCompleteRun(almost))->toBe(false)
+        expect(Rules.isCompleteRun(~deck=Cards.standard, almost))->toBe(false)
+      },
+    )
+
+    // "Complete" is read off the deck, not the 52 (#351): a short deck's run is as
+    // long as *its* ranks and topped by *its* highest.
+    describe(
+      "a short deck",
+      () => {
+        // Ace→Five in two suits: five ranks, so a finished foundation is five cards
+        // ending on the Five.
+        let short: Cards.deck = {
+          suits: [Spades, Hearts],
+          ranks: [Ace, Two, Three, Four, Five],
+        }
+        let shortRun = short.ranks->Array.map(rank => {suit: Hearts, rank})
+
+        test(
+          "an Ace→Five run is complete for an Ace→Five deck",
+          () => {
+            expect(Rules.isCompleteRun(~deck=short, shortRun))->toBe(true)
+          },
+        )
+
+        test(
+          "the same run is not complete for the standard deck",
+          () => {
+            // The regression this generalization exists for: five cards topped by a
+            // Five used to be judged against a hard-coded thirteen and King.
+            expect(Rules.isCompleteRun(~deck=Cards.standard, shortRun))->toBe(false)
+          },
+        )
+
+        test(
+          "a full Ace→King run is not complete for an Ace→Five deck",
+          () => {
+            // Too long, and topped by a rank the deck doesn't have.
+            expect(Rules.isCompleteRun(~deck=short, fullRun))->toBe(false)
+          },
+        )
+
+        test(
+          "a run short of the deck's highest is not complete",
+          () => {
+            expect(Rules.isCompleteRun(~deck=short, shortRun->Array.slice(~start=0, ~end=4)))->toBe(
+              false,
+            )
+          },
+        )
       },
     )
   })
@@ -656,6 +706,7 @@ describe("Reducer", () => {
   ]
   let game: Game.t = {
     id: "test",
+    deck: Cards.standard,
     name: "Test",
     piles: [
       (
@@ -846,7 +897,9 @@ describe("Reducer", () => {
         },
     )
     expect(GameState.cardsInPile(state.contents, 0)->Array.length)->toBe(13)
-    expect(Rules.isCompleteRun(GameState.cardsInPile(state.contents, 0)))->toBe(true)
+    expect(Rules.isCompleteRun(~deck=runGame.deck, GameState.cardsInPile(state.contents, 0)))->toBe(
+      true,
+    )
   })
 
   test("moving a card that isn't in the state fails with CardNotFound", () => {
@@ -870,6 +923,7 @@ describe("Reducer", () => {
   describe("capacity", () => {
     let capGame: Game.t = {
       id: "cap",
+      deck: Cards.standard,
       name: "Cap",
       piles: [
         {role: FreeCell, stacking: Squared, rule: Rules.Free, capacity: Some(1), cards: []},
@@ -1099,6 +1153,7 @@ describe("Reducer", () => {
   describe("validMoves", () => {
     let vmGame: Game.t = {
       id: "vm",
+      deck: Cards.standard,
       name: "VM",
       piles: [
         {role: Foundation, stacking: Squared, rule: Rules.foundation, capacity: None, cards: []},
@@ -1180,6 +1235,7 @@ describe("Reducer", () => {
         // board order, and its first is what `foundationTarget` returns.
         let twoFoundations: Game.t = {
           id: "2f",
+          deck: Cards.standard,
           name: "2F",
           piles: [
             {
@@ -1234,6 +1290,7 @@ describe("Reducer", () => {
   describe("autoCollect", () => {
     let acGame: Game.t = {
       id: "ac",
+      deck: Cards.standard,
       name: "AC",
       piles: [
         {role: Foundation, stacking: Squared, rule: Rules.foundation, capacity: None, cards: []},
@@ -1404,6 +1461,7 @@ describe("Reducer", () => {
   describe("canFinish / finishSequence", () => {
     let finGame: Game.t = {
       id: "fin",
+      deck: Cards.standard,
       name: "FIN",
       piles: [0, 1, 2, 3]
       ->Array.map(
@@ -1519,6 +1577,7 @@ describe("Reducer", () => {
   describe("supermove", () => {
     let smGame: Game.t = {
       id: "sm",
+      deck: Cards.standard,
       name: "SM",
       piles: [
         {role: FreeCell, stacking: Squared, rule: Rules.Free, capacity: Some(1), cards: []},
@@ -1744,6 +1803,7 @@ describe("Reducer", () => {
     // never the reason a run bounces.
     let liftGame: Game.t = {
       id: "lift",
+      deck: Cards.standard,
       name: "Lift",
       piles: [
         {role: FreeCell, stacking: Squared, rule: Rules.Free, capacity: Some(1), cards: []},
@@ -1861,6 +1921,7 @@ describe("Reducer", () => {
     let th = {suit: Hearts, rank: Ten}
     let mcGame: Game.t = {
       id: "mc",
+      deck: Cards.standard,
       name: "MC",
       piles: [0, 1]
       ->Array.map(
@@ -2052,6 +2113,84 @@ describe("Cards", () => {
     Cards.shuffle(~seed=99)->ignore
     // `Cards.all` is untouched by a shuffle (it works over a copy).
     expect(Cards.all)->toEqual(before)
+  })
+
+  // The deck as a *parameter* (#351): a subset of one pack, with `standard` the
+  // four × thirteen everything plays with today. The same two properties the full
+  // pack is pinned by — a shuffle is a permutation, and a seed reproduces it —
+  // hold for a short deck too.
+  describe("deck", () => {
+    // Ace→Five in two suits: ten cards, half the ranks, half the suits.
+    let short: Cards.deck = {suits: [Spades, Hearts], ranks: [Ace, Two, Three, Four, Five]}
+
+    test(
+      "standard is the full pack, and cardsOf(standard) is `all`",
+      () => {
+        expect(Cards.standard.suits)->toEqual(Cards.suits)
+        expect(Cards.standard.ranks)->toEqual(Cards.ranks)
+        expect(Cards.cardsOf(Cards.standard))->toEqual(Cards.all)
+      },
+    )
+
+    test(
+      "cardsOf a short deck is its suits × its ranks, each card once",
+      () => {
+        let cards = Cards.cardsOf(short)
+        expect(Array.length(cards))->toBe(10)
+        let noDupes =
+          cards->Array.every(card => cards->Array.filter(c => same(c, card))->Array.length == 1)
+        expect(noDupes)->toBe(true)
+        // Nothing outside the deck sneaks in.
+        expect(
+          cards->Array.every(
+            c =>
+              short.suits->Array.some(s => s == c.suit) &&
+                short.ranks->Array.some(r => r == c.rank),
+          ),
+        )->toBe(true)
+      },
+    )
+
+    test(
+      "cardsOf hands back a fresh array each time",
+      () => {
+        // `shuffle` mutates what `cardsOf` gives it, so this is what keeps a shuffle
+        // from disturbing anyone else's deck.
+        let a = Cards.cardsOf(short)
+        a->Array.setUnsafe(0, {suit: Hearts, rank: Five})
+        expect(Cards.cardsOf(short))->toEqual(Cards.cardsOf(short))
+        expect((Cards.cardsOf(short)->Array.getUnsafe(0)).rank)->toEqual(Ace)
+      },
+    )
+
+    test(
+      "shuffling a short deck is a permutation of that deck — nothing dropped or duplicated",
+      () => {
+        let shuffled = Cards.shuffle(~deck=short, ~seed=42)
+        let cards = Cards.cardsOf(short)
+        expect(Array.length(shuffled))->toBe(Array.length(cards))
+        expect(cards->Array.every(card => shuffled->Array.some(c => same(c, card))))->toBe(true)
+      },
+    )
+
+    test(
+      "shuffling a short deck is deterministic: the same seed reproduces the same order",
+      () => {
+        expect(Cards.shuffle(~deck=short, ~seed=7))->toEqual(Cards.shuffle(~deck=short, ~seed=7))
+      },
+    )
+
+    test(
+      "shuffle defaults to the standard deck",
+      () => {
+        expect(Cards.shuffle(~seed=3))->toEqual(Cards.shuffle(~deck=Cards.standard, ~seed=3))
+      },
+    )
+  })
+
+  // FreeCell carries the standard deck, so nothing about today's board changed.
+  test("a board carries its deck", () => {
+    expect(Game.freecell.deck)->toEqual(Cards.standard)
   })
 
   describe("deal", () => {
