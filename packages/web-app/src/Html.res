@@ -79,6 +79,10 @@ type elementProps = {
   className?: string,
   hidden?: bool,
   disabled?: bool,
+  // `<details>`. Written on mount and thereafter left alone — Preact writes a prop
+  // only when its value changes, so a disclosure the app opens once stays the
+  // reader's to open and close (see `MenuDisclosure`).
+  @as("open") open_?: bool,
   @as("type") type_?: string,
   title?: string,
   role?: string,

@@ -53,8 +53,9 @@ let debug: MenuDebugScreen.props = {
   shareEnabled: false,
   shareStatus: None,
   onShareGame: () => (),
-  // The externally-owned nodes the menu splices in; empty stand-ins here.
-  debugScenes: Html.make("div"),
+  // The two debug groups; empty stand-ins here.
+  debugScenes: [],
+  debugScenesOpen: false,
   debugStates: [],
 }
 

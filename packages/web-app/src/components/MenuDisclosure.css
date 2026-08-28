@@ -1,0 +1,63 @@
+@layer components {
+  /* The collapsible group the menu's debug section is built out of twice — the
+     debug/demo scenes (#135) and the named starting states — so the menu leads
+     with the game instead of a long list of demos. A native <details>, so the
+     show/hide costs no JS and stays keyboard-accessible. Sits in the row flow
+     with the same gap as the rows.
+
+     These rules came from `SceneSwitcher.css` with the markup they style (#336).
+     They still say `scene-menu__` because the *rows* inside the group are still
+     that file's `.scene-menu__row`; those become `<MenuRow>`s in #335. */
+  .scene-menu__group {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+  }
+
+  /* The disclosure header, styled as a muted row like the ones it hides, with a
+     caret (below) as its open/closed affordance. The chrome's shared control box —
+     the `--control-*` tokens in `styles/base.css` (#334) — same as the rows; the
+     muted ink is the one thing it takes differently. */
+  .scene-menu__group-label {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: var(--control-pad);
+    font: var(--control-font);
+    color: var(--control-ink-muted);
+    background: var(--control-bg);
+    border: var(--control-border);
+    border-radius: var(--control-radius);
+    cursor: pointer;
+    /* Drop the platform's default disclosure triangle in favour of our own
+       caret below: `list-style` covers Firefox's `::marker`, the WebKit
+       pseudo-element covers Safari/Chrome, so the marker looks the same
+       everywhere. */
+    list-style: none;
+  }
+
+  .scene-menu__group-label::-webkit-details-marker {
+    display: none;
+  }
+
+  /* Our own caret, rotating from ▸ (closed) to ▾ (open). */
+  .scene-menu__group-label::before {
+    content: "▸";
+    font-size: 0.8em;
+    color: #64748b;
+    transition: transform 0.15s ease;
+  }
+
+  .scene-menu__group[open] > .scene-menu__group-label::before {
+    transform: rotate(90deg);
+  }
+
+  /* The revealed rows, stacked with the same gap as the top-level list and set
+     off from the header by a small inset. */
+  .scene-menu__group-body {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+    padding-top: 0.3rem;
+  }
+}
