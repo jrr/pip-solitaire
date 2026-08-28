@@ -5,16 +5,22 @@
 //
 //   - `scene` — which scene to mount, by its id (`?scene=freecell`). Overrides the
 //     last scene persisted in localStorage, so a link always lands on the named
-//     scene regardless of what was last viewed on that device.
+//     scene regardless of what was last viewed on that device. Since #353 it's also
+//     the half of a deal link that says *which game* the deal number belongs to —
+//     `ShareLink.urlForDeal` writes it for any game but the default one, which is why
+//     the spelling lives over there beside `seed`'s.
 //   - `state` — a named starting *scenario* for that scene (`?state=midgame`),
 //     resolved against `core`'s `Scenario.forName`. Absent (or unrecognised for
 //     the scene) means the ordinary opening deal.
-//   - `seed` — the FreeCell deal number to open (`?seed=1`), pinning the otherwise
-//     random opening shuffle so a link (and the screenshot report) lands on the same
-//     board every time. This is the receiving end of the menu's **Share** button
-//     (#98): the deal number a player shares arrives back here. Ignored when a
-//     `state` is forced (that mounts the fixed deal itself) or by the fixed-layout
-//     demos, which have no seed to vary.
+//   - `seed` — the deal number to open (`?seed=1`), pinning the otherwise random
+//     opening shuffle so a link (and the screenshot report) lands on the same board
+//     every time. It's a deal of whichever game `scene` names, laid out by that game's
+//     own `deal` (#349), and FreeCell's when the URL names no scene — the compatibility
+//     case every deal link shared before #353 is, and one that falls out of
+//     `~default=Game.default.id` rather than needing a branch. This is the receiving
+//     end of the menu's **Share** button (#98): the deal number a player shares arrives
+//     back here. Ignored when a `state` is forced (that mounts the fixed deal itself)
+//     or by the fixed-layout demos, which have no seed to vary.
 //   - `animate` — whether to play the opening-deal fly-in. On by default; `off`
 //     (also `no`/`false`/`0`) drops the cards straight into their resting places, so
 //     a shot captures the settled board rather than a frame mid-deal. The same
@@ -91,5 +97,5 @@ let parse = (): t => {
   | Some("") | None => None
   | Some(blob) => Some(blob)
   }
-  {scene: read("scene"), state: read("state"), seed, animate, raster, shared}
+  {scene: read(ShareLink.sceneKey), state: read("state"), seed, animate, raster, shared}
 }
