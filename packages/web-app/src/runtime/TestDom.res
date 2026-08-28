@@ -23,8 +23,8 @@
 //     element wasn't there* rather than as a type mismatch, and it's the
 //     convention the tests already settled on.
 //
-// It lives in `src/` rather than beside the tests because a leaf package's modules
-// are namespaced flat (`WebApp.TestDom`), so `src/` and `src/components/` reach it
+// It lives in `src/runtime/` rather than beside the tests because a leaf package's modules
+// are namespaced flat (`WebApp.TestDom`), so every directory under `src/` reaches it
 // alike. Nothing in the app imports it, so the bundle never sees it.
 //
 // Not for the browser suite: that drives a real page through Playwright's own
