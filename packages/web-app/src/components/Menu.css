@@ -8,7 +8,8 @@
      MenuActionRow.css, MenuNavRow.css — and each is imported by the component it
      styles, into this same `components` layer. No rule changed. What's left is what `Menu`
      itself renders, plus `.menu-section`/`.menu-screen`, the layout boxes the screens
-     share and the panel's flex column depends on. */
+     share and the panel's flex column depends on — and the one rule that spans two of
+     those components rather than belonging to either (the disabled control, below). */
 
   /* The slide-over menu (#109): the title, the debug/demo scene rows, and the
      version info. A full-screen overlay so it floats above the game; `hidden`
@@ -101,6 +102,29 @@
      `.menu-footer`.) */
   .menu-section--bottom {
     margin-top: auto;
+  }
+
+  /* **A disabled menu control, whichever kind it is** (#334). `.menu-row--action`
+     and `.menu-button` each carried these same two declarations — an action row
+     with no link to hand over, Share Seed on a board with no seed — so the rule
+     lives once, here, rather than in each of the two component sheets.
+
+     `Menu.css` is the home because the menu is the smallest thing that owns both
+     kinds of control: neither component can state the other's rule without reaching
+     across into it, and the box they share is a token set rather than a class there
+     is any single sheet to hang this off. It stays in `components` rather than
+     `foundations` because it has to *beat* each control's own `cursor: pointer`,
+     which a weaker layer would lose to no matter how specific it were. Both
+     selectors keep the (0,2,0) they already had, so nothing about the cascade moves.
+
+     The two selectors are named explicitly rather than collapsed to a descendant
+     `:disabled` — those are the only two menu controls that ever go disabled, and
+     naming them keeps a future third one an intentional edit rather than a silent
+     inheritance. */
+  .menu-row--action:disabled,
+  .menu-button:disabled {
+    opacity: 0.5;
+    cursor: default;
   }
 
   /* A small muted heading for a menu section (the Settings group, #139), set

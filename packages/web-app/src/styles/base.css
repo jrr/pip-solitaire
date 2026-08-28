@@ -1,6 +1,40 @@
 @layer foundations {
   :root {
     color-scheme: dark;
+
+    /* **The chrome's control box, stated once** (#334). Four selectors across three
+       sheets each spelled out the same padded, bordered, dark-blue box from
+       scratch — `.menu-row` (MenuRow.css), `.menu-button` (MenuGameButton.css),
+       `.scene-menu__row` and `.scene-menu__group-label` (SceneSwitcher.css). Two of
+       them said so in prose: the menu row described itself as "a full-width control
+       styled like the scene rows", the game button as "styled like the scene
+       rows/toggle but centred". #307 had already merged three such copies into
+       `MenuRow.css`, but it reached only the menu's own components and stopped.
+
+       Tokens rather than a shared `.control` class, on three counts: no new selector
+       enters the cascade, so nothing can tie or lose across the `@layer` order; no
+       sheet has to be added and registered in a layer, and no component has to reach
+       into another's class from its markup; and a custom property is already how this
+       codebase shares a number between sheets (`--console-dock-inset`, `--card-w`,
+       `--raster-card-w`) — this is the same move for a constant rather than a runtime
+       value.
+
+       Each consumer keeps only what is genuinely its own: `.menu-button`'s
+       `flex`/`min-width`/`text-align` and its heavier weight, `.menu-row`'s flex
+       layout, the disclosure label's marker rules. `cursor: pointer` stays a literal
+       in all four — it belongs to "this is tappable", not to the box.
+
+       The colours are still literals here; a palette-wide token pass is a separate
+       question this didn't need. */
+    --control-pad: 10px 12px;
+    --control-font: 14px "Libre Franklin", sans-serif;
+    --control-bg: #16233b;
+    --control-border: 1px solid #22304a;
+    --control-radius: 8px;
+    --control-ink: #e2e8f0;
+    /* The one consumer that is deliberately quieter than the rest: the "Debug"
+       disclosure header, a muted row heading the rows it hides. */
+    --control-ink-muted: #94a3b8;
   }
 
   *,
