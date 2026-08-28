@@ -1,7 +1,8 @@
 // Shared minimal DOM bindings for the plain-DOM scene code (no framework),
 // matching the ethos of Main.res. The element type is aliased to `Html.element`
-// so nodes created here are accepted by the shared Events helpers (OutwardEvents
-// / InwardEvents), which speak `Html.element`.
+// so nodes cross freely between the two: a scene splices a node built here into
+// the Preact tree with `Html.node`, and appends one rendered by `Html.create`
+// with the bindings here.
 
 type element = Html.element
 
