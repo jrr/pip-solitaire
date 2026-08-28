@@ -5,7 +5,7 @@
 // Vite — see vite.config.js) lowers that JSX onto `preact/jsx-runtime`. So Preact
 // owns the diff, and this module owns three things: the types the JSX transform
 // checks against, the props a DOM element accepts, and the small surface the rest
-// of the app calls (`string`, `array`, `node`, `create`, `mount`, `emit`/`on`).
+// of the app calls (`string`, `array`, `node`, `create`, `mount`).
 //
 // It replaced a hand-rolled vnode type and reconciler — about 400 lines, keys and
 // all (#309). What the app gets for the ~5 KB gzip that Preact costs: somebody
@@ -233,33 +233,6 @@ let rawHost = (props: rawHostProps) =>
   )
 
 let node = el => jsx(rawHost, {node: el})
-
-// --- Custom events (outward DOM CustomEvents) --------------------------------
-// Unchanged, and independent of the runtime: a component defines its own events
-// in ReScript (see OutwardEvents) and fires them from a host element with
-// `emit`; `on` is the listener side. `composed` lets the event cross the
-// shadow-DOM boundary.
-type customEvent<'detail>
-@new
-external makeCustomEvent: (
-  string,
-  {"detail": 'detail, "bubbles": bool, "composed": bool},
-) => customEvent<'detail> = "CustomEvent"
-@send external dispatchEvent: (element, customEvent<'detail>) => bool = "dispatchEvent"
-
-let emit = (host, ~name, ~detail) =>
-  dispatchEvent(
-    host,
-    makeCustomEvent(name, {"detail": detail, "bubbles": true, "composed": true}),
-  )->ignore
-
-@get external eventDetail: customEvent<'detail> => 'detail = "detail"
-@send
-external addCustomListener: (element, string, customEvent<'detail> => unit) => unit =
-  "addEventListener"
-
-let on = (target, ~name, handler) =>
-  addCustomListener(target, name, event => handler(eventDetail(event)))
 
 // --- Rendering a vnode to a detached node ------------------------------------
 // `create` answers with the real DOM node a vnode describes, for the callers

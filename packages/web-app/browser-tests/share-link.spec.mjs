@@ -133,7 +133,7 @@ test("a corrupt link opens a playable board instead of failing", async ({ page }
 test("the share row is disabled on a scene with no game", async ({ page }) => {
   // A demo scene publishes no history hooks, so there's nothing to encode and the
   // row must say so rather than offering a link to a board that doesn't exist.
-  await page.goto("/?scene=spinner")
+  await page.goto("/?scene=gallery")
   const share = await openDebugScreen(page)
   await expect(share).toBeDisabled()
   await expect(page.getByText("No game on screen to share.")).toBeVisible()

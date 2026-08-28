@@ -805,7 +805,6 @@ let switcher = SceneSwitcher.render(
   ~onReselect=() => closeMenu.contents(),
   Array.concat(
     [
-      SpinnerScene.make(),
       SvgScene.make(),
       GalleryScene.make(),
       // The card-sprite fidelity check (#225). `?raster=` picks which of the

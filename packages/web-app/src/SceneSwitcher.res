@@ -160,7 +160,7 @@ let render = (
   )
 
   // Open the Debug group from the start when the initial scene lives inside it
-  // (e.g. a `?scene=spinner` deep link), so its highlighted row is visible rather
+  // (e.g. a `?scene=gallery` deep link), so its highlighted row is visible rather
   // than hidden behind the collapsed disclosure. The group is handed back as its
   // own node (`debugScenes`) for the menu's "debug" section.
   switch initial {
