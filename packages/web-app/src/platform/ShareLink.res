@@ -1,55 +1,19 @@
-// "Share game state": turn the board's live saved game — its undo/redo history and
-// the play tally beside it — into a link, and turn that link back into a board.
+// "Share game state": turn the board's live saved game — its undo/redo history and the
+// play tally beside it — into a link, and turn that link back into a board.
 //
 // The payload is exactly what `SavedGame` writes to `localStorage` — `core`'s
-// `SaveState` JSON — run through `Compression` and hung off the URL. Reusing the
-// save format rather than inventing a share format means one versioned encoding to
-// keep honest, and `SaveState.decode`'s existing "reject anything I don't
-// recognise" guarantee covers a stale or corrupt link for free. It's also why the
-// move/undo counts (#289) needed nothing of their own here: they went into the save
-// envelope, so they ride every link that envelope rides, and a link written before
-// they existed still opens (the version didn't move — see `SaveState`). **Which game
-// the blob is a game of** (#354) rides the same way, and is the one field of the
-// envelope this module reads for itself: see `savedFrom`.
+// `SaveState` JSON — run through `Compression` and hung off the URL fragment. Reusing
+// the save format rather than inventing a share format means one versioned encoding to
+// keep honest, and `SaveState.decode`'s "reject anything I don't recognise" guarantee
+// covers a stale or corrupt link for free.
 //
-// **The blob rides in the fragment (`#g=…`), not the query string.** Two reasons,
-// both decisive:
+// **The wire format, why the blob rides in the fragment, and how the two kinds of link
+// differ are documented in `docs/save-and-share.md`.**
 //
-//   - A fragment is never sent to the server. That sidesteps the ~8 KB request-line
-//     limit that Apache, nginx, CloudFront and friends impose on a URL's path and
-//     query — the only hard length limit anywhere in this path, since browsers
-//     themselves accept URLs orders of magnitude longer than anything we'd
-//     generate. On the fragment there is effectively no ceiling to design around.
-//   - It keeps a player's board out of server logs, `Referer` headers, and any
-//     analytics the host runs. The state is the client's business.
-//
-// The cost is that a fragment is invisible to link-preview crawlers, so a shared
-// link can never render a picture of the position. Not something this app offers
-// anyway, and not worth the ceiling to buy.
-//
-// Being in the fragment also keeps this cleanly apart from the query parameters
-// `AppUrl` already understands: `#g=` and `?state=` occupy different halves of the
-// URL and never have to agree about precedence, which is why a shared link can take
-// over the saved game while a `?state=` scenario deliberately doesn't — the two
-// aren't competing readings of one parameter. See `Main`'s `sharedOpen`.
-//
-// **Delivery** prefers the OS share sheet (`navigator.share`) when the platform has
-// one — the phone case, where "copy to clipboard" is the more awkward of the two —
-// and falls back to writing the clipboard. See `deliver` for the transient-
-// activation constraint that shapes how this gets called.
-//
-// There are **two things worth sharing**, and this module builds a link for each:
-// the game state above, and the *deal* (`urlForDeal`, #98) — a link that says which
-// game and which board to lay out and nothing more, so both players start level. They
-// differ in what they carry, so they differ in where they ride and what they cost; see
-// `urlForDeal`. Delivery is common to both — whatever the link says, getting it to
-// the player is the same problem.
-//
-// Three *buttons* hand those two links out, though: the win overlay's victory share
-// (#264) is a deal link wrapped in a message (`victoryMessage`), not a third kind of
-// link. Sharing the position from a won board would ship the solution, so a victory
-// can only ever offer the deal.
-
+// Three *buttons* hand out those two links: the win overlay's victory share (#264) is a
+// deal link wrapped in a message (`victoryMessage`), not a third kind of link. Sharing
+// the position from a won board would ship the solution, so a victory can only ever
+// offer the deal.
 // The fragment parameter carrying a shared game. Read back by `AppUrl`, which owns
 // all URL parsing; this module owns the format, so the name lives here.
 let fragmentKey = "g"
@@ -61,9 +25,9 @@ let dealKey = "seed"
 // …and the one naming *which game* that deal is a deal of (#353). Same arrangement as
 // the two above: `AppUrl` reads it, this module writes it, one spelling.
 //
-// It says a *game*, so it is spelled `game`. `?scene=` picks which scene to mount (the
-// card gallery, the raster comparison) and a deal link has nothing to say about that;
-// `?game=` picks a board and says nothing about scenes.
+// It says a *game*, so it is spelled `game`. `?scene=` picks which scene to mount and a
+// deal link has nothing to say about that; `?game=` picks a board and says nothing about
+// scenes.
 let gameKey = "game"
 
 @val @scope(("window", "location")) external origin: string = "origin"
@@ -87,41 +51,25 @@ let urlFor = async (saved: SaveState.t): option<string> =>
 // A shareable URL for deal number `seed` of `game`: this page plus `?seed=`, which
 // opens that game dealt from that exact shuffle (`Game.t.deal`, via `AppUrl`).
 //
-// Deliberately a *different* share from `urlFor` above rather than a cheaper one.
-// That link carries a position — this game, mid-play, undo stack and all — so the
-// recipient picks up where the sender left off. This one carries only which board
-// to deal, so both players start level and play it out themselves, which is what
-// sharing a deal number has always meant where solitaire has them.
+// Deliberately a *different* share from `urlFor` above rather than a cheaper one; see
+// `docs/save-and-share.md` for the two kinds and why this one rides in the query.
 //
-// Carrying so little is what lets it ride in the query rather than the fragment,
-// and it should: `?seed=` is a knob `AppUrl` has always parsed, it costs a handful
-// of characters (no request-line limit is anywhere in sight), and it survives being
-// read off one screen and typed into another by hand — which a compressed blob
-// does not. The link being legible is half the point of a deal number.
+// **Synchronous, unlike `urlFor`**: there's nothing to compress. That matters at the
+// call site — the share can be attempted in the click handler itself, with the gesture's
+// transient activation intact (see `deliver`), rather than prepared in advance.
 //
-// Synchronous, unlike `urlFor`: there's nothing to compress. That matters at the
-// call site — the share can be attempted in the click handler itself, with the
-// gesture's transient activation intact (see `deliver`), rather than having to be
-// prepared in advance.
+// The page's own query is dropped and `pathname` kept, as in `urlFor`: whatever got this
+// board on screen, the deal number now says it in full, and the path keeps a link shared
+// from a GitHub Pages subpath (or a PR preview's deeper one) opening that same build.
 //
-// The page's own query is dropped rather than kept, for nearly the reason `urlFor`
-// drops it: whatever `?state=`/`?seed=` got this board on screen, the deal number now
-// says it in full. `pathname` stays, so a link shared from a GitHub Pages subpath — or
-// a PR preview's deeper one — opens that same build.
-//
-// **`?game=` is the exception, and it's why this takes a game (#353.)** The other
-// parameters say something the deal number supersedes; that one says *which board the
-// number is a deal of*, which the number can't say by itself. Dropping it was harmless
-// only while there was one seeded game to mean, so it's written back here — and written
+// **`?game=` is the exception, and it's why this takes a game (#353.)** It says *which
+// board the number is a deal of*, which the number can't say by itself — and it's written
 // from the game in hand rather than copied off the current URL, since the board on the
 // table is what's being shared and the query that opened the page may be a scene ago.
 //
-// **The default game omits it**, and that's the load-bearing half. `Game.default` is
-// what a deal number with no game named belongs to (it's the line in `core` that says
-// so, and the switcher's launch scene reads from it), so spelling it out would be a
-// link saying twice what it already says once. What that buys is legibility: `?seed=7`
-// survives being read off one screen and typed into another by hand, which the note
-// above calls half the point of a deal number, and `?game=freecell&seed=7` does not.
+// **The default game omits it**, and that's the load-bearing half: `?seed=7` survives
+// being read off one screen and typed into another by hand, and `?game=freecell&seed=7`
+// does not.
 let urlForDeal = (~game: Game.t, ~seed: int): string => {
   let whichGame = game.id == Game.default.id ? "" : gameKey ++ "=" ++ game.id ++ "&"
   origin ++ pathname ++ "?" ++ whichGame ++ dealKey ++ "=" ++ Int.toString(seed)
@@ -131,13 +79,11 @@ let urlForDeal = (~game: Game.t, ~seed: int): string => {
 // hands over, in the shape the Wordle-likes made familiar: a line naming the game
 // and the deal, a line saying how it went, and a link to play the same board.
 //
-// It rides on `urlForDeal`, never `urlFor`, and that's the whole design: a link to
-// the *position* would hand the recipient a solved board, which is the one thing a
-// victory share must not do. The deal number is the invitation — here's the board I
-// beat, go and beat it yourself — and it's the only share where "both players start
-// level" is the entire point. Being a `?seed=` link also means there's nothing to
-// compress, so the share can be attempted straight out of the click handler with
-// the gesture's transient activation intact (see `deliver`).
+// **It rides on `urlForDeal`, never `urlFor`**: a link to the *position* would hand the
+// recipient a solved board, which is the one thing a victory share must not do. Being a
+// `?seed=` link also means there's nothing to compress, so the share can be attempted
+// straight out of the click handler with the gesture's transient activation intact (see
+// `deliver`).
 //
 // `moves` and `undos` are the game's tally (`Stats`, #289): every move the player
 // made, and every time they stepped one back. An undo doesn't pad the move count —
@@ -165,24 +111,19 @@ let victoryMessage = (~game: Game.t, ~seed: int, ~moves: int, ~undos: int): stri
   "\nSolved in " ++
   Stats.moveLabel(moves) ++ (undos > 0 ? " (" ++ Stats.undoLabel(undos) ++ ")" : "")
 
-// What a shared blob turns out to be (#354): the saved game, and **the game it is a
-// game of**. The second half is why this hands back a pair rather than the save alone —
-// the blob names its board (`SaveState`'s `"game"`), so the caller can bring that board
-// forward instead of decoding onto whichever scene happens to be mounted.
+// What a shared blob turns out to be (#354): the saved game, and **the game it is a game
+// of**. A pair rather than the save alone so the caller can bring the named board forward
+// instead of decoding onto whichever scene happens to be mounted.
 type shared = {game: Game.t, saved: SaveState.t}
 
-// The shared game a blob carries, or `None` for anything that isn't one: a truncated
-// paste, a link from an incompatible `SaveState` version, a browser that can't
-// decompress — and, since #354, a link naming a game this build doesn't have, or one
-// whose piles don't fit the board it names. Every one of those means "ignore the link
-// and deal normally" to the caller: a bad link never takes the board down with it, and
-// the two new ways to be bad are answered the same way as the old ones rather than by
-// mounting a board the cards don't fit.
+// The shared game a blob carries, or `None` for anything that isn't one — a truncated
+// paste, an incompatible version, a browser that can't decompress, a game this build
+// doesn't have, piles that don't fit the board named (#354). Every one means "ignore the
+// link and deal normally": a bad link never takes the board down with it.
 //
-// A blob naming no game at all is *not* one of them. It's a link written when FreeCell
-// was the only game that could have written one, so it means the default game — which
-// is the reading `SaveState` deliberately left to this end (see its header), and this is
-// the end that has `Game.all` to resolve it against.
+// A blob naming **no** game at all is *not* one of them — it means the default game, the
+// reading `SaveState` deliberately leaves to this end, which is the end that has
+// `Game.all` to resolve it against.
 let savedFrom = async (blob: string): option<shared> =>
   (await Compression.decompress(blob))
   ->Option.flatMap(SaveState.decode)
@@ -227,10 +168,10 @@ external makeShareData: (~title: string=?, ~text: string=?, ~url: string=?) => s
 // board can't change while the menu is covering it, so the link is ready and this
 // function's first act can be the share itself.
 //
-// A rejected share falls through to the clipboard. That folds two cases together —
-// a genuine failure and a player who opened the sheet and thought better of it —
-// and lands both on "the URL is on your clipboard", which is a harmless place to
-// end up and saves inspecting `DOMException` names to tell them apart.
+// A rejected share falls through to the clipboard. That folds two cases together — a
+// genuine failure and a player who opened the sheet and thought better of it — and lands
+// both on "the URL is on your clipboard", which saves inspecting `DOMException` names to
+// tell them apart.
 //
 // `~text` is the message to carry the link, for the one share that has something to
 // say (`victoryMessage`); the plain link shares omit it and keep the generic blurb

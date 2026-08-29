@@ -2,32 +2,18 @@
 //
 // The compressor is the browser's own **Compression Streams API**
 // (`CompressionStream`/`DecompressionStream`) — a platform built-in, so this costs
-// nothing in the bundle and adds no dependency to install, lock, or keep current.
-// It's the reason a share link (see `ShareLink`) can carry a whole undo/redo stack:
-// a 200-move FreeCell game serializes to ~59 KB of `SaveState` JSON, which lands
-// here as ~1,800 URL-safe characters.
+// nothing in the bundle and adds no dependency to install, lock, or keep current. It's
+// what lets a share link (see `ShareLink`) carry a whole undo/redo stack.
 //
-// **`deflate-raw`, not `gzip`.** The API offers `gzip`, `deflate` and
-// `deflate-raw`; they wrap the same DEFLATE stream in different amounts of framing.
-// Nothing outside this app ever reads these bytes — they go from a button straight
-// into our own URL — so the framing is pure overhead, and `deflate-raw` has none.
-// It saves gzip's 18-byte header/footer, which is worth about 24 characters once
-// base64'd. Irrelevant on a long game; a tenth of the payload on a fresh deal.
-//
-// **base64url, not base64.** The output has to survive being pasted, linkified and
-// re-parsed, so the standard alphabet's `+` and `/` are swapped for `-` and `_` and
-// the `=` padding is dropped (re-derived on the way back in). That's the URL-safe
-// alphabet from RFC 4648 §5, and it means the blob never needs percent-encoding —
-// which would undo the compression's whole point by re-inflating it ~3× in the
-// worst case.
+// **The choice of `deflate-raw` over gzip, of base64url over base64, and the size
+// arithmetic behind both are documented in `docs/save-and-share.md`.**
 //
 // Everything here is **async**, because the API is stream-shaped and there is no
-// synchronous alternative in the platform. Both directions return an `option`
-// rather than throwing: a browser without the API, a corrupt blob, a truncated
-// paste, or a link from an older format all mean "no string" to the caller, which
-// falls back to whatever it would have done anyway. Nothing about a share link is
-// load-bearing enough to justify taking the app down with it.
-
+// synchronous alternative in the platform. Both directions return an `option` rather
+// than throwing: a browser without the API, a corrupt blob, a truncated paste, or a link
+// from an older format all mean "no string" to the caller, which falls back to whatever
+// it would have done anyway. Nothing about a share link is load-bearing enough to
+// justify taking the app down with it.
 // Whether the platform can do this at all. Baseline in every browser this app
 // targets (Chrome 80+, Firefox 113+, Safari 16.4+), so the false branch is a
 // courtesy for an old install rather than a case anyone should hit — but it turns
@@ -90,7 +76,8 @@ type textDecoder
 // `String.fromCharCode(...codes)` rather than a call with one array argument.
 @val @scope("String") @variadic external fromCharCodes: array<int> => string = "fromCharCode"
 
-// The DEFLATE flavour, named once. See the header for why it's the bare stream.
+// The DEFLATE flavour, named once. See `docs/save-and-share.md` for why it's the bare
+// stream and not gzip.
 let format = "deflate-raw"
 
 // --- base64url ---------------------------------------------------------------
