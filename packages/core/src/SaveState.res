@@ -15,7 +15,7 @@
 //
 // The format is deliberately small and self-describing:
 //
-//   {"v":1,"past":[S,…],"present":S,"future":[S,…],
+//   {"v":1,"g":"freecell","past":[S,…],"present":S,"future":[S,…],
 //    "stats":{"moves":n,"undos":n,"autoplays":n},
 //    "timing":{"dealtAt":ms,"wonAt":ms}}
 //
@@ -43,6 +43,21 @@
 // `"dealtAt"` but no `"wonAt"` is a game still being played. Absence is a shape we
 // support at every level here; a field that's *present* and isn't a timestamp still
 // fails the whole save, because that isn't a blob we wrote.
+//
+// `"g"` (#354) is the fourth, and the one that says **which board these piles are of**.
+// Everything above is the cards; nothing in it named the game, so a blob decoded onto
+// whatever scene happened to be mounted — safe only while there was one game to mount.
+// Now the save names its own game and the reader can bring that game forward (the web
+// app) or refuse a save that doesn't fit the board it's being read onto (`fits` below).
+//
+// Optional, and `v` stays at 1, on exactly the terms the three fields above joined:
+// a blob without it was written when FreeCell was the only game that could have written
+// one, so its absence *means* the default game rather than "unreadable". Requiring it
+// would have cost every share link already sent and — since `SavedGame` persists through
+// this same encoding — every in-progress saved game on every device, to buy nothing the
+// optional field doesn't. Absence is reported as absence here (`gameId: None`) rather
+// than filled in with a default: which game a nameless save belongs to is a question
+// about the *app's* list of games, and this module is the wire format.
 
 open Card
 
@@ -60,6 +75,14 @@ type t = {
   history: History.t<GameState.t>,
   stats: Stats.t,
   timing: Timing.t,
+  // **The game these piles are of** (#354), by id — `Game.t`'s `id`, the same string the
+  // scene picker, the CLI and `SavedGame`'s storage key use. `None` is a save that
+  // doesn't say, which is either a blob written before this field existed or one built
+  // from a bare history (`ofHistory`); a reader resolves that to the default game (see
+  // the header). An id rather than a `Game.t` because a save is a *string* either side
+  // of this type, and a board that isn't in this build's list is exactly the case a
+  // reader has to be able to reject.
+  gameId: option<string>,
 }
 
 // The tally a save with no `"stats"` of its own is credited with.
@@ -79,10 +102,37 @@ let inferredStats = (history: History.t<GameState.t>): Stats.t => {
 // #289 decodes to, and what any caller holding only a history starts from. The tally
 // is inferred as above; the clock isn't inferred at all, because a game whose deal
 // nobody timed has no honest time to report (see `Timing.unknown`).
+//
+// The game isn't inferred either, and for a sharper version of the same reason: a bare
+// history is a line of play with no board attached, so naming a game here would be
+// guessing at the one fact this save was built without. `None` says so, and a reader
+// takes it as the default game — which is what such a save is (see the header).
 let ofHistory = (history: History.t<GameState.t>): t => {
   history,
   stats: inferredStats(history),
   timing: Timing.unknown,
+  gameId: None,
+}
+
+// Could this save be read onto `game`? The structural half of "which board is this"
+// (#354): the id says which game the save *claims*, and this says whether the cards
+// agree — a ten-pile state is not a save of a sixteen-pile board, whatever it calls
+// itself, and building it onto one would put cards nowhere the board has room for.
+//
+// Every state is checked, not just the present: `past` and `future` are positions the
+// player can step to with Undo and Redo, so a save that fits only at the present would
+// come apart one press later.
+//
+// The pile count is the whole test, deliberately. It's the one structural thing a
+// `GameState.t` and a `Game.t` have to agree on for the board to render at all; whether
+// the *cards* are the game's own deck is a different (and much longer) question, and one
+// a save can't fail without having been hand-edited into a board that still lays out.
+let fits = (s: t, ~game: Game.t): bool => {
+  let piles = Array.length(game.piles)
+  let fitsState = (state: GameState.t) => Array.length(state.piles) == piles
+  fitsState(s.history.present) &&
+  s.history.past->Array.every(fitsState) &&
+  s.history.future->Array.every(fitsState)
 }
 
 // --- Card codes --------------------------------------------------------------
@@ -290,6 +340,19 @@ let decodeStamp = (dict: Dict.t<JSON.t>, key: string): option<option<float>> =>
   | Some(_) => None
   }
 
+// The game a save names (#354), read on the terms every optional field here is read on:
+// *absent* is a supported shape and means "this save doesn't say" (`None` — a blob from
+// before the field existed, which the reader takes as the default game), while *present
+// and not a string* means this isn't a blob we wrote and fails the whole save. Any
+// string is accepted, id or not: whether it names a game this build knows is a question
+// about `Game.all`, which is the reader's to ask and not this format's.
+let decodeGameId = (dict: Dict.t<JSON.t>): option<option<string>> =>
+  switch dict->Dict.get("g") {
+  | None => Some(None)
+  | Some(JSON.String(id)) => Some(Some(id))
+  | Some(_) => None
+  }
+
 let decodeTiming = (json: JSON.t): option<Timing.t> =>
   switch json {
   | JSON.Object(dict) =>
@@ -304,19 +367,31 @@ let decodeTiming = (json: JSON.t): option<Timing.t> =>
 
 // Serialize a saved game — the whole undo/redo history, and the tally beside it —
 // to a storable string.
-let encode = (s: t): string =>
+let encode = (s: t): string => {
+  // The game (#354), written only when the save names one — the same way the clock
+  // writes only the stamps it has (`encodeTiming`). A save that doesn't say which game
+  // it is of writes no key at all rather than a `null` or a guessed id, so absence keeps
+  // meaning exactly one thing on the way back in. Beside `"v"` because it belongs with
+  // it: the two together are what a reader has to agree with before the cards mean
+  // anything.
+  let named = switch s.gameId {
+  | Some(id) => [("g", JSON.String(id))]
+  | None => []
+  }
   JSON.stringify(
     JSON.Object(
-      Dict.fromArray([
-        ("v", JSON.Number(Int.toFloat(version))),
-        ("past", JSON.Array(s.history.past->Array.map(encodeState))),
-        ("present", encodeState(s.history.present)),
-        ("future", JSON.Array(s.history.future->Array.map(encodeState))),
-        ("stats", encodeStats(s.stats)),
-        ("timing", encodeTiming(s.timing)),
-      ]),
+      Dict.fromArray(
+        Array.concat([("v", JSON.Number(Int.toFloat(version)))], named)->Array.concat([
+          ("past", JSON.Array(s.history.past->Array.map(encodeState))),
+          ("present", encodeState(s.history.present)),
+          ("future", JSON.Array(s.history.future->Array.map(encodeState))),
+          ("stats", encodeStats(s.stats)),
+          ("timing", encodeTiming(s.timing)),
+        ]),
+      ),
     ),
   )
+}
 
 // Parse a stored string back into a saved game, or `None` when it can't be trusted:
 // not valid JSON, the wrong (or missing) format version, or any structural
@@ -327,8 +402,10 @@ let encode = (s: t): string =>
 // A blob with no `"stats"` at all is *not* one of those failures: it's a save
 // written before #289, and it decodes to a real game whose tally is inferred by
 // `inferredStats`. Nor is one with no `"timing"` (#302) — that's a save from before
-// the clock existed, and it decodes to a game with no time to report. That's the
-// whole reason the version didn't move.
+// the clock existed, and it decodes to a game with no time to report. Nor one with no
+// `"g"` (#354): that's a save from before one had to say which game it was of, and it
+// decodes to a game that doesn't name its board, for the reader to take as the default.
+// That's the whole reason the version didn't move.
 let decode = (raw: string): option<t> => {
   let parsed = try Some(JSON.parseOrThrow(raw)) catch {
   | _ => None
@@ -352,8 +429,8 @@ let decode = (raw: string): option<t> => {
         | None => Some(Timing.unknown)
         | Some(json) => decodeTiming(json)
         }
-        switch (stats, timing) {
-        | (Some(stats), Some(timing)) => Some({history, stats, timing})
+        switch (stats, timing, decodeGameId(dict)) {
+        | (Some(stats), Some(timing), Some(gameId)) => Some({history, stats, timing, gameId})
         | _ => None
         }
       | _ => None

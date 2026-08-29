@@ -20,10 +20,13 @@ describe("SaveState", () => {
   // dropped or rounded stamp would show up as a different elapsed time rather than
   // as the same one.
   let dealtAt = 1_700_000_000_000.
+  // …and the board it's all a game of (#354), which is what a real save carries: every
+  // one written from a session names its game (`Session.save`).
   let saved: SaveState.t = {
     history,
     stats: {moves: 2, undos: 1, autoplays: 1},
     timing: {dealtAt: Some(dealtAt), wonAt: Some(dealtAt +. 247_000.)},
+    gameId: Some(Game.freecell.id),
   }
 
   test("a card round-trips through its two-character code", () => {
@@ -74,6 +77,7 @@ describe("SaveState", () => {
       history: History.make(opening),
       stats: Stats.zero,
       timing: Timing.dealt(~at=dealtAt),
+      gameId: Some(Game.freecell.id),
     }
     switch SaveState.decode(SaveState.encode(fresh)) {
     | Some(restored) =>
@@ -116,6 +120,7 @@ describe("SaveState", () => {
     // neither the `stats` key nor the `timing` key that came after it.
     let legacy =
       SaveState.encode(saved)
+      ->String.replaceRegExp(/,"g":"[^"]*"/, "")
       ->String.replaceRegExp(/,"stats":\{[^}]*\}/, "")
       ->String.replaceRegExp(/,"timing":\{[^}]*\}/, "")
 
@@ -214,6 +219,127 @@ describe("SaveState", () => {
         expect(SaveState.decode(`{"v":1,${states},"timing":{"dealtAt":-1}}`))->toEqual(None)
         expect(SaveState.decode(`{"v":1,${states},"timing":{"wonAt":null}}`))->toEqual(None)
         expect(SaveState.decode(`{"v":1,${states},"timing":7}`))->toEqual(None)
+      },
+    )
+  })
+
+  // Which game the piles are a game of (#354). The format carried the cards and not the
+  // board, so a blob decoded onto whatever was mounted; now it says, on the same
+  // additive terms `"stats"` and `"timing"` arrived on — which is what keeps every share
+  // link already sent, and every saved game on every device, readable.
+  describe("the game a save is of", () => {
+    let miniSave: SaveState.t = {
+      ...saved,
+      history: History.make(GameState.initial(Game.mini)),
+      gameId: Some(Game.mini.id),
+    }
+
+    test(
+      "rides in the envelope and comes back",
+      () => {
+        expect(SaveState.encode(miniSave)->String.includes(`"g":"mini"`))->toBe(true)
+        switch SaveState.decode(SaveState.encode(miniSave)) {
+        | Some(restored) => expect(restored.gameId)->toEqual(Some("mini"))
+        | None => expect("decoded")->toBe("but got None")
+        }
+      },
+    )
+
+    test(
+      "a save that names no game writes no field, and reads back as naming none",
+      () => {
+        // A bare history has no board attached, so `ofHistory` names nothing rather than
+        // guessing — and the blob says nothing rather than saying `null`. Absence is the
+        // one shape that means "this save doesn't say", which is what a *reader* turns
+        // into the default game; the format itself doesn't decide that.
+        let bare = SaveState.ofHistory(history)
+        let blob = SaveState.encode(bare)
+        expect(blob->String.includes(`"g"`))->toBe(false)
+        switch SaveState.decode(blob) {
+        | Some(restored) => expect(restored.gameId)->toEqual(None)
+        | None => expect("decoded")->toBe("but got None")
+        }
+      },
+    )
+
+    test(
+      "a blob written before the field existed still decodes, naming no game",
+      () => {
+        // The whole reason `v` didn't move: a link somebody already sent, and a saved
+        // game already on a device, both predate the field and both have to keep
+        // opening. FreeCell was the only game that could have written one, which is why
+        // "names no game" is a reading rather than a loss.
+        let earlier = SaveState.encode(saved)->String.replaceRegExp(/,"g":"[^"]*"/, "")
+        expect(earlier->String.includes(`"g"`))->toBe(false) // the fixture really is older
+        switch SaveState.decode(earlier) {
+        | Some(restored) =>
+          expect(restored.gameId)->toEqual(None)
+          expect(restored.history)->toEqual(history)
+        | None => expect("decoded")->toBe("but got None")
+        }
+      },
+    )
+
+    test(
+      "a present-but-malformed game name is rejected like any other bad field",
+      () => {
+        // Absent is a supported shape (above); present and not a string means this isn't
+        // a blob we wrote, and the save fails whole rather than being half-read.
+        let states = `"past":[],"present":{"piles":[],"loose":[]},"future":[]`
+        expect(SaveState.decode(`{"v":1,"g":7,${states}}`))->toEqual(None)
+        expect(SaveState.decode(`{"v":1,"g":null,${states}}`))->toEqual(None)
+        expect(SaveState.decode(`{"v":1,"g":["freecell"],${states}}`))->toEqual(None)
+      },
+    )
+
+    test(
+      "an id no game answers to still decodes — it's the reader that has the list",
+      () => {
+        // The format's job is to report what the blob says; whether "solitaire-9000" is
+        // a game this build has is a question about `Game.all`, and the reader (the web
+        // app's `ShareLink`) is where it's asked and where an unknown name becomes
+        // "ignore the link".
+        let blob = SaveState.encode({...saved, gameId: Some("solitaire-9000")})
+        switch SaveState.decode(blob) {
+        | Some(restored) => expect(restored.gameId)->toEqual(Some("solitaire-9000"))
+        | None => expect("decoded")->toBe("but got None")
+        }
+      },
+    )
+
+    // The structural half of the same question. A save can name a board and still not be
+    // one — a hand-edited link, or a board that changed shape between builds — and
+    // laying ten piles of cards onto a sixteen-pile board is exactly the misread the
+    // whole issue is about.
+    test(
+      "a save fits the board it was taken from",
+      () => {
+        expect(saved->SaveState.fits(~game=Game.freecell))->toBe(true)
+        expect(miniSave->SaveState.fits(~game=Game.mini))->toBe(true)
+      },
+    )
+
+    test(
+      "…and doesn't fit a board with a different number of piles",
+      () => {
+        expect(saved->SaveState.fits(~game=Game.mini))->toBe(false)
+        expect(miniSave->SaveState.fits(~game=Game.freecell))->toBe(false)
+      },
+    )
+
+    test(
+      "every state in the history has to fit, not just the present",
+      () => {
+        // `past` and `future` are positions Undo and Redo step to, so a save that fit
+        // only where it opens would come apart one press later.
+        let mismatched = {
+          ...miniSave,
+          history: {
+            ...miniSave.history,
+            past: [GameState.initial(Game.freecell)],
+          },
+        }
+        expect(mismatched->SaveState.fits(~game=Game.mini))->toBe(false)
       },
     )
   })
