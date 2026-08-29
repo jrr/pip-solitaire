@@ -111,7 +111,8 @@ change in the actual game rather than only in tests. Driving the board by hand
 The thinking behind it lives in `core` — `Position.res` (a FreeCell board packed
 for search) and `Solver.res` (the search itself). `mise run solve -- <deal>` runs
 that alone, with no browser: seconds instead of a minute, so it's what you
-measure a solver change with before playing one for real.
+measure a solver change with before playing one for real. `docs/solver.md` has
+the contract, the heuristic, and the benchmark record to beat.
 
 ## Formatting
 

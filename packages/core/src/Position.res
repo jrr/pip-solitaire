@@ -1,40 +1,23 @@
 // A FreeCell position packed small enough to **think** with — the board as the
-// solver searches it (see `Solver`).
+// solver searches it (see `Solver`, and `docs/solver.md` for why the packing
+// exists at all).
 //
 // `GameState.t` is the game's real snapshot and stays the source of truth. This is
 // the same position squeezed into ints: four free cells, four foundation ranks,
-// eight columns of card numbers. Nothing here is a second set of rules — every
-// predicate below is the packed reading of one in `Rules`/`Reducer`, and
-// `Position_test` pins them together by playing a solved game through both. The
-// packing exists for one reason: a search asks "and then what?" hundreds of
-// thousands of times per deal, and the honest `GameState` transition — which
-// searches every pile for a card by identity and rebuilds sixteen arrays per move
-// — is far too slow to be asked that often.
+// eight columns of card numbers.
 //
-// What it mirrors, and why each is load-bearing for a plan that survives contact
-// with the app:
-//   - `Rules.cascade` / `Rules.foundation` — what a pile accepts.
-//   - `Reducer.maxSupermove` — `(1 + emptyCells) × 2 ^ emptyCascades`, with the
-//     destination excluded from the tally, so a planned run move is one the
-//     reducer will actually take.
-//   - `Reducer.autoCollect` / `isSafeToCollect` — on by `Options.default`, so the
-//     board *after* a move usually isn't just that move applied.
-//   - `Reducer.canFinish` — once it flips true the drivers stand aside and the
-//     Finish button owns the sweep, which changes what the next board looks like.
-//     It's also the solver's goal: from there the game is won.
-//
-// This is the JavaScript mirror that used to live in `web-app/scripts/autoplay/`
-// (#269), brought into `core` as ReScript (#290) — so the model and the rules it
-// mirrors are now one language, one build, and checked against each other by the
-// ordinary test suite rather than only by a browser run.
+// **Nothing here is a second set of rules.** Every predicate below is the packed
+// reading of one in `Rules`/`Reducer`, named at the predicate itself, and
+// `Position_test` pins them together by playing a solved game through both. A
+// change to a rule over there is a change here, and that test is what catches it.
 
 open Card
 
 // --- A card as an int --------------------------------------------------------
 // `suit * 13 + (rank - 1)`, so every card is one small int in 0…51 and a whole
-// column is a compact array of them. The suit numbering is this module's own (it
-// only has to be consistent with itself), chosen so the two red suits sit in the
-// middle and `isRed` is a single range test.
+// column is a compact array of them. The suit numbering is this module's own — it
+// only has to be consistent with itself — and the two red suits sit in the middle
+// so `isRed` stays a single range test. Reorder them and that breaks silently.
 
 let suitIndex = (suit: suit): int =>
   switch suit {
@@ -447,8 +430,8 @@ let applyMove = (s: t, move: move): t => {
 // Spelling them out is expensive: this is about a third of `Solver`'s runtime on
 // its own — nine strings built and sorted for every position the search generates —
 // and the largest single thing the collector is cleaning up after. It's the first
-// thing to change if the solver is ever wanted faster; see the note under
-// `Solver.solve` for what that measured and why it hasn't been done.
+// thing to change if the solver is ever wanted faster; `docs/solver.md` has what
+// that measured and why it hasn't been done.
 let key = (s: t): string => {
   let cells = s.cells->Array.filter(c => c >= 0)
   cells->Array.sort(Int.compare)
