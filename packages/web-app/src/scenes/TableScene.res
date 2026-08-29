@@ -322,54 +322,32 @@ type winShare = {
 // `TableLayout.fanStep`, …) rather than opened, so a number's home is visible at
 // the site that multiplies it.
 
-// The opening deal animation (#115). The cards fly up from below the stage, one
-// at a time, and these two knobs define the whole feel — everything else (the
-// interval between cards, and their speed) is derived from them and the card
-// count `n`:
-//   - `dealMaxInFlight` (C) — how many cards may be moving at once, a cap kept
-//     modest so a full deck stays cheap to composite.
-//   - `dealPerCardMs` (P) — how long the deal spends *per card*, so the total
-//     scales with the count: T = P·n, first card to last. Pacing by time-per-card
-//     (rather than a fixed total) keeps small demos snappy — a handful of cards no
-//     longer stretches across a whole deck's worth of time.
-// From those, with C clamped to at most `n` and T = P·n:
-//   - start interval between successive cards:  Δ = T / (n − 1 + C)
-//   - per-card flight time (distance is fixed, so this *is* the speed):  t = C·Δ
-//   - card i's start delay:  i·Δ
-// which makes both constraints exact: at steady state exactly C cards are
-// mid-flight, and the last card (start (n−1)·Δ, flight C·Δ) lands at
-// (n−1+C)·Δ = T. Raising C deals each card faster but with more simultaneous
-// motion; scaling P stretches or tightens the whole deal.
+// Four things move cards across this board — the opening deal, the finish sweep, a
+// console move and an autoplay step — and all four are one staggered flight timed by
+// one pair of numbers: a max-in-flight cap C and a per-card budget P.
+//
+// **The derivation, what each knob does to the feel, and the four tunings side by
+// side are in `docs/animation-timing.md`.** Read that before retuning; the pairs are
+// deliberately not shared, so each of the four can be re-timed on its own.
+
+// The opening deal (#115): fifty-two cards thrown from one off-stage stack. The
+// flourish that opens a game, so it can't outstay its welcome.
 let dealMaxInFlight = 5
 let dealPerCardMs = 67.
 
-// The end-game "Finish" sweep animation (#160) reuses the deal's staggered-flight
-// model — cards flying home one at a time — but from a different source order and
-// trajectory (each card from where it *rests* to its foundation, rather than one
-// shared off-stage origin). It carries its own knobs so the sweep can be tuned to
-// a different feel than the deal without disturbing it; the C/P → Δ/flight
-// derivation is identical (see the deal knobs above).
+// The end-game "Finish" sweep (#160): fifty-odd cards on their way to a win. It's the
+// payoff, so a touch more languid than the deal.
 let finishMaxInFlight = 5
 let finishPerCardMs = 90.
 
-// …and a third set for a move played by a *typed command* (#273), which shares the
-// same flight path (`flyCards`) and so the same C/P → Δ/flight derivation. The knobs
-// differ because the job does: a sweep is fifty-odd cards on their way to a win, while
-// a console move is one card — or a short `moverun` — that has to be followable by
-// someone reading the log to see what the command did. So each card flies slower, and
-// at most two are in the air at once, which is what makes a run read as cards moving
-// in order rather than as one undifferentiated blob.
+// A move played by a *typed command* (#273): one card, or a short `moverun`, that has
+// to be followable by someone reading the log to see what the command did. C = 2 is
+// what makes a run read as cards moving in order rather than as one blob.
 let commandMaxInFlight = 2
 let commandPerCardMs = 170.
 
-// …and a fourth for the solver playing a whole line (#291). Autoplay is a *run of
-// moves*, not one move with many cards in it, so each planned move flies on its own
-// and the next only starts once its cards have landed — what you watch is the line
-// being played, in order, rather than a board that rearranged itself while you
-// blinked. The knobs are the console's, quickened: a plan is forty-odd moves, and at
-// the single-move pace above the whole thing would outstay its welcome. They're a
-// separate pair precisely so the sequence can be re-timed (or slowed back down to
-// watch a particular deal) without touching how a typed move reads.
+// A move the solver played (#291): the console's pair, quickened, because this is one
+// of forty moves on the way to a win.
 let autoplayMaxInFlight = 3
 let autoplayPerCardMs = 140.
 
@@ -380,11 +358,9 @@ let autoplayPerCardMs = 140.
 // once; the final `reflowAll` then settles every foundation to its own slot order.
 let finishFlightZBase = 100000
 
-// The staggered-flight timing shared by the deal (#115) and the finish sweep
-// (#160): from the max-in-flight cap C, the per-card budget P and the card count
-// n, derive the start interval Δ between successive cards and each card's flight
-// time t = C·Δ (see the deal knobs above for the full derivation). C is clamped to
-// at most n so the last card's flight isn't padded past what the sequence needs.
+// From C, P and the card count n: the start interval Δ between successive cards, and
+// each card's flight time t = C·Δ. C is clamped to at most n, or a short sequence
+// would pad its last flight past the end of the sequence itself.
 let staggerTiming = (~maxInFlight, ~perCardMs, ~n) => {
   let c = Int.toFloat(maxInFlight < n ? maxInFlight : n)
   let total = perCardMs *. Int.toFloat(n)
@@ -396,15 +372,14 @@ let staggerTiming = (~maxInFlight, ~perCardMs, ~n) => {
 // The easing every staggered flight shares — a soft, overshoot-free ease-out.
 let flightEasing = "cubic-bezier(0.22, 1, 0.36, 1)"
 
-// One card's staggered flight, shared by the opening deal (#115) and the finish
-// sweep (#160): animate a compositor-friendly `transform` from an offset `(dx, dy)`
-// back to zero, so the card reads as travelling from `(its committed spot) + (dx,
-// dy)` home to that spot (its left/top already hold it). `fill: "backwards"` holds
-// the card at the offset through its `delay`, so a batch launched in one loop each
-// waits its staggered turn. The deal flies every card from one shared off-stage
-// origin; the sweep flies each from its own resting spot — only `(dx, dy)` differs.
-// Returns the animation so a caller can track it (`outstandingAnimations`) or hang
-// the sweep's completion off it.
+// One card's staggered flight: animate a compositor-friendly `transform` from an
+// offset `(dx, dy)` back to zero, so the card reads as travelling from `(its
+// committed spot) + (dx, dy)` home to that spot (its left/top already hold it).
+// `fill: "backwards"` holds the card at the offset through its `delay`, so a batch
+// launched in one loop each waits its staggered turn. The deal flies every card from
+// one shared off-stage origin; a sweep or a commanded move flies each from its own
+// resting spot — only `(dx, dy)` differs. Returns the animation so a caller can track
+// it (`outstandingAnimations`) or hang the batch's completion off it.
 let flyHome = (~wrapper, ~dx, ~dy, ~flight, ~delay) =>
   wrapper->animate(
     [
@@ -1364,7 +1339,7 @@ let make = (
       // are correct and robust to interruption), this is a pure *visual* catch-up over
       // `movedCards`: each card travels from where it was resting to its new slot,
       // `stagger` ms apart, over `flight` ms each. `onDone` fires once the last card
-      // lands.
+      // lands. Where the two numbers come from is `docs/animation-timing.md`.
       //
       // The mechanism is the inverse-offset trick `animateDeal` uses: capture each
       // card's current spot, let `reflowAll` snap every node onto its new home, then
@@ -1472,9 +1447,9 @@ let make = (
         }
       }
 
-      // The finishing sweep's flight (#160): the shared path above, timed by the finish
-      // knobs — cards flying home one at a time from wherever they rest, with `onDone`
-      // raising the win overlay so the victory reads as the sweep's payoff.
+      // The finishing sweep's flight (#160): cards flying home one at a time from
+      // wherever they rest, with `onDone` raising the win overlay so the victory reads
+      // as the sweep's payoff.
       let animateFinish = (movedCards: array<Deck.card>, ~onDone) => {
         let (stagger, flight) = staggerTiming(
           ~maxInFlight=finishMaxInFlight,
@@ -1485,11 +1460,7 @@ let make = (
       }
 
       // The same flight for a move nobody dragged — a command typed into the debug
-      // console (#273). Its own knobs, because the two are different beasts: a sweep is
-      // fifty-odd cards and wants to move along, while a typed move is one card (or a
-      // short run) that has to be *followable* — you're reading the log to see what the
-      // command did. Hence a slower flight and at most a couple in the air at once, so a
-      // `moverun` reads as cards moving in order rather than as one blob.
+      // console (#273).
       let animateCommand = (movedCards: array<Deck.card>, ~onDone) => {
         let (stagger, flight) = staggerTiming(
           ~maxInFlight=commandMaxInFlight,
@@ -1499,9 +1470,8 @@ let make = (
         flyCards(movedCards, ~flight, ~stagger, ~onDone)
       }
 
-      // …and one more for a move the *solver* played (#291), which is a commanded move
-      // in every respect except its pace: it's one of forty on the way to a win, so it
-      // flies to its own quicker knobs. One call per planned move, chained on `onDone`,
+      // …and one more for a move the *solver* played (#291). One call per planned move,
+      // chained on `onDone` so the next only starts once these cards have landed — which
       // is what makes the line read as a game being played rather than as a board that
       // changed by itself.
       let animateAutoplayStep = (movedCards: array<Deck.card>, ~onDone) => {
@@ -2236,8 +2206,7 @@ let make = (
       // so they all launch from the same "stack" a magician would throw from, and
       // animates to `translate 0` (its left/top already hold the final spot). The
       // per-card start offset therefore differs on *both* axes, since each card
-      // travels from that one origin to a different landing spot. The timing is
-      // entirely the `dealMaxInFlight`/`dealPerCardMs` math above. With the OS
+      // travels from that one origin to a different landing spot. With the OS
       // asking for reduced motion — or the URL's `?animate=off` (`~skipDealAnimation`)
       // — the cards simply stay where they were placed, no fly-in.
       let animateDeal = () => {
@@ -2254,7 +2223,7 @@ let make = (
           let originX = pr.width /. 2. -. cw /. 2.
           let originY = pr.height +. ch
           // The stagger (Δ) and per-card flight time, from the deal's knobs and the
-          // card count — the same derivation the finish sweep reuses.
+          // card count.
           let (delta, flight) = staggerTiming(
             ~maxInFlight=dealMaxInFlight,
             ~perCardMs=dealPerCardMs,
