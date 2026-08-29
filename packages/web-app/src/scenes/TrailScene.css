@@ -1,0 +1,94 @@
+@layer scenes {
+  /* Trail scene (issue #226): a transparent overlay canvas over real
+     `.stacking-card` nodes, with one sprite stamped at the pointer and never
+     cleared. See TrailScene.res for what the scene is proving; what's here is
+     only the frame it happens in. */
+  .trail-scene {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.6rem;
+    width: min(94vw, 760px);
+  }
+
+  .trail-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 0.5rem;
+  }
+
+  .trail-toggle,
+  .trail-action {
+    font: inherit;
+    font-size: 0.85rem;
+    padding: 0.35rem 0.7rem;
+    border-radius: 999px;
+    border: 1px solid #2d4066;
+    background: #16233a;
+    color: #cbd5e1;
+    cursor: pointer;
+  }
+
+  .trail-toggle--on {
+    border-color: #22c55e;
+    background: #14532d;
+    color: #f0fdf4;
+  }
+
+  /* "Hand off a card" is disabled until there are sprites to hand off with, and
+     once the backdrop is empty — see `refresh` in TrailScene.res for why that
+     control has to wait rather than fail quietly. */
+  .trail-action[disabled] {
+    opacity: 0.45;
+    cursor: default;
+  }
+
+  .trail-status {
+    margin: 0;
+    font-size: 0.78rem;
+    color: #94a3b8;
+    text-align: center;
+  }
+
+  /* The stage: the backdrop cards' positioning context, and the box the overlay
+     covers.
+
+     **Framed with an inset `box-shadow`, not a `border`** — deliberately. A
+     border makes the padding box (which `inset: 0` on the overlay resolves
+     against) smaller than the border box (which `getBoundingClientRect`
+     reports), so a canvas sized from the measured rect ends up a couple of
+     pixels larger than the box it's drawn in, and every stamp lands slightly
+     off its own coordinates. The overlay below reads its *own* rect rather than
+     the stage's, which is the real fix; the shadow keeps the trap from being
+     re-set for whoever copies this frame into a host that does have a border.
+
+     `touch-action: none` so dragging a finger across the stage draws a trail
+     instead of scrolling the page — the same lock the board puts on its cards. */
+  .trail-stage {
+    position: relative;
+    width: 100%;
+    height: 360px;
+    border-radius: 12px;
+    background: #0b1220;
+    box-shadow: inset 0 0 0 1px #2d4066;
+    overflow: hidden;
+    touch-action: none;
+  }
+
+  /* The overlay. Transparent (nothing ever fills it), so the cards underneath
+     show through, and `pointer-events: none`, so it doesn't swallow the events
+     that reach them — the two halves of "an overlay over a live board".
+
+     `width`/`height` are spelled out rather than left to `inset: 0`: a canvas is
+     a replaced element, so with `width: auto` it would lay out at its intrinsic
+     300x150 backing-store size and ignore the insets entirely. */
+  .trail-overlay {
+    position: absolute;
+    inset: 0;
+    display: block;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+  }
+}

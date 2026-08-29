@@ -17,9 +17,18 @@
 // the isolated document has the faces after all — and it reuses the real card
 // art, so the sprite can't drift from the card the game draws.
 //
-// The whole deck goes into *one* document laid out as a grid, which is then cut
-// into per-card sprites. See `markup` for why: it is the difference between a
-// ~60ms build and a ~400ms one, and it costs nothing.
+// The whole deck goes into *one* document laid out as a grid. See `markup` for
+// why: it is the difference between a ~60ms build and a ~400ms one, and it costs
+// nothing.
+//
+// **The sheet is kept, not cut up** (#226). It used to be blitted apart into 52
+// standalone canvases the moment it decoded, and the sheet dropped — which suited
+// the `raster` scene, whose whole job is to lay 52 sprites out as 52 DOM nodes,
+// and quietly taxed the animation, which wants the opposite: one source texture,
+// `drawImage`'s nine-argument form, and no per-card canvas to keep hot. So a
+// `sprite` is now a *rectangle of the shared sheet* (`blit`), and the standalone
+// canvas a DOM consumer needs is cut **lazily** (`element`), once, on demand.
+// One mutable field, and both scenes get the shape they wanted.
 //
 // This was one of two strategies for a while (#225). The other painted the face
 // with the canvas 2D API — `roundRect` and `fillText`, no font embedding needed
@@ -42,44 +51,16 @@
 //     the whole 52-card set before their first frame.
 
 // --- Bindings ----------------------------------------------------------------
-// Canvas, `<img>` decoding, `fetch`, and the font-loading API. All kept here
-// rather than in WebDom: WebDom is the shared *element* vocabulary the scenes
-// speak, and none of this is useful outside rasterization.
+// `<img>` decoding, `fetch`, and the font-loading API — the parts of
+// rasterization nothing else in the app has any use for. The *canvas* half moved
+// out to `runtime/Canvas` when the overlay grew one of its own (#226): a sprite
+// blit has a canvas at each end, so both ends have to speak of one `context`
+// type.
 
-type canvas
-type context
 type image
 type response
 type buffer
 type bytes
-
-@val @scope("document") external createCanvas: string => canvas = "createElement"
-// A canvas *is* an element; the identity cast lets the scene splice a sprite
-// straight into a vnode tree with `Html.node`.
-external canvasElement: canvas => WebDom.element = "%identity"
-
-@set external setPixelWidth: (canvas, int) => unit = "width"
-@set external setPixelHeight: (canvas, int) => unit = "height"
-@send external getContext: (canvas, string) => Nullable.t<context> = "getContext"
-
-@send external drawImage: (context, image, float, float, float, float) => unit = "drawImage"
-// `drawImage`'s nine-argument form, cropping a source rectangle — how a card is
-// lifted out of the rasterized sheet (see `markup`). Source is a canvas, not an
-// image: the sheet is rasterized once into one, and blitting from that is a copy
-// rather than 52 fresh rasterizations of the same SVG.
-@send
-external drawCanvasPart: (
-  context,
-  canvas,
-  float,
-  float,
-  float,
-  float,
-  float,
-  float,
-  float,
-  float,
-) => unit = "drawImage"
 
 @new external makeImage: unit => image = "Image"
 @set external setSrc: (image, string) => unit = "src"
@@ -105,6 +86,28 @@ type url
 @val @scope("document") external baseUri: string = "baseURI"
 
 @val @scope("window") external devicePixelRatio: float = "devicePixelRatio"
+
+// --- The pixel ratio ---------------------------------------------------------
+
+// How much detail a sprite is built with, capped (#226).
+//
+// The cap is worth having because the raw ratio is not the small number it looks
+// like: browser zoom multiplies it, and a Retina Mac one zoom step in reports
+// **3.75**. At that ratio the deck is a 2400×2940 sheet — a bitmap nobody can see
+// the extra detail in, blitted from on every frame of the animation.
+//
+// It has to be **one** number, which is the reason it lives here rather than in
+// the canvas that draws. The overlay sizes its backing store from a ratio, and
+// the sprites it blits are built at a ratio, and the two are computed
+// independently: let them disagree and every blit is a resample instead of a
+// copy — soft cards, and the cost of the scaling on each one. So the cache
+// publishes the cap, and the canvas asks it rather than deciding for itself.
+let maxPixelRatio = 2.
+
+// The ratio to build at *now*: the display's, capped. Read live rather than
+// captured, so a rebuild after a zoom picks up the new ratio (the rebuild
+// trigger itself is still #253's — nothing here watches for the change).
+let displayPixelRatio = () => Math.min(devicePixelRatio, maxPixelRatio)
 
 // --- The faces the card face uses --------------------------------------------
 // Only these two: the rank (and its corner pip's sibling) is Libre Franklin 600,
@@ -240,13 +243,24 @@ let dataUrl = svg => "data:image/svg+xml;charset=utf-8," ++ encodeURIComponent(s
 
 // --- The cache ---------------------------------------------------------------
 
-// One card's bitmap. `canvas` is sized in *device* pixels; `cssWidth`/`cssHeight`
-// are the size it's meant to be shown at, so a consumer can place it without
-// re-deriving the ratio.
+// One card's bitmap — as a *rectangle of the shared sheet*, not a canvas of its
+// own (see the header). `sx`/`sy`/`pxWidth`/`pxHeight` are that rectangle, in
+// device pixels; `cssWidth`/`cssHeight` are the size the card is meant to be
+// shown at, so a consumer can place it without re-deriving the ratio.
+//
+// `cut` is the DOM's way in, and the one mutable field in this module: a
+// consumer that needs a *node* per card (the `raster` scene's 52 cells) gets a
+// standalone canvas blitted out of the sheet on first ask and kept. Lazy, so the
+// animation — which never asks — pays neither the 52 canvases nor the 52 blits.
 type sprite = {
-  canvas: canvas,
+  sheet: Canvas.t,
+  sx: float,
+  sy: float,
+  pxWidth: float,
+  pxHeight: float,
   cssWidth: float,
   cssHeight: float,
+  mutable cut: option<Canvas.t>,
 }
 
 type t = {
@@ -264,16 +278,36 @@ let key = (card: Deck.card) => Deck.cardName(card)
 
 let get = (cache, card) => cache.sprites->Dict.get(key(card))
 
-let element = sprite => canvasElement(sprite.canvas)
+// Draw a sprite into a context, at a box given in that context's own coordinates
+// — the animation's single drawing operation, and the reason the sheet is kept
+// whole. `drawImage`'s nine-argument form crops the card's cell straight out of
+// the shared texture: one source, no per-card canvas, and nothing pushed onto the
+// transform stack, so a caller mid-`scale` (which the overlay always is) stays
+// where it was.
+//
+// `~width`/`~height` default to the card's own CSS size, which is what a 1:1 blit
+// wants; the animation passes them when a card is drawn at some other size.
+let blit = (ctx, sprite: sprite, ~x, ~y, ~width=sprite.cssWidth, ~height=sprite.cssHeight) =>
+  ctx->Canvas.drawPart(
+    sprite.sheet,
+    sprite.sx,
+    sprite.sy,
+    sprite.pxWidth,
+    sprite.pxHeight,
+    x,
+    y,
+    width,
+    height,
+  )
 
 // A blank canvas at the sprite's device-pixel size, with its CSS size pinned so
 // it lays out at exactly the width the live SVG beside it gets.
 let blankCanvas = (~pxWidth, ~pxHeight, ~cssWidth, ~cssHeight) => {
-  let canvas = createCanvas("canvas")
-  canvas->setPixelWidth(pxWidth)
-  canvas->setPixelHeight(pxHeight)
+  let canvas = Canvas.make()
+  canvas->Canvas.setPixelWidth(pxWidth->Float.toInt)
+  canvas->Canvas.setPixelHeight(pxHeight->Float.toInt)
   canvas
-  ->canvasElement
+  ->Canvas.element
   ->WebDom.setAttribute(
     "style",
     `display:block;width:${Float.toString(cssWidth)}px;height:${Float.toString(cssHeight)}px`,
@@ -281,10 +315,34 @@ let blankCanvas = (~pxWidth, ~pxHeight, ~cssWidth, ~cssHeight) => {
   canvas
 }
 
-// Rasterize the whole deck through one document, then cut it up: decode the
-// sheet, draw it once into a canvas its own size, and blit each cell into the
-// per-card sprite the cache hands out. The cache's shape is unchanged — callers
-// still get one canvas per card — only the number of documents is.
+// The card as a node of its own, for a consumer that lays sprites out as DOM
+// rather than drawing them: cut out of the sheet on first ask and kept (see
+// `sprite.cut`). The `raster` scene is the one caller, and it asks for all 52.
+let element = sprite => {
+  let canvas = switch sprite.cut {
+  | Some(canvas) => canvas
+  | None =>
+    let canvas = blankCanvas(
+      ~pxWidth=sprite.pxWidth,
+      ~pxHeight=sprite.pxHeight,
+      ~cssWidth=sprite.cssWidth,
+      ~cssHeight=sprite.cssHeight,
+    )
+    // A cut that can't draw (no 2D context) still hands back a correctly-sized
+    // blank rather than nothing, so a DOM consumer's layout survives an engine
+    // that can't rasterize — the same bargain `Canvas.context2d` offers everywhere.
+    Canvas.context2d(canvas)->Option.forEach(ctx =>
+      blit(ctx, sprite, ~x=0., ~y=0., ~width=sprite.pxWidth, ~height=sprite.pxHeight)
+    )
+    sprite.cut = Some(canvas)
+    canvas
+  }
+  Canvas.element(canvas)
+}
+
+// Rasterize the whole deck through one document and hand back each card's cell
+// in it: decode the sheet, draw it once into a canvas its own size, and describe
+// where every card landed. Nothing is cut here — see the header.
 let rasterizeSheet = async (~fontCss, ~pxWidth, ~pxHeight, ~cssWidth, ~cssHeight, cards) => {
   let columns = sheetColumns
   let rows = sheetRows(~columns, Array.length(cards))
@@ -299,40 +357,34 @@ let rasterizeSheet = async (~fontCss, ~pxWidth, ~pxHeight, ~cssWidth, ~cssHeight
 
     let sheetWidth = columns * pxWidth
     let sheetHeight = rows * pxHeight
-    let sheet = createCanvas("canvas")
-    sheet->setPixelWidth(sheetWidth)
-    sheet->setPixelHeight(sheetHeight)
-    switch sheet->getContext("2d")->Nullable.toOption {
-    | Some(ctx) => ctx->drawImage(img, 0., 0., Int.toFloat(sheetWidth), Int.toFloat(sheetHeight))
-    | None => ()
-    }
+    let sheet = Canvas.make()
+    sheet->Canvas.setPixelWidth(sheetWidth)
+    sheet->Canvas.setPixelHeight(sheetHeight)
+    Canvas.context2d(sheet)->Option.forEach(ctx =>
+      ctx->Canvas.draw(img, 0., 0., Int.toFloat(sheetWidth), Int.toFloat(sheetHeight))
+    )
 
-    cards->Array.mapWithIndex((card, index) => {
-      let canvas = blankCanvas(~pxWidth, ~pxHeight, ~cssWidth, ~cssHeight)
-      switch canvas->getContext("2d")->Nullable.toOption {
-      | Some(ctx) =>
-        ctx->drawCanvasPart(
-          sheet,
-          Int.toFloat(mod(index, columns) * pxWidth),
-          Int.toFloat(index / columns * pxHeight),
-          Int.toFloat(pxWidth),
-          Int.toFloat(pxHeight),
-          0.,
-          0.,
-          Int.toFloat(pxWidth),
-          Int.toFloat(pxHeight),
-        )
-      | None => ()
-      }
-      (key(card), canvas)
-    })
+    cards->Array.mapWithIndex((card, index) => (
+      key(card),
+      {
+        sheet,
+        sx: Int.toFloat(mod(index, columns) * pxWidth),
+        sy: Int.toFloat(index / columns * pxHeight),
+        pxWidth: Int.toFloat(pxWidth),
+        pxHeight: Int.toFloat(pxHeight),
+        cssWidth,
+        cssHeight,
+        cut: None,
+      },
+    ))
   }
 }
 
 // Build the whole cache. `~cssWidth` is the width a card is shown at; the bitmaps
 // come out at `~pixelRatio` times that, so they're crisp on a retina screen and
-// can be blitted 1:1.
-let build = async (~cssWidth, ~pixelRatio=devicePixelRatio, cards) => {
+// can be blitted 1:1 — which only holds if the surface they're blitted onto was
+// sized at the same ratio, hence the capped default (see `displayPixelRatio`).
+let build = async (~cssWidth, ~pixelRatio=displayPixelRatio(), cards) => {
   let started = Date.now()
   let cssHeight = cssWidth *. CardArt.aspect
   let pxWidth = Math.round(cssWidth *. pixelRatio)->Float.toInt
@@ -342,7 +394,7 @@ let build = async (~cssWidth, ~pixelRatio=devicePixelRatio, cards) => {
   let built = await rasterizeSheet(~fontCss, ~pxWidth, ~pxHeight, ~cssWidth, ~cssHeight, cards)
 
   let sprites = Dict.make()
-  built->Array.forEach(((name, canvas)) => sprites->Dict.set(name, {canvas, cssWidth, cssHeight}))
+  built->Array.forEach(((name, sprite)) => sprites->Dict.set(name, sprite))
 
   {cssWidth, pixelRatio, elapsedMs: Date.now() -. started, sprites}
 }
