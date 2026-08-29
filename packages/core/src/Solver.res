@@ -1,30 +1,20 @@
 // A best-first FreeCell solver over `Position` — the "brain" a driver plays with.
 //
+// **The contract, the benchmark record and the heuristic are in `docs/solver.md`.**
+// Read that before retuning; `mise run solve -- --quiet 1-1000` is how a change
+// here is measured, and the doc holds the run to beat.
+//
 // The goal isn't a completed board but `Position.canFinish`: the point where the
 // app's own Finish button lights up and everything left is a foundation-only
-// drain. That's the real end of the *thinking* part of a game, and stopping there
-// keeps the search shallow.
-//
-// Good enough, not optimal: it looks for a line that wins, not the shortest one.
-// Soaked over deals 1–1000 (dealt by `Game.freecellDeal`, so core's own shuffle)
-// it solved all 1000, averaging ~160ms of thinking per deal and ~54 moves to the
-// finishable board — but with a long tail, the worst deal taking ~13s. Nothing
-// here promises a solution: FreeCell has unsolvable deals, and `solve` returns
-// `None` when the ladder runs out rather than pretending otherwise.
-//
-// Ported from the JavaScript solver the autoplay harness carried (#269 → #290),
-// so the search and the rules it searches are now one language in one package:
-// the browser harness, the test suite and the game itself all reach it from here.
+// drain. Good enough, not optimal — and `None` means the ladder ran out, not that
+// the deal is unsolvable.
 
 // --- The heuristic -----------------------------------------------------------
 
 // Heuristic term weights, kept nameable so they can be measured rather than
-// guessed — `search` takes them, which is how these were chosen.
-//
-// The two that earned their keep are the mobility terms: charging for a loaded
-// free cell (`cell`) and paying for an empty column (`emptyColumn`). Without them
-// the search cheerfully plays itself into positions with nowhere to move, and the
-// stubborn deals cost tens of seconds instead of under one.
+// guessed — `search` takes them as an argument, which is how these were chosen
+// and how a new tuning is compared against them. What each term charges for, and
+// why the two mobility terms are load-bearing, is in `docs/solver.md`.
 type weights = {
   remaining: int,
   buried: int,
@@ -35,9 +25,9 @@ type weights = {
 
 let defaultWeights = {remaining: 2, buried: 2, seam: 1, cell: 3, emptyColumn: 3}
 
-// Distance-to-go estimate. Four things make a position bad: cards still off the
-// foundations, cards sitting on top of one a foundation is waiting for, columns
-// whose descending runs are broken, and a board with nowhere to put anything.
+// Distance-to-go estimate: one term per way a position can be bad, each scaled by
+// its weight. The terms are named in the comments below and tabulated in
+// `docs/solver.md`.
 let heuristic = (s: Position.t, w: weights): int => {
   let h = ref((52 - Position.foundationTotal(s)) * w.remaining)
   for col in 0 to Array.length(s.casc) - 1 {
@@ -219,7 +209,8 @@ let search = (start: Position.t, attempt: attempt, ~weights: weights=defaultWeig
 // The escalation ladder: a mildly greedy pass first, since almost every deal falls
 // to it, then wider searches for the ones that don't. The rungs are capped
 // deliberately — a rung that can't find it in its budget is usually a rung that
-// never will, and the wasted nodes were most of the old worst case.
+// never will, so raising a cap mostly buys nothing. Soak it before believing
+// otherwise (`docs/solver.md`).
 let ladder = [
   {weight: 2., maxNodes: 60_000},
   {weight: 1., maxNodes: 150_000},
@@ -270,44 +261,10 @@ let solveWithEffort = (start: Position.t, ~ladder: array<attempt>=ladder): (
 let solve = (start: Position.t, ~ladder: array<attempt>=ladder): option<array<Position.move>> =>
   fst(solveWithEffort(start, ~ladder))
 
-// --- On making this faster (measured, then deferred) -------------------------
-// Asked in passing: would a WASM module be significantly faster? Profiled rather
-// than guessed — `node --cpu-prof` over deals 1–60 plus 1848, about thirty seconds
-// of solving — and the answer is "yes, but that isn't where the time is". Self-time
-// as this stands:
-//
-//   24.8%  the garbage collector
-//   19.2%  `search` itself — the loop, the visited map, the path array per node
-//   31.3%  `Position.key` — nine strings built and sorted per generated position
-//   ~15%   the game: `legalMoves`, `applyMove`, `canFinish`, `autoCollect`, `heuristic`
-//
-// So the arithmetic a rewrite in another language makes faster is about a seventh
-// of the runtime. The rest is how a position is *represented*: string keys, a fresh
-// path array per node (`Array.concat`), and the allocation those two imply.
-//
-// Changing only those two — an FNV-1a-per-column numeric key, and parent pointers
-// instead of copied paths — measured ~1.9× over deals 1–60, finding the identical
-// line on every one of them. Re-profiled after that, the collector is still ~23%,
-// now behind `applyMove`'s `copy`; make/unmake against one mutable board would take
-// most of that too. Call it 3–4× available without leaving the language, and the
-// rules untouched by any of it.
-//
-// What WASM adds on top is the usual 1.2–2× of integer loops over an optimising
-// JIT — and it costs the thing #290 bought. The search asks `legalMoves` /
-// `applyMove` / `canFinish` millions of times a deal, so the boundary can't sit
-// between the search and the rules: the rules move into the module too, in whatever
-// language it's written in, and `Position` becomes a mirror no unit test can pin
-// (`Position_test` holds it against `Reducer` precisely because both sides are one
-// build). It would also put a second toolchain in `mise.toml`, and make
-// `Solver.autoplay` async — browsers cap synchronous WebAssembly compilation at 4KB
-// on the main thread, and both front ends call it from inside a command that
-// answers synchronously.
-//
-// Deferred deliberately: nothing is waiting on it. A deal averages under 100ms and
-// the worst of five hundred is under three seconds. If the budget is ever wanted,
-// spend it at the cheap end of that list first — and note that the reason to want
-// it is more likely a *shorter line* than a faster one, which is the trade `weight`
-// above already makes.
+// Wanting this faster? It's been profiled, and the answer isn't the one it looks
+// like: the arithmetic another language would speed up is about a seventh of the
+// runtime, and 3–4× is available without leaving ReScript. `docs/solver.md` has
+// the profile and what it rules out.
 
 // --- Playing the plan on a real board ----------------------------------------
 
