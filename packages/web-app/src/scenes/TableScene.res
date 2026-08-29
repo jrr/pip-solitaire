@@ -437,6 +437,26 @@ let doubleTapMoveTol = 12.
 // *deterministic* — a cheap hash of the card's identity and where it now rests —
 // which buys three things at once: it's stable across reflows and resizes (a card
 // doesn't twitch to a new angle every time a neighbour moves), it *does* change
+// The modifier the empty-pile indicator wears for its pile's role (#94). The three
+// roles accept quite different things — a foundation only ever opens with an Ace, a
+// free cell takes any one card, a tableau column takes a card or a run — and until
+// now the board drew one dashed rectangle for all three, so a player couldn't tell
+// where the cells ended and the foundations began. That boundary isn't learnable by
+// position either: it moves with the game (`freecell` is 4 cells + 4 foundations,
+// `mini` 2 + 4, `micro` 2 + 2), which is why the cue has to be intrinsic to the slot
+// rather than a gap in the row.
+//
+// Only the *paint* varies. The footprint stays identical across the three — the slot
+// traces the card exactly, and browser-tests/geometry.spec.mjs pins that on whichever
+// slot comes first (a free cell) — so a role may change colour, fill and contents,
+// but never its size or corner radius.
+let slotRoleClass = (role: Game.role) =>
+  switch role {
+  | Game.FreeCell => "drop-zone__slot--cell"
+  | Game.Foundation => "drop-zone__slot--foundation"
+  | Game.Cascade => "drop-zone__slot--tableau"
+  }
+
 // when the card is placed somewhere new (so a drop re-tilts it, as a fresh
 // placement would), and it needs no `Math.random`, keeping every render — the
 // screenshots included — reproducible. Kept small so cards still read and stack
@@ -849,7 +869,7 @@ let make = (
         // `.drop-zone` around it stays the hit-test box and the larger highlight
         // frame. `pointer-events: none` (in CSS) keeps it out of hit-testing.
         let slot = WebDom.createElement("div")
-        slot->WebDom.setAttribute("class", "drop-zone__slot")
+        slot->WebDom.setAttribute("class", "drop-zone__slot " ++ slotRoleClass(pile.role))
         el->WebDom.appendChild(slot)->ignore
         rowFor(pile)->WebDom.appendChild(el)->ignore
         {el, index, stacking: pile.stacking}
