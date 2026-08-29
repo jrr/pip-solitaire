@@ -231,14 +231,10 @@ type shakeControl = {
 }
 
 // Everything a mounted board offers the chrome (#300) — its published surface, as one
-// typed value handed over the moment the scene mounts (`~publish` below).
-//
-// It replaces eleven separate `~publishX` callbacks and the eleven module-level `ref`s
-// the driver kept them in. The driver-side win is the one that motivated it: a scene
-// swap now replaces this record wholesale, where before every hook had to be nulled by
-// name on each scene change and nothing type-checked that the list was complete. A
-// hook someone forgot to add to it was the chrome quietly driving a torn-down board —
-// a bug the compiler couldn't see. There is no list any more.
+// typed value handed over the moment the scene mounts (`~publish` below). One record
+// rather than a callback published per action, so a scene swap replaces the whole
+// surface at once: there is no list of hooks for a new action to be missing from, and
+// so no way for the chrome to be left driving a board that has been torn down.
 //
 // Every field here is *mount*-scoped, not build-scoped. A board is torn down and
 // rebuilt on every re-deal (New Game, Restart, a forced state, a shared game landing),
@@ -546,9 +542,8 @@ let tiltFor = (~enabled, ~card, ~pile, ~slot) => enabled ? cardTilt(~card, ~pile
 // `~publish` is how the chrome reaches everything the board does *on request* — the
 // re-deals, Undo, the console runner, the relayout, the share-link hooks, the shake
 // control. One record, handed over once as the scene mounts; see `controls` above for
-// what's on it and why it's one value rather than the eleven separate callbacks this
-// signature used to carry (#300). Omitted, the board simply publishes nothing: the
-// tests that only watch a board play, and any caller with no chrome to drive.
+// what's on it (#300). Omitted, the board simply publishes nothing: the tests that only
+// watch a board play, and any caller with no chrome to drive.
 //
 // `~options` is a *ref* to the driver preference record (#125), read *live* at
 // each post-move step so a menu toggle (#139) that flips a field takes effect on
@@ -2357,10 +2352,7 @@ let make = (
     }
 
     // Hand the chrome the board's published surface (#300): one record, once, as this
-    // scene mounts. What used to be eleven separate `publishX` calls scattered across
-    // the mount and every build is this single value — and the eleven `ref`s on the
-    // driver's side, plus the by-name reset that had to clear each one on a scene
-    // change, went with it.
+    // scene mounts.
     //
     // Everything here is written to survive a re-deal, which is the whole reason a
     // mount-scope hand-over is safe:

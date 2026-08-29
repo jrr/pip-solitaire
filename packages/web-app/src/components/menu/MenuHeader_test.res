@@ -74,11 +74,9 @@ describe("MenuHeader (#307)", () => {
     settings->find(".menu-title")->Option.forEach(click)
     expect(taps.contents)->toBe(2)
 
-    // …and the identical title on the other screens is inert. This used to be
-    // asserted at the node: the runtime this replaced stashed the current handler
-    // *on the element*, where a test could read it back. A real listener leaves
-    // nothing to read, so the assertion says what it always meant — tapping the
-    // other screen's title counts nothing.
+    // …and the identical title on the other screens is inert. A real listener leaves
+    // nothing on the element for a test to read back, so this is asserted through
+    // behaviour: tapping the other screen's title counts nothing.
     let main = render(~title="Pip")
     main->find(".menu-title")->Option.forEach(click)
     expect(taps.contents)->toBe(2)

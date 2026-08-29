@@ -178,15 +178,6 @@ let updateSW: ref<option<bool => promise<unit>>> = ref(None)
 // `TableScene.controls` record, handed over as the scene mounts (see `gameScene`) and
 // dropped whole on every scene change (see the switcher's `onActivate`).
 //
-// It replaced eleven module-level `ref`s — `newGameHook`, `restartHook`,
-// `loadStateHook`, `readHistoryHook`, `loadHistoryHook`, `relayoutHook`,
-// `dockFitHook`, `shakeControlHook`, `undoHook`, `consoleHook`, `loadGameHook` — and
-// the eleven-line reset that had to null each one by name when a scene changed.
-// Nothing type-checked that that list was complete, so a twelfth hook nobody
-// remembered to add to it was this chrome quietly driving a board that had been torn
-// down: a stale-closure bug the compiler couldn't see. A scene swap now replaces the
-// whole record, so there's no list left to get wrong.
-//
 // `None` means there's no board on the scene now showing — one of the debug/demo
 // scenes, or the moment between two mounts. That's what lets the menu's New Game be a
 // harmless no-op there and the console answer "no board on this scene" rather than
@@ -858,11 +849,9 @@ let switcher = SceneSwitcher.render(
   // to drive), reset the two things the board *reports* rather than offers, and close
   // the menu after a row tap.
   ~onActivate=scene => {
-    // One line, and it can't be incomplete (#300): where this used to null eleven hooks
-    // by name — and a twelfth that nobody added to the list would have gone on driving
-    // the torn-down board — the whole published surface goes at once. The outgoing
-    // board's shake subscription is already detached by its own teardown, and
-    // `~publish` re-applies `shakeActive` to whichever board mounts next.
+    // One line, and it can't be incomplete (#300): the whole published surface goes at
+    // once. The outgoing board's shake subscription is already detached by its own
+    // teardown, and `~publish` re-applies `shakeActive` to whichever board mounts next.
     liveBoard := None
     // …and the game that board was a board of (#353), which goes with it: a demo scene
     // publishes neither, and the two must never be one scene apart.

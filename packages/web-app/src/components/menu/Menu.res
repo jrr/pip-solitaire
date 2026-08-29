@@ -11,21 +11,14 @@
 // the same reason (#201). What each screen holds, and why, is documented in its own
 // file.
 //
-// **The props are a screen apiece, not a field apiece.** This record used to be flat:
-// 37 fields, one per thing any screen wanted, destructured by name here and fanned
-// back out to whichever screen it belonged to. That made this file mention every
-// setting in the app — a seventh toggle meant declaring it in `Main`'s model, again
-// on `Menu.props`, again on the destructure, again on the `<MenuSettingsScreen>` call
-// and again on that screen's own props. Four declarations for one switch, and the
-// middle two said nothing: they were this file repeating what the screen had already
-// specified (#308).
-//
-// So each screen's props record *is* the field now. `Menu` hands `settings` to
-// `<MenuSettingsScreen>` whole and never looks inside it, which is why adding a
-// setting no longer touches this file at all. The trade is that `Main` names the
-// screens' types rather than only this one's — this stopped being the single boundary
-// between the chrome model and the menu, and became the pane that arranges three
-// boundaries. That's the honest description of what it was already doing.
+// **The props are a screen apiece, not a field apiece** (#308). Each screen's props
+// record *is* the field: `Menu` hands `settings` to `<MenuSettingsScreen>` whole and
+// never looks inside it, which is why adding a setting doesn't touch this file at all.
+// Don't flatten a screen's fields up to here — it would put every setting in the app
+// through this record and its destructure, saying nothing the screen hasn't already
+// specified. The trade is that `Main` names the screens' types rather than only this
+// one's: this isn't the single boundary between the chrome model and the menu, it's the
+// pane that arranges three of them.
 //
 // The pane has **three screens** (#191): the **main menu**, a dedicated **Settings**
 // screen, and a **Debug** screen nested one level below Settings — which one shows

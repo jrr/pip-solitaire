@@ -1,9 +1,8 @@
 // The scene switcher: which scene is mounted into a shared container, and the list
 // of them the menu offers as tappable rows (#109). Selecting a scene tears the
 // current one down, clears the container, and mounts the chosen one — exactly one
-// scene is live at a time. This is the mount/teardown engine kept from the old
-// `<select>` picker, and by now it is *all* this module is: the control surface went
-// from a drop-down to menu rows, and then (#336, #337) to rows the menu draws itself.
+// scene is live at a time. Mount and teardown is *all* this module is — the menu
+// draws the rows themselves (#336, #337).
 //
 // The rows aren't a flat list: the primary game (the launch `~default`, FreeCell)
 // sits as a single row in the menu's "games" section, and the rest are buried inside
@@ -11,32 +10,24 @@
 // header (#185), so the menu leads with the game and keeps the demos out of the way.
 //
 // There are two of those disclosures, not one, and which a scene goes in is the
-// scene's own `Scene.kind` (#352). The split used to be "the launch default vs
-// everything else", which reads as games-vs-demos only while there is exactly one
-// game: a second game would have appeared under "scenes", between Gallery and Motion,
-// filed as a render demo. Now the non-primary `Game` scenes have a "games" group of
-// their own, and "scenes" holds the `Demo`s, which is what it always meant. With
-// today's single game the games group is empty and the menu doesn't place it, so the
-// menu renders exactly as it did before.
+// scene's own `Scene.kind` (#352) — the non-primary `Game` scenes have a "games" group
+// of their own, and "scenes" holds the `Demo`s. **Group on `kind`, never on "is this
+// the launch default?"**: that reads as games-vs-demos only while there is exactly one
+// game, and a second game would land under "scenes" between Gallery and Motion, filed
+// as a render demo. With today's single game the games group is empty and the menu
+// doesn't place it.
 //
-// The app always *launches* into its `~default` scene (FreeCell — the game is
-// home), or the `~forced` scene the URL names (`?game=` or `?scene=`, resolved to one
-// id by `Main`); there is no longer any "resume the last scene on reload" behaviour, so
-// nothing is persisted.
+// The app always *launches* into its `~default` scene (FreeCell — the game is home),
+// or the `~forced` scene the URL names (`?game=` or `?scene=`, resolved to one id by
+// `Main`). A reload doesn't resume the last scene; nothing here is persisted.
 //
 // `render` hands the menu's scene lists and the scene container back separately (see
 // `t`) so the caller can place the rows (inside the menu) apart from the scene box.
-// **It builds no menu DOM at all.** The debug/demo scenes left as *data* — a list of
-// `{label, onSelect}` for `<MenuDisclosure>` to draw — in #336, and the primary game's
-// row followed in #337; before that this module built a `<details>`, its `<summary>`
-// and its body by hand beside a `DebugStates` that described the same tree in twelve
-// lines of JSX, and then, once that was gone, a `<div id="scene-menu">` holding one
-// hand-classed `<button>` for a menu that renders through a diff.
-//
-// The highlight went the same way. A row's `--active` class was rewritten in place by
-// walking every row on each activation — the job the diff exists to do, done by hand
-// because the rows sat outside it. Now which scene is mounted is a *value* this module
-// reports (`active`, and each entry's `selected`), and the menu re-renders from it.
+// **It builds no menu DOM at all** (#336, #337): the scenes leave as *data* — a list
+// of `{label, onSelect}` for `<MenuDisclosure>` to draw — and which one is mounted is a
+// *value* this module reports (`active`, and each entry's `selected`) for the menu to
+// re-render from. Keep it that way: a highlight written onto a row by hand is the job
+// the diff exists to do, done by a module that would have to reach outside it.
 
 // A scene the menu can offer, as data: the label a row shows and the id `select`
 // takes. Not `MenuRow.entry`, deliberately — the chrome pairs these with the active

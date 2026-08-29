@@ -262,8 +262,7 @@ describe("TableScene re-mount", () => {
 // `TableScene.controls` record when it mounts, and never another — so the record has to
 // go on meaning the board *now on the table*, across every re-deal that tears one board
 // down and builds the next. That's the invariant the whole hand-over rests on: get it
-// wrong and the chrome drives a board that no longer exists, which is exactly the
-// stale-closure bug the eleven separate hooks made possible.
+// wrong and the chrome drives a board that no longer exists.
 //
 // It can't be seen from the DOM — a stale action reaches a torn-down board's `session`,
 // and the give-away is what that board *saves*. So these read the `~persist` sink, the

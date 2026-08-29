@@ -2,29 +2,18 @@
 // and, where it has one, the line explaining it — with something optional on the
 // right that says what kind of row it is.
 //
-// **Four components used to draw this box.** `<MenuToggleRow>`, `<MenuActionRow>`,
-// `<MenuNavRow>` and `<MenuWiggleRow>` differed in exactly one thing: what sat at
-// the right-hand end (a switch, nothing, a chevron, a switch). Everything else —
-// the button, the label/description stack, the full-width flex box — was written
-// out four times in ReScript and four times in CSS (`.menu-toggle`,
-// `.menu-action-row`, `.menu-nav-row` repeated the same nine declarations). The
-// CSS half of that was already half-admitted: the action row borrowed the toggle
-// row's `.menu-toggle__text` stack by class, from another file.
+// **Every row in the menu comes through here**, and the box itself — the button, the
+// label/description stack, the full-width flex — is written once, here.
+// `<MenuToggleRow>`, `<MenuActionRow>`, `<MenuNavRow>` and `<MenuWiggleRow>` differ in
+// exactly one thing, what sits at the right-hand end (a switch, nothing, a chevron, a
+// switch), so they are thin wrappers that each say *why* their variant exists and hand
+// the shape here. They keep their own files and their own tests, which is where the
+// reasoning about each variant belongs.
 //
-// It was written four ways because the runtime had no children — a base row with a
-// slot in it wasn't expressible. `<MenuSection>` (#307) was the first component to
-// take children once Preact landed; this is the second, and the four rows are now
-// thin wrappers that each say *why* their variant exists and hand the shape here.
-// They keep their own files and their own tests, which is where the reasoning about
-// each variant belongs.
-//
-// **The scene rows were the fifth copy**, and the one outside the menu's own
-// components: `SceneSwitcher`'s `.scene-menu__row` was the same box in a third
-// stylesheet, with one thing none of the four had — a *selected* highlight for the
-// scene currently mounted. #334 merged the box through the `--control-*` tokens;
-// the highlight is `selected` below (#335), which is what let those rows become
-// `<MenuRow>`s at all. `<MenuDisclosure>` draws its rows, and as of #337 so does the
-// main screen's games list — the switcher no longer builds any DOM for the menu.
+// The scene rows come through here too, which is what `selected` below is for (#335):
+// a highlight for the scene currently mounted, and the `aria-current` that goes with
+// it. `<MenuDisclosure>` draws its rows this way and so does the main screen's games
+// list (#337) — the switcher builds no DOM for the menu itself.
 //
 // A component is just a `props => vnode` function (see `VersionBadge` for why the
 // record is spelled out by hand).

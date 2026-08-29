@@ -1,18 +1,16 @@
-// What the app needs from its JSX runtime, now that the runtime is Preact's.
+// What the app needs from its JSX runtime, which is Preact's.
 //
-// The file this replaces tested a reconciler we wrote: keyed matching, attribute
-// patching, namespace handling. None of that is ours to test any more — testing
-// it would be testing Preact. What *is* still ours is the handful of properties
-// the app is built on top of, each of which would fail silently rather than
-// loudly if the runtime under us changed:
+// Not Preact's own behaviour — keyed matching, attribute patching, namespace
+// handling are its to test. These are the handful of properties the app is built on
+// top of, each of which would fail silently rather than loudly if the runtime under
+// us changed:
 //
 //   1. **SVG lands in the SVG namespace.** Every card, the app icon and the
 //      spinner are real vector nodes (`CardArt`). An <svg> built in the HTML
 //      namespace draws nothing at all — no error, just a blank card.
 //   2. **A re-render reuses the DOM node.** The board's card motion is Web
 //      Animations on live nodes and its CSS transitions run on class changes; a
-//      node rebuilt rather than patched silently restarts both. This is the
-//      property the old runtime existed to guarantee.
+//      node rebuilt rather than patched silently restarts both.
 //   3. **A spliced subtree is left alone.** `Html.node` hands the diff a
 //      node someone else owns (the scene container, the debug console's
 //      scrollback). Preact has no vnode that *is* a live node, so this goes

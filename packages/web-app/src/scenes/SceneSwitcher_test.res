@@ -107,8 +107,7 @@ describe("SceneSwitcher's games list", () => {
 
 describe("SceneSwitcher's debug group (#336)", () => {
   test("hands the demo scenes over as entries, with the mounted one selected", () => {
-    // The highlight the switcher used to write onto its own buttons is now a field
-    // on the entry, read fresh each time the menu renders.
+    // The highlight is a field on the entry, read fresh each time the menu renders.
     let mounts = ref(0)
     let switcher = SceneSwitcher.render(
       ~default="freecell",

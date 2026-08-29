@@ -1,7 +1,5 @@
-// The menu's **Debug screen**, lifted out of `Menu` into its own pure component
-// (#307): the developer tools that used to sit at the foot of the Settings screen,
-// relocated onto their own screen a level below it (#191). `Menu` puts the About
-// footer under it.
+// The menu's **Debug screen** (#307): the developer tools, on their own screen a level
+// below Settings (#191). `Menu` puts the About footer under it.
 //
 // Top to bottom:
 //   - a header whose **back** button (`onBackToSettings`) returns to Settings — one
@@ -9,24 +7,21 @@
 //   - the **Safe-area overlay** toggle (`cutoutDebug`) and the **Console logging**
 //     toggle (`debugLog`, #213 — narrates the UI↔core traffic to the JS console);
 //   - **Share game state** (`ShareLink`), the action row;
-//   - the collapsible groups that were the old "Debug scenes"/"Debug states": the
+//   - the collapsible groups: the
 //     games that aren't the one in the main menu (`gameScenes`, labelled "games"),
 //     the demo scenes (`debugScenes`, "scenes") and the named starting positions
 //     (`debugStates`, "states") a tap drops the board into (`Scenario`), the menu
 //     twin of `?state=`.
 //
 // The groups arrive the same way and are drawn by the same component: a list of
-// `<MenuDisclosure>` entries each, two from `SceneSwitcher` and one from `Main`. They
-// didn't used to. The scene list was a real DOM node the switcher owned and kept
-// writing to (it highlighted the active row by hand), spliced in with `Html.node`;
-// the state list was `<DebugStates>`, twelve lines of JSX describing that same tree a
-// second time. #336 made the markup one component and the highlight a `selected`
-// field, which is what left this screen with calls that differ only in their data.
+// `<MenuDisclosure>` entries each, two from `SceneSwitcher` and one from `Main` (#336).
+// All three calls differ only in their data — a group that needs its own markup wants
+// a prop on `<MenuDisclosure>`, not a fourth way of drawing a disclosure here.
 //
 // The "games" group is the odd one: it is placed only when it has entries (#352), so
-// with FreeCell the only game this screen renders exactly as it did before — two
-// groups, scenes then states. It exists so that a *second* game lands among the games
-// rather than under "scenes", between Gallery and Motion, filed as a render demo.
+// with FreeCell the only game this screen shows two groups, scenes then states. It
+// exists so that a *second* game lands among the games rather than under "scenes",
+// between Gallery and Motion, filed as a render demo.
 //
 // A component is just a `props => vnode` function (see `VersionBadge` for why the
 // record is spelled out by hand).

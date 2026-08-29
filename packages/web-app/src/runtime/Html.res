@@ -7,13 +7,11 @@
 // checks against, the props a DOM element accepts, and the small surface the rest
 // of the app calls (`string`, `array`, `node`, `create`, `mount`).
 //
-// It replaced a hand-rolled vnode type and reconciler — about 400 lines, keys and
-// all (#309). What the app gets for the ~5 KB gzip that Preact costs: somebody
-// else's edge cases (namespaces, attribute-vs-property, event handling), and a
-// hooks story available the day local component state is wanted (#308). What it
-// keeps: the same Elm loop, the same `props => vnode` components, and node
-// identity across a re-render, which is what stops a class change restarting a
-// CSS transition (all three pinned in `Html_test`).
+// Three properties the app leans on, all pinned in `Html_test`: components are
+// plain `props => vnode` functions, the Elm loop drives them, and node identity
+// survives a re-render — which is what stops a class change restarting a CSS
+// transition. Hooks are available in principle (#308), but see `create` below for
+// the large part of this app where they are not.
 //
 // Two things the binding shape must get exactly right, both discovered the hard
 // way — get either wrong and preserve mode either silently stops preserving or
@@ -33,18 +31,18 @@
 // and in scripts/lib/load-jsx-module.mjs for the Node scripts. Nothing checks that
 // they agree; `mise run dev-smoke` is what catches it when they don't.
 
-// A real DOM node. Unchanged meaning: this is what `Html.node` splices, what
-// `Html.create` answers with, and what the scenes hand around.
+// A real DOM node: what `Html.node` splices, what `Html.create` answers with, and
+// what the scenes hand around.
 type element
 type domEvent
 
 // A Preact vnode — the *description* of an element, which `render` reconciles
-// against the real DOM. Opaque here: nothing in the app inspects one any more
-// (the one place that did, `StaticRender`, now serializes through Preact).
+// against the real DOM. Opaque here: nothing in the app inspects one —
+// `StaticRender` serializes through Preact rather than walking a vnode.
 type vnode
 
 // --- Components --------------------------------------------------------------
-// A component is a plain function from its props to a vnode, exactly as before.
+// A component is a plain function from its props to a vnode.
 // `component` is a transparent alias rather than an abstract type — the JSX
 // transform needs `Comp.make` (a `props => vnode`) to unify with the first
 // argument of `jsx`, and `%component_identity` is what lets `@jsx.component`
@@ -58,13 +56,9 @@ external component: componentLike<'props, vnode> => component<'props> = "%compon
 // uses, each one a typed field. `@as` gives the exact DOM name where ReScript
 // can't spell it — every hyphenated attribute, and `type` (a keyword).
 //
-// This replaced a generic `attrs?: array<(string, string)>` escape hatch, which
-// was how the old hand-rolled runtime took attributes (it applied them with
-// `setAttribute`). Preact reads props, so the pair-list needed a hook on
-// `options.vnode` to expand it, and that hook had to special-case `("disabled",
-// "")` — a presence flag to `setAttribute`, a falsy value to Preact. Both are
-// gone: an attribute name is now checked by the compiler, and `disabled` is a
-// `bool`.
+// There is no generic escape hatch: an attribute this record doesn't name can't be
+// set, so an attribute name is checked by the compiler. Values are props, not
+// `setAttribute` strings — `disabled` is a `bool`, not a presence flag.
 //
 // `@rescript/runtime` ships `JsxDOM.domProps`, which covers most of this list.
 // It doesn't fit here for three reasons, each load-bearing: `style` is a typed
@@ -174,8 +168,7 @@ module Elements = {
 }
 
 // Text and sibling groups. Both are `%identity` because Preact already accepts a
-// string and an array as children — which is also why children now cost nothing
-// at runtime, where the old runtime allocated a `VText`/`VGroup` for each.
+// string and an array as children, so neither costs anything at runtime.
 external string: string => vnode = "%identity"
 external array: array<vnode> => vnode = "%identity"
 
@@ -197,16 +190,15 @@ let empty: vnode = %raw("null")
 @val @scope("document") external fragment: unit => element = "createDocumentFragment"
 
 // --- Splicing a subtree we don't own -----------------------------------------
-// The replacement for the old `VRaw` node: a host element whose children belong
-// to somebody else (`SceneSwitcher`'s scene container, the debug console's
-// scrollback, a rasterized card). Preact has no vnode that *is* a live DOM node,
-// so the node goes in through a callback ref on a host element, and the host is
-// `display: contents` (see styles/base.css) so it adds nothing to layout.
+// A host element whose children belong to somebody else (`SceneSwitcher`'s scene
+// container, the debug console's scrollback, a rasterized card). Preact has no
+// vnode that *is* a live DOM node, so the node goes in through a callback ref on a
+// host element, and the host is `display: contents` (see styles/base.css) so it
+// adds nothing to layout.
 //
-// This is the one structural difference the swap forces: the old runtime spliced
-// the node in with no wrapper at all. A rule written as `.parent > .child`
-// therefore stops matching across a splice — `RasterScene.css` had exactly one
-// (`.raster-cell > .card-art`) and is now a descendant selector.
+// **A splice puts this host between parent and child, so a CSS child combinator
+// won't reach across one.** Write `.parent .child`, not `.parent > .child`
+// (`RasterScene.css`'s `.raster-cell .card-art` is the one that had to learn this).
 // (Written as a direct `Elements.jsx` call rather than as JSX: this module *is*
 // the JSX module, so JSX inside it would resolve `Html` against itself.)
 type rawHostProps = {node: element}
@@ -246,10 +238,9 @@ let node = el => jsx(rawHost, {node: el})
 // no "render me a node" entry point, so it renders into a throwaway host and the
 // node is lifted out of it.
 // A component whose root is a fragment (`<>…</>`, which several menu screens
-// are) renders as *several* top-level nodes, so the answer matches what the old
-// runtime did with a `VGroup`: one node comes back as itself, several come back
-// in a DocumentFragment — which `querySelector` searches and `appendChild`
-// splices in without adding a wrapper.
+// are) renders as *several* top-level nodes, so the answer has two shapes: one
+// node comes back as itself, several come back in a DocumentFragment — which
+// `querySelector` searches and `appendChild` splices in without adding a wrapper.
 //
 // **What comes back is a node, not a mounted tree, and this is the one rule to
 // know before reaching for hooks (#308).** The host is thrown away and the nodes

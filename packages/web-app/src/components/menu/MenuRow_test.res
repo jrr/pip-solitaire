@@ -1,10 +1,9 @@
 // The row every menu row is built from (`MenuRow`), and the three shapes its
 // right-hand end takes.
 //
-// Four components used to draw this box themselves; they now hand it here, so this
-// is where the box's own contract lives and their tests are free to pin only what
-// each variant adds. Three things are worth pinning about a shared base like this,
-// and they're what this file tests:
+// The four row variants hand their box here, so this is where the box's own contract
+// lives and their tests pin only what each variant adds. Three things are worth
+// pinning about a shared base like this, and they're what this file tests:
 //
 // 1. **The trailing decides the row's semantics, not just its looks.** `Switch`
 //    makes it a real `role="switch"` with `aria-checked`; the other two kinds hold
