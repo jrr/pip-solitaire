@@ -23,7 +23,7 @@ test.use({
 
 // A fixed, non-trivial starting position, so "the same board came back" is a claim
 // with content — a fresh random deal would also match itself.
-const MIDGAME = "/?scene=freecell&state=midgame&animate=off"
+const MIDGAME = "/?game=freecell&state=midgame&animate=off"
 
 // The board as comparable data: every card by name, with where it came to rest.
 // Cards are absolutely positioned siblings rather than children of their zones, so

@@ -79,7 +79,7 @@ test("tapping the game you're already playing doesn't re-deal it", async ({ page
 // is the thing the issue is explicit about — the menu keeps exactly one game button
 // and the siblings live under Debug.
 test("the short-deck games sit under Debug, leaving one game button up top", async ({ page }) => {
-  await page.goto("/?scene=micro&animate=off")
+  await page.goto("/?game=micro&animate=off")
   await settleBoard(page)
 
   await openMenu(page)

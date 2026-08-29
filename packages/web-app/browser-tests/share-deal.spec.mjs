@@ -11,7 +11,7 @@
 // all, so "the link actually reaches the player" is unaskable there. Here it's the
 // whole point, and Playwright can grant the permission a real user grants.
 //
-// Since #353 the link also says *which game* the number is a deal of (`?scene=`), and
+// Since #353 the link also says *which game* the number is a deal of (`?game=`), and
 // omits it for the default one — so the round trip has a second half worth making:
 // a bare `?seed=` has to keep opening FreeCell, which is the shape of every deal link
 // shared before that change. That's the last test below, and a page load is the only
@@ -85,8 +85,11 @@ test("shares a link to the deal on the table, and that link reopens it", async (
   // The link says which board to deal and nothing else — legible, and short enough
   // to be read off one screen and typed into another. FreeCell is the game a deal
   // number belongs to when none is named, so the link doesn't spend characters saying
-  // so (#353): `?scene=` appears only for another game.
+  // so (#353): `?game=` appears only for another game.
   expect(new URL(url).searchParams.get("seed")).toBe("24680")
+  expect(new URL(url).searchParams.get("game")).toBe(null)
+  // …and it never says it the other way either: `?scene=` names a scene now, and a
+  // deal link has nothing to say about which scene to mount.
   expect(new URL(url).searchParams.get("scene")).toBe(null)
   expect(new URL(url).hash).toBe("")
 
@@ -141,22 +144,22 @@ test("a resumed game can still say which seed it is", async ({ page }) => {
   await expect(shareButton(page)).toHaveText(dealt)
 })
 
-test("a bare `?seed=` still opens FreeCell — every link shared before #353", async ({ page }) => {
-  // **The compatibility case**, and the reason it's written as one. A deal link is now
-  // `?scene=<id>&seed=<n>`, with the scene omitted for the default game — so the bare
-  // `?seed=7` form isn't a legacy spelling being tolerated, it's the *current* spelling
-  // for FreeCell, and every link anyone shared before the change is byte-identical to
-  // one shared today. It holds because `SceneSwitcher`'s `~default` is `Game.default.id`
-  // and that's the same game `urlForDeal` omits the scene for, not because anything
-  // branches on a missing parameter.
+test("a bare `?seed=` opens FreeCell — the short form `urlForDeal` writes", async ({ page }) => {
+  // **The receiving half of omitting the game.** A deal link is `?game=<id>&seed=<n>`
+  // with the game left out for the default one, so `?seed=7` is the *current* spelling
+  // for FreeCell rather than a shorthand being tolerated — and it has to land on
+  // FreeCell for the link to mean what it says. It holds because `SceneSwitcher`'s
+  // `~default` is `Game.default.id` and that's the same game `urlForDeal` omits the
+  // parameter for, not because anything branches on a missing one.
   await page.goto("/?seed=7&animate=off")
   await settleBoard(page)
   const bare = await readBoard(page)
   expect(bare.length).toBe(52)
 
   // Spelled out in full, the same link opens the same board — the two forms are one
-  // link, which is what makes omitting the scene a shortening rather than a meaning.
-  await page.goto("/?scene=freecell&seed=7&animate=off")
+  // link, which is what makes omitting the game a shortening rather than a meaning.
+  // (`?game=freecell&seed=7` is the shape a second game's link takes.)
+  await page.goto("/?game=freecell&seed=7&animate=off")
   await settleBoard(page)
   expect(await readBoard(page)).toEqual(bare)
 
@@ -166,8 +169,20 @@ test("a bare `?seed=` still opens FreeCell — every link shared before #353", a
   await expect(shareButton(page)).toHaveText("Share Seed 7")
   const url = new URL(await shareDeal(page))
   expect(url.searchParams.get("seed")).toBe("7")
-  expect(url.searchParams.get("scene")).toBe(null)
+  expect(url.searchParams.get("game")).toBe(null)
   expect(url.search).toBe("?seed=7")
+})
+
+test("a `?game=` that isn't a game falls through rather than forcing a scene", async ({ page }) => {
+  // `?game=` is resolved against `Game.byId`, so a name that isn't a game is turned
+  // away in `AppUrl` instead of travelling on as a scene id. `gallery` is the sharp
+  // case: it *is* a real scene, so an unresolved `?game=` would mount the card gallery
+  // and leave no board at all. `?scene=` is what mounts that, and this isn't it.
+  await page.goto("/?game=gallery&animate=off")
+  await settleBoard(page)
+
+  await expect(page.locator(".card-gallery")).toHaveCount(0)
+  expect((await readBoard(page)).length).toBe(52) // the launch default, FreeCell
 })
 
 test("says so on a board with no seed, rather than offering one", async ({ page }) => {
@@ -175,7 +190,7 @@ test("says so on a board with no seed, rather than offering one", async ({ page 
   // `midgame` is assembled from the deck rather than played to — so it has no deal
   // number. The button is disabled and the line explains, rather than offering a link
   // to a board the sender isn't looking at.
-  await page.goto("/?scene=freecell&state=midgame&animate=off")
+  await page.goto("/?game=freecell&state=midgame&animate=off")
   await settleBoard(page)
 
   await openMenu(page)

@@ -62,7 +62,7 @@ for (const input of inputs) {
       // `animate=off` skips the opening fly-in (see AppUrl), so the board is at its
       // resting positions as soon as the cards exist — the drag then measures the
       // final footprints rather than racing the deal.
-      await page.goto("/?scene=freecell&state=almost-won&animate=off")
+      await page.goto("/?game=freecell&state=almost-won&animate=off")
 
       // Check the premise before the drag: a phone-sized desktop context reports
       // no touch at all (that was the old screenshot harness's bug, #244), and

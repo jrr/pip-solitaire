@@ -653,7 +653,7 @@ let resolveDeal = (~game: option<string>, ~scenario: option<string>): dealt =>
     | Some(seed) => Numbered({seed: seed})
     | None =>
       // A game id, then — the numbers are taken, so nothing else can be one.
-      switch Game.all->Array.find(g => g.id == token) {
+      switch Game.byId(token) {
       | None => NoSuchGame({id: token})
       | Some(game) =>
         switch scenario {

@@ -38,7 +38,7 @@ const topLevelRules = (page) =>
   )
 
 test("the app's whole cascade is inside the declared layers", async ({ page }) => {
-  await page.goto("/?scene=freecell&animate=off")
+  await page.goto("/?game=freecell&animate=off")
   await expect(page.locator(".stacking-card").first()).toBeVisible()
   const rules = await topLevelRules(page)
 
@@ -55,7 +55,7 @@ test("the app's whole cascade is inside the declared layers", async ({ page }) =
 })
 
 test("the layer order is declared once, before anything uses it", async ({ page }) => {
-  await page.goto("/?scene=freecell&animate=off")
+  await page.goto("/?game=freecell&animate=off")
   await expect(page.locator(".stacking-card").first()).toBeVisible()
   const rules = await topLevelRules(page)
 

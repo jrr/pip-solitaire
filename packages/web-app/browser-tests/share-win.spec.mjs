@@ -75,7 +75,7 @@ test("a won game shares the deal it came from, and that link deals it", async ({
   const dealt = await readBoard(page)
   expect(dealt.length).toBe(52)
 
-  await page.goto("/?scene=freecell&state=almost-won&animate=off")
+  await page.goto("/?game=freecell&state=almost-won&animate=off")
   await playTheWinningMove(page)
   await expect(page.locator(".win-overlay")).toHaveCount(1)
 
@@ -103,10 +103,10 @@ test("a won game shares the deal it came from, and that link deals it", async ({
   // …and the link. It has to be the *deal*, not the position: a link to the board as
   // it stands would hand the recipient a solved game, which is the one thing this share
   // must never do. It's the same link the menu's Share Seed builds, down to leaving
-  // `?scene=` out for the default game (#353) — one function builds both.
+  // `?game=` out for the default game (#353) — one function builds both.
   const url = new URL(shared.slice(shared.indexOf("http")))
   expect(url.searchParams.get("seed")).toBe(ALMOST_WON_DEAL)
-  expect(url.searchParams.get("scene")).toBe(null)
+  expect(url.searchParams.get("game")).toBe(null)
   expect(url.search).toBe(`?seed=${ALMOST_WON_DEAL}`)
   expect(url.hash).toBe("")
 
@@ -121,14 +121,14 @@ test("a won game shares the deal it came from, and that link deals it", async ({
 test("the deal it hands over reads the same spelled out in full", async ({ page }) => {
   // The other half of #353, from the victory share's side: the link is short because
   // FreeCell is the game a nameless deal number belongs to, not because a deal number
-  // can only mean FreeCell. Spelled out — `?scene=freecell&seed=264`, the shape a
+  // can only mean FreeCell. Spelled out — `?game=freecell&seed=264`, the shape a
   // *second* game's link would take — it opens the very same board, so the two forms
   // are one link and the short one is a shortening.
   await page.goto(`/?seed=${ALMOST_WON_DEAL}&animate=off`)
   await settleBoard(page)
   const bare = await readBoard(page)
 
-  await page.goto(`/?scene=freecell&seed=${ALMOST_WON_DEAL}&animate=off`)
+  await page.goto(`/?game=freecell&seed=${ALMOST_WON_DEAL}&animate=off`)
   await settleBoard(page)
   expect(await readBoard(page)).toEqual(bare)
 
@@ -145,7 +145,7 @@ test("a scenario with no deal behind it offers no share", async ({ page }) => {
   // layouts with no established provenance, and a board with no deal to name offers no
   // Share button rather than guessing at one. `midgame` stands in for all of them — it
   // can't be won, so this checks the menu's Share Seed, which reads the same number.
-  await page.goto("/?scene=freecell&state=midgame&animate=off")
+  await page.goto("/?game=freecell&state=midgame&animate=off")
   await settleBoard(page)
 
   await page.getByRole("button", { name: "Open menu" }).click()
@@ -156,7 +156,7 @@ test("a scenario with no deal behind it offers no share", async ({ page }) => {
 test("the almost-won board names its deal on the menu too", async ({ page }) => {
   // Both share buttons read the same number, so the menu is where it can be seen
   // without winning first.
-  await page.goto("/?scene=freecell&state=almost-won&animate=off")
+  await page.goto("/?game=freecell&state=almost-won&animate=off")
   await settleBoard(page)
 
   await page.getByRole("button", { name: "Open menu" }).click()

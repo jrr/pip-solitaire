@@ -18,7 +18,7 @@ test.use({ viewport: { width: 800, height: 1000 } })
 
 // `?state=finish` is the finishable position (`Scenario.freecellFinish`), the one
 // board state that shows the Finish button; `animate=off` skips the deal's fly-in.
-const FINISHABLE = "/?scene=freecell&state=finish&animate=off"
+const FINISHABLE = "/?game=freecell&state=finish&animate=off"
 
 // What the player would hit at the centre of the Finish button: the topmost
 // element painted there, walked up to whichever of the two contenders owns it.

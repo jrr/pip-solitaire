@@ -21,7 +21,7 @@ const announcedCards = (page) => page.locator(".stacking-card").getByRole("img")
 // `animate=off` skips the opening fly-in (see AppUrl), so the board is at its
 // resting layout as soon as the cards exist.
 test("a mid-game board announces only the cards it shows", async ({ page }) => {
-  await page.goto("/?scene=freecell&state=midgame&animate=off")
+  await page.goto("/?game=freecell&state=midgame&animate=off")
   await settleBoard(page)
 
   // All 52 are on the board...
@@ -39,7 +39,7 @@ test("the win screen announces four cards, not fifty-two", async ({ page }) => {
   // One move short of a win, so the Finish shortcut (#132) is on offer: tapping it
   // sends every remaining card home and raises the overlay over four full
   // foundations — the whole deck, stacked into four visible cards.
-  await page.goto("/?scene=freecell&state=almost-won&animate=off")
+  await page.goto("/?game=freecell&state=almost-won&animate=off")
   await settleBoard(page)
 
   await page.getByRole("button", { name: "Finish" }).click()

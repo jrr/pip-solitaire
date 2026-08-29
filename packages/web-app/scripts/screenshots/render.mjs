@@ -20,8 +20,8 @@
 //      preview server, so the report captures exactly what ships — the bundled,
 //      based, service-worker'd site — not a dev build.
 //   2. Drive a headless Chromium (Playwright) to each captured scene's URL — e.g.
-//      `?scene=freecell&state=midgame` — the URL contract that forces the board
-//      straight into a fixed position with no interaction (see src/AppUrl.res /
+//      `?game=freecell&state=midgame` — the URL contract that forces the board
+//      straight into a fixed position with no interaction (see src/platform/AppUrl.res /
 //      core's Scenario.res).
 //   3. For each scene × device size, shoot portrait and landscape, then write an
 //      index.html contact sheet next to the PNGs.
@@ -70,12 +70,12 @@ const outDir = path.join(webAppRoot, "screenshots");
 // settled and before the shot.
 const BOARD_READY = ".stacking-card";
 const scenes = [
-  { name: "Dealt", query: "?scene=freecell&seed=1&animate=off" },
-  { name: "Mid-game", query: "?scene=freecell&state=midgame" },
-  { name: "Finish", query: "?scene=freecell&state=finish" },
+  { name: "Dealt", query: "?game=freecell&seed=1&animate=off" },
+  { name: "Mid-game", query: "?game=freecell&state=midgame" },
+  { name: "Finish", query: "?game=freecell&state=finish" },
   {
     name: "Menu",
-    query: "?scene=freecell&seed=1&animate=off",
+    query: "?game=freecell&seed=1&animate=off",
     note: "menu opened",
     // The same click a player makes, and the same one the browser suite makes. The
     // button's accessible name grows a suffix when an update is waiting ("Open menu

@@ -72,7 +72,7 @@ async function openBoard(page, { tilt }) {
   await page.addInitScript((on) => {
     window.localStorage.setItem("pip.cardTilt", on ? "true" : "false")
   }, tilt)
-  await page.goto("/?scene=freecell&state=finish")
+  await page.goto("/?game=freecell&state=finish")
   await expect(page.locator(".finish-button")).toBeVisible()
   // The board deals with a fly-in here (the sweep is the thing under test, not
   // the deal), so wait for the cards to stop moving before sampling angles.

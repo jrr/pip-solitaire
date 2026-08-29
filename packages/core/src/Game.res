@@ -303,6 +303,13 @@ let all = [freecell, mini, micro]
 // this is the line that says which one a plain number belongs to.
 let default = freecell
 
+// The game with a given id, or `None` for a name that isn't one of `all`'s. Every front
+// end asks this same question of the same list — the CLI resolving `deal mini`, the web
+// app resolving `?game=mini` — and each used to spell the `Array.find` for itself.
+// Answered here so the lookup lives beside the list it looks in, and so a caller holds
+// a `Game.t` rather than a string it hopes is one.
+let byId = (id: string): option<t> => all->Array.find(game => game.id == id)
+
 // Another board of `game`, laid out from deal number `seed` — its `deal` capability
 // applied. A game with no deal to vary has only the one board, so it answers with
 // itself: a caller asking for "the next board of this game" always gets a board.
