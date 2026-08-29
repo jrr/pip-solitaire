@@ -58,11 +58,8 @@ let make = (props: props) => {
     <div className="scene-menu__group-body">
       {props.entries
       ->Array.map(entry =>
-        // The same `<MenuRow>` the rest of the menu is built from (#335). It used to
-        // be a hand-classed `<button>` with a `rowClass` helper computing the
-        // highlight, which was this component prototyping `MenuRow`'s `selected`
-        // prop before that prop existed; `selected` now goes straight through, and
-        // brings `aria-current` with it.
+        // The same `<MenuRow>` the rest of the menu is built from (#335) — `selected`
+        // goes straight through, and brings `aria-current` with it.
         <MenuRow
           label={entry.label} selected=?{entry.selected} onClick={entry.onSelect} key={entry.label}
         />

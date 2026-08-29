@@ -1,12 +1,11 @@
 // The app's single top bar (#109): all the chrome, banished to the top so the
 // bottom of the screen — the thumb arc — stays clear for dragging cards. Two
 // controls: a **Menu** button (opens the slide-over menu) and a live **Undo**
-// button (stepping back over the board's `GameState` history, #85). The **New
-// Game** control no longer lives here (#156): it moved into the menu, alongside a
-// new **Restart** that re-deals the same seed. The **Update** control left even
-// earlier (#165): it moved into the menu's About footer, and its availability is
-// signalled instead by a small green pip on the **Menu** button — the ☰ badge
-// that keeps the now-hidden update call-to-action discoverable.
+// button (stepping back over the board's `GameState` history, #85). Those two are all
+// of it: **New Game** and **Restart** live in the menu (#156), and so does the
+// **Update** control, in the About footer (#165) — its availability is signalled up
+// here only by a small green pip on the **Menu** button, the ☰ badge that keeps an
+// otherwise hidden call-to-action discoverable.
 //
 // In portrait the two sit side by side across the top; in the landscape rail
 // (#179 follow-up) they split to opposite ends — Menu at the top, Undo at the

@@ -82,9 +82,8 @@ describe("MenuDisclosure (#336)", () => {
   })
 
   test("highlights the selected row, and only that one", () => {
-    // The scene rows' active highlight, which used to be a class the switcher wrote
-    // onto its own buttons as scenes changed. It's `<MenuRow selected>` now (#335),
-    // so the announcement comes with the class.
+    // The scene rows' active highlight is `<MenuRow selected>` (#335), so the
+    // announcement comes with the class.
     let group = render([
       {label: "Gallery", onSelect: () => (), selected: false},
       {label: "Raster", onSelect: () => (), selected: true},
@@ -95,9 +94,8 @@ describe("MenuDisclosure (#336)", () => {
   })
 
   test("draws its rows as the menu's own row component", () => {
-    // Not a hand-classed <button> with a `rowClass` helper any more (#335): the
-    // rows are `<MenuRow>`s, which is what the label stack here is — and what the
-    // highlight and its `aria-current` above come from.
+    // The rows are `<MenuRow>`s (#335), which is what the label stack here is — and
+    // what the highlight and its `aria-current` above come from.
     expect(render([inert("Mid-game")])->textIn(".menu-row .menu-row__label"))->toBe("Mid-game")
   })
 

@@ -3,8 +3,7 @@
 //
 // `Menu_test` pins what **Share Seed** does through the whole pane (#98) and
 // `MenuGameButton_test` pins the button itself; this file pins what's left — the
-// screen's own *arrangement*, which is the part that used to be spelled out inline in
-// `Menu` and is the thing a refactor here could quietly change:
+// screen's own *arrangement*, the thing a refactor here could quietly change:
 //
 // 1. **Three game buttons, in that order** — New, Restart, Share Seed. The share
 //    tests below (and `Menu_test`'s) reach the third one positionally, so the order
@@ -13,9 +12,9 @@
 //    confirmation that appeared out of nothing would shove every section below it
 //    down the panel as it came and went.
 // 3. **The Games rows are drawn from the list handed in** (#337), in order, as
-//    `<MenuRow>`s, with the highlight on whichever one says it's selected. They used to
-//    be a node SceneSwitcher built and this screen spliced in unchanged; what replaced
-//    that splice is this list, so this is where the switcher's rows are now pinned.
+//    `<MenuRow>`s, with the highlight on whichever one says it's selected. The
+//    switcher hands over the list and builds no DOM, so this is where its rows are
+//    pinned.
 // 4. **The Settings button sits in the bottom group.** `menu-section--bottom` is what
 //    pushes it to the foot of the panel; without the class it drifts up under Games.
 //

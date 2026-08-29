@@ -1,17 +1,13 @@
 // A *session*: everything a front end has to know about a game in progress, and
 // the one place a `Command.t` is run against one (#298).
 //
-// `Reducer.reduce` was already the single way a card moves, and both front ends went
-// through it. The layer wrapped *around* it wasn't: which game is in play, the history
-// to undo over, the tallies beside it, the post-move auto-collect, and "run this
-// command" existed three times — once in `Repl.res` and twice more inside
-// `TableScene.res`, which repeated the settle-record-check-win sequence at every place
-// a card could move (a drop, a double-tap send-home, a typed command).
-//
-// The drift that shape produced was the point of the issue: `Stats` (#289) and
-// `Timing` (#302) both landed in `core`, both ride in the `SaveState` envelope, and
-// both were wired into the web app only — because that is where the wiring lived. A
-// session that owns them means a front end can't *not* have them.
+// `Reducer.reduce` is the single way a card moves; this module is the layer around it
+// — which game is in play, the history to undo over, the tallies beside it, the
+// post-move auto-collect, and the settle-record-check-win sequence every place a card
+// can move runs through (a drop, a double-tap send-home, a typed command). It lives
+// here rather than in each front end so that **a front end can't opt out**: `Stats`
+// (#289) and `Timing` (#302) ride in the `SaveState` envelope, and a session that owns
+// them means every front end has them.
 //
 // What's here is the board half of the command surface: the verbs that need a dealt
 // game to mean anything. The rest — `help`, `games`, `clear`, `quit`, `set`, and

@@ -9,11 +9,9 @@
 // container after tearing a scene down, so a scene whose nodes carry no extra
 // resources can just return `() => ()`.
 
-// What a scene *is*, as opposed to where it happens to sit in the menu (#352). The
-// switcher used to group on "is this the launch default?", which reads as
-// games-vs-demos only for as long as there is exactly one game: a second one would
-// have landed in the "scenes" disclosure between Gallery and Motion, filed as a
-// render demo. A scene says which it is, and the switcher groups on that.
+// What a scene *is*, as opposed to where it happens to sit in the menu (#352). A scene
+// says which it is and the switcher groups on that, so a second game is filed as a game
+// rather than as a render demo.
 type kind =
   | Game // a playable table (`TableScene`, one per `Game.all` entry)
   | Demo // a debug/render demo (Gallery, Raster, Motion)
