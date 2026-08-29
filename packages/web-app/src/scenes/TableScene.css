@@ -315,6 +315,81 @@
     pointer-events: none;
   }
 
+  /* The slot's role (#94), which until now it didn't show: one dashed rectangle
+     stood for a free cell, an open foundation and an empty column alike, so a
+     player couldn't tell where the cells ended and the foundations began. That
+     boundary isn't learnable by position either — it moves with the game
+     (`freecell` is 4 cells + 4 foundations, `mini` 2 + 4, `micro` 2 + 2) — so the
+     cue has to be intrinsic to the slot rather than a gap in the row, which would
+     also cost the top row its alignment with the cascades below.
+     `TableScene.res`'s `slotRoleClass` hangs the modifier.
+
+     Two registers, doing two jobs. The *surface* separates the two groups at a
+     glance: a foundation is a well you drop into, a free cell a lighter plate a
+     card rests on. The *mark* inside then says what the slot accepts, which is
+     where the roles genuinely differ — a foundation only ever opens with an Ace,
+     a free cell takes any one card. The tableau needs neither: once the top row's
+     two roles diverge the bare dashed ghost reads as the third thing by contrast,
+     and an empty column is the case a player sees least, since a resting card
+     occludes its slot. The modifier is hung on it anyway, so marking it later is
+     a rule rather than a plumbing change.
+
+     Only the paint varies. The footprint stays identical across the three —
+     browser-tests/geometry.spec.mjs pins the slot to the card's box, measured on
+     whichever slot comes first (a free cell) — so the marks below are sized in
+     `--card-w`/`--card-radius` and scale with the board on a narrow screen and a
+     short deck. Neither role touches `border-color`, which `--over`/`--invalid`
+     recolour on the *zone*, so the drop highlights read exactly as before. */
+  .drop-zone__slot--foundation {
+    border-style: solid;
+    border-color: #3b4a63;
+    background: rgba(2, 6, 23, 0.42);
+    box-shadow: inset 0 2px 7px rgba(0, 0, 0, 0.5);
+  }
+
+  .drop-zone__slot--cell {
+    border-style: solid;
+    border-color: rgba(148, 163, 184, 0.45);
+    background: rgba(148, 163, 184, 0.11);
+    box-shadow: inset 0 1px 0 rgba(226, 232, 240, 0.13);
+  }
+
+  /* All four suits, because any of them may open a foundation: `Rules.foundation`
+     assigns no suit to a pile, so a fixed ♠/♥/♦/♣ per foundation would assert a
+     rule the game doesn't have. Set in `Pip Suits`, the same face the card's own
+     pips use (`CardArt`), and laid out 2×2 by a literal newline in the string
+     (`white-space: pre`) rather than by wrapping, so the quartet keeps its shape
+     at every card scale. Carried a step brighter than the free cell's mark to
+     hold its contrast against the darker well behind it. */
+  .drop-zone__slot--foundation::after {
+    content: "♠ ♥\A ♦ ♣";
+    white-space: pre;
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: "Pip Suits", serif;
+    font-size: calc(var(--card-w) * 0.26);
+    line-height: 1.05;
+    text-align: center;
+    color: rgba(148, 163, 184, 0.6);
+  }
+
+  /* A card outline at just under half size: any one card fits here, which is the
+     whole of a free cell's rule. */
+  .drop-zone__slot--cell::after {
+    content: "";
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    width: 46%;
+    height: 46%;
+    border: 1px solid rgba(148, 163, 184, 0.42);
+    border-radius: calc(var(--card-radius) * 0.5);
+  }
+
   /* Lit while a card's centre hovers over the zone, so the drop target is
      legible before release: green when the stacking rule accepts the drop. */
   .drop-zone--over {
