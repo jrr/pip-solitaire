@@ -386,7 +386,7 @@ describe("TableScene win share (#264)", () => {
   })
 
   test("leaves it out when there's no deal number to offer", () => {
-    // A `?state=` scenario or a game landed from a `#g=` link: the position is real
+    // A `?state=` scenario or a game landed from a `#saved=` link: the position is real
     // but the deal behind it isn't ours to name, so the overlay is New Game alone
     // rather than a button that would share a board nobody is looking at.
     let game = Game.freecell

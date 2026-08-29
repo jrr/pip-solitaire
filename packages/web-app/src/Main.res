@@ -199,7 +199,7 @@ let liveBoard: ref<option<TableScene.controls>> = ref(None)
 // `controls.loadHistory`.
 let currentHistory = () => liveBoard.contents->Option.flatMap(board => board.readHistory())
 
-// Whether a `#g=` link's game has actually reached the board. It gates saving on a
+// Whether a `#saved=` link's game has actually reached the board. It gates saving on a
 // shared open (see `gameScene`): a shared game takes over storage the moment it
 // lands, but not before — the placeholder deal the board wears while the blob
 // inflates must never be written over the player's own saved game, and a link that
@@ -662,7 +662,7 @@ let gameScene = (game: Game.t) => {
   // overwritten (the issue's "a `?state=` link doesn't disturb a saved game", and the
   // same for the screenshot report's `?seed=`/`?state=` shots, which must stay
   // side-effect-free).
-  // A `#g=` share link is the one addressed open that *does* touch storage, and it
+  // A `#saved=` share link is the one addressed open that *does* touch storage, and it
   // splits the two halves apart: it doesn't resume (the link says which board to
   // open, so reading the save would be pointless), but once the shared game lands it
   // **takes over** — becoming the saved game, with play from there saving as usual,
@@ -690,7 +690,7 @@ let gameScene = (game: Game.t) => {
   // to vary, so they mount as-is. When a saved game is resumed the opening deal only
   // supplies the 52 card nodes; every resting position comes from the restored history.
   //
-  // A `#g=` share link joins `?state=` in taking the fixed deal rather than a random
+  // A `#saved=` share link joins `?state=` in taking the fixed deal rather than a random
   // one. Decompressing the blob is asynchronous, so the board is necessarily built
   // *before* the shared history can land on it (see the restore below) — and dealing
   // a random board for that frame would make the swap read as a glitch. The fixed
@@ -763,7 +763,7 @@ let gameScene = (game: Game.t) => {
     //     (`Scenario.seedForName`). Only a scenario that has *proved* a line to itself
     //     answers — `almost-won` from deal 264 (#264) — so a posed board either offers
     //     the deal it genuinely came from or offers nothing;
-    //   - a `#g=` shared game has a real position with no deal number attached to it,
+    //   - a `#saved=` shared game has a real position with no deal number attached to it,
     //     so there's nothing to name and the Share buttons stay dark rather than
     //     pointing at a board nobody is looking at.
     ~onDeal=seed =>
@@ -786,7 +786,7 @@ let gameScene = (game: Game.t) => {
     // above — a resumed game's number lives in this driver's storage, not in the
     // board — so `liveDealSeed` is the one place that knows, and both buttons read it.
     //
-    // No deal number, no button: a posed `?state=` board or a game landed from a `#g=`
+    // No deal number, no button: a posed `?state=` board or a game landed from a `#saved=`
     // link has nothing truthful to offer, so the overlay is New Game alone rather than
     // a button that shares someone else's deal. (Those are the cases worth revisiting
     // — a shared game *does* descend from a deal, it just doesn't carry the number.)
@@ -875,7 +875,7 @@ let switcher = SceneSwitcher.render(
   ),
 )
 
-// Land a shared game on the board (`ShareLink`). The blob came off the `#g=`
+// Land a shared game on the board (`ShareLink`). The blob came off the `#saved=`
 // fragment synchronously, but inflating it is asynchronous — `DecompressionStream`
 // has no synchronous form — so the board is already mounted from `gameScene`'s
 // fixed opening deal by the time the history arrives, and this drops the real

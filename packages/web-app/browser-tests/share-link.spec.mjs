@@ -71,7 +71,7 @@ test("a shared link reopens the same board", async ({ page }) => {
   expect(shared.length).toBe(52)
 
   const url = await shareFromDebugScreen(page)
-  expect(url).toContain("#g=")
+  expect(url).toContain("#saved=")
   // The payload rides in the fragment, so none of the board reaches the server —
   // which is what keeps it clear of any request-line limit.
   expect(new URL(url).search).toBe("")
@@ -111,7 +111,7 @@ test("a corrupt link leaves an existing saved game alone", async ({ page }) => {
   await settleBoard(page)
   const saved = await readBoard(page)
 
-  await page.goto("/#g=this-is-not-a-real-blob")
+  await page.goto("/#saved=this-is-not-a-real-blob")
   await settleBoard(page)
   // The broken link deals a normal game rather than showing an error…
   expect((await readBoard(page)).length).toBe(52)
@@ -125,7 +125,7 @@ test("a corrupt link leaves an existing saved game alone", async ({ page }) => {
 test("a corrupt link opens a playable board instead of failing", async ({ page }) => {
   // Links get truncated in chat clients and mangled in mail. The contract is that a
   // bad blob is ignored — the app deals a normal game rather than showing nothing.
-  await page.goto("/#g=this-is-not-a-real-blob")
+  await page.goto("/#saved=this-is-not-a-real-blob")
   await settleBoard(page)
   expect((await readBoard(page)).length).toBe(52)
 })

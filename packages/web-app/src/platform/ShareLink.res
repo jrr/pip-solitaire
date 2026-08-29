@@ -10,7 +10,7 @@
 // envelope, so they ride every link that envelope rides, and a link written before
 // they existed still opens (the version didn't move — see `SaveState`).
 //
-// **The blob rides in the fragment (`#g=…`), not the query string.** Two reasons,
+// **The blob rides in the fragment (`#saved=…`), not the query string.** Two reasons,
 // both decisive:
 //
 //   - A fragment is never sent to the server. That sidesteps the ~8 KB request-line
@@ -26,7 +26,7 @@
 // anyway, and not worth the ceiling to buy.
 //
 // Being in the fragment also keeps this cleanly apart from the query parameters
-// `AppUrl` already understands: `#g=` and `?state=` occupy different halves of the
+// `AppUrl` already understands: `#saved=` and `?state=` occupy different halves of the
 // URL and never have to agree about precedence, which is why a shared link can take
 // over the saved game while a `?state=` scenario deliberately doesn't — the two
 // aren't competing readings of one parameter. See `Main`'s `sharedOpen`.
@@ -50,7 +50,20 @@
 
 // The fragment parameter carrying a shared game. Read back by `AppUrl`, which owns
 // all URL parsing; this module owns the format, so the name lives here.
-let fragmentKey = "g"
+//
+// It says what the payload *is* — the saved game, `SaveState`'s JSON, exactly what
+// `SavedGame` writes to storage — so it is spelled `saved`. It was `g` for a while,
+// and nothing was buying that terseness: the fragment is the one place in this URL
+// where length is free (the header above: no request-line limit, "effectively no
+// ceiling to design around"), and four characters against a kilobyte of compressed
+// blob is not a saving anyone can measure. A name in a URL is read by people —
+// spending it on the parameter nobody has to type is the wrong economy.
+//
+// Not `game`, though that is the payload in one word: `?game=` is already the *game
+// id* a deal link names (below), and one URL shouldn't spell two different questions
+// the same way. `saved` is the distinction that matters anyway — this carries a game
+// mid-play, history and tally and all, not which game it is.
+let fragmentKey = "saved"
 
 // The query parameter carrying a shared *deal* (#98), same arrangement: `AppUrl`
 // parses it, this module writes it, so the spelling lives in one place.

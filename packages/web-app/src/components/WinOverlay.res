@@ -47,7 +47,7 @@ type props = {
   // down with the rest of the old one.
   onNewGame: unit => unit,
   // `None` withholds the Share button entirely — on a board with no deal number to
-  // name (a posed `?state=` position, or a game landed from a `#g=` link), and on a
+  // name (a posed `?state=` position, or a game landed from a `#saved=` link), and on a
   // game the solver had a hand in (#291). A shared victory is a claim about how you
   // played, and "I typed `autoplay`" isn't one worth passing on, so the button is
   // simply not built rather than built and made to explain itself. Deciding that is
