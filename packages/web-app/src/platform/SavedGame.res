@@ -1,21 +1,20 @@
 // Persist an in-progress game across sessions (#177): the browser-storage half of
-// save-and-resume, sibling to `Preferences`. The pure wire format — encoding a
-// board's undo/redo history, and the play tally beside it, to a string and back —
-// lives in `core`'s `SaveState`;
-// this module only owns the impure edges: which `localStorage` key holds a game,
-// and reading/writing it safely.
+// save-and-resume, sibling to `Preferences`. The pure wire format — encoding a board's
+// undo/redo history and everything beside it to a string and back — lives in `core`'s
+// `SaveState`; this module only owns the impure edges: which `localStorage` key holds a
+// game, and reading/writing it safely. See `docs/save-and-share.md` for the whole
+// pipeline and both keys below.
 //
-// One saved game per game *type* (the issue's "no named saves or multiple slots"),
-// so the key is namespaced by the game id. Only FreeCell saves today — it's the
-// only re-dealable game — but keying by id lets a second re-dealable game persist
-// alongside it later without collision.
+// One saved game per game *type* (the issue's "no named saves or multiple slots"), so
+// the key is namespaced by the game id. Only FreeCell saves today — it's the only
+// re-dealable game — but keying by id lets a second re-dealable game persist alongside
+// it later without collision.
 //
-// Every touch of `localStorage` can throw outright (Safari private mode, a
-// sandboxed frame, storage disabled or full), so — exactly as `Preferences` does —
-// a failed read falls back to "no saved game" and a failed write is swallowed. A
-// device that can't persist simply always deals fresh, which is no worse than
-// having no save feature at all.
-
+// Every touch of `localStorage` can throw outright (Safari private mode, a sandboxed
+// frame, storage disabled or full), so — exactly as `Preferences` does — a failed read
+// falls back to "no saved game" and a failed write is swallowed. A device that can't
+// persist simply always deals fresh, which is no worse than having no save feature at
+// all.
 @val @scope("localStorage") external getItem: string => Nullable.t<string> = "getItem"
 @val @scope("localStorage") external setItem: (string, string) => unit = "setItem"
 @val @scope("localStorage") external removeItem: string => unit = "removeItem"
@@ -45,23 +44,14 @@ let save = (gameId: string, saved: SaveState.t): unit =>
 
 // --- The deal number behind a saved game (#98) --------------------------------
 //
-// Stored beside the history rather than inside it, as its own tiny key. The
-// history is `core`'s versioned `SaveState` format and knows nothing about deal
-// numbers — it carries positions, which is all replaying a game needs — so folding
-// a seed in would mean a format change for a fact that isn't part of the game
-// state.
-//
-// It's here at all because a resumed board can't work its own deal number out. The
-// history restores the *positions*; the deal that produced them is long gone by
-// then (the board a resume mounts on is dealt from a fresh random seed, and only
-// its card nodes are used). Without this, the Share button would go dark for the
-// most ordinary case there is — open the app, carry on with the game you had — or,
-// worse, offer the number of a deal nobody has seen. So the seed is written
-// whenever a deal becomes the saved game and read back when that game resumes.
+// Stored beside the history rather than inside it, because a resumed board can't work
+// its own deal number out: the history restores the *positions*, and the deal that
+// produced them is long gone by then. So the seed is written whenever a deal becomes the
+// saved game and read back when that game resumes. See `docs/save-and-share.md`.
 //
 // A missing, unreadable, or non-numeric value reads as `None`: no deal number, so
-// nothing to share. That's also what an older save — written before this key
-// existed — looks like, which is the right answer for it.
+// nothing to share. That's also what an older save — written before this key existed —
+// looks like, which is the right answer for it.
 let seedKey = (gameId: string): string => "pip.savedDeal." ++ gameId
 
 let loadSeed = (gameId: string): option<int> => {
