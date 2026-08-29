@@ -115,8 +115,7 @@ describe("ShareLink", () => {
 // Which *game* a deal number is a deal of (#353). A deal link used to say only the
 // number, and the receiving end read it as FreeCell by construction — so the app could
 // never share a deal of a second game. What's pinned here is the shape `urlForDeal`
-// writes — including that it says `game`, the thing it holds, rather than borrowing
-// `?scene=` as it briefly did.
+// writes: the game named in `?game=`, and left out for the default one.
 describe("ShareLink.urlForDeal names the game (#353)", () => {
   // A second seeded game, stood up here because `Game.all` has only FreeCell today
   // (#342 retired the demo boards). Everything `urlForDeal` reads of a game is its
@@ -140,14 +139,13 @@ describe("ShareLink.urlForDeal names the game (#353)", () => {
     expect(url->String.includes(ShareLink.gameKey))->toBe(false)
   })
 
-  test("every link the app emitted before this change is byte-identical", () => {
-    // The backward-compatibility requirement, stated from the sending end: a `?seed=`
-    // link written today and one written before `urlForDeal` knew about games are the
-    // same string. The receiving half — a bare `?seed=7` still opening FreeCell —
-    // can't be asked here, since it's a page load; `browser-tests/share-deal.spec.mjs`
-    // makes it, as the compatibility case it is.
-    let before = seed => ShareLink.origin ++ ShareLink.pathname ++ "?seed=" ++ Int.toString(seed)
-    expect(ShareLink.urlForDeal(~game=Game.freecell, ~seed=24680))->toBe(before(24680))
+  test("the default game's link is the bare page plus `?seed=`, and nothing else", () => {
+    // Stated from the sending end, in full rather than by `endsWith`: no game, no
+    // leftovers from the query that opened the page, no fragment. The receiving half —
+    // a bare `?seed=` landing on FreeCell — can't be asked here, since it's a page
+    // load; `browser-tests/share-deal.spec.mjs` makes it.
+    let bare = seed => ShareLink.origin ++ ShareLink.pathname ++ "?seed=" ++ Int.toString(seed)
+    expect(ShareLink.urlForDeal(~game=Game.freecell, ~seed=24680))->toBe(bare(24680))
   })
 
   test("the parameter it writes is the one `AppUrl` reads, and it says `game`", () => {

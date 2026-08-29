@@ -59,14 +59,9 @@ let dealKey = "seed"
 // …and the one naming *which game* that deal is a deal of (#353). Same arrangement as
 // the two above: `AppUrl` reads it, this module writes it, one spelling.
 //
-// It says a *game*, so it is spelled `game` rather than `scene`. #353 reached for
-// `?scene=` because the knob was already there and a game's scene id *is* its game id,
-// which made one parameter do for both; but the two questions are different ones —
-// `?scene=` picks which scene to mount (the card gallery, the raster comparison), and a
-// deal link has nothing to say about that, while `?game=` picks a board and says nothing
-// about scenes. Separating them costs the receiving end nothing: mounting a game's scene
-// is what deals its board, so an already-shared `?scene=mini&seed=7` still opens mini
-// dealt from 7. It just isn't the spelling this writes any more.
+// It says a *game*, so it is spelled `game`. `?scene=` picks which scene to mount (the
+// card gallery, the raster comparison) and a deal link has nothing to say about that;
+// `?game=` picks a board and says nothing about scenes.
 let gameKey = "game"
 
 @val @scope(("window", "location")) external origin: string = "origin"
@@ -122,12 +117,9 @@ let urlFor = async (saved: SaveState.t): option<string> =>
 // **The default game omits it**, and that's the load-bearing half. `Game.default` is
 // what a deal number with no game named belongs to (it's the line in `core` that says
 // so, and the switcher's launch scene reads from it), so spelling it out would be a
-// link saying twice what it already says once. Two things follow, in order of weight:
-// every deal link this app has ever emitted stays byte-identical, so a `?seed=7`
-// written before this change and one written after are the same string; and `?seed=7`
-// stays short and legible, which the note above calls half the point of a deal number —
-// it survives being read off one screen and typed into another by hand, and
-// `?game=freecell&seed=7` does not.
+// link saying twice what it already says once. What that buys is legibility: `?seed=7`
+// survives being read off one screen and typed into another by hand, which the note
+// above calls half the point of a deal number, and `?game=freecell&seed=7` does not.
 let urlForDeal = (~game: Game.t, ~seed: int): string => {
   let whichGame = game.id == Game.default.id ? "" : gameKey ++ "=" ++ game.id ++ "&"
   origin ++ pathname ++ "?" ++ whichGame ++ dealKey ++ "=" ++ Int.toString(seed)

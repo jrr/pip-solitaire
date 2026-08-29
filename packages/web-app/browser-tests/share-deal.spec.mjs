@@ -144,14 +144,13 @@ test("a resumed game can still say which seed it is", async ({ page }) => {
   await expect(shareButton(page)).toHaveText(dealt)
 })
 
-test("a bare `?seed=` still opens FreeCell — every link shared before #353", async ({ page }) => {
-  // **The compatibility case**, and the reason it's written as one. A deal link is now
-  // `?game=<id>&seed=<n>`, with the game omitted for the default one — so the bare
-  // `?seed=7` form isn't a legacy spelling being tolerated, it's the *current* spelling
-  // for FreeCell, and every link anyone shared before the change is byte-identical to
-  // one shared today. It holds because `SceneSwitcher`'s `~default` is `Game.default.id`
-  // and that's the same game `urlForDeal` omits the parameter for, not because anything
-  // branches on a missing one.
+test("a bare `?seed=` opens FreeCell — the short form `urlForDeal` writes", async ({ page }) => {
+  // **The receiving half of omitting the game.** A deal link is `?game=<id>&seed=<n>`
+  // with the game left out for the default one, so `?seed=7` is the *current* spelling
+  // for FreeCell rather than a shorthand being tolerated — and it has to land on
+  // FreeCell for the link to mean what it says. It holds because `SceneSwitcher`'s
+  // `~default` is `Game.default.id` and that's the same game `urlForDeal` omits the
+  // parameter for, not because anything branches on a missing one.
   await page.goto("/?seed=7&animate=off")
   await settleBoard(page)
   const bare = await readBoard(page)
@@ -159,6 +158,7 @@ test("a bare `?seed=` still opens FreeCell — every link shared before #353", a
 
   // Spelled out in full, the same link opens the same board — the two forms are one
   // link, which is what makes omitting the game a shortening rather than a meaning.
+  // (`?game=freecell&seed=7` is the shape a second game's link takes.)
   await page.goto("/?game=freecell&seed=7&animate=off")
   await settleBoard(page)
   expect(await readBoard(page)).toEqual(bare)
@@ -171,24 +171,6 @@ test("a bare `?seed=` still opens FreeCell — every link shared before #353", a
   expect(url.searchParams.get("seed")).toBe("7")
   expect(url.searchParams.get("game")).toBe(null)
   expect(url.search).toBe("?seed=7")
-})
-
-test("a `?scene=` deal link shared before the split still opens its game", async ({ page }) => {
-  // The other compatibility case, and the one the parameter split turns on. For a day
-  // `urlForDeal` spelled a second game's deal link `?scene=mini&seed=7`; it says
-  // `?game=` now, because that half names a game and `?scene=` names a scene. The old
-  // links keep working, and *not* by a fallback anyone wrote: a game's scene id is its
-  // game id, so `?scene=mini` mounts mini's scene, and mounting it is what deals its
-  // board from `?seed=`. Nothing branches on the old spelling — this checks the two
-  // forms are one board.
-  await page.goto("/?game=mini&seed=7&animate=off")
-  await settleBoard(page)
-  const current = await readBoard(page)
-  expect(current.length).toBe(20) // Mini's short deck, not FreeCell's 52
-
-  await page.goto("/?scene=mini&seed=7&animate=off")
-  await settleBoard(page)
-  expect(await readBoard(page)).toEqual(current)
 })
 
 test("a `?game=` that isn't a game falls through rather than forcing a scene", async ({ page }) => {

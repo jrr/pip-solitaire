@@ -9,28 +9,23 @@
 //     one, which is why the spelling lives over there beside `seed`'s. A name that
 //     isn't a game reads as `None` rather than as a scene to go looking for.
 //   - `scene` — which scene to mount, by its id (`?scene=gallery`), so a link always
-//     lands on the named scene. Nothing is persisted across loads, so this is the only
-//     thing that overrides the launch default.
+//     lands on the named scene. Nothing is persisted across loads, so this and `game`
+//     are the only things that override the launch default.
 //
-//     These two are one parameter's worth of history and deliberately no longer are.
-//     A game's scene id *is* its game id, so #353 spelled the deal link's game half as
-//     `?scene=` — the knob already there — and the two questions blurred into one. They
-//     aren't one: a deal link has nothing to say about which scene to mount, and the
-//     raster comparison is no game. Each now says its own thing, and `Main` resolves
-//     `game` first because it is the more specific claim. The separation costs already
-//     shared links nothing: `?scene=mini&seed=7` still opens mini dealt from 7, since
-//     mounting mini's scene is what deals its board.
+//     The two are separate because they ask separate questions: a deal link has nothing
+//     to say about which scene to mount, and the raster comparison is no game. `Main`
+//     resolves `game` first, it being the more specific claim — naming a board answers
+//     "which scene" as a side effect, since a game's scene id is its game id.
 //   - `state` — a named starting *scenario* for that board (`?state=midgame`),
 //     resolved against `core`'s `Scenario.forName`. Absent (or unrecognised for
 //     the game) means the ordinary opening deal.
 //   - `seed` — the deal number to open (`?seed=1`), pinning the otherwise random
 //     opening shuffle so a link (and the screenshot report) lands on the same board
 //     every time. It's a deal of whichever game is mounted, laid out by that game's
-//     own `deal` (#349), and `Game.default`'s when the URL names none — the
-//     compatibility case every deal link shared before #353 is, and one that falls out
-//     of `~default=Game.default.id` rather than needing a branch. This is the receiving
-//     end of the menu's **Share** button (#98): the deal number a player shares arrives
-//     back here. Ignored when a `state` is forced (that mounts the fixed deal itself)
+//     own `deal` (#349), and `Game.default`'s when the URL names none — which falls out
+//     of `~default=Game.default.id` rather than needing a branch, and is the receiving
+//     end of `urlForDeal` omitting the game for that one. This is where the menu's
+//     **Share** button (#98) lands: the deal number a player shares arrives back here. Ignored when a `state` is forced (that mounts the fixed deal itself)
 //     or by the fixed-layout demos, which have no seed to vary.
 //   - `animate` — whether to play the opening-deal fly-in. On by default; `off`
 //     (also `no`/`false`/`0`) drops the cards straight into their resting places, so
