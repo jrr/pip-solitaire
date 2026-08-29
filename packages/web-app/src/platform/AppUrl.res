@@ -1,23 +1,34 @@
-// The URL query parameters the app understands, parsed once at startup. Four knobs,
+// The URL query parameters the app understands, parsed once at startup. Five knobs,
 // all aimed at driving the app into a fixed, shareable position without touching
 // it — which is exactly what the screenshot report needs (it points a headless
-// browser at `?scene=freecell&state=midgame` and shoots the result):
+// browser at `?game=freecell&state=midgame` and shoots the result):
 //
-//   - `scene` — which scene to mount, by its id (`?scene=freecell`). Overrides the
-//     last scene persisted in localStorage, so a link always lands on the named
-//     scene regardless of what was last viewed on that device. Since #353 it's also
-//     the half of a deal link that says *which game* the deal number belongs to —
-//     `ShareLink.urlForDeal` writes it for any game but the default one, which is why
-//     the spelling lives over there beside `seed`'s.
-//   - `state` — a named starting *scenario* for that scene (`?state=midgame`),
+//   - `game` — which game to open, by its id (`?game=mini`), resolved against
+//     `Game.byId`. It's the half of a deal link that says *which game* the deal number
+//     belongs to (#353); `ShareLink.urlForDeal` writes it for any game but the default
+//     one, which is why the spelling lives over there beside `seed`'s. A name that
+//     isn't a game reads as `None` rather than as a scene to go looking for.
+//   - `scene` — which scene to mount, by its id (`?scene=gallery`), so a link always
+//     lands on the named scene. Nothing is persisted across loads, so this is the only
+//     thing that overrides the launch default.
+//
+//     These two are one parameter's worth of history and deliberately no longer are.
+//     A game's scene id *is* its game id, so #353 spelled the deal link's game half as
+//     `?scene=` — the knob already there — and the two questions blurred into one. They
+//     aren't one: a deal link has nothing to say about which scene to mount, and the
+//     raster comparison is no game. Each now says its own thing, and `Main` resolves
+//     `game` first because it is the more specific claim. The separation costs already
+//     shared links nothing: `?scene=mini&seed=7` still opens mini dealt from 7, since
+//     mounting mini's scene is what deals its board.
+//   - `state` — a named starting *scenario* for that board (`?state=midgame`),
 //     resolved against `core`'s `Scenario.forName`. Absent (or unrecognised for
-//     the scene) means the ordinary opening deal.
+//     the game) means the ordinary opening deal.
 //   - `seed` — the deal number to open (`?seed=1`), pinning the otherwise random
 //     opening shuffle so a link (and the screenshot report) lands on the same board
-//     every time. It's a deal of whichever game `scene` names, laid out by that game's
-//     own `deal` (#349), and FreeCell's when the URL names no scene — the compatibility
-//     case every deal link shared before #353 is, and one that falls out of
-//     `~default=Game.default.id` rather than needing a branch. This is the receiving
+//     every time. It's a deal of whichever game is mounted, laid out by that game's
+//     own `deal` (#349), and `Game.default`'s when the URL names none — the
+//     compatibility case every deal link shared before #353 is, and one that falls out
+//     of `~default=Game.default.id` rather than needing a branch. This is the receiving
 //     end of the menu's **Share** button (#98): the deal number a player shares arrives
 //     back here. Ignored when a `state` is forced (that mounts the fixed deal itself)
 //     or by the fixed-layout demos, which have no seed to vary.
@@ -55,6 +66,11 @@ type searchParams
 @send external getParam: (searchParams, string) => Nullable.t<string> = "get"
 
 type t = {
+  // The game the URL names, already resolved: this module can see `Game.all`, so an
+  // unknown id is turned away here rather than travelling on as a string that looks
+  // like an answer. `scene` stays a raw id for the opposite reason — the scene list is
+  // built in `Main`, so nothing down here could check one.
+  game: option<Game.t>,
   scene: option<string>,
   state: option<string>,
   seed: option<int>,
@@ -97,5 +113,8 @@ let parse = (): t => {
   | Some("") | None => None
   | Some(blob) => Some(blob)
   }
-  {scene: read(ShareLink.sceneKey), state: read("state"), seed, animate, raster, shared}
+  // A `?game=` naming something that isn't a game reads as `None`, so it falls through
+  // to `?scene=` and the launch default instead of forcing a scene id nothing can mount.
+  let game = read(ShareLink.gameKey)->Option.flatMap(Game.byId)
+  {game, scene: read("scene"), state: read("state"), seed, animate, raster, shared}
 }

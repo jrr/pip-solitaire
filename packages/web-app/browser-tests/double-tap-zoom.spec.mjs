@@ -116,7 +116,7 @@ test("still lets the send-home double-tap through", async ({ page }) => {
   // `almost-won` leaves a single King in the first free cell, one move from home
   // (see win.spec.mjs). Double-tapping it plays that move, so the win overlay
   // standing is proof the gesture survived the suppression.
-  await page.goto("/?scene=freecell&state=almost-won&animate=off")
+  await page.goto("/?game=freecell&state=almost-won&animate=off")
   await settleBoard(page)
 
   const cell = await page.locator(".drop-zone").nth(0).boundingBox()

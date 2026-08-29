@@ -12,11 +12,11 @@ import { settleBoard } from "./lib/board.mjs"
 
 test.use({ viewport: { width: 800, height: 1000 } })
 
-const FREECELL = "/?scene=freecell&animate=off"
+const FREECELL = "/?game=freecell&animate=off"
 // The one-move-from-won position (`Scenario.freecellAlmostWon`), the cheapest real
 // move there is: the pending King in the first free cell goes home to the last
 // foundation. The same drag `win.spec.mjs` and `share-win.spec.mjs` make.
-const ALMOST_WON = "/?scene=freecell&state=almost-won&animate=off"
+const ALMOST_WON = "/?game=freecell&state=almost-won&animate=off"
 
 const consolePanel = (page) => page.locator("#debug-console")
 const consoleLines = (page) => page.locator("#debug-console-lines li")
@@ -316,7 +316,7 @@ test("autoplay plays the deal out and wins it", async ({ page }) => {
   // every other test in this file: the planned moves are flown one at a time, which is
   // the whole behaviour under test here, and `?animate=off` would collapse the line to
   // a single reflow and prove nothing about it.
-  await page.goto("/?scene=freecell&seed=24680")
+  await page.goto("/?game=freecell&seed=24680")
   await settleBoard(page)
   await openConsole(page)
 
@@ -363,7 +363,7 @@ test("taking the board back mid-line stops the solver (#291)", async ({ page }) 
   // The search runs before the first card moves, and it's the slow part here — the
   // rest is a couple of moves and a deliberate wait.
   test.setTimeout(180_000)
-  await page.goto("/?scene=freecell&seed=24680")
+  await page.goto("/?game=freecell&seed=24680")
   await settleBoard(page)
   await openConsole(page)
 
@@ -450,7 +450,7 @@ test("home finds the foundation itself, and undo/redo walk the same history", as
 test("home on a buried card says it's buried, not that nothing wants it", async ({ page }) => {
   // The finishable board: ♥3 is trapped under ♠6 in the first cascade, and the Hearts
   // foundation stands at ♥2 — so this card is exactly what that foundation wants next.
-  await page.goto("/?scene=freecell&state=finish&animate=off")
+  await page.goto("/?game=freecell&state=finish&animate=off")
   await settleBoard(page)
   await openConsole(page)
 
@@ -501,7 +501,7 @@ test("a typed move can't lift a card out from under the pile resting on it", asy
 }) => {
   // The supermove scenario: 9♠-8♥-7♠-6♥-5♠ down the first cascade with only the 5♠
   // showing, and an empty last column that would take any card in the game.
-  await page.goto("/?scene=freecell&state=supermove&animate=off")
+  await page.goto("/?game=freecell&state=supermove&animate=off")
   await settleBoard(page)
   await openConsole(page)
 
@@ -594,7 +594,7 @@ test("the prompt remembers what was typed, and clear empties the log", async ({ 
 // lands. This is the one console test without `animate=off` — that flag is exactly what
 // suppresses the flight (see `flyCards`).
 test("a commanded card flies to its new home, over the fan it leaves", async ({ page }) => {
-  await page.goto("/?scene=freecell&state=almost-won")
+  await page.goto("/?game=freecell&state=almost-won")
   await settleBoard(page)
   await openConsole(page)
 
@@ -705,7 +705,7 @@ test("redeal replays the deal on the table", async ({ page }) => {
 // point is a snapshot you can read back. The colour it arrives in is the panel's own (see
 // the ink test below); what `core` hands over is a document, not a painted string.
 test("print draws the board into the log", async ({ page }) => {
-  await page.goto("/?scene=freecell&seed=24680&animate=off")
+  await page.goto("/?game=freecell&seed=24680&animate=off")
   await settleBoard(page)
   await openConsole(page)
 
@@ -746,7 +746,7 @@ test.describe("a log line wider than the panel", () => {
   test.use({ viewport: { width: 380, height: 900 } })
 
   test("scrolls sideways, wheel and all", async ({ page }) => {
-    await page.goto("/?scene=freecell&seed=24680&animate=off")
+    await page.goto("/?game=freecell&seed=24680&animate=off")
     await settleBoard(page)
     await openConsole(page)
 
@@ -1142,7 +1142,7 @@ test.describe("over the whole window", () => {
   })
 
   test("a printed board fits the window the band cropped it in", async ({ page }) => {
-    await page.goto("/?scene=freecell&seed=24680&animate=off")
+    await page.goto("/?game=freecell&seed=24680&animate=off")
     await settleBoard(page)
     await openConsole(page)
 
@@ -1170,7 +1170,7 @@ test.describe("over the whole window", () => {
 // used; the stylesheet owns that, and its choices are the panel's rather than the card
 // table's or the terminal's.
 test("print paints the board in the panel's own colours", async ({ page }) => {
-  await page.goto("/?scene=freecell&seed=24680&animate=off")
+  await page.goto("/?game=freecell&seed=24680&animate=off")
   await settleBoard(page)
   await openConsole(page)
 

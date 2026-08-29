@@ -9,7 +9,7 @@
 // to look like *gameplay*, so it comes from an actually-rendered game rather than
 // a hand-composed SVG. It drives the same headless-Chromium + Vite-preview rig the
 // screenshot report uses (see ../screenshots/render.mjs): serve the built site, point the
-// browser at the deterministic mid-game FreeCell scene (`?scene=freecell&
+// browser at the deterministic mid-game FreeCell scene (`?game=freecell&
 // state=midgame`, the URL contract from AppUrl/Scenario), and crop a landscape
 // band of a few cascades — the "few short stacks" the issue asks for.
 //
@@ -42,7 +42,7 @@ const outFile = path.join(webAppRoot, "public", "og-image.png");
 // The deterministic scene to shoot: the mid-game FreeCell snapshot, dealt with the
 // fly-in suppressed so we capture the settled board (see AppUrl's `state`/`animate`
 // knobs and Scenario.freecellMidgame). Same contract the screenshot report drives.
-const SCENE_QUERY = "?scene=freecell&state=midgame&animate=off";
+const SCENE_QUERY = "?game=freecell&state=midgame&animate=off";
 
 // A tall portrait viewport so the cascades render large and their rank/pip type is
 // legible in the crop; the deviceScaleFactor doubles the pixels on top of that. The

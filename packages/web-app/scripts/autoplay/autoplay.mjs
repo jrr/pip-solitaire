@@ -132,7 +132,7 @@ export async function playGame(page, { seed, log = () => {}, onMove = () => {} }
   // `animate=off` skips the opening fly-in (see `AppUrl`), so the board is at its
   // resting positions as soon as the cards exist and the first grab measures the
   // real footprints instead of racing the deal.
-  await page.goto(`/?scene=freecell&seed=${seed}&animate=off`)
+  await page.goto(`/?game=freecell&seed=${seed}&animate=off`)
   await settle(page)
 
   const started = Date.now()

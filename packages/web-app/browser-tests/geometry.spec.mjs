@@ -121,7 +121,7 @@ for (const viewport of VIEWPORTS) {
     // that one measurement — a break reports all the relationships it broke,
     // the way the whole footprint is derived together.
     test("the card, slot and zone footprints hold together", async ({ page }) => {
-      await page.goto("/?scene=freecell&state=midgame&animate=off")
+      await page.goto("/?game=freecell&state=midgame&animate=off")
       // The opening layout is sized in a pre-paint frame, so measure only once
       // the board has settled — otherwise these read an intermediate footprint.
       await settleBoard(page)

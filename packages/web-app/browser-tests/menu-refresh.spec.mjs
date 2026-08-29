@@ -25,7 +25,7 @@ import { expect, test } from "@playwright/test"
 test.use({ viewport: { width: 480, height: 900 } })
 
 test("the update-check control is on the deeper screens, never the main menu", async ({ page }) => {
-  await page.goto("/?scene=freecell&animate=off")
+  await page.goto("/?game=freecell&animate=off")
   await page.getByRole("button", { name: /Open menu/ }).click()
 
   const refresh = page.locator(".menu-refresh")

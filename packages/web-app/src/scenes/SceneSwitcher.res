@@ -20,8 +20,9 @@
 // menu renders exactly as it did before.
 //
 // The app always *launches* into its `~default` scene (FreeCell — the game is
-// home), or the `~forced` scene the URL names (`?scene=`); there is no longer any
-// "resume the last scene on reload" behaviour, so nothing is persisted.
+// home), or the `~forced` scene the URL names (`?game=` or `?scene=`, resolved to one
+// id by `Main`); there is no longer any "resume the last scene on reload" behaviour, so
+// nothing is persisted.
 //
 // `render` hands the menu's scene lists and the scene container back separately (see
 // `t`) so the caller can place the rows (inside the menu) apart from the scene box.
@@ -90,9 +91,8 @@ type t = {
 
 // Build the switcher and return its pieces. When `scenes` is empty the
 // container simply stays empty. Otherwise the initial scene is the first of these
-// that names a real scene: the `~forced` id (from the URL's `?scene=`, so a link
-// always lands where it says), then the launch `~default` (FreeCell), then the
-// first scene.
+// that names a real scene: the `~forced` id (what the URL asked for, so a link always
+// lands where it says), then the launch `~default` (FreeCell), then the first scene.
 //
 // `~onActivate` is called at the *start* of every activation (the initial mount
 // and each row tap that changes scene) with the scene about to mount — the chrome

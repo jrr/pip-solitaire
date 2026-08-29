@@ -59,7 +59,7 @@ const { base, close } = await startPreview()          // serves the built dist/
 const browser = await launchChromium()
 const page = await browser.newPage({ baseURL: base, viewport: { width: 900, height: 1100 } })
 
-await page.goto("/?scene=freecell&seed=24680&animate=off")
+await page.goto("/?game=freecell&seed=24680&animate=off")
 await settle(page)
 
 let view = await look(page)                            // { geom, piles, cards, codes, state }
@@ -95,10 +95,12 @@ hand-run script doesn't.)
 
 ## Driving the app into a position
 
-Query parameters, all documented in `src/AppUrl.res`:
+Query parameters, all documented in `src/platform/AppUrl.res`:
 
-- `?scene=freecell` — mount FreeCell (other scenes: `stacking`, `raster`, …).
-- `?seed=N` — open deal N. Deterministic: the same N always deals the same board.
+- `?game=freecell` — open a game by id (`freecell`, `mini`, `micro`).
+- `?scene=gallery` — mount a non-game scene (`gallery`, `raster`, `motion`).
+- `?seed=N` — open deal N of whichever game is mounted. Deterministic: the same N
+  always deals the same board.
 - `?animate=off` — skip the opening fly-in, so the board is at its resting
   positions as soon as the cards exist. **Use this**, or your first grab races
   the deal.

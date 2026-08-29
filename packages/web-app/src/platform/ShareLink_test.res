@@ -114,9 +114,9 @@ describe("ShareLink", () => {
 
 // Which *game* a deal number is a deal of (#353). A deal link used to say only the
 // number, and the receiving end read it as FreeCell by construction — so the app could
-// never share a deal of a second game. The knob it's spelled with is one `AppUrl` has
-// parsed since the beginning; what's new is `urlForDeal` writing it, and the shape of
-// that is what's pinned here.
+// never share a deal of a second game. What's pinned here is the shape `urlForDeal`
+// writes — including that it says `game`, the thing it holds, rather than borrowing
+// `?scene=` as it briefly did.
 describe("ShareLink.urlForDeal names the game (#353)", () => {
   // A second seeded game, stood up here because `Game.all` has only FreeCell today
   // (#342 retired the demo boards). Everything `urlForDeal` reads of a game is its
@@ -125,19 +125,19 @@ describe("ShareLink.urlForDeal names the game (#353)", () => {
   // link which quietly means FreeCell.
   let mini = {...Game.freecell, id: "mini", name: "Mini"}
 
-  test("a deal of another game names it with `?scene=`", () => {
+  test("a deal of another game names it with `?game=`", () => {
     let url = ShareLink.urlForDeal(~game=mini, ~seed=7)
-    expect(url->String.endsWith("?scene=mini&seed=7"))->toBe(true)
+    expect(url->String.endsWith("?game=mini&seed=7"))->toBe(true)
   })
 
   test("…and the default game leaves it out, for the link to stay legible", () => {
     // `?seed=7` is short enough to be read off one screen and typed into another,
     // which the module's own note calls half the point of a deal number.
-    // `?scene=freecell&seed=7` is not, and would say twice what the bare form already
+    // `?game=freecell&seed=7` is not, and would say twice what the bare form already
     // says once — `Game.default` is where "a number with no game named" resolves.
     let url = ShareLink.urlForDeal(~game=Game.default, ~seed=7)
     expect(url->String.endsWith("?seed=7"))->toBe(true)
-    expect(url->String.includes(ShareLink.sceneKey))->toBe(false)
+    expect(url->String.includes(ShareLink.gameKey))->toBe(false)
   })
 
   test("every link the app emitted before this change is byte-identical", () => {
@@ -150,12 +150,14 @@ describe("ShareLink.urlForDeal names the game (#353)", () => {
     expect(ShareLink.urlForDeal(~game=Game.freecell, ~seed=24680))->toBe(before(24680))
   })
 
-  test("the scene it writes is the one `AppUrl` reads", () => {
+  test("the parameter it writes is the one `AppUrl` reads, and it says `game`", () => {
     // The two ends agree by construction — one spelling, in this module — so a link
-    // that named its game in a parameter nothing parses isn't expressible.
-    expect(ShareLink.sceneKey)->toBe("scene")
+    // that named its game in a parameter nothing parses isn't expressible. The literal
+    // is pinned as well as the round trip: `AppUrl` documents `?game=` as the deal
+    // link's half, and a rename here that left that prose behind would be silent.
+    expect(ShareLink.gameKey)->toBe("game")
     expect(
-      ShareLink.urlForDeal(~game=mini, ~seed=7)->String.includes(ShareLink.sceneKey ++ "="),
+      ShareLink.urlForDeal(~game=mini, ~seed=7)->String.includes(ShareLink.gameKey ++ "="),
     )->toBe(true)
   })
 })

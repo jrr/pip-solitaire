@@ -56,12 +56,18 @@ let fragmentKey = "g"
 // parses it, this module writes it, so the spelling lives in one place.
 let dealKey = "seed"
 
-// …and the one naming *which game* that deal is a deal of (#353). `AppUrl` has parsed
-// `?scene=` since the beginning — it's how the screenshot report points at a board —
-// so a deal link for a second game needs no new knob, only this module writing the one
-// that's already there. Same arrangement as the two above: `AppUrl` reads it, this
-// module writes it, one spelling.
-let sceneKey = "scene"
+// …and the one naming *which game* that deal is a deal of (#353). Same arrangement as
+// the two above: `AppUrl` reads it, this module writes it, one spelling.
+//
+// It says a *game*, so it is spelled `game` rather than `scene`. #353 reached for
+// `?scene=` because the knob was already there and a game's scene id *is* its game id,
+// which made one parameter do for both; but the two questions are different ones —
+// `?scene=` picks which scene to mount (the card gallery, the raster comparison), and a
+// deal link has nothing to say about that, while `?game=` picks a board and says nothing
+// about scenes. Separating them costs the receiving end nothing: mounting a game's scene
+// is what deals its board, so an already-shared `?scene=mini&seed=7` still opens mini
+// dealt from 7. It just isn't the spelling this writes any more.
+let gameKey = "game"
 
 @val @scope(("window", "location")) external origin: string = "origin"
 @val @scope(("window", "location")) external pathname: string = "pathname"
@@ -106,7 +112,7 @@ let urlFor = async (saved: SaveState.t): option<string> =>
 // says it in full. `pathname` stays, so a link shared from a GitHub Pages subpath — or
 // a PR preview's deeper one — opens that same build.
 //
-// **`?scene=` is the exception, and it's why this takes a game (#353.)** The other
+// **`?game=` is the exception, and it's why this takes a game (#353.)** The other
 // parameters say something the deal number supersedes; that one says *which board the
 // number is a deal of*, which the number can't say by itself. Dropping it was harmless
 // only while there was one seeded game to mean, so it's written back here — and written
@@ -121,10 +127,10 @@ let urlFor = async (saved: SaveState.t): option<string> =>
 // written before this change and one written after are the same string; and `?seed=7`
 // stays short and legible, which the note above calls half the point of a deal number —
 // it survives being read off one screen and typed into another by hand, and
-// `?scene=freecell&seed=7` does not.
+// `?game=freecell&seed=7` does not.
 let urlForDeal = (~game: Game.t, ~seed: int): string => {
-  let scene = game.id == Game.default.id ? "" : sceneKey ++ "=" ++ game.id ++ "&"
-  origin ++ pathname ++ "?" ++ scene ++ dealKey ++ "=" ++ Int.toString(seed)
+  let whichGame = game.id == Game.default.id ? "" : gameKey ++ "=" ++ game.id ++ "&"
+  origin ++ pathname ++ "?" ++ whichGame ++ dealKey ++ "=" ++ Int.toString(seed)
 }
 
 // The message a won game shares (#264) — the boast the win overlay's Share button

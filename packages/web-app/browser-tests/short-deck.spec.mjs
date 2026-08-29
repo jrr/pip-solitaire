@@ -94,7 +94,7 @@ async function drag(page, { card, to }) {
 
 for (const { id, game, zones, line } of BOARDS) {
   test(`${id} deals its own shape and plays to the win overlay`, async ({ page }) => {
-    await page.goto(`/?scene=${id}&seed=1&animate=off`)
+    await page.goto(`/?game=${id}&seed=1&animate=off`)
     await settle(page)
 
     // The board the app laid out is the one `Game.res` describes — every pile

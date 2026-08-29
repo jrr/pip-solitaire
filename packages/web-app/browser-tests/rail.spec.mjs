@@ -78,7 +78,7 @@ for (const { cutout, wings } of REGIMES) {
   test(`the rail clears the scene band with cutout=${cutout} wings=${wings}`, async ({ page }) => {
     // A dealt board, animation off, so the scene band and rail are settled and the
     // measurement isn't racing the opening deal.
-    await page.goto("/?scene=freecell&state=midgame&animate=off")
+    await page.goto("/?game=freecell&state=midgame&animate=off")
     await expect(page.locator(".drop-rows .drop-zone").first()).toBeAttached()
     await settleBoard(page)
 

@@ -632,8 +632,8 @@ let update = (msg, model) =>
 //
 // The app always opens on the FreeCell board: `~default="freecell"` is the launch
 // scene, replacing the old "resume the last scene" behaviour — the game is always
-// home. An explicit `?scene=` still wins (`~forced`), and `?state=` still forces a
-// scenario, so the screenshot report's `?scene=freecell&state=midgame` lands
+// home. An explicit `?game=` or `?scene=` still wins (`~forced`), and `?state=` still
+// forces a scenario, so the screenshot report's `?game=freecell&state=midgame` lands
 // exactly where it says. `Game.all` is the source of truth for the game scenes; which
 // of them is re-dealable is the game's own answer (`Game.t.deal`) — FreeCell's seeded
 // shuffle today.
@@ -829,7 +829,11 @@ let switcher = SceneSwitcher.render(
   // `Game.default`, so a bare `?seed=7` has to land on `Game.default`'s scene for the
   // link to mean what it says. Written this way the round trip can't drift.
   ~default=Game.default.id,
-  ~forced=?url.scene,
+  // What the URL asked to open, as a scene id. `?game=` is checked first because it is
+  // the more specific claim — it names a board, and a board's scene is its id, so it
+  // answers "which scene" as a side effect of answering "which game". `?scene=` is what
+  // remains: the demos, and the scenes no game is behind.
+  ~forced=?url.game->Option.map(game => game.id)->Option.orElse(url.scene),
   // Drop the outgoing board before each scene mounts (a mounting card table publishes
   // its own; a demo scene publishes none, which is how the chrome knows there's nothing
   // to drive), reset the two things the board *reports* rather than offers, and close
