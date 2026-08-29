@@ -3,11 +3,6 @@
 // stacking rules (#76). This is the ROADMAP's load-bearing principle made real —
 // "immutable state + action variant + pure reducer, illegal actions rejected."
 //
-// Deliberately still *no view changes*: nothing dispatches yet. This is the
-// transition function plus its tests, so the later drivers (the view cutover and
-// the CLI) have something to dispatch into. The view keeps its own mutable refs
-// for now.
-//
 // The shapes:
 //   - `Game.t` is the *board definition* — each pile's `rule` and capacity.
 //     Static across a game.
@@ -29,8 +24,7 @@ type target = ToPile(int)
 // The moves the current games allow. A `Move` is one card; a `MoveRun` is the
 // FreeCell **supermove** (#123) — an ordered run of `cards` (bottom-first, the way
 // a pile holds them) lifted and dropped as one gesture, as if each had been
-// shuffled through the free cells and empty columns. `Deal`/`Undo` will grow this
-// variant when their steps land.
+// shuffled through the free cells and empty columns.
 type action =
   | Move({card: card, to: target})
   | MoveRun({cards: array<card>, to: target})

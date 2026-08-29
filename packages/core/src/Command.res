@@ -14,8 +14,7 @@
 //
 // A second grammar for the second front end was the thing to avoid: `move 8H 5`
 // must mean the same thing in a terminal and in the panel, or the console is a
-// separate game that merely looks like this one. (#148's TUI is the third caller
-// waiting on this.)
+// separate game that merely looks like this one.
 //
 // **Where the split falls.** `parse` decides everything decidable from the text
 // alone; everything that needs a board is answered after it. So `move 8H 5` parses
