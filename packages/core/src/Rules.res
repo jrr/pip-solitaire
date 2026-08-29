@@ -1,15 +1,11 @@
 // Stackability rules: whether a candidate card may land on a pile, decided by a
-// single *pure* predicate over card identities. This is Step 1 of the
-// roadmap-to-M1 sketch (#75): the decision is a standalone function rather than
-// logic inlined in the pointer/drop handler, even though the game state is still
-// view-owned for now.
+// single *pure* predicate over card identities — a standalone function rather
+// than logic inlined in the pointer/drop handler, free of any view or DOM
+// concern and unit-testable on its own (see `Core_test`).
 //
-// Keeping it here — pure and free of any view or DOM concern — means the later
-// M1 migration relocates it into a reducer (`Rules.canDrop`) instead of
-// rewriting it, and it is unit-testable immediately (see `Core_test`). Each pile
-// carries the `rule` it enforces (`Game.pile.rule`); the view's hover highlight
-// and its drop-accept/reject decision call `accepts` with that rule, so the
-// green "valid" outline and the accepted drop can never disagree.
+// Each pile carries the `rule` it enforces (`Game.pile.rule`); the view's hover
+// highlight and its drop-accept/reject decision call `accepts` with that rule,
+// so the green "valid" outline and the accepted drop can never disagree.
 //
 // #76 generalises #75's single hard-coded rule into *data* — a `rule` per pile —
 // so one board can carry piles that stack by different laws (a #75 alternating

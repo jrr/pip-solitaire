@@ -4,9 +4,7 @@
 // layer (web-app's `Deck`/`CardArt`), which re-exports these very types so both
 // layers agree on the model without duplicating it.
 //
-// This is deliberately small: only what `Game` needs today to describe an
-// opening deal. The fuller, ordering-aware card model is still its own future
-// game-track item; when it lands it can grow from here.
+// This is deliberately small: only what the board model needs to name a card.
 
 type suit = Spades | Hearts | Diamonds | Clubs
 
