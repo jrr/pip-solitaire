@@ -1,27 +1,22 @@
-// The **About** footer that sits at the foot of both menu screens (#165/#191),
-// lifted out of `Menu` into its own pure component so its states can be exercised
-// in isolation (#201): the build/version line (`<VersionBadge>`) and, beside it,
-// the green **Update** button that activates a waiting service-worker build.
+// The **About** footer that sits at the foot of both menu screens (#165/#191): one
+// row holding the build/version line (`<VersionBadge>`) and, at its end, the green
+// **↻ Update** button that activates a waiting service-worker build — with the
+// update-check slot (`refresh`) below it, so the build info and the update check
+// read as one "About" block.
 //
-// **The size story (#201).** This footer used to stack a "A new version is
-// available" note and a full-width **Update now** button *under* the version line,
-// rendered with `hidden` (`display: none`) when no update waited — so the footer
-// collapsed most of the time and expanded when an update arrived, shoving
-// everything above it. It's now a single row: the version line on the left, a
-// short **↻ Update** button on the right. The button is always laid out and hidden
-// with *visibility* (`menu-update--hidden`) when there's nothing to update, so it
-// keeps its box and the row is the same height in both states — only the button
-// fades in and out. `AboutFooter_test` pins that invariant.
+// **This footer must be the same height in both states (#201).** It's anchored at
+// the foot of the panel, so a footer that grows shoves everything above it. The
+// Update button is therefore laid out at all times and hidden with *visibility*
+// (`menu-update--hidden`) when there's nothing to update: it keeps its box and only
+// fades in and out. Never hide it with `hidden`/`display: none`, which collapses the
+// box and brings the reflow back. `AboutFooter_test` pins both halves.
 //
 // `visibility: hidden` also takes the reserved button out of the tab order and out
 // of pointer events; `aria-hidden` mirrors that for assistive tech.
 //
-// **Updates folded in.** The adaptive "Check for updates" button used to sit in a
-// separate **Updates** section above this footer; it now lives here, under the
-// version row, as the `refresh` slot — the build info and the update check read as
-// one "About" block. `refresh` is a ready-made vnode (a `<RefreshControl>` when a
-// service-worker state is known, otherwise an empty node), so the footer stays a
-// dumb layout and `Menu` decides whether there's a button to show.
+// `refresh` is a ready-made vnode (a `<RefreshControl>` when a service-worker state
+// is known, otherwise an empty node), so the footer stays a dumb layout and `Menu`
+// decides whether there's a button to show.
 //
 // A component is just a `props => vnode` function (see `VersionBadge` for why the
 // record is spelled out by hand).
@@ -42,9 +37,8 @@ let make = ({version, buildTime, updateVisible, onReload, refresh}) =>
     <h2 className="menu-section__heading"> {Html.string("About")} </h2>
     <div className="menu-about__row">
       <VersionBadge version={version} buildTime={buildTime} />
-      // The Update button stays in the row at all times so it never reflows;
-      // `--hidden` reserves its space with `visibility: hidden` when there's no
-      // update to offer, and `aria-hidden` mirrors that for assistive tech.
+      // Always in the row, reserved with `menu-update--hidden` when there's no update
+      // to offer — see the size rule above. `aria-hidden` mirrors it for assistive tech.
       <button
         className={updateVisible
           ? "menu-update__button"

@@ -1,21 +1,14 @@
-// The Settings screen's update-check control (#112), lifted out of `Menu` into its
-// own pure component so its states can be exercised in isolation (#201). It's the
-// adaptive refresh button whose `label` and `onClick` adapt to whether a service
-// worker is registered (see Refresh/Main).
+// The Settings screen's update-check control (#112): the adaptive refresh button
+// whose `label` and `onClick` adapt to whether a service worker is registered (see
+// Refresh/Main). It's an aria-labelled "Updates" band with no heading of its own,
+// folded into the **About** footer beside the version line.
 //
-// It used to be its own **Updates** section with a heading of its own; the button
-// now lives folded into the **About** footer beside the version line (the update
-// check and the build info belong together), so this component is just the button
-// in its column wrapper — `AboutFooter` supplies the surrounding "About" heading.
-//
-// **The size story (#201).** This control used to carry a transient status line
-// *under* the button ("Checking…", "Up to date") that appeared and disappeared,
-// growing and shrinking it — a visible reflow of everything below. The status line
-// is gone: while a check is in flight the button itself shows a spinner and reads
-// **"Checking…"** (`busy`), all on the button's own line, so it changes nothing
-// about the height. With no line to come and go, the control is a single button in
-// every state — trivially size-stable. `RefreshControl_test` pins that: its rows
-// are the same whether or not a check is running.
+// **This control must stay size-stable in every state (#201).** It sits inside the
+// About footer, which reflows the menu around it if its height changes — so
+// progress goes *on the button's own line* (a spinner, and the label swapped to
+// "Checking…") rather than into a status line beneath it. Don't add a line that
+// comes and goes: one button, one row, in every state. `RefreshControl_test` pins
+// the row count.
 //
 // A component is just a `props => vnode` function (see `VersionBadge` for why the
 // record is spelled out by hand). The whole section is optional at the *call* site
@@ -38,8 +31,7 @@ let make = ({label, busy, onClick}) =>
       type_="button"
       ariaBusy={busy ? "true" : "false"}
     >
-      // The spinner sits inside the button, on the button's own text line, so
-      // showing it never changes the button's — or the section's — height. Purely
+      // Inside the button, on its own text line — see the size rule above. Purely
       // decorative; `aria-busy` above voices the state.
       {busy ? <span className="menu-refresh__spinner" ariaHidden="true" /> : Html.empty}
       {Html.string(busy ? "Checking…" : label)}
