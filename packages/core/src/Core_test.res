@@ -8,10 +8,19 @@ test("greeting returns the expected message", () => {
 // The modelled games (#62): assert the rules the presentation layer reads back.
 describe("Game", () => {
   test("every game is listed with a stable id and a non-empty name", () => {
-    // FreeCell alone since #342 retired the demo boards; the list is still what the
-    // scene picker and the CLI's `games` enumerate.
-    expect(Game.all->Array.map(g => g.id))->toEqual(["freecell"])
+    // FreeCell and its two short-deck siblings (#350) — the list the scene picker and
+    // the CLI's `games`/`deal <id>` enumerate, in picker order.
+    expect(Game.all->Array.map(g => g.id))->toEqual(["freecell", "mini", "micro"])
     expect(Game.all->Array.every(g => g.name != ""))->toBe(true)
+  })
+
+  // The ids are also the localStorage keys `SavedGame` saves under and the `?scene=`
+  // values a deal link names, so two boards sharing one would silently share a save.
+  test("game ids are unique", () => {
+    let ids = Game.all->Array.map(g => g.id)
+    expect(
+      ids->Array.filter(id => ids->Array.filter(other => other == id)->Array.length > 1),
+    )->toEqual([])
   })
 
   // The assembled FreeCell board (#97): the four enablers (#93 capacity, #94
@@ -297,6 +306,249 @@ describe("Game", () => {
           )->toBe(false)
         | _ => () // an Ace-topped (or empty) cascade has no lower step to test
         }
+      },
+    )
+  })
+
+  // The short-deck siblings (#350): FreeCell in every mechanic, differing only in
+  // deck and shape. What's asserted here is the shape each declares and the two
+  // things a short deck changes downstream — what "complete" means, and which suits
+  // auto-collect waits on — since those are the assumptions #351 pulled out.
+  describe("mini and micro", () => {
+    // The board shape as a table, so the two are read side by side rather than as
+    // two near-identical blocks.
+    let boards = [("mini", Game.mini, 4, 2, 4, 20, 5), ("micro", Game.micro, 4, 2, 2, 16, 4)]
+
+    test(
+      "each declares its cascades, cells and foundations",
+      () =>
+        boards->Array.forEach(
+          ((label, board, cascades, cells, foundations, _, _)) => {
+            expect((label, Array.length(Game.pilesOf(board, Game.Cascade))))->toEqual((
+              label,
+              cascades,
+            ))
+            expect((label, Array.length(Game.pilesOf(board, Game.FreeCell))))->toEqual((
+              label,
+              cells,
+            ))
+            expect((label, Array.length(Game.pilesOf(board, Game.Foundation))))->toEqual((
+              label,
+              foundations,
+            ))
+            // Cells and foundations first, cascades below — the board order the view
+            // groups its two rows by (#94).
+            expect((label, Game.pileIndices(board, Game.FreeCell)))->toEqual((
+              label,
+              Array.fromInitializer(~length=cells, i => i),
+            ))
+            expect((label, Game.pileIndices(board, Game.Cascade)))->toEqual((
+              label,
+              Array.fromInitializer(~length=cascades, i => cells + foundations + i),
+            ))
+            // …and each pile carries the FreeCell rule its role calls for, so the
+            // mechanics are the same game rather than a lookalike.
+            Game.pilesOf(board, Game.FreeCell)->Array.forEach(
+              p => {
+                expect(p.rule)->toEqual(Rules.Free)
+                expect(p.capacity)->toEqual(Some(1))
+                expect(p.stacking)->toEqual(Game.Squared)
+              },
+            )
+            Game.pilesOf(board, Game.Foundation)->Array.forEach(
+              p => {
+                expect(p.rule)->toEqual(Rules.foundation)
+                expect(p.stacking)->toEqual(Game.Squared)
+              },
+            )
+            Game.pilesOf(board, Game.Cascade)->Array.forEach(
+              p => {
+                expect(p.rule)->toEqual(Rules.cascade)
+                expect(p.capacity)->toEqual(None)
+                expect(p.stacking)->toEqual(Game.Fanned)
+              },
+            )
+          },
+        ),
+    )
+
+    test(
+      "deals its own short deck evenly across the cascades, cells and foundations empty",
+      () =>
+        boards->Array.forEach(
+          ((label, board, _, _, _, deckSize, perColumn)) => {
+            let cascades = Game.pilesOf(board, Game.Cascade)
+            // Every column the same depth: both decks divide evenly by four.
+            expect((label, cascades->Array.map(p => Array.length(p.cards))))->toEqual((
+              label,
+              Array.fromInitializer(~length=Array.length(cascades), _ => perColumn),
+            ))
+            // The pooled cascade cards are exactly the board's own deck — every card
+            // of it once, and nothing from outside it.
+            let dealt = cascades->Array.flatMap(p => p.cards)
+            let deck = Cards.cardsOf(board.deck)
+            expect((label, Array.length(dealt)))->toEqual((label, deckSize))
+            expect((label, Array.length(deck)))->toEqual((label, deckSize))
+            expect((
+              label,
+              deck->Array.every(card => dealt->Array.some(c => GameState.sameCard(c, card))),
+            ))->toEqual((label, true))
+            // Cells and foundations open empty, as on the full board.
+            expect((
+              label,
+              Game.pilesOf(board, Game.FreeCell)->Array.every(p => Array.length(p.cards) == 0) &&
+                Game.pilesOf(board, Game.Foundation)->Array.every(p => Array.length(p.cards) == 0),
+            ))->toEqual((label, true))
+          },
+        ),
+    )
+
+    test(
+      "is re-dealable under its own id, reproducibly",
+      () =>
+        boards->Array.forEach(
+          ((label, board, _, _, _, _, _)) => {
+            let cards = (game: Game.t) => game.piles->Array.map(p => p.cards)
+            let another = board.deal->Option.getOrThrow
+            let dealt = another(4242)
+            // A re-deal is another board of the *same* game — same id, same deck —
+            // which is what keeps its saved game and its `?scene=` link its own.
+            expect((label, dealt.id))->toEqual((label, board.id))
+            expect((label, dealt.deck))->toEqual((label, board.deck))
+            expect((label, dealt.seed))->toEqual((label, Some(4242)))
+            // …and the deal number round-trips: dealing the seed a board reports
+            // lays that board out again (the promise a `?seed=` link rests on).
+            let again = dealt.deal->Option.getOrThrow
+            expect((label, cards(again(4242))))->toEqual((label, cards(dealt)))
+            // A different number is a different board.
+            expect(cards(again(9)) == cards(dealt))->toBe(false)
+          },
+        ),
+    )
+
+    test(
+      "a foundation is complete at the short deck's own highest rank",
+      () => {
+        // The assumption #351 removed, seen from the boards that need it: `mini`
+        // finishes at the Five and `micro` at the Eight, so a 13-card, King-topped
+        // definition of "complete" would leave either board unwinnable.
+        let run = (~suit, ~upTo) =>
+          Cards.ranks
+          ->Array.filter(rank => Rules.rankValue(rank) <= Rules.rankValue(upTo))
+          ->Array.map(rank => {suit, rank})
+        expect(Rules.isCompleteRun(~deck=Game.mini.deck, run(~suit=Spades, ~upTo=Five)))->toBe(true)
+        expect(Rules.isCompleteRun(~deck=Game.micro.deck, run(~suit=Spades, ~upTo=Eight)))->toBe(
+          true,
+        )
+        // One short of the top is not complete on either.
+        expect(Rules.isCompleteRun(~deck=Game.mini.deck, run(~suit=Spades, ~upTo=Four)))->toBe(
+          false,
+        )
+        expect(Rules.isCompleteRun(~deck=Game.micro.deck, run(~suit=Spades, ~upTo=Seven)))->toBe(
+          false,
+        )
+        // …and a full-pack board still finishes at the King, unchanged.
+        expect(Rules.isCompleteRun(~deck=Game.freecell.deck, run(~suit=Spades, ~upTo=Five)))->toBe(
+          false,
+        )
+      },
+    )
+
+    test(
+      "auto-collect on micro waits only on the suits its two-colour deck actually has",
+      () => {
+        // The case a hard-coded four-suit rule would stall (#351, and the reason
+        // `micro` needs it): with only ♠ and ♥ in play, a black card waits on Hearts
+        // alone. Both foundations up to the Two, the Three of Spades on a cascade —
+        // asking `[Hearts, Diamonds]` would find Diamonds stuck at rank 0 forever and
+        // refuse every card above a Two for the rest of the game.
+        //
+        // Board order on `micro` is 2 cells, 2 foundations, 4 cascades.
+        let posed: GameState.t = {
+          piles: [
+            [],
+            [],
+            [{suit: Spades, rank: Ace}, {suit: Spades, rank: Two}],
+            [{suit: Hearts, rank: Ace}, {suit: Hearts, rank: Two}],
+            [{suit: Spades, rank: Three}],
+            [{suit: Spades, rank: Four}],
+            [],
+            [],
+          ],
+          loose: [],
+        }
+        expect(Reducer.isSafeToCollect(~game=Game.micro, posed, {suit: Spades, rank: Three}))->toBe(
+          true,
+        )
+        // …and the rule is still a rule: the Four waits, because Hearts hasn't reached
+        // the Three a descending cascade could still want it on.
+        expect(Reducer.isSafeToCollect(~game=Game.micro, posed, {suit: Spades, rank: Four}))->toBe(
+          false,
+        )
+      },
+    )
+
+    test(
+      "the deck each plays with is the one it declares",
+      () => {
+        // `mini` is four suits × five ranks, `micro` two suits × eight — the whole of
+        // what makes them different games.
+        expect(Game.mini.deck.suits)->toEqual(Cards.suits)
+        expect(Game.mini.deck.ranks)->toEqual([Ace, Two, Three, Four, Five])
+        expect(Game.micro.deck.suits)->toEqual([Spades, Hearts])
+        expect(Game.micro.deck.ranks)->toEqual([Ace, Two, Three, Four, Five, Six, Seven, Eight])
+        // A foundation per suit on both, which is what makes them winnable at all.
+        expect(Array.length(Game.pilesOf(Game.mini, Game.Foundation)))->toBe(
+          Array.length(Game.mini.deck.suits),
+        )
+        expect(Array.length(Game.pilesOf(Game.micro, Game.Foundation)))->toBe(
+          Array.length(Game.micro.deck.suits),
+        )
+      },
+    )
+
+    test(
+      "the slot labels fall out of the role counts, with no per-game table",
+      () => {
+        // `Slot` counts within a role, so a shorter board simply has shorter runs of
+        // labels — nothing here was edited for #350.
+        expect(Slot.labels(~game=Game.mini))->toEqual([
+          "C1",
+          "C2",
+          "F1",
+          "F2",
+          "F3",
+          "F4",
+          "T1",
+          "T2",
+          "T3",
+          "T4",
+        ])
+        expect(Slot.labels(~game=Game.micro))->toEqual([
+          "C1",
+          "C2",
+          "F1",
+          "F2",
+          "T1",
+          "T2",
+          "T3",
+          "T4",
+        ])
+      },
+    )
+
+    test(
+      "the solver declines them rather than mis-reading a board it can't model",
+      () => {
+        // Out of scope for #350 and deliberately so: `Position` models exactly the
+        // 4/4/8 FreeCell shape, so these two get an honest `None` and autoplay answers
+        // `NotFreeCell` — rather than a position with pieces missing.
+        expect(
+          Position.ofGameState(~game=Game.mini, GameState.initial(Game.mini))->Option.isNone,
+        )->toBe(true)
+        expect(
+          Position.ofGameState(~game=Game.micro, GameState.initial(Game.micro))->Option.isNone,
+        )->toBe(true)
       },
     )
   })
