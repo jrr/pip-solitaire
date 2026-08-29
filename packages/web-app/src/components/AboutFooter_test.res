@@ -1,12 +1,8 @@
-// Size-stability test for the `AboutFooter` component (#201).
-//
-// The bug this guards against: the update block used to be rendered with `hidden`
-// (`display: none`) when no update was waiting, so the footer collapsed most of
-// the time and then expanded — shoving the version line and everything above it —
-// the moment an update arrived. The footer is now a single row (version line left,
-// short **↻ Update** button right); the button stays laid out at all times and is
-// hidden with *visibility* (`menu-update--hidden`) when there's nothing to update,
-// so the row is the same height in both states.
+// Size-stability test for the `AboutFooter` component (#201): the footer has to be
+// the same height whether or not an update is waiting, or it shoves the version
+// line and everything above it the moment an update arrives (see `AboutFooter.res`).
+// The Update button stays laid out at all times and is hidden with *visibility*
+// (`menu-update--hidden`), never with `hidden`/`display: none`.
 //
 // See `RefreshControl_test` for why the assertion is structural rather than
 // pixel-measured: jsdom has no layout engine, so we pin the size-determining tree
@@ -35,7 +31,7 @@ let render = (~updateVisible): Html.element =>
       updateVisible,
       onReload: () => (),
       // The update-check slot; empty here so the size-stability assertions turn on
-      // the update button alone (its presence is what used to reflow the footer).
+      // the update button alone — it's the part whose hiding could reflow the footer.
       refresh: Html.empty,
     }),
   )
@@ -59,8 +55,8 @@ describe("AboutFooter size stability (#201)", () => {
   test(
     "hides the button with the visibility class, never the collapsing `hidden` attribute",
     () => {
-      // The regression guard: `hidden` (⇒ `display: none`) would collapse the box and
-      // bring the wiggle straight back. The hidden state must reserve with the class.
+      // The regression guard: `hidden` (⇒ `display: none`) collapses the box and
+      // reflows the footer. The hidden state must reserve with the class instead.
       switch noUpdate->button {
       | Some(b) =>
         expect(b->hasAttr("hidden"))->toBe(false)

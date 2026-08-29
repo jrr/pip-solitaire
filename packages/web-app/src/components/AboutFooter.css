@@ -32,9 +32,9 @@
     visibility: hidden;
   }
 
-  /* The green call-to-action (#165), keeping the accent fill it wore on the bar.
-     Now a short button sitting at the end of the About row rather than a
-     full-width block below it (#201). */
+  /* The green call-to-action (#165), keeping the accent fill it wore on the bar:
+     a short button at the end of the About row (#201), sized so the row's height
+     doesn't depend on it. */
   .menu-update__button {
     flex: none;
     white-space: nowrap;
@@ -49,9 +49,8 @@
 
   /* The on-button progress spinner for the Settings refresh control (#201):
      a ¾ ring in the button's own text colour, spinning while a check/refresh is
-     in flight. It rides inside the button's text line — smaller than the line
-     box — so showing it never changes the button's or the section's height,
-     which is the point (it replaced a status line that used to reflow). */
+     in flight. Keep it smaller than the line box it rides in: showing it must
+     not change the button's or the section's height (see `RefreshControl.res`). */
   .menu-refresh__spinner {
     display: inline-block;
     width: 0.85em;

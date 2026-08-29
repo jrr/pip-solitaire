@@ -1,18 +1,13 @@
-// Size-stability test for the `RefreshControl` component (#201).
-//
-// The bug this guards against: the Updates section used to grow a line the moment
-// a status message ("Checking…") appeared and shrink back when it cleared, so the
-// whole Settings screen below it reflowed. Progress is now an on-button spinner
-// (`busy`) instead of a line beneath the button — the spinner rides inside the
-// button's own text line, so the section is heading + button in every state, with
-// no row that comes and goes.
+// Size-stability test for the `RefreshControl` component (#201): the control has
+// to render the same rows idle and busy, because a height change here reflows the
+// menu around the About footer (see `RefreshControl.res`).
 //
 // **What "a good size test" means here.** These run under jsdom (see
 // vitest.config.js), which has no layout engine — no pixel measurement. So we pin
 // the size-determining structure instead: the section's stacked **rows** (its
 // direct child boxes). Idle and busy must produce the same rows; the spinner is
 // nested *inside* the button, not a new row, so it can't change the section's
-// height. We also guard that the old reflowing status line is gone for good.
+// height. And no status line under the button, in either state.
 open Vitest
 open TestDom
 
@@ -34,9 +29,9 @@ describe("RefreshControl size stability (#201)", () => {
     expect(rows(busy))->toEqual(rows(idle))
   })
 
-  test("never renders the old reflowing status line", () => {
-    // The line that used to appear/disappear under the button is gone entirely —
-    // its comings and goings were the wiggle.
+  test("never renders a status line under the button", () => {
+    // A line that comes and goes beneath the button is the reflow this guards
+    // against, so neither state may have one.
     expect(idle->find(".menu-refresh__status")->Option.isSome)->toBe(false)
     expect(busy->find(".menu-refresh__status")->Option.isSome)->toBe(false)
   })
