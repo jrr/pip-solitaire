@@ -120,7 +120,7 @@ describe("SaveState", () => {
     // neither the `stats` key nor the `timing` key that came after it.
     let legacy =
       SaveState.encode(saved)
-      ->String.replaceRegExp(/,"g":"[^"]*"/, "")
+      ->String.replaceRegExp(/,"game":"[^"]*"/, "")
       ->String.replaceRegExp(/,"stats":\{[^}]*\}/, "")
       ->String.replaceRegExp(/,"timing":\{[^}]*\}/, "")
 
@@ -237,7 +237,7 @@ describe("SaveState", () => {
     test(
       "rides in the envelope and comes back",
       () => {
-        expect(SaveState.encode(miniSave)->String.includes(`"g":"mini"`))->toBe(true)
+        expect(SaveState.encode(miniSave)->String.includes(`"game":"mini"`))->toBe(true)
         switch SaveState.decode(SaveState.encode(miniSave)) {
         | Some(restored) => expect(restored.gameId)->toEqual(Some("mini"))
         | None => expect("decoded")->toBe("but got None")
@@ -254,7 +254,7 @@ describe("SaveState", () => {
         // into the default game; the format itself doesn't decide that.
         let bare = SaveState.ofHistory(history)
         let blob = SaveState.encode(bare)
-        expect(blob->String.includes(`"g"`))->toBe(false)
+        expect(blob->String.includes(`"game"`))->toBe(false)
         switch SaveState.decode(blob) {
         | Some(restored) => expect(restored.gameId)->toEqual(None)
         | None => expect("decoded")->toBe("but got None")
@@ -269,8 +269,8 @@ describe("SaveState", () => {
         // game already on a device, both predate the field and both have to keep
         // opening. FreeCell was the only game that could have written one, which is why
         // "names no game" is a reading rather than a loss.
-        let earlier = SaveState.encode(saved)->String.replaceRegExp(/,"g":"[^"]*"/, "")
-        expect(earlier->String.includes(`"g"`))->toBe(false) // the fixture really is older
+        let earlier = SaveState.encode(saved)->String.replaceRegExp(/,"game":"[^"]*"/, "")
+        expect(earlier->String.includes(`"game"`))->toBe(false) // the fixture really is older
         switch SaveState.decode(earlier) {
         | Some(restored) =>
           expect(restored.gameId)->toEqual(None)
@@ -286,9 +286,9 @@ describe("SaveState", () => {
         // Absent is a supported shape (above); present and not a string means this isn't
         // a blob we wrote, and the save fails whole rather than being half-read.
         let states = `"past":[],"present":{"piles":[],"loose":[]},"future":[]`
-        expect(SaveState.decode(`{"v":1,"g":7,${states}}`))->toEqual(None)
-        expect(SaveState.decode(`{"v":1,"g":null,${states}}`))->toEqual(None)
-        expect(SaveState.decode(`{"v":1,"g":["freecell"],${states}}`))->toEqual(None)
+        expect(SaveState.decode(`{"v":1,"game":7,${states}}`))->toEqual(None)
+        expect(SaveState.decode(`{"v":1,"game":null,${states}}`))->toEqual(None)
+        expect(SaveState.decode(`{"v":1,"game":["freecell"],${states}}`))->toEqual(None)
       },
     )
 

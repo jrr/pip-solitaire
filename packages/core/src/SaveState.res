@@ -15,7 +15,7 @@
 //
 // The format is deliberately small and self-describing:
 //
-//   {"v":1,"g":"freecell","past":[S,…],"present":S,"future":[S,…],
+//   {"v":1,"game":"freecell","past":[S,…],"present":S,"future":[S,…],
 //    "stats":{"moves":n,"undos":n,"autoplays":n},
 //    "timing":{"dealtAt":ms,"wonAt":ms}}
 //
@@ -44,7 +44,7 @@
 // support at every level here; a field that's *present* and isn't a timestamp still
 // fails the whole save, because that isn't a blob we wrote.
 //
-// `"g"` (#354) is the fourth, and the one that says **which board these piles are of**.
+// `"game"` (#354) is the fourth, and the one that says **which board these piles are of**.
 // Everything above is the cards; nothing in it named the game, so a blob decoded onto
 // whatever scene happened to be mounted — safe only while there was one game to mount.
 // Now the save names its own game and the reader can bring that game forward (the web
@@ -347,7 +347,7 @@ let decodeStamp = (dict: Dict.t<JSON.t>, key: string): option<option<float>> =>
 // string is accepted, id or not: whether it names a game this build knows is a question
 // about `Game.all`, which is the reader's to ask and not this format's.
 let decodeGameId = (dict: Dict.t<JSON.t>): option<option<string>> =>
-  switch dict->Dict.get("g") {
+  switch dict->Dict.get("game") {
   | None => Some(None)
   | Some(JSON.String(id)) => Some(Some(id))
   | Some(_) => None
@@ -375,7 +375,7 @@ let encode = (s: t): string => {
   // it: the two together are what a reader has to agree with before the cards mean
   // anything.
   let named = switch s.gameId {
-  | Some(id) => [("g", JSON.String(id))]
+  | Some(id) => [("game", JSON.String(id))]
   | None => []
   }
   JSON.stringify(
@@ -403,7 +403,7 @@ let encode = (s: t): string => {
 // written before #289, and it decodes to a real game whose tally is inferred by
 // `inferredStats`. Nor is one with no `"timing"` (#302) — that's a save from before
 // the clock existed, and it decodes to a game with no time to report. Nor one with no
-// `"g"` (#354): that's a save from before one had to say which game it was of, and it
+// `"game"` (#354): that's a save from before one had to say which game it was of, and it
 // decodes to a game that doesn't name its board, for the reader to take as the default.
 // That's the whole reason the version didn't move.
 let decode = (raw: string): option<t> => {

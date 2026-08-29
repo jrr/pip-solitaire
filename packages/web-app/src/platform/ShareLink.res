@@ -167,7 +167,7 @@ let victoryMessage = (~game: Game.t, ~seed: int, ~moves: int, ~undos: int): stri
 
 // What a shared blob turns out to be (#354): the saved game, and **the game it is a
 // game of**. The second half is why this hands back a pair rather than the save alone —
-// the blob names its board (`SaveState`'s `"g"`), so the caller can bring that board
+// the blob names its board (`SaveState`'s `"game"`), so the caller can bring that board
 // forward instead of decoding onto whichever scene happens to be mounted.
 type shared = {game: Game.t, saved: SaveState.t}
 
