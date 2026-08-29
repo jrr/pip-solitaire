@@ -4,6 +4,11 @@
 // position, and (since #289) the move and undo counts with it — since that's what
 // "share game state" promises.
 //
+// Since #354 that includes *which game* the stack is a stack of, which is the one thing
+// the blob used to leave to whichever board happened to be mounted at the far end. The
+// resolving happens here rather than in `core`, so it's pinned here too — including the
+// two ways a link can now be bad (see the second `describe`).
+//
 // The module's other link — `urlForDeal` (#98), which shares a *deal number* rather
 // than a position — is pinned here too, on the shape of the URL it builds. It has no
 // codec to round-trip; what it promises is that the number lands in the query
@@ -36,22 +41,31 @@ describe("ShareLink", () => {
     history,
     stats: {moves: 5, undos: 2, autoplays: 0},
     timing: Timing.dealt(~at=1_700_000_000_000.),
+    gameId: Some(game.id),
+  }
+
+  // The blob straight out of a link, which is what `savedFrom` is handed.
+  let blobOf = async (s: SaveState.t) => {
+    let url = (await ShareLink.urlFor(s))->Option.getOrThrow
+    url->String.split("#" ++ ShareLink.fragmentKey ++ "=")->Array.getUnsafe(1)
   }
 
   testAsync("a link's blob restores the whole game", async () => {
-    let url = (await ShareLink.urlFor(saved))->Option.getOrThrow
-    let blob = url->String.split("#" ++ ShareLink.fragmentKey ++ "=")->Array.getUnsafe(1)
-    expect(await ShareLink.savedFrom(blob))->toEqual(Some(saved))
+    let blob = await blobOf(saved)
+    switch await ShareLink.savedFrom(blob) {
+    | Some(restored) => expect(restored.saved)->toEqual(saved)
+    | None => expect("restored")->toBe("but got None")
+    }
   })
 
   testAsync("the move and undo counts ride along in the link (#289)", async () => {
     // The counts live outside the game state, so nothing about a position implies
     // them: they make it into a share link only because they're in the save envelope
     // the link carries.
-    let url = (await ShareLink.urlFor(saved))->Option.getOrThrow
-    let blob = url->String.split("#" ++ ShareLink.fragmentKey ++ "=")->Array.getUnsafe(1)
+    let blob = await blobOf(saved)
     switch await ShareLink.savedFrom(blob) {
-    | Some(restored) => expect(restored.stats)->toEqual({Stats.moves: 5, undos: 2, autoplays: 0})
+    | Some(restored) =>
+      expect(restored.saved.stats)->toEqual({Stats.moves: 5, undos: 2, autoplays: 0})
     | None => expect("restored")->toBe("but got None")
     }
   })
@@ -106,9 +120,58 @@ describe("ShareLink", () => {
       ->String.replaceRegExp(/,"timing":\{[^}]*\}/, "")
     let blob = (await Compression.compress(legacy))->Option.getOrThrow
     switch await ShareLink.savedFrom(blob) {
-    | Some(restored) => expect(restored.history)->toEqual(history)
+    | Some(restored) => expect(restored.saved.history)->toEqual(history)
     | None => expect("restored")->toBe("but got None")
     }
+  })
+})
+
+// Which *game* a shared blob is a game of (#354). The link carried the cards and not
+// the board they belong to, so it decoded onto whatever scene happened to be mounted —
+// which was only ever safe because there was one game to mount. Now the blob names its
+// board, and this is the end that resolves the name: against `Game.all`, before anything
+// is handed to a scene.
+describe("ShareLink.savedFrom names the game (#354)", () => {
+  let blobFor = async (s: SaveState.t) =>
+    (await Compression.compress(SaveState.encode(s)))->Option.getOrThrow
+
+  let saveOf = (game: Game.t): SaveState.t =>
+    SaveState.ofHistory(History.make(GameState.initial(game)))
+
+  testAsync("a link shared from another game comes back as that game", async () => {
+    let blob = await blobFor({...saveOf(Game.mini), gameId: Some(Game.mini.id)})
+    switch await ShareLink.savedFrom(blob) {
+    | Some({game}) => expect(game.id)->toBe("mini")
+    | None => expect("restored")->toBe("but got None")
+    }
+  })
+
+  testAsync("a link naming no game at all is the default game's", async () => {
+    // What every link written before the field existed is: FreeCell was the only game
+    // that could have written one, so this is a reading rather than a fallback — and it
+    // is what keeps a link already sitting in somebody's chat working.
+    let blob = await blobFor(saveOf(Game.default))
+    switch await ShareLink.savedFrom(blob) {
+    | Some({game}) => expect(game.id)->toBe(Game.default.id)
+    | None => expect("restored")->toBe("but got None")
+    }
+  })
+
+  testAsync("a link naming a game this build doesn't have restores nothing", async () => {
+    // The same answer a truncated paste gets, for the same reason: there's no board to
+    // open this onto, so the caller ignores the link and deals normally rather than
+    // guessing at which game was meant.
+    let blob = await blobFor({...saveOf(Game.freecell), gameId: Some("solitaire-9000")})
+    expect(await ShareLink.savedFrom(blob))->toEqual(None)
+  })
+
+  testAsync("a link whose board doesn't fit the game it names restores nothing", async () => {
+    // A blob can name a board and not be one — hand-edited, or written by a build where
+    // that game had another shape. Ten piles of cards laid onto a sixteen-pile board is
+    // precisely the misread this field exists to stop, so naming the game is checked
+    // against the cards rather than taken on trust.
+    let blob = await blobFor({...saveOf(Game.mini), gameId: Some(Game.freecell.id)})
+    expect(await ShareLink.savedFrom(blob))->toEqual(None)
   })
 })
 

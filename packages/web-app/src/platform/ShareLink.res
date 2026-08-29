@@ -8,7 +8,9 @@
 // recognise" guarantee covers a stale or corrupt link for free. It's also why the
 // move/undo counts (#289) needed nothing of their own here: they went into the save
 // envelope, so they ride every link that envelope rides, and a link written before
-// they existed still opens (the version didn't move — see `SaveState`).
+// they existed still opens (the version didn't move — see `SaveState`). **Which game
+// the blob is a game of** (#354) rides the same way, and is the one field of the
+// envelope this module reads for itself: see `savedFrom`.
 //
 // **The blob rides in the fragment (`#g=…`), not the query string.** Two reasons,
 // both decisive:
@@ -163,12 +165,33 @@ let victoryMessage = (~game: Game.t, ~seed: int, ~moves: int, ~undos: int): stri
   "\nSolved in " ++
   Stats.moveLabel(moves) ++ (undos > 0 ? " (" ++ Stats.undoLabel(undos) ++ ")" : "")
 
-// The saved game a shared blob carries, or `None` for anything that isn't one: a
-// truncated paste, a link from an incompatible `SaveState` version, or a browser
-// that can't decompress. Every one of those means "ignore the link and deal
-// normally" to the caller — a bad link never takes the board down with it.
-let savedFrom = async (blob: string): option<SaveState.t> =>
-  (await Compression.decompress(blob))->Option.flatMap(SaveState.decode)
+// What a shared blob turns out to be (#354): the saved game, and **the game it is a
+// game of**. The second half is why this hands back a pair rather than the save alone —
+// the blob names its board (`SaveState`'s `"game"`), so the caller can bring that board
+// forward instead of decoding onto whichever scene happens to be mounted.
+type shared = {game: Game.t, saved: SaveState.t}
+
+// The shared game a blob carries, or `None` for anything that isn't one: a truncated
+// paste, a link from an incompatible `SaveState` version, a browser that can't
+// decompress — and, since #354, a link naming a game this build doesn't have, or one
+// whose piles don't fit the board it names. Every one of those means "ignore the link
+// and deal normally" to the caller: a bad link never takes the board down with it, and
+// the two new ways to be bad are answered the same way as the old ones rather than by
+// mounting a board the cards don't fit.
+//
+// A blob naming no game at all is *not* one of them. It's a link written when FreeCell
+// was the only game that could have written one, so it means the default game — which
+// is the reading `SaveState` deliberately left to this end (see its header), and this is
+// the end that has `Game.all` to resolve it against.
+let savedFrom = async (blob: string): option<shared> =>
+  (await Compression.decompress(blob))
+  ->Option.flatMap(SaveState.decode)
+  ->Option.flatMap(saved =>
+    switch saved.gameId {
+    | None => Some(Game.default)
+    | Some(id) => Game.byId(id)
+    }->Option.flatMap(game => saved->SaveState.fits(~game) ? Some({game, saved}) : None)
+  )
 
 // --- Handing the link to the player ------------------------------------------
 

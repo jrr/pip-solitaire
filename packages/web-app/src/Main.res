@@ -199,15 +199,21 @@ let liveBoard: ref<option<TableScene.controls>> = ref(None)
 // `controls.loadHistory`.
 let currentHistory = () => liveBoard.contents->Option.flatMap(board => board.readHistory())
 
-// Whether a `#g=` link's game has actually reached the board. It gates saving on a
-// shared open (see `gameScene`): a shared game takes over storage the moment it
-// lands, but not before — the placeholder deal the board wears while the blob
-// inflates must never be written over the player's own saved game, and a link that
-// turns out to be corrupt must leave that game untouched.
+// The game a `#g=` link brought, once it has actually reached the board — and `None`
+// until then, which is most of what this is for. It gates saving on a shared open (see
+// `gameScene`): a shared game takes over storage the moment it lands, but not before —
+// the placeholder deal the board wears while the blob inflates must never be written
+// over the player's own saved game, and a link that turns out to be corrupt must leave
+// that game untouched.
 //
-// This flag only exists because a shared open builds the board twice (#259). Close
-// that gap and the placeholder build goes with it, and so does the need for this.
-let shareLanded = ref(false)
+// It carries the *game* rather than a bare "landed" flag because the blob names one
+// (#354), and every scene has to be able to ask whether the link was for it: a link
+// shared from Mini takes over Mini's save and leaves FreeCell's alone.
+//
+// A ref at all only because a shared open builds the board twice (#259) — and now also
+// because the name arrives asynchronously, after every scene has been built. Close that
+// gap and the placeholder build goes with it, and so does the need for this.
+let sharedGame: ref<option<Game.t>> = ref(None)
 
 // The undo availability the board reports during its *opening* mount, captured to
 // seed the model below (#177). That first report fires while the switcher mounts
@@ -668,7 +674,15 @@ let gameScene = (game: Game.t) => {
   // **takes over** — becoming the saved game, with play from there saving as usual,
   // exactly as if it had been dealt here. Opening someone's link adopts their game
   // rather than borrowing it, so the two halves are gated separately below.
-  let sharedOpen = canDeal && url.shared->Option.isSome
+  //
+  // Which asks *whose* save it takes over, and the link now says (#354). Two questions,
+  // asked at two different times, because the answer to the second isn't available when
+  // this scene is built: inflating the blob is asynchronous, so at build time all any
+  // scene knows is that some link is coming (`sharePending`), and only later does one of
+  // them turn out to be the game it named (`sharedOpen`).
+  let sharePending = canDeal && url.shared->Option.isSome
+  let sharedOpen = () =>
+    sharePending && sharedGame.contents->Option.mapOr(false, shared => shared.id == game.id)
   let plainOpen =
     canDeal && url.state->Option.isNone && url.seed->Option.isNone && url.shared->Option.isNone
   // Resume a saved game when there is one and this is a plain open; otherwise `None`
@@ -710,15 +724,20 @@ let gameScene = (game: Game.t) => {
     // move flow through this same sink, so the saved game always tracks the live one.
     ~loadHistory,
     // A plain open saves from the first build. A shared open saves too, but only
-    // from the moment the shared game actually lands (`shareLanded`) — the fixed
-    // deal the board is built from while the blob inflates is scaffolding, and
-    // writing *that* to storage would clobber the player's own game with a board
-    // nobody asked for. It also means a link that fails to decode leaves the saved
-    // game exactly as it was: nothing landed, so nothing is written.
-    ~persist=?plainOpen || sharedOpen
+    // from the moment the shared game actually lands on *this* board (`sharedOpen`) —
+    // the fixed deal the board is built from while the blob inflates is scaffolding,
+    // and writing *that* to storage would clobber the player's own game with a board
+    // nobody asked for. It also means a link that fails to decode — or one that names
+    // another game (#354) — leaves this game's save exactly as it was: nothing landed
+    // here, so nothing is written.
+    //
+    // The sink is wired for any scene a pending link *might* name, and the gate inside
+    // it settles which one it actually did: the sink is called long after the blob has
+    // inflated, so it can ask the question this scene couldn't answer when it was built.
+    ~persist=?plainOpen || sharePending
       ? Some(
           saved =>
-            if plainOpen || shareLanded.contents {
+            if plainOpen || sharedOpen() {
               SavedGame.save(game.id, saved)
             },
         )
@@ -770,7 +789,7 @@ let gameScene = (game: Game.t) => {
       publishDeal(
         switch seed {
         | Some(n) =>
-          if plainOpen || (sharedOpen && shareLanded.contents) {
+          if plainOpen || sharedOpen() {
             SavedGame.saveSeed(game.id, n)
           }
           Some(n)
@@ -883,35 +902,53 @@ let switcher = SceneSwitcher.render(
 // the swap; both are arranged above precisely so this reads as the board settling
 // rather than as a board changing its mind. The frame itself is #259.
 //
-// Landing is also the point the shared game takes over storage: `shareLanded` is
-// set first, so the rebuild this triggers writes itself through `gameScene`'s
-// persist sink and every later move follows it. From here on it's simply the saved
-// game, indistinguishable from one dealt on this device.
+// **The blob says which game it is a game of** (#354), so the first thing that happens
+// here is bringing that game's scene forward. `ensureActive` is exactly that job — mount
+// the scene, or do nothing when it's already the one showing, which is the common case
+// of a FreeCell link landing on the FreeCell the app launches into — and it's the same
+// call the debug states menu makes for the same reason. Before this, the position was
+// dropped onto whatever board happened to be mounted, which was safe only while there
+// was one game to mount.
 //
-// A blob that doesn't decode (truncated in the paste, or written by an incompatible
-// `SaveState` version) leaves the dealt board exactly where it is: a bad link opens
-// a playable game rather than an error. `shareLanded` stays false in that case, so
-// the placeholder board is never saved and whatever game this device already had is
-// still there on the next plain load.
+// Landing is also the point the shared game takes over storage: `sharedGame` is set
+// before the history lands, so the rebuild that triggers writes itself through
+// `gameScene`'s persist sink and every later move follows it. From here on it's simply
+// the saved game of *that* game, indistinguishable from one dealt on this device.
+//
+// The order of those two is load-bearing. `ensureActive` may mount a board, and a
+// mounting board persists its opening deal — so the scene has to come up while
+// `sharedGame` is still `None`, or the scaffolding deal would be written over the
+// player's own saved game of the game they were sent a link to.
+//
+// A blob that doesn't decode (truncated in the paste, written by an incompatible
+// `SaveState` version, naming a game this build doesn't have, or carrying a board that
+// doesn't fit the game it names) leaves the dealt board exactly where it is: a bad link
+// opens a playable game rather than an error. `sharedGame` stays `None` in that case, so
+// no board is mounted, the placeholder is never saved, and whatever game this device
+// already had is still there on the next plain load.
 switch url.shared {
 | Some(blob) =>
   (
     async () =>
       switch await ShareLink.savedFrom(blob) {
-      | Some(restored) =>
-        shareLanded := true
+      | Some({game, saved}) =>
+        // Scene ids *are* game ids (`TableScene`'s `id: game.id`), so the game the blob
+        // names is the scene to bring forward.
+        switcher.ensureActive(game.id)
+        sharedGame := Some(game)
         // The shared game takes over storage, so the previous game's deal number must
         // not stay behind to be read as its own (#98): a shared position was never
         // dealt from a number here, and a later resume asking "which deal is this?"
         // has to be told there isn't one rather than handed the last one this device
         // dealt for itself.
         //
-        // The key is the *board being played*, not a hardcoded game (#349): `SavedGame`
-        // is keyed by game id and this was the one place that reached past the key.
-        // Scene ids *are* game ids (`TableScene`'s `id: game.id`), so the scene this
-        // link opened onto names the seed to clear.
-        switcher.active->Option.forEach(SavedGame.clearSeed)
-        liveBoard.contents->Option.forEach(board => board.loadHistory(restored))
+        // The key is the *board being played*, not a hardcoded game (#349) — and since
+        // #354 that board is named by the link rather than inferred from whichever
+        // scene it opened onto, which is the same fact one step earlier.
+        SavedGame.clearSeed(game.id)
+        // Read *after* `ensureActive`, so this is the board of the game the link named
+        // rather than the one that happened to be showing when the blob arrived.
+        liveBoard.contents->Option.forEach(board => board.loadHistory(saved))
       | None => DebugLog.message("share link: could not decode the shared game")
       }
   )()->ignore

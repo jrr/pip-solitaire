@@ -34,10 +34,15 @@ describe("SavedGame (#177)", () => {
   })
   // …and a clock beside it (#302), for the same reason: a save that dropped the
   // stamps would round-trip to a game that no longer knows how long it has taken.
+  // …and the game it's a game of (#354), which every save written from a session
+  // carries. Storage keys by game id as well, so here the two simply agree; the field
+  // earns its keep at the other end of the same envelope, where a share link arrives
+  // with no key to be found under.
   let saved: SaveState.t = {
     history,
     stats: {moves: 3, undos: 1, autoplays: 0},
     timing: Timing.dealt(~at=1_700_000_000_000.),
+    gameId: Some(game.id),
   }
 
   test("save then load round-trips the whole game, tally included", () => {

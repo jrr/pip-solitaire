@@ -166,6 +166,12 @@ let open_ = (
 // Restore a session from what a save carried (#177/#289/#302). The envelope holds the
 // history, the tally and the clock; the game, the deal number and the house rules come
 // from whoever knew which board this save was of.
+//
+// `saved.gameId` is deliberately not consulted (#354). It's how a *reader* works out
+// which board a loose blob is of — a `#g=` link's, before there's a session to restore
+// into — and by the time a save reaches here that question is answered: the caller is
+// handing over the game it resolved. Reading it again here could only disagree with the
+// board being opened.
 let restore = (~seed: option<int>, ~options: Options.t, game: Game.t, saved: SaveState.t): t => {
   game,
   seed,
@@ -175,10 +181,23 @@ let restore = (~seed: option<int>, ~options: Options.t, game: Game.t, saved: Sav
   options,
 }
 
-// …and what to write back out. `game`, `seed` and `options` are deliberately not in the
-// envelope: the first two are how the save was found in the first place, and the third
-// is the driver's, not the board's.
-let save = (s: t): SaveState.t => {history: s.history, stats: s.stats, timing: s.timing}
+// …and what to write back out. `seed` and `options` are deliberately not in the
+// envelope: the first is how the save was found in the first place, and the second is
+// the driver's, not the board's.
+//
+// The game *is* in it, as its id (#354). It used to be left out on the same "that's how
+// the save was found" reasoning, which held for `localStorage` — the key names the game
+// — and quietly didn't for the other thing this envelope is: a share link, which is
+// found by nothing at all and so arrived at the far end naming no board. This is the one
+// place a save is written from a session, and the session knows which game it is of, so
+// the answer is written down here rather than inferred from whatever scene the blob
+// happens to land on.
+let save = (s: t): SaveState.t => {
+  history: s.history,
+  stats: s.stats,
+  timing: s.timing,
+  gameId: Some(s.game.id),
+}
 
 // Settle an accepted move: run safe auto-collect (#125) when the option is on,
 // returning the settled state and the cards it sent home. `autoCollect: false` (or a

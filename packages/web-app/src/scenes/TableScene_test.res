@@ -370,7 +370,12 @@ describe("TableScene win share (#264)", () => {
   let wonHistory = (~autoplays=0, game) => {
     let (won, _moved) = Reducer.finishSequence(~game, Scenario.freecellAlmostWon(game))
     let history = History.record(History.make(GameState.initial(game)), won)
-    {SaveState.history, stats: {moves: 3, undos: 1, autoplays}, timing: Timing.unknown}
+    {
+      SaveState.history,
+      stats: {moves: 3, undos: 1, autoplays},
+      timing: Timing.unknown,
+      gameId: Some(game.id),
+    }
   }
 
   test("offers the button when the driver has a deal to share", () => {
@@ -523,6 +528,7 @@ describe("TableScene move/undo counts (#289)", () => {
         SaveState.history: History.make(GameState.initial(game)),
         stats: {moves: 12, undos: 4, autoplays: 0},
         timing: Timing.unknown,
+        gameId: Some(game.id),
       }),
     )
     let container = host("div")
@@ -544,6 +550,7 @@ describe("TableScene move/undo counts (#289)", () => {
         SaveState.history: History.make(GameState.initial(game)),
         stats: {moves: 12, undos: 4, autoplays: 0},
         timing: Timing.unknown,
+        gameId: Some(game.id),
       }),
     )
     let board = ref(None)
@@ -571,6 +578,7 @@ describe("TableScene move/undo counts (#289)", () => {
         SaveState.history: History.make(won),
         stats: {moves: 61, undos: 2, autoplays: 0},
         timing: Timing.unknown,
+        gameId: Some(game.id),
       }),
       game,
     )
@@ -595,7 +603,12 @@ describe("TableScene win time (#302)", () => {
   // A won board, with whatever clock the caller wants beside it.
   let wonSave = (~timing, game): SaveState.t => {
     let (won, _moved) = Reducer.finishSequence(~game, Scenario.freecellAlmostWon(game))
-    {history: History.make(won), stats: {moves: 61, undos: 2, autoplays: 0}, timing}
+    {
+      history: History.make(won),
+      stats: {moves: 61, undos: 2, autoplays: 0},
+      timing,
+      gameId: Some(game.id),
+    }
   }
 
   let dealtAt = 1_700_000_000_000.
