@@ -5,8 +5,8 @@ node = "26"
 
 # Tasks are the set of actions available to developers and agents at the repo
 # root: `mise tasks` lists them, `mise run <task>` runs one. The "why" for a
-# script-backed task lives in the script's header comment; packages/web-app/
-# scripts/README.md maps script → task → output.
+# script-backed task lives in the script's header comment; scripts/README.md and
+# packages/web-app/scripts/README.md map script → task → output.
 
 [tasks.install]
 description = "Install workspace dependencies"
@@ -201,6 +201,14 @@ run = "pnpm --filter \"{{arg(name='package')}}\" exec rescript"
 [tasks.rescript-tools]
 description = "Run the ReScript Tools CLI in one package: `mise run rescript-tools -- <package> <args>`"
 run = "pnpm --filter \"{{arg(name='package')}}\" exec rescript-tools"
+
+# Repo-wide, so it lives in the root `scripts/` rather than under a package, and
+# needs nothing built — it reads git, not the filesystem. Prints a number and
+# gates nothing; `-- --json` for a machine-readable form, `-- --help` for the
+# counting rules.
+[tasks.comment-census]
+description = "Report comment lines per language and per file (`-- --json`, `-- --rev <ref>`)"
+run = "node scripts/comment-census.mjs"
 
 # `depends` runs in parallel, so install/build/test are chained through each
 # other's `depends` rather than listed here (test → build → install), which is
