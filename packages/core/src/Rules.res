@@ -136,10 +136,10 @@ let isRun = (rule: rule, cards: array<card>): bool =>
 // toward. This only *signals* a finished pile; win detection across every
 // foundation is `GameState.hasWon`.
 //
-// The deck is a parameter rather than the ambient pack: this used to read
-// `top.rank == King && Array.length(cards) == 13`, which quietly hard-coded the
-// 52-card deck into what "complete" means. For `Cards.standard` the two say exactly
-// the same thing — thirteen ranks, King highest — so FreeCell is unchanged.
+// The deck is a parameter rather than the ambient pack: `top.rank == King &&
+// Array.length(cards) == 13` would hard-code the 52-card deck into what "complete"
+// means. For `Cards.standard` the two say exactly the same thing — thirteen ranks, King
+// highest — so the difference shows only on a shorter deck, which is where it matters.
 //
 // "Highest" is by `rankValue`, not by position in `deck.ranks`, so a deck listing
 // its ranks out of order still answers the same.

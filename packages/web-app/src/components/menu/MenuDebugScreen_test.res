@@ -1,5 +1,4 @@
-// The menu's Debug screen, exercised in isolation now that it's a component of its
-// own.
+// The menu's Debug screen, exercised in isolation.
 //
 // The rows themselves are pinned by `MenuToggleRow_test` / `MenuActionRow_test`. What
 // this file pins is what the *screen* decides:
@@ -11,8 +10,8 @@
 //    otherwise, shoving the scene lists below it.
 // 3. **It's disabled while there's nothing to share** — a scene with no game, or the
 //    moment between opening the screen and the encode resolving — and says which.
-// 4. **Each list lands as its own group, in order.** They are the same component now
-//    (`<MenuDisclosure>`), which is exactly why the screen has to be pinned on
+// 4. **Each list lands as its own group, in order.** Every one of them is the same
+//    component (`<MenuDisclosure>`), which is exactly why the screen has to be pinned on
 //    giving each its own entries: calls that differ only in their data are calls that
 //    can be crossed. The "games" group is placed only when it has entries, so
 //    the default here — no extra games — is still scenes then states.

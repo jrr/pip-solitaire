@@ -1,18 +1,17 @@
-// The text renderer, now that it's `core`'s: one board drawing served to a terminal and
-// to the web app's debug console. It moved here from `packages/cli` when the
-// console's `print` stopped answering "the board is on screen" and started showing one.
+// `core`'s text renderer: one board drawing served to a terminal and to the web app's
+// debug console.
 //
-// The property that matters most is the one the move introduced: **colour is a front
-// end's choice**, because ANSI escapes are a terminal's alphabet and a browser panel
-// would show them as garbage. What `core` renders is a *document* — lines of spans, each
-// tagged with the role its characters play — and each front end paints that in its own
-// alphabet. So the tests come in two layers:
+// The property that matters most is that **colour is a front end's choice**, because ANSI
+// escapes are a terminal's alphabet and a browser panel would show them as garbage. What
+// `core` renders is a *document* — lines of spans, each tagged with the role its
+// characters play — and each front end paints that in its own alphabet. So the tests come
+// in two layers:
 //
 //   - the **document**: are the spans inked with what a painter needs to know, and is a
-//     line still measurable and aligned now that colour isn't in its characters?
-//   - the **adapters**: does `toPlain` still give exactly the string every caller before
-//     the document existed was getting, and does `toAnsi` differ from it in colour and
-//     nothing else?
+//     line still measurable and aligned with colour kept out of its characters?
+//   - the **adapters**: does `toPlain` give exactly the string a caller that wants text
+//     and nothing else expects, and does `toAnsi` differ from it in colour and nothing
+//     else?
 //
 // The second layer is what keeps the two front ends drawing the *same board*: stripping
 // the colour off a coloured board has to give back the plain one — same glyphs, same

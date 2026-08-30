@@ -21,27 +21,24 @@
 // why: it is the difference between a ~60ms build and a ~400ms one, and it costs
 // nothing.
 //
-// **The sheet is kept, not cut up** (#226). It used to be blitted apart into 52
-// standalone canvases the moment it decoded, and the sheet dropped — which suited
-// the `raster` scene, whose whole job is to lay 52 sprites out as 52 DOM nodes,
-// and quietly taxed the animation, which wants the opposite: one source texture,
-// `drawImage`'s nine-argument form, and no per-card canvas to keep hot. So a
-// `sprite` is now a *rectangle of the shared sheet* (`blit`), and the standalone
-// canvas a DOM consumer needs is cut **lazily** (`element`), once, on demand.
-// One mutable field, and both scenes get the shape they wanted.
+// **The sheet is kept, not cut up.** A `sprite` is a *rectangle of the shared sheet*
+// (`blit`), and the standalone canvas a DOM consumer needs is cut **lazily**
+// (`element`), once, on demand. Blitting the sheet apart into 52 canvases the moment it
+// decodes and dropping the sheet suits the `raster` scene, whose whole job is to lay 52
+// sprites out as 52 DOM nodes, and quietly taxes the animation, which wants the
+// opposite: one source texture, `drawImage`'s nine-argument form, and no per-card canvas
+// to keep hot. One mutable field, and both scenes get the shape they want.
 //
-// This was one of two strategies for a while. The other painted the face
-// with the canvas 2D API — `roundRect` and `fillText`, no font embedding needed
-// because canvas sees the document's own fonts — and the `raster` scene existed
-// to pick between them by looking. It lost, and was removed once it had. It was
-// quicker before the sheet (~50ms against ~400ms), which was its whole case; it
-// was also worse against the live card on every sample, and it had to restate
-// CardArt's geometry in a second place, which cost two real bugs in the space of
-// one pull request — a middle glyph 4.5 design units high on macOS from rebuilding
-// `dominant-baseline="central"` out of `measureText()`, and a corner turned with
-// `rotate(pi)` whose matrix isn't exactly axis-aligned. Both were invisible to a
-// Linux CI. The scene still compares the sprite against the live card, which is
-// the comparison that was always doing the work.
+// **Painting the face with the canvas 2D API is the tempting second strategy, and it
+// isn't worth it.** `roundRect` and `fillText` need no font embedding, because canvas
+// sees the document's own fonts, and it beats the SVG route only before the whole deck
+// is one document (~50ms against ~400ms; the sheet is ~60ms). What it costs is a second
+// statement of `CardArt`'s geometry, and that is where its bugs come from — a middle
+// glyph 4.5 design units high on macOS from rebuilding `dominant-baseline="central"` out
+// of `measureText()`, a corner turned with `rotate(pi)` whose matrix isn't exactly
+// axis-aligned. Both were invisible to a Linux CI. The `raster` scene compares the
+// sprite against the live card, which is the comparison that catches this class of
+// thing.
 //
 // Two details that bite:
 //   - `CardArt.svg` emits only a `viewBox`. An SVG with no intrinsic size
@@ -52,10 +49,9 @@
 
 // --- Bindings ----------------------------------------------------------------
 // `<img>` decoding, `fetch`, and the font-loading API — the parts of
-// rasterization nothing else in the app has any use for. The *canvas* half moved
-// out to `runtime/Canvas` when the overlay grew one of its own (#226): a sprite
-// blit has a canvas at each end, so both ends have to speak of one `context`
-// type.
+// rasterization nothing else in the app has any use for. The *canvas* half lives in
+// `runtime/Canvas`, because a sprite blit has a canvas at each end and both ends have
+// to speak of one `context` type.
 
 type image
 type response
@@ -89,7 +85,7 @@ type url
 
 // --- The pixel ratio ---------------------------------------------------------
 
-// How much detail a sprite is built with, capped (#226).
+// How much detail a sprite is built with, capped.
 //
 // The cap is worth having because the raw ratio is not the small number it looks
 // like: browser zoom multiplies it, and a Retina Mac one zoom step in reports
@@ -105,8 +101,8 @@ type url
 let maxPixelRatio = 2.
 
 // The ratio to build at *now*: the display's, capped. Read live rather than
-// captured, so a rebuild after a zoom picks up the new ratio (the rebuild
-// trigger itself is still #253's — nothing here watches for the change).
+// captured, so a rebuild after a zoom picks up the new ratio — nothing here watches for
+// the change, so the rebuild has to be asked for from outside.
 let displayPixelRatio = () => Math.min(devicePixelRatio, maxPixelRatio)
 
 // --- The faces the card face uses --------------------------------------------

@@ -1,4 +1,4 @@
-// The `raster` scene: all 52 cards, drawn one of three ways, with the sheet
+// The `raster` scene: all 52 cards, drawn either of two ways, with the sheet
 // staying put as you switch between them.
 //
 // This is step one of the victory animation. The animation wants to fling
@@ -14,19 +14,16 @@
 //                 is trying to be
 //   2  Sprite     the `CardRaster` bitmap the animation will blit
 //
-// **One at a time, in the same grid cells, on keys 1/2.** This was originally a
-// side-by-side sheet — each card's live SVG touching its bitmap — and that is
-// the weaker instrument. Two cards a card-width apart are compared by moving
-// your eye, which is exactly the comparison the eye is worst at; the difference
-// that started all this (a middle pip 4.5 design units high, see
-// `CardArt.centerGlyphBaseline`) reads as a *jump* when you flip renderings in
-// place and as "hmm, about the same" when you look left and right. Nothing moves
-// between renderings but the pixels under test, so anything that shifts is real.
+// **One at a time, in the same grid cells, on keys 1/2** — not side by side with each
+// card's live SVG touching its bitmap, which is the weaker instrument. Two cards a
+// card-width apart are compared by moving your eye, which is exactly the comparison the
+// eye is worst at; the difference this scene exists to catch (a middle pip 4.5 design
+// units high, see `CardArt.centerGlyphBaseline`) reads as a *jump* when you flip
+// renderings in place and as "hmm, about the same" when you look left and right. Nothing
+// moves between renderings but the pixels under test, so anything that shifts is real.
 //
-// A third rendering lived here for a while: a second sprite painted with the
-// canvas 2D API, so the two could be picked between by looking. It lost
-// and was removed; `CardRaster`'s header keeps the account of why. What's left is
-// the comparison that was always the point — the sprite against the live card.
+// Two renderings and no more: `CardRaster`'s header has the case against a third painted
+// with the canvas 2D API.
 //
 // The choice is mirrored into `?raster=` (see AppUrl) so a link — and the
 // screenshot report — can open either. `Sprite` is the default the plain

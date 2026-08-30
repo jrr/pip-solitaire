@@ -333,7 +333,7 @@ let wantsShake = Preferences.loadWantsShake()
 // The switch state the app opens in: `Unavailable(reason)` on a device/origin that
 // can't do motion, else the saved intent (`On`/`Off`). Never prompts — the real grant
 // is deferred to a user gesture. Also seeds `Motion.current`, the shared state the
-// debug Motion scene reads (it no longer owns a "Request permission" button).
+// debug Motion scene reads — that scene reports the grant, it never asks for one.
 let wiggleInit = Motion.initialState(~wantsShake)
 Motion.current := wiggleInit
 
@@ -860,8 +860,8 @@ let switcher = SceneSwitcher.render(
     // …and clear the deal number with it, so the Share buttons are dark for the
     // moment between scenes; the mounting scene reports its own (a demo reports none).
     publishDeal(None)
-    // Move the menu's highlight to the scene coming up. The switcher no longer
-    // owns a row to mark, so this report *is* the highlight.
+    // Move the menu's highlight to the scene coming up. The switcher owns no row to
+    // mark, so this report *is* the highlight.
     reportScene.contents(scene.id)
     closeMenu.contents()
   },
@@ -873,9 +873,9 @@ let switcher = SceneSwitcher.render(
     [
       GalleryScene.make(),
       // The card-sprite fidelity check. `?raster=` picks which of the
-      // three renderings it opens on; without it the scene's own default wins.
+      // renderings it opens on; without it the scene's own default wins.
       RasterScene.make(~rendering=?url.raster),
-      // Step two of the same animation (#226): the overlay mechanics — a
+      // Step two of the same animation: the overlay mechanics — a
       // transparent canvas over real cards, and the DOM→canvas hand-off.
       TrailScene.make(),
       MotionScene.make(),
@@ -977,8 +977,9 @@ let debugStates = Scenario.scenariosFor(
 })
 
 // Open a named game — and optionally one of its named positions — on the board: what the
-// console's `deal <game> [position]` does now that a game id means the same thing here as
-// it does in the CLI. These are the debug-states row's own two steps (surface the game's
+// console's `deal <game> [position]` does. A game id means the same thing here as it does
+// in the CLI, which is what lets one verb serve both. These are the debug-states row's
+// own two steps (surface the game's
 // scene, then force the position onto it), reused rather than reimplemented, so a typed
 // `deal freecell midgame` and a tapped "Mid-game" land on the very same board.
 let openNamedDeal = (~game: Game.t, ~position: option<Scenario.named>): string => {

@@ -151,10 +151,10 @@ let transcript = (s: Session.t, outcome: Session.outcome): string =>
   ->Array.map(Render.toAnsi)
   ->Array.join("\n\n")
 
-// What "deal a game first" points at. It used to differ by verb — a plain `move`
-// suggested a demo board, a `moverun` FreeCell — but FreeCell is the only game
-// there is, so every board verb is answered with the same one. Asked before the command
-// runs, so this is said ahead of any complaint about the arguments.
+// What "deal a game first" points at. One hint for every board verb, because FreeCell is
+// the only game there is — a hint that varied by verb would be promising boards that
+// don't exist. Asked before the command runs, so this is said ahead of any complaint
+// about the arguments.
 let dealFirstHint = "freecell"
 
 // Interpret one already-parsed command against the current session, returning the
@@ -221,8 +221,8 @@ let stepCommand = (
   // Every shape of `deal` — bare, numbered, named, at a position — reads the same here as
   // it does in the panel, because the reading is `core`'s (see `Command.resolveDeal`).
   // A refusal hands `session` straight back, so a mistyped `deal` doesn't cost you the
-  // game you were playing — it just says what it couldn't read. (It used to drop the
-  // session, which made a typo the most destructive thing you could enter.)
+  // game you were playing — it just says what it couldn't read. Dropping the session on a
+  // refusal would make a typo the most destructive thing you can enter.
   | Command.Deal({game, scenario}) =>
     switch Session.deal(~clock, ~newSeed, ~options, game, scenario) {
     | (Some(s), outcome) => (Some(s), transcript(s, outcome))

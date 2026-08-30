@@ -175,10 +175,10 @@ describe("ShareLink.savedFrom names the game", () => {
   })
 })
 
-// Which *game* a deal number is a deal of. A deal link used to say only the
-// number, and the receiving end read it as FreeCell by construction — so the app could
-// never share a deal of a second game. What's pinned here is the shape `urlForDeal`
-// writes: the game named in `?game=`, and left out for the default one.
+// Which *game* a deal number is a deal of. A link carrying only the number leaves the
+// receiving end to read it as FreeCell by construction, which makes a deal of any second
+// game unshareable. What's pinned here is the shape `urlForDeal` writes: the game named
+// in `?game=`, and left out for the default one.
 describe("ShareLink.urlForDeal names the game", () => {
   // A second seeded game, stood up here because `Game.all` has only FreeCell in the
   // web-app's own scene list. Everything `urlForDeal` reads of a game is its

@@ -132,9 +132,10 @@ describe("Repl.run", () => {
     )
   })
 
-  // And the same for a move's *source*, which used to be a card and nothing else. What
-  // matters here is the same thing: naming the place a card is showing has to end in the
-  // move naming the card would have made, or a shorthand is a second game.
+  // And the same for a move's *source*, which names either a card or the slot one is
+  // showing in. What matters here is the same thing: naming the place a card is showing
+  // has to end in the move naming the card would have made, or a shorthand is a second
+  // game.
   describe("a move's source, said two ways", () => {
     let deal = "deal freecell supermove"
     let ending = lines => {
@@ -600,8 +601,8 @@ describe("Repl.run", () => {
     expect(posed == Repl.run(["deal freecell"]))->toBe(false)
   })
 
-  // A mistyped deal used to drop the session — the most destructive thing you could
-  // enter. It now says what it couldn't read and leaves the game alone.
+  // A mistyped deal has to leave the game alone and say only what it couldn't read.
+  // Dropping the session here would make a typo the most destructive thing you can enter.
   test("a deal it can't read keeps the game already in play", () => {
     let transcript = Repl.run(["deal freecell", "deal nope", "print"])
     expect(has(transcript, "Unknown game: nope"))->toBe(true)
@@ -738,8 +739,8 @@ describe("Repl set", () => {
     }
   })
 
-  // The house rule had no control anywhere before this — not a switch in the web
-  // menu, not a flag on the CLI. Typing it off is now the only way to reach that branch.
+  // Typing it off is the only way to reach the reducer's refusal at all: the house rule
+  // has no other control — not a switch in the web menu, not a flag on the CLI.
   test("reorder off gates the reducer, and back on ungates it", () => {
     let off = Repl.run(["deal freecell", "set reorder off", "movecol 8 9"])
     expect(has(off, "Column reordering is off"))->toBe(true)

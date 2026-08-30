@@ -1,5 +1,4 @@
-// The settings toggle row, exercised in isolation now that it's a component
-// of its own.
+// The settings toggle row, exercised in isolation.
 //
 // Three things are worth pinning about a row like this, and they're what this file
 // tests: it *says* both halves of its copy (a label with no description would leave

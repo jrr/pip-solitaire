@@ -181,10 +181,11 @@ type tokenList
 @send external addClass: (tokenList, string) => unit = "add"
 @send external removeClass: (tokenList, string) => unit = "remove"
 
-// `core`'s `GameState` now owns *where every card rests*: the scene holds
-// one immutable `GameState.t` and re-derives each pile from it, so a zone no
-// longer carries its own `pile` and a card no longer remembers a `home`. What's
-// left on these records is purely presentational.
+// `core`'s `GameState` owns *where every card rests*: the scene holds one immutable
+// `GameState.t` and re-derives each pile from it, so a zone carries no `pile` of its own
+// and a card remembers no `home`. What's left on these records is purely
+// presentational — keep it that way, or the board grows a second answer to "where is
+// this card" that only the view can see.
 //
 // A zone is just its element, its model `index` (the pile it stands for in
 // `GameState`), and its `stacking` behaviour (how the fan lays out) — the `rule`
@@ -519,8 +520,8 @@ let tiltFor = (~enabled, ~card, ~pile, ~slot) => enabled ? cardTilt(~card, ~pile
 // change the board calls it with the current `canUndo` so the top bar can enable or
 // disable the button. Undo works even from a won board: a victory is just another
 // recorded state, so stepping back tears the win overlay down and returns to the prior
-// position. (Redo lives on in `core`'s `History` for the CLI, but the web app's top bar
-// no longer surfaces it.)
+// position. (Redo lives in `core`'s `History` for the CLI; the web app's top bar doesn't
+// surface it.)
 //
 // `~loadHistory` restores a *whole* saved game: the board's undo/redo stack,
 // not just its present position — so a resumed game comes back with Undo still
@@ -843,11 +844,12 @@ let make = (
       // re-derives every pile's layout from its present state and keeps only transient
       // geometry (below).
       //
-      // This used to be four refs stepped in lockstep, and the stepping was written out
-      // three times — at the drop, at the double-tap send-home, and at a typed command.
-      // Now a move hands an action to `Session.dispatch` and the view adopts what comes
-      // back: settling, the undo step, the tally and the clock are all one call, and it's
-      // the same call the terminal makes.
+      // **A move hands an action to `Session.dispatch` and the view adopts what comes
+      // back.** Settling, the undo step, the tally and the clock are that one call, and
+      // it's the same call the terminal makes. Three sites move a card — the drop, the
+      // double-tap send-home, a typed command — so stepping written out at each of them
+      // is three copies to keep in lockstep, and the field one of them forgets is the
+      // one nothing notices.
       //
       // Seeded from a saved game when there is one, otherwise from the board's
       // opening deal or the forced `~initial` scenario. Per-build, like everything else
@@ -1587,7 +1589,7 @@ let make = (
       // --- Typed commands ---------------------------------------------------
       // What the debug console's input line does with a parsed command.
       //
-      // It no longer *interprets* one. Every board verb — `move`, `home`, `undo`,
+      // It does not *interpret* one. Every board verb — `move`, `home`, `undo`,
       // `finish`, `autoplay`, `print` — is `Session.step`'s to run, which is the same
       // interpreter the terminal runs, so a typed command means one thing rather than
       // two. What's here is the other half: turning the `Session.change` that comes back

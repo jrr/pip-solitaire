@@ -7,14 +7,12 @@
 //
 // **The copy worth extending.** `cli` and `web-app` both depend on `core`, so both
 // reach these bindings from here; add what you need here rather than starting a second
-// `Vitest.res` in a dependent. That's a preference now, not a prohibition. It used to
-// be one: module names are global across a ReScript build graph, so before `cli` and
-// `web-app` were namespaced a second `Vitest` there displaced `core`'s copy in
-// `core`'s own build — web-app carried such a duplicate; it built for months and then
-// failed the moment a `core` test happened to need rebuilding mid-dependency-build.
-// With `"namespace": true` on both leaf packages, a duplicate now shadows this module
-// only inside the package that defines it, which is a local decision with a local
-// error message rather than a spooky one in `core`.
+// `Vitest.res` in a dependent. A preference, not a prohibition — but only because
+// `"namespace": true` on both leaf packages confines a duplicate to the package that
+// defines it. Drop that namespacing and module names are global across the build graph
+// again, so a second `Vitest` displaces this one inside `core`'s *own* build; the
+// failure surfaces only when a `core` test happens to need rebuilding
+// mid-dependency-build, so such a duplicate can build for months before it breaks.
 
 type assertion<'a>
 

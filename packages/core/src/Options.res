@@ -32,8 +32,8 @@ let default = {autoCollect: true, allowColumnReorder: true}
 // parser can hand over a typed setting instead of a string each driver re-checks.
 //
 // It's also the only way to reach `allowColumnReorder` at all: the menu has a switch for
-// auto-collect and none for the house rule, so before this the flag could only be
-// changed by editing `default`.
+// auto-collect and none for the house rule, so without a name a command can say the flag
+// would be reachable only by editing `default`.
 type setting =
   | AutoCollect
   | ColumnReorder

@@ -165,7 +165,7 @@ describe("Command.parse", () => {
         ),
     )
 
-    // The source half, which used to be a card and nothing else. Like the two
+    // The source half, which names a slot rather than a card. Like the two
     // board-shaped destinations it stops short of an action: "what is showing in C1"
     // is not a property of the line.
     test(

@@ -181,13 +181,12 @@ let restore = (~seed: option<int>, ~options: Options.t, game: Game.t, saved: Sav
 // envelope: the first is how the save was found in the first place, and the second is
 // the driver's, not the board's.
 //
-// The game *is* in it, as its id. It used to be left out on the same "that's how
-// the save was found" reasoning, which held for `localStorage` — the key names the game
-// — and quietly didn't for the other thing this envelope is: a share link, which is
-// found by nothing at all and so arrived at the far end naming no board. This is the one
-// place a save is written from a session, and the session knows which game it is of, so
-// the answer is written down here rather than inferred from whatever scene the blob
-// happens to land on.
+// The game *is* in it, as its id, and has to be. "That's how the save was found" holds
+// for `localStorage` — the key names the game — and not for the other thing this envelope
+// is: a share link is found by nothing at all, so a link carrying no id arrives at the far
+// end naming no board. This is the one place a save is written from a session, and the
+// session knows which game it is of, so the answer is written down here rather than
+// inferred from whatever scene the blob happens to land on.
 let save = (s: t): SaveState.t => {
   history: s.history,
   stats: s.stats,

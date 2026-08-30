@@ -3,7 +3,7 @@
 // footer under it.
 //
 // Top to bottom:
-//   - the **title** ("Pip", moved here from the retired Home scene) beside the ✕;
+//   - the **title** ("Pip") beside the ✕;
 //   - a **"game"** section: **New** (re-deals a fresh seed), **Restart**
 //     (re-deals the *same* seed to replay the current deal) and **Share Seed**
 //     (hands over a `?seed=` link to the deal on the table).
@@ -15,8 +15,8 @@
 //     *disabled* — on a board with no seed to name;
 //   - a **"Games"** section — the games this build offers as top-level rows, FreeCell
 //     among them. They arrive as `games`, a list of `MenuRow.entry` the
-//     switcher's scene list is turned into, and are drawn here; they used to be
-//     a real node the switcher built and this screen spliced in with `Html.node`;
+//     switcher's scene list is turned into, and are drawn here — data rather than a
+//     node the switcher builds and this screen splices in (see `games` below);
 //   - --- the space between top and bottom grows here (`menu-section--bottom`) ---
 //   - a single **Settings** button (`onOpenSettings`) low in the menu, just above the
 //     About footer — it takes over the pane with the Settings screen.
@@ -50,7 +50,7 @@ type props = {
 
 // The line under the "game" buttons. It reports what became of a share ("Link
 // copied to clipboard.") or, on a board with nothing to share, why the button is
-// greyed out — and is otherwise *empty*, now that the seed itself rides on the button.
+// greyed out — and is otherwise *empty*, because the seed itself rides on the button.
 //
 // Empty, but always rendered: the slot holds its height (`min-height`, see
 // MenuMainScreen.css) so the confirmation appears and clears without shoving the

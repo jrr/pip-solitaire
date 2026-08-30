@@ -1,14 +1,12 @@
 // The 2D canvas vocabulary: a `<canvas>`, and the drawing context you get out of
 // one.
 //
-// These bindings used to live inside `CardRaster`, whose header made the case for
-// keeping them there — "none of this is useful outside rasterization". That
-// stopped being true with the victory overlay (#226): the overlay owns a canvas
-// of its own, sizes its own backing store, and blits `CardRaster`'s sprites into
-// it — so both ends of that blit have to name the *same* `context` type. Two
-// copies of these externals would each type-check perfectly and never
-// interoperate, which is the failure mode worth designing out rather than
-// discovering.
+// These live here rather than inside `CardRaster` because both ends of a blit have to
+// name the *same* `context` type, and rasterization owns only one of them: the victory
+// overlay owns a canvas of its own, sizes its own backing store, and blits
+// `CardRaster`'s sprites into it. Two copies of these externals would each type-check
+// perfectly and never interoperate, which is the failure mode worth designing out
+// rather than discovering.
 //
 // So the split is: what a canvas *is* lives here, with the rest of the DOM
 // bindings; what a *card* is rasterized from — the `<img>` decode, the font

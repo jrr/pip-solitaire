@@ -50,8 +50,8 @@ let save = (gameId: string, saved: SaveState.t): unit =>
 // saved game and read back when that game resumes. See `docs/save-and-share.md`.
 //
 // A missing, unreadable, or non-numeric value reads as `None`: no deal number, so
-// nothing to share. That's also what an older save — written before this key existed —
-// looks like, which is the right answer for it.
+// nothing to share. That's also what an older save written without this key looks like,
+// which is the right answer for it.
 let seedKey = (gameId: string): string => "pip.savedDeal." ++ gameId
 
 let loadSeed = (gameId: string): option<int> => {

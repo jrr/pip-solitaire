@@ -19,8 +19,9 @@
 // about. They ride side by side in the save envelope (`SaveState`) instead.
 //
 // Both stamps are optional, and that carries real information rather than being
-// defensive typing: a save written before this existed has neither (its game began
-// at a time nobody wrote down), and an in-progress game has a deal but no win yet.
+// defensive typing: a save written by a build that carried no stamps has neither (its
+// game began at a time nobody wrote down), and an in-progress game has a deal but no
+// win yet.
 // No stamps, no time on the panel — which is exactly right, since the alternative
 // would be inventing one.
 
