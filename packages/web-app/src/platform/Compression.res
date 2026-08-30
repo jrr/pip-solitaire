@@ -1,19 +1,15 @@
-// Squeeze a string small enough to travel in a URL, and unsqueeze it again.
-//
-// The compressor is the browser's own **Compression Streams API**
-// (`CompressionStream`/`DecompressionStream`) — a platform built-in, so this costs
-// nothing in the bundle and adds no dependency to install, lock, or keep current. It's
-// what lets a share link (see `ShareLink`) carry a whole undo/redo stack.
+// Squeeze a string small enough to travel in a URL, and unsqueeze it again, over the
+// browser's own **Compression Streams API** (`CompressionStream`/`DecompressionStream`)
+// — a platform built-in, so this costs nothing in the bundle and adds no dependency to
+// install, lock or keep current. It's what lets a share link (see `ShareLink`) carry a
+// whole undo/redo stack.
 //
 // **The choice of `deflate-raw` over gzip, of base64url over base64, and the size
 // arithmetic behind both are documented in `docs/save-and-share.md`.**
 //
-// Everything here is **async**, because the API is stream-shaped and there is no
-// synchronous alternative in the platform. Both directions return an `option` rather
-// than throwing: a browser without the API, a corrupt blob, a truncated paste, or a link
-// from an older format all mean "no string" to the caller, which falls back to whatever
-// it would have done anyway. Nothing about a share link is load-bearing enough to
-// justify taking the app down with it.
+// Two things a caller plans around: everything here is **async**, and both directions
+// answer with an `option` rather than throwing — a browser without the API, a corrupt
+// blob, a truncated paste and a link from an older format all mean "no string".
 // Whether the platform can do this at all. Baseline in every browser this app
 // targets (Chrome 80+, Firefox 113+, Safari 16.4+), so the false branch is a
 // courtesy for an old install rather than a case anyone should hit — but it turns

@@ -1,24 +1,17 @@
-// The card table's arithmetic, with no DOM under it.
-//
-// Everything here is a function of rects and counts: how big the cards get on this
-// stage, how narrow it may get before docking the console is refused, which zone a
-// dragged card's rect lands in. Nothing reads a card node, a zone element or the
-// session — which is what lets `TableLayout_test` cover the fits with no browser at
-// all, and `ConsoleDock_test` ask about `minStageWidth` without pulling a 2,600-line
-// jsdom-dependent module into a test that is one subtraction.
+// The card table's arithmetic, with no DOM under it: functions of rects and counts,
+// nothing that reads a card node, a zone element or the session.
 //
 // **The derivations, the footprint table and both fits worked through are in
 // `docs/board-geometry.md`.** Read that before retuning a constant; the numbers
 // below drive the stylesheet too.
 //
-// The seam: arithmetic here, measuring in `TableScene`. Anything that touches the
-// page — `getBoundingClientRect`, `style.left/top`, `setProperty` — stays over
-// there. A new derivation belongs here; a new measurement does not.
+// **A new derivation belongs here; a new measurement belongs in `TableScene`.**
+// Anything that touches the page — `getBoundingClientRect`, `style.left/top`,
+// `setProperty` — stays over there, and keeping that line is what lets this file be
+// tested without a browser.
 
 // A rectangle in viewport coordinates, which is what `getBoundingClientRect` answers
-// with and what the hit-test below compares. `TableScene` binds that external
-// straight to this type; the conversion to playfield-local left/top happens at the
-// end of the snap maths, over there.
+// with — `TableScene` binds that external straight to this type.
 type rect = {left: float, top: float, width: float, height: float}
 
 // --- The design footprints, at scale 1 ---------------------------------------
@@ -66,9 +59,9 @@ let minScale = 0.4
 // cards. What it costs in stage width and height is in the doc.
 let maxScale = 1.35
 
-// The share of the stage width the row of cards fills. The rest is not slack: it is
-// what `space-evenly` opens around and between the columns, so pushing this toward 1
-// leaves the columns butting card-to-card.
+// The share of the stage width the row of cards fills. **The rest is not slack** —
+// push this toward 1 and the columns butt card-to-card, with nothing left for
+// `space-evenly` to open between them.
 let fillFraction = 0.9
 
 // The widest a `space-evenly` gap between columns may open before the row stops
@@ -77,39 +70,34 @@ let fillFraction = 0.9
 let maxColumnGap = 0.25 *. cardW
 
 // Headroom, in cards, the height fit leaves below the deepest *opening* pile, so a
-// cascade can take on this many before it reaches the bottom edge. Sizing to the
-// deal's actual depth would overflow the moment a pile grew; deriving it live would
-// resize every card on the table as piles grow and shrink, so it is captured once
-// from the opening deal and held. A pile that grows past it still overflows — this
-// is a comfort margin, not a guarantee.
+// cascade can take on this many before it reaches the bottom edge. **A comfort
+// margin, not a guarantee** — a pile that grows past it still overflows. Why it's
+// the opening depth, and why it's captured once rather than derived live:
+// `docs/board-geometry.md` § The fan, and `fanHeadroom`.
 let fanHeadroom = 5
 
 // --- The fits ----------------------------------------------------------------
 
 // The narrowest stage a row of `columns` piles can be laid into with the cards still
 // clearing the `minScale` floor: the width fit solved for the floor instead of for
-// the scale. `ConsoleDock`'s refusal leans on it, which is why neither side
-// names a pixel breakpoint — retuning `minScale` or `cardW` moves the refusal too.
+// the scale. **Retuning `minScale` or `cardW` moves `fitsDock` below with it** —
+// same arithmetic, no pixel breakpoint on either side.
 //
-// Note what this is and isn't: it's the *width* term of the clamp, so it says nothing
-// about the height term that binds on a short screen. A landscape phone is wide enough
-// on paper to clear this — it just has nothing worth docking beside. Docking there stays
-// out of scope by being keyboard-only rather than by being refused here.
+// **The width term only**, so it says nothing about the height term that binds on a
+// short screen. What that leaves out is in `docs/board-geometry.md` § The floor, and
+// the dock refusal.
 let minStageWidth = (~columns: int) => minScale *. Int.toFloat(columns) *. cardW /. fillFraction
 
-// The dock-refusal test itself: the stage, less the display cutaway
-// `.drop-rows` is pinned inside, less the strip the dock would take — is
-// what's left still a stage this board can be dealt onto?
-//
-// `~columns` is the board's busiest row rather than a constant eight: a two-pile demo
-// gives up width a FreeCell board can't.
+// The dock-refusal test itself: the stage, less the display cutaway `.drop-rows` is
+// pinned inside, less the strip the dock would take — is what's left still a stage
+// this board can be dealt onto? `~columns` is the board's busiest row rather than a
+// constant eight, so a two-pile demo gives up width a FreeCell board can't.
 let fitsDock = (~stage: float, ~cutaway: float, ~inset: float, ~columns: int) =>
   stage -. cutaway -. inset >= minStageWidth(~columns)
 
 // How far below the top row the deepest fan reaches, at scale 1: the *gaps* between
-// `referenceDepth` cards, one fewer than the cards themselves. A board with every
-// pile Squared grows no fan at all, so its extent is zero and the height fit is left
-// with only the row boxes to clear.
+// `referenceDepth` cards, one fewer than the cards themselves. Zero for a board with
+// every pile Squared, which leaves the height fit only the row boxes to clear.
 let fanExtent = (~hasFanned: bool, ~referenceDepth: int) =>
   hasFanned ? Int.toFloat(referenceDepth - 1) *. fanStep : 0.
 
@@ -117,10 +105,10 @@ let fanExtent = (~hasFanned: bool, ~referenceDepth: int) =>
 // one wins, then clamped to [`minScale`, `maxScale`]. Both are derived in
 // `docs/board-geometry.md`, along with what each argument is measured off.
 //
-// `None` where there is nothing to divide by — a stage not laid out yet (`avail` 0),
-// or a board with no piles. Don't substitute a number here: the caller keeps the
-// scale it had, which is what stops a mid-resize measurement of zero from snapping
-// the board to a size nothing asked for for one visible frame.
+// **`None` where there is nothing to divide by** — a stage not laid out yet (`avail`
+// 0), or a board with no piles. Don't substitute a number here; the caller keeps the
+// scale it had. `docs/board-geometry.md` § Two clamps and a `None` is the bug that
+// shape exists to prevent.
 let scaleFor = (
   ~avail: float,
   ~availH: float,
@@ -139,24 +127,19 @@ let scaleFor = (
     None
   }
 
-// The row's width cap, at scale 1: the widest row's zones plus its
-// `widestRow + 1` `space-evenly` gaps grown to at most `maxColumnGap` each.
-// `.drop-rows` takes this as a `max-width` and centres itself, so once the stage is
-// wider than this the extra width falls into equal left/right margins rather than
-// ever-wider gaps. The display cutaway is deliberately *not* folded in — it comes off
-// `avail` in the scale, and this stays a pure spreading limit.
+// The row's width cap, at scale 1: the widest row's zones plus its `widestRow + 1`
+// `space-evenly` gaps grown to at most `maxColumnGap` each. `.drop-rows` takes it as
+// a `max-width` and centres itself. **The display cutaway is deliberately not folded
+// in** — it comes off `avail` in the scale, and this stays a pure spreading limit.
 let rowsMaxWidth = (~widestRow: int) =>
   Int.toFloat(widestRow) *. zoneWidth +. Int.toFloat(widestRow + 1) *. maxColumnGap
 
 // The whole of the JS→CSS interface: every footprint the stylesheet reads, each a
-// design constant above times the live scale. Anything the CSS needs in scaled pixels
-// goes here — the stylesheet derives nothing, so the proportions (`cardH / cardW`,
-// the corner ratios, `zoneInset`) are stated once and a `calc()` ratio literal can't
-// drift from them.
-//
-// Pixels, not strings: the `px` suffix is CSS's business and goes on at the DOM edge
-// (`TableScene`'s `applyScale`), which leaves the proportions between these numbers
-// checkable without parsing anything back out of a declaration.
+// design constant above times the live scale. **Anything the CSS needs in scaled
+// pixels goes here** — the stylesheet derives nothing, so a `calc()` ratio literal
+// over there is a regression. Pixels, not strings: the `px` is CSS's business and
+// goes on at the DOM edge, in `TableScene`'s `applyScale`. What each buys:
+// `docs/board-geometry.md` § The published footprints.
 let cssVars = (~scale: float, ~widestRow: int) => {
   let at = v => v *. scale
   [
@@ -172,15 +155,12 @@ let cssVars = (~scale: float, ~widestRow: int) => {
 
 // --- Hit-testing --------------------------------------------------------------
 
-// Does a dragged card's rect land in this zone? The shared primitive for both the
-// live hover highlight and the snap-on-drop decision, and deliberately
-// asymmetric: horizontally it's strict — the card's *centre* must fall inside the zone —
-// so tightly packed columns stay distinguishable; vertically it's generous — any
-// overlap at all counts — so a card need only graze a zone's top or bottom to land
-// in it.
+// Does a dragged card's rect land in this zone? One primitive for both the hover
+// highlight and the snap-on-drop decision, so the two can't disagree. **Deliberately
+// asymmetric** — strict horizontally, generous vertically; which way round, and why,
+// is `docs/board-geometry.md` § The hit-test.
 //
-// Both rects are viewport-coordinate, which is what `getBoundingClientRect` gives and
-// so needs no conversion before comparing.
+// Both rects are viewport-coordinate, so nothing is converted before comparing.
 let hits = (~card: rect, ~zone: rect) => {
   let centreX = card.left +. card.width /. 2.
   centreX >= zone.left &&

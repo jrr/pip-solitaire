@@ -1,21 +1,7 @@
-// What the app needs from its JSX runtime, which is Preact's.
-//
-// Not Preact's own behaviour — keyed matching, attribute patching, namespace
-// handling are its to test. These are the handful of properties the app is built on
-// top of, each of which would fail silently rather than loudly if the runtime under
-// us changed:
-//
-//   1. **SVG lands in the SVG namespace.** Every card, the app icon and the
-//      spinner are real vector nodes (`CardArt`). An <svg> built in the HTML
-//      namespace draws nothing at all — no error, just a blank card.
-//   2. **A re-render reuses the DOM node.** The board's card motion is Web
-//      Animations on live nodes and its CSS transitions run on class changes; a
-//      node rebuilt rather than patched silently restarts both.
-//   3. **A spliced subtree is left alone.** `Html.node` hands the diff a
-//      node someone else owns (the scene container, the debug console's
-//      scrollback). Preact has no vnode that *is* a live node, so this goes
-//      through a host element and a callback ref — and the thing to pin is that
-//      re-rendering around it neither re-appends nor rebuilds it.
+// What the app needs from its JSX runtime, as against what Preact owes its own
+// test suite. Every property pinned below would fail *silently* if the runtime
+// under us changed, which is the whole reason it is worth a test; the list and
+// the case for each are `docs/rendering.md` § What the app leans on Preact for.
 open Vitest
 open TestDom
 

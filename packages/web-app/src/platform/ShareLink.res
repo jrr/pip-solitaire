@@ -10,10 +10,8 @@
 // **The wire format, why the blob rides in the fragment, and how the two kinds of link
 // differ are documented in `docs/save-and-share.md`.**
 //
-// Three *buttons* hand out those two links: the win overlay's victory share is a
-// deal link wrapped in a message (`victoryMessage`), not a third kind of link. Sharing
-// the position from a won board would ship the solution, so a victory can only ever
-// offer the deal.
+// Three *buttons* hand out those two kinds of link — the win overlay's victory share
+// is `victoryMessage` below, not a third kind.
 // The fragment parameter carrying a shared game. Read back by `AppUrl`, which owns
 // all URL parsing; this module owns the format, so the name lives here.
 let fragmentKey = "g"
@@ -99,6 +97,8 @@ let urlForDeal = (~game: Game.t, ~seed: int): string => {
 // The URL is deliberately *not* in this string: `deliver` adds it, once, on whichever
 // route it takes — as the share sheet's own `url` field, or appended for the
 // clipboard. Composing it here as well is how a link ends up in the message twice.
+// **What it adds is a deal link, never a `#g=` one** — see docs/save-and-share.md
+// § Two kinds of link.
 //
 // The game is *named* rather than spelled: "Pip FreeCell #264" is the game's own
 // `name`, so the boast says which board was beaten for the same reason the link does,

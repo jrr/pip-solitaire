@@ -651,20 +651,18 @@ let gameScene = (game: Game.t) => {
   // its id: can this board deal another of itself? A second seeded game answers
   // yes on the day it's added, with no edit here.
   let canDeal = game.deal->Option.isSome
-  // A *plain* open of a re-dealable game is the only place save-and-resume
-  // applies: the app's primary kind of game — one you can be handed a fresh board of —
-  // opened without a URL asking for a specific position. A `?state=` scenario or a
-  // `?seed=` deal link addresses an exact board, so it opens
-  // that board and leaves any saved game strictly alone — neither resumed nor
-  // overwritten (the issue's "a `?state=` link doesn't disturb a saved game", and the
-  // same for the screenshot report's `?seed=`/`?state=` shots, which must stay
-  // side-effect-free).
+  // A *plain* open of a re-dealable game is the only place save-and-resume applies:
+  // the app's primary kind of game — one you can be handed a fresh board of — opened
+  // without a URL asking for a specific position. A `?state=` scenario or a `?seed=`
+  // deal link addresses an exact board, so it opens that board and leaves any saved
+  // game strictly alone, neither resumed nor overwritten; the screenshot report's
+  // `?seed=`/`?state=` shots depend on staying side-effect-free.
+  //
   // A `#g=` share link is the one addressed open that *does* touch storage, and it
-  // splits the two halves apart: it doesn't resume (the link says which board to
-  // open, so reading the save would be pointless), but once the shared game lands it
-  // **takes over** — becoming the saved game, with play from there saving as usual,
-  // exactly as if it had been dealt here. Opening someone's link adopts their game
-  // rather than borrowing it, so the two halves are gated separately below.
+  // splits the two halves apart: it doesn't resume (the link says which board to open,
+  // so reading the save would be pointless), but once the shared game lands it **takes
+  // over** — see docs/save-and-share.md § Storage. Hence the two halves are gated
+  // separately below.
   //
   // Which asks *whose* save it takes over, and the link now says. Two questions,
   // asked at two different times, because the answer to the second isn't available when

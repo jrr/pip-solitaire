@@ -3,11 +3,6 @@
 // **The contract, the benchmark record and the heuristic are in `docs/solver.md`.**
 // Read that before retuning; `mise run solve -- --quiet 1-1000` is how a change
 // here is measured, and the doc holds the run to beat.
-//
-// The goal isn't a completed board but `Position.canFinish`: the point where the
-// app's own Finish button lights up and everything left is a foundation-only
-// drain. Good enough, not optimal — and `None` means the ladder ran out, not that
-// the deal is unsolvable.
 
 // --- The heuristic -----------------------------------------------------------
 
@@ -63,9 +58,8 @@ let heuristic = (s: Position.t, w: weights): int => {
 }
 
 // --- A tiny binary heap, keyed by numeric priority ---------------------------
-// Its own little module rather than a sorted array: the open list is pushed and
-// popped hundreds of thousands of times per deal, and re-sorting it that often is
-// the whole cost of the search.
+// Its own little module rather than a sorted array — `docs/solver.md` § The search
+// has what that is worth.
 
 module Heap = {
   type entry<'a> = {item: 'a, priority: float}
@@ -137,9 +131,8 @@ module Heap = {
 
 // --- The search --------------------------------------------------------------
 
-// How hard one pass tries. `weight` scales the heuristic against depth: a high
-// weight is greedy and dives, a low one searches wider and costs more per answer.
-// `maxNodes` is the budget it gives up at.
+// How hard one pass tries: `weight` scales the heuristic against depth, `maxNodes`
+// is the budget it gives up at. What each buys: `docs/solver.md` § The ladder.
 type attempt = {weight: float, maxNodes: int}
 
 // What a pass came back with: the moves to a finishable board, or `None` if it
@@ -206,11 +199,9 @@ let search = (start: Position.t, attempt: attempt, ~weights: weights=defaultWeig
     {path: found.contents, nodes: nodes.contents, applied: applied.contents}
   }
 
-// The escalation ladder: a mildly greedy pass first, since almost every deal falls
-// to it, then wider searches for the ones that don't. The rungs are capped
-// deliberately — a rung that can't find it in its budget is usually a rung that
-// never will, so raising a cap mostly buys nothing. Soak it before believing
-// otherwise (`docs/solver.md`).
+// The escalation ladder. **Raising a cap is the obvious knob and mostly buys
+// nothing** — soak it before believing otherwise. Why these four rungs, in this
+// order: `docs/solver.md` § The ladder.
 let ladder = [
   {weight: 2., maxNodes: 60_000},
   {weight: 1., maxNodes: 150_000},
@@ -227,18 +218,13 @@ let ladder = [
 //   `passes`    — rungs of the ladder it took. One is an ordinary deal; more than
 //                 one means the greedy pass gave up and a wider search found it.
 //
-// Deliberately no clock: how *long* it took is the caller's own measurement, taken
-// around a call it made (`solve.mjs` already does exactly that, and both front ends
-// now do). Keeping the number out of here is what lets a plan stay a value two runs
-// can be expected to agree on — an ordinary `toEqual` in a test, rather than a
-// timing-shaped hole in one.
+// **Deliberately no clock**: time a call from outside it, the way `solve.mjs` and
+// both front ends do. What that buys: `docs/solver.md` § The contract.
 type effort = {positions: int, moves: int, passes: int}
 
-// Solve to the finishable position, escalating effort until it gives — or `None`
-// when the whole ladder runs out, which is all this can honestly say about a deal
-// (a rung that fails proves nothing about solvability). Reports what the climb cost
-// alongside the line, since a rung that failed still spent its budget and a caller
-// saying "found in 65ms" is describing all of them.
+// Solve to the finishable position, escalating effort until a rung gives — or
+// `None` when the ladder runs out, which proves nothing about the deal. Reports what
+// the climb cost alongside the line, since a rung that failed still spent its budget.
 let solveWithEffort = (start: Position.t, ~ladder: array<attempt>=ladder): (
   option<array<Position.move>>,
   effort,
@@ -261,10 +247,8 @@ let solveWithEffort = (start: Position.t, ~ladder: array<attempt>=ladder): (
 let solve = (start: Position.t, ~ladder: array<attempt>=ladder): option<array<Position.move>> =>
   fst(solveWithEffort(start, ~ladder))
 
-// Wanting this faster? It's been profiled, and the answer isn't the one it looks
-// like: the arithmetic another language would speed up is about a seventh of the
-// runtime, and 3–4× is available without leaving ReScript. `docs/solver.md` has
-// the profile and what it rules out.
+// Wanting this faster? It has been profiled, and the answer isn't the one it looks
+// like — read `docs/solver.md` § On making this faster first.
 
 // --- Playing the plan on a real board ----------------------------------------
 
@@ -273,9 +257,8 @@ let solve = (start: Position.t, ~ladder: array<attempt>=ladder): option<array<Po
 // through). `None` when the board isn't a FreeCell one or no rung of the ladder
 // found a line.
 //
-// The plan is a plan for a game played with auto-collect *on* (`Options.default`,
-// see `Position.applyMove`): with it off the moves stay legal, but the board after
-// each one won't be the one the plan predicted.
+// **A plan is a plan for a game played with auto-collect on** — the warning is on
+// `Position.applyMove`, which is where the settling happens.
 let plan = (~game: Game.t, state: GameState.t): option<array<Position.move>> =>
   Position.ofGameState(~game, state)->Option.flatMap(position => solve(position))
 
@@ -293,18 +276,12 @@ let hint = (~game: Game.t, state: GameState.t): option<Reducer.action> =>
 // otherwise write for themselves, so it's written here once and they play the same
 // game (the rule the shared `Command` grammar exists for).
 //
-// The settling is core's rather than the caller's, and that's the load-bearing bit:
-// a plan is a plan for a game played with auto-collect **on** (see
-// `Position.applyMove`), so a driver with the flag off would leave the board a card
-// behind the plan and every later move would bounce off a pile the plan thought was
-// empty. Playing the line here keeps it exactly the line the search found, whatever
-// the driver's own house rules say — the flag governs what the *player's* moves
-// trigger, not what the solver's plan means.
+// **The settling is done here, not by the caller**, and that is the load-bearing
+// bit — the reason is the last row of `docs/solver.md` § The packed position.
 //
-// It stops where the search stops: at the first position `Reducer.canFinish` clears,
-// which is where the app's own Finish button lights up. Sweeping the board home from
-// there is the finish both drivers already have, so autoplay doesn't grow a second
-// copy of it — it thinks, and hands over.
+// It stops where the search stops, at the first position `Reducer.canFinish` clears.
+// Sweeping the board home from there is the finish both drivers already have, so
+// autoplay doesn't grow a second copy of it — it thinks, and hands over.
 
 // One planned move, played: the move said in the reducer's own vocabulary, and the
 // settled board it leaves behind. Enough for a driver to record one undoable step per
