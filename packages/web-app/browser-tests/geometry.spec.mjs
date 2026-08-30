@@ -1,36 +1,29 @@
 // Pin the card-table geometry invariants the stylesheet and TableScene both claim.
+// The geometry itself is docs/board-geometry.md.
 //
-// Card, zone and empty-slot footprints are produced jointly: TableScene measures
-// the stage, picks a `scale`, and publishes `--card-w` / `--zone-w` / `--zone-h`
-// (see `applyScale`); the CSS then re-derives the rest from those with ratio
-// literals — `calc(var(--card-w) * 1.4)` for the slot's height, `* 0.1` for its
-// corner, `* 0.15` for the zone's. Those literals restate facts that already exist
-// in ReScript (`cardH / cardW`, `CardArt`'s `rx` over its viewBox width, and
-// `zoneInset`), so the two halves can drift with nothing to catch it: the numbers
-// are all plausible, and a mismatch shows up only as slightly non-concentric
+// Card, zone and empty-slot footprints are produced jointly: TableScene measures the
+// stage, asks TableLayout for a `scale`, and publishes the scaled footprints as custom
+// properties (see `applyScale`). Every proportion between them — the 5:7 aspect, the
+// corner ratios, the uniform `zoneInset` — is stated once in ReScript, so any of them
+// re-derived a second time on the CSS side can drift with nothing to catch it: the
+// numbers stay plausible, and a mismatch shows up only as slightly non-concentric
 // corners or a dashed slot that no longer traces the card.
 //
 // So rather than assert the constants, this measures the *rendered* geometry and
-// checks the relationships the comments promise:
+// checks the relationships:
 //
-//   1. the empty-pile slot traces the card footprint exactly
-//        (`index.html`: "A resting card ... covers it pixel-for-pixel")
+//   1. the empty-pile slot traces the card footprint exactly — a resting card
+//      covers it pixel-for-pixel, so the dashed cue shows only on empty piles
 //   2. both keep the 5:7 playing-card proportion
 //        (`CardArt`: "A 120x168 viewBox keeps the familiar 5:7 ratio")
-//   3. the slot's corner radius matches the card art's own corner
-//        (`index.html`: "the card's ... 10%-of-width corner radius (the SVG
-//         face's rx=12/120)")
+//   3. the slot's corner radius matches the card art's own corner (`rx` 12/120)
 //   4. the zone box sits a *uniform* inset outside the slot on all four sides
-//        (`TableScene`: "makes the highlight frame sit an equal distance outside
-//        the resting card all the way round")
 //   5. the zone's corner is that same inset outside the slot's, so the two
 //      rounded corners share a centre
-//        (`index.html`: "the frame's radius is the slot's radius plus that inset")
 //
 // Everything here is read back from the live layout, so the checks hold whichever
-// side of the JS/CSS seam each number is sourced from. That is the point: they are
-// meant to stay green across a refactor that moves the derivation from CSS ratio
-// literals into published custom properties.
+// side of the JS/CSS seam each number is sourced from. That is the point: moving a
+// derivation across the seam must not move a pixel.
 //
 // Note on (3): the card's `<rect>` is inset half a unit with a centred 1-unit stroke,
 // so its *painted outer* corner radius is (rx + 0.5) / 120, marginally larger than the

@@ -206,6 +206,19 @@ CSS is not covered by `mise run format`, and unit tests never evaluate it: the
 gate for a styling change is `mise run browsertest` plus a look at
 `mise run screenshots`.
 
+## Board geometry
+
+The card table is **one number wide**: a stage is measured, a scale is chosen, and
+every pixel the board draws is a design constant times that scale. The constants
+and the two fits that pick the scale live in `TableLayout.res`
+(`packages/web-app/src/scenes/`), which has no DOM in it at all — that's what lets
+`TableLayout_test` check the fits without a browser. `TableScene.res` does the
+measuring and publishes the scaled footprints as custom properties; the stylesheet
+consumes them and derives nothing.
+
+`docs/board-geometry.md` has the derivations, the footprint table, and what a
+change to one constant costs elsewhere.
+
 ## Conventions
 
 - Prefer a framework's own CLI (invoked through a mise task) over hand-writing
