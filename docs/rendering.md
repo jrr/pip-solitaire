@@ -92,9 +92,9 @@ rather than around it.
 
 ## What the binding shape has to get right
 
-Two properties of `Html.res` are load-bearing, and both fail quietly. They are
-stated in the code as well, on the definitions they guard — this is the
-reasoning behind them.
+Two properties of `Html.res` are load-bearing, and both fail quietly. The
+reasoning is here, and only here. The code carries the warning on the definition
+it guards and points back to this section rather than arguing it a second time.
 
 **1. The jsx functions must be `@module` externals.** With plain `let` bindings
 the compiler quietly falls back to lowering JSX into calls on this module: the
@@ -126,10 +126,10 @@ be set, so attribute names are checked by the compiler — and adding one is a
 field, reviewed like any other line.
 
 `@rescript/runtime` ships `JsxDOM.domProps`, which covers most of the list and
-still doesn't fit, for three reasons kept beside the record: its `style` is a
-typed record and `RasterScene` sets a CSS *custom property*; its `ref` is an
-opaque React-shaped `domRef` and the splice host needs a callback; and its event
-types are React's synthetic ones rather than the DOM events Preact hands you.
+still doesn't fit, for three reasons: its `style` is a typed record and
+`RasterScene` sets a CSS *custom property*; its `ref` is an opaque React-shaped
+`domRef` and the splice host needs a callback; and its event types are React's
+synthetic ones rather than the DOM events Preact hands you.
 
 ## What the app leans on Preact for
 

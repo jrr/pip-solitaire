@@ -221,17 +221,40 @@ change to one constant costs elsewhere.
 
 ## Comments
 
-Two rules, and both are about what a comment is *for*: warning the next person
-off a path they'd otherwise take.
+Every rule here is about what a comment is *for*: warning the next person off a
+path they'd otherwise take. A comment that tells a reader nothing they wouldn't
+have done anyway is volume — and volume is what stops the load-bearing ones from
+being read.
 
 **Write forwards, not backwards.** A comment that says what changed is a
 changelog, and `git log` keeps a better one. If history is worth writing down, it
 is because it stands in front of a real path — so write the path, not the
 history. "This control must stay size-stable in every state; the About footer
 reflows everything below it if the height changes" beats "this used to carry a
-status line that grew and shrank it." A mechanism that outgrows its margin —
-longer than the code it annotates, or told across several files — belongs in
-`docs/`, with the local fact and one pointer left at the call site.
+status line that grew and shrank it." *Used to*, *no longer*, *now that* and
+*originally* are the words to search for: each is either hiding a live path, or
+is a changelog entry that should go.
+
+**One fact, one home.** A comment that points at a doc must not also restate it.
+That is two copies to keep in step, and the pointer is a promise that there is
+only one — so point *or* state, never both. `Solver.res` is the shape: "the
+contract, the benchmark record and the heuristic are in `docs/solver.md`. Read
+that before retuning" names what the doc owns and the moment you'd need it, and
+stops. The same rule sends a mechanism that outgrows its margin to `docs/`, with
+the local fact and one pointer left at the call site; if a file's comment lines
+outnumber its code lines, the argument in it has stopped being marginal.
+
+**A comment is about the file it is in.** A sentence true of every component, or
+of every test of a kind, is a convention — and a convention belongs here or in
+`docs/`, stated once, not pasted into sixteen headers. Repetition is how one
+becomes stale in fifteen places and current in one.
+
+**A test's name is its comment.** Names here are whole sentences and carry their
+own reasoning — "pads every field, so the stamp is fixed-width whatever the
+build". A header that lists what the tests below check is that list written
+twice. Say what the file covers and why it can be covered this way; leave the
+findings to the names, and put whatever a name can't carry beside the assertion
+it explains.
 
 **An issue number stays only when a reader has to open the thread to act
 correctly** — an unresolved trade-off, a decision deliberately deferred.
