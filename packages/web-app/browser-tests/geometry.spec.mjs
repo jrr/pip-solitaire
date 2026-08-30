@@ -10,26 +10,10 @@
 // corners or a dashed slot that no longer traces the card.
 //
 // So rather than assert the constants, this measures the *rendered* geometry and
-// checks the relationships:
-//
-//   1. the empty-pile slot traces the card footprint exactly — a resting card
-//      covers it pixel-for-pixel, so the dashed cue shows only on empty piles
-//   2. both keep the 5:7 playing-card proportion
-//        (`CardArt`: "A 120x168 viewBox keeps the familiar 5:7 ratio")
-//   3. the slot's corner radius matches the card art's own corner (`rx` 12/120)
-//   4. the zone box sits a *uniform* inset outside the slot on all four sides
-//   5. the zone's corner is that same inset outside the slot's, so the two
-//      rounded corners share a centre
-//
-// Everything here is read back from the live layout, so the checks hold whichever
-// side of the JS/CSS seam each number is sourced from. That is the point: moving a
-// derivation across the seam must not move a pixel.
-//
-// Note on (3): the card's `<rect>` is inset half a unit with a centred 1-unit stroke,
-// so its *painted outer* corner radius is (rx + 0.5) / 120, marginally larger than the
-// rx / 120 the slot uses. This checks against `rx` — i.e. today's behaviour — on
-// purpose; whether the slot should instead trace the painted edge is a separate
-// design question, not a regression.
+// checks the relationships between them. Everything is read back from the live
+// layout, so the checks hold whichever side of the JS/CSS seam each number is
+// sourced from. That is the point: moving a derivation across the seam must not
+// move a pixel.
 //
 // Runs in a real engine because it needs the cascade, `calc()` resolution and real
 // layout; jsdom has none of those (see rail.spec.mjs for the same reasoning).
@@ -135,6 +119,11 @@ for (const viewport of VIEWPORTS) {
       expect
         .soft(m.viewBoxH / m.viewBoxW, "card art viewBox keeps the 5:7 proportion")
         .toBeCloseTo(EXPECTED_ASPECT, RATIO_DIGITS)
+      // The card's `<rect>` is inset half a unit with a centred 1-unit stroke, so its
+      // *painted outer* corner radius is (rx + 0.5) / 120, marginally larger than the
+      // rx / 120 the slot uses. Checking against `rx` — today's behaviour — is on
+      // purpose; whether the slot should instead trace the painted edge is a separate
+      // design question, not a regression.
       expect
         .soft(m.slotRadius / m.slotW, "slot corner ratio matches the card art's rx")
         .toBeCloseTo(m.artRx / m.viewBoxW, RATIO_DIGITS)

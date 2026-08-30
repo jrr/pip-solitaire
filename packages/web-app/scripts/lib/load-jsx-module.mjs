@@ -1,18 +1,10 @@
-// Import a compiled ReScript module that carries JSX (see src/Html.res).
-//
-// Under `"jsx": {"preserve": true}` the compiler emits real JSX into the
-// `.res.mjs` output and leaves the lowering to the bundler. That's exactly what
-// we want in the app (Vite's esbuild pass does it), but it means bare Node can
-// no longer `import` those files — `<svg …>` is a syntax error there, and the
-// build scripts that render art without a browser (`generate/icons.mjs`) do
-// import them.
-//
-// So they come through esbuild first: bundle the module, lower its JSX onto
-// Preact, and import the result from memory. Nothing is written to disk.
+// Import a compiled ReScript module that carries JSX: bundle it through esbuild,
+// lower the JSX onto Preact, and import the result from memory. Nothing is written
+// to disk. Why bare Node can't do it directly is docs/rendering.md § Node can't
+// import the compiled output.
 //
 // **A Node script that imports compiled ReScript goes through here, not around
-// it.** This is also the clearest single cost of preserve mode — docs/rendering.md
-// weighs it against the generic transform, under which this file wouldn't exist.
+// it.**
 import { build } from "esbuild";
 
 export async function loadJsxModule(entryPath) {
