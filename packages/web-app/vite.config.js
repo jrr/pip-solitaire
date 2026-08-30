@@ -46,7 +46,8 @@ export default defineConfig({
   // emitted `.res.mjs` files contain real JSX rather than calls into a runtime
   // we wrote. Vite's esbuild pass is what lowers it — `.res.mjs` isn't a JSX
   // extension, so both the `jsx` loader and the file filter are explicit.
-  // Vitest reads the same block from its own config.
+  // These same three settings live in three other places; docs/rendering.md
+  // lists them.
   esbuild: {
     include: [/\.res\.mjs$/, /\.[jt]sx?$/],
     loader: "jsx",

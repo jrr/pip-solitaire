@@ -1,35 +1,18 @@
 // The JSX runtime: ReScript's *preserve* mode over Preact.
 //
-// ReScript 12 compiles this package with `"jsx": {"module": "Html", "preserve":
-// true}`, which emits real JSX syntax into the `.res.mjs` output; esbuild (via
-// Vite — see vite.config.js) lowers that JSX onto `preact/jsx-runtime`. So Preact
-// owns the diff, and this module owns three things: the types the JSX transform
-// checks against, the props a DOM element accepts, and the small surface the rest
-// of the app calls (`string`, `array`, `node`, `create`, `mount`).
+// The compiler emits real JSX into the `.res.mjs` output rather than lowering it,
+// and esbuild (via Vite) lowers it onto `preact/jsx-runtime`. So Preact owns the
+// diff, and this module owns three things: the types the JSX transform checks
+// against, the props a DOM element accepts, and the small surface the rest of the
+// app calls (`string`, `array`, `empty`, `node`, `create`, `mount`).
 //
-// Three properties the app leans on, all pinned in `Html_test`: components are
-// plain `props => vnode` functions, the Elm loop drives them, and node identity
-// survives a re-render — which is what stops a class change restarting a CSS
-// transition. Hooks are available in principle (#308), but see `create` below for
-// the large part of this app where they are not.
+// **The pipeline, the four places the same three esbuild settings are duplicated,
+// and what the app leans on Preact for are in `docs/rendering.md`.** Read that
+// before changing anything about the build; nothing checks that those four agree,
+// and `mise run dev-smoke` is the only task that catches them when they don't.
 //
-// Two things the binding shape must get exactly right, both discovered the hard
-// way — get either wrong and preserve mode either silently stops preserving or
-// emits JSX that no bundler can parse:
-//
-//   1. **The jsx functions must be `@module` externals.** With plain `let`
-//      bindings the compiler quietly falls back to lowering JSX into calls on
-//      this module, which is the old behaviour with none of the new runtime.
-//   2. **The types must mirror `@rescript/react`'s**: `component<'props>` is a
-//      transparent alias for `'props => vnode` (via `%component_identity`), and
-//      `string`/`array` are `%identity`. An abstract component type makes
-//      `<>…</>` emit `<prim => JsxRuntime.Fragment(prim)>`, which is not valid
-//      JSX; a non-identity `array` wraps every children list in a runtime call.
-//
-// The same three esbuild settings appear in vite.config.js (twice — the build and
-// the dev server's dependency scanner take different paths), in vitest.config.js,
-// and in scripts/lib/load-jsx-module.mjs for the Node scripts. Nothing checks that
-// they agree; `mise run dev-smoke` is what catches it when they don't.
+// Hooks are available in principle (#308), but see `create` below for the large
+// part of this app where they are not.
 
 // A real DOM node: what `Html.node` splices, what `Html.create` answers with, and
 // what the scenes hand around.
@@ -148,6 +131,19 @@ type fragmentProps = {children?: vnode}
 // `*Keyed` variants when a `key=` is present. Under preserve mode none of these
 // are actually *called*: they type-check the JSX and name the module the
 // emitted `import` points at.
+//
+// Two things the binding shape must get exactly right — get either wrong and
+// preserve mode either silently stops preserving or emits JSX that no bundler
+// can parse:
+//
+//   1. **These must stay `@module` externals.** With plain `let` bindings the
+//      compiler quietly falls back to lowering JSX into calls on this module,
+//      which is the old behaviour with none of the new runtime.
+//   2. **The types above must mirror `@rescript/react`'s**: `component<'props>`
+//      a transparent alias for `'props => vnode` (via `%component_identity`),
+//      `string`/`array` `%identity`. An abstract component type makes `<>…</>`
+//      emit `<prim => JsxRuntime.Fragment(prim)>`, which is not valid JSX; a
+//      non-identity `array` wraps every children list in a runtime call.
 @module("preact/jsx-runtime") external jsx: (component<'props>, 'props) => vnode = "jsx"
 @module("preact/jsx-runtime") external jsxs: (component<'props>, 'props) => vnode = "jsxs"
 @module("preact/jsx-runtime")
@@ -236,19 +232,15 @@ let node = el => jsx(rawHost, {node: el})
 // that want a node rather than a view: `TableScene` builds each card's <svg>
 // this way, and every component test renders through it under jsdom. Preact has
 // no "render me a node" entry point, so it renders into a throwaway host and the
-// node is lifted out of it.
-// A component whose root is a fragment (`<>…</>`, which several menu screens
-// are) renders as *several* top-level nodes, so the answer has two shapes: one
-// node comes back as itself, several come back in a DocumentFragment — which
-// `querySelector` searches and `appendChild` splices in without adding a wrapper.
+// nodes are lifted out of it — one comes back as itself, several (a component
+// whose root is a fragment) in a DocumentFragment. See `docs/rendering.md`.
 //
 // **What comes back is a node, not a mounted tree, and this is the one rule to
-// know before reaching for hooks (#308).** The host is thrown away and the nodes
-// are lifted out of it, so nothing ever renders into it again: a component
-// reached through `create` renders exactly once, for ever. `useState` in one
-// would hold state that no re-render could ever read back, and a `useEffect`
-// cleanup would never run — both failing silently, which is the worst way for a
-// constraint to be discovered.
+// know before reaching for hooks (#308).** The host is thrown away, so nothing
+// ever renders into it again: a component reached through `create` renders
+// exactly once, for ever. `useState` in one would hold state that no re-render
+// could ever read back, and a `useEffect` cleanup would never run — both failing
+// silently, which is the worst way for a constraint to be discovered.
 //
 // So: **a component reachable from `create` must stay pure.** Hooks are only
 // meaningful inside the tree `mount` owns and diffs. That covers more of the app

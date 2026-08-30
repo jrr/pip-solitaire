@@ -10,6 +10,7 @@ import { defineConfig } from "vitest/config"
 export default defineConfig({
   // The compiled output carries JSX under `"preserve": true` (see rescript.json
   // and vite.config.js); the test run needs the same lowering the app build gets.
+  // One of the four copies of these three settings — see docs/rendering.md.
   esbuild: {
     include: [/\.res\.mjs$/, /\.[jt]sx?$/],
     loader: "jsx",
