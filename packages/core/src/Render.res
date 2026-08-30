@@ -5,9 +5,9 @@
 // because two callers now want it:
 //
 //   - the **CLI**, which prints it to a terminal after every command;
-//   - the **web app's debug console**, whose `print` used to answer "the board
-//     is on screen" for want of any way to draw one — the panel is a monospace log,
-//     which is exactly the medium this renders for.
+//   - the **web app's debug console**, whose `print` needs a board it can put *in the
+//     panel* — the panel is a monospace log, which is exactly the medium this renders
+//     for.
 //
 // Three visual conventions carry the model's state, mirroring how the web-app's
 // styling distinguishes cards:
@@ -41,11 +41,11 @@
 // kept as the string-returning entry points they always were, so a caller that only
 // wants text (the CLI, every test that predates this) never learns about spans at all.
 //
-// The other thing structure buys is alignment. Colour used to be baked into the
-// characters, so every width the layout measured had to discount escapes it couldn't
-// see (`visibleWidth` was a regex strip). A span knows its own text, so a line's width
-// is a sum — and a coloured board can't drift out of alignment with a plain one,
-// because they're the same document painted twice.
+// The other thing structure buys is alignment, and it's why colour must stay out of the
+// characters: bake it in and every width the layout measures has to discount escapes it
+// can't see. A span knows its own text, so a line's width is a sum — and a coloured board
+// can't drift out of alignment with a plain one, because they're the same document
+// painted twice.
 
 open Card
 
@@ -100,9 +100,9 @@ let concat = (parts: array<line>): line => parts->Array.flat->compact
 let joinLines = (parts: array<line>, separator: line): line =>
   parts->Array.mapWithIndex((part, i) => i == 0 ? part : Array.concat(separator, part))->concat
 
-// The visible width of a line: the characters it will actually put on screen. A sum
-// now that colour lives in the ink rather than in the text — there is nothing invisible
-// in a line to discount.
+// The visible width of a line: the characters it will actually put on screen. A plain
+// sum, because colour lives in the ink rather than in the text — there is nothing
+// invisible in a line to discount.
 let visibleWidth = (line: line): int =>
   line->Array.reduce(0, (n, span) => n + String.length(span.text))
 
@@ -182,12 +182,13 @@ let empty = {
 let cellWidth = 4
 
 // --- A move, in words ----------------------------------------------------------
-// One dispatched action as a single line of the same document a board is drawn in. The
-// debug console used to narrate a move as the reducer's own `action`, stringified:
+// One dispatched action as a single line of the same document a board is drawn in, said
+// the way the board says it: `move 10♣ → T5`. The narration a log reaches for otherwise
+// is the reducer's own `action`, stringified —
 // `{"TAG":"Move","card":{"suit":"Clubs","rank":"Ten"},"to":{"TAG":"ToPile","_0":12}}` —
-// every fact about the move present and not one of them legible, with the destination
-// named as the index a player would have to count out rather than by the label printed
-// over it. This is the same move said the way the board says it: `move 10♣ → T5`.
+// where every fact about the move is present and not one of them legible, and the
+// destination is named by the index a player would have to count out rather than by the
+// label printed over it.
 //
 // A document rather than a string, for the reason a board is one: the card is inked by
 // suit, so it reads as the card it is in a log that already paints a printed board that

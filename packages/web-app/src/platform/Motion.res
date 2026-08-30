@@ -6,8 +6,8 @@
 // there's exactly one chance to ask — it has to land on a deliberate user gesture
 // (the Settings switch), not at startup. This module holds the request and the
 // state it resolves to; who *calls* it (Settings, or the board's first tap on
-// resume) is the caller's business. The debug scene no longer owns a grant at all —
-// it just reads `current` and shows it.
+// resume) is the caller's business. The debug scene owns no grant of its own — it reads
+// `current` and shows it.
 //
 // Two APIs could deliver motion. The Generic Sensor API (`new Accelerometer(…)`) is
 // nicer but Chromium-only — Safari has never shipped it — so we use the universal

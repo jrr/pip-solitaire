@@ -1,5 +1,4 @@
-// The menu's Settings screen, exercised in isolation now that it's a component of
-// its own.
+// The menu's Settings screen, exercised in isolation.
 //
 // The rows themselves are pinned by `MenuToggleRow_test` / `MenuWiggleRow_test` /
 // `MenuNavRow_test`. What's left to this file is what the *screen* decides:

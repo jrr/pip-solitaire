@@ -3,9 +3,9 @@
 // mid-game. `Menu` puts the About footer under it.
 //
 // Its content flows from the *top*: the panel grows the space *below* the sections
-// (the `.menu-screen` wrapper takes the slack) so the footer still hugs the foot,
-// but the settings no longer float in the middle under an empty header. Top to
-// bottom:
+// (the `.menu-screen` wrapper takes the slack), which keeps the footer hugging the foot
+// without letting the settings float in the middle of the pane under an empty header.
+// Top to bottom:
 //   - a header with a **back** button (`onBackToMenu`, returns to the main menu) and
 //     the ✕ (`onClose`, still closes the whole menu). Its title doubles as the
 //     hidden-options tap target — see `<MenuHeader>` for why that handler is
@@ -14,8 +14,7 @@
 //     its label; no section heading — the "Settings" title in the header already
 //     names them;
 //   - a **Debug** nav row (`onOpenDebug`) that opens the Debug screen — the debug
-//     tools moved off Settings entirely onto their own screen so the player
-//     preferences stand alone.
+//     tools live on a screen of their own so the player preferences stand alone here.
 type props = {
   onClose: unit => unit,
   onBackToMenu: unit => unit,

@@ -303,8 +303,8 @@ let setRunner = (run: string => unit): unit => runner := Some(run)
 // Whether the rows are *painted* is decided for the document as a whole, not row by row.
 // A document `core` inked — a board, which always carries at least its title's ink — is
 // painted span by span; a document that is only words is published as plain messages,
-// exactly as every reply was before this existed, so help listings and rejections keep
-// the log's own voice rather than turning into furniture. Per-document rather than
+// like anything else the log carries, so help listings and rejections keep the log's own
+// voice rather than turning into furniture. Per-document rather than
 // per-row because a board's blank separators and its row of empty foundation slots carry
 // no ink of their own: judged individually they'd come out styled as prose, striping the
 // drawing they belong to.

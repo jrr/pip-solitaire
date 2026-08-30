@@ -158,8 +158,8 @@ describe("Game", () => {
     test(
       "a board says how to deal another of its own game",
       () => {
-        // The inverse of `seed`, and the half that used to be missing: `seed` says which
-        // number produced *this* board, `deal` says how to produce the next one. So
+        // The inverse of `seed`: `seed` says which number produced *this* board,
+        // `deal` says how to produce the next one. So
         // "deal me another" is a question the board in hand answers — no caller has to
         // name FreeCell's deal function to ask it.
         let cards = (game: Game.t) => game.piles->Array.map(p => p.cards)
@@ -910,8 +910,9 @@ describe("Rules", () => {
         test(
           "the same run is not complete for the standard deck",
           () => {
-            // The regression this generalization exists for: five cards topped by a
-            // Five used to be judged against a hard-coded thirteen and King.
+            // What `~deck` is for: the same five cards are a complete run under one
+            // deck and not the other, so completeness can't be a hard-coded thirteen
+            // and King.
             expect(Rules.isCompleteRun(~deck=Cards.standard, shortRun))->toBe(false)
           },
         )

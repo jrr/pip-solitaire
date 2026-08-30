@@ -1,27 +1,28 @@
 // The DOM vocabulary the unit tests share.
 //
-// Every component test asks the same handful of questions of a rendered node —
-// find one, find all of them, read its text, read an attribute, click it — and
-// every one of them used to declare its own externals to do it: `querySelector`
-// seventeen times across the package, `textContent` fourteen, `click` nine,
-// `getAttribute` eight, and five byte-identical copies of
+// Every component test asks the same handful of questions of a rendered node — find
+// one, find all of them, read its text, read an attribute, click it — so they ask them
+// through here rather than each declaring its own externals. That duplication runs deep
+// when it's allowed to: `querySelector` seventeen times across the package,
+// `textContent` fourteen, `click` nine, `getAttribute` eight, and byte-identical copies
+// of
 //
 //     let find = (el, selector) => el->querySelector(selector)->Nullable.toOption
 //
-// This is that vocabulary in one place. Nothing here is new behaviour; it is the
-// same calls with the `Nullable`/`NodeList` unwrapping done once rather than per
-// file, which is the part that was actually being copied.
+// Nothing here is behaviour of its own; it is the same calls with the
+// `Nullable`/`NodeList` unwrapping done once rather than per file, which is the part
+// that gets copied.
 //
-// Two conveniences worth naming, because they're what the copies kept
-// reimplementing:
+// Two conveniences worth naming, because they're what a file that goes around this one
+// ends up reimplementing:
 //
-//   - **`findAll` answers with an array.** A `NodeList` isn't one, so four files
-//     each carried the same `for` loop to drain it. It goes here instead, and the
-//     list type stays private.
+//   - **`findAll` answers with an array.** A `NodeList` isn't one, so draining it is the
+//     same `for` loop in every file that asks. It goes here instead, and the list type
+//     stays private.
 //   - **`textIn` / `attrOr` fall back to `"<missing>"`.** Asserting on
 //     `"<missing>"` rather than on `None` is what makes a failure read as *the
 //     element wasn't there* rather than as a type mismatch, and it's the
-//     convention the tests already settled on.
+//     convention the tests are written to.
 //
 // It lives in `src/runtime/` rather than beside the tests because a leaf package's modules
 // are namespaced flat (`WebApp.TestDom`), so every directory under `src/` reaches it

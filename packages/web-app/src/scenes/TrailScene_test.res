@@ -1,4 +1,4 @@
-// The half of the `trail` scene that isn't pixels (#226).
+// The half of the `trail` scene that isn't pixels.
 //
 // What the scene is *for* — a trail that persists, backdrop cards showing
 // through, a hand-off that lands on the exact pixel the node occupied — is a
@@ -52,7 +52,7 @@ describe("TrailScene's pixel ratio", () => {
   })
 
   test("the cap the scene opens on is the cache's, not one of its own", () => {
-    // The whole claim of #226's dpr note: the overlay's backing store and the
+    // The whole claim of the scene's dpr note: the overlay's backing store and the
     // sprites blitted into it are built from one number. Two would type-check.
     expect(TrailScene.caps->Array.includes(CardRaster.maxPixelRatio))->toBe(true)
   })

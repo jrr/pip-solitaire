@@ -30,10 +30,10 @@ let ranks = [Ace, Two, Three, Four, Five, Six, Seven, Eight, Nine, Ten, Jack, Qu
 // --- The deck as a parameter ------------------------------------------
 // Which cards a board is played with, described as a **subset of one pack**: the
 // suits it uses and the ranks it uses, whose Cartesian product is its cards. A
-// value rather than the ambient 52, because the rules downstream used to *assume*
-// the pack — "complete" meant literally thirteen cards ending on a King, and "safe
-// to auto-collect" named all four suits by hand — which silently mis-decides on any
-// board that isn't the full pack.
+// value rather than the ambient 52, because a rule downstream that *assumes* the pack
+// silently mis-decides on any board that isn't the full one: "complete" as literally
+// thirteen cards ending on a King, or "safe to auto-collect" naming all four suits by
+// hand, is right for `Cards.standard` and wrong for everything else.
 //
 // Deliberately **not** multi-deck: two copies of one card would break
 // `GameState.sameCard`'s structural identity (a limitation that module's own

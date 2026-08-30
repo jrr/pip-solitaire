@@ -48,7 +48,7 @@ let countOf = (container, selector) => container->findAll(selector)->Array.lengt
 // The board's published surface, as the tests below take hold of it. The scene
 // hands the whole thing over as one `TableScene.controls` record when it mounts
 // (`~publish`), so a test that wants to press Undo or type a command captures the
-// record and reads the action off it — where it used to name a `~publishUndo` or
+// record and reads the action off it, rather than naming a `~publishUndo` or
 // `~publishConsole` callback apiece.
 //
 // Read through this rather than off a saved field, because these actions outlive a
@@ -649,11 +649,11 @@ describe("TableScene win time", () => {
   })
 
   test("the clock stops at the winning move, not when the last card lands", () => {
-    // The stamp used to be taken in `showWin`, which runs once the sweep's last card has
-    // flown — so the time included the flight, and the save the winning move wrote
-    // carried no win at all until a second one caught up behind it. The session stamps it
-    // as it records the move, so the save that move writes already says the game
-    // is over.
+    // The session stamps the win as it records the move, so the save that move writes
+    // already says the game is over. Taking the stamp in `showWin` instead — it runs once
+    // the sweep's last card has flown — puts the flight inside the reported time, and
+    // leaves the winning move's own save carrying no win at all until a second save
+    // catches up behind it.
     let game = Game.freecell
     let saved = ref(None)
     let container = host("div")
@@ -670,9 +670,9 @@ describe("TableScene win time", () => {
   })
 
   test("a game with no clock behind it simply shows no time", () => {
-    // Every save written before this existed. There's nothing in a history to say when
-    // it was dealt, so the panel says nothing rather than inventing a number — and the
-    // rest of it (the tally, the buttons) is exactly as it was.
+    // A save carrying no stamps: there's nothing in a history to say when a game was
+    // dealt, so the panel says nothing rather than inventing a number — and the rest of
+    // it (the tally, the buttons) is unaffected.
     let game = Game.freecell
     let container = host("div")
     let scene = TableScene.make(

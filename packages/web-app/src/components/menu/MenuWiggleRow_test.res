@@ -1,5 +1,4 @@
-// The "Wiggle Waggle" row, exercised in isolation now that it's a component
-// of its own.
+// The "Wiggle Waggle" row, exercised in isolation.
 //
 // The row's whole shape is decided by `Motion.state`, and the four states don't map
 // onto one bool — which is why it isn't a `<MenuToggleRow>` call. What this file

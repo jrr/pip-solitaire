@@ -24,8 +24,8 @@ type detail = Full
 // playing-card ratio; CSS sizes the rendered card responsively.
 //
 // `aspect` and `cornerRatio` are the *derived* forms, published because several
-// other card-sized boxes have to trace this one and previously each restated the
-// proportion as its own literal: `TableScene`'s `cardH` (a second 5:7 pair) and the
+// other card-sized boxes have to trace this one and would otherwise each restate the
+// proportion as their own literal: `TableScene`'s `cardH` (a second 5:7 pair) and the
 // stylesheet's `calc(var(--card-w) * 1.4)` / `* 0.1`. Deriving them here means the
 // design box is stated once and the rest follows, so a change to the card's shape
 // can't leave the empty-pile slot or the zone frame tracing the old one. The
@@ -52,18 +52,17 @@ let cornerRatio = cornerR /. boxW
 // below is `boxW - strokeW` wide at an offset of `strokeW / 2`, rather than filling
 // the box. Derived so the three stay consistent if the stroke ever changes.
 //
-// A hairline rather than the 2 units it used to be: the edge that separates two
-// overlapping cards is now carried mostly by the board's drop-shadow (the
-// `.stacking-card` filter in index.html), so the frame only has to draw the card's
-// outline, not stand in for the shadow. Thin *and* dark reads as a crisper edge
-// than thick and pale did — see `frameStroke`.
+// A hairline: the edge that separates two overlapping cards is carried mostly by the
+// board's drop-shadow (the `.stacking-card` filter in index.html), so the frame only has
+// to draw the card's outline, not stand in for the shadow. Thin *and* dark reads as a
+// crisper edge than thick and pale — see `frameStroke`.
 let strokeW = 1.
 let frameInset = strokeW /. 2.
 
-// The face's fill and the frame's colour. The stroke used to be `#cbd5e1`, a pale
-// slate that all but vanished where one white card overlapped another; this is
-// several steps darker, so the outline reads as an edge on its own — against the
-// neighbouring card's face as well as against the dark table.
+// The face's fill and the frame's colour. The stroke has to read as an edge on its own —
+// against the neighbouring card's face as well as against the dark table — so it stays
+// several steps darker than the face; a pale slate all but vanishes where one white card
+// overlaps another.
 let cardFill = "#f7f7f7"
 let frameStroke = "#8496ad"
 
@@ -74,12 +73,12 @@ let centerY = boxH /. 2.
 
 // The middle suit glyph's size, and the baseline it sits on.
 //
-// This used to be `dominant-baseline="central"` with `y = centerY`, which reads
-// far better and is why it was written that way — but `central` doesn't place the
-// glyph, it places the *font's* ascent-to-descent band, and then everything
-// depends on which font's metrics the renderer decided to use. Four paths draw
-// this card (inline in the page, serialized through `<img>` by CardRaster, canvas
-// 2D by CardRaster, resvg by the icon generator) and they did not agree:
+// **Don't reach for `dominant-baseline="central"` with `y = centerY` here**, however
+// much better it reads. `central` doesn't place the glyph, it places the *font's*
+// ascent-to-descent band, so where the pip lands depends on which font's metrics the
+// renderer decided to use. Four paths draw this card (inline in the page, serialized
+// through `<img>` by CardRaster, canvas 2D by CardRaster, resvg by the icon generator)
+// and they don't agree:
 //
 //   - Pip Suits ships two vertical-metric pairs half an em apart — hhea/OS2-typo
 //     1060/-440 (0.310 em) against OS2-usWin/head-bbox 815/-55 (0.380 em).
@@ -90,26 +89,24 @@ let centerY = boxH /. 2.
 //   - Worse, the page's `@font-face` for Pip Suits carries a `unicode-range`
 //     (styles/fonts.css), which keeps the subset from shadowing Latin text but also
 //     means Pip Suits is *not* the element's primary font. The pips still come
-//     from it, but `central` was measuring the fallback — a different, OS-supplied
+//     from it, but `central` measures the fallback — a different, OS-supplied
 //     face on every platform. The band it centres is 75.25 units in the page and
 //     102 (Pip Suits' own 1500/1000 em) inside the embedded-font SVG, from the
 //     very same markup.
 //
-// The visible result was the `raster` scene's whole point: the canvas sprite's
-// pip sat 4.5 design units above the live card's on macOS, and the live card and
-// the SVG sprite were 1.5 apart on Linux. None of it is catchable on one machine,
-// which is why the browser suite was green throughout.
+// What that costs is a pip sitting a few design units off between renderers — 4.5
+// between the canvas sprite and the live card on macOS, 1.5 between the live card and
+// the SVG sprite on Linux. None of it is catchable on one machine, so the browser suite
+// stays green through it; the `raster` scene is where it shows, and is there for this.
 //
 // So the baseline is stated outright rather than derived at paint time, and every
-// renderer now reads the same number. 0.310 em is Pip Suits' own `central` — the
-// value the embedded-font SVG and resvg were already using (the icon PNGs come
-// out byte-identical across this change); it's the live page card that moves,
-// about 1.5 units, off the fallback face it should never have been measuring.
+// renderer reads the same number. 0.310 em is Pip Suits' own `central`, which is what
+// the embedded-font SVG and resvg measure.
 //
 // Worth knowing separately: this is not where the pip is optically centred. The
 // suits' ink sits 0.355-0.380 em above their baseline, so the glyph rides ~4.8
-// units high in the design box. That's how the card has always looked; centring
-// it properly is a design change, not this one.
+// units high in the design box. Centring it properly is a design change, and moves
+// every card.
 let centerGlyphSize = 68.
 let centerGlyphBaseline = centerY +. centerGlyphSize *. 0.31
 

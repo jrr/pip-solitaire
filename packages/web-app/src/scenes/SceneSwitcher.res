@@ -184,9 +184,9 @@ let render = (
   // their labels — the chrome's, not ours — are just "games" and "scenes"; the
   // sibling "states" group is the same component fed by `Main`.
   //
-  // Recomputed per call so `selected` names the scene that is mounted now: this is
-  // the highlight the row classes used to be rewritten for, moved from a mutation
-  // into the value the menu is rendered from.
+  // Recomputed per call so `selected` names the scene that is mounted now. The highlight
+  // rides in the data the menu is rendered from, so it moves through the diff like every
+  // other row's state rather than by rewriting a mounted row's classes in place.
   let entriesIn = which =>
     () =>
       scenes

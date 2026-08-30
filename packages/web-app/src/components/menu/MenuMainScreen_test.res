@@ -1,5 +1,4 @@
-// The menu's main screen, exercised in isolation now that it's a component of its
-// own.
+// The menu's main screen, exercised in isolation.
 //
 // `Menu_test` pins what **Share Seed** does through the whole pane and
 // `MenuGameButton_test` pins the button itself; this file pins what's left — the
@@ -84,7 +83,7 @@ describe("MenuMainScreen", () => {
   })
 
   test("draws the games it's given as rows, marking the one that's showing", () => {
-    // The switcher's rows, now that they arrive as data: the labels in order,
+    // The switcher's rows, which arrive as data: the labels in order,
     // and the highlight — `menu-row--active` plus `aria-current` — on the scene
     // mounted. A second game would list beneath the first, which is what this section
     // is a section for.

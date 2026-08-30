@@ -1,10 +1,7 @@
-// The menu's collapsible group (`MenuDisclosure`), now that the Debug screen's two
-// of them — "scenes" and "states" — are one component rather than twelve lines of
-// JSX beside forty lines of `createElement`.
-//
-// The states half of this file is `DebugStates_test`'s, carried over: it was the
-// only one of the two that could be tested at all, since the scenes group reached
-// the menu as an opaque `Html.element`. What's worth pinning:
+// The menu's collapsible group (`MenuDisclosure`). The Debug screen's two — "scenes"
+// and "states" — are the same component, so both halves are covered here, and a group
+// that reached the menu as an opaque `Html.element` instead couldn't be covered at all.
+// What's worth pinning:
 //
 // 1. **One row per entry, in the order given.** The rows are scenes to mount and
 //    positions a tap drops the board into; a menu that reordered or dropped one

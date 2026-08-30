@@ -1,5 +1,4 @@
-// The header shared by all three menu screens, exercised in isolation now that it's
-// a component of its own.
+// The header shared by all three menu screens, exercised in isolation.
 //
 // Two things here are load-bearing rather than cosmetic:
 //

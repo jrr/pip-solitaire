@@ -1,16 +1,14 @@
-// The win overlay, exercised in isolation now that it's a
-// component of its own.
+// The win overlay, exercised in isolation.
 //
-// It was reachable before only by playing a board to a win — `TableScene_test` drains
+// The other way to reach it is by playing a board to a win — `TableScene_test` drains
 // an almost-won position and `win.spec.mjs` / `share-win.spec.mjs` do it in a real
-// browser. Those still hold, and they're what pins that the panel goes *up* at the
-// right moment. What they can't cheaply do is vary the panel's own inputs, which is
-// where its branches are:
+// browser — and that is what pins the panel going *up* at the right moment. What those
+// can't cheaply do is vary the panel's own inputs, which is where its branches are:
 //
 // 1. **The time line comes and goes; the tally never does.** A game restored from a
 //    save written before the clock existed has no time to report, and the line
 //    is then absent rather than blank — a "0:00" would be a claim, and an empty
-//    element would leave a gap where a number used to be.
+//    element would leave a gap where the number belongs.
 // 2. **No share, no status line.** The Share button is withheld from a board with no
 //    deal to name and from a game the solver played, and when it goes the
 //    reserved status slot goes with it — an empty line under a single New Game button

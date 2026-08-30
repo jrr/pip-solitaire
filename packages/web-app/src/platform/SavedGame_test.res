@@ -33,7 +33,7 @@ describe("SavedGame", () => {
     loose: [{suit: Spades, rank: Ace}],
   })
   // …and a clock beside it, for the same reason: a save that dropped the
-  // stamps would round-trip to a game that no longer knows how long it has taken.
+  // stamps would round-trip to a game with no idea how long it has taken.
   // …and the game it's a game of, which every save written from a session
   // carries. Storage keys by game id as well, so here the two simply agree; the field
   // earns its keep at the other end of the same envelope, where a share link arrives

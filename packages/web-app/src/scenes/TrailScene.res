@@ -1,4 +1,4 @@
-// The `trail` scene (#226): the two mechanics the victory overlay rests on,
+// The `trail` scene: the two mechanics the victory overlay rests on,
 // proved on their own before any of this goes near `TableScene`'s 2400 lines.
 //
 // The victory animation wants to fling the deck around at 60fps over a board

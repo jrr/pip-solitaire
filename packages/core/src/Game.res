@@ -82,18 +82,17 @@ type rec t = {
   piles: array<pile>,
   // **The cards this board is played with** — a `Cards.deck`, i.e. a subset
   // of one pack. Board-level rather than ambient because two rules downstream need
-  // it and used to assume the 52 instead: `Rules.isCompleteRun` (how long a finished
+  // it and would otherwise assume the 52: `Rules.isCompleteRun` (how long a finished
   // foundation is, and what tops it) and `Reducer.isSafeToCollect` (which suits are
-  // the *opposite colour* ones a card must wait for). Both now read it here, so a
+  // the *opposite colour* ones a card must wait for). Both read it here, so a
   // board that isn't the full pack decides correctly rather than silently stalling.
   //
-  // `Cards.standard` for FreeCell, so nothing about today's game changes.
+  // `Cards.standard` for FreeCell.
   deck: Cards.deck,
-  // The **deal number that reproduces this board**, when there is one. Originally the
-  // seed was an *input* to the deal and nothing more: `freecellDeal` used it and
-  // dropped it, so a dealt board couldn't say which number produced it. Carrying it
-  // here makes the board self-describing, which is what lets the app report a deal
-  // number and build a `?seed=` link back to this exact layout.
+  // The **deal number that reproduces this board**, when there is one. Carried on the
+  // board rather than left as an input the deal consumes and drops, because a board that
+  // can't say which number produced it can't be reported or linked to: this field is what
+  // lets the app show a deal number and build a `?seed=` link back to this exact layout.
   //
   // It's deliberately narrower than "the seed some shuffle used": `Some(n)` promises
   // that dealing `n` lays out *this* board again, so it's set only where that round
@@ -103,15 +102,15 @@ type rec t = {
   // by id.
   seed: option<int>,
   // **How to lay out another board of this game**, from a deal number — the
-  // inverse of `seed`, and the half that was missing. `seed` says which number produced
+  // inverse of `seed`. `seed` says which number produced
   // *this* board; `deal` says how to produce the next one, so "deal me another" is a
   // question a board can answer about itself.
   //
   // `None` for a fixed board with no deal to vary — the same boards that answer `None`
   // to `TableScene`'s `~newDeal`. So `deal->Option.isSome` reads as the *capability*
-  // ("is this board re-dealable?") that callers used to spell as an identity check
-  // against `freecell.id`, which is why a second seeded game now costs no edit in
-  // `Main` or `Session`.
+  // ("is this board re-dealable?") — the question to ask, rather than an identity check
+  // against `freecell.id`, which asks it of one game instead of the capability and so
+  // would cost an edit in both `Main` and `Session` the day a second seeded game lands.
   //
   // A function on the record, deliberately: nothing compares a `Game.t` with
   // whole-record `==`, so it costs no structural equality, and it keeps the answer with
@@ -304,9 +303,9 @@ let default = freecell
 
 // The game with a given id, or `None` for a name that isn't one of `all`'s. Every front
 // end asks this same question of the same list — the CLI resolving `deal mini`, the web
-// app resolving `?game=mini` — and each used to spell the `Array.find` for itself.
-// Answered here so the lookup lives beside the list it looks in, and so a caller holds
-// a `Game.t` rather than a string it hopes is one.
+// app resolving `?game=mini` — so it is answered once here rather than spelled as an
+// `Array.find` in each of them: the lookup lives beside the list it looks in, and a
+// caller holds a `Game.t` rather than a string it hopes is one.
 let byId = (id: string): option<t> => all->Array.find(game => game.id == id)
 
 // Another board of `game`, laid out from deal number `seed` — its `deal` capability

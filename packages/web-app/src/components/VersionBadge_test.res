@@ -4,7 +4,7 @@
 // worth pinning, all of which fail quietly:
 //
 // 1. **Every field is zero-padded.** Without `pad2` a build stamped at 06:03 on the
-//    6th reads `2026.7.6 · 6:3` — still parseable by a human, but no longer
+//    6th reads `2026.7.6 · 6:3` — still parseable by a human, but not
 //    fixed-width, so the badge's width jumps around between builds and two stamps
 //    can't be compared down a column.
 // 2. **It reports the viewer's own time zone**, not UTC: the ISO string is

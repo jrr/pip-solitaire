@@ -15,8 +15,8 @@
 //   - `Game.t` is the *board definition* — the piles and the rules they enforce,
 //     static across a game. The "empty board".
 //   - `GameState.t` is the *dynamic* snapshot — where each card rests right now.
-//     The opening deal, which used to be baked into `Game.t` (`pile.cards`),
-//     becomes just the *initial* `GameState` derived from a board.
+//     The opening deal a board describes (`pile.cards`) is only the *initial* value
+//     of one of these; everything that happens to those cards afterwards is here.
 //
 // Card identity for lookups is structural `{suit, rank}` — unique within a
 // single deck — so the queries below key off a `card` value directly via `==`.
