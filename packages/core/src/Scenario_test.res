@@ -1,10 +1,7 @@
 // Tests for the named starting scenarios (Scenario.res). The scenarios feed the
-// screenshot report a fixed mid-game position, so the load-bearing guarantee is
-// that the position is *well-formed* — it holds a full deck (no card invented,
-// dropped or duplicated) and lays out onto the board's roles the way the report
-// expects (part-built foundations, a couple of occupied cells, the rest in the
-// cascades). These lock that in so a future tweak to the heights or the deal can't
-// silently produce a broken board.
+// screenshot report a fixed mid-game position, so what has to be locked in is that the
+// position is *well-formed*: a tweak to the heights or the deal must not be able to
+// produce a broken board silently, on a picture nobody looks at closely.
 
 open Vitest
 open Card

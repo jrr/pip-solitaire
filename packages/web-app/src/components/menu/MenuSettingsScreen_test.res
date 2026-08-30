@@ -1,16 +1,8 @@
 // The menu's Settings screen, exercised in isolation.
 //
 // The rows themselves are pinned by `MenuToggleRow_test` / `MenuWiggleRow_test` /
-// `MenuNavRow_test`. What's left to this file is what the *screen* decides:
-//
-// 1. **Which rows are there, and in what order.** Auto-collect, Sloppy placement,
-//    (Wiggle Waggle), Display content around notch — then Debug in a section of its
-//    own, below the preferences rather than among them.
-// 2. **Wiggle Waggle is hidden until it's revealed** (`HiddenOptions`), and
-//    when it appears it appears *between* Sloppy placement and the notch row rather
-//    than nested under either — the three are independent settings.
-// 3. **Each switch is wired to its own setting.** Four toggles that all look alike is
-//    exactly the arrangement where a crossed wire goes unnoticed.
+// `MenuNavRow_test`. What's left to this file is what the *screen* decides — which rows
+// are there, in what order, and which handler each of them reaches.
 open Vitest
 open TestDom
 
@@ -67,6 +59,8 @@ describe("MenuSettingsScreen", () => {
   })
 
   test("slots Wiggle Waggle in beside the others once revealed, not under one", () => {
+    // Between Sloppy placement and the notch row rather than nested under either: the
+    // three are independent settings.
     expect(rowLabels(render(~revealHidden=true)))->toEqual([
       "Auto-collect",
       "Sloppy placement",

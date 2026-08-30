@@ -1,7 +1,5 @@
 // The share link's codec (`Compression`): DEFLATE via the platform's Compression
-// Streams API, base64url on top. These pin the three things a share link depends
-// on — that a round trip is lossless, that the output is genuinely URL-safe, and
-// that bad input comes back as `None` instead of throwing.
+// Streams API, base64url on top.
 //
 // The API is a browser built-in rather than a dependency, and Node has carried it
 // as a global since v18 — so the `jsdom` environment these tests run in has a real

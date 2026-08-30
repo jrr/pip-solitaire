@@ -1,15 +1,11 @@
 open Vitest
 
-// The play tally. Three rules, and they only make sense together: a move
-// counts, an undo doesn't count as a move (it counts as an undo), and a redo counts
-// as a move again. What's pinned here is that `moves` is monotonic — the count of
-// moves *made*, which no amount of undoing can walk back — since that's the property
-// the whole design turns on, and the one a "just use `History.steps`" implementation
-// would quietly fail.
-//
-// `autoplays` is the same monotonic rule, load-bearing for a different reason:
-// the victory screen withholds its Share button from a game the solver played, so
-// "was this autoplayed" has to survive undoing back past every move it made.
+// The play tally. `moves` is the count of moves *made*, which no amount of undoing can
+// walk back — the property the whole design turns on, and the one a "just use
+// `History.steps`" implementation would quietly fail. `autoplays` is monotonic for a
+// different reason: the victory screen withholds its Share button from a game the
+// solver played, so "was this autoplayed" has to survive undoing back past every move
+// the solver made.
 describe("Stats", () => {
   test("a game not yet played has nothing to report", () => {
     expect(Stats.zero)->toEqual({Stats.moves: 0, undos: 0, autoplays: 0})

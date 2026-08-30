@@ -1,7 +1,6 @@
-// The hidden-options tap gesture (`HiddenOptions`): counting to ten, staying
-// revealed afterwards, and forgetting a part-finished run. Pure state, so it pins
-// without a DOM — what it *can't* see from here is that only the Settings screen's
-// title feeds taps in, which lives in `Menu`'s view and `Main`'s screen guard.
+// The hidden-options tap gesture (`HiddenOptions`). Pure state, so it pins without a
+// DOM — what it *can't* see from here is that only the Settings screen's title feeds
+// taps in, which lives in `Menu`'s view and `Main`'s screen guard.
 
 open Vitest
 

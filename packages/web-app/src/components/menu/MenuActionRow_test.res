@@ -1,10 +1,6 @@
-// The action row (the Debug screen's "Share game state"), exercised in isolation now
-// that it's a component of its own.
-//
-// What's worth pinning: it carries **no switch** — that's the whole difference from
-// `<MenuToggleRow>`, and a switch appearing here would claim the row holds a state it
-// doesn't — and a disabled row is *genuinely* disabled rather than lit and inert, so
-// a tap on it can't reach the handler.
+// The action row (the Debug screen's "Share game state"), exercised in isolation. What
+// separates it from `<MenuToggleRow>` is that it does something once rather than
+// holding a state, and everything below follows from that.
 open Vitest
 open TestDom
 
@@ -21,6 +17,7 @@ describe("MenuActionRow", () => {
   })
 
   test("carries no switch, since it does something once rather than holding a state", () => {
+    // A switch appearing here would claim the row holds a state it doesn't.
     let row = render(~enabled=true)
     expect(row->find(".menu-row__switch")->Option.isSome)->toBe(false)
   })

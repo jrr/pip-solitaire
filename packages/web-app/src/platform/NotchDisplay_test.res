@@ -1,8 +1,7 @@
 // `NotchDisplay` reflects the "Display content around screen notch" preference
 // onto the document root as `data-notch-wings`, the seam the landscape
-// wing-placement CSS keys off. On (the default) clears the attribute so the base
-// rules govern; off stamps "off" so the clamp overrides win. jsdom provides a real
-// `document.documentElement`, so this exercises the actual attribute writes.
+// wing-placement CSS keys off. jsdom provides a real `document.documentElement`, so
+// this exercises the actual attribute writes.
 
 open Vitest
 open TestDom

@@ -5,15 +5,6 @@
 // rather than twice over in each front end's own tests. `packages/cli/examples/*.txt`
 // and `Cli_test` still exercise the interpreter end to end; these are the unit tests
 // underneath them, and the only tests the browser console has.
-//
-// Two properties matter most:
-//
-//   - a move-shaped line parses all the way to the `Reducer.action` a *pointer drop*
-//     would dispatch, so a typed move and a dragged one are literally the same move;
-//   - malformed input never fails — it comes back as `Usage` (a known verb) or
-//     `Unknown` (no such verb), carrying the prose to show and, for `Usage`, the verb
-//     it choked on, which is what lets an interpreter answer "deal a game first"
-//     ahead of "that's not a card".
 
 open Vitest
 open Card
@@ -378,7 +369,8 @@ describe("Command.parse", () => {
     )
 
     // The verb rides along on every `Usage` precisely so a front end can decide what
-    // to say *about the verb* before it says anything about the arguments.
+    // to say *about the verb* before it says anything about the arguments — "deal a
+    // game first" ahead of "that's not a card".
     test(
       "a usage failure still names the verb it choked on",
       () =>

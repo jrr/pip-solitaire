@@ -6,16 +6,12 @@
 //
 // That includes *which game* the stack is a stack of: without it the blob lands on
 // whichever board happens to be mounted at the far end. The resolving happens here
-// rather than in `core`, so it's pinned here too — including the two ways a link can
-// be bad (see the second `describe`).
+// rather than in `core`, so it's pinned here too.
 //
-// The module's other link — `urlForDeal`, which shares a *deal number* rather
-// than a position — is pinned here too, on the shape of the URL it builds. It has no
-// codec to round-trip; what it promises is that the number lands in the query
-// parameter the app parses — and that the *game* it's a deal of lands in
-// the one beside it, or is left out because it's the game a bare number already means.
-// `browser-tests/share-deal.spec.mjs` closes the loop on both by opening the link for
-// real.
+// The module's other link — `urlForDeal`, which shares a *deal number* rather than a
+// position — has no codec to round-trip, so it is pinned on the shape of the URL it
+// builds instead. `browser-tests/share-deal.spec.mjs` closes the loop on both by
+// opening the link for real.
 //
 // The delivery half (`deliver`, the share-sheet/clipboard fork) isn't covered here:
 // it's a thin wrapper over two platform APIs that jsdom doesn't implement, so a test

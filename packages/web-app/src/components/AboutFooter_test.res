@@ -1,14 +1,9 @@
 // Size-stability test for the `AboutFooter` component: the footer has to be
 // the same height whether or not an update is waiting, or it shoves the version
 // line and everything above it the moment an update arrives (see `AboutFooter.res`).
-// The Update button stays laid out at all times and is hidden with *visibility*
-// (`menu-update--hidden`), never with `hidden`/`display: none`.
 //
 // See `RefreshControl_test` for why the assertion is structural rather than
-// pixel-measured: jsdom has no layout engine, so we pin the size-determining tree
-// (element tags + nesting) — which a box-collapsing `display: none` would change
-// but a `visibility: hidden` reserve would not — plus the specific regression
-// guard that the button never falls back to the `hidden` attribute.
+// pixel-measured.
 open Vitest
 open TestDom
 

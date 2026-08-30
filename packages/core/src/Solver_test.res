@@ -1,10 +1,9 @@
 open Vitest
 
-// The solver. `Position_test` pins the rules
-// it searches against the real reducer; what's left for here is the search itself:
-// that it finds a line, that the line it finds is one the *game* will play (every
-// move dispatched into `Reducer`, the board compared after each), and that the
-// plan it hands a driver says the right things.
+// The solver. `Position_test` pins the rules it searches against the real reducer;
+// what's left for here is the search itself. A line is checked by playing it — every
+// move dispatched into `Reducer`, the board compared after each — so a plan the game
+// wouldn't accept can't pass by merely looking like a plan.
 //
 // Deals are named, never random: a solver test that picks its own board can't fail
 // the same way twice.

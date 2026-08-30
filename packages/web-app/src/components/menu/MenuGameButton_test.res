@@ -1,12 +1,8 @@
-// The "game" action button — New, Restart, Share Seed — exercised in isolation now
-// that it's a component of its own.
+// The "game" action button — New, Restart, Share Seed — exercised in isolation.
 //
-// `Menu_test` already pins what Share Seed does *through the menu*; this file
-// pins the button's own two behaviours, which the other two game buttons rely on
-// just as much: a button with no `value` is a bare label and nothing else, and a
-// button with one keeps the accessible name and the visible text the same string —
-// the trailing space after the label is the only thing between the word and the
-// digits when a screen reader concatenates them.
+// `Menu_test` already pins what Share Seed does *through the menu*; what's left to this
+// file is the button's own contract, which the other two game buttons lean on just as
+// much even though neither carries a value.
 open Vitest
 open TestDom
 
@@ -22,7 +18,8 @@ describe("MenuGameButton", () => {
   })
 
   test("keeps a space between the label and the value it carries", () => {
-    // The accessible name is the visible text, so the two would run together as
+    // The accessible name is the visible text, so this one space is the only thing
+    // between the word and the digits when a screen reader concatenates them —
     // "Share Seed123456" without it.
     expect(render(~value=Some("123456"))->text)->toBe("Share Seed 123456")
   })

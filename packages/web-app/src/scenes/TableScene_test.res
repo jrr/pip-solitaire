@@ -1,8 +1,7 @@
-// The end-game "Finish" button: it appears in the mounted board exactly
-// when the position is drainable to a win by foundation moves alone
-// (`Reducer.canFinish`), and is absent otherwise. Mounting the real scene into a
-// jsdom container and querying for the control proves the conditional wiring end
-// to end.
+// The card table, driven as the app drives it: the real scene mounted into a jsdom
+// container, then read back through the DOM it built and the sinks it was handed. That
+// is what makes these wiring tests rather than restatements of `core` — every rule
+// underneath is pinned in `core`'s own suite.
 //
 // The deferred opening deal (scheduled on the next animation frame) would reach
 // `matchMedia` and `Element.animate`, neither of which jsdom implements. Stubbing
@@ -59,6 +58,10 @@ let live = (board: ref<option<TableScene.controls>>) => board.contents->Option.g
 
 let hasFinishButton = (container): bool => container->find(".finish-button")->Option.isSome
 
+// The end-game "Finish" button is the driver's to place: it is built at mount exactly
+// when the position is drainable to a win by foundation moves alone
+// (`Reducer.canFinish`), so querying the mounted board for it proves that conditional
+// end to end.
 describe("TableScene Finish button", () => {
   test("appears when the opening position is drainable to a win", () => {
     // The trapped-tail scenario is finishable by foundation moves alone, so the

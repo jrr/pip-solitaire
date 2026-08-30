@@ -1,8 +1,6 @@
-// The gallery is a `Scene.static`: no model, no messages, no teardown.
-// What that swapped out was an `Html.mount` loop over a unit model, so what's
-// worth pinning is that the switch didn't cost the scene anything a scene has —
-// it still puts all 52 cards into the container it's handed, and it still hands
-// back a teardown the switcher can call.
+// The gallery is a `Scene.static`: no model, no messages, no teardown of its own. What
+// that costs it is nothing the switcher can tell apart from any other scene, which is
+// the claim below.
 open Vitest
 
 describe("the gallery scene", () => {

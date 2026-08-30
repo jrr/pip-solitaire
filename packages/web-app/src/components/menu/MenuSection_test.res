@@ -2,19 +2,10 @@
 // component here does: **taking children**.
 //
 // Children are a props field like any other — the JSX transform fills
-// `children?: Html.vnode` from whatever sits between the tags — but three
-// shapes reach that one field, and the point of this file is that all three
-// arrive intact and in order:
-//
-//   - one child                     → the vnode itself
-//   - several children              → an array, still typed `Html.vnode`
-//   - `…->Html.array` (a list)      → an array, spliced in rather than nested
-//
-// The last two are the same thing at runtime, which is exactly why a section
-// built from a mapped list and one built from written-out rows are
-// indistinguishable in the DOM. Also pinned here: the tag choice (`nav` for rows
-// that go somewhere, `div` for controls that act in place) and the accessible
-// name, because both are invisible on screen and neither has a test elsewhere.
+// `children?: Html.vnode` from whatever sits between the tags — but three shapes reach
+// that one field (one child, several, and a mapped list through `Html.array`), which is
+// why there is a case here per shape. The tag choice and the accessible name are pinned
+// here too, since both are invisible on screen and neither has a test elsewhere.
 open Vitest
 open TestDom
 
@@ -75,9 +66,10 @@ describe("MenuSection", () => {
     let section = Html.create(
       <MenuSection label="Games"> {["a", "b", "c"]->Array.map(row)->Html.array} </MenuSection>,
     )
-    // Three siblings, not one wrapper holding three: `Html.array` is `%identity`,
-    // so a list of children is the same thing to the runtime as children written
-    // out one by one.
+    // Three siblings, not one wrapper holding three: `Html.array` is `%identity`, so a
+    // list of children is the same thing to the runtime as children written out one by
+    // one — which is why a section built from a mapped list and one built from
+    // written-out rows are indistinguishable in the DOM.
     expect(section->childCount)->toBe(3)
     expect(section->text)->toBe("abc")
   })

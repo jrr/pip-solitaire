@@ -1,10 +1,8 @@
 open Vitest
 
-// The game clock. Two stamps and a subtraction, so what's worth pinning isn't
-// the arithmetic but the three decisions around it: a win is stamped *once* (or a
-// resumed victory would re-time itself on every reload), stepping back out of a
-// victory un-stamps it, and a pair of stamps that can't be a real game reports
-// nothing rather than nonsense.
+// The game clock. Two stamps and a subtraction, so what's worth pinning isn't the
+// arithmetic but the decisions around when a stamp may be written and when a pair of
+// them may be read.
 describe("Timing", () => {
   let noon = 1_700_000_000_000.
 

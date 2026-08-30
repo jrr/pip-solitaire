@@ -1,21 +1,7 @@
 // The menu's Debug screen, exercised in isolation.
 //
-// The rows themselves are pinned by `MenuToggleRow_test` / `MenuActionRow_test`. What
-// this file pins is what the *screen* decides:
-//
-// 1. **The two developer toggles, wired to their own settings** — the safe-area
-//    overlay and console logging.
-// 2. **"Share game state" swaps its description for the status**, rather than growing
-//    a line of its own. The row would change height as the confirmation came and went
-//    otherwise, shoving the scene lists below it.
-// 3. **It's disabled while there's nothing to share** — a scene with no game, or the
-//    moment between opening the screen and the encode resolving — and says which.
-// 4. **Each list lands as its own group, in order.** Every one of them is the same
-//    component (`<MenuDisclosure>`), which is exactly why the screen has to be pinned on
-//    giving each its own entries: calls that differ only in their data are calls that
-//    can be crossed. The "games" group is placed only when it has entries, so
-//    the default here — no extra games — is still scenes then states.
-// 5. **Back goes one step, to Settings** — not all the way out of the pane.
+// The rows themselves are pinned by `MenuToggleRow_test` / `MenuActionRow_test`, so
+// what's left to this file is what the *screen* decides.
 open Vitest
 open TestDom
 
@@ -96,6 +82,8 @@ describe("MenuDebugScreen", () => {
   })
 
   test("is really disabled with no game to share, and says so", () => {
+    // A scene with no game, or the moment between opening the screen and the encode
+    // resolving.
     let taps = ref(0)
     let screen = render(~shareEnabled=false, ~onShareGame=() => taps := taps.contents + 1)
     expect(screen->shareDesc)->toBe("No game on screen to share.")
@@ -116,6 +104,8 @@ describe("MenuDebugScreen", () => {
   })
 
   test("renders the two groups, scenes first, each with its own entries", () => {
+    // Every group is the same component (`<MenuDisclosure>`), which is why the entries
+    // are read back per group: calls that differ only in their data can be crossed.
     let screen = render()
     expect(screen->findAll(".scene-menu__group > summary")->Array.map(text))->toEqual([
       "scenes",

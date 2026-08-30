@@ -3,11 +3,9 @@
 // menu around the About footer (see `RefreshControl.res`).
 //
 // **What "a good size test" means here.** These run under jsdom (see
-// vitest.config.js), which has no layout engine — no pixel measurement. So we pin
-// the size-determining structure instead: the section's stacked **rows** (its
-// direct child boxes). Idle and busy must produce the same rows; the spinner is
-// nested *inside* the button, not a new row, so it can't change the section's
-// height. And no status line under the button, in either state.
+// vitest.config.js), which has no layout engine — no pixel measurement. So what's
+// pinned is the size-determining structure instead: the section's stacked **rows**, its
+// direct child boxes.
 open Vitest
 open TestDom
 

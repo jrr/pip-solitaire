@@ -1,12 +1,7 @@
 // The card table's fits, checked without a browser. The geometry itself is
 // `docs/board-geometry.md`.
 //
-// These are the claims answerable from arithmetic alone: which of the two fits binds
-// and when, that the clamp holds at both ends, that `minStageWidth` really is the width
-// fit solved for the floor (which is the thing `ConsoleDock`'s refusal leans on), that
-// the published CSS variables keep the proportions the stylesheet doesn't restate, and
-// that the drop hit-test is strict across and generous down.
-//
+// What's here is everything answerable from arithmetic alone.
 // `browser-tests/geometry.spec.mjs` is the other half — that these numbers land real
 // cards in the right pixels, measured off a real engine. What it shouldn't have to be
 // is the first place a divide-by-zero or an inverted clamp is noticed.

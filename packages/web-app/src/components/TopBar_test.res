@@ -1,22 +1,9 @@
 // The top bar: Menu on one side, Undo on the other.
 //
 // Both of its controls carry state that is *only* visible in an attribute, which is
-// what this file is for — the pip and the disabled Undo look obvious on screen and
-// say nothing to a screen reader unless the ARIA moves with them:
-//
-// 1. **The update pip is decorative, and the Menu button's name carries the news.**
-//    A green dot appears when a new build is waiting. It's `aria-hidden`, so
-//    the only way that state reaches assistive tech is the button's `aria-label`
-//    changing with it. If the two ever came apart, the visual half would still look
-//    right.
-// 2. **Undo is disabled by the real attribute, and `aria-disabled` is absent rather
-//    than "false" when the action is available.** An enumerated ARIA attribute set
-//    to "false" is not the same as no attribute, and "no undo available" announced
-//    on every fresh deal is noise.
-// 3. **The undo glyph is drawn, not typed** — an inline `<svg>`, because U+21B6
-//    isn't in Libre Franklin and each platform would substitute a different
-//    fallback face for that one character (see `TopBar.res`). It's `aria-hidden`,
-//    so the button is named by its label rather than by its artwork.
+// what this file is for — the pip and the disabled Undo look obvious on screen and say
+// nothing to a screen reader unless the ARIA moves with them, so if the two halves ever
+// came apart the visual one would still look right.
 open Vitest
 open TestDom
 
@@ -69,6 +56,8 @@ describe("TopBar", () => {
   })
 
   test("draws the undo glyph rather than typing it, and hides the drawing", () => {
+    // An inline `<svg>` for the reason `TopBar.res` gives; here it's the `aria-hidden`
+    // that matters, so the button is named by its label rather than by its artwork.
     let icon = render()->find(".top-bar__icon")->Option.getOrThrow
     expect(icon->tag)->toBe("svg")
     expect(icon->attr("aria-hidden"))->toBe(Some("true"))

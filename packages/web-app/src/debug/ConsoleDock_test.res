@@ -1,7 +1,5 @@
 // Where the debug console sits, on the parts of it that are answerable without a
-// browser: the placement's trip through `localStorage`, the order ⇧` walks them in (and
-// what it does with a placement the window can't show), and the arithmetic that decides
-// whether a window is wide enough to dock into at all.
+// browser — the placement's trip through storage, and the arithmetic around it.
 //
 // The rest of placement is layout — the board reflowing into the remaining width, the
 // two rects not intersecting, the menu coexisting, the bottom band and the full window
