@@ -6,9 +6,6 @@
 // a setting unexplained), it *announces* its state rather than only looking the part
 // (`aria-checked`, since a `<button role="switch">` has no checkedness of its own for
 // assistive tech to read), and a tap actually reaches the handler.
-//
-// Rendered through `Html.create` like the other component tests here (see
-// `AboutFooter_test`), which needs no DOM beyond what jsdom gives.
 open Vitest
 open TestDom
 

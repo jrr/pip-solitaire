@@ -27,7 +27,6 @@
 //     target, and snapping the card to that zone's centre on release.
 //   - Squared vs fanned pile layout, reflowed live from the zones' rects.
 
-// This component's stylesheet, in the `scenes` layer (see src/styles/index.css).
 %%raw(`import "./TableScene.css"`)
 
 // --- Pointer / geometry bindings ---------------------------------------------

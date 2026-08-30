@@ -39,17 +39,12 @@ external component: componentLike<'props, vnode> => component<'props> = "%compon
 // uses, each one a typed field. `@as` gives the exact DOM name where ReScript
 // can't spell it — every hyphenated attribute, and `type` (a keyword).
 //
-// There is no generic escape hatch: an attribute this record doesn't name can't be
-// set, so an attribute name is checked by the compiler. Values are props, not
-// `setAttribute` strings — `disabled` is a `bool`, not a presence flag.
+// There is no generic escape hatch: an attribute this record doesn't name can't
+// be set, so an attribute name is checked by the compiler.
 //
-// `@rescript/runtime` ships `JsxDOM.domProps`, which covers most of this list.
-// It doesn't fit here for three reasons, each load-bearing: `style` is a typed
-// record there, and `RasterScene` sets a CSS *custom property*; `ref` is an
-// opaque React-shaped `domRef`, and the splice host below needs a callback; and
-// its event types are React's synthetic ones rather than the DOM events Preact
-// hands you. Adding a field when a new attribute is wanted is the cost, and a
-// cheap one — it also means new attribute names get read by a reviewer.
+// Why this record rather than `@rescript/runtime`'s `JsxDOM.domProps`, and why
+// values are props rather than `setAttribute` strings, are in
+// `docs/rendering.md` § Attributes are typed props, not a string map.
 type elementProps = {
   // --- structure and state ---
   id?: string,
@@ -126,24 +121,11 @@ type elementProps = {
 type fragmentProps = {children?: vnode}
 
 // --- The JSX transform's contract -------------------------------------------
-// `<Comp prop=… />` → `jsx(Comp.make, props)`, `<div>…</div>` →
-// `Elements.jsx("div", props)`, `<>…</>` → `jsx(jsxFragment, props)`, and the
-// `*Keyed` variants when a `key=` is present. Under preserve mode none of these
-// are actually *called*: they type-check the JSX and name the module the
-// emitted `import` points at.
-//
-// Two things the binding shape must get exactly right — get either wrong and
-// preserve mode either silently stops preserving or emits JSX that no bundler
-// can parse:
-//
-//   1. **These must stay `@module` externals.** With plain `let` bindings the
-//      compiler quietly falls back to lowering JSX into calls on this module,
-//      which is the old behaviour with none of the new runtime.
-//   2. **The types above must mirror `@rescript/react`'s**: `component<'props>`
-//      a transparent alias for `'props => vnode` (via `%component_identity`),
-//      `string`/`array` `%identity`. An abstract component type makes `<>…</>`
-//      emit `<prim => JsxRuntime.Fragment(prim)>`, which is not valid JSX; a
-//      non-identity `array` wraps every children list in a runtime call.
+// **These must stay `@module` externals, and the types above must mirror
+// `@rescript/react`'s.** Get either wrong and preserve mode silently stops
+// preserving, or emits JSX no bundler can parse — with no error anywhere to say
+// so. What each one buys, and the contract itself, are in `docs/rendering.md`
+// § What the binding shape has to get right.
 @module("preact/jsx-runtime") external jsx: (component<'props>, 'props) => vnode = "jsx"
 @module("preact/jsx-runtime") external jsxs: (component<'props>, 'props) => vnode = "jsxs"
 @module("preact/jsx-runtime")

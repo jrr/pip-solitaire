@@ -11,9 +11,6 @@
 // caller folds the transient "where the link went" status into `desc` rather than
 // rendering a line of its own, so reporting the outcome doesn't change the row's
 // height: see `<MenuDebugScreen>`.
-//
-// A component is just a `props => vnode` function (see `VersionBadge` for why the
-// record is spelled out by hand).
 type props = {
   label: string,
   desc: string,

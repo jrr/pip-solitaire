@@ -17,11 +17,7 @@
 // unwires it, and `Main` *also* ignores any tap that arrives while `menuScreen`
 // isn't `Settings`. Belt and braces, because a leak here would be invisible
 // until someone found it.
-//
-// A component is just a `props => vnode` function (see `VersionBadge` for why the
-// record is spelled out by hand).
 
-// This component's stylesheet, in the `components` layer (see src/styles/index.css).
 %%raw(`import "./MenuHeader.css"`)
 
 // A back button: `label` names where it returns to (it's the accessible name — the

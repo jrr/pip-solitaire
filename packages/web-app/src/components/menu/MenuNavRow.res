@@ -6,9 +6,6 @@
 // The chevron and the heavier weight that goes with it both come from `<MenuRow>`'s
 // `Chevron` trailing, which is also what makes the chevron `aria-hidden`: it's a
 // direction, not a word, and the row's own label is the accessible name.
-//
-// A component is just a `props => vnode` function (see `VersionBadge` for why the
-// record is spelled out by hand).
 type props = {
   label: string,
   onClick: unit => unit,

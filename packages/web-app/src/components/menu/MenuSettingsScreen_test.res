@@ -12,9 +12,6 @@
 //    than nested under either — the three are independent settings.
 // 3. **Each switch is wired to its own setting.** Four toggles that all look alike is
 //    exactly the arrangement where a crossed wire goes unnoticed.
-//
-// Rendered through `Html.create` like the other component tests here (see
-// `AboutFooter_test`), which needs no DOM beyond what jsdom gives.
 open Vitest
 open TestDom
 

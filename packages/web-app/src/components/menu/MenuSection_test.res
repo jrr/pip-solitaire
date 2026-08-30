@@ -15,9 +15,6 @@
 // indistinguishable in the DOM. Also pinned here: the tag choice (`nav` for rows
 // that go somewhere, `div` for controls that act in place) and the accessible
 // name, because both are invisible on screen and neither has a test elsewhere.
-//
-// Rendered through `Html.create` like the other component tests here (see
-// `AboutFooter_test`), which needs no DOM beyond what jsdom gives.
 open Vitest
 open TestDom
 

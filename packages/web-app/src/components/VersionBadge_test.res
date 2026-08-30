@@ -18,9 +18,6 @@
 // the test, so the padding is pinned by *shape*: four digits, then four fields of
 // two. That is precisely what `pad2` owes, and `2026.7.6 · 6:3` fails it in four
 // places at once.
-//
-// Rendered through `Html.create` like the other component tests here (see
-// `AboutFooter_test`), which needs no DOM beyond what jsdom gives.
 open Vitest
 open TestDom
 

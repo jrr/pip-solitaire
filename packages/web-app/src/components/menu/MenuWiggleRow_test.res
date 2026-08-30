@@ -13,9 +13,6 @@
 // 3. **`Blocked` reads off but keeps its reason.** The OS refused, so the switch has
 //    to snap back — but silently snapping back with no line is indistinguishable from
 //    a tap that didn't register.
-//
-// Rendered through `Html.create` like the other component tests here (see
-// `AboutFooter_test`), which needs no DOM beyond what jsdom gives.
 open Vitest
 open TestDom
 

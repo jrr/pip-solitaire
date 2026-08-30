@@ -10,9 +10,8 @@
 // comes and goes: one button, one row, in every state. `RefreshControl_test` pins
 // the row count.
 //
-// A component is just a `props => vnode` function (see `VersionBadge` for why the
-// record is spelled out by hand). The whole section is optional at the *call* site
-// — `Menu` shows it only once a worker state is known.
+// The whole section is optional at the *call* site — `Menu` shows it only once a
+// worker state is known.
 type props = {
   label: string,
   // An update check / refresh is in flight — spin the on-button indicator and swap

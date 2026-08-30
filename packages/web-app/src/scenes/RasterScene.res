@@ -37,7 +37,6 @@
 // cache is exactly what the later `trail` and `cascade` scenes will consume.
 // `Live` builds nothing, so it's ready the moment it's chosen.
 
-// This component's stylesheet, in the `scenes` layer (see src/styles/index.css).
 %%raw(`import "./RasterScene.css"`)
 
 // The size the comparison is made at: a card as it appears in the game, not

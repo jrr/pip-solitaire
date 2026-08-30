@@ -4,9 +4,6 @@
 // What's worth pinning: it wears a **chevron rather than a switch** — the one visual
 // difference that says "goes somewhere" instead of "flips here" — and that chevron is
 // `aria-hidden`, so the row's accessible name is its label and not "Debug ›".
-//
-// Rendered through `Html.create` like the other component tests here (see
-// `AboutFooter_test`), which needs no DOM beyond what jsdom gives.
 open Vitest
 open TestDom
 

@@ -5,9 +5,6 @@
 // `<MenuToggleRow>`, and a switch appearing here would claim the row holds a state it
 // doesn't — and a disabled row is *genuinely* disabled rather than lit and inert, so
 // a tap on it can't reach the handler.
-//
-// Rendered through `Html.create` like the other component tests here (see
-// `AboutFooter_test`), which needs no DOM beyond what jsdom gives.
 open Vitest
 open TestDom
 

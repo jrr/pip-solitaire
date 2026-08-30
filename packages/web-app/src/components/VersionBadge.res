@@ -11,7 +11,6 @@
 // colors for `#version-badge` live in VersionBadge.css; here we build
 // only structure and state-dependent text.
 
-// This component's stylesheet, in the `components` layer (see src/styles/index.css).
 %%raw(`import "./VersionBadge.css"`)
 
 type props = {version: string, buildTime: string}

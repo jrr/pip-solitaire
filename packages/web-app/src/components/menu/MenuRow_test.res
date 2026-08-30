@@ -20,9 +20,6 @@
 //    marks the row currently in effect out of a set (the mounted scene), so it has
 //    to sit *alongside* the kind modifier rather than replace it, and `aria-current`
 //    follows the same absent-not-"false" rule as `aria-checked` above.
-//
-// Rendered through `Html.create` like the other component tests here (see
-// `AboutFooter_test`), which needs no DOM beyond what jsdom gives.
 open Vitest
 open TestDom
 

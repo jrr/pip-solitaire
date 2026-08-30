@@ -11,9 +11,6 @@
 // state), `<MenuNavRow>` has a chevron, and `<MenuWiggleRow>` has a switch but
 // derives its whole shape from `Motion.state` rather than from a bool. All four
 // now hand that shape to `<MenuRow>` instead of drawing it themselves.
-//
-// A component is just a `props => vnode` function (see `VersionBadge` for why the
-// record is spelled out by hand).
 type props = {
   label: string,
   // The one-line explanation under the label. Every plain toggle carries one —

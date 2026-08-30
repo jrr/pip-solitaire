@@ -7,9 +7,6 @@
 // button with one keeps the accessible name and the visible text the same string —
 // the trailing space after the label is the only thing between the word and the
 // digits when a screen reader concatenates them.
-//
-// Rendered through `Html.create` like the other component tests here (see
-// `AboutFooter_test`), which needs no DOM beyond what jsdom gives.
 open Vitest
 open TestDom
 

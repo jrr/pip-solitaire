@@ -19,9 +19,6 @@
 //    the panel renders once (`Html.create` — no re-render to hold state for), so the
 //    line is written into through a captured node. That's the one piece of this
 //    component that isn't plain markup, and the one worth a test.
-//
-// Rendered through `Html.create` like the other component tests here (see
-// `AboutFooter_test`), which needs no DOM beyond what jsdom gives.
 open Vitest
 open TestDom
 
