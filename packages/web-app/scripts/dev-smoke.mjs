@@ -2,13 +2,11 @@
 // and fail if it didn't come up. That is the whole test — but it guards a seam
 // nothing else does.
 //
-// The compiler emits JSX into the `.res.mjs` output (`"jsx": {"preserve": true}`,
-// see src/Html.res), so something downstream has to lower it, and Vite reaches
-// esbuild by more than one route: the build's transform, the dev server's
-// dependency scanner, and Vitest's. Each takes its own config, and nothing checks
-// that they agree. They didn't once — `bundle`, `test` and `browsertest` were all
-// green while `vite` printed a screenful of "The JSX syntax extension is not
-// currently enabled" on every start.
+// The seam is the four separate esbuild configurations that lower the compiled
+// output's JSX, one of which only the dev server reads (docs/rendering.md lists
+// them). Nothing checks that they agree, and `mise run ci` cannot: `bundle`,
+// `test` and `browsertest` were all green once while `vite` printed a screenful
+// of "The JSX syntax extension is not currently enabled" on every start.
 //
 // **A rendered page is not enough to pass**, which is what makes this more than a
 // smoke test. A dependency-scan failure is *not* fatal to Vite: it logs, skips

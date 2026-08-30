@@ -10,9 +10,9 @@
 // So they come through esbuild first: bundle the module, lower its JSX onto
 // Preact, and import the result from memory. Nothing is written to disk.
 //
-// This is a real cost of preserve mode, and worth weighing against the
-// alternative: with the *generic* JSX transform (no `preserve`) the output is
-// plain function calls that Node runs as-is, and this file wouldn't exist.
+// **A Node script that imports compiled ReScript goes through here, not around
+// it.** This is also the clearest single cost of preserve mode — docs/rendering.md
+// weighs it against the generic transform, under which this file wouldn't exist.
 import { build } from "esbuild";
 
 export async function loadJsxModule(entryPath) {
