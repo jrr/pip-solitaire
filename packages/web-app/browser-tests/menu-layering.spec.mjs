@@ -5,7 +5,7 @@
 // chrome stacks small (`#menu-overlay` at 20). Those two scales only coexist
 // because `.table-board` is a stacking context (`isolation: isolate`), which keeps
 // the board's numbers from being read against the menu's in the root context.
-// Without it the Finish button floated *over* the open menu, mid-panel.
+// Without it the Finish button floats *over* the open menu, mid-panel.
 //
 // Browser-only by nature: stacking contexts are a paint-order question, so the
 // check is "what does the player actually touch at that point on screen"

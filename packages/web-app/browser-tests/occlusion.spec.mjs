@@ -1,9 +1,9 @@
 // What a squared pile announces. Every card is a `role="img"`
 // carrying the card's name (`CardArt` via `Deck.cardName`), and a `Squared` pile
-// — the free cells and the foundations — draws its whole contents on one spot. So
-// the covered cards were named to a screen reader as if they were on the table:
-// six of the fifty-two mid-game, and forty-eight on a won board that shows four.
-// Reflow now marks them `aria-hidden`.
+// — the free cells and the foundations — draws its whole contents on one spot, so
+// reflow marks the covered ones `aria-hidden`. Without that they are named to a
+// screen reader as if they were on the table: six of the fifty-two mid-game, and
+// forty-eight on a won board that shows four.
 //
 // This belongs in the browser suite because the claim is about the *accessibility
 // tree*, not about an attribute: `getByRole` resolves roles the way a browser

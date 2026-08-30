@@ -6,9 +6,7 @@
 // showing — and it now lives in `Main`, where the props record for the About
 // footer is assembled. `Main` is the entry point: importing it mounts the app,
 // registers a service worker and takes over `<body>`, so there is nothing for a
-// Vitest file to call. The rule was previously inside `Menu`, reachable from
-// `Menu_test`; moving it out is what left it with no coverage, and this is where it
-// goes instead.
+// Vitest file to call.
 //
 // What it pins is the *shape* of the rule rather than a label: the control is absent
 // on the main menu in both directions (before ever visiting Settings, and again on

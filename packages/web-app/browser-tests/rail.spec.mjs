@@ -19,10 +19,8 @@
 // wholly *beside* the band, never over it — plus that the gap is the intended
 // 0.5rem.
 //
-// A regression this catches: `html[data-notch-wings="off"]
-// #top-bar { margin-left: -0.75rem }` tied on specificity (1,1,1) with
-// `html[data-cutout="right"] #top-bar`'s shorthand and won on source order,
-// clobbering the right-hand rail's 0.5rem gap and overhanging the band by 12px.
+// The specificity tie between two of those `#top-bar` rules is the worked example
+// in docs/css-layers.md § 3; the guard that settles it is in landscape-rail.css.
 //
 // `data-cutout` is stamped from the orientation angle, which headless Chromium
 // reports as 0 — so the attributes are set directly here. That's deliberate: this

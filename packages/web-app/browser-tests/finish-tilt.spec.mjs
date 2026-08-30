@@ -3,14 +3,8 @@
 //
 // It has to be measured in a real browser: jsdom has no layout, no CSS
 // transitions and no resolved transform matrices, so this can't be a case in
-// `mise run test`.
-//
-// Checks, on the `?state=finish` board:
-//   1. tilt ON  — early in the sweep, at most a couple of cards have turned (the
-//      ones already launched), not the whole board.
-//   2. tilt ON  — cards end the sweep tilted, at their foundation angles: a tilt at
-//      the source *and* at the destination, with the turn happening in the air.
-//   3. tilt OFF — every card is dead square throughout, source and destination.
+// `mise run test`. Both cases run on the `?state=finish` board, with the tilt
+// preference seeded either way.
 
 import { expect, test } from "@playwright/test"
 import { settleBoard } from "./lib/board.mjs"
@@ -21,8 +15,8 @@ test.use({ viewport: { width: 800, height: 1000 } })
 // for a slow CI runner on top of that.
 test.setTimeout(90_000)
 
-// `earlyMs` lands inside the 0.18s tilt transition the twitch used to run over, so
-// a regression shows up as a boardful of turned cards. The whole sample runs
+// `earlyMs` lands inside the 0.18s tilt transition, which is where the twitch shows
+// itself: a regression turns a boardful of cards this early. The whole sample runs
 // *in the page* — click, wait, read — because that window is tight enough that
 // round-tripping each step through the driver would smear it.
 const EARLY_MS = 90

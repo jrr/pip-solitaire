@@ -13,10 +13,10 @@
 //     what gets tested.
 //   - **It doesn't read readiness out of the server's greeting.** A child's
 //     stdout is block-buffered when it isn't a terminal, so on CI the banner
-//     arrived in one lump *after* the process was killed — a wait on that regex
-//     timed out against a server that had been up the whole time. Readiness is a
-//     port that answers; the transcript is only read at the end, once the pipes
-//     have drained.
+//     lands in one lump *after* the process is killed: a wait on that regex times
+//     out against a server that was up the whole time. Readiness is a port that
+//     answers; the transcript is only read at the end, once the pipes have
+//     drained.
 import { spawn } from "node:child_process";
 import path from "node:path";
 import { launchChromium, webAppRoot } from "./lib/preview-app.mjs";

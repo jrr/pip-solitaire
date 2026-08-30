@@ -1,17 +1,10 @@
-// The one thing the layer scheme can't survive losing.
-//
-// Since components import their own stylesheets, no file has a fixed position in
-// the bundle any more and the cascade is ordered by `@layer` instead — the four
-// names declared in src/styles/index.css. That works only while *every* rule is
-// inside one of them: an unlayered rule outranks every layered one no matter how
-// specific, so a sheet that forgets its wrapper doesn't misorder slightly, it
-// wins outright, and it does so silently — the page still renders, just wrong,
-// and only wherever that sheet happens to collide with another.
+// The one thing the layer scheme can't survive losing — see docs/css-layers.md
+// § 1 for what an unlayered rule costs.
 //
 // Nothing else here would catch it: it's not a syntax error, the compiler never
-// sees CSS, and a regression would show up as some unrelated component's rule
-// quietly losing. So this reads the cascade the browser actually built and
-// checks the shape of it.
+// sees CSS, and a regression shows up as some unrelated component's rule quietly
+// losing. So this reads the cascade the browser actually built and checks the
+// shape of it.
 import { test, expect } from "@playwright/test"
 
 const LAYERS = ["foundations", "components", "scenes", "overrides"]

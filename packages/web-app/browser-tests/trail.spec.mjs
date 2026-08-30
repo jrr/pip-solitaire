@@ -3,16 +3,8 @@
 // buffer back.
 //
 // Nothing here is about *motion* — where a card goes is #227's question. What is
-// being pinned is the surface:
-//
-//   1  a transparent canvas over live DOM: the cards underneath show through,
-//      and the canvas doesn't take the hit-testing away from them
-//   2  the hand-off: a card that was a DOM node is a sprite on the canvas, in the
-//      same place, and is then the card the pointer carries
-//
-// …plus the two facts about a backing store that the integration has to design
-// around: it is `css × ratio` for one capped ratio shared with the sprite cache,
-// and assigning `canvas.width` wipes everything drawn.
+// being pinned is the surface: the backing store, and the hand-off from DOM node
+// to sprite.
 //
 // The instrument throughout is `getImageData` on the overlay itself rather than a
 // screenshot: what a screenshot shows is the *composite* of the canvas over the
