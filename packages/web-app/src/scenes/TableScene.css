@@ -481,23 +481,18 @@
       drop-shadow(0 1px 2px rgba(15, 23, 42, 0.4));
   }
 
-  /* Each resting card carries a slight, hand-placed tilt (#65), driven by the
-     `--card-rot` custom property TableScene.res writes per card. The rotation
-     lives on the inner `.card-art`, not the `.stacking-card` wrapper, so it
-     never fights the wrapper's own `transform` (the drag `translateZ` and the
-     deal/finish flight animations). `transform-origin: center` pivots about
-     the card's middle (SVG elements otherwise default to a `0 0` origin), and
-     the transition eases a card into its new angle as it snaps home, matching
-     the wrapper's left/top snap.
+  /* The hand-placed tilt (#65) — see docs/card-tilt.md. Three rules here, each
+     with teeth:
 
-     That transition's delay and duration are themselves per-card properties,
-     defaulting to the in-game snap above. The finish sweep (#160) overrides
-     them while it plays: it re-tilts every card for its foundation slot up
-     front, but the cards leave one at a time, so each one's rotation is pushed
-     out to its own launch and stretched over its flight rather than swinging in
-     place before the sweep starts (#241). The `.dealing` rule below can't cover
-     this — that switches off the *wrapper's* left/top snap, a different
-     selector, deliberately so the tilt never fights the flight transform. */
+     - the rotation lives on the inner `.card-art`, never the `.stacking-card`
+       wrapper, whose own `transform` is already spoken for (the drag lift, the
+       deal and finish flights). Moving it up one level makes the two fight;
+     - `transform-origin` is explicit because SVG elements default to `0 0`, and
+       the card would swing about its top-left corner;
+     - the delay and duration are per-card properties whose *defaults* are the
+       in-game snap. A finish sweep overrides them per card (#241) and clears
+       them again; the `.dealing` rule below can't stand in for that — it
+       switches off the wrapper's left/top snap, a different selector. */
   .stacking-card .card-art {
     width: 100%;
     transform: rotate(var(--card-rot, 0deg));

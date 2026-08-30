@@ -1,14 +1,9 @@
-// The finish sweep must not re-tilt cards before it moves them (issue #241).
+// The finish sweep must not re-tilt cards before it moves them (#241) — see
+// docs/card-tilt.md § The sweep problem for the mechanism this pins.
 //
-// The hand-placed tilt (#65) is keyed on where a card *rests*, so the `reflowAll`
-// that starts the sweep re-tilts every card for its foundation slot at once —
-// while the flights still hold each card at its source until its staggered turn.
-// Left alone that reads as the whole board twitching in place before anything
-// flies. The fix defers each card's rotation to its own launch, so early in the
-// sweep only the cards actually in the air have turned.
-//
-// Measured in a real browser: jsdom has no layout, no CSS transitions and no
-// resolved transform matrices, so this can't be a case in `mise run test`.
+// It has to be measured in a real browser: jsdom has no layout, no CSS
+// transitions and no resolved transform matrices, so this can't be a case in
+// `mise run test`.
 //
 // Checks, on the `?state=finish` board:
 //   1. tilt ON  — early in the sweep, at most a couple of cards have turned (the

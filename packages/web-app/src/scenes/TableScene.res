@@ -403,11 +403,6 @@ let doubleTapMoveTol = 12.
 // to be refused in the touch layer, and so can't ride along with the pointer
 // bookkeeping here; the two are independent by necessity, not by preference.
 
-// A resting card gets a slight, hand-placed tilt (#65) so the tableau reads as
-// dealt by a person rather than stamped down by a machine. The angle is
-// *deterministic* — a cheap hash of the card's identity and where it now rests —
-// which buys three things at once: it's stable across reflows and resizes (a card
-// doesn't twitch to a new angle every time a neighbour moves), it *does* change
 // The modifier the empty-pile indicator wears for its pile's role (#94). The three
 // roles accept quite different things — a foundation only ever opens with an Ace, a
 // free cell takes any one card, a tableau column takes a card or a run — and until
@@ -428,10 +423,11 @@ let slotRoleClass = (role: Game.role) =>
   | Game.Cascade => "drop-zone__slot--tableau"
   }
 
-// when the card is placed somewhere new (so a drop re-tilts it, as a fresh
-// placement would), and it needs no `Math.random`, keeping every render — the
-// screenshots included — reproducible. Kept small so cards still read and stack
-// cleanly.
+// A resting card gets a slight, hand-placed tilt (#65) so the tableau reads as
+// dealt by a person rather than stamped down by a machine. See docs/card-tilt.md.
+//
+// The whole span, not a variance: keep it small or cards stop stacking cleanly,
+// since `TableLayout.fanStep` assumes a fanned pile is very nearly square.
 let maxCardTilt = 2.5
 let suitOrdinal = (suit: Deck.suit) =>
   switch suit {
@@ -457,10 +453,13 @@ let rankOrdinal = (rank: Deck.rank) =>
   | King => 12
   }
 // The tilt in degrees for `card` resting at (`pile`, `slot`) — its resting place,
-// as a pile index and a slot within it. The primes below fold the identity and the
-// place into a value spread across `[-maxCardTilt, maxCardTilt)` without
-// neighbouring cards or slots sharing an angle. All inputs are non-negative, so
-// the `mod` stays positive.
+// as a pile index and a slot within it. A hash rather than a random number so a
+// card holds its angle while it sits still and re-tilts when it's placed
+// somewhere new; docs/card-tilt.md has why, and what each multiplier is worth in
+// degrees.
+//
+// Every input must stay non-negative — that's what keeps `Int.mod` positive, and
+// a negative `h` would throw the angle past `-maxCardTilt`.
 let cardTilt = (~card: Deck.card, ~pile, ~slot) => {
   let h = suitOrdinal(card.suit) * 17 + rankOrdinal(card.rank) * 5 + pile * 23 + slot * 11
   let unit = Int.toFloat(Int.mod(h, 100)) /. 100.
@@ -472,18 +471,14 @@ let cardTilt = (~card: Deck.card, ~pile, ~slot) => {
 let applyTilt = (wrapper, ~degrees) =>
   style(wrapper)->setProperty("--card-rot", Float.toString(degrees) ++ "deg")
 
-// Because the tilt is keyed on *where a card rests*, a card re-tilts the moment it
-// is laid out somewhere new — which the finish sweep (#160) does to every card at
-// once, up front: `reflowAll` snaps each node onto its foundation (and re-tilts it
-// there) while the flights hold it visually at its source until its staggered turn.
-// Left alone, the whole board would swing to its landing angles in unison, in
-// place, before anything moved (#241). These two properties push a card's tilt
-// transition out to its own launch delay and stretch it over its flight, so the
-// rotation rides along with the movement — a tilt at the source, a tilt at the
-// destination, and the turn between them happening while the card is in the air.
-// (With the hand-placed look off both angles are 0°, so nothing rotates either
-// way.) The CSS defaults these to the plain in-game snap, so they're only set for
-// the length of a sweep and cleared again once it settles.
+// Give one card's *rotation* the same schedule as its *flight*, so the re-tilt a
+// sweep applies up front turns over the movement instead of swinging the whole
+// board in place before anything has moved (#241; docs/card-tilt.md § The sweep
+// problem).
+//
+// Two ordering rules: set these *before* the `reflowAll` that applies the new
+// angle, and index them off the same loop as the flights. The CSS defaults them
+// to the in-game snap, so anything that ends a flight has to clear them again.
 let setTiltTiming = (wrapper, ~delay, ~duration) => {
   let s = style(wrapper)
   s->setProperty("--card-rot-delay", Float.toString(delay) ++ "ms")
@@ -496,9 +491,9 @@ let clearTiltTiming = wrapper => {
 }
 
 // The tilt to publish for `card` resting at (`pile`, `slot`), gated on whether the
-// player wants the hand-placed look at all (#65). When they've turned it off the
-// angle is a dead-square 0°, so `--card-rot` snaps every card back to true — the
-// `.card-art` transition easing it there — without any other layout change.
+// player wants the hand-placed look at all (#65). "Off" is a dead-square 0° through
+// the same property, not a second code path — so nothing else about the layout
+// varies with the setting.
 let tiltFor = (~enabled, ~card, ~pile, ~slot) => enabled ? cardTilt(~card, ~pile, ~slot) : 0.
 
 // Build a scene that plays `game`: its id/label name the scene in the picker,
@@ -1376,10 +1371,9 @@ let make = (
             // has to be in place by the time `reflowAll` re-tilts it.
             let delta = stagger
             // Hold each card at its *source* angle until it launches, then turn it to
-            // its destination angle over the flight (#241) — otherwise the re-tilt that
-            // `reflowAll` is about to apply would swing every card in place, in unison,
-            // before anything had moved. Same index as the flight loop below, so a
-            // card's rotation and its flight start together.
+            // its destination angle over the flight (#241). Before the `reflowAll`
+            // below, which is what applies the new angle, and on the same index as the
+            // flight loop, so a card's rotation and its flight start together.
             cards->Array.forEachWithIndex((c, i) =>
               setTiltTiming(c.wrapper, ~delay=Int.toFloat(i) *. delta, ~duration=flight)
             )
