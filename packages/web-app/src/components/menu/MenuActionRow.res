@@ -1,4 +1,4 @@
-// An action row, lifted out of `Menu` into its own pure component (#307): the same
+// An action row, lifted out of `Menu` into its own pure component: the same
 // box and label/description stack as `<MenuToggleRow>`, but it *does* something
 // once rather than flipping a setting, so it carries no switch — a `<MenuRow>` with
 // nothing at its right-hand end.

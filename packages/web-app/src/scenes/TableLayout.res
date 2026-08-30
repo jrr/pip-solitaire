@@ -1,4 +1,4 @@
-// The card table's arithmetic, with no DOM under it (#319).
+// The card table's arithmetic, with no DOM under it.
 //
 // Everything here is a function of rects and counts: how big the cards get on this
 // stage, how narrow it may get before docking the console is refused, which zone a
@@ -43,7 +43,7 @@ let cardH = cardW *. CardArt.aspect
 let cardRadius = cardW *. CardArt.cornerRatio
 
 // The empty drop zone's footprint (`.drop-zone` in the CSS): the card-sized slot
-// plus a *uniform* gap on every side (#166 follow-up). Keep it `card + 2·inset` on
+// plus a *uniform* gap on every side. Keep it `card + 2·inset` on
 // both axes — a hand-picked box is how the highlight frame ends up a different
 // distance from the resting card at the top than at the sides.
 let zoneInset = 4.
@@ -72,7 +72,7 @@ let maxScale = 1.35
 let fillFraction = 0.9
 
 // The widest a `space-evenly` gap between columns may open before the row stops
-// spreading (#173). Past it the leftover stage width becomes equal left/right
+// spreading. Past it the leftover stage width becomes equal left/right
 // margins instead — see `rowsMaxWidth`. Half a card reads as generous but tidy.
 let maxColumnGap = 0.25 *. cardW
 
@@ -88,7 +88,7 @@ let fanHeadroom = 5
 
 // The narrowest stage a row of `columns` piles can be laid into with the cards still
 // clearing the `minScale` floor: the width fit solved for the floor instead of for
-// the scale. `ConsoleDock`'s refusal (#275) leans on it, which is why neither side
+// the scale. `ConsoleDock`'s refusal leans on it, which is why neither side
 // names a pixel breakpoint — retuning `minScale` or `cardW` moves the refusal too.
 //
 // Note what this is and isn't: it's the *width* term of the clamp, so it says nothing
@@ -97,8 +97,8 @@ let fanHeadroom = 5
 // out of scope by being keyboard-only rather than by being refused here.
 let minStageWidth = (~columns: int) => minScale *. Int.toFloat(columns) *. cardW /. fillFraction
 
-// The dock-refusal test itself (#275): the stage, less the display cutaway
-// `.drop-rows` is pinned inside (#179), less the strip the dock would take — is
+// The dock-refusal test itself: the stage, less the display cutaway
+// `.drop-rows` is pinned inside, less the strip the dock would take — is
 // what's left still a stage this board can be dealt onto?
 //
 // `~columns` is the board's busiest row rather than a constant eight: a two-pile demo
@@ -139,7 +139,7 @@ let scaleFor = (
     None
   }
 
-// The row's width cap (#173), at scale 1: the widest row's zones plus its
+// The row's width cap, at scale 1: the widest row's zones plus its
 // `widestRow + 1` `space-evenly` gaps grown to at most `maxColumnGap` each.
 // `.drop-rows` takes this as a `max-width` and centres itself, so once the stage is
 // wider than this the extra width falls into equal left/right margins rather than
@@ -173,8 +173,8 @@ let cssVars = (~scale: float, ~widestRow: int) => {
 // --- Hit-testing --------------------------------------------------------------
 
 // Does a dragged card's rect land in this zone? The shared primitive for both the
-// live hover highlight and the snap-on-drop decision, and deliberately asymmetric
-// (#183): horizontally it's strict — the card's *centre* must fall inside the zone —
+// live hover highlight and the snap-on-drop decision, and deliberately
+// asymmetric: horizontally it's strict — the card's *centre* must fall inside the zone —
 // so tightly packed columns stay distinguishable; vertically it's generous — any
 // overlap at all counts — so a card need only graze a zone's top or bottom to land
 // in it.

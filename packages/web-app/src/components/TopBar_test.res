@@ -1,11 +1,11 @@
-// The top bar (#109): Menu on one side, Undo on the other.
+// The top bar: Menu on one side, Undo on the other.
 //
 // Both of its controls carry state that is *only* visible in an attribute, which is
 // what this file is for — the pip and the disabled Undo look obvious on screen and
 // say nothing to a screen reader unless the ARIA moves with them:
 //
 // 1. **The update pip is decorative, and the Menu button's name carries the news.**
-//    A green dot appears when a new build is waiting (#165). It's `aria-hidden`, so
+//    A green dot appears when a new build is waiting. It's `aria-hidden`, so
 //    the only way that state reaches assistive tech is the button's `aria-label`
 //    changing with it. If the two ever came apart, the visual half would still look
 //    right.
@@ -31,7 +31,7 @@ let undoButton = bar => bar->find(".top-bar__button--undo")->Option.getOrThrow
 
 describe("TopBar", () => {
   test("offers exactly two controls: Menu and Undo", () => {
-    // New Game left for the menu (#156) and Update for the About footer (#165);
+    // New Game left for the menu and Update for the About footer;
     // Redo was removed outright. A third button appearing here is a regression.
     expect(render()->children->Array.map(el => el->attrOr("aria-label")))->toEqual([
       "Open menu",

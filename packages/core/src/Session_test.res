@@ -1,7 +1,7 @@
 open Vitest
 open Card
 
-// The session layer (#298): the thing wrapped around `Reducer.reduce` that both front
+// The session layer: the thing wrapped around `Reducer.reduce` that both front
 // ends now share — which game is in play, the history to undo over, the tally and the
 // clock beside it, the post-move auto-collect, and running a `Command.t` against all of
 // it.
@@ -56,7 +56,7 @@ let sentHome = () =>
     Command.Home({card: threeOfSpades}),
   )
 
-describe("Session tallies (#289)", () => {
+describe("Session tallies", () => {
   test("a fresh session has played nothing", () => {
     let s = fresh()
     expect(s.stats)->toEqual(Stats.zero)
@@ -104,7 +104,7 @@ describe("Session tallies (#289)", () => {
     expect(redone.stats.undos)->toBe(1)
   })
 
-  test("a lawful no-op is neither counted nor recorded (#215)", () => {
+  test("a lawful no-op is neither counted nor recorded", () => {
     // A `MoveColumn` from a column to itself reduces to `Ok` with the board untouched.
     let (s, outcome) = Session.step(
       ~clock=stopped,
@@ -123,7 +123,7 @@ describe("Session tallies (#289)", () => {
   })
 })
 
-describe("Session clock (#302)", () => {
+describe("Session clock", () => {
   test("a game that isn't won has no time to report", () => {
     expect(Timing.summary(fresh().timing))->toEqual(None)
   })
@@ -185,7 +185,7 @@ describe("Session house rules", () => {
     expect(Array.length(swept))->toBe(0)
   })
 
-  test("safe auto-collect steps aside once the board is finishable (#125 scope)", () => {
+  test("safe auto-collect steps aside once the board is finishable", () => {
     // On the finishable tail, settling must not auto-collect — even with the option on
     // (its default) — leaving the board for the `finish` sweep to own.
     let state = Scenario.freecellFinish(freecell)
@@ -219,7 +219,7 @@ describe("Session house rules", () => {
   })
 })
 
-describe("Session autoplay (#291)", () => {
+describe("Session autoplay", () => {
   test("the trail carries a whole session per move, so a caller can stop anywhere", () => {
     // The point of the trail: a front end that animates each move adopts these one at a
     // time and simply stops adopting when the player interrupts. What it stops on has to
@@ -264,7 +264,7 @@ describe("Session autoplay (#291)", () => {
   )
 })
 
-describe("Session save envelope (#177)", () => {
+describe("Session save envelope", () => {
   test("a save round-trips the history, the tally and the clock", () => {
     let (played, _) = sentHome()
     let reopened = Session.restore(

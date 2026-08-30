@@ -72,10 +72,10 @@ three.
 
 | | C | P | the job |
 |---|---|---|---|
-| **deal** (#115) | 5 | 67 ms | fifty-two cards thrown from one off-stage stack; the opening flourish, and it can't outstay its welcome |
-| **finish sweep** (#160) | 5 | 90 ms | fifty-odd cards on their way to a win — a payoff, so a touch more languid than the deal |
-| **console move** (#273) | 2 | 170 ms | one card, or a short run, that has to be *followable*: you're reading the log to see what the command did |
-| **autoplay step** (#291) | 3 | 140 ms | the console's knobs, quickened — one of forty moves on the way to a win |
+| **deal** | 5 | 67 ms | fifty-two cards thrown from one off-stage stack; the opening flourish, and it can't outstay its welcome |
+| **finish sweep** | 5 | 90 ms | fifty-odd cards on their way to a win — a payoff, so a touch more languid than the deal |
+| **console move** | 2 | 170 ms | one card, or a short run, that has to be *followable*: you're reading the log to see what the command did |
+| **autoplay step** | 3 | 140 ms | the console's knobs, quickened — one of forty moves on the way to a win |
 
 What the pairs work out to in practice:
 
@@ -116,7 +116,7 @@ schedule, and they're why a move goes through this path rather than leaning on
   to `finishFlightZBase + i` for the flight. The `+ i` is arrival-order stacking —
   in a sweep, King last — and the hold is what stops a departing card sliding
   *under* the fan it hasn't finished leaving.
-- **The tilt timing** (#241). The hand-placed angle is keyed on where a card
+- **The tilt timing**. The hand-placed angle is keyed on where a card
   rests, so a card re-tilts the moment it's laid out somewhere new. Left alone the
   whole board would swing to its landing angles in unison, in place, before
   anything moved. Each card's tilt transition is pushed out to its own `i·Δ` and

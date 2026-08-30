@@ -34,7 +34,7 @@ Everything the project wants falls out of this one decision:
 | Decision | Choice |
 |---|---|
 | Rendering | **ReScript JSX in preserve mode over Preact** (no rescript-react). See below. |
-| Child diffing | **Preact's**, reached through `Html.res`'s bindings. Was ours (#309); see below. |
+| Child diffing | **Preact's**, reached through `Html.res`'s bindings. Was ours; see below. |
 | Service worker tooling | **`vite-plugin-pwa`** — manifest, precache, build hash, and the update hook. |
 | Card rendering | **SVG** cards for full visual control. |
 | State ownership | **100% in `core`**, reduxey: immutable state + action variant + pure reducer. |

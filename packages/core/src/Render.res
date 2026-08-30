@@ -5,7 +5,7 @@
 // because two callers now want it:
 //
 //   - the **CLI**, which prints it to a terminal after every command;
-//   - the **web app's debug console** (#273), whose `print` used to answer "the board
+//   - the **web app's debug console**, whose `print` used to answer "the board
 //     is on screen" for want of any way to draw one — the panel is a monospace log,
 //     which is exactly the medium this renders for.
 //
@@ -21,7 +21,7 @@
 //     peeks a single face line above the next, and the top card (last in the
 //     model's bottom-first order) is shown in full at the foot of the fan.
 //
-// The board is laid out in the same role-grouped rows the web table uses (#94): the free
+// The board is laid out in the same role-grouped rows the web table uses: the free
 // cells and foundations across the top, the tableau columns below. Sixteen columns in a
 // single row is wider than a terminal, and the two halves aren't the same kind of thing
 // anyway — a board carrying only one of the groups keeps its single row. Every column is
@@ -183,7 +183,7 @@ let cellWidth = 4
 
 // --- A move, in words ----------------------------------------------------------
 // One dispatched action as a single line of the same document a board is drawn in. The
-// debug console (#213) used to narrate a move as the reducer's own `action`, stringified:
+// debug console used to narrate a move as the reducer's own `action`, stringified:
 // `{"TAG":"Move","card":{"suit":"Clubs","rank":"Ten"},"to":{"TAG":"ToPile","_0":12}}` —
 // every fact about the move present and not one of them legible, with the destination
 // named as the index a player would have to count out rather than by the label printed
@@ -404,7 +404,7 @@ let assemble = (~title: string, ~rows: array<array<array<line>>>): array<line> =
 // The caller supplies it rather than it being read off `game.seed`, because the two can
 // differ: a posed position (`Scenario`) descends from the deal it has been *proved* to,
 // which is usually none at all — the same rule the web app follows before offering a
-// Share (#264).
+// Share.
 let titleFor = (~game: Game.t, ~deal: option<int>): string =>
   switch deal {
   | Some(n) => `${game.name} — deal #${Int.toString(n)}`
@@ -414,7 +414,7 @@ let titleFor = (~game: Game.t, ~deal: option<int>): string =>
 // --- The boards ---------------------------------------------------------------
 
 // Split a board's columns into the rows it's drawn in, the same role grouping the web
-// table lays out (#94): the free cells and foundations across the top, the tableau
+// table lays out: the free cells and foundations across the top, the tableau
 // columns below. It's what makes a sixteen-pile FreeCell board readable in a terminal —
 // sixteen columns in one row is wider than a window, and the two halves aren't the same
 // kind of thing anyway.

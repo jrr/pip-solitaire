@@ -73,7 +73,7 @@ let freecellMidgame = (game: Game.t, ~seed: int): GameState.t => {
 
 // A **near-won FreeCell**: three suits fully assembled on their foundations and
 // the fourth built to the Queen, with that suit's King parked alone in a free
-// cell — a single legal move (the King onto its foundation) short of a win (#121).
+// cell — a single legal move (the King onto its foundation) short of a win.
 // Like `freecellMidgame`, it's built straight from the deck so the 52-card
 // invariant holds by construction; the one pending King makes the *winning* move —
 // and the win state it flips on (the overlay, the CLI line) — easy to exercise,
@@ -117,7 +117,7 @@ let freecellAlmostWon = (game: Game.t): GameState.t => {
   {GameState.piles, loose: []}
 }
 
-// A **supermove FreeCell** (#123): a ready-to-lift ordered run sitting atop the
+// A **supermove FreeCell**: a ready-to-lift ordered run sitting atop the
 // first cascade, with all four free cells empty and one empty column, so the
 // free-cell/empty-column limit is plainly visible. In full it reads
 // `(1 + 4) × 2 ^ 1 = 10`; but moving the run *onto* the empty column can't count
@@ -163,7 +163,7 @@ let freecellSupermove = (game: Game.t): GameState.t => {
   {GameState.piles, loose: []}
 }
 
-// A **send-home FreeCell** (#122): each suit's foundation part-built to the Two,
+// A **send-home FreeCell**: each suit's foundation part-built to the Two,
 // with that suit's *next* card — the Three — parked alone in a free cell, one per
 // suit across the four cells. Every one of those four Threes is immediately
 // home-able, so a run of send-home gestures (a double-click on the web, or the
@@ -211,11 +211,11 @@ let freecellSendHome = (game: Game.t): GameState.t => {
   {GameState.piles, loose: []}
 }
 
-// A **finishable FreeCell** (#132): the trapped-tail endgame safe auto-collect
-// (#125) stalls on, but the "Finish" sweep completes in one gesture. Foundations
+// A **finishable FreeCell**: the trapped-tail endgame safe auto-collect
+// stalls on, but the "Finish" sweep completes in one gesture. Foundations
 // stand at ♠5 / ♣5 / ♥2 / ♦2, and the first cascade holds ♠6 sitting on ♥3 — the
 // crux: ♠6 is *accepted* by its foundation but not *safe* (the reds are only at
-// the Two), so #125 refuses it, and the wanted ♥3 is trapped beneath. The board is
+// the Two), so auto-collect refuses it, and the wanted ♥3 is trapped beneath. The board is
 // nonetheless drainable by foundation moves alone — playing any accepted card
 // (♠6 home, then ♥3, …) finishes it — so `canFinish` holds and the button appears.
 // Every other suit's remaining cards sit as a descending run in its own cascade,
@@ -240,7 +240,7 @@ let freecellFinish = (game: Game.t): GameState.t => {
   ]
 
   // The trapped tail: ♥3 on the bottom with ♠6 on top, so ♠6 must move before the
-  // wanted ♥3 can — exactly what stalls #125's safe rule.
+  // wanted ♥3 can — exactly what stalls the safe auto-collect rule.
   let trapped = [{suit: Hearts, rank: Three}, {suit: Spades, rank: Six}]
 
   // A suit's remaining cards as a descending cascade (King at the bottom, the
@@ -322,7 +322,7 @@ let freecellScenarios: array<named> = [
     // park the Clubs King in the first free cell, which is this position exactly.
     // `Scenario_test` replays that line through the reducer and compares the result,
     // so the claim is checked rather than asserted — and the number stops being one
-    // the web app has to invent to light up its victory share (#264).
+    // the web app has to invent to light up its victory share.
     //
     // It's the only scenario with a deal behind it because it's the only one that can
     // be *won*, and a win is what has something to share.

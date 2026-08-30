@@ -40,7 +40,7 @@ depends = ["build"]
 run = "pnpm --filter web-app run dev"
 
 # `depends = ["icons"]` so a deployed bundle always ships icons matching the
-# current card art (#49).
+# current card art.
 [tasks.bundle]
 description = "Build the web-app into a static site (packages/web-app/dist)"
 depends = ["icons"]
@@ -136,7 +136,7 @@ depends = ["install"]
 run = "pnpm --filter web-app exec playwright install chromium"
 
 # Outputs are committed, so this only needs re-running when the source faces or
-# the subset change (#114).
+# the subset change.
 [tasks.fonts]
 description = "Regenerate the web-app self-hosted fonts from their sources"
 depends = ["install"]
@@ -149,8 +149,8 @@ description = "Generate the web-app PWA icons from the card art"
 depends = ["build"]
 run = "node packages/web-app/scripts/generate/icons.mjs"
 
-# A crop of the actually-rendered mid-game board, so it needs the built site
-# (#221). Output is committed like the icons.
+# A crop of the actually-rendered mid-game board, so it needs the built site.
+# Output is committed like the icons.
 [tasks.og-image]
 description = "Generate the link-preview image from a rendered mid-game board"
 depends = ["bundle"]

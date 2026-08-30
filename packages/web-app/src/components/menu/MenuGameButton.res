@@ -1,5 +1,5 @@
 // A "game" action button — New, Restart, Share Seed — lifted out of `Menu` into
-// its own pure component (#307).
+// its own pure component.
 //
 // `enabled` drives the real `disabled` attribute — a disabled button emits no
 // click at all, so the handler guard is belt and braces — and the muted styling

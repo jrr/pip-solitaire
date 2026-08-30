@@ -10,7 +10,7 @@
 // **The wire format, why the blob rides in the fragment, and how the two kinds of link
 // differ are documented in `docs/save-and-share.md`.**
 //
-// Three *buttons* hand out those two links: the win overlay's victory share (#264) is a
+// Three *buttons* hand out those two links: the win overlay's victory share is a
 // deal link wrapped in a message (`victoryMessage`), not a third kind of link. Sharing
 // the position from a won board would ship the solution, so a victory can only ever
 // offer the deal.
@@ -18,11 +18,11 @@
 // all URL parsing; this module owns the format, so the name lives here.
 let fragmentKey = "g"
 
-// The query parameter carrying a shared *deal* (#98), same arrangement: `AppUrl`
+// The query parameter carrying a shared *deal*, same arrangement: `AppUrl`
 // parses it, this module writes it, so the spelling lives in one place.
 let dealKey = "seed"
 
-// …and the one naming *which game* that deal is a deal of (#353). Same arrangement as
+// …and the one naming *which game* that deal is a deal of. Same arrangement as
 // the two above: `AppUrl` reads it, this module writes it, one spelling.
 //
 // It says a *game*, so it is spelled `game`. `?scene=` picks which scene to mount and a
@@ -62,7 +62,7 @@ let urlFor = async (saved: SaveState.t): option<string> =>
 // board on screen, the deal number now says it in full, and the path keeps a link shared
 // from a GitHub Pages subpath (or a PR preview's deeper one) opening that same build.
 //
-// **`?game=` is the exception, and it's why this takes a game (#353.)** It says *which
+// **`?game=` is the exception, and it's why this takes a game.** It says *which
 // board the number is a deal of*, which the number can't say by itself — and it's written
 // from the game in hand rather than copied off the current URL, since the board on the
 // table is what's being shared and the query that opened the page may be a scene ago.
@@ -75,7 +75,7 @@ let urlForDeal = (~game: Game.t, ~seed: int): string => {
   origin ++ pathname ++ "?" ++ whichGame ++ dealKey ++ "=" ++ Int.toString(seed)
 }
 
-// The message a won game shares (#264) — the boast the win overlay's Share button
+// The message a won game shares — the boast the win overlay's Share button
 // hands over, in the shape the Wordle-likes made familiar: a line naming the game
 // and the deal, a line saying how it went, and a link to play the same board.
 //
@@ -85,7 +85,7 @@ let urlForDeal = (~game: Game.t, ~seed: int): string => {
 // straight out of the click handler with the gesture's transient activation intact (see
 // `deliver`).
 //
-// `moves` and `undos` are the game's tally (`Stats`, #289): every move the player
+// `moves` and `undos` are the game's tally (`Stats`): every move the player
 // made, and every time they stepped one back. An undo doesn't pad the move count —
 // it shows up as an undo instead — and a redo counts as the move it replays.
 //
@@ -100,7 +100,7 @@ let urlForDeal = (~game: Game.t, ~seed: int): string => {
 // route it takes — as the share sheet's own `url` field, or appended for the
 // clipboard. Composing it here as well is how a link ends up in the message twice.
 //
-// The game is *named* rather than spelled (#353): "Pip FreeCell #264" is the game's own
+// The game is *named* rather than spelled: "Pip FreeCell #264" is the game's own
 // `name`, so the boast says which board was beaten for the same reason the link does,
 // and from the same value. A second game needs no edit here.
 let victoryMessage = (~game: Game.t, ~seed: int, ~moves: int, ~undos: int): string =>
@@ -111,14 +111,14 @@ let victoryMessage = (~game: Game.t, ~seed: int, ~moves: int, ~undos: int): stri
   "\nSolved in " ++
   Stats.moveLabel(moves) ++ (undos > 0 ? " (" ++ Stats.undoLabel(undos) ++ ")" : "")
 
-// What a shared blob turns out to be (#354): the saved game, and **the game it is a game
+// What a shared blob turns out to be: the saved game, and **the game it is a game
 // of**. A pair rather than the save alone so the caller can bring the named board forward
 // instead of decoding onto whichever scene happens to be mounted.
 type shared = {game: Game.t, saved: SaveState.t}
 
 // The shared game a blob carries, or `None` for anything that isn't one — a truncated
 // paste, an incompatible version, a browser that can't decompress, a game this build
-// doesn't have, piles that don't fit the board named (#354). Every one means "ignore the
+// doesn't have, piles that don't fit the board named. Every one means "ignore the
 // link and deal normally": a bad link never takes the board down with it.
 //
 // A blob naming **no** game at all is *not* one of them — it means the default game, the

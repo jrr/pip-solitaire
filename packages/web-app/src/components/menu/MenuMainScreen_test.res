@@ -1,7 +1,7 @@
 // The menu's main screen, exercised in isolation now that it's a component of its
-// own (#307).
+// own.
 //
-// `Menu_test` pins what **Share Seed** does through the whole pane (#98) and
+// `Menu_test` pins what **Share Seed** does through the whole pane and
 // `MenuGameButton_test` pins the button itself; this file pins what's left — the
 // screen's own *arrangement*, the thing a refactor here could quietly change:
 //
@@ -11,7 +11,7 @@
 // 2. **The share line is always there.** Empty most of the time, but rendered — a
 //    confirmation that appeared out of nothing would shove every section below it
 //    down the panel as it came and went.
-// 3. **The Games rows are drawn from the list handed in** (#337), in order, as
+// 3. **The Games rows are drawn from the list handed in**, in order, as
 //    `<MenuRow>`s, with the highlight on whichever one says it's selected. The
 //    switcher hands over the list and builds no DOM, so this is where its rows are
 //    pinned.
@@ -48,7 +48,7 @@ let render = (
 let gameButtons = (screen): array<string> =>
   screen->findAll(".menu-buttons button")->Array.map(text)
 
-describe("MenuMainScreen (#307)", () => {
+describe("MenuMainScreen", () => {
   test("offers New, Restart and Share Seed, in that order", () => {
     expect(render(~shareDealSeed=Some(4242))->gameButtons)->toEqual([
       "New",
@@ -87,7 +87,7 @@ describe("MenuMainScreen (#307)", () => {
   })
 
   test("draws the games it's given as rows, marking the one that's showing", () => {
-    // The switcher's rows, now that they arrive as data (#337): the labels in order,
+    // The switcher's rows, now that they arrive as data: the labels in order,
     // and the highlight — `menu-row--active` plus `aria-current` — on the scene
     // mounted. A second game would list beneath the first, which is what this section
     // is a section for.

@@ -1,10 +1,10 @@
-// The **About** footer that sits at the foot of both menu screens (#165/#191): one
+// The **About** footer that sits at the foot of both menu screens: one
 // row holding the build/version line (`<VersionBadge>`) and, at its end, the green
 // **↻ Update** button that activates a waiting service-worker build — with the
 // update-check slot (`refresh`) below it, so the build info and the update check
 // read as one "About" block.
 //
-// **This footer must be the same height in both states (#201).** It's anchored at
+// **This footer must be the same height in both states.** It's anchored at
 // the foot of the panel, so a footer that grows shoves everything above it. The
 // Update button is therefore laid out at all times and hidden with *visibility*
 // (`menu-update--hidden`) when there's nothing to update: it keeps its box and only

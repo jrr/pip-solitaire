@@ -1,4 +1,4 @@
-// The open menu must cover the board's floating controls (issue #249).
+// The open menu must cover the board's floating controls.
 //
 // The board stacks in the large — cards on an imperative counter, the Finish
 // button at 900, the win overlay at 1000, the finish sweep at 100000 — while the

@@ -1,5 +1,5 @@
-// The single owner of device-motion *capability and permission* (#235), split out
-// of the debug `MotionScene` (#231) so the Settings "Wiggle Waggle" switch and the
+// The single owner of device-motion *capability and permission*, split out
+// of the debug `MotionScene` so the Settings "Wiggle Waggle" switch and the
 // board's shake-to-jostle can share one notion of "may we listen, and are we?".
 //
 // iOS remembers a motion-permission *denial* per origin and won't prompt twice, so
@@ -14,7 +14,7 @@
 // `devicemotion` window event.
 
 // --- The switch's state machine ---------------------------------------------
-// The Wiggle Waggle switch is not a bool (#235): it can be listening, off, blocked
+// The Wiggle Waggle switch is not a bool: it can be listening, off, blocked
 // by an OS refusal (asked, denied — iOS won't re-prompt), or unavailable because
 // the device or origin can't support motion at all.
 type unavailable =
@@ -35,7 +35,7 @@ let isOn = state =>
   | Off | Blocked | Unavailable(_) => false
   }
 
-// The subtitle line the Settings row carries (#235). It exists *only* to surface a
+// The subtitle line the Settings row carries. It exists *only* to surface a
 // problem: a healthy switch (off or listening) shows nothing under its title, so a
 // present subtitle always means "here's what's wrong".
 let subtitle = state =>
@@ -47,7 +47,7 @@ let subtitle = state =>
   | Unavailable(Insecure) => Some("Needs a secure (https) connection.")
   }
 
-// The app-wide switch state, owned by Settings (#235). Settings writes it on every
+// The app-wide switch state, owned by Settings. Settings writes it on every
 // resolution/flip; the debug `MotionScene` reads it so it can show the shared state
 // rather than owning its own "Request permission" button.
 let current: ref<state> = ref(Off)
@@ -107,7 +107,7 @@ let unavailableReason = (): option<unavailable> =>
     }
   }
 
-// The switch state to *open* in, given the persisted intent (#235). Availability is
+// The switch state to *open* in, given the persisted intent. Availability is
 // checked first — an unsupported device/origin shows its problem regardless of what
 // was saved — then the saved intent decides on vs off. This never prompts; the real
 // grant is deferred to the first user gesture (Settings, or the board's first tap).
@@ -117,7 +117,7 @@ let initialState = (~wantsShake): state =>
   | None => wantsShake ? On : Off
   }
 
-// Ask the OS for motion access and resolve to the state it lands in (#235). MUST be
+// Ask the OS for motion access and resolve to the state it lands in. MUST be
 // called synchronously under a real user gesture — iOS requires transient activation
 // for the prompt and remembers a denial per origin, so this is the one shot. On
 // Android/desktop, where the API is ungated, it resolves `On` without any prompt; if
@@ -146,7 +146,7 @@ let requestAccess = (): promise<state> =>
 // A single decoded reading, gravity included. Absent axes read 0 (a partial sensor).
 type reading = {x: float, y: float, z: float}
 
-// Subscribe to `devicemotion` readings, returning an unsubscribe thunk (#235).
+// Subscribe to `devicemotion` readings, returning an unsubscribe thunk.
 //
 // The subscription is *durable but battery-polite*: it's dropped whenever the page
 // is hidden and re-attached when it returns (`visibilitychange`), so a phone in a
@@ -189,12 +189,12 @@ let subscribe = (~onReading: reading => unit): (unit => unit) => {
 
 // The gravity-corrected magnitude above which a reading counts as a "shake", and the
 // debounce that keeps one physical shake — which spikes across many 60Hz samples —
-// from counting as many. Lifted from the debug scene's empirically-tuned values (#231).
+// from counting as many. Lifted from the debug scene's empirically-tuned values.
 let gravity = 9.81
 let shakeThreshold = 18.0
 let debounceMs = 500.0
 
-// Subscribe to *shakes* rather than raw readings (#235): the board's jostle only
+// Subscribe to *shakes* rather than raw readings: the board's jostle only
 // cares that a vigorous shake happened, not the numbers. Built on `subscribe`, so it
 // inherits the same visibility-parking and returns the same unsubscribe thunk.
 let subscribeShake = (~onShake: unit => unit): (unit => unit) => {

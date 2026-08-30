@@ -1,6 +1,6 @@
 // The menu's collapsible group (`MenuDisclosure`), now that the Debug screen's two
 // of them — "scenes" and "states" — are one component rather than twelve lines of
-// JSX beside forty lines of `createElement` (#336).
+// JSX beside forty lines of `createElement`.
 //
 // The states half of this file is `DebugStates_test`'s, carried over: it was the
 // only one of the two that could be tested at all, since the scenes group reached
@@ -34,7 +34,7 @@ let inert = label => labelled(label, () => ())
 
 let rowLabels = group => group->findAll(".menu-row")->Array.map(text)
 
-describe("MenuDisclosure (#336)", () => {
+describe("MenuDisclosure", () => {
   test("is a native disclosure, labelled and closed", () => {
     let group = render([inert("Mid-game")])
     expect(group->tag)->toBe("DETAILS")
@@ -82,7 +82,7 @@ describe("MenuDisclosure (#336)", () => {
   })
 
   test("highlights the selected row, and only that one", () => {
-    // The scene rows' active highlight is `<MenuRow selected>` (#335), so the
+    // The scene rows' active highlight is `<MenuRow selected>`, so the
     // announcement comes with the class.
     let group = render([
       {label: "Gallery", onSelect: () => (), selected: false},
@@ -94,7 +94,7 @@ describe("MenuDisclosure (#336)", () => {
   })
 
   test("draws its rows as the menu's own row component", () => {
-    // The rows are `<MenuRow>`s (#335), which is what the label stack here is — and
+    // The rows are `<MenuRow>`s, which is what the label stack here is — and
     // what the highlight and its `aria-current` above come from.
     expect(render([inert("Mid-game")])->textIn(".menu-row .menu-row__label"))->toBe("Mid-game")
   })

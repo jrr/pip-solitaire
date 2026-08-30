@@ -1,16 +1,16 @@
-// The app's single top bar (#109): all the chrome, banished to the top so the
+// The app's single top bar: all the chrome, banished to the top so the
 // bottom of the screen — the thumb arc — stays clear for dragging cards. Two
 // controls: a **Menu** button (opens the slide-over menu) and a live **Undo**
-// button (stepping back over the board's `GameState` history, #85). Those two are all
-// of it: **New Game** and **Restart** live in the menu (#156), and so does the
-// **Update** control, in the About footer (#165) — its availability is signalled up
+// button (stepping back over the board's `GameState` history). Those two are all
+// of it: **New Game** and **Restart** live in the menu, and so does the
+// **Update** control, in the About footer — its availability is signalled up
 // here only by a small green pip on the **Menu** button, the ☰ badge that keeps an
 // otherwise hidden call-to-action discoverable.
 //
 // In portrait the two sit side by side across the top; in the landscape rail
-// (#179 follow-up) they split to opposite ends — Menu at the top, Undo at the
+// they split to opposite ends — Menu at the top, Undo at the
 // bottom — so that with the rail on a cutout edge both controls land in the
-// corner "wings" and stay clear of the centered camera band (#180). The **Redo**
+// corner "wings" and stay clear of the centered camera band. The **Redo**
 // button was removed (a single undo is enough for this game); redo lives on only
 // in `core`'s history for the CLI.
 //
@@ -18,7 +18,7 @@
 // reports whether there's anything to step back to, so the button enables exactly
 // when history holds a prior state (`canUndo`). Undo is *not* special-cased on a
 // win — a victory is just another recorded state, so the button stays live and
-// steps the player back out of the win overlay (#85).
+// steps the player back out of the win overlay.
 //
 // A component is just a `props => vnode` function; the JSX transform lowers
 // `<TopBar .../>` to `Html.jsx(TopBar.make, props)` and fills this record from the
@@ -56,13 +56,13 @@ let make = ({onMenu, onUndo, canUndo, updateVisible}) =>
       onClick={_ => onMenu()}
       type_="button"
       // Fold the pending-update signal into the button's accessible name so the
-      // pip isn't a silent, visual-only cue (#165).
+      // pip isn't a silent, visual-only cue.
       ariaLabel={updateVisible ? "Open menu — update available" : "Open menu"}
       title="Menu"
     >
       {Html.string("☰")}
       // The update pip: a small green presence dot on the Menu button when a new
-      // version is waiting (#165). Purely decorative — the state it marks is voiced
+      // version is waiting. Purely decorative — the state it marks is voiced
       // by the button's `aria-label` above — so it's `aria-hidden`.
       {updateVisible ? <span className="top-bar__pip" ariaHidden="true" /> : Html.empty}
     </button>

@@ -1,5 +1,5 @@
 // The half of `CardRaster` that isn't pixels: the standalone SVG document it
-// serializes a card into (#225).
+// serializes a card into.
 //
 // The rasterization itself needs a real engine — an `<img>` decode, a canvas,
 // and the actual font files — so its fidelity is measured in the browser suite

@@ -6,7 +6,7 @@ open Card
 // in `core` don't, and which would be brittle here).
 let has = (s: string, sub: string): bool => s->String.includes(sub)
 
-// The compact card identity (#84): the text the driver names a card by.
+// The compact card identity: the text the driver names a card by.
 describe("CardText", () => {
   test("parses the canonical two-character identities", () => {
     expect(CardText.parse("AS"))->toEqual(Some({suit: Spades, rank: Ace}))
@@ -46,7 +46,7 @@ describe("Render, from the driver", () => {
 
 // The reducer driver end to end: a scripted sequence of commands folded through
 // the pure interpreter, including a rejected move — the loop covered without a
-// terminal (#84's "done when").
+// terminal.
 describe("Repl.run", () => {
   test("deals, makes a legal move, rejects an illegal one, and prints the board", () => {
     // The send-home scenario parks each suit's Three in a free cell over an Ace–Two
@@ -246,14 +246,14 @@ describe("Repl.run", () => {
 
   test("announces a win once every foundation is complete", () => {
     // The near-won scenario is a single legal move short of a win: the last suit's
-    // King sits alone in the first free cell, its foundation built to the Queen (#121).
+    // King sits alone in the first free cell, its foundation built to the Queen.
     let transcript = Repl.run(["deal freecell almost-won", "move KC F4"])
     expect(has(transcript, "You win"))->toBe(true)
     // …and the win isn't declared before that last card is played.
     expect(has(Repl.run(["deal freecell almost-won"]), "You win"))->toBe(false)
   })
 
-  // What the game cost, under the win line (#289/#302 via #298). The terminal reports
+  // What the game cost, under the win line. The terminal reports
   // these because its session *carries* them, not because this driver was taught to
   // count — which is the whole point of the extraction: the web app's victory panel
   // reads the same two numbers off the same record.
@@ -272,7 +272,7 @@ describe("Repl.run", () => {
 
   // …and the autoplay tally, which is the one fact about a game that has to survive
   // every undo back past the solver's moves — the web app withholds its victory Share
-  // button on the strength of it (#291).
+  // button on the strength of it.
   testWithin(
     "the win report owns up to a game the solver played",
     () => {
@@ -284,7 +284,7 @@ describe("Repl.run", () => {
     ~timeout=120_000,
   )
 
-  // Auto-move to foundation (#122): the `home` verb sends a card to the foundation
+  // Auto-move to foundation: the `home` verb sends a card to the foundation
   // that will take it, and refuses one no foundation is ready for.
   test("home collects several eligible cards to their foundations in a row", () => {
     // The send-home scenario parks each suit's next foundation card — a Three, atop
@@ -315,13 +315,13 @@ describe("Repl.run", () => {
     expect(has(Repl.run(["home AS"]), "Deal a game first"))->toBe(true)
   })
 
-  // Safe auto-collect (#125): after an accepted move the driver sweeps every *safe*
+  // Safe auto-collect: after an accepted move the driver sweeps every *safe*
   // card home when the option is on (its default), and does exactly nothing when
   // it's off — the flag-gated no-op path.
   // The send-home scenario sits every foundation at the Two with each suit's Three
   // parked in a free cell — the foundations are 4,5,6,7 (Spades, Hearts, Diamonds,
   // Clubs). Its scrambled cascades keep it far from drainable, so the finish
-  // suppression (#132) doesn't apply here and auto-collect's own behaviour shows
+  // suppression doesn't apply here and auto-collect's own behaviour shows
   // cleanly. (The suppression itself is covered by the `finish` tests below.)
   describe("auto-collect", () => {
     test(
@@ -368,7 +368,7 @@ describe("Repl.run", () => {
     )
   })
 
-  // The end-game finish sweep (#132): the `finish` verb sweeps a drainable board
+  // The end-game finish sweep: the `finish` verb sweeps a drainable board
   // home to a win, reports when the board isn't yet drainable, and — the scope
   // decision — safe auto-collect steps aside once the board is finishable so the
   // sweep owns the end-game.
@@ -402,7 +402,7 @@ describe("Repl.run", () => {
     )
   })
 
-  // Autoplay (#291): the `autoplay` verb hands the board to `core`'s solver, plays
+  // Autoplay: the `autoplay` verb hands the board to `core`'s solver, plays
   // the line it finds a move at a time, and lets this driver's own `finish` sweep the
   // rest home — so a solvable deal ends on the very win line a hand-played game does.
   describe("autoplay", () => {
@@ -451,7 +451,7 @@ describe("Repl.run", () => {
 
     // A board the solver can't pack is refused rather than searched — the
     // `Solver.NotFreeCell` arm, in the words this driver would print. Every board the
-    // terminal can deal is FreeCell now (#342), so the refusal is exercised against
+    // terminal can deal is FreeCell now, so the refusal is exercised against
     // `Solver` directly in `core` and against a hand-shaped board in the web app's
     // `TableScene_test`; what's left here is the wording.
 
@@ -463,7 +463,7 @@ describe("Repl.run", () => {
     )
   })
 
-  // Column reorder (#159): the `movecol` verb reorders two cascades in one undoable
+  // Column reorder: the `movecol` verb reorders two cascades in one undoable
   // step when the house-rule option is on, does nothing when it's off, and rejects a
   // non-cascade or out-of-range target — mirroring the `finish`/`home` verb style.
   describe("movecol", () => {
@@ -621,7 +621,7 @@ describe("Repl.run", () => {
   })
 })
 
-// `redeal`/`restart`: the web menu's Restart button as a verb (#156), and held to the
+// `redeal`/`restart`: the web menu's Restart button as a verb, and held to the
 // same contract — replay the deal on the table from its opening layout, with a clean
 // history, and from a posed position go to the game's *real* deal rather than the pose
 // (see `TableScene`'s `publishRestart`).
@@ -688,7 +688,7 @@ describe("Render deal number", () => {
     expect(has(Repl.run(["deal freecell"]), "deal #1"))->toBe(true)
   })
 
-  // The rule the web app follows before offering a Share (#264): a posed position names
+  // The rule the web app follows before offering a Share: a posed position names
   // only the deal it's been *proved* to descend from, and stays quiet otherwise.
   test("a posed position names only a deal it descends from", () => {
     expect(has(Repl.run(["deal freecell almost-won"]), "deal #264"))->toBe(true)
@@ -738,7 +738,7 @@ describe("Repl set", () => {
     }
   })
 
-  // The house rule (#159) had no control anywhere before this — not a switch in the web
+  // The house rule had no control anywhere before this — not a switch in the web
   // menu, not a flag on the CLI. Typing it off is now the only way to reach that branch.
   test("reorder off gates the reducer, and back on ungates it", () => {
     let off = Repl.run(["deal freecell", "set reorder off", "movecol 8 9"])
@@ -799,14 +799,14 @@ describe("Repl.consider", () => {
   )
 })
 
-// Undo/redo over the GameState history (#85): the CLI loop steps back and forth
+// Undo/redo over the GameState history: the CLI loop steps back and forth
 // over the states an accepted move records. Folds a command script through
 // `Repl.step`, inspecting the session's `present` state rather than the ASCII art
 // so the assertions pin the actual card positions.
 describe("Repl undo/redo", () => {
   // Auto-collect off throughout, so a step is exactly the move that was typed and the
   // positions asserted below are the ones the command put the card in — with it on,
-  // a single `home`-able move drags a whole cascade of collections behind it (#125),
+  // a single `home`-able move drags a whole cascade of collections behind it,
   // which is that feature's business and not this one's.
   let options = {...Options.default, autoCollect: false}
 
@@ -840,7 +840,7 @@ describe("Repl undo/redo", () => {
     expect(locationOf(redone, threeS))->toEqual(Some(GameState.InPile(4, 2)))
   })
 
-  test("a no-op move records no undoable step (#215)", () => {
+  test("a no-op move records no undoable step", () => {
     // Send the Three home (one real step), then re-drop it onto the same foundation —
     // a lawful no-op that must not push a second state onto the undo stack.
     let session = runToSession([deal, "move 3S F1", "move 3S F1"])

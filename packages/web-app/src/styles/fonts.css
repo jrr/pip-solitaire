@@ -1,5 +1,5 @@
 @layer foundations {
-  /* Self-hosted, precached webfonts (issue #114): the app's type no longer
+  /* Self-hosted, precached webfonts: the app's type no longer
      depends on the platform's installed fonts. Both faces are OFL and shipped
      same-origin from ./fonts (vendored by `mise run fonts`, precached by the
      PWA — see vite.config.js), so they render identically everywhere and on a

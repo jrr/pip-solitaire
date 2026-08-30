@@ -1,18 +1,18 @@
 // The share link end to end (`ShareLink`): a board's saved game becomes a URL, and
 // that URL's blob becomes the same game again. The interesting property is that
 // nothing is lost in the middle — the recipient gets the *whole* stack, not just the
-// position, and (since #289) the move and undo counts with it — since that's what
+// position, and the move and undo counts with it — since that's what
 // "share game state" promises.
 //
-// Since #354 that includes *which game* the stack is a stack of, which is the one thing
-// the blob used to leave to whichever board happened to be mounted at the far end. The
-// resolving happens here rather than in `core`, so it's pinned here too — including the
-// two ways a link can now be bad (see the second `describe`).
+// That includes *which game* the stack is a stack of: without it the blob lands on
+// whichever board happens to be mounted at the far end. The resolving happens here
+// rather than in `core`, so it's pinned here too — including the two ways a link can
+// be bad (see the second `describe`).
 //
-// The module's other link — `urlForDeal` (#98), which shares a *deal number* rather
+// The module's other link — `urlForDeal`, which shares a *deal number* rather
 // than a position — is pinned here too, on the shape of the URL it builds. It has no
 // codec to round-trip; what it promises is that the number lands in the query
-// parameter the app parses — and, since #353, that the *game* it's a deal of lands in
+// parameter the app parses — and that the *game* it's a deal of lands in
 // the one beside it, or is left out because it's the game a bare number already means.
 // `browser-tests/share-deal.spec.mjs` closes the loop on both by opening the link for
 // real.
@@ -58,7 +58,7 @@ describe("ShareLink", () => {
     }
   })
 
-  testAsync("the move and undo counts ride along in the link (#289)", async () => {
+  testAsync("the move and undo counts ride along in the link", async () => {
     // The counts live outside the game state, so nothing about a position implies
     // them: they make it into a share link only because they're in the save envelope
     // the link carries.
@@ -79,7 +79,7 @@ describe("ShareLink", () => {
   })
 
   test("a deal link says which board to deal, in the query and in the clear", () => {
-    // The other share (#98), and deliberately the opposite trade: no payload, so no
+    // The other share, and deliberately the opposite trade: no payload, so no
     // compression, no fragment, and a link a player can read off one screen and type
     // into another. The key is the one `AppUrl` parses, which is the round trip the
     // browser suite then makes for real.
@@ -110,7 +110,7 @@ describe("ShareLink", () => {
     expect(await ShareLink.savedFrom(blob))->toEqual(None)
   })
 
-  testAsync("a link written before the tally existed still opens (#289)", async () => {
+  testAsync("a link written before the tally existed still opens", async () => {
     // The counts were added to the save envelope without moving its version, so a
     // link already sitting in somebody's chat has to keep working. It comes back as a
     // real game whose tally was inferred rather than as "couldn't read that".
@@ -126,12 +126,12 @@ describe("ShareLink", () => {
   })
 })
 
-// Which *game* a shared blob is a game of (#354). The link carried the cards and not
+// Which *game* a shared blob is a game of. The link carried the cards and not
 // the board they belong to, so it decoded onto whatever scene happened to be mounted —
 // which was only ever safe because there was one game to mount. Now the blob names its
 // board, and this is the end that resolves the name: against `Game.all`, before anything
 // is handed to a scene.
-describe("ShareLink.savedFrom names the game (#354)", () => {
+describe("ShareLink.savedFrom names the game", () => {
   let blobFor = async (s: SaveState.t) =>
     (await Compression.compress(SaveState.encode(s)))->Option.getOrThrow
 
@@ -175,13 +175,13 @@ describe("ShareLink.savedFrom names the game (#354)", () => {
   })
 })
 
-// Which *game* a deal number is a deal of (#353). A deal link used to say only the
+// Which *game* a deal number is a deal of. A deal link used to say only the
 // number, and the receiving end read it as FreeCell by construction — so the app could
 // never share a deal of a second game. What's pinned here is the shape `urlForDeal`
 // writes: the game named in `?game=`, and left out for the default one.
-describe("ShareLink.urlForDeal names the game (#353)", () => {
-  // A second seeded game, stood up here because `Game.all` has only FreeCell today
-  // (#342 retired the demo boards). Everything `urlForDeal` reads of a game is its
+describe("ShareLink.urlForDeal names the game", () => {
+  // A second seeded game, stood up here because `Game.all` has only FreeCell in the
+  // web-app's own scene list. Everything `urlForDeal` reads of a game is its
   // `id`, so a FreeCell board under another name is a faithful stand-in for the day a
   // real second game arrives — and it's this test, not that day, that has to catch a
   // link which quietly means FreeCell.
@@ -223,13 +223,13 @@ describe("ShareLink.urlForDeal names the game (#353)", () => {
   })
 })
 
-// The victory message (#264): what the win overlay hands over when a player wins.
+// The victory message: what the win overlay hands over when a player wins.
 // It's a *string* the recipient reads, so what's pinned here is what it says — the
 // deal number they need to play the same board, and what the win cost in moves and
-// undos (#289) — and, just as load-bearing, what it doesn't say: no URL of its
+// undos — and, just as load-bearing, what it doesn't say: no URL of its
 // own, because `deliver` adds the link on whichever route it takes and a message
 // that composed one too would deliver it twice.
-describe("ShareLink.victoryMessage (#264)", () => {
+describe("ShareLink.victoryMessage", () => {
   let game = Game.freecell
 
   test("names the deal and how many moves it took", () => {
@@ -246,7 +246,7 @@ describe("ShareLink.victoryMessage (#264)", () => {
     expect(message->String.includes("moves"))->toBe(false)
   })
 
-  // The undo count (#289) is the message's one conditional clause: a clean run says
+  // The undo count is the message's one conditional clause: a clean run says
   // nothing about undos, so the clause being there at all is part of what's reported.
   test("names the undos when there were any", () => {
     let message = ShareLink.victoryMessage(~game, ~seed=847213, ~moves=94, ~undos=3)
@@ -282,7 +282,7 @@ describe("ShareLink.victoryMessage (#264)", () => {
     )->toBe(true)
   })
 
-  // The boast names the game it was won on (#353), read off the game rather than
+  // The boast names the game it was won on, read off the game rather than
   // spelled into the string. "Pip FreeCell #264" is what it has always said and what it
   // still says — the wording didn't change, only where the word comes from.
   test("names the game the win happened on", () => {

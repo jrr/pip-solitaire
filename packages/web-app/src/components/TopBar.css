@@ -1,9 +1,9 @@
 @layer components {
-  /* The single top bar (#109): all chrome across the top, so the thumb arc at
+  /* The single top bar: all chrome across the top, so the thumb arc at
      the bottom stays clear for dragging cards. A full-width flex row of
      controls. Sits above the scene band as the first child of #app.
 
-     The negative left margin (#165) trims the body's extra 1.5rem gutter down
+     The negative left margin trims the body's extra 1.5rem gutter down
      to ~0.75rem so the ☰ button hugs the edge closer — while leaving the
      `env(safe-area-inset-left)` clearance in body's padding untouched, so the
      bar still clears the notch on a landscape phone. */
@@ -17,7 +17,7 @@
   }
 
   /* The bar's buttons share the scene controls' look. A disabled button (Undo
-     with nothing to undo — #85) is dimmed and non-interactive. */
+     with nothing to undo) is dimmed and non-interactive. */
   .top-bar__button {
     display: inline-flex;
     align-items: center;
@@ -52,7 +52,7 @@
     position: relative;
   }
 
-  /* The update pip (#165): a small accent-green presence dot on the ☰ Menu
+  /* The update pip: a small accent-green presence dot on the ☰ Menu
      button when a new version is waiting — the badge that keeps the update
      call-to-action (now folded into the menu's About footer) discoverable. A
      thin ring in the bar's background colour sets it off from the button edge

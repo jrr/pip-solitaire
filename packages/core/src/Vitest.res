@@ -9,7 +9,7 @@
 // reach these bindings from here; add what you need here rather than starting a second
 // `Vitest.res` in a dependent. That's a preference now, not a prohibition. It used to
 // be one: module names are global across a ReScript build graph, so before `cli` and
-// `web-app` were namespaced (#299) a second `Vitest` there displaced `core`'s copy in
+// `web-app` were namespaced a second `Vitest` there displaced `core`'s copy in
 // `core`'s own build — web-app carried such a duplicate; it built for months and then
 // failed the moment a `core` test happened to need rebuilding mid-dependency-build.
 // With `"namespace": true` on both leaf packages, a duplicate now shadows this module

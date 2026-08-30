@@ -1,5 +1,5 @@
 // The header shared by all three menu screens, exercised in isolation now that it's
-// a component of its own (#307).
+// a component of its own.
 //
 // Two things here are load-bearing rather than cosmetic:
 //
@@ -25,7 +25,7 @@ let render = (~title, ~back=None, ~onTitleTap=None, ~onClose=() => ()) =>
 // The header's slots, left to right — which is what decides where the title sits.
 let slots = (header: Html.element): array<string> => header->children->Array.map(tag)
 
-describe("MenuHeader (#307)", () => {
+describe("MenuHeader", () => {
   test("shows the screen's title", () => {
     expect(render(~title="Settings")->find(".menu-title")->Option.mapOr("", text))->toBe("Settings")
   })

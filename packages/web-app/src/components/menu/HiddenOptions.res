@@ -1,6 +1,6 @@
 // Hidden settings, and the tap gesture that reveals them.
 //
-// Some settings aren't ready to be found yet — "Wiggle Waggle" (#235) is the first
+// Some settings aren't ready to be found yet — "Wiggle Waggle" is the first
 // — but they still have to be reachable on the device that's being tested, in the
 // installed PWA, where there's no address bar to add a query parameter to. So they
 // hide behind the same gesture Android uses for its developer options: tap the

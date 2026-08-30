@@ -1,5 +1,5 @@
-// The "Wiggle Waggle" row (#235), exercised in isolation now that it's a component
-// of its own (#307).
+// The "Wiggle Waggle" row, exercised in isolation now that it's a component
+// of its own.
 //
 // The row's whole shape is decided by `Motion.state`, and the four states don't map
 // onto one bool — which is why it isn't a `<MenuToggleRow>` call. What this file
@@ -27,7 +27,7 @@ let checked = row => row->attrOr("aria-checked")
 
 let isOn = row => row->classes->String.includes("menu-row--on")
 
-describe("MenuWiggleRow (#307)", () => {
+describe("MenuWiggleRow", () => {
   test("is titled, and deliberately unexplained, while it's healthy", () => {
     let off = render(Motion.Off)
     expect(off->find(".menu-row__label")->Option.mapOr("", text))->toBe("Wiggle Waggle")

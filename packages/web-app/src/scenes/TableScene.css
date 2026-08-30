@@ -1,13 +1,13 @@
 @layer scenes {
   /* The board host (TableScene.res): wraps the playfield (and caption) so a
      New Game re-deal can rebuild just the board in place — the re-deal is now
-     driven from the top bar (#109), which stays put across the rebuild. It
+     driven from the top bar, which stays put across the rebuild. It
      fills the scene band and lets the playfield's `flex: 1` grow into it, so
      the board still stretches exactly as when the playfield was a direct child
      of the container.
 
      `isolation: isolate` makes it a **stacking context**, which keeps the
-     board's layering to itself (#249). The board stacks in the large: the
+     board's layering to itself. The board stacks in the large: the
      cards carry an imperative counter (TableScene.res), the finish sweep flies
      at 100000, the Finish button sits at 900 and the win overlay at 1000 —
      numbers chosen relative to *each other*. Without a stacking context here
@@ -27,7 +27,7 @@
     align-items: stretch;
   }
 
-  /* The win overlay (issue #121): shown over the board when every foundation
+  /* The win overlay: shown over the board when every foundation
      is complete. A dimmed scrim covering the whole board (`.table-board` is
      the positioning context) with a centred panel announcing the win and a
      New Game button to play on. Built imperatively in TableScene.res and torn
@@ -71,7 +71,7 @@
     color: #eab308;
   }
 
-  /* How long the game took (#302): "4:07", between the title and the tally. The
+  /* How long the game took: "4:07", between the title and the tally. The
      second thing you read and the one you'd say out loud, so it's a size up on the
      tally and keeps the panel's light ink, with tabular figures so a clock that
      ticks past a digit boundary doesn't shift under the eye. Absent entirely on a
@@ -84,7 +84,7 @@
     color: #e2e8f0;
   }
 
-  /* What the game cost (#289): "94 moves · 3 undos", under the title and above
+  /* What the game cost: "94 moves · 3 undos", under the title and above
      the buttons. Quieter than the title and a size down — the headline is that
      you won; this is the detail you read second. The panel's own `gap` spaces
      it, so it carries no margin of its own. */
@@ -108,7 +108,7 @@
     background: #15803d;
   }
 
-  /* The panel's button row (#264), so Share sits beside New Game rather than
+  /* The panel's button row, so Share sits beside New Game rather than
      under it. The panel is a centred column, so a row of one (a board with no
      deal number to share) looks exactly as it did before the Share button
      existed. */
@@ -151,7 +151,7 @@
     color: #94a3b8;
   }
 
-  /* The end-game "Finish" button (#132): a floating control that appears
+  /* The end-game "Finish" button: a floating control that appears
      (this element is only in the DOM while the board is drainable) low on the
      stage, offering the one-tap win sweep. Styled off the win panel's button
      so the two read as one family; centred along the bottom edge, clear of the
@@ -176,11 +176,10 @@
     background: #15803d;
   }
 
-  /* Card-stacking tech demo (grown out of the drag-and-drop spike, issue
-     #21): a stage holding a few pointer-draggable cards and a row of drop
+  /* The card table: a stage holding pointer-draggable cards and a row of drop
      zones they snap into and pile up in. `position: relative` makes the
      stage the origin for the cards' absolute left/top. The gesture locks
-     cover the *whole* stage, not just the cards (#113): `touch-action: none`
+     cover the *whole* stage, not just the cards: `touch-action: none`
      so a drag that starts or strays onto the bare background or a drop zone
      still moves cards without scrolling the page or firing a browser
      gesture. This one must stay scoped — a page-wide `touch-action:
@@ -219,14 +218,14 @@
     touch-action: none;
   }
 
-  /* The role-grouped rows of drop zones (#94/#97), pinned to the top of the
+  /* The role-grouped rows of drop zones, pinned to the top of the
      stage: free cells + foundations across the top, cascades below. Stacked
      in a flex column so the cascade row is pushed clear of the top row and
      its fans grow into the space beneath. A single-group board has just one
      row here. */
   .drop-rows {
     position: absolute;
-    /* Inset the interactive layer by the safe-area insets (#179). The shaded
+    /* Inset the interactive layer by the safe-area insets. The shaded
        band (`#scene-area`) deliberately bleeds full-width under a display
        cutout — it's just shading, harmless to draw under a notch — but the
        zones, cards, empty-pile slots and everything else that must stay
@@ -240,7 +239,7 @@
     left: env(safe-area-inset-left);
     right: env(safe-area-inset-right);
     top: 16px;
-    /* Wide-desktop cap (#173): `--rows-max-w` (published by applyScale) is the
+    /* Wide-desktop cap: `--rows-max-w` (published by applyScale) is the
        row width at which the columns' `space-evenly` gaps have grown to their
        limit. Capping the row here and centring it (margin-inline: auto, between
        the left/right insets) means a stage wider than that pours its extra width
@@ -275,7 +274,7 @@
     width: var(--zone-w);
     height: var(--zone-h);
     /* The resting-state dashed outline now lives on `.drop-zone__slot` below
-       (#166); the zone itself draws nothing until a highlight state lights it.
+      ; the zone itself draws nothing until a highlight state lights it.
        A *transparent* dashed border reserves the frame so `--over`/`--invalid`
        only need to recolour it — keeping those highlights' dashed look
        unchanged — while the plain, un-highlighted zone stays invisible and the
@@ -291,7 +290,7 @@
     transition: border-color 0.12s ease, background 0.12s ease;
   }
 
-  /* The static empty-pile indicator (#166): a card-sized dashed placeholder,
+  /* The static empty-pile indicator: a card-sized dashed placeholder,
      split off from the zone's old overloaded outline so it can match the card
      footprint exactly. Centred where a squared card rests — horizontally in the
      zone, vertically in its *base* box (`--zone-h`, which stays the base height
@@ -315,7 +314,7 @@
     pointer-events: none;
   }
 
-  /* The slot's role (#94), which until now it didn't show: one dashed rectangle
+  /* The slot's role, which until now it didn't show: one dashed rectangle
      stood for a free cell, an open foundation and an empty column alike, so a
      player couldn't tell where the cells ended and the foundations began. That
      boundary isn't learnable by position either — it moves with the game
@@ -417,7 +416,7 @@
     }
   }
 
-  /* The double-tap "where can this go?" hint mask (#217). A throwaway div
+  /* The double-tap "where can this go?" hint mask. A throwaway div
      TableScene.res pulses over one eligible target card (card-sized), driving it
      mostly-green for a beat, then removing it. Solid accent green (#22c55e — the
      same "go" green the menu and the drop-zone hover highlight wear) at full
@@ -456,7 +455,7 @@
     top: 0;
     left: 0;
     width: var(--card-w);
-    /* The drag/select locks now live on `.stacking-playfield` (#113), which
+    /* The drag/select locks now live on `.stacking-playfield`, which
        covers the whole stage — cards inherit `user-select: none` and are
        already under the stage's `touch-action: none`. `-webkit-user-drag`
        still belongs here: it suppresses the browser's native drag-image
@@ -481,7 +480,7 @@
       drop-shadow(0 1px 2px rgba(15, 23, 42, 0.4));
   }
 
-  /* The hand-placed tilt (#65) — see docs/card-tilt.md. Three rules here, each
+  /* The hand-placed tilt — see docs/card-tilt.md. Three rules here, each
      with teeth:
 
      - the rotation lives on the inner `.card-art`, never the `.stacking-card`
@@ -490,7 +489,7 @@
      - `transform-origin` is explicit because SVG elements default to `0 0`, and
        the card would swing about its top-left corner;
      - the delay and duration are per-card properties whose *defaults* are the
-       in-game snap. A finish sweep overrides them per card (#241) and clears
+       in-game snap. A finish sweep overrides them per card and clears
        them again; the `.dealing` rule below can't stand in for that — it
        switches off the wrapper's left/top snap, a different selector. */
   .stacking-card .card-art {
@@ -500,7 +499,7 @@
     transition: transform var(--card-rot-dur, 0.18s) ease var(--card-rot-delay, 0s);
   }
 
-  /* During the opening deal (#115) each card is positioned instantly — the
+  /* During the opening deal each card is positioned instantly — the
      left/top snap transition is switched off so the card doesn't slide in
      from the corner — and flown up into place by a transform animation
      instead (see `animateDeal` in TableScene.res). The class is dropped a

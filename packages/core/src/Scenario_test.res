@@ -244,7 +244,7 @@ describe("Scenario", () => {
   })
 })
 
-// Win detection (#121): every foundation complete is a win. Exercised through the
+// Win detection: every foundation complete is a win. Exercised through the
 // scenarios above so the states are real positions, not hand-built shapes.
 describe("hasWon", () => {
   let game = Game.freecell
@@ -297,7 +297,7 @@ describe("hasWon", () => {
 
 // The `almost-won` scenario claims to descend from deal **264** (`named.seed`), and
 // the web app leans on that claim: it's what lets a victory won from `?state=almost-won`
-// hand someone a `?seed=` link that's actually true (#264). A claim like that is worth
+// hand someone a `?seed=` link that's actually true. A claim like that is worth
 // nothing unasserted, so this replays the line and checks where it lands.
 //
 // The line was found by a solver and is fixture data, not something to read: 130 moves
@@ -317,7 +317,7 @@ let almostWonLine264 =
   "8D:14 9S:11 5C:7 7S:4 8S:4 JD:13 9S:4 TS:4 7C:14 6D:14 JS:4 QS:10 KH:0 QD:3 4D:6 " ++
   "5D:6 6C:7 6D:6 7D:6 7C:7 8C:7 8D:6 9D:6 TD:6 QS:4 9C:7 JD:6 JH:5 QC:8 TC:7 QD:6 JC:7 " ++ "KD:6 QC:7 QH:5 KH:5 KS:4 KC:0"
 
-describe("Scenario almost-won provenance (#264)", () => {
+describe("Scenario almost-won provenance", () => {
   test("deal 264 really does play to the almost-won position", () => {
     let seed =
       Scenario.freecellScenarios

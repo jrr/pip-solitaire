@@ -1,4 +1,4 @@
-// Does a rasterized card still look like a card? (issue #225)
+// Does a rasterized card still look like a card?
 //
 // The victory animation blits pre-rasterized card sprites rather than animating
 // 52 live SVG text subtrees, and the risk that makes rasterizing hard is

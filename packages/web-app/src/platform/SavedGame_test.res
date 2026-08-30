@@ -1,5 +1,5 @@
-// The `localStorage` edge of save-and-resume (#177): `SavedGame` writes a game's
-// history — and, since #289, the play tally beside it — under a per-game-type key
+// The `localStorage` edge of save-and-resume: `SavedGame` writes a game's
+// history — and the play tally beside it — under a per-game-type key
 // and reads it back, delegating the actual encoding to `core`'s `SaveState`
 // (round-tripped in `SaveState_test`). These exercise the storage path end to end —
 // save→load, the no-save-yet case, and `clear`.
@@ -23,7 +23,7 @@
 
 open Vitest
 
-describe("SavedGame (#177)", () => {
+describe("SavedGame", () => {
   let game = Game.freecell
   // A history with a move recorded, and a tally that doesn't match its shape (three
   // moves and an undo behind a one-step line), so a save that dropped either — or
@@ -32,9 +32,9 @@ describe("SavedGame (#177)", () => {
     ...GameState.initial(game),
     loose: [{suit: Spades, rank: Ace}],
   })
-  // …and a clock beside it (#302), for the same reason: a save that dropped the
+  // …and a clock beside it, for the same reason: a save that dropped the
   // stamps would round-trip to a game that no longer knows how long it has taken.
-  // …and the game it's a game of (#354), which every save written from a session
+  // …and the game it's a game of, which every save written from a session
   // carries. Storage keys by game id as well, so here the two simply agree; the field
   // earns its keep at the other end of the same envelope, where a share link arrives
   // with no key to be found under.
@@ -64,7 +64,7 @@ describe("SavedGame (#177)", () => {
     expect(SavedGame.load(game.id))->toEqual(None)
   })
 
-  // The deal number stored beside the history (#98). It's a separate key because the
+  // The deal number stored beside the history. It's a separate key because the
   // history has no room for it and no need of it — but the Share button does, since a
   // resumed board can't work out which deal it came from on its own.
   test("a deal number saved with a game reads back with it", () => {

@@ -1,4 +1,4 @@
-// The menu's "Share Seed" button, end to end (#98).
+// The menu's "Share Seed" button, end to end.
 //
 // The claim the feature makes is a *round trip*: the link this button hands over,
 // opened anywhere, deals the identical board. Every link in that chain has a unit
@@ -11,11 +11,11 @@
 // all, so "the link actually reaches the player" is unaskable there. Here it's the
 // whole point, and Playwright can grant the permission a real user grants.
 //
-// Since #353 the link also says *which game* the number is a deal of (`?game=`), and
-// omits it for the default one — so the round trip has a second half worth making:
-// a bare `?seed=` has to keep opening FreeCell, which is the shape of every deal link
-// shared before that change. That's the last test below, and a page load is the only
-// place it can be asked.
+// The link also says *which game* the number is a deal of (`?game=`), and omits it
+// for the default one — so the round trip has a second half worth making: a bare
+// `?seed=` has to keep opening FreeCell, which is the shape of every deal link
+// shared before `?game=` existed. That's the last test below, and a page load is
+// the only place it can be asked.
 
 import { expect, test } from "@playwright/test"
 import { settleBoard } from "./lib/board.mjs"
@@ -85,7 +85,7 @@ test("shares a link to the deal on the table, and that link reopens it", async (
   // The link says which board to deal and nothing else — legible, and short enough
   // to be read off one screen and typed into another. FreeCell is the game a deal
   // number belongs to when none is named, so the link doesn't spend characters saying
-  // so (#353): `?game=` appears only for another game.
+  // so: `?game=` appears only for another game.
   expect(new URL(url).searchParams.get("seed")).toBe("24680")
   expect(new URL(url).searchParams.get("game")).toBe(null)
   // …and it never says it the other way either: `?scene=` names a scene now, and a

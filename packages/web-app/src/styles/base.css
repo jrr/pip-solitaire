@@ -2,16 +2,12 @@
   :root {
     color-scheme: dark;
 
-    /* **The chrome's control box, stated once** (#334). Four selectors across three
-       sheets each spelled out the same padded, bordered, dark-blue box from
-       scratch — `.menu-row` (MenuRow.css), `.menu-button` (MenuGameButton.css),
-       `.scene-menu__row` (SceneSwitcher.css, folded into `.menu-row` itself in
-       #335 once the scene rows became `<MenuRow>`s) and `.scene-menu__group-label`
-       (MenuDisclosure.css, which the group rules moved to in #336). Two of
-       them said so in prose: the menu row described itself as "a full-width control
-       styled like the scene rows", the game button as "styled like the scene
-       rows/toggle but centred". #307 had already merged three such copies into
-       `MenuRow.css`, but it reached only the menu's own components and stopped.
+    /* **The chrome's control box, stated once**. Every padded, bordered,
+       dark-blue control in the chrome reads its box from these tokens —
+       `.menu-row` (MenuRow.css), `.menu-button` (MenuGameButton.css),
+       `.scene-menu__group-label` (MenuDisclosure.css). A new control of the same
+       family goes here for its box too; spelling the four declarations out again
+       is how they drift apart.
 
        Tokens rather than a shared `.control` class, on three counts: no new selector
        enters the cascade, so nothing can tie or lose across the `@layer` order; no
@@ -48,19 +44,19 @@
   html,
   body {
     margin: 0;
-    /* Native-app touch behaviour (#113). `manipulation` kills double-tap-to-
+    /* Native-app touch behaviour. `manipulation` kills double-tap-to-
        zoom (and the legacy 300ms tap delay) app-wide — iOS intersects
        `touch-action` down the ancestor chain, so a root value covers every
        descendant — while still permitting pinch-zoom. `overscroll-behavior:
        none` stops the rubber-band bounce / scroll-chaining that reads as
        "the drag scrolled the page" (in-bounds scrolling, e.g. the tall card
        gallery, is unaffected; the tradeoff is Android-in-a-tab pull-to-
-       refresh, acceptable for a standalone-first app — see #112). The
+       refresh, acceptable for a standalone-first app). The
        transparent tap highlight removes iOS's grey tap flash on controls.
 
        The selection locks are app-wide, not scoped to the playfield: a fast
-       card drag strays off the stage and onto the chrome (the Undo button in
-       #113's follow-up), where iOS would otherwise latch onto the button text
+       card drag strays off the stage and onto the chrome (the Undo button, say),
+       where iOS would otherwise latch onto the button text
        and pop the "Copy / Look Up" callout mid-drag. `user-select: none`
        blocks the text grab and `-webkit-touch-callout: none` suppresses the
        long-press menu everywhere; the one place that genuinely wants
@@ -85,7 +81,7 @@
     font-weight: 400;
     -webkit-font-smoothing: antialiased;
     /* Clear the notch/status bar on the top and sides. The bottom is left
-       unpadded (#199): the shaded scene band runs clear to the bottom edge, so
+       unpadded: the shaded scene band runs clear to the bottom edge, so
        there's no darkened strip below the play area where the version badge used
        to sit. The home-indicator clearance moves onto #scene-box as its own
        padding-bottom — cards stay above the indicator (the height fit reads the

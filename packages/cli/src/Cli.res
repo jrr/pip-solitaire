@@ -1,4 +1,4 @@
-// A tiny CLI over the modelled games (#62), now also a *reducer driver* (#84): it
+// A tiny CLI over the modelled games, now also a *reducer driver*: it
 // can deal a game and dispatch moves into the same `core` reducer the web app uses,
 // printing the resulting board — a headless, scriptable way to exercise the rules end
 // to end. Still a conventional scrolling CLI, not a TUI.
@@ -78,7 +78,7 @@ let clearScreen = () => Console.log(`${escape}[2J${escape}[3J${escape}[H`)
 let randomSeed = () => (Math.random() *. 1_000_000.)->Float.toInt
 
 // …and where the game clock comes from, for the same reason and on the same line: a real
-// sitting is timed against the wall (#302), while `Repl`'s own default is stopped so a
+// sitting is timed against the wall, while `Repl`'s own default is stopped so a
 // folded script reports the same thing twice running.
 let now = () => Date.now()
 

@@ -1,6 +1,6 @@
 open Vitest
 
-// The undo/redo history (#85): a pure past/present/future zipper. Exercised here
+// The undo/redo history: a pure past/present/future zipper. Exercised here
 // over plain `int`s — the zipper is generic, so integers stand in for the
 // `GameState.t` snapshots the drivers wrap it around, and equality is trivial to
 // assert. The `GameState`-level "apply → undo returns the prior state exactly"
@@ -63,7 +63,7 @@ describe("History", () => {
 
 // `steps` counts the line of play behind the present — deliberately *not* the count
 // of moves the player made, which only ever goes up and so lives outside the zipper
-// (`Stats`, #289). It's what a save written before that counter existed falls back
+// (`Stats`). It's what a save written before that counter existed falls back
 // to (`SaveState.ofHistory`). The interesting cases are the ones where undo has been
 // at it, since undo pops `past` and so *shortens* the count.
 describe("History.steps", () => {

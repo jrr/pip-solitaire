@@ -1,4 +1,4 @@
-// The menu's scene rows, in a real browser (#337).
+// The menu's scene rows, in a real browser.
 //
 // The switcher used to own those rows as live DOM and highlight them by rewriting a
 // class on each activation. Now it hands the chrome data — the games as a list, the
@@ -48,7 +48,7 @@ const sceneGroup = (page) => page.locator(".scene-menu__group").filter({ hasText
 const sceneRow = (page, name) => sceneGroup(page).getByRole("button", { name })
 
 // …and the "games" disclosure beside it, which holds the games that don't get the
-// main menu's single top-level row (#352, first occupied by #350's short decks).
+// main menu's single top-level row — the short decks, today.
 const gameGroup = (page) => page.locator(".scene-menu__group").filter({ hasText: "games" })
 const gameGroupRow = (page, name) => gameGroup(page).getByRole("button", { name })
 
@@ -73,11 +73,10 @@ test("tapping the game you're already playing doesn't re-deal it", async ({ page
   await expect(page.locator("#scene-container .table-board[data-pinned='yes']")).toHaveCount(1)
 })
 
-// The placement half of #350: three games in `Game.all`, and the main menu still
-// leads with one. `SceneSwitcher_test` pins the grouping rule against fake scenes;
-// what it can't say is where the *real* boards land once there is more than one, which
-// is the thing the issue is explicit about — the menu keeps exactly one game button
-// and the siblings live under Debug.
+// The placement rule: three games in `Game.all`, and the main menu still leads
+// with one. `SceneSwitcher_test` pins the grouping rule against fake scenes;
+// what it can't say is where the *real* boards land once there is more than one —
+// the menu keeps exactly one game button and the siblings live under Debug.
 test("the short-deck games sit under Debug, leaving one game button up top", async ({ page }) => {
   await page.goto("/?game=micro&animate=off")
   await settleBoard(page)

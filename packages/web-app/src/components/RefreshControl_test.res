@@ -1,4 +1,4 @@
-// Size-stability test for the `RefreshControl` component (#201): the control has
+// Size-stability test for the `RefreshControl` component: the control has
 // to render the same rows idle and busy, because a height change here reflows the
 // menu around the About footer (see `RefreshControl.res`).
 //
@@ -21,7 +21,7 @@ let render = (busy): Html.element =>
 
 let hasSpinner = (el): bool => el->find(".menu-refresh__spinner")->Option.isSome
 
-describe("RefreshControl size stability (#201)", () => {
+describe("RefreshControl size stability", () => {
   let idle = render(false)
   let busy = render(true)
 

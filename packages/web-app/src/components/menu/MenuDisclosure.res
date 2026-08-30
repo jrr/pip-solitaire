@@ -1,12 +1,9 @@
 // A collapsible group of menu rows: a summary you tap to reveal a list of labelled
-// actions. The menu's bottom "debug" section (#185) is built out of two of them —
+// actions. The menu's bottom "debug" section is built out of two of them —
 // the debug/demo **scenes** (`SceneSwitcher`) and the named starting **states**
-// (`core`'s `Scenario`, wired up in `Main`) — and until #336 it was built out of two
-// of them *twice*: the states group was this JSX, in `DebugStates`, and the scenes
-// group was forty lines of `createElement`/`setAttribute`/`appendChild` inside
-// `SceneSwitcher`. Same `<details>/<summary>/<div>` tree, same four class names, both
-// driven by a list of `{label, action}` — they were written as siblings and never
-// shared an implementation. This is that implementation.
+// (`core`'s `Scenario`, wired up in `Main`). Both are the same
+// `<details>/<summary>/<div>` tree with the same four class names, driven by a list
+// of `{label, action}`: a third group is another call, not another implementation.
 //
 // The group is a native `<details>`, so the show/hide costs no JS and stays
 // keyboard-accessible, and it opens collapsed unless a caller asks otherwise.
@@ -27,10 +24,10 @@
 // mounted, so one of them is always the one you're looking at; the state rows are
 // jumps that leave nothing behind to highlight, and simply omit it.
 //
-// An alias since #337, which needed the very same record for the *ungrouped* rows on
-// the main screen and so moved it to `MenuRow`, where the row it describes is. The
-// name stays here because a disclosure's callers say `entry` and there is no second
-// meaning for it to collide with.
+// An alias: the record lives on `MenuRow`, where the row it describes is, because
+// the *ungrouped* rows on the main screen want the very same one. The name stays
+// here because a disclosure's callers say `entry` and there is no second meaning
+// for it to collide with.
 type entry = MenuRow.entry
 
 type props = {
@@ -58,7 +55,7 @@ let make = (props: props) => {
     <div className="scene-menu__group-body">
       {props.entries
       ->Array.map(entry =>
-        // The same `<MenuRow>` the rest of the menu is built from (#335) — `selected`
+        // The same `<MenuRow>` the rest of the menu is built from — `selected`
         // goes straight through, and brings `aria-current` with it.
         <MenuRow
           label={entry.label} selected=?{entry.selected} onClick={entry.onSelect} key={entry.label}

@@ -2,14 +2,14 @@
 // not tear it down and mount it again. A fake scene that counts its mounts is enough
 // to check this in jsdom; no layout or input engine needed.
 //
-// Nothing here clicks a button any more. The switcher builds no menu DOM at all (#337
-// finished what #336 started), so what's exercised is the data it hands over: a
+// Nothing here clicks a button: the switcher builds no menu DOM at all, so what's
+// exercised is the data it hands over. A
 // primary scene is `select`ed by id, exactly as the row the chrome draws does it, and
 // a debug/demo scene by running its entry's `onSelect` — the very thunk that row is
 // wired to. Which scene is current is likewise read rather than looked at: `active`
 // for the seed the chrome opens with, `entry.selected` for the group's highlight.
 //
-// The three-way grouping is #352: the primary row, the `Game` scenes that aren't it,
+// The grouping is three-way: the primary row, the `Game` scenes that aren't it,
 // and the `Demo` scenes. It can only be exercised here — the app has one game, so the
 // games group is empty in the real scene list, which is exactly the case that makes
 // this a no-op on the screen.
@@ -105,7 +105,7 @@ describe("SceneSwitcher's games list", () => {
   })
 })
 
-describe("SceneSwitcher's debug group (#336)", () => {
+describe("SceneSwitcher's debug group", () => {
   test("hands the demo scenes over as entries, with the mounted one selected", () => {
     // The highlight is a field on the entry, read fresh each time the menu renders.
     let mounts = ref(0)
@@ -149,7 +149,7 @@ describe("SceneSwitcher's debug group (#336)", () => {
   })
 })
 
-describe("SceneSwitcher's grouping by kind (#352)", () => {
+describe("SceneSwitcher's grouping by kind", () => {
   // Two games and two demos, so the three groups are all distinguishable. The real
   // scene list can't do this yet — there is one game — which is the point: the
   // grouping is pinned here so a second game lands where it belongs on the day it

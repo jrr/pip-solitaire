@@ -1,4 +1,4 @@
-// The short-deck boards, played to the win overlay in a real browser (#350).
+// The short-deck boards, played to the win overlay in a real browser.
 //
 // `mini` and `micro` are FreeCell in every mechanic and differ only in deck and
 // shape, and the claim that costs them nothing but two values in `Game.res` is
@@ -108,7 +108,7 @@ for (const { id, game, zones, line } of BOARDS) {
     for (const text of line.split(",")) await drag(page, moveOf(game, text))
 
     // From here the game is decided: auto-collect has stood aside and the Finish
-    // button plays the rest home (#132/#160).
+    // button plays the rest home.
     await page.getByRole("button", { name: "Finish" }).click()
     await expect(page.locator(".win-overlay")).toBeVisible()
   })

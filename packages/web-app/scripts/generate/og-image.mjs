@@ -1,4 +1,4 @@
-// Link-preview image generator — a crop of the *real* game (issue #221).
+// Link-preview image generator — a crop of the *real* game.
 //
 // When a link to the game is pasted into Slack/iMessage/Twitter/etc. the
 // unfurler reads the Open Graph tags in index.html and shows a card with a

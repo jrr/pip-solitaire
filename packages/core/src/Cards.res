@@ -15,7 +15,7 @@
 // little PRNG rather than `Math.random` (banned on this codebase's pure paths),
 // so a seed reproduces a permutation exactly.
 //
-// Since #351 the pack is also a *parameter*: `deck` describes which suits and
+// The pack is also a *parameter*: `deck` describes which suits and
 // ranks a board plays with, `standard` is today's four × thirteen, and `shuffle`
 // takes one. `all` stays the whole pack for the callers that genuinely want it.
 
@@ -27,7 +27,7 @@ open Card
 let suits = [Spades, Hearts, Diamonds, Clubs]
 let ranks = [Ace, Two, Three, Four, Five, Six, Seven, Eight, Nine, Ten, Jack, Queen, King]
 
-// --- The deck as a parameter (#351) ------------------------------------------
+// --- The deck as a parameter ------------------------------------------
 // Which cards a board is played with, described as a **subset of one pack**: the
 // suits it uses and the ranks it uses, whose Cartesian product is its cards. A
 // value rather than the ambient 52, because the rules downstream used to *assume*

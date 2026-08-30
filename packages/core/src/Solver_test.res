@@ -1,6 +1,6 @@
 open Vitest
 
-// The solver (#290, ported from #269's JavaScript). `Position_test` pins the rules
+// The solver. `Position_test` pins the rules
 // it searches against the real reducer; what's left for here is the search itself:
 // that it finds a line, that the line it finds is one the *game* will play (every
 // move dispatched into `Reducer`, the board compared after each), and that the
@@ -170,7 +170,7 @@ describe("Solver", () => {
     }
   })
 
-  // Autoplay (#291): the plan, played. `plan` is tested above as a *line*; what's
+  // Autoplay: the plan, played. `plan` is tested above as a *line*; what's
   // pinned here is that playing it is a real sequence of reducer moves ending on the
   // board the search was aiming at — the thing both front ends' `autoplay` verb hands
   // to their history, one recorded step at a time.
@@ -204,7 +204,7 @@ describe("Solver", () => {
                 }
               }
               // …and each step says what it *moved*, which is what a driver animating
-              // the line flies (#291): the card the action named first, so the move
+              // the line flies: the card the action named first, so the move
               // leads and the collection follows it home, and every card in the list
               // somewhere new by the time the step is over. A step that claimed a card
               // that stayed put would fly it nowhere, in front of everything else.

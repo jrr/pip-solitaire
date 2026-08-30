@@ -8,8 +8,8 @@
 // the manifest and iOS need.
 //
 // Because it renders real SVG (fonts, the suit glyphs) it needs a real SVG
-// renderer — `@resvg/resvg-js`, as issue #49 anticipated — rather than the
-// hand-rolled pixel pusher this file used to be. Run it with `mise run icons`
+// renderer — `@resvg/resvg-js` — rather than a hand-rolled pixel pusher. Run it
+// with `mise run icons`
 // (which builds the ReScript first); pass `--svg` to print the master SVG.
 //
 // Outputs (into packages/web-app/public/):
@@ -37,7 +37,7 @@ const { standardSvg, maskableSvg, fullBleedSvg } = await loadJsxModule(
 );
 const OUT_DIR = join(HERE, "..", "..", "public");
 
-// The exact fonts the app ships, vendored by `mise run fonts` (issue #114): the
+// The exact fonts the app ships, vendored by `mise run fonts`: the
 // card ranks are Libre Franklin 600 and the suits are the merged "Pip Suits"
 // subset. resvg reads sfnt (TrueType/OpenType), not the woff2 the browser gets,
 // so we point it at the TTFs in src/fonts. Rasterizing from these — with system

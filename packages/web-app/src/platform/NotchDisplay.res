@@ -1,4 +1,4 @@
-// Publishes the "Display content around screen notch" preference (#204) to the CSS
+// Publishes the "Display content around screen notch" preference to the CSS
 // as a `data-notch-wings` attribute on the document root, the same seam
 // `CutoutSide` uses for `data-cutout`. The landscape chrome defaults to placing the
 // Menu/Undo rail out in the corner "wings" beside the notch (see the wing-placement

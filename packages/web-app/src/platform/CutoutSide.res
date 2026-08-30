@@ -2,7 +2,7 @@
 // CSS, as a `data-cutout` attribute on the document root, so the landscape chrome
 // can move its control rail onto the cutout side — letting the rail's dead space
 // share the strip that's unsafe anyway, and handing the clear side wholly to the
-// cards (cutout-aware orientation, #179 follow-up).
+// cards.
 //
 // This was first attempted by comparing the two `env(safe-area-inset-*)` values,
 // on the assumption the cutout side would report the larger inset. On-device that

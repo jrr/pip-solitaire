@@ -19,7 +19,7 @@
 // wholly *beside* the band, never over it — plus that the gap is the intended
 // 0.5rem.
 //
-// A regression this catches (#204 follow-up): `html[data-notch-wings="off"]
+// A regression this catches: `html[data-notch-wings="off"]
 // #top-bar { margin-left: -0.75rem }` tied on specificity (1,1,1) with
 // `html[data-cutout="right"] #top-bar`'s shorthand and won on source order,
 // clobbering the right-hand rail's 0.5rem gap and overhanging the band by 12px.

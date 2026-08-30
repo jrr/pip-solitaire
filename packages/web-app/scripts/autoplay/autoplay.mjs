@@ -5,8 +5,8 @@
 //     (`aria-label`s and geometry), never out of the app's state, and hands it to
 //     core as a `Position`;
 //   - **brain** — `core`'s `Position` + `Solver`, which plan the next stretch of
-//     the game (they used to be a JavaScript mirror of core's rules living here;
-//     #290 moved them into core as ReScript, so there's one set of rules again);
+//     the game — in `core` rather than here, so the harness never carries a
+//     second copy of the rules;
 //   - **hands** — this file, which plays each planned move as a real pointer drag
 //     and then looks at the board again.
 //
@@ -146,7 +146,7 @@ export async function playGame(page, { seed, log = () => {}, onMove = () => {} }
     if (Position.hasWon(view.state)) break
 
     // From here the game is decided: `Reducer.canFinish` is true, the Finish
-    // button is up, and it plays the rest home (#132/#160).
+    // button is up, and it plays the rest home.
     if (Position.canFinish(view.state)) {
       log(`  finishable after ${played} moves — pressing Finish`)
       await page.getByRole("button", { name: "Finish" }).click()

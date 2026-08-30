@@ -6,7 +6,7 @@
 
 open Vitest
 
-describe("CutoutSide angle mapping (#179 follow-up)", () => {
+describe("CutoutSide angle mapping", () => {
   test("screen angle 90 ⇒ notch on the left", () => {
     expect(CutoutSide.sideOfScreenAngle(90.))->toBe("left")
   })

@@ -1,10 +1,10 @@
-// The Motion scene (#231): raw accelerometer readout, groundwork for reacting to a
+// The Motion scene: raw accelerometer readout, groundwork for reacting to a
 // vigorous shake. Nothing here touches `core` — a shake is transient view state that
 // would eventually just `dispatch` an ordinary action; this scene exists to confirm
 // motion data actually arrives on a real phone and to learn empirically what
 // "vigorous" reads as numerically.
 //
-// Permission is *not* owned here any more (#235). Settings' "Wiggle Waggle" switch is
+// Permission is *not* owned here any more. Settings' "Wiggle Waggle" switch is
 // the single owner of the motion grant — iOS remembers a denial per origin and won't
 // re-prompt, so there's exactly one chance to ask and it has to land on that
 // deliberate flip. This scene lost its "Request permission" button with that change:
@@ -44,7 +44,7 @@ let peakDecay = 0.94 // per-frame multiplier so the peak hold eases back down be
 // Round to one decimal for a readout that isn't a flickering blur of digits.
 let fmt = v => (Math.round(v *. 10.) /. 10.)->Float.toString
 
-// The status line, derived from the shared Wiggle Waggle state (#235) — the scene
+// The status line, derived from the shared Wiggle Waggle state — the scene
 // reports what Settings knows rather than owning its own permission flow.
 let statusText = (state: Motion.state) =>
   switch state {
@@ -186,7 +186,7 @@ let make = (): Scene.t => {
     }
 
     // ---- Read the shared state and, when listening, drive the readout ----
-    // The permission grant is Settings' now (#235): this scene reads `Motion.current`
+    // The permission grant is Settings' now: this scene reads `Motion.current`
     // and reflects it. Only an actively-listening state feeds the readout; every other
     // state is a static status line with no subscription (and so no battery cost).
     let state = Motion.current.contents

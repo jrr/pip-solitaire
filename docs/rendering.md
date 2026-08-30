@@ -169,7 +169,7 @@ component reached through `create` renders exactly once, for ever. `useState`
 there would hold state no re-render could read back, and a `useEffect` cleanup
 would never run — both failing silently.
 
-So **a component reachable from `create` must stay pure.** Hooks exist (#308) but
+So **a component reachable from `create` must stay pure.** Hooks exist but
 are only meaningful inside the tree `mount` owns and diffs. That is the entry
 condition on `src/components/` described in `CLAUDE.md` § Where things live, and
 it covers more of the app than it sounds like.

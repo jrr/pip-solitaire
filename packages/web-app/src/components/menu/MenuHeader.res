@@ -1,5 +1,5 @@
-// The header row at the top of every menu screen (#191), lifted out of `Menu` into
-// its own pure component (#307): an optional **back** button on the left, the
+// The header row at the top of every menu screen, lifted out of `Menu` into
+// its own pure component: an optional **back** button on the left, the
 // screen's title in the middle, and the ✕ that closes the whole menu on the right.
 //
 // The three screens differ only in what they put in those slots — "Pip" with no

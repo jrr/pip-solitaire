@@ -3,20 +3,20 @@
    src/styles/index.css rather than by a component, for the same reason — no one
    component owns it. */
 @layer overrides {
-  /* Landscape-phone chrome (#179 follow-up): a phone held sideways is wide but
+  /* Landscape-phone chrome: a phone held sideways is wide but
      very short, so the horizontal top bar steals the scarce vertical height the
      tableau needs. In this regime the app becomes a *row* — a slim vertical rail
      of the same controls hugging the left edge, the scene filling the rest —
      handing the reclaimed top band back to the cards. Keyed on a short landscape
      viewport: phones in landscape are ≤ ~430px tall while tablets are ≥ 768px, so
      `max-height` cleanly separates them without device sniffing. (Adding
-     `(pointer: coarse)` here would confine the rail to touch devices; since
-     #244 the screenshot report emulates real devices, so the phone shots would
-     still show it — see #204 for whether to make that change.) */
+     `(pointer: coarse)` here would confine the rail to touch devices; the
+     screenshot report emulates real devices, so the phone shots would still show
+     it — see #204 for whether to make that change.) */
   @media (orientation: landscape) and (max-height: 500px) {
     /* Reclaim vertical height — the tableau is fighting for every pixel here.
        Trim the body's top breathing room down to near the safe-area inset; the
-       bottom stays unpadded (the base rule zeroes it — #199) so the shaded band
+       bottom stays unpadded (the base rule zeroes it) so the shaded band
        still runs to the bottom edge with the home-indicator clearance carried by
        #scene-box; the left/right insets stay untouched so a side notch is still
        cleared. */
@@ -30,7 +30,7 @@
 
     /* The rail: the controls stacked down the edge, but split to opposite ends
        rather than bunched at the top — Menu at the top, Undo at the bottom
-       (#180). `align-self: stretch` lets the rail span the band's full height and
+      . `align-self: stretch` lets the rail span the band's full height and
        `justify-content: space-between` then drives the two buttons to the top and
        bottom corners; `align-items: stretch` makes them share one width so the
        pair still reads as a tidy column. With the rail on a cutout edge (below),
@@ -67,7 +67,7 @@
     }
 
     /* Clear the Undo button off the bottom rounded corner, the mirror of Menu
-       above. body no longer pads its bottom (#199), so the stretched rail runs
+       above. body no longer pads its bottom, so the stretched rail runs
        its bottom-most button (Undo) right into the corner's curve / home
        indicator; the old body `padding-bottom` used to lift it clear. Borrow the
        bottom safe-area inset as a bottom margin so Undo lifts into its wing by
@@ -84,7 +84,7 @@
     #scene-area {
       margin-inline-start: 0;
       /* Pull the band up to the top edge too — the vertical mirror of its flush
-         bottom (#199). A negative block-start margin cancels body's top breathing
+         bottom. A negative block-start margin cancels body's top breathing
          room (`env(safe-area-inset-top) + 0.25rem`) so the seam runs corner-to-
          corner instead of floating a few px below the top. #scene-box re-insets
          the cards by the same amount (its `padding-top` below), so only the
@@ -129,7 +129,7 @@
     }
   }
 
-  /* Cutout-aware rail side (#179 follow-up). The rules above pin the rail to
+  /* Cutout-aware rail side. The rules above pin the rail to
      the left, which is what we want when the notch is on the left (or absent):
      the rail's dead space rides on the strip that's unsafe anyway, and the cards
      get the clear right side. Rotate the phone the other way and the notch moves
@@ -171,7 +171,7 @@
       border-right: 1px solid #22304a;
     }
 
-    /* Mirror the slide-over menu to the rail's side (#180). With the ☰ button
+    /* Mirror the slide-over menu to the rail's side. With the ☰ button
        now in the *right* wing, a panel that still opens from the left reads as
        coming from the wrong edge; anchor it to the end of the overlay flex row
        so it enters from the right instead. Swap its divider and shadow onto the
@@ -192,7 +192,7 @@
     }
   }
 
-  /* "Display content around screen notch" off (#204). The default landscape
+  /* "Display content around screen notch" off. The default landscape
      layout rides the Menu/Undo rail out into the corner "wings" beside the
      notch — the negative margins above cancel body's `safe-area-inset-*` so the
      controls reclaim the reserved notch strip where its top/bottom corners are
