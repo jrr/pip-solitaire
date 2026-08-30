@@ -9,6 +9,8 @@ pinned and managed by [mise](https://mise.jdx.dev). The target language and
 framework is [ReScript](https://rescript-lang.org).
 
 - `packages/*` — workspace packages.
+- `scripts/` — scripts about the *repository* rather than one package; anything
+  package-scoped goes in `packages/*/scripts/` instead.
 - `mise.toml` — pinned tools (`[tools]`) and the task interface (`[tasks.*]`).
 - `.github/workflows/` — CI, plus the `@claude` implementer and review agents.
 
