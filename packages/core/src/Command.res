@@ -1,15 +1,10 @@
 // The typed-command grammar: `string => Command.t` as a pure parser, plus the
-// board-side readers a parsed command needs before it can be run. Shared by
-// both front ends — the CLI's `Repl` and the web app's debug console — because
-// `move 8H 5` has to mean one thing in a terminal and in the panel.
+// board-side readers a parsed command needs before it can be run. Shared by both
+// front ends — the CLI's `Repl` and the web app's debug console.
 //
-// **`parse` never sees a board.** That's the rule this module keeps: reading the
-// words and reading the board are two steps, and only the second needs a game. Give
-// `parse` a board and the grammar stops being testable from a string alone.
-//
-// **`parse` is total.** Every line yields a `t`, malformed ones included — `Unknown`,
-// `Ambiguous` or `Usage`, each carrying the prose to show. Nothing here throws and
-// nothing dead-ends a scrolling session.
+// Two rules only an edit in here can break: **`parse` never sees a board** — give
+// it one and the grammar stops being testable from a string alone — and **`parse`
+// is total**, so every line yields a `t`, malformed ones included.
 //
 // The vocabularies, the shapes of a move, the verb table's prefix rules, the refusal
 // policy and a "before you add a verb" checklist: docs/command-grammar.md.
@@ -36,10 +31,8 @@ type place =
   | InSlot({role: Game.role, ordinal: int}) // `move C1 F1` — the label above the column
 
 // What a move lifts: the cards named outright, or the place they're showing in.
-//
-// `Top` and `Run` are the same reading at two lengths, one per verb, and neither
-// guesses at *more* than the verb asked for — a `move` never lifts a run behind the
-// player's back. See docs/command-grammar.md § Saying *what*.
+// `Top` and `Run` are the same reading at two lengths, one per verb — see
+// docs/command-grammar.md § Saying *what*.
 type from =
   | Cards(array<card>) // named by identity: move 8H 9S, moverun 8H 7S 6H T3
   | Top(place) // the card showing there: move C1 F1
@@ -55,8 +48,8 @@ type t =
   | Print
   | Clear // console-only: wipe the scrollback; a scrolling CLI has none
   // The mirror image of `Clear`: CLI-only, because only an interactive session is
-  // something you can *leave*. A verb one front end can't act on is still a verb both
-  // front ends know — the panel answers this rather than reporting an unknown command.
+  // something you can *leave*. The panel still knows the verb and answers it — see
+  // docs/command-grammar.md § What each front end still owns.
   | Quit
   // `deal`/`new`. What the argument *means* is the interpreter's: the CLI reads it
   // as a game id (with an optional `Scenario` name after it), the web console as a
@@ -155,10 +148,8 @@ let notASetting = (token: string) => `Not a setting: "${token}" (${settingNames(
 let notAFlag = (token: string) => `Not on or off: "${token}".`
 
 // --- Verbs, and how little of one you have to type ----------------------------
-// Any unambiguous prefix of a verb is that verb: `p` prints, `u` undoes, `de 12345`
-// deals. A whole word wins over a prefix; a prefix that fits two verbs is refused by
-// name rather than guessed at. Aliases are a second tier, consulted only when nothing
-// canonical matched. The rules and their reasons: docs/command-grammar.md § Verbs.
+// The prefix rule, the two rules that keep it honest and the alias tier below are
+// in docs/command-grammar.md § Verbs, and how little of one you have to type.
 //
 // **Adding a name here changes what every existing prefix means.** A second `re…` verb
 // makes `re` ambiguous for everyone who had been typing it.
@@ -181,9 +172,8 @@ let verbs = [
   "set",
 ]
 
-// The pinned spellings, each with the verb it *is*: the shorthands the prefix rule
-// can't give (`m` fits three verbs) and the second names a verb answers to. Canonical
-// names have first say, which is what keeps `s` on `set` rather than on `show`.
+// The pinned spellings, each with the verb it *is*. Consulted only when nothing
+// canonical matched, so nothing added here can shadow a verb.
 let aliases = [
   ("m", "move"),
   ("mv", "move"),
@@ -253,12 +243,11 @@ let parse = (line: string): t => {
       | "finish" => Finish
       | "autoplay" => Autoplay
       | "deal" => Deal({game: arg(1), scenario: arg(2)})
-      // Key a message off the canonical verb, never off what was typed. Everything
-      // downstream of the table says `move`, whichever of `move`/`mv`/`m` was typed, so
-      // a shorthand can't drift into a second command with its own messages.
+      // Key a message off the canonical verb, never off what was typed: everything
+      // downstream of the table says `move`, whichever spelling arrived.
       | "move" =>
-        // Arity before content, so `move AS` asks for the usage line rather than
-        // complaining about a target that isn't there.
+        // Arity before content: `move AS` gets the usage line, not a complaint about
+        // a target that isn't there.
         switch (arg(1), arg(2)) {
         | (Some(fromTok), Some(whereTok)) =>
           switch (parseFrom(~run=false, fromTok), parseWhere(whereTok)) {
@@ -311,9 +300,8 @@ let parse = (line: string): t => {
         if Array.length(rest) >= 2 {
           let targetTok = rest->Array.getUnsafe(Array.length(rest) - 1)
           let sourceToks = rest->Array.slice(~start=0, ~end=Array.length(rest) - 1)
-          // A lone source token that isn't a card is the place the run is showing in. Only a
-          // lone one: `moverun T6 T7 T2` names two places and no run, which is a `Usage`
-          // rather than a guess about which of them was meant.
+          // Only a *lone* source token is read as a place: `moverun T6 T7 T2` names two
+          // places and no run, so it's a `Usage` rather than a guess about which was meant.
           let place = switch sourceToks {
           | [only] => CardText.parse(only)->Option.isNone ? parsePlace(only) : None
           | _ => None
@@ -383,8 +371,7 @@ let orList = (items: array<string>): string =>
   }
 
 // A prefix that fit more than one verb, named rather than guessed at — see `resolveVerb`
-// for why refusing is the point. Shared prose, like every other complaint here, so the
-// same half-typed word reads the same in a terminal and in the panel.
+// for why refusing is the point.
 let describeAmbiguous = (~verb: string, ~matches: array<string>): string =>
   `Ambiguous command: "${verb}" could be ${orList(matches)}. Type enough to tell them apart.`
 
@@ -447,11 +434,9 @@ let resolveWhere = (~game: Game.t, state: GameState.t, where: where): result<
     | Ok(i) => Ok(Reducer.ToPile(i))
     | Error(message) => Error(message)
     }
-  // A named card resolves only when *exactly one* pile is showing it. Nought and more
-  // than one are both refusals rather than a guess: a move that lands somewhere the
-  // player didn't name is worse than one that doesn't happen. (A standard deck can't
-  // show the same card twice, so the ambiguous case is a guard on the games that could
-  // — but it's the guard that lets the rule be stated simply.)
+  // A named card resolves only when *exactly one* pile is showing it; nought and more
+  // than one are both refusals. Why each is refused rather than guessed at, and what
+  // each says: docs/command-grammar.md § Saying *where*.
   | Onto(card) =>
     switch showing(~game, state, card) {
     | [i] => Ok(Reducer.ToPile(i))
@@ -503,12 +488,10 @@ let resolvePlace = (~game: Game.t, place: place): result<int, string> =>
     }
   }
 
-// The longest run showing at the top of a pile: the cards a player would lift if they
-// took hold of the deepest card that still heads an ordered run — which is what
-// `moverun T6 T2` names. Read under that pile's *own* rule, so a game whose cascades
-// stack differently is answered in its own terms rather than in FreeCell's, and it stops
-// at what *is* a run rather than at what may legally move: whether the run is too long
-// for the free cells is the reducer's verdict (`RunTooLong`), not the reader's.
+// The longest run showing at the top of a pile — what `moverun T6 T2` names. Read
+// under that pile's *own* `Rules.isRun`, and it stops at what *is* a run rather than
+// at what may legally move. Both rules, and what each prevents:
+// docs/command-grammar.md § Saying *what*.
 let runShowing = (~game: Game.t, state: GameState.t, i: int): array<card> =>
   switch game.piles->Array.get(i) {
   | None => []
@@ -556,10 +539,8 @@ let moveAction = (~cards: array<card>, ~to: Reducer.target): Reducer.action =>
   }
 
 // --- What a `deal` argument names --------------------------------------------
-// `parse` above hands the argument through untouched, because *acting* on a deal needs a
-// front end (a terminal builds a session, the panel rebuilds a board). Reading it does
-// not — "is that a deal number, a game, a posed position, or nothing we know?" is
-// answered by `Game.all` and `Scenario`, both of which live here.
+// `parse` above hands the argument through untouched; this reads it, against
+// `Game.all` and `Scenario`.
 //
 // **Read a `deal` argument through here, never in a front end.** Two readings mean two
 // vocabularies: one side takes `deal 12345` while the other calls it an unknown game.
@@ -602,13 +583,10 @@ let resolveDeal = (~game: option<string>, ~scenario: option<string>): dealt =>
   }
 
 // --- Rejection prose ----------------------------------------------------------
-// Why a move bounced, in words, so someone typing learns the *reason* rather than
-// watching a card refuse to go — the whole point of the reducer returning a typed
-// `moveError` instead of a swallowed no-op.
-// The reason alone: a phrase with no subject and no full stop, for a caller whose line
-// above already said *which* move this is. The web console's rejection is two lines —
-// `move 10♣ → F1 ✗` and then the reason — and repeating the move in the second one would
-// say the card twice, in two spellings, one line apart.
+// A typed `moveError`, in words. There are two spellings and
+// docs/command-grammar.md § Two spellings of a rejection says which to reach for.
+//
+// This is the bare phrase: no subject, no full stop.
 let reason = (err: Reducer.moveError): string =>
   switch err {
   | Reducer.Rejected => "can't stack there"
@@ -622,10 +600,9 @@ let reason = (err: Reducer.moveError): string =>
   | Reducer.NotASpan => "those cards aren't lying together at the top of one pile"
   }
 
-// The same, as a sentence that stands on its own: the phrase, prefixed, and naming the
-// card in the two cases that read better for it. What a terminal says, where there's no
-// line above to lean on — and, being built from `reason`, a refusal the two front ends
-// can't drift apart on.
+// The same, as a sentence that stands on its own — the phrase prefixed, and naming
+// the card in the two cases that read better for it. Which of the two a caller wants:
+// docs/command-grammar.md § Two spellings of a rejection.
 let describeError = (err: Reducer.moveError, card: card): string =>
   switch err {
   | Reducer.Rejected => `Rejected: ${CardText.format(card)} can't stack there.`

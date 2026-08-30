@@ -1,22 +1,14 @@
 // Boot the *dev* server the way a developer does, load the app in a real browser,
-// and fail if it didn't come up. That is the whole test — but it guards a seam
-// nothing else does.
-//
-// The seam is the four separate esbuild configurations that lower the compiled
-// output's JSX, one of which only the dev server reads (docs/rendering.md lists
-// them). Nothing checks that they agree, and `mise run ci` cannot: `bundle`,
-// `test` and `browsertest` were all green once while `vite` printed a screenful
-// of "The JSX syntax extension is not currently enabled" on every start.
-//
-// **A rendered page is not enough to pass**, which is what makes this more than a
-// smoke test. A dependency-scan failure is *not* fatal to Vite: it logs, skips
-// pre-bundling and serves anyway, and the app comes up looking fine — so the
-// server's output is checked too, and anything it calls an error fails the run.
+// and read what the server printed. **A rendered page is not enough to pass** —
+// the seam this guards is a dev-server-only esbuild config that breaks without
+// breaking the page, so anything the server calls an error fails the run. The
+// seam, and why `mise run ci` cannot cover it, are in docs/rendering.md § The
+// three esbuild settings, in four places.
 //
 // Two things this deliberately does not do:
 //
-//   - **It doesn't use Vite's JS API.** `createServer()` (the way `startPreview`
-//     serves the built site in lib/preview-app.mjs) survives a scan failure
+//   - **It doesn't use Vite's JS API.** `createServer()` — the way `startPreview`
+//     serves the built site in lib/preview-app.mjs — survives a scan failure
 //     without a fuss. `vite` the command is what `mise run dev` runs, so it is
 //     what gets tested.
 //   - **It doesn't read readiness out of the server's greeting.** A child's

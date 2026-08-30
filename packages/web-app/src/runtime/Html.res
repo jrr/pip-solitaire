@@ -1,15 +1,11 @@
-// The JSX runtime: ReScript's *preserve* mode over Preact.
+// The JSX runtime: ReScript's *preserve* mode over Preact. Preact owns the diff;
+// this module owns only the type surface that arrangement needs, plus the small
+// API the app calls (`string`, `array`, `empty`, `node`, `create`, `mount`).
 //
-// The compiler emits real JSX into the `.res.mjs` output rather than lowering it,
-// and esbuild (via Vite) lowers it onto `preact/jsx-runtime`. So Preact owns the
-// diff, and this module owns three things: the types the JSX transform checks
-// against, the props a DOM element accepts, and the small surface the rest of the
-// app calls (`string`, `array`, `empty`, `node`, `create`, `mount`).
-//
-// **The pipeline, the four places the same three esbuild settings are duplicated,
-// and what the app leans on Preact for are in `docs/rendering.md`.** Read that
-// before changing anything about the build; nothing checks that those four agree,
-// and `mise run dev-smoke` is the only task that catches them when they don't.
+// **The pipeline, and the four places the same three esbuild settings are
+// duplicated, are in `docs/rendering.md`.** Read it before changing anything about
+// the build: nothing checks that those four agree, and `mise run dev-smoke` is the
+// only task that catches them when they don't.
 //
 // Hooks are available in principle, but see `create` below for the large
 // part of this app where they are not.
@@ -35,12 +31,10 @@ type component<'props> = componentLike<'props, vnode>
 external component: componentLike<'props, vnode> => component<'props> = "%component_identity"
 
 // --- Props -------------------------------------------------------------------
-// The props a lowercase DOM element accepts: the attributes this app actually
-// uses, each one a typed field. `@as` gives the exact DOM name where ReScript
-// can't spell it — every hyphenated attribute, and `type` (a keyword).
-//
-// There is no generic escape hatch: an attribute this record doesn't name can't
-// be set, so an attribute name is checked by the compiler.
+// The props a lowercase DOM element accepts. Every attribute is a field here and
+// there is no escape hatch, so reaching for a new one means editing this record —
+// with `@as` where ReScript can't spell the DOM name (every hyphenated attribute,
+// and `type`, a keyword).
 //
 // Why this record rather than `@rescript/runtime`'s `JsxDOM.domProps`, and why
 // values are props rather than `setAttribute` strings, are in
@@ -168,15 +162,11 @@ let empty: vnode = %raw("null")
 @val @scope("document") external fragment: unit => element = "createDocumentFragment"
 
 // --- Splicing a subtree we don't own -----------------------------------------
-// A host element whose children belong to somebody else (`SceneSwitcher`'s scene
-// container, the debug console's scrollback, a rasterized card). Preact has no
-// vnode that *is* a live DOM node, so the node goes in through a callback ref on a
-// host element, and the host is `display: contents` (see styles/base.css) so it
-// adds nothing to layout.
+// A host element holding a live DOM node somebody else owns. **The host sits
+// between parent and child, so a CSS child combinator won't reach across one** —
+// write `.parent .child`, not `.parent > .child`. How the splice works, and what
+// it costs, are in `docs/rendering.md` § Splicing a subtree the diff doesn't own.
 //
-// **A splice puts this host between parent and child, so a CSS child combinator
-// won't reach across one.** Write `.parent .child`, not `.parent > .child`
-// (`RasterScene.css`'s `.raster-cell .card-art` is the one that had to learn this).
 // (Written as a direct `Elements.jsx` call rather than as JSX: this module *is*
 // the JSX module, so JSX inside it would resolve `Html` against itself.)
 type rawHostProps = {node: element}
@@ -210,25 +200,14 @@ let rawHost = (props: rawHostProps) =>
 let node = el => jsx(rawHost, {node: el})
 
 // --- Rendering a vnode to a detached node ------------------------------------
-// `create` answers with the real DOM node a vnode describes, for the callers
-// that want a node rather than a view: `TableScene` builds each card's <svg>
-// this way, and every component test renders through it under jsdom. Preact has
-// no "render me a node" entry point, so it renders into a throwaway host and the
-// nodes are lifted out of it — one comes back as itself, several (a component
-// whose root is a fragment) in a DocumentFragment. See `docs/rendering.md`.
+// The real DOM node a vnode describes, for a caller that wants a node rather than
+// a view. The answer has two shapes: one top-level node comes back as itself,
+// several (a component whose root is a fragment) come back in a `DocumentFragment`.
 //
-// **What comes back is a node, not a mounted tree, and this is the one rule to
-// know before reaching for hooks.** The host is thrown away, so nothing
-// ever renders into it again: a component reached through `create` renders
-// exactly once, for ever. `useState` in one would hold state that no re-render
-// could ever read back, and a `useEffect` cleanup would never run — both failing
-// silently, which is the worst way for a constraint to be discovered.
-//
-// So: **a component reachable from `create` must stay pure.** Hooks are only
-// meaningful inside the tree `mount` owns and diffs. That covers more of the app
-// than it sounds like — `TableScene` builds all 52 cards this way, and every
-// component test in the package renders through here — so it is closer to a
-// property of the component layer than to a caveat on one function.
+// **A component reachable from here must stay pure — no hooks, ever.** It renders
+// exactly once and into a host that is then discarded, so `useState` and
+// `useEffect` fail silently rather than loudly. `docs/rendering.md` § `create`
+// renders once has the mechanism and how much of the app it covers.
 let create = vnode => {
   let host = make("div")
   renderInto(vnode, host)
@@ -249,12 +228,8 @@ let create = vnode => {
 }
 
 // --- A minimal Elm-style loop ------------------------------------------------
-// Unchanged in shape and in contract: `update` is pure state and may return a
-// command (a `unit => unit` effect, `noEffect` for none) run after the render.
-// Each dispatch re-derives the whole view and hands it to Preact, which diffs it
-// against the previous tree and patches in place — so an element whose class
-// changed keeps its DOM node, and a running CSS animation on it is not
-// restarted. (Verified in a browser: node identity survives re-renders.)
+// `update` is pure state and may return a command — a `unit => unit` effect,
+// `noEffect` for none — which runs after the render.
 let noEffect = () => ()
 
 let mount = (~root, ~init, ~update, ~view) => {

@@ -1,15 +1,10 @@
-// A FreeCell position packed small enough to **think** with — the board as the
-// solver searches it (see `Solver`, and `docs/solver.md` for why the packing
-// exists at all).
-//
-// `GameState.t` is the game's real snapshot and stays the source of truth. This is
-// the same position squeezed into ints: four free cells, four foundation ranks,
-// eight columns of card numbers.
+// A FreeCell position packed small enough to **think** with — the board as `Solver`
+// searches it. Why the packing exists, and the row-by-row list of what it mirrors,
+// are in `docs/solver.md` § The packed position.
 //
 // **Nothing here is a second set of rules.** Every predicate below is the packed
-// reading of one in `Rules`/`Reducer`, named at the predicate itself, and
-// `Position_test` pins them together by playing a solved game through both. A
-// change to a rule over there is a change here, and that test is what catches it.
+// reading of one in `Rules`/`Reducer`, named at the predicate itself. A change to a
+// rule over there is a change here, and `Position_test` is what catches it.
 
 open Card
 
@@ -321,10 +316,8 @@ type move = {
   card: int,
 }
 
-// Every legal move from here. The two deliberate prunings are the ones that only
-// ever cost the search time: a card may go to the *first* empty free cell (the
-// other empty cells are the same move), and a whole column may not move into an
-// empty one (that only renames the column).
+// Every legal move from here, less two deliberate prunings that only ever cost the
+// search time — `docs/solver.md` § The search names both.
 let legalMoves = (s: t): array<move> => {
   let moves = []
   for cell in 0 to Array.length(s.cells) - 1 {
@@ -395,11 +388,10 @@ let lifted = (s: t, move: move): array<int> =>
 // Apply a move, then the app's post-move auto-collect, and return the resulting
 // position — a fresh value, the input untouched.
 //
-// The auto-collect is `Options.default.autoCollect` mirrored: the drivers run it
-// after every accepted move but stand aside once the board is finishable, from
-// where the Finish button owns the sweep (see `Repl.settle` / `TableScene`). A
-// plan is therefore a plan for a game played with auto-collect *on*, which is how
-// the app ships.
+// The auto-collect mirrors `Options.default.autoCollect`, which the drivers run
+// after every accepted move (`Repl.settle`, `TableScene`). **A plan is therefore a
+// plan for a game played with auto-collect on** — what that costs a driver with the
+// flag off is the last row of `docs/solver.md` § The packed position.
 let applyMove = (s: t, move: move): t => {
   let t = copy(s)
   let cards = lifted(s, move)
@@ -427,11 +419,9 @@ let applyMove = (s: t, move: move): t => {
 // *which* free cell or *which* column holds what are the same position, so the
 // cells and the columns are both sorted before they're spelled out.
 //
-// Spelling them out is expensive: this is about a third of `Solver`'s runtime on
-// its own — nine strings built and sorted for every position the search generates —
-// and the largest single thing the collector is cleaning up after. It's the first
-// thing to change if the solver is ever wanted faster; `docs/solver.md` has what
-// that measured and why it hasn't been done.
+// **Spelling them out is the solver's single largest cost**, and so the first thing
+// to change if it is ever wanted faster. `docs/solver.md` § On making this faster
+// has the profile, and what a replacement measured.
 let key = (s: t): string => {
   let cells = s.cells->Array.filter(c => c >= 0)
   cells->Array.sort(Int.compare)

@@ -338,9 +338,8 @@ let dealPerCardMs = 67.
 let finishMaxInFlight = 5
 let finishPerCardMs = 90.
 
-// A move played by a *typed command*: one card, or a short `moverun`, that has
-// to be followable by someone reading the log to see what the command did. C = 2 is
-// what makes a run read as cards moving in order rather than as one blob.
+// A move played by a *typed command*: one card, or a short `moverun`, that has to be
+// followable by someone reading the log to see what the command did.
 let commandMaxInFlight = 2
 let commandPerCardMs = 170.
 
@@ -421,11 +420,9 @@ let slotRoleClass = (role: Game.role) =>
   | Game.Cascade => "drop-zone__slot--tableau"
   }
 
-// A resting card gets a slight, hand-placed tilt so the tableau reads as
-// dealt by a person rather than stamped down by a machine. See docs/card-tilt.md.
-//
-// The whole span, not a variance: keep it small or cards stop stacking cleanly,
-// since `TableLayout.fanStep` assumes a fanned pile is very nearly square.
+// The whole span of the hand-placed tilt, not a variance. **Keep it small** or cards
+// stop stacking cleanly: a fanned pile's overlap comes from `TableLayout.fanStep`,
+// which assumes cards are very nearly square. docs/card-tilt.md is the rest of it.
 let maxCardTilt = 2.5
 let suitOrdinal = (suit: Deck.suit) =>
   switch suit {
@@ -450,14 +447,11 @@ let rankOrdinal = (rank: Deck.rank) =>
   | Queen => 11
   | King => 12
   }
-// The tilt in degrees for `card` resting at (`pile`, `slot`) — its resting place,
-// as a pile index and a slot within it. A hash rather than a random number so a
-// card holds its angle while it sits still and re-tilts when it's placed
-// somewhere new; docs/card-tilt.md has why, and what each multiplier is worth in
-// degrees.
-//
-// Every input must stay non-negative — that's what keeps `Int.mod` positive, and
-// a negative `h` would throw the angle past `-maxCardTilt`.
+// The tilt in degrees for `card` resting at (`pile`, `slot`) — its resting place, as
+// a pile index and a slot within it. **Every input must stay non-negative**: that is
+// what keeps `Int.mod` positive, and a negative `h` would throw the angle past
+// `-maxCardTilt`. Why a hash rather than a random number, and what each multiplier is
+// worth in degrees: docs/card-tilt.md.
 let cardTilt = (~card: Deck.card, ~pile, ~slot) => {
   let h = suitOrdinal(card.suit) * 17 + rankOrdinal(card.rank) * 5 + pile * 23 + slot * 11
   let unit = Int.toFloat(Int.mod(h, 100)) /. 100.
@@ -469,14 +463,12 @@ let cardTilt = (~card: Deck.card, ~pile, ~slot) => {
 let applyTilt = (wrapper, ~degrees) =>
   style(wrapper)->setProperty("--card-rot", Float.toString(degrees) ++ "deg")
 
-// Give one card's *rotation* the same schedule as its *flight*, so the re-tilt a
-// sweep applies up front turns over the movement instead of swinging the whole
-// board in place before anything has moved (docs/card-tilt.md § The sweep
-// problem).
+// Give one card's *rotation* the same schedule as its *flight* — docs/card-tilt.md
+// § The sweep problem is the board twitch that prevents.
 //
-// Two ordering rules: set these *before* the `reflowAll` that applies the new
-// angle, and index them off the same loop as the flights. The CSS defaults them
-// to the in-game snap, so anything that ends a flight has to clear them again.
+// Three rules, every one of them quiet if broken: set these *before* the `reflowAll`
+// that applies the new angle, index them off the same loop as the flights, and clear
+// them again wherever a flight can end.
 let setTiltTiming = (wrapper, ~delay, ~duration) => {
   let s = style(wrapper)
   s->setProperty("--card-rot-delay", Float.toString(delay) ++ "ms")
@@ -519,12 +511,9 @@ let tiltFor = (~enabled, ~card, ~pile, ~slot) => enabled ? cardTilt(~card, ~pile
 // its `default`) sends every *safe* card home after an accepted move; the app's
 // menu owns this ref and rewrites it when the player flips the setting.
 //
-// `~tiltEnabled` is a *ref* to the hand-placed-tilt preference, read *live*
-// wherever a card is laid out so a menu toggle takes hold on the next relayout
-// without rebuilding the board — the same live-ref trick as `~options`. When it's
-// off, cards rest dead-square. `controls.relayout` is its companion: a thunk that
-// re-lays every resting card, so flipping the tilt switch re-tilts (or un-tilts) the
-// board in place, immediately, rather than only on the next move.
+// `~tiltEnabled` is a *ref* to the hand-placed-tilt preference, read *live* wherever
+// a card is laid out — the same trick as `~options`, with `controls.relayout` as its
+// companion. Both halves are docs/card-tilt.md § The preference.
 //
 // `~onHistory` is the reverse channel to `controls.undo` — after every state
 // change the board calls it with the current `canUndo` so the top bar can enable or
@@ -1001,11 +990,9 @@ let make = (
           }
         )
 
-      // The zone the dragged card's rect hits, if any — the shared primitive for both
-      // the live hover highlight and the snap-on-drop decision. The rule it applies is
-      // `TableLayout.hits` (strict horizontally, generous vertically); what's
-      // here is the search, which measures each zone's rect as it goes rather than
-      // caching them, since flexbox may have moved one since the last look.
+      // The zone the dragged card's rect hits, if any. `TableLayout.hits` is the rule;
+      // what's here is the search, which measures each zone's rect as it goes rather
+      // than caching them, since flexbox may have moved one since the last look.
       let zoneAt = (cardRect: TableLayout.rect) =>
         zones->Array.find(({el}) => TableLayout.hits(~card=cardRect, ~zone=boundingRect(el)))
 
@@ -1319,28 +1306,18 @@ let make = (
       }
 
       // Fly a set of cards to wherever the *already-committed* `state` says they now
-      // rest — the shared flight path, extracted from the finish sweep
-      // that first needed it. With the model already settled (so undo and persistence
-      // are correct and robust to interruption), this is a pure *visual* catch-up over
-      // `movedCards`: each card travels from where it was resting to its new slot,
-      // `stagger` ms apart, over `flight` ms each. `onDone` fires once the last card
-      // lands. Where the two numbers come from is `docs/animation-timing.md`.
+      // rest — the shared flight path. Each card travels from where it was resting to
+      // its new slot, `stagger` ms apart, over `flight` ms each, and `onDone` fires
+      // once the last card lands. Where the two numbers come from, what rides along
+      // with a flight, and the three ways it collapses to an instant `reflowAll`
+      // instead: `docs/animation-timing.md`.
       //
       // The mechanism is the inverse-offset trick `animateDeal` uses: capture each
       // card's current spot, let `reflowAll` snap every node onto its new home, then
-      // animate the transform back from (start − end) to zero. Two things ride along
-      // with it, and they're the reason a console move goes through here rather than
-      // leaning on `.stacking-card`'s plain left/top transition:
-      //
-      //   - the **z-hold**, so a card doesn't slide *under* the fan it's leaving.
-      //     `reflowAll` relayers every pile by slot the instant it runs, which would
-      //     drop a departing card behind cards it's still visually on top of;
-      //   - the **tilt timing**, so the hand-placed angle turns *over the
-      //     move* instead of swinging in place before anything has moved.
-      //
-      // With the OS asking for reduced motion, with `?animate=off` (the same URL flag
-      // that skips the opening fly-in), or with nothing to move, this collapses to an
-      // instant `reflowAll` and fires `onDone` straight away.
+      // animate the transform back from (start − end) to zero. The z-hold is what
+      // that trick costs — `reflowAll` relayers every pile by slot the instant it
+      // runs, so without the hold a departing card drops behind the fan it is still
+      // visually on top of.
       let flyCards = (movedCards: array<Deck.card>, ~flight: float, ~stagger: float, ~onDone) => {
         let reduceMotion = matchMedia("(prefers-reduced-motion: reduce)")["matches"]
         let cards = movedCards->Array.filterMap(nodeFor)

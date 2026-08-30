@@ -5,11 +5,7 @@
 //   mise run solve -- 1-25         # a range, for soaking the solver
 //   mise run solve -- --quiet 1-100  # just the summary line
 //
-// What it's for: the solver (`core/src/Solver.res`) with nothing else attached —
-// no browser, no bundle, no drags. `mise run autoplay` is the same brain playing
-// the real app through the DOM and takes a minute a deal; this takes milliseconds,
-// so it's what you measure a heuristic change with, and how you find out whether a
-// deal is one the ladder can't crack.
+// What it's for, and what to measure with it: docs/solver.md § Measuring it.
 //
 // It runs core's *compiled* output directly (ReScript compiles in-source to
 // `.res.mjs`), which is also the proof that the solver is reachable from plain
