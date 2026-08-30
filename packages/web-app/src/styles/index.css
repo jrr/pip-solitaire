@@ -1,58 +1,30 @@
-/* The app's stylesheet: the foundations, and the layer order everything else is
- * assembled in.
+/* The app's stylesheet: the layer order everything else is assembled in, plus the
+ * foundations no component owns.
  *
- * This started as a single 2,036-line `<style>` block inside index.html (#306).
- * Splitting it put each component's rules next to the component that renders
- * them — `components/TopBar.css` beside `TopBar.res`, `TableScene.css` beside
- * `TableScene.res` — but it left this file naming every one of those sheets in a
- * deliberate, load-bearing `@import` order, so a component was one place to edit
- * and two to register. Components now import their own sheets, the way anything
- * bundled by Vite does:
- *
- *     %%raw(`import "./TopBar.css"`)     // at the top of components/TopBar.res
- *
- * so adding, renaming or deleting a component doesn't touch this file at all.
- *
- * **What replaces the pinned import order is `@layer`.** That order was real —
- * move `TopBar.css` after `landscape-rail.css` and the rail's (1,1,1) ties flip,
- * which browser-tests/rail.spec.mjs catches — and a component-imported sheet has
- * no fixed position: Vite appends it wherever the module graph reaches it. Layer
- * order outranks source order, so the four names below decide the cascade and
- * where a sheet lands in the bundle stops mattering.
+ * **Every other sheet is imported by the component it styles**, so none of them
+ * has a fixed position in the bundle and the cascade is ordered by the statement
+ * below rather than by source order. Three rules follow from that and all three
+ * have teeth — an unlayered sheet wins everything, silently; a later layer beats
+ * an earlier one even when less specific; ties inside a layer are the module
+ * graph's and nothing may lean on one. **See docs/css-layers.md** for all of it,
+ * and read it before adding a stylesheet.
  *
  *   foundations  faces, custom properties, the reset, the app shell
  *   components   the chrome: top bar, menu, scene switcher, debug console
  *   scenes       the board and the demo scenes, card art included
  *   overrides    the rules that reach across components to restyle another one
  *
- * Three things follow from using layers at all, and all three have teeth:
- *
- *   - **Every sheet must declare a layer.** An unlayered rule beats every
- *     layered one no matter how specific, so a sheet that forgets its `@layer`
- *     wrapper silently wins everything. There is no partial migration here.
- *
- *   - **A later layer beats an earlier one even when it is less specific.** This
- *     is the whole point, and also the trap: `DebugConsole.css` narrows
- *     `.table-board` with a selector that out-specifies `TableScene.css`'s plain
- *     `.table-board`, and it only keeps winning because those two rules sit in
- *     `overrides` and `scenes` respectively. See the note in that file.
- *
- *   - **Within one layer the cascade still breaks ties on source order**, and
- *     that order is now the module graph's rather than a list written here. It
- *     runs dependency-first, so a component's own sheet lands after the sheets of
- *     the components it builds on — `CardArt.css` before `TableScene.css`, which
- *     is the direction those two want anyway. Nothing in the app relies on a tie
- *     between two sheets *inside* one layer; keep it that way, and reach for the
- *     next layer out when a rule needs to beat another file.
- *
- * The sheets below are the ones no component owns: the foundations, and the
- * landscape rail. The rail is cross-cutting by nature — it restyles the top bar,
- * the menu and the board for a short landscape viewport — so it stays one file in
- * `overrides` rather than being scattered into the three it overrides, and it is
- * imported here because no single component can be said to own it.
+ * This statement has to be the first rule the page sees, which is why
+ * index.html links this file rather than a component importing it; a layer first
+ * *mentioned* by a block is appended in arrival order instead.
+ * browser-tests/css-layers.spec.mjs pins both.
  */
 
 @layer foundations, components, scenes, overrides;
+
+/* The sheets no component owns. The landscape rail is cross-cutting by nature —
+   it restyles the top bar, the menu and the board — so it stays one file in
+   `overrides` and is imported here. */
 
 @import "./fonts.css";
 @import "./base.css";
