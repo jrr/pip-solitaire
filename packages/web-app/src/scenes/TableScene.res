@@ -82,11 +82,11 @@ type resizeObserver
 // rect type is `TableLayout`'s, since the maths that compares these lives there.
 @send external boundingRect: WebDom.element => TableLayout.rect = "getBoundingClientRect"
 
-// The card scale is sized to the box the row *actually lays out in* — narrower than
-// the stage by the safe-area cutout (#179 pins `.drop-rows` inside `left`/`right:
-// env(safe-area-inset-*)`), and, for the height fit, offset from the top by the row's
-// `top` and split by its inter-row `rowGap`. None of these are in a rect we already
-// read, so pull them off the row's *computed* style; `parseFloat` turns "44px" → 44.
+// The card scale is sized to the box the row *actually lays out in*, and three of
+// that box's terms — the safe-area cutout it's pinned inside, its `top` offset, its
+// inter-row `rowGap` — are in no rect we already read. So pull them off the row's
+// *computed* style, keeping the stylesheet the one place each is written down;
+// `parseFloat` turns "44px" → 44. What they feed is `docs/board-geometry.md`.
 @val
 external getComputedStyle: WebDom.element => {
   "left": string,
@@ -318,9 +318,9 @@ type winShare = {
 
 // The design footprints, the fits they feed, and the hit-test that compares the
 // rects — all of it arithmetic over rects and counts, and all of it in
-// `TableLayout` (#319). Referenced by name below (`TableLayout.cardW`,
-// `TableLayout.fanStep`, …) rather than opened, so a number's home is visible at
-// the site that multiplies it.
+// `TableLayout` (#319); `docs/board-geometry.md` derives it. Referenced by name
+// below (`TableLayout.cardW`, `TableLayout.fanStep`, …) rather than opened, so a
+// number's home is visible at the site that multiplies it.
 
 // Four things move cards across this board — the opening deal, the finish sweep, a
 // console move and an autoplay step — and all four are one staggered flight timed by
@@ -927,12 +927,10 @@ let make = (
       // later drop re-tilts immediately instead of on the dead sweep's schedule.
       let clearTiltTimings = () => nodes->Array.forEach(c => clearTiltTiming(c.wrapper))
 
-      // The depth the height fit sizes the deepest fan to (#—): the deepest *opening*
-      // pile plus `fanHeadroom`, captured once here so cards keep a stable size as
-      // piles grow and shrink through play. Only Fanned piles grow downward, so a board
-      // with no fans (every pile Squared) contributes no fan height — `referenceDepth`
-      // then goes unused (see `applyScale`). Read from the opening `state`, so a New
-      // Game rebuild recomputes it for that deal.
+      // The depth the height fit sizes the deepest fan to: the deepest *opening* pile
+      // plus `TableLayout.fanHeadroom`. Captured once, here, so cards keep a stable
+      // size as piles grow and shrink through play — and read from the opening
+      // `state`, so a New Game rebuild recomputes it for that deal.
       let hasFanned = game.piles->Array.some((p: Game.pile) => p.stacking == Game.Fanned)
       let openingMaxDepth =
         zones->Array.reduce(0, (m, z) =>
@@ -957,20 +955,17 @@ let make = (
         //
         // The stage width already excludes the nav rail — `playfield` is laid out
         // beside it, not under it — so the only term left to subtract is the display
-        // cutaway: the safe-area insets `.drop-rows` is pinned inside (#179). Sizing
-        // the cards to that inset width (rather than the raw stage) keeps the columns
-        // fitting the row on a landscape phone with a side notch, instead of being
-        // sized for a stage wider than they actually get and packing together (their
-        // `space-evenly` gaps squeezed to nothing). Off a cutout device the insets are
-        // 0, so `avail == width` and nothing changes. The cutaway is read here, not
-        // folded into the `--rows-max-w` cap, which stays a pure spreading limit.
+        // cutaway: the safe-area insets `.drop-rows` is pinned inside (#179). Size the
+        // cards to that inset width, never the raw stage, or a landscape phone with a
+        // side notch sizes its columns for width they don't get and packs them
+        // together, `space-evenly` gaps squeezed to nothing. Off a cutout device the
+        // insets are 0, so `avail == width`.
         let width = boundingRect(playfield).width
         let cs = getComputedStyle(rows)
         let cutaway = parseFloat(cs["left"]) +. parseFloat(cs["right"])
         let avail = width -. cutaway
-        // The height fit's fixed term (#—): the rows' `top` offset, plus the inter-row
-        // gap on a two-row board. Read off the live computed style rather than restated
-        // as a number, so the stylesheet stays the one place either is written down.
+        // The height fit's fixed term: the rows' `top` offset, plus the inter-row gap
+        // on a two-row board.
         let vFixed = parseFloat(cs["top"]) +. (twoRows ? parseFloat(cs["rowGap"]) : 0.)
 
         TableLayout.scaleFor(
@@ -987,10 +982,8 @@ let make = (
         }
         // Publish every scaled footprint the CSS needs, so `.stacking-card`,
         // `.drop-zone` and `.drop-zone__slot` resize in step with the JS geometry
-        // below — including the `--rows-max-w` cap that stops the columns spreading on
-        // a wide desktop (#173). Which numbers those are, and why they're published
-        // rather than restated as `calc()` ratios in the stylesheet, is
-        // `TableLayout.cssVars`; the `px` suffix goes on here because it is CSS's.
+        // below. Which numbers those are is `TableLayout.cssVars`; the `px` suffix
+        // goes on here, because it is CSS's.
         let s = style(playfield)
         TableLayout.cssVars(~scale=scale.contents, ~widestRow)->Array.forEach(((name, value)) =>
           s->setProperty(name, Float.toString(value) ++ "px")
@@ -998,9 +991,8 @@ let make = (
       }
 
       // The dock-refusal test for *this* board (#275): could it give up `inset` px of
-      // stage width and still deal cards above `minScale`? Same two terms `applyScale`
-      // works from — the stage, less the display cutaway `.drop-rows` is pinned inside
-      // (#179) — against the floor solved for width (`minStageWidth`).
+      // stage width and still deal cards above `minScale`? The arithmetic is
+      // `TableLayout.fitsDock`; the measuring is here.
       //
       // Measured off `container`, the scene box the board is laid into, rather than off
       // `playfield`: the playfield is exactly what docking narrows, so reading it would

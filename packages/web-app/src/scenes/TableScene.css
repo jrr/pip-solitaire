@@ -198,13 +198,13 @@
        that, and every rule below reads them with a bare `var()`.
 
        They are declared here, once, rather than repeated as a fallback at each
-       `var()` site, and they are *values* rather than ratios: the proportions they
-       embody (`cardH / cardW`, the card's corner ratio, `zoneInset`) all live in
-       ReScript, where the geometry that consumes them lives too. The stylesheet
-       used to re-derive them here with `calc(… * 1.4)` / `* 0.1` / `* 0.15`
-       literals, which restated those facts a second time and could drift from
-       them silently. browser-tests/geometry.spec.mjs (`mise run browsertest`) pins
-       the relationships. */
+       `var()` site, and they are *values* rather than ratios. Keep them that way:
+       the proportions they embody (`cardH / cardW`, the card's corner ratio,
+       `zoneInset`) all live in ReScript, and a `calc(… * 1.4)` here would restate
+       one of those facts a second time, free to drift from it silently. Anything
+       the CSS needs in scaled pixels goes through `TableLayout.cssVars` instead.
+       browser-tests/geometry.spec.mjs (`mise run browsertest`) pins the
+       relationships; docs/board-geometry.md derives them. */
     --card-w: 80px;
     --card-h: 112px;
     --card-radius: 8px;
@@ -283,7 +283,7 @@
     border: 1px dashed transparent;
     /* Concentric with the slot: the zone sits a uniform `zoneInset` (4px at the
        default scale) outside the card-sized slot on every side (see
-       `zoneWidth`/`zoneBaseHeight` in TableScene), so the frame's radius is the
+       `zoneWidth`/`zoneBaseHeight` in TableLayout), so the frame's radius is the
        slot's radius plus that inset — computed as `zoneRadius` there and scaled
        with everything else, so the two rounded corners share a centre and the gap
        stays even round the bends too. */

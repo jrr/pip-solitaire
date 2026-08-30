@@ -1,18 +1,15 @@
-// The card table's fits, checked without a browser (#319).
+// The card table's fits, checked without a browser (#319). The geometry itself is
+// `docs/board-geometry.md`.
 //
-// This is the test the layout maths never had. Everything about card sizing used to be
-// sealed inside `TableScene`'s `mount` closure, so the only way to ask "does a short
-// screen shrink the cards?" was to open one — `browser-tests/geometry.spec.mjs`, a
-// Playwright run against a built app. That suite is still the right place for what it
-// checks (that the numbers below land real cards in the right pixels, measured off a
-// real engine); what it shouldn't have to be is the first place a divide-by-zero or an
-// inverted clamp is noticed.
+// These are the claims answerable from arithmetic alone: which of the two fits binds
+// and when, that the clamp holds at both ends, that `minStageWidth` really is the width
+// fit solved for the floor (which is the thing `ConsoleDock`'s refusal leans on), that
+// the published CSS variables keep the proportions the stylesheet doesn't restate, and
+// that the drop hit-test is strict across and generous down.
 //
-// So these are the claims that are answerable from arithmetic alone: which of the two
-// fits binds and when, that the clamp holds at both ends, that `minStageWidth` really is
-// the width fit solved for the floor (which is the thing `ConsoleDock`'s refusal leans
-// on), that the published CSS variables keep the proportions the stylesheet stops
-// restating, and that the drop hit-test is strict across and generous down.
+// `browser-tests/geometry.spec.mjs` is the other half — that these numbers land real
+// cards in the right pixels, measured off a real engine. What it shouldn't have to be
+// is the first place a divide-by-zero or an inverted clamp is noticed.
 //
 // The numbers are stated as the layout's own constants wherever the claim is about a
 // relationship (`minScale`, `maxScale`, `minStageWidth`), and as plain pixel sizes where
