@@ -191,20 +191,11 @@ imported by `src/styles/index.css`, which `index.html` links.
 **The cascade is ordered by `@layer`, not by source order.** A component-imported
 sheet has no fixed position in the bundle, so `src/styles/index.css` declares the
 order once — `foundations, components, scenes, overrides` — and every sheet wraps
-its rules in one of those four. Three rules follow, and `src/styles/index.css`
-explains each at length:
-
-- **Every sheet must declare a layer.** An unlayered rule beats every layered one
-  regardless of specificity, so there is no such thing as adding "just one"
-  unlayered file.
-- **A later layer beats an earlier one even when it is less specific.** A rule
-  that reaches out of its own component to restyle another (the landscape rail;
-  the debug console's dock, which narrows the board) goes in `overrides`.
-- **Within a layer, ties still break on source order** — now the module graph's,
-  which runs dependency-first. Nothing relies on such a tie; don't add one.
+its rules in one of those four.
 
 Adding a rule needs no thought. Adding a *file* means wrapping it in the layer it
-belongs to and importing it from its component.
+belongs to and importing it from its component. `docs/css-layers.md` has the
+three rules that follow from layering, each with the failure it prevents.
 
 Font `url()`s are root-relative (`/fonts/…`) so Vite resolves them from
 `public/` — a document-relative `./fonts/…` breaks once the stylesheet is

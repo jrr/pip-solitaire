@@ -46,7 +46,8 @@
 // ring and the `<ol>` outlive a close — so reopening resumes rather than restarts.
 
 // This component's stylesheet: `components`, apart from the two rules that narrow
-// the board, which are in `overrides` (see src/styles/index.css, and the note there).
+// the board, which are in `overrides` (why: the note in DebugConsole.css, and
+// docs/css-layers.md).
 %%raw(`import "./DebugConsole.css"`)
 
 // How many lines the panel keeps. A session's log is unbounded; the panel's view of it

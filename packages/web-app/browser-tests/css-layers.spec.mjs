@@ -50,7 +50,7 @@ test("the app's whole cascade is inside the declared layers", async ({ page }) =
   )
   expect(
     stray.map((r) => `${r.type}: ${r.text}`),
-    "every top-level rule belongs to a layer — see src/styles/index.css",
+    "every top-level rule belongs to a layer — see docs/css-layers.md",
   ).toEqual([])
 })
 
