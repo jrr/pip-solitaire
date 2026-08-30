@@ -1,81 +1,55 @@
-// An immutable snapshot of *where every card currently rests* — the in-progress
-// gameplay state — kept deliberately separate from the board *definition*
-// (`Game.t`, the empty board plus its rules). This is the first migration step
-// toward M1: the load-bearing roadmap principle is that all game state
-// lives in `core` as immutable data plus pure transition functions, with the UI
-// holding only transient view state. Today the live "where is each card" lives
-// as mutable refs in the view (`TableScene`); this type is where it will move.
+// An immutable snapshot of *where every card currently rests*, kept separate from the
+// board *definition*: `Game.t` is the empty board and its rules, static across a
+// game, and this is the dynamic value moved over it. A board's opening deal
+// (`pile.cards`) is only the initial value of one of these.
 //
-// Deliberately *no behaviour* yet: this is the type, the initial-state builder,
-// and the read-only queries the view will eventually need — no `action`, no
-// reducer, no view rewiring. Later steps (a pure `canDrop` query, an
-// `action` + `reducer`, then the view cutover) build on this.
-//
-// The split:
-//   - `Game.t` is the *board definition* — the piles and the rules they enforce,
-//     static across a game. The "empty board".
-//   - `GameState.t` is the *dynamic* snapshot — where each card rests right now.
-//     The opening deal a board describes (`pile.cards`) is only the *initial* value
-//     of one of these; everything that happens to those cards afterwards is here.
-//
-// Card identity for lookups is structural `{suit, rank}` — unique within a
-// single deck — so the queries below key off a `card` value directly via `==`.
-// (A full multi-deck model, where identity would need more, is later.)
+// A pure position and nothing else, which is what makes it comparable, replayable and
+// cheap to record. The counters beside it are `Stats` and `Timing`; the line of play
+// over it is `History`; the transitions are `Reducer`.
 
 open Card
 
-// Where a single card rests right now. `InPile(pileIndex, slot)` locates it in
-// pile `pileIndex` at `slot`, counting from 0 = the bottom of the pile up toward
-// the top. `Loose` records only *that* a card lies free on the table, not where —
-// a loose card's pixel coordinates stay transient view state, not model state.
+// `InPile(pileIndex, slot)` counts `slot` from 0 = the bottom of the pile upward.
+// `Loose` records only *that* a card lies free on the table, not where — a loose
+// card's pixel coordinates stay transient view state.
 type location =
   | InPile(int, int)
   | Loose
 
-// Card identity for lookups: two cards are the same when suit and rank match.
-// `{suit, rank}` is unique within a single deck, so this is enough to key the
-// queries below. Compared field-by-field (both are payload-free variants) rather
-// than by whole-record `==`, so identity stays an explicit, deck-scoped decision
-// the queries share — and a fuller multi-deck identity can grow from here.
+// Identity is structural `{suit, rank}`, which is unique within a single deck, and it
+// is compared field-by-field rather than by whole-record `==` so the decision stays
+// explicit and deck-scoped — a fuller multi-deck identity would grow from here.
 let sameCard = (a: card, b: card): bool => a.suit == b.suit && a.rank == b.rank
 
-// The snapshot: each pile's cards bottom-first (so a card's slot is its index in
-// `piles[pileIndex]`, and the last element is the pile's top card), plus the
-// cards lying loose on the table.
+// Piles run bottom-first, so a card's slot is its index and the last element is the
+// pile's top card.
 type t = {
   piles: array<array<card>>,
   loose: array<card>,
 }
 
-// The opening layout derived from a board definition: each pile starts holding
-// the cards the board deals it, and nothing rests loose — FreeCell keeps every
-// card in a pile. Inner arrays are copied so the snapshot never shares mutable
-// storage with the board value — the state is a value of its own from the moment
-// it's built.
+// Inner arrays are copied so the snapshot never shares mutable storage with the
+// board value: it is a value of its own from the moment it's built.
 let initial = (game: Game.t): t => {
   piles: game.piles->Array.map(p => p.cards->Array.copy),
   loose: [],
 }
 
-// The cards resting in pile `i`, bottom-first — a copy, so a caller can't reach
-// back through it and mutate the snapshot. An out-of-range index yields `[]`.
+// A copy, so a caller can't reach back through it and mutate the snapshot.
 let cardsInPile = (state: t, i: int): array<card> =>
   switch state.piles->Array.get(i) {
   | Some(cards) => cards->Array.copy
   | None => []
   }
 
-// The top card of pile `i` — the card a newcomer would land on — or `None` when
-// the pile is empty or the index is out of range.
+// The card a newcomer would land on.
 let topOf = (state: t, i: int): option<card> =>
   switch state.piles->Array.get(i) {
   | Some(cards) => cards->Array.get(Array.length(cards) - 1)
   | None => None
   }
 
-// Where `card` currently rests, or `None` if it isn't in this state at all.
-// Piles are searched first (returning the pile index and the card's slot), then
-// the loose table. Identity is the structural `{suit, rank}` equality above.
+// Piles are searched first, then the loose table.
 let locationOf = (state: t, card: card): option<location> => {
   let found = ref(None)
   state.piles->Array.forEachWithIndex((cards, i) =>
@@ -94,13 +68,9 @@ let locationOf = (state: t, card: card): option<location> => {
   }
 }
 
-// Do two snapshots rest every card the same way? True when the piles hold
-// the same cards in the same order and the loose table matches. Compared explicitly
-// via `sameCard`, matching how identity is decided everywhere else here (see
-// `sameCard`) rather than a whole-structure `==`. This lets a driver ask "did this
-// move actually change the board?" and treat a lawful no-op — an identity re-drop,
-// or a `MoveColumn` with `from == to` — as un-undoable rather than a fresh
-// step, and log it as a no-op instead of "accepted".
+// Lets a driver ask "did this move actually change the board?", so a lawful no-op —
+// an identity re-drop, a `MoveColumn` with `from == to` — is un-undoable rather than
+// a fresh step.
 let equal = (a: t, b: t): bool => {
   let sameCards = (xs: array<card>, ys: array<card>) =>
     Array.length(xs) == Array.length(ys) &&
@@ -112,17 +82,12 @@ let equal = (a: t, b: t): bool => {
   sameCards(a.loose, b.loose)
 }
 
-// Has the game been won? True when every foundation on the board holds a
-// complete run of the board's own deck — for FreeCell's `Cards.standard`, an
-// Ace→King run: the natural end of a game, and the "done" marker of M2. Win
-// detection just *observes* the foundations: it targets the foundation group by
-// role (`Game.pileIndices`) and asks the per-pile check whether each is
-// finished (`Rules.isCompleteRun`, against `game.deck`), so how the
-// cards got there — a drag, a later auto-to-foundation — is beside the point.
+// Every foundation holding a complete run of the board's own deck. Purely an
+// observation of the foundations, so how the cards got there — a drag, an
+// auto-collect, the solver — is beside the point.
 //
-// A board with *no* foundations is never won: `Array.every` over an empty group is
-// vacuously true, so the explicit non-empty guard keeps a foundation-less board
-// from reading as an instant win.
+// The non-empty guard is load-bearing: `Array.every` over an empty group is vacuously
+// true, so without it a foundation-less board reads as an instant win.
 let hasWon = (game: Game.t, state: t): bool => {
   let foundations = Game.pileIndices(game, Game.Foundation)
   Array.length(foundations) > 0 &&
