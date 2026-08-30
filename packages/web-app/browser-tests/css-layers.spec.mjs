@@ -1,17 +1,10 @@
-// The one thing the layer scheme can't survive losing.
+// The one thing the layer scheme can't survive losing: a sheet that forgets its
+// `@layer` wrapper wins the cascade outright and silently. The argument, and what
+// the four names are, is docs/css-layers.md § The three rules.
 //
-// Since components import their own stylesheets, no file has a fixed position in
-// the bundle any more and the cascade is ordered by `@layer` instead — the four
-// names declared in src/styles/index.css. That works only while *every* rule is
-// inside one of them: an unlayered rule outranks every layered one no matter how
-// specific, so a sheet that forgets its wrapper doesn't misorder slightly, it
-// wins outright, and it does so silently — the page still renders, just wrong,
-// and only wherever that sheet happens to collide with another.
-//
-// Nothing else here would catch it: it's not a syntax error, the compiler never
-// sees CSS, and a regression would show up as some unrelated component's rule
-// quietly losing. So this reads the cascade the browser actually built and
-// checks the shape of it.
+// Nothing else here would catch it — it isn't a syntax error and the compiler never
+// sees CSS — so this reads the cascade the browser actually built and checks the
+// shape of it.
 import { test, expect } from "@playwright/test"
 
 const LAYERS = ["foundations", "components", "scenes", "overrides"]
@@ -59,9 +52,8 @@ test("the layer order is declared once, before anything uses it", async ({ page 
   await expect(page.locator(".stacking-card").first()).toBeVisible()
   const rules = await topLevelRules(page)
 
-  // The statement in src/styles/index.css is what fixes the order; a layer first
-  // *mentioned* by a block would be appended in arrival order instead, which is
-  // exactly the module-graph order the statement exists to stop mattering.
+  // The statement in src/styles/index.css is what fixes the order — see
+  // docs/css-layers.md § Why the declaration comes first.
   const statements = rules.filter((r) => r.type === "CSSLayerStatementRule")
   expect(statements.map((r) => r.names)).toEqual([LAYERS])
   expect(rules.indexOf(statements[0])).toBe(0)

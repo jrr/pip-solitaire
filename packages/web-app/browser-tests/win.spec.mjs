@@ -1,7 +1,5 @@
-// The web win flow, end to end: load the near-won FreeCell position
-// (`?state=almost-won`), play the single winning move by dragging the pending
-// King onto its foundation, and confirm the win overlay appears — then that New
-// Game tears it down.
+// The web win flow, end to end, on the near-won FreeCell position
+// (`?state=almost-won`).
 //
 // Needs a real browser for the input half: the move is a pointer drag across the
 // board, which jsdom can't dispatch against a layout it doesn't have.
@@ -9,8 +7,8 @@
 // Run twice, once per input path. TableScene binds Pointer Events
 // deliberately — "pointerdown/pointermove/pointerup instead of mouse + touch, so
 // one code path covers phone and desktop" — and this is what checks that the
-// claim holds: the same drag, once from a mouse on a roomy desktop viewport and
-// once from a finger on an emulated iPhone, has to reach the same overlay.
+// claim holds: the same drag, once from a mouse and once from a finger, has to
+// reach the same overlay.
 
 import { devices, expect, test } from "@playwright/test"
 import { settleBoard } from "./lib/board.mjs"
@@ -65,8 +63,8 @@ for (const input of inputs) {
       await page.goto("/?game=freecell&state=almost-won&animate=off")
 
       // Check the premise before the drag: a phone-sized desktop context reports
-      // no touch at all (that was the old screenshot harness's bug), and
-      // this case would then be the mouse case with extra steps.
+      // no touch at all, and this case would then be the mouse case with extra
+      // steps.
       const touchCapable = await page.evaluate(
         () => "ontouchstart" in window && navigator.maxTouchPoints > 0,
       )

@@ -54,9 +54,6 @@ const samples = [
 // catching a *substituted face* or a mis-cut sprite — failures that move these
 // numbers by tens — not for policing antialiasing drift between browser
 // versions, which would make it a maintenance burden that gets waived.
-//
-// (A second strategy, painting the face with canvas 2D, was budgeted here too
-// while the two were being compared; it ran 1.6-2.9 and lost. See CardRaster.)
 const BUDGET = { meanDiff: 6, hardDiff: 0.06 }
 const HARD_DIFF_LEVEL = 60
 

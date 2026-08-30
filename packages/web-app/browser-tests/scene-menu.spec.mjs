@@ -1,26 +1,12 @@
 // The menu's scene rows, in a real browser.
 //
-// The switcher used to own those rows as live DOM and highlight them by rewriting a
-// class on each activation. Now it hands the chrome data — the games as a list, the
-// active id as a value — and the rows are ordinary `<MenuRow>`s the diff draws. That
-// is a *rendering* change, and the two behaviours worth guarding across it are the two
-// nothing else would catch, because both are silent when they break:
+// The switcher hands the chrome data — the games as a list, the active id as a value
+// — and the rows are ordinary `<MenuRow>`s the diff draws. So the wiring between the
+// row a player taps and the rule that row is meant to reach belongs to the chrome,
+// and every way it can break is silent. These are the behaviours nothing else would
+// catch.
 //
-//   1. **Tapping the game you're already in must not re-mount it.** Activation tears
-//      the live scene down and builds it afresh, so a re-mount throws away the game in
-//      progress. `SceneSwitcher_test` pins the rule against a fake scene that counts
-//      its mounts; what it can't pin is that the row the player actually taps reaches
-//      that rule — the row is the chrome's now, and the wiring between them is exactly
-//      what moved. Here the board is marked before the tap and looked for afterwards:
-//      a re-mount clears `#scene-container`, so the marked node simply wouldn't
-//      survive, whatever the rebuilt board happened to deal.
-//
-//   2. **A `?scene=` deep link must open the group it lands in**, with its row
-//      highlighted and the games row above it *not*. That's the whole highlight path
-//      end to end: an id the switcher resolved before the chrome's loop existed,
-//      seeded into the model, rendered through the diff on two different screens.
-//
-// Browser-only for the ordinary reason: both run through a real page load, a real
+// Browser-only for the ordinary reason: each runs through a real page load, a real
 // scene mount and the menu's own navigation, none of which jsdom assembles.
 
 import { expect, test } from "@playwright/test"
@@ -52,6 +38,10 @@ const sceneRow = (page, name) => sceneGroup(page).getByRole("button", { name })
 const gameGroup = (page) => page.locator(".scene-menu__group").filter({ hasText: "games" })
 const gameGroupRow = (page, name) => gameGroup(page).getByRole("button", { name })
 
+// Activation tears the live scene down and builds it afresh, so a re-mount throws
+// away the game in progress. `SceneSwitcher_test` pins that rule against a fake scene
+// counting its mounts; what it can't pin is that the row a player actually taps
+// reaches the rule.
 test("tapping the game you're already playing doesn't re-deal it", async ({ page }) => {
   await page.goto("/?seed=24680&animate=off")
   await settleBoard(page)
@@ -106,6 +96,9 @@ test("the short-deck games sit under Debug, leaving one game button up top", asy
   await expect(gameGroupRow(page, "Micro FreeCell")).not.toHaveAttribute("aria-current", "true")
 })
 
+// The whole highlight path end to end: an id the switcher resolved before the
+// chrome's loop existed, seeded into the model, rendered through the diff on two
+// different screens — and the games row above it left unmarked.
 test("a ?scene= link opens the group it lands in, with that scene marked", async ({ page }) => {
   await page.goto("/?scene=gallery&animate=off")
   await expect(page.locator(".card-gallery")).toBeVisible()

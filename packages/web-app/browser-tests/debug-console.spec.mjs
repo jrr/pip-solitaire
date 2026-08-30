@@ -127,8 +127,7 @@ test("a real move shows up in the console as it is played", async ({ page }) => 
   expect(await labels(page)).toContain("win")
 
   // One line for the move, in the board's own words: the card's face, the label printed
-  // over the pile it went to, and the outcome on the end of it. (It used to be two — the
-  // reducer's action as JSON, then `result: accepted` under it.)
+  // over the pile it went to, and the outcome on the end of it.
   await expect(consoleLines(page).filter({ hasText: "move K♣ → F4 ✓" })).toHaveCount(1)
 
   // The scrollback survives a close: reopening resumes the log rather than wiping it.
@@ -214,10 +213,9 @@ test("an open console takes no input away from the board", async ({ page }) => {
 // --- The input line ---------------------------------------------------------
 //
 // The claim under test is that a typed command *plays the game* — not that it prints
-// something plausible. So the assertions are about the board: a card ends up somewhere
-// new, the win the move completes is raised, undo puts it back. All of it is browser-
-// only for the same reasons the panel is: a physical key opens it, focus is a real
-// focus, and "did the card move" is a rect.
+// something plausible — so every assertion below is about the board rather than about
+// the log. All of it is browser-only for the same reasons the panel is: a physical key
+// opens it, focus is a real focus, and "did the card move" is a rect.
 //
 // `KC` is the Clubs King the `almost-won` scenario parks in the first free cell, one
 // move from a win — the same card the drag tests above pick up, addressed by name here
@@ -440,13 +438,12 @@ test("home finds the foundation itself, and undo/redo walk the same history", as
   await expect(consoleLines(page).filter({ hasText: "Nothing to redo." })).toHaveCount(1)
 })
 
-// `home` on a card that *is* wanted but can't be lifted. The distinction matters
-// because the two refusals read completely differently, and the panel used to give the
-// wrong one: it resolved the target through `validMoves`, which returns nothing at all
-// for a buried card, so it answered "no foundation is ready" about a foundation that was
-// sitting there waiting. Since the verb became `core`'s it takes the terminal's
-// route — find the foundation, dispatch, let the reducer say why not — and the answer is
-// the true one.
+// `home` on a card that *is* wanted but can't be lifted. The two refusals read
+// completely differently, and resolving the target through `validMoves` gives the wrong
+// one: that returns nothing at all for a buried card, so the panel would answer "no
+// foundation is ready" about a foundation sitting there waiting. The verb is `core`'s
+// and takes the terminal's route — find the foundation, dispatch, let the reducer say
+// why not — so the answer is the true one.
 test("home on a buried card says it's buried, not that nothing wants it", async ({ page }) => {
   // The finishable board: ♥3 is trapped under ♠6 in the first cascade, and the Hearts
   // foundation stands at ♥2 — so this card is exactly what that foundation wants next.
@@ -640,9 +637,9 @@ test("deal <n> opens that deal number", async ({ page }) => {
   await expect(page.getByRole("button", { name: /^Share Seed/ })).toHaveText("Share Seed 24680")
 })
 
-// The panel used to refuse any `deal` argument that wasn't a number — including the games
-// its own `games` command listed. A game id now means here what it means in the CLI: that
-// game's board, on screen. Scene ids are game ids, so this is the switcher's job.
+// A game id means here what it means in the CLI — that game's board, on screen — so the
+// ids the panel's own `games` command lists are all `deal` arguments. Scene ids are game
+// ids, which makes this the switcher's job.
 test("deal <game> brings up that game's board", async ({ page }) => {
   await page.goto(FREECELL)
   await settleBoard(page)
@@ -701,9 +698,9 @@ test("redeal replays the deal on the table", async ({ page }) => {
 })
 
 // `print` draws the board into the log — the same board the CLI prints, from `core`'s
-// renderer. It used to answer "the board is on screen", which was true and useless: the
-// point is a snapshot you can read back. The colour it arrives in is the panel's own (see
-// the ink test below); what `core` hands over is a document, not a painted string.
+// renderer. What it is for is a snapshot you can read back, not an answer that the board
+// is on screen. The colour it arrives in is the panel's own (see the ink test below);
+// what `core` hands over is a document, not a painted string.
 test("print draws the board into the log", async ({ page }) => {
   await page.goto("/?game=freecell&seed=24680&animate=off")
   await settleBoard(page)
@@ -1221,8 +1218,8 @@ test("print paints the board in the panel's own colours", async ({ page }) => {
   expect(colours.plain).not.toBe(colours.black)
 
   // Only what `core` inked is painted. An ordinary reply is words, not a drawing, so it
-  // stays in the log's own voice — the label styling every reply had before the panel
-  // could paint anything — rather than being restyled as board furniture.
+  // stays in the log's own voice — the label styling every reply that isn't a drawing
+  // gets — rather than being restyled as board furniture.
   await runCommand(page, "help")
   const helpIsPainted = await page.evaluate(() => {
     const rows = [...document.querySelectorAll("#debug-console-lines li")]

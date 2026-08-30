@@ -1,18 +1,10 @@
-// Import a compiled ReScript module that carries JSX (see src/Html.res).
-//
-// Under `"jsx": {"preserve": true}` the compiler emits real JSX into the
-// `.res.mjs` output and leaves the lowering to the bundler. That's exactly what
-// we want in the app (Vite's esbuild pass does it), but it means bare Node can
-// no longer `import` those files — `<svg …>` is a syntax error there, and the
-// build scripts that render art without a browser (`generate/icons.mjs`) do
-// import them.
-//
-// So they come through esbuild first: bundle the module, lower its JSX onto
-// Preact, and import the result from memory. Nothing is written to disk.
+// Import a compiled ReScript module that carries JSX: esbuild bundles it, lowers
+// the JSX onto Preact, and the result is imported from memory. Nothing is written
+// to disk.
 //
 // **A Node script that imports compiled ReScript goes through here, not around
-// it.** This is also the clearest single cost of preserve mode — docs/rendering.md
-// weighs it against the generic transform, under which this file wouldn't exist.
+// it.** Why bare Node can't do it directly, and what that costs, is
+// docs/rendering.md § Node can't import the compiled output.
 import { build } from "esbuild";
 
 export async function loadJsxModule(entryPath) {
@@ -22,10 +14,9 @@ export async function loadJsxModule(entryPath) {
     write: false,
     format: "esm",
     platform: "node",
-    // `.res.mjs` isn't a JSX extension, so say so explicitly — same three
-    // settings the app build uses (see vite.config.js). A component also imports
-    // its own stylesheet (see the `%%raw` line at the top of CardArt.res, which
-    // IconArt pulls in); there's no document here to apply it to, so drop it.
+    // `.res.mjs` isn't a JSX extension, so say so explicitly — the same three
+    // settings the app build uses. The CSS drop is because a component imports its
+    // own stylesheet and there is no document here to apply it to.
     loader: { ".mjs": "jsx", ".css": "empty" },
     jsx: "automatic",
     jsxImportSource: "preact",

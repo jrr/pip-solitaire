@@ -42,23 +42,18 @@ const isPreview = process.env.PIP_PREVIEW === "1";
 //   - Icon `src`s are relative and resolve next to the manifest.
 export default defineConfig({
   base: "./",
-  // ReScript compiles with `"jsx": {"preserve": true}`, so the
-  // emitted `.res.mjs` files contain real JSX rather than calls into a runtime
-  // we wrote. Vite's esbuild pass is what lowers it — `.res.mjs` isn't a JSX
-  // extension, so both the `jsx` loader and the file filter are explicit.
-  // These same three settings live in three other places; docs/rendering.md
-  // lists them.
+  // The build's own JSX lowering. These three settings live in four places and
+  // nothing checks that they agree — docs/rendering.md § The three esbuild
+  // settings, in four places.
   esbuild: {
     include: [/\.res\.mjs$/, /\.[jt]sx?$/],
     loader: "jsx",
     jsx: "automatic",
     jsxImportSource: "preact",
   },
-  // …and again for the dev server's dependency scanner, which crawls the entry's
-  // imports with its own esbuild instance and does *not* read the block above.
-  // Without this, `vite` (i.e. `mise run dev`) dies on the first `.res.mjs` that
-  // contains JSX — "The JSX syntax extension is not currently enabled" — while
-  // `vite build` is perfectly happy, because the build takes the other path.
+  // …and again for the dev server's dependency scanner, a separate esbuild instance
+  // that does *not* read the block above: without this, `mise run dev` dies on the
+  // first `.res.mjs` that contains JSX while `vite build` stays perfectly happy.
   optimizeDeps: {
     // Scan the app's entry and nothing else. Vite's default is every `index.html`
     // under the root, which sweeps up `screenshots/index.html` — the generated
@@ -67,12 +62,9 @@ export default defineConfig({
     // dependency pre-bundling with it.
     entries: ["index.html"],
     esbuildOptions: {
-      // `".js"`, not `".mjs"`, is the load-bearing key: the scanner normalizes
-      // an `.mjs` extension to `js` *before* looking the loader up
-      // (`if (ext === "mjs") ext = "js"` in Vite's dep scanner), so a `.mjs`
-      // entry here is never consulted. `.mjs` is kept for the optimizer proper,
-      // which does not normalize. Getting this wrong is invisible until the dep
-      // cache is cold — a warm `node_modules/.vite` skips the scan entirely.
+      // `".js"`, not `".mjs"`, is the load-bearing key here; `.mjs` is kept for the
+      // optimizer proper, which doesn't normalize. Why, and why getting it wrong
+      // stays invisible until someone's dep cache is cold, is in docs/rendering.md.
       loader: { ".js": "jsx", ".mjs": "jsx" },
       jsx: "automatic",
       jsxImportSource: "preact",

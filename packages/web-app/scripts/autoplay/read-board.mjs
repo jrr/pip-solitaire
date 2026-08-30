@@ -113,12 +113,12 @@ export function assignPiles(geom) {
  *
  * That's the first reading. The second is the pile's contents, which under
  * `Rules.foundation` must be an ascending same-suit run from the Ace up to that
- * top card. Checking them against each other is the point: this used to *infer*
- * the top as the pile's highest rank, which is sound only because core's rule
- * says so — so a foundation that had somehow gone wrong would have been read as
- * a tidy, plausible, wrong board, and the harness would have laundered the bug
- * into a pass. Now the app says which card is live and the harness checks that
- * claim, so a disagreement is loud.
+ * top card. Checking the two against each other is the point, and the reason not to
+ * *infer* the top as the pile's highest rank instead: that inference is sound only
+ * because core's rule says so, so a foundation that had gone wrong would read back
+ * as a tidy, plausible, wrong board and the harness would launder the bug into a
+ * pass. Here the app says which card is live and the harness checks the claim, so a
+ * disagreement is loud.
  *
  * Returns the card number, or `-1` for an empty foundation.
  */

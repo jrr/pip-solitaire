@@ -10,12 +10,6 @@
 // Browser-only for a second reason: `navigator.clipboard` doesn't exist in jsdom at
 // all, so "the link actually reaches the player" is unaskable there. Here it's the
 // whole point, and Playwright can grant the permission a real user grants.
-//
-// The link also says *which game* the number is a deal of (`?game=`), and omits it
-// for the default one — so the round trip has a second half worth making: a bare
-// `?seed=` has to keep opening FreeCell, which is the shape of every deal link
-// shared before `?game=` existed. That's the last test below, and a page load is
-// the only place it can be asked.
 
 import { expect, test } from "@playwright/test"
 import { settleBoard } from "./lib/board.mjs"
