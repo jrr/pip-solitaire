@@ -1,63 +1,25 @@
 // The typed-command grammar: `string => Command.t` as a pure parser, plus the
-// board-side readers a parsed command needs before it can be run. No session and no
-// I/O — feed it a line and it hands back what that line asks for (#273).
+// board-side readers a parsed command needs before it can be run (#273). Shared by
+// both front ends — the CLI's `Repl` and the web app's debug console — because
+// `move 8H 5` has to mean one thing in a terminal and in the panel.
 //
-// It lives in `core` because two front ends type the same commands at the same
-// reducer and neither owns the vocabulary:
+// **`parse` never sees a board.** That's the rule this module keeps: reading the
+// words and reading the board are two steps, and only the second needs a game. Give
+// `parse` a board and the grammar stops being testable from a string alone.
 //
-//   - the **CLI's reducer driver** (#84/#91) — `Repl.res` folds a script of these
-//     into a `GameState`, and `packages/cli/examples/*.txt` are its transcripts;
-//   - the **web app's debug console** (#273) — the panel's input line parses a
-//     typed command here and pushes the resulting `Reducer.action` through the very
-//     `dispatch` a pointer drop uses, so a typed move and a dragged one are the same
-//     move.
+// **`parse` is total.** Every line yields a `t`, malformed ones included — `Unknown`,
+// `Ambiguous` or `Usage`, each carrying the prose to show. Nothing here throws and
+// nothing dead-ends a scrolling session.
 //
-// A second grammar for the second front end was the thing to avoid: `move 8H 5`
-// must mean the same thing in a terminal and in the panel, or the console is a
-// separate game that merely looks like this one.
-//
-// **Where the split falls.** `parse` decides everything decidable from the text
-// alone; everything that needs a board is answered after it. So `move 8H 5` parses
-// all the way to a `Reducer.action` — the reducer is the sole judge of whether it's
-// *legal*, but "is this a card, is that a pile" is pure text. `home AS` stops at the
-// card: which foundation will take it is a question about the board, so the
-// interpreter resolves it into the `Move` the reducer sees. And "deal a game first"
-// never appears here at all — whether a session exists is not a property of the line.
-//
-// Some of those board-shaped questions turn out to be *shared* rather than each front
-// end's own: `move 8H 9S` has to land on the same pile in a terminal and in the panel,
-// so "which pile is showing the Nine of Spades" is answered here too — by
-// `resolveWhere`, which takes the board as an argument rather than pretending to be
-// pure. The rule the module keeps is that `parse` never sees one: reading the words and
-// reading the board stay two steps, and only the second needs a game.
-//
-// Malformed input doesn't fail: it parses to `Usage` (a known verb, arguments the
-// parser couldn't make sense of) or `Unknown` (no such verb), each carrying prose
-// to show. That keeps a scrolling session from ever dead-ending, and it keeps the
-// *ordering* of complaints where it belongs — an interpreter with no game dealt can
-// still answer "deal a game first" ahead of "that's not a card", because `Usage`
-// names the verb it choked on.
+// The vocabularies, the shapes of a move, the verb table's prefix rules, the refusal
+// policy and a "before you add a verb" checklist: docs/command-grammar.md.
 
 open Card
 
-// Where a move sends its cards, as the *text* names it. Only the first shape is
-// decidable from the text alone; the other two are answers about a particular board,
-// which is why a `move` no longer always parses straight to a `Reducer.action` —
-// `resolveWhere` below finishes the job once there's a board to ask.
-//
-// The three ways to say where, in the order a player reaches for them:
-//
-//   move 8H 12    `At`   — a pile index (or `table`), the original and still the
-//                          only one that needs nothing but the line
-//   move 8H T3     `Slot` — the name printed above the column (see `Slot`)
-//   move 8H 9S     `Onto` — the card to land on, wherever it happens to be
-//
-// `Onto` is the one worth explaining. A player looking at the board is thinking "the
-// eight goes on the nine", not "the eight goes on pile 12" — the card is the thing
-// they can see, and the pile index is a fact about the model they have to count out.
-// Naming the card says the move they mean, and it's checked rather than guessed: the
-// card has to be the one showing at the top of exactly one pile, or the move is
-// refused rather than sent somewhere plausible.
+// Where a move sends its cards, as the *text* names it — a pile index (`move 8H 12`),
+// the label above a column (`move 8H T3`), or the card to land on (`move 8H 9S`). Only
+// `At` is decidable from the text alone; `resolveWhere` below finishes the other two
+// once there's a board to ask. See docs/command-grammar.md § Saying *where*.
 type where =
   | At(Reducer.target)
   | Onto(card)
@@ -66,20 +28,18 @@ type where =
 // Which pile a move picks its cards *up* from, as the text names it. The mirror of the
 // two board-shaped `where`s above, and board-shaped for the same reason: a label names
 // a place, and only a board knows what is lying there.
+//
+// Keep the two halves mirrored — a label has to mean the same cell whether cards are
+// coming out of it or going into it.
 type place =
   | AtPile(int) // `move 12 F1` — the absolute index, as `where` takes one
   | InSlot({role: Game.role, ordinal: int}) // `move C1 F1` — the label above the column
 
-// What a move lifts. Naming the cards is the original grammar and still the precise one;
-// naming the *place* is the one a player looking at the board reaches for, because the
-// board prints `C1` over the cell and prints nothing at all over "the Ten of Clubs, which
-// is the card currently in it".
+// What a move lifts: the cards named outright, or the place they're showing in.
 //
-// `Top` and `Run` are the same reading at two lengths, one per verb: `move C1 F1` takes
-// the single card showing there, `moverun T6 T2` takes the whole ordered run showing
-// there. Neither guesses at *more* than the verb asked for — a `move` never lifts a run
-// behind the player's back, and a `moverun` off a slot lifts what a player would grab if
-// they took hold of the deepest card that still heads a run.
+// `Top` and `Run` are the same reading at two lengths, one per verb, and neither
+// guesses at *more* than the verb asked for — a `move` never lifts a run behind the
+// player's back. See docs/command-grammar.md § Saying *what*.
 type from =
   | Cards(array<card>) // named by identity: move 8H 9S, moverun 8H 7S 6H T3
   | Top(place) // the card showing there: move C1 F1
@@ -95,9 +55,8 @@ type t =
   | Print
   | Clear // console-only: wipe the scrollback (#273); a scrolling CLI has none
   // The mirror image of `Clear`: CLI-only, because only an interactive session is
-  // something you can *leave*. The panel is closed by the keys on its status line, so
-  // it answers this rather than acting on it — and, like `clear` in a terminal, a verb
-  // one front end can't act on is still a verb both front ends know.
+  // something you can *leave*. A verb one front end can't act on is still a verb both
+  // front ends know — the panel answers this rather than reporting an unknown command.
   | Quit
   // `deal`/`new`. What the argument *means* is the interpreter's: the CLI reads it
   // as a game id (with an optional `Scenario` name after it), the web console as a
@@ -115,10 +74,7 @@ type t =
   | Home({card: card})
   | Finish
   // `autoplay` (#291): hand the board to the solver and let it play the thinking part
-  // of the game out (`Solver.autoplay`). A verb rather than a button because it's the
-  // console's kind of power — and, like `finish`, it's the same verb in a terminal and
-  // in the panel, since what it means is a question about the board rather than about
-  // the front end.
+  // of the game out (`Solver.autoplay`, docs/solver.md).
   | Autoplay
   | Undo
   | Redo
@@ -158,10 +114,9 @@ let digits = (token: string): option<int> =>
 let parseTarget = (token: string): option<Reducer.target> =>
   digits(token)->Option.map(i => Reducer.ToPile(i))
 
-// Read a destination token. Indices first (a bare number has always been one), then a
-// slot label, then a card identity — the three grammars don't overlap, because a label
-// is letter-then-digits and a card is rank-then-suit with no suit letter that a role
-// letter shares (see `Slot`).
+// Read a destination token: an index, then a slot label, then a card identity. The
+// three vocabularies can't collide — a label is letter-then-digits and a card is
+// rank-then-suit (see `Slot`) — so the order is only ever which test is cheapest.
 let parseWhere = (token: string): option<where> =>
   switch parseTarget(token) {
   | Some(target) => Some(At(target))
@@ -172,10 +127,8 @@ let parseWhere = (token: string): option<where> =>
     }
   }
 
-// A source token: a pile index, a slot label, or a card named outright. Indices and
-// labels first, in `parseWhere`'s order and for its reason — the three grammars don't
-// overlap (a card is rank-then-suit, a label is letter-then-digits, an index is neither),
-// so the order is only ever a matter of which test is cheapest.
+// A source token: a pile index or a slot label, in `parseWhere`'s order and for its
+// reason. (A card named outright is `parseFrom`'s business, just below.)
 let parsePlace = (token: string): option<place> =>
   switch digits(token) {
   | Some(i) => Some(AtPile(i))
@@ -202,25 +155,13 @@ let notASetting = (token: string) => `Not a setting: "${token}" (${settingNames(
 let notAFlag = (token: string) => `Not on or off: "${token}".`
 
 // --- Verbs, and how little of one you have to type ----------------------------
-// A console is typed at over and over, and what gets typed is nearly always the same
-// handful of words. `move` earned its `m` early (see the `move` branch below) and
-// nothing else did, which left `p` an unknown command in a panel where `m` worked — a
-// half-rule you have to memorise rather than guess.
+// Any unambiguous prefix of a verb is that verb: `p` prints, `u` undoes, `de 12345`
+// deals. A whole word wins over a prefix; a prefix that fits two verbs is refused by
+// name rather than guessed at. Aliases are a second tier, consulted only when nothing
+// canonical matched. The rules and their reasons: docs/command-grammar.md § Verbs.
 //
-// So the verbs are a table, and **any unambiguous prefix of one is that verb**: `p`
-// prints, `u` undoes, `de 12345` deals. Two rules keep that honest:
-//
-//   - a whole word always wins over a prefix, so no verb can be shadowed by a longer
-//     one that happens to begin the same way (`set` is `set`, never `settings`-ish);
-//   - a prefix that fits two verbs is **refused by name** — `h` says it could be `help`
-//     or `home` — rather than resolved to whichever sits first in the table. A console
-//     that guesses is one you can't trust a one-letter command with, and the refusal
-//     teaches the next letter to type.
-//
-// The pinned aliases are a second tier, consulted only when nothing canonical matched:
-// `m` stays `move` though three verbs begin with it, `new`/`list`/`board` keep working,
-// and so does `n`, which no canonical verb claims. Canonical names having first say is
-// what keeps `s` on `set` rather than on `show`.
+// **Adding a name here changes what every existing prefix means.** A second `re…` verb
+// makes `re` ambiguous for everyone who had been typing it.
 let verbs = [
   "help",
   "games",
@@ -240,9 +181,9 @@ let verbs = [
   "set",
 ]
 
-// The pinned spellings, each with the verb it *is*. Two kinds live here: the shorthands
-// a prefix rule can't give (`m` fits three verbs) and the second names a verb has always
-// answered to (`new`, `restart`, `board`).
+// The pinned spellings, each with the verb it *is*: the shorthands the prefix rule
+// can't give (`m` fits three verbs) and the second names a verb answers to. Canonical
+// names have first say, which is what keeps `s` on `set` rather than on `show`.
 let aliases = [
   ("m", "move"),
   ("mv", "move"),
@@ -312,10 +253,9 @@ let parse = (line: string): t => {
       | "finish" => Finish
       | "autoplay" => Autoplay
       | "deal" => Deal({game: arg(1), scenario: arg(2)})
-      // Everything downstream of the verb table says `move`, whichever of `move`/`mv`/`m`
-      // was typed (see `resolveVerb`): the `Usage` complaints and the "deal a game first"
-      // hint that keys off the verb all name the canonical one, so a shorthand can't drift
-      // into a second command with its own messages.
+      // Key a message off the canonical verb, never off what was typed. Everything
+      // downstream of the table says `move`, whichever of `move`/`mv`/`m` was typed, so
+      // a shorthand can't drift into a second command with its own messages.
       | "move" =>
         // Arity before content, so `move AS` asks for the usage line rather than
         // complaining about a target that isn't there.
@@ -450,10 +390,9 @@ let describeAmbiguous = (~verb: string, ~matches: array<string>): string =>
 
 // --- Resolving a destination against a board ---------------------------------
 // The other half of `where`: `parse` reads the words, and this reads the *board* they
-// were said about. It lives here rather than in either front end for the reason the
-// grammar does — `move 8H 9S` has to pick the same pile in a terminal and in the
-// panel, and "which pile is showing the Nine of Spades" is one question with one
-// answer, not two implementations of it.
+// were said about. It lives here rather than in either front end because "which pile is
+// showing the Nine of Spades" is one question with one answer, not two implementations
+// of it.
 
 // Every pile currently *showing* `card` — holding it as its top card, the card a
 // newcomer would land on. A buried card shows nothing: landing "on" it would really
@@ -472,10 +411,6 @@ let showing = (~game: Game.t, state: GameState.t, card: card): array<int> =>
 let labelsOf = (~game: Game.t, indices: array<int>): string =>
   indices->Array.filterMap(i => Slot.labelAt(~game, i))->Array.join(", ")
 
-// Turn a `where` into the target a `Reducer.action` carries, or say why it names no
-// single pile on this board. Every refusal is a sentence about the board the player is
-// looking at, because that's the only thing that could have made the destination
-// unreadable — the words themselves already parsed.
 // The pile a slot label names on this board, or why it names none. Shared by the two
 // halves of a move, because `C1` has to mean the same cell whether cards are coming out
 // of it or going into it.
@@ -497,6 +432,10 @@ let resolveSlot = (~game: Game.t, ~role: Game.role, ~ordinal: int): result<int, 
     )
   }
 
+// Turn a `where` into the target a `Reducer.action` carries, or say why it names no
+// single pile on this board. Every refusal is a sentence about the board the player is
+// looking at, because that's the only thing that could have made the destination
+// unreadable — the words themselves already parsed.
 let resolveWhere = (~game: Game.t, state: GameState.t, where: where): result<
   Reducer.target,
   string,
@@ -536,10 +475,8 @@ let resolveWhere = (~game: Game.t, state: GameState.t, where: where): result<
   }
 
 // --- Resolving a source against a board ---------------------------------------
-// The same job for the other half of a move. `move C1 F1` says which *place* to lift
-// from and lets the board say which card that is — the reading a player does for
-// themselves today, and the one thing on a printed board that is genuinely written down
-// (the label is over the column; the card's name is not).
+// The same job for the other half of a move: `move C1 F1` says which *place* to lift
+// from and lets the board say which card that is.
 
 // What to call a place in a refusal: its label where the board prints one, and its bare
 // index where it doesn't.
@@ -622,13 +559,10 @@ let moveAction = (~cards: array<card>, ~to: Reducer.target): Reducer.action =>
 // `parse` above hands the argument through untouched, because *acting* on a deal needs a
 // front end (a terminal builds a session, the panel rebuilds a board). Reading it does
 // not — "is that a deal number, a game, a posed position, or nothing we know?" is
-// answered by `Game.all` and `Scenario`, both of which live here. So it's answered here,
-// once, and the two front ends act on the same verdict.
+// answered by `Game.all` and `Scenario`, both of which live here.
 //
-// That's the whole point: before this, `deal 12345` opened a board in the browser and
-// was an unknown game in the terminal, while `deal freecell midgame` did the reverse.
-// One resolver means one vocabulary — and it's the reason the panel now deals the games
-// its own `games` command has always listed.
+// **Read a `deal` argument through here, never in a front end.** Two readings mean two
+// vocabularies: one side takes `deal 12345` while the other calls it an unknown game.
 type dealt =
   | Fresh // `deal` / `new`: something new, dealt from a seed the caller invents
   | Numbered({seed: int}) // `deal 12345`: a FreeCell deal by number
@@ -779,11 +713,11 @@ let describeAutoplay = (
   }
 
 // --- Help ---------------------------------------------------------------------
-// The verbs are shared; the *listing* isn't quite, because each front end has a few
-// of its own (`print`/`games` in a terminal, `clear` in the panel) and reads the
-// `deal` argument differently. So the shared rows live here and each front end
-// composes its own listing around them — one table, rendered by one function, with
-// no chance of the two drifting on what `moverun` does.
+// The verbs are shared; the *listing* isn't quite, because each front end has a few of
+// its own (`print`/`games` in a terminal, `clear` in the panel). So the shared rows live
+// here and each front end composes its own listing around them.
+//
+// A row for a verb both front ends offer goes in this file, not in a front end.
 type helpRow = (string, string)
 
 // The board verbs both front ends offer, in the order they're worth learning.
@@ -808,9 +742,6 @@ let boardHelp: array<helpRow> = [
   ("redeal", "play the current deal again from the start (the same board)"),
 ]
 
-// The `deal` family. Shared rows now that both front ends read the argument the same way
-// (see `resolveDeal`) — before, each listed its own half of the same verb, which is
-// exactly the drift a shared grammar is supposed to prevent.
 // The driver's flags (`Options`). Shared for the same reason the board verbs are: the
 // two front ends have the same two settings, and one of them — the column-reorder house
 // rule — has no other control anywhere.
@@ -819,6 +750,9 @@ let driverHelp: array<helpRow> = [
   ("set <setting> on|off", "change one (autocollect, reorder)"),
 ]
 
+// The `deal` family. Shared rows, because both front ends read the argument the same way
+// (see `resolveDeal`) — a row that lives in a front end is a row the other one drifts
+// from.
 let dealHelp: array<helpRow> = [
   ("deal <n>", "deal FreeCell game number <n> (e.g. deal 12345)"),
   ("deal <game> [position]", "deal a named game, at a named position if given"),

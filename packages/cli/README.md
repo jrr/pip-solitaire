@@ -77,9 +77,10 @@ is going to type into.
 
 Neither the *grammar* nor the *board drawing* is the CLI's own: `Command.res` and
 `Render.res` both live in `core`, shared with the web app's debug console (#273),
-which types the same commands at the same reducer and prints the same board.
-`Repl` is the half that needs a session — the game in play, the history to undo
-over, the board to print.
+which types the same commands at the same reducer and prints the same board — see
+[`docs/command-grammar.md`](../../docs/command-grammar.md). `Repl` is the half
+that needs a session — the game in play, the history to undo over, the board to
+print.
 
 Colour is the one thing the two ask for differently: `Render` writes it as ANSI
 escapes, which a terminal paints and a browser panel would show as garbage, so
@@ -118,75 +119,44 @@ help                     show the command surface
 quit / exit              end an interactive session (Ctrl-D does it too)
 ```
 
-- **`deal` reads the same here as in the web app's debug console**, because the
-  reading is `core`'s (`Command.resolveDeal`): a number is a deal number, a word is
-  a game id, a second word is one of that game's named positions (`games` lists the
-  games; a refusal lists the positions). Only the *acting* differs — a terminal
-  opens a session, the panel rebuilds the board on screen.
-- **`deal freecell` is `deal 1`**: a game id names that game's canonical board, so
-  it's the same deal in both front ends. `new` is the one that invents a board.
-- **`redeal`** is the menu's Restart button as a verb: the same deal from its
-  opening layout, with a clean history. From a posed position it goes to the
-  game's real deal, not back to the pose — exactly what the button does.
+**How to say a move**, in short — the full grammar, and the reasoning behind it,
+is [`docs/command-grammar.md`](../../docs/command-grammar.md):
+
+- **Cards** are named by a compact identity: a rank (`A 2-9 T J Q K`, or the
+  two-digit `10`) followed by a suit letter (`S H D C`) — `AS`, `TH`/`10H`, `KD`.
+  Case-insensitive.
+- **Columns** are named by the label the board prints over them: `T1`…`T8` for
+  the tableau, `C1`…`C4` for the free cells, `F1`…`F4` for the foundations. The
+  move you can see is the move you can type.
+- **Either half of a move takes a card, a label or a pile index.** `move 8H T3`
+  names the card; `move C1 F1` means "whatever is showing in the first free cell";
+  `mv 2H 3C` lands the Two of Hearts on the Three of Clubs wherever that is;
+  `moverun T6 T2` lifts the whole run showing on T6. Anything ambiguous — a buried
+  card, an empty cell — is refused by name rather than guessed at.
+- **Any verb may be shortened to an unambiguous prefix.** `p` prints, `u` undoes,
+  `de 12345` deals. `h` is refused, because it could be `help` or `home`.
+
+A few things that are the terminal's own:
+
+- **`clear`** wipes the screen at a live prompt. In a piped script there's no
+  screen, so it's a well-formed line that prints nothing.
+- **Comments**: a line whose first non-space character is `#` is skipped entirely
+  (not echoed, not run), so a piped script can document itself. Blank lines are
+  skipped too. Both hold at a live prompt as well, which is why a whole script
+  file can be pasted into one.
+- **`quit` in a script** ends the transcript where it appears and leaves the rest
+  of the input unread, the way `exit` ends a shell script.
+
+And two things worth knowing at the prompt:
+
 - **The board names its deal**: a dealt FreeCell board prints `FreeCell — deal
   #12345`, so the number you'd need to open it again (here or in the browser) is
   on screen rather than only in what you typed. A posed position names only a
   deal it has been *proved* to descend from, and stays quiet otherwise.
-- **`set` changes the driver's flags** (`Options`) for the rest of the session —
-  `set autocollect off`, `set reorder on`. It's shared with the web console,
-  where it's the only way to reach the column-reorder house rule at all: that one
-  has no switch in the menu.
-- **`clear`** wipes the terminal at a live prompt. In a piped script there's no
-  screen, so it's a well-formed line that prints nothing — the shape it has
-  always had.
-- **Cards** are named by a compact identity: a rank (`A 2-9 T J Q K`, or the
-  two-digit `10`) followed by a suit letter (`S H D C`) — `AS`, `TH`/`10H`,
-  `KD`. Case-insensitive. See `core`'s `CardText.res`.
-- **Any verb may be shortened to an unambiguous prefix.** `p` prints, `u` undoes,
-  `de 12345` deals — the table of verbs is in `core`'s `Command.res`. A whole word
-  always wins over a prefix of a longer verb, and a prefix that fits two verbs is
-  refused by name (`h` says it could be `help` or `home`) rather than resolved to
-  whichever came first. `m`, `mv`, `new`, `list`, `board`, `cls`, `exit` and
-  `restart` are pinned spellings on top of that.
-- **`move` has three shorthands and three destinations.** The verb is `move`, `mv`
-  or `m` — it's the line you type most — and where it sends the card can be said
-  any of these ways:
-  - **a slot name**, the label printed above the column: `T1`…`T8` for the tableau
-    columns, `C1`…`C4` for the free cells, `F1`…`F4` for the foundations. Letter
-    first on purpose: a card is rank-then-suit, so a digit-first `3C` would be both
-    the Three of Clubs and a free cell in the one place both can appear.
-  - **the card to land on** — `mv 2H 3C` puts the Two of Hearts on the Three of
-    Clubs, wherever that is. It has to be the card *showing* at the top of exactly
-    one pile: a buried card, a card that isn't in play, or (on a board that could
-    show one card twice) an ambiguous match is refused rather than guessed at.
-  - **a pile index** (`0`, `1`, …), the absolute position in the model — what the
-    reducer itself speaks, and unchanged.
-
-  The same three work for `moverun`'s destination.
-- **What to move can be said as a place, too.** A card names itself (`move 8H T3`),
-  but the board prints `C1` over the cell and prints nothing over "the Ten of Clubs
-  currently in it" — so a slot name or a pile index in the *first* position means
-  whatever is showing there: `move C1 F1` sends the card in the first free cell
-  home, `move T6 C2` parks the card showing on the sixth column. `moverun` reads a
-  place at the length it moves: `moverun T6 T2` lifts the whole ordered run showing
-  on T6 — as deep as the run goes, which is what you'd take hold of by hand — and
-  the reducer still judges whether it will fit. An empty place is reported by name
-  rather than played.
-- **The board says its own slot names**: each column is drawn under its label, so
-  the move you can see is the move you can type.
-- **`autoplay` hands the game to the solver** (`core`'s `Solver`, #291): it thinks
-  the deal through, plays its line here a move at a time, and then runs `finish`, so
-  a solvable board ends on the win line. Every move it plays is an ordinary undoable
-  step, so you can undo back into the game and take it over. A board the solver
-  doesn't model (anything that isn't FreeCell) and a deal it can't find a line for
-  are told apart, and each says so. In the web app the same verb also *counts* — a
-  game the solver had a hand in doesn't get a Share button on its victory screen.
-- **Comments**: a line whose first non-space character is `#` is skipped
-  entirely (not echoed, not run), so a piped script can document itself. Blank
-  lines are skipped too. Both hold at a live prompt as well, which is why a whole
-  script file can be pasted into one.
-- **`quit` in a script** ends the transcript where it appears and leaves the rest
-  of the input unread, the way `exit` ends a shell script.
+- **`autoplay` hands the game to the solver** ([`docs/solver.md`](../../docs/solver.md)):
+  it thinks the deal through, plays its line here a move at a time, and then runs
+  `finish`, so a solvable board ends on the win line. Every move it plays is an
+  ordinary undoable step, so you can undo back into the game and take it over.
 - Illegal moves are **rejected with a reason** (wrong rank/colour, a full free
   cell, no such pile, a buried card) rather than silently ignored — that's the
   whole point of the reducer returning a typed `moveError`.
