@@ -206,95 +206,68 @@ let currentHistory = () => liveBoard.contents->Option.flatMap(board => board.rea
 // gap and the placeholder build goes with it, and so does the need for this.
 let sharedGame: ref<option<Game.t>> = ref(None)
 
-// The undo availability the board reports during its *opening* mount, captured to
-// seed the model below. That first report fires while the switcher mounts
-// the initial scene (see `switcher` below) — which happens during module init,
-// before `dispatch` (and so `reportHistory`'s real dispatcher) exists — so a
-// resumed game whose restored stack can already undo would otherwise lose its
-// `canUndo = true` and open with the Undo button wrongly disabled. The pre-mount
-// default `reportHistory` records the latest value here; the model reads it at init.
+// --- The seam with the board --------------------------------------------------
+// The refs below all exist for one ordering fact: **the first board mounts during
+// module init, before `Html.mount` has returned a `dispatch`.** Each channel gets a
+// pre-mount stand-in, filled with a real dispatcher just after mount, and two of them
+// have to *remember* what they were told rather than dropping it.
+//
+// `docs/board-driver.md` § Why the reverse channels are refs *in the driver* has the
+// table of which is which, and what breaks without each.
+
+// Stashed by the pre-mount `reportHistory` and read by `init`. Without it a resumed
+// game whose restored stack can already undo opens with Undo wrongly disabled.
 let initialCanUndo = ref(false)
 
-// The board's reverse channel: after every state change it reports whether
-// there's anything to undo so the top bar can enable/disable the button. Filled
-// with a real dispatcher just after mount (like `closeMenu`); until then it stashes
-// the value into `initialCanUndo` (above) so the opening report survives to seed the
-// model, and it's reset to `false` on each scene change so a non-game scene leaves
-// the button disabled.
+// Reset to `false` on each scene change, so a non-game scene leaves the button off.
 let reportHistory: ref<bool => unit> = ref(canUndo => initialCanUndo := canUndo)
 
-// The deal number the board reports during its *opening* mount, captured to
-// seed the model — the same pre-mount problem `initialCanUndo` solves, and here it's
-// the ordinary case rather than a corner: every plain open deals a board and reports
-// its number while the switcher mounts the initial scene, which is during module
-// init, before `dispatch` exists. Without this the Share button would open dark on
-// every load and only light up after a New Game.
+// The same, for the deal number — and here it's the ordinary case rather than a
+// corner, since every plain open deals a board and reports its number during init.
+// Without it the Share button opens dark on every load.
 let initialDealSeed: ref<option<int>> = ref(None)
 
-// The board's deal-number channel, sibling of `reportHistory`: the deal now on
-// the table, for the menu's Share button. Filled with a real dispatcher just after
-// mount; until then it stashes the value for the model to read at init, and it's
-// reset to `None` on each scene change so a demo scene offers nothing to share.
 let reportDeal: ref<option<int> => unit> = ref(seed => initialDealSeed := seed)
 
-// The deal number on the table right now, mirrored out of the reports below. The
-// menu's Share Seed button renders from the *model* (through `DealChanged`), but the
-// win overlay's Share button is built by the board itself, outside the loop,
-// and asks at the moment the overlay goes up — so it needs the live value rather
-// than a dispatched copy of it.
+// The menu's Share Seed renders from the *model*, but the win overlay's Share button
+// is built by the board itself, outside the loop, and asks at the moment the overlay
+// goes up — so it needs the live value rather than a dispatched copy.
 let liveDealSeed: ref<option<int>> = ref(None)
 
-// Report the deal now on the table: record it for the imperative reader above, then
-// hand it to whichever dispatcher is installed. Every report goes through here, which
-// is what keeps the two from drifting — a board whose number the menu knows and the
-// win overlay doesn't (or vice versa) would be a share button lying about which deal
-// it's offering.
+// Every report goes through here, which is what keeps the two from drifting: a board
+// whose number the menu knows and the win overlay doesn't would be a Share button
+// lying about which deal it offers.
 let publishDeal = (seed: option<int>): unit => {
   liveDealSeed := seed
   reportDeal.contents(seed)
 }
 
-// The *game* the board on the table is a board of, the companion to
-// `liveDealSeed`: a deal link now says which game its number belongs to, so a share
-// needs both halves. Set beside `liveBoard` as a card table mounts (`gameScene` closes
-// over its own game) and cleared with it on a scene change, so the two can't disagree
-// about which board is on screen.
+// The companion to `liveDealSeed`, since a deal link now names its game too. Set
+// beside `liveBoard` as a card table mounts and cleared with it, so the two can't
+// disagree about which board is on screen.
 //
-// A `ref` rather than a field on the model, deliberately. The win overlay's share is
-// built by the board outside the loop and asks at the press, exactly as it does for the
-// number — and a `Game.t` carries functions (`deal`), so putting one in the model would
-// invite a whole-record `==` that `Game` says nothing does.
+// A `ref` rather than a model field for the same reason as the number — and because a
+// `Game.t` carries functions, so putting one in the model would invite a whole-record
+// `==` that `Game` says nothing does.
 let liveGame: ref<option<Game.t>> = ref(None)
 
-// Closing the menu means dispatching into the loop, but the switcher's activation
-// callback runs before `dispatch` exists (like `updateSW`) — the initial scene mounts
-// during module init. It reaches the loop through this ref, filled in just after mount.
 let closeMenu: ref<unit => unit> = ref(() => ())
 
-// The scene the switcher just mounted, on its way to the model's `activeScene`.
-// Same ref-until-mounted arrangement as `closeMenu`, and it can afford to *drop* the
-// opening report the way `reportHistory` can't: the initial scene is `switcher.active`,
-// which `init` reads directly, so the pre-dispatch default has nothing to remember.
+// This one can afford to *drop* its opening report the way `reportHistory` can't: the
+// initial scene is `switcher.active`, which `init` reads directly.
 let reportScene: ref<string => unit> = ref(_ => ())
 
-// The live driver preferences, seeded from the persisted settings (auto-collect
-// defaults on). This is the same ref the board reads at each
-// post-move step (see `gameScene` → `TableScene`), so the menu's Auto-collect
-// switch flipping a field here changes the board's behaviour on the very next move
-// — no rebuild — while the model's mirror of the flag keeps the switch in sync.
-let options: ref<Options.t> = ref(Preferences.load())
+// --- The live preferences -----------------------------------------------------
+// Refs, not values, because the board reads them at the moment of use: flipping a
+// switch here lands on the very next move — or the next relayout, for the tilt —
+// without rebuilding the board and throwing the game away. The model keeps a mirror
+// only so the switch itself renders in the right position.
 
-// The live hand-placed-tilt preference, seeded from storage (defaults on).
-// A presentation-only flag the CLI has no notion of, so it rides beside `options`
-// rather than inside the shared `Options.t`. The board reads this ref wherever it
-// lays a card out, so the menu's tilt switch flipping it here re-tilts the board on
-// its next relayout, and the model's mirror keeps the switch in sync.
+let options: ref<Options.t> = ref(Preferences.load())
 let tiltEnabled: ref<bool> = ref(Preferences.loadCardTilt())
 
-// The persisted "Display content around screen notch" preference (defaults
-// on). Presentation-only and read entirely by the CSS via the document-root
-// attribute (see `NotchDisplay`), so unlike `tiltEnabled` the board never reads it
-// — a plain value seeds the model's mirror and the startup attribute apply below.
+// Not a ref, because the board never reads it: this one reaches the page as a
+// document-root attribute and is consumed entirely by the CSS (`NotchDisplay`).
 let notchDisplayEnabled = Preferences.loadNotchDisplay()
 
 // The persisted "Console logging" preference (defaults off). Read once at
@@ -642,64 +615,37 @@ let url = AppUrl.parse()
 // is fine here — this is the impure view layer, not `core`'s deterministic deal path.
 let randomSeed = () => (Math.random() *. 1_000_000.)->Float.toInt
 
-// Only a *re-dealable* game gets a new board out of a new seed: one built from a seeded
-// shuffle, which is FreeCell today. The fixed-layout demos have no deal to vary, so the
-// board they publish offers no `newGame` and no `loadDeal` — the scene's `~newDeal`
-// is what decides both (see `TableScene.controls`).
+// The driver's half of the board contract — every argument below is settled here.
+// **`docs/board-driver.md` is the seam whole**; what follows is this side's decisions.
 let gameScene = (game: Game.t) => {
-  // The question every decision below turns on, asked of the game in hand rather than of
-  // its id: can this board deal another of itself? A second seeded game answers
-  // yes on the day it's added, with no edit here.
+  // The question every decision below turns on, asked of the game in hand rather than
+  // of its id: can this board deal another of itself? A second seeded game answers yes
+  // on the day it's added, with no edit here.
   let canDeal = game.deal->Option.isSome
-  // A *plain* open of a re-dealable game is the only place save-and-resume applies:
-  // the app's primary kind of game — one you can be handed a fresh board of — opened
-  // without a URL asking for a specific position. A `?state=` scenario or a `?seed=`
-  // deal link addresses an exact board, so it opens that board and leaves any saved
-  // game strictly alone, neither resumed nor overwritten; the screenshot report's
-  // `?seed=`/`?state=` shots depend on staying side-effect-free.
-  //
-  // A `#g=` share link is the one addressed open that *does* touch storage, and it
-  // splits the two halves apart: it doesn't resume (the link says which board to open,
-  // so reading the save would be pointless), but once the shared game lands it **takes
-  // over** — see docs/save-and-share.md § Storage. Hence the two halves are gated
-  // separately below.
-  //
-  // Which asks *whose* save it takes over, and the link now says. Two questions,
-  // asked at two different times, because the answer to the second isn't available when
-  // this scene is built: inflating the blob is asynchronous, so at build time all any
-  // scene knows is that some link is coming (`sharePending`), and only later does one of
-  // them turn out to be the game it named (`sharedOpen`).
+  // Which of the four opens this is, which is what decides whether storage is touched
+  // at all (§ Which opens touch storage). `sharedOpen` is a *thunk* because its answer
+  // isn't available when the scene is built: inflating the blob is asynchronous, so at
+  // build time a scene knows only that some link is coming.
   let sharePending = canDeal && url.shared->Option.isSome
   let sharedOpen = () =>
     sharePending && sharedGame.contents->Option.mapOr(false, shared => shared.id == game.id)
   let plainOpen =
     canDeal && url.state->Option.isNone && url.seed->Option.isNone && url.shared->Option.isNone
-  // Resume a saved game when there is one and this is a plain open; otherwise `None`
-  // (nothing saved, corrupt/old data, or a URL-addressed board) means deal fresh.
-  // Storage is read when the scene *mounts*, not here where it's built: a scene can
-  // mount more than once (the switcher re-mounts on a scene change), and a value read
-  // at build time is a snapshot of the save as it stood at page load, which a later
-  // mount would restore over the game actually being played.
+  // Read when the scene *mounts*, not here where it's built — § Why the read-backs are
+  // thunks.
   let loadHistory = () => plainOpen ? SavedGame.load(game.id) : None
 
-  // Open a re-dealable game from a fresh random seed on each load too, so a
-  // plain reload with nothing saved lays out a new board instead of always deal #1 —
-  // matching what New Game does. A `?seed=` pins that deal number instead, so a
-  // link — and the screenshot report's dealt-board shot — lands on the same board
-  // every time. The game value as `Game.all` holds it (FreeCell's is deal #1) stays the
-  // deterministic fallback for a forced `?state=` scenario, which screenshots depend
-  // on: when a state is forced we mount that fixed deal so `Scenario.forName` derives
-  // from the exact same board the report expects. The fixed-layout demos have no deal
-  // to vary, so they mount as-is. When a saved game is resumed the opening deal only
-  // supplies the 52 card nodes; every resting position comes from the restored history.
+  // A plain open takes a fresh random seed each load, so a reload with nothing saved
+  // lays out a new board rather than always deal #1, matching New Game. A `?seed=`
+  // pins one instead.
   //
-  // A `#g=` share link joins `?state=` in taking the fixed deal rather than a random
-  // one. Decompressing the blob is asynchronous, so the board is necessarily built
-  // *before* the shared history can land on it (see the restore below) — and dealing
-  // a random board for that frame would make the swap read as a glitch. The fixed
-  // deal keeps it stable and identical every time; the fly-in is skipped for the
-  // same reason. Both are mitigations, not a fix — see #259, which measures the gap
-  // (sub-millisecond, so one render frame) and weighs the ways to close it.
+  // An *addressed* board takes the fixed deal `Game.all` holds. For `?state=` that's
+  // what makes the screenshots deterministic — `Scenario.forName` derives from the
+  // exact board the report expects. For `#g=` it's a steadiness measure: decompressing
+  // is asynchronous, so the board is necessarily built before the shared history can
+  // land on it, and dealing a random board for that frame would make the swap read as
+  // a glitch (the fly-in is skipped for the same reason). Both are mitigations rather
+  // than a fix — #259 measures the gap and weighs the ways to close it.
   let addressed = url.state->Option.isSome || url.shared->Option.isSome
   let opening = switch game.deal {
   | Some(deal) if !addressed => deal(url.seed->Option.getOr(randomSeed()))
@@ -708,21 +654,15 @@ let gameScene = (game: Game.t) => {
   let newDeal = game.deal->Option.map(deal => () => deal(randomSeed()))
   TableScene.make(
     ~initial=?url.state->Option.flatMap(name => Scenario.forName(game, name)),
-    // Restore the saved undo/redo stack and, when saving applies, hand the
-    // board a sink that writes each change back to storage. New Game/Restart/every
-    // move flow through this same sink, so the saved game always tracks the live one.
     ~loadHistory,
-    // A plain open saves from the first build. A shared open saves too, but only
-    // from the moment the shared game actually lands on *this* board (`sharedOpen`) —
-    // the fixed deal the board is built from while the blob inflates is scaffolding,
-    // and writing *that* to storage would clobber the player's own game with a board
-    // nobody asked for. It also means a link that fails to decode — or one that names
-    // another game — leaves this game's save exactly as it was: nothing landed
-    // here, so nothing is written.
-    //
     // The sink is wired for any scene a pending link *might* name, and the gate inside
-    // it settles which one it actually did: the sink is called long after the blob has
-    // inflated, so it can ask the question this scene couldn't answer when it was built.
+    // it settles which one it actually did — it runs long after the blob inflated, so
+    // it can ask what this scene couldn't answer when it was built.
+    //
+    // **A shared open saves only once the game has landed on this board.** The fixed
+    // deal it wears while the blob inflates is scaffolding; writing that would clobber
+    // the player's own game with a board nobody asked for. It also means a link that
+    // fails to decode, or one that names another game, leaves this save untouched.
     ~persist=?plainOpen || sharePending
       ? Some(
           saved =>
@@ -732,48 +672,31 @@ let gameScene = (game: Game.t) => {
         )
       : None,
     ~newDeal?,
-    // Adopt the mounting board whole — its re-deals, Undo, console runner,
-    // relayout, share-link hooks and shake control, in one record that replaces
-    // whatever the outgoing scene left here. Then, if Wiggle Waggle is already on,
-    // start the new board listening straight away: this is what re-applies an active
-    // shake to a board that mounts after the switch was flipped.
+    // Adopt the mounting board whole, replacing whatever the outgoing scene left here.
+    // Then, if Wiggle Waggle is already on, start it listening straight away: this is
+    // what re-applies an active shake to a board that mounts after the switch flipped.
     ~publish=board => {
       liveBoard := Some(board)
-      // …and which game it's a board of, for the two share links that now name
-      // it. This is the one place that knows: the scene publishes controls, not the
-      // `Game.t` they were built from, and `gameScene` has it in hand right here.
+      // …and which game it's a board of. This is the one place that knows: the scene
+      // publishes controls, not the `Game.t` they were built from.
       liveGame := Some(game)
       if shakeActive.contents {
         board.shake.start()
       }
     },
     ~onHistory=canUndo => reportHistory.contents(canUndo),
-    // The read side of `~onDeal`: what the console's printed board titles itself with.
-    // `liveDealSeed` is the resolved number — the same one both Share buttons offer — so
-    // a printed board names the deal the app would share, rather than re-deriving it from
-    // a `game.seed` that a posed or resumed board would make a liar of.
+    // What the console's printed board titles itself with. `liveDealSeed` is the
+    // *resolved* number both Share buttons offer, so a printed board names the deal the
+    // app would share rather than re-deriving it from a `game.seed` that a posed or
+    // resumed board would make a liar of.
     ~currentDeal=() => liveDealSeed.contents,
-    // The deal number behind the board, resolved from what the scene can see to what
-    // is actually true of the game on screen.
+    // Resolving the board's `None` into what's actually true of the game on screen —
+    // the driver's half of the deal number, and the table of the four cases is
+    // `docs/board-driver.md` § Who resolves the deal number.
     //
-    // `Some(n)` is a board freshly dealt from `n` — the opening deal, a New Game, a
-    // Restart. When this open is one that saves, the number is saved with it: it's
-    // the one fact the history doesn't carry (see `SavedGame.saveSeed`), and without
-    // it the *next* session's resumed game couldn't be shared at all.
-    //
-    // `None` from the scene means the board is showing something other than a deal's
-    // opening position — a restored history or a forced state — and where the number
-    // comes from then depends on which:
-    //
-    //   - a plain open is the resume path, and the deal number is exactly what was
-    //     stored last time, so it's read back here;
-    //   - a `?state=` scenario asks `core` which deal that position descends from
-    //     (`Scenario.seedForName`). Only a scenario that has *proved* a line to itself
-    //     answers — `almost-won` from deal 264 — so a posed board either offers
-    //     the deal it genuinely came from or offers nothing;
-    //   - a `#g=` shared game has a real position with no deal number attached to it,
-    //     so there's nothing to name and the Share buttons stay dark rather than
-    //     pointing at a board nobody is looking at.
+    // The one local fact: a `Some(n)` on an open that saves is saved *here*, because
+    // the number is the one thing the history doesn't carry — without it the next
+    // session's resumed game couldn't be shared at all.
     ~onDeal=seed =>
       publishDeal(
         switch seed {
@@ -788,20 +711,13 @@ let gameScene = (game: Game.t) => {
             : url.state->Option.flatMap(name => Scenario.seedForName(game, name))
         },
       ),
-    // The win overlay's Share button: the same deal number the menu's Share
-    // Seed offers, wrapped in a message and handed over when the player wins. It's
-    // resolved here rather than in the board for the reason spelled out on `~onDeal`
-    // above — a resumed game's number lives in this driver's storage, not in the
-    // board — so `liveDealSeed` is the one place that knows, and both buttons read it.
+    // **No deal number, no button.** A posed `?state=` board, or a game landed from a
+    // `#g=` link, has nothing truthful to offer, so the overlay is New Game alone
+    // rather than a button sharing someone else's deal. (Worth revisiting for the
+    // shared case — it *does* descend from a deal, it just doesn't carry the number.)
     //
-    // No deal number, no button: a posed `?state=` board or a game landed from a `#g=`
-    // link has nothing truthful to offer, so the overlay is New Game alone rather than
-    // a button that shares someone else's deal. (Those are the cases worth revisiting
-    // — a shared game *does* descend from a deal, it just doesn't carry the number.)
-    //
-    // `deliver` is called with the click's transient activation intact: `urlForDeal`
-    // is a string built from an int, so nothing is awaited between the tap and the
-    // share sheet.
+    // `deliver` is reached with the click's transient activation intact: `urlForDeal`
+    // is a string built from an int, so nothing is awaited between tap and sheet.
     ~winShare={
       available: () => liveDealSeed.contents->Option.isSome,
       share: (~moves, ~undos) =>

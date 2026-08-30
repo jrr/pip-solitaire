@@ -1,41 +1,31 @@
-// A *session*: everything a front end has to know about a game in progress, and
-// the one place a `Command.t` is run against one.
+// A *session*: everything a front end has to know about a game in progress, and the
+// one place a `Command.t` is run against one.
 //
-// `Reducer.reduce` is the single way a card moves; this module is the layer around it
-// — which game is in play, the history to undo over, the tallies beside it, the
-// post-move auto-collect, and the settle-record-check-win sequence every place a card
-// can move runs through (a drop, a double-tap send-home, a typed command). It lives
-// here rather than in each front end so that **a front end can't opt out**: `Stats`
-// and `Timing` ride in the `SaveState` envelope, and a session that owns
-// them means every front end has them.
+// `Reducer.reduce` is the single way a card moves; this is the layer around it — the
+// game in play, the history to undo over, the tallies beside it, the post-move
+// auto-collect, and the settle-record-check-win sequence every place a card can move
+// runs through. It lives here rather than in each front end so that **a front end
+// can't opt out**: a session that owns `Stats` and `Timing` means every front end has
+// them, and they ride in the save envelope for free.
 //
-// What's here is the board half of the command surface: the verbs that need a dealt
-// game to mean anything. The rest — `help`, `games`, `clear`, `quit`, `set`, and
-// `deal` itself — stays with each front end, because those genuinely differ: `help` in
-// a terminal lists a terminal's commands, `deal` in the web app tears down a DOM board
-// and builds another, and neither is a question about the cards on the table. That
-// seam isn't invented here; it's the one both front ends already drew.
+// What's here is the **board half** of the command surface: the verbs that need a
+// dealt game to mean anything. `help`, `games`, `clear`, `quit`, `set` and `deal`
+// itself stay with each front end, because those genuinely differ — `help` in a
+// terminal lists a terminal's commands, `deal` in the web app tears down a DOM board.
 //
-// Nothing in this module does I/O. The two impure things a session needs — the clock
-// a win is stamped with, and the seed a fresh deal invents — are passed in, the way
-// `Repl` has always passed `~newSeed`.
+// Nothing here does I/O. The two impure things a session needs — the clock a win is
+// stamped with, the seed a fresh deal invents — are passed in.
 
 open Card
 
-// The whole of a game in progress.
+// `seed` is kept beside the game because the two can disagree: a posed position sits
+// on a game whose own seed didn't produce it, so it reports the deal it has been
+// *proved* to descend from, usually none.
 //
-// `seed` is the deal number this board is showing, kept beside the game because the
-// two can disagree: a posed position (`Scenario`) sits on a game whose own seed didn't
-// produce it, so it reports the deal it has been *proved* to descend from — usually
-// none.
-//
-// `options` is the house rules in force. They live here rather than beside the session
-// because every one of them is consulted *while playing a card* — auto-collect after a
-// move, column reorder before one — and a session that had to be handed them at each
-// call is a session that can be asked to play the same board two different ways. Both
-// front ends keep options that outlive any one board (a terminal's flags survive
-// `deal`, the web app's switches survive a New Game), so opening a new session carries
-// the old one's options forward; see `deal` and `redeal`.
+// `options` lives *in* the session because every house rule is consulted while playing
+// a card, and a session handed them per call is a session that can be asked to play
+// the same board two different ways. Both front ends keep options that outlive a board,
+// so opening a new session carries the old one's forward (see `deal`, `redeal`).
 type t = {
   game: Game.t,
   seed: option<int>,
@@ -45,70 +35,53 @@ type t = {
   options: Options.t,
 }
 
-// One move of a line the solver played, and the session it left behind.
-//
 // Carrying the whole *session* per step — not just the state — is what lets one
-// implementation serve both front ends. A terminal plays a line in a single call and
-// wants the last one; the web app plays it a move at a time with a card flight between
-// each, adopting `session` as each flight lands, and stops adopting when the player
-// interrupts. An interrupted run is then just an earlier session: a real position with
-// a real history and a real tally behind it, with nothing to unwind.
+// implementation serve both front ends. A terminal plays a line in one call and wants
+// the last; the web app plays it a move at a time with a flight between each, adopting
+// `session` as each lands and stopping when the player interrupts. An interrupted run
+// is then just an earlier session, with nothing to unwind.
 type played = {action: Reducer.action, moved: array<card>, session: t}
 
-// What a command did to the board — enough for a caller to show it, and no more.
-//
-// The split is by *how a front end has to react*, which is the only thing a caller
-// needs a variant for: a scrolling driver reprints the board for every case that put
-// different cards on the table, while a board with cards on it flies the named cards
-// for a `Settled`, staggers a `Swept`, re-derives a `Restored` without animating (a step
+// What a command did, split by **how a front end has to react** — the only thing a
+// caller needs a variant for. A board with cards on it flies the named cards for a
+// `Settled`, staggers a `Swept`, re-derives a `Restored` *without* animating (a step
 // through history isn't a move, and easing cards along a path they never took would
 // misreport what happened), and rebuilds for a `Dealt`.
 //
-// The moved cards are named rather than left to be worked out from the two states,
-// because the one front end that needs them can't recover them: `moved` is what
-// *travelled*, and a board settled by auto-collect has cards resting somewhere new
-// that the command never mentioned.
-//
-// The `action` rides along for the same sort of reason. A caller that narrates a move
-// (the web app's debug console) needs to say *which* move, in `Render.action`'s
-// words — and once the interpreting happens in here, a command's action is something it
-// never saw. Handing it back is what lets one narrator serve a drop, a typed command and
-// a solver's step alike.
+// `moved` and `action` are named rather than left to be worked out, because the front
+// end that needs them can't recover them: a board settled by auto-collect has cards
+// resting somewhere the command never mentioned, and a narrator has to say *which*
+// move in `Render.action`'s words when the interpreting happened in here.
 type change =
   | Unchanged // a verb with nothing to do — "nothing to undo", a lawful no-op
   | Shown // `print`: nothing moved, but the caller asked to see the board
   | Blocked({reason: string}) // a house rule refused it before the reducer saw it
   | Rejected({action: Reducer.action, error: Reducer.moveError}) // the reducer refused it
-  // An accepted move: `moved` is what the action named, `collected` whatever safe
-  // auto-collect swept up behind it. Kept apart because a caller that narrates
-  // says two different things about them — the move is what you did, the collection is
-  // what the board did back — while a caller that animates flies them as one gesture.
+  // `moved` is what the action named, `collected` whatever safe auto-collect swept up
+  // behind it. Apart, because a narrator says two different things about them — the
+  // move is what you did, the collection is what the board did back — while a caller
+  // that animates flies them as one gesture.
   | Settled({action: Reducer.action, moved: array<card>, collected: array<card>})
   | Swept({moved: array<card>}) // the end-game finish sequence
   | Restored // undo/redo: a position the board already held
   | Dealt // a different board entirely (`redeal`)
-  // A solver line. `reached` is the session the moment the player reached for
-  // the solver — the tally already counting the reach, no move played yet — and it's
-  // what a caller that plays the line itself starts from. A caller that just wants the
-  // result takes the session returned beside this outcome and ignores all three.
+  // `reached` is the session the moment the player reached for the solver — the tally
+  // already counting the reach, no move played yet — which is what a caller that plays
+  // the line itself starts from. A caller that only wants the result ignores all three.
   | Played({reached: t, trail: array<played>, swept: array<card>})
 
-// What a command did, and what there is to say about it *beyond* the board.
+// **The board is deliberately not in here.** A terminal prints it, a web app has it on
+// screen already, and a reply carrying it would be a document one of them throws away
+// after every move. `reply` is only what neither can derive: why a move bounced, that
+// there was nothing to undo, how long the solver thought.
 //
-// The board itself is deliberately not in here. A terminal prints it, a web app
-// already has it on screen, and a reply that carried it would be a document one of
-// them has to throw away after every move. What `reply` carries is the part neither
-// can derive: why a move bounced, that there was nothing to undo, how long the solver
-// thought. A caller draws the board for itself, from the `change` it gets back.
-//
-// A document (`Render.line`) rather than text, for the reason `Render` splits the
-// two: a terminal paints the red suits in ANSI and a panel paints them in CSS, and
-// neither should be reading the other's alphabet out of a string.
+// A document rather than text, for the reason `Render` splits the two: a terminal
+// paints red suits in ANSI and a panel in CSS, and neither should be reading the
+// other's alphabet out of a string.
 type outcome = {change: change, reply: array<Render.line>}
 
-// The live snapshot — the present of the history. Every read goes through this rather
-// than a stored field, so the history stays the single source of truth for "where
-// every card rests right now".
+// Every read goes through the history rather than a stored field, so it stays the
+// single source of truth for where every card rests right now.
 let present = (s: t): GameState.t => History.present(s.history)
 
 let hasWon = (s: t): bool => GameState.hasWon(s.game, present(s))
@@ -116,34 +89,26 @@ let hasWon = (s: t): bool => GameState.hasWon(s.game, present(s))
 let canUndo = (s: t): bool => History.canUndo(s.history)
 let canRedo = (s: t): bool => History.canRedo(s.history)
 
-// Can the board be drained to a win by foundation moves alone? What the `finish`
-// verb and the button that offers it both ask.
+// What the `finish` verb and the button offering it both ask.
 let canFinish = (s: t): bool => Reducer.canFinish(~game=s.game, present(s))
 
-// The board as a document — `core`'s renderer over the present snapshot, reporting the
-// deal this board descends from. Ink but no colour: the caller's alphabet decides that.
+// Ink but no colour: the caller's alphabet decides that.
 let boardLines = (s: t): array<Render.line> =>
   Render.stateLines(~game=s.game, ~deal=?s.seed, present(s))
 
-// Adopt the house rules a front end holds. Options outlive any one board in both
-// drivers — a terminal's `set` survives `deal`, the web app's switches survive a New
-// Game — so this is how the flags a driver carries reach the session that consults
-// them.
+// How the flags a driver carries reach the session that consults them; see `t`.
 let withOptions = (s: t, options: Options.t): t => {...s, options}
 
-// Stamp the clock against the board as it now stands. One rule, applied after
-// every change: a won board records when it was won, and a board that isn't won has no
-// won-at. `Timing.won` keeps the first stamp, so a resumed victory reports the game's
-// own length rather than how long ago it was played; stepping back out of a win clears
-// it, and winning again stamps afresh — the same stance the tally takes, where undoing
-// never gives a move back.
+// One rule, applied after every change: a won board records when it was won, and a
+// board that isn't won has no won-at. `Timing.won` keeps the first stamp, so a resumed
+// victory reports the game's own length rather than how long ago it was played.
 let stamp = (~clock: unit => float, s: t): t => {
   ...s,
   timing: hasWon(s) ? Timing.won(s.timing, ~at=clock()) : Timing.unwon(s.timing),
 }
 
-// Open a session on a state. A deal starts a clean history — there's nothing before the
-// opening position to undo back to — a zero tally, and a running clock.
+// A deal starts a clean history — there is nothing before the opening position to undo
+// back to — a zero tally, and a running clock.
 let open_ = (
   ~clock: unit => float,
   ~options: Options.t=Options.default,
@@ -159,15 +124,13 @@ let open_ = (
   options,
 }
 
-// Restore a session from what a save carried. The envelope holds the
-// history, the tally and the clock; the game, the deal number and the house rules come
-// from whoever knew which board this save was of.
+// The envelope holds the history, the tally and the clock; the game, the deal number
+// and the house rules come from whoever knew which board this save was of.
 //
-// `saved.gameId` is deliberately not consulted. It's how a *reader* works out
-// which board a loose blob is of — a `#g=` link's, before there's a session to restore
-// into — and by the time a save reaches here that question is answered: the caller is
-// handing over the game it resolved. Reading it again here could only disagree with the
-// board being opened.
+// **`saved.gameId` is deliberately not consulted.** It's how a *reader* works out which
+// board a loose blob is of, before there is a session to restore into; by the time a
+// save reaches here the caller is handing over the game it already resolved, so reading
+// it again could only disagree with the board being opened.
 let restore = (~seed: option<int>, ~options: Options.t, game: Game.t, saved: SaveState.t): t => {
   game,
   seed,
@@ -177,16 +140,15 @@ let restore = (~seed: option<int>, ~options: Options.t, game: Game.t, saved: Sav
   options,
 }
 
-// …and what to write back out. `seed` and `options` are deliberately not in the
-// envelope: the first is how the save was found in the first place, and the second is
-// the driver's, not the board's.
+// …and what to write back out. `seed` and `options` stay out of the envelope: the
+// first is how the save was found, and the second is the driver's rather than the
+// board's.
 //
-// The game *is* in it, as its id, and has to be. "That's how the save was found" holds
-// for `localStorage` — the key names the game — and not for the other thing this envelope
-// is: a share link is found by nothing at all, so a link carrying no id arrives at the far
-// end naming no board. This is the one place a save is written from a session, and the
-// session knows which game it is of, so the answer is written down here rather than
-// inferred from whatever scene the blob happens to land on.
+// The game *is* in it, as its id, and has to be. "That's how it was found" holds for
+// `localStorage`, whose key names the game, and not for the other thing this envelope
+// is — a share link is found by nothing at all, so one carrying no id arrives naming no
+// board. This is the only place a save is written from a session, which is the only
+// thing that knows.
 let save = (s: t): SaveState.t => {
   history: s.history,
   stats: s.stats,
@@ -194,22 +156,13 @@ let save = (s: t): SaveState.t => {
   gameId: Some(s.game.id),
 }
 
-// Settle an accepted move: run safe auto-collect when the option is on,
-// returning the settled state and the cards it sent home. `autoCollect: false` (or a
-// finishable board) leaves the state exactly as the reducer returned it — the exact
-// no-op path. Applied *before* the win check so a collection that plays the final cards
-// still trips the win line.
+// Runs *before* the win check, so a collection playing the final cards still trips the
+// win line — and steps aside once the board is finishable, so it doesn't race the
+// `finish` verb to the win and rob the player of the trigger.
 //
-// Once the board is finishable safe auto-collect steps aside — the `finish` verb
-// owns the end-game sweep, so auto-collect doesn't race it to the win and rob the
-// player of the trigger.
-//
-// This settles a *state*, not a session: the caller records the settled result into the
-// session's history as a single undoable step, so a move and the collection it
-// triggered undo together. The swept cards come back because the one caller that
-// animates needs them — a typed or dragged move flies the cards it displaced *and*
-// whatever the collection swept up behind them, so the two read as one gesture rather
-// than a move and a jump.
+// Settles a *state*, not a session: the caller records the result as one undoable step,
+// so a move and the collection it triggered undo together. The swept cards come back
+// because the caller that animates flies them with the move, as one gesture.
 let settle = (~game: Game.t, ~options: Options.t, state: GameState.t): (GameState.t, array<card>) =>
   if options.autoCollect && !Reducer.canFinish(~game, state) {
     Reducer.autoCollect(~game, state)
@@ -217,16 +170,12 @@ let settle = (~game: Game.t, ~options: Options.t, state: GameState.t): (GameStat
     (state, [])
   }
 
-// Adopt a settled state as the session's new present, recording it as one undoable
-// step and counting it as one move. Only accepted transitions ever reach here, so a
-// rejected move leaves the history untouched. A lawful *no-op* — dropping a card
-// back where it already rests, or a `MoveColumn` with `from == to` — reduces to `Ok`
-// but changes nothing, so it records no step and counts no move either: there's
-// nothing to undo back to, and nothing was played.
+// **One recorded step is one move made**, counted here rather than at each verb, so
+// every way to play a move agrees by construction — a drop, a typed command, a solver
+// step, and the finish sweep, which records itself as a single step.
 //
-// One recorded step is one move made. Counting here rather than at each verb
-// means every way to play a move agrees by construction — a drop, a typed command, a
-// solver's step, and the finish sweep, which records itself as a single step.
+// A lawful *no-op* reduces to `Ok` but changes nothing, so it records no step and
+// counts no move: there is nothing to undo back to, and nothing was played.
 let commit = (~clock: unit => float, s: t, next: GameState.t): t =>
   GameState.equal(next, present(s))
     ? s
@@ -234,22 +183,20 @@ let commit = (~clock: unit => float, s: t, next: GameState.t): t =>
 
 // --- Playing a card ------------------------------------------------------------
 // The one path a card moves along, whatever asked. A typed `move 8H 5`, a pointer
-// drop, a double-tapped send-home and a solver's step all arrive here as a
-// `Reducer.action`, and all get the same treatment: the house-rule gate, the reducer's
-// verdict, the settle, the undoable step, the tally and the clock.
+// drop, a double-tapped send-home and a solver's step all arrive as a `Reducer.action`
+// and all get the same treatment: the house-rule gate, the reducer's verdict, the
+// settle, the undoable step, the tally and the clock.
 
-// The house rule that has to be answered before the reducer, not by it: with column
-// reordering off, nothing is dispatched at all, so the command is an exact no-op that
-// only reports the rule is disabled — no `MoveColumn` reaches the reducer, no history
-// step recorded. Said here so both front ends say it the same way.
+// The one house rule answered *before* the reducer rather than by it: with reordering
+// off nothing is dispatched at all, so the command is an exact no-op. Said here so both
+// front ends say it the same way.
 let columnReorderOff = "Column reordering is off for this game."
 
-// Dispatch one action against a session. The reducer is the sole judge of legality;
-// what's left here is the gate, the settling, and the bookkeeping.
+// The reducer is the sole judge of legality; what's left here is the gate, the
+// settling and the bookkeeping.
 //
-// A column reorder skips the settling: it's organizational rather than played, so
-// nothing has been put down anywhere new for auto-collect to consider and the settled
-// state is the reducer's own.
+// A column reorder skips the settling — organizational rather than played, so nothing
+// has been put down anywhere new for auto-collect to consider.
 let dispatch = (~clock: unit => float, s: t, action: Reducer.action): (t, change) =>
   switch action {
   | Reducer.MoveColumn(_) if !s.options.allowColumnReorder => (
@@ -275,13 +222,10 @@ let dispatch = (~clock: unit => float, s: t, action: Reducer.action): (t, change
     }
   }
 
-// Dispatch an action and say what there is to say about it. The prose is built here,
-// beside the action, because that's the only place it can be: `Command.describeRejection`
-// names the card that bounced, and a `change` alone doesn't carry one.
-//
-// Nothing is said about an *accepted* move. The board itself is the answer, and the
-// caller is the one drawing it — a sentence here would only repeat what the cards
-// already show.
+// The prose is built here, beside the action, because that's the only place it can be:
+// `describeRejection` names the card that bounced, and a `change` alone doesn't carry
+// one. Nothing is said about an *accepted* move — the board is the answer, and the
+// caller is the one drawing it.
 let dispatched = (~clock: unit => float, s: t, action: Reducer.action): (t, outcome) => {
   let (s', change) = dispatch(~clock, s, action)
   (
@@ -297,17 +241,12 @@ let dispatched = (~clock: unit => float, s: t, action: Reducer.action): (t, outc
   )
 }
 
-// Send the named card to the foundation that will take it, if any. The target is
-// found by `Reducer.foundationTarget` — the shared legality behind the drop itself — and
-// the send-home routes through `dispatch`, so it's the ordinary `Move` onto that pile: a
-// card that completes the board still wins exactly as a dragged one would. A card no
-// foundation is ready for is reported rather than moved.
+// Routes through `dispatch`, so a send-home is the ordinary `Move` onto that pile and
+// a card that completes the board wins exactly as a dragged one would.
 //
-// Note this is the *destination* test, not a movability test: a card that's buried is
-// dispatched and refused by the reducer, so it's told it's buried rather than told no
-// foundation wants it — which is very often untrue of a buried card. (The web app's
-// send-home reads `validMoves` instead and so answers the buried case with the weaker
-// sentence; that's for it to adopt when it comes through here.)
+// This is the *destination* test, not a movability one: a buried card is dispatched and
+// refused by the reducer, so it's told it's buried rather than told no foundation wants
+// it — which is very often untrue of a buried card.
 let home = (~clock: unit => float, s: t, card: card): (t, outcome) =>
   switch Reducer.foundationTarget(~game=s.game, present(s), card) {
   | Some(i) => dispatched(~clock, s, Reducer.Move({card, to: Reducer.ToPile(i)}))
@@ -320,13 +259,9 @@ let home = (~clock: unit => float, s: t, card: card): (t, outcome) =>
     )
   }
 
-// The finishing sweep, without the reply that wraps it: the settled session and
-// the cards it sent home. The whole sweep is one undoable step, so undo after a
-// `finish` steps back to the position the sweep started from.
-//
-// Split out because `autoplay` hands over to this same sweep and wants to *say* what it
-// did, which needs the cards — and running the sequence twice to find them out would be
-// a second answer to a question already answered.
+// The whole sweep is one undoable step, so undo after a `finish` steps back to the
+// position the sweep started from. Split out from `finish` because `autoplay` hands
+// over to the same sweep and needs the cards to say what it did.
 let sweepHome = (~clock: unit => float, s: t): (t, array<card>) => {
   let (settled, moved) = Reducer.finishSequence(~game=s.game, present(s))
   (commit(~clock, s, settled), moved)
@@ -334,11 +269,9 @@ let sweepHome = (~clock: unit => float, s: t): (t, array<card>) => {
 
 let notFinishable = "Not finishable yet — some cards still need a tableau move first."
 
-// Play the finishing sweep when the board can be drained to a win by foundation moves
-// alone (`Reducer.canFinish`); otherwise report it's not yet finishable. The sweep is
-// the very drain `canFinish` proves, so a `finish` that's offered always completes —
-// and, like a hand-played final card, trips the win. It never blocks manual
-// play: `home`/`move` still work card-by-card, this is only the shortcut.
+// The sweep is the very drain `canFinish` proves, so a `finish` that's offered always
+// completes — and, like a hand-played final card, trips the win. It never blocks manual
+// play: this is only the shortcut.
 let finish = (~clock: unit => float, s: t): (t, outcome) =>
   if canFinish(s) {
     let (s', moved) = sweepHome(~clock, s)
@@ -347,26 +280,22 @@ let finish = (~clock: unit => float, s: t): (t, outcome) =>
     (s, {change: Unchanged, reply: Render.text(notFinishable)})
   }
 
-// Hand the board to the solver: play the line `core` finds from here, then the
-// finishing sweep it deliberately stops short of, so `autoplay` on a solvable deal ends
-// on a won board rather than on a board with the Finish button lit.
+// Play the line the solver finds, then the finishing sweep it deliberately stops short
+// of, so `autoplay` on a solvable deal ends on a won board rather than one with the
+// Finish button lit.
 //
-// Every planned move is committed as its own undoable step, exactly as a typed one
-// would be: a game the solver played is as long as it looks, and undo walks back
-// through it a move at a time rather than teleporting past the whole thing. The moves
-// themselves come from `Solver.autoplay`, which settles each one the way the plan
-// assumes — so this adopts the states rather than re-dispatching the actions, and a
-// session with `autocollect` off still plays the line the search actually found.
+// Every planned move is committed as its own undoable step, so a game the solver played
+// is as long as it looks and undo walks back through it a move at a time. It adopts the
+// solver's *states* rather than re-dispatching its actions, because `Solver.autoplay`
+// settles each one the way the plan assumes — so a session with auto-collect off still
+// plays the line the search actually found.
 //
-// The reach is counted once, not once per move: the moves the solver plays are counted
-// as moves by `commit`, like any other. Counted *before* the first step is recorded, so
-// the very first save this produces already carries "this game was autoplayed" — and
-// counted even if a caller stops the run a move later, because it was still reached for.
+// The reach is counted once, *before* the first step, so the very first save already
+// carries "this game was autoplayed" even if a caller stops the run a move later.
 let autoplay = (~clock: unit => float, s: t): (t, outcome) => {
-  // The clock is this session's, not the solver's (see `Solver.effort`): what it times
-  // is the whole call — the search, plus playing the line it found through the reducer.
-  // The second part is fifty reductions against a search that generated tens of
-  // thousands of positions, so what the number describes is the thinking.
+  // This session's clock, not the solver's: it times the whole call, search plus
+  // replay. The replay is fifty reductions against a search of tens of thousands of
+  // positions, so the number describes the thinking.
   let started = clock()
   switch Solver.autoplay(~game=s.game, present(s)) {
   | Solver.NotFreeCell => (s, {change: Unchanged, reply: Render.text(Command.autoplayNotFreeCell)})
@@ -374,18 +303,15 @@ let autoplay = (~clock: unit => float, s: t): (t, outcome) => {
   | Solver.Played({steps, effort}) =>
     let ms = clock() -. started
     let reached = {...s, stats: Stats.autoplay(s.stats)}
-    // The trail: one entry per planned move, each carrying the session that move left
-    // behind. A caller walking it a step at a time is playing the same line this
-    // returns whole.
+    // A caller walking this a step at a time is playing the same line returned whole.
     let trail: array<played> = []
     let played = steps->Array.reduce(reached, (carried, step: Solver.played) => {
       let next = commit(~clock, carried, step.state)
       trail->Array.push({action: step.action, moved: step.moved, session: next})
       next
     })
-    // Where the line ends: the solver stops where the board becomes finishable, so
-    // finishing is the sweep's own — one further undoable step. A board it couldn't get
-    // all the way there stays where the line left it, with nothing swept to report.
+    // The solver stops where the board becomes finishable, so the finish is one further
+    // undoable step. A board it couldn't get there stays where the line left it.
     let (finished, swept) = canFinish(played) ? sweepHome(~clock, played) : (played, [])
     (
       finished,
@@ -407,12 +333,9 @@ let autoplay = (~clock: unit => float, s: t): (t, outcome) => {
 
 // --- Stepping through history --------------------------------------------------
 
-// Step back one move: pop the history to the prior state, or report there's
-// nothing to undo. Undo is available even from a won position — a victory is just
-// another recorded state — so a player can step back out of the win and keep playing,
-// which is what un-stamps the clock (see `stamp`).
-//
-// Counted as an undo, never as a move, and it never takes a move back off the
+// Available even from a won position — a victory is just another recorded state — so a
+// player can step back out of the win and keep playing, which is what un-stamps the
+// clock. Counted as an undo, never as a move, and never taking a move back off the
 // tally: the move was still made. Inside the guard, so a press with nothing behind the
 // present isn't counted as one.
 let undo = (~clock: unit => float, s: t): (t, outcome) =>
@@ -425,10 +348,8 @@ let undo = (~clock: unit => float, s: t): (t, outcome) =>
     (s, {change: Unchanged, reply: Render.text("Nothing to undo.")})
   }
 
-// …and forward again. A fresh move after an undo has cleared the future, so redo only
-// replays an unbroken back-step chain. A redo puts a move back on the board, so it
-// counts as one — the only rule that keeps undo-then-redo from being a way to
-// play for free.
+// …and forward again. A redo puts a move back on the board, so it counts as one — the
+// rule that keeps undo-then-redo from being a way to play for free.
 let redo = (~clock: unit => float, s: t): (t, outcome) =>
   if canRedo(s) {
     (
@@ -441,16 +362,10 @@ let redo = (~clock: unit => float, s: t): (t, outcome) =>
 
 // --- Opening a board -----------------------------------------------------------
 
-// Play the current deal again from its opening layout (`redeal`/`restart`). The web
-// menu's Restart button, verbatim: it rebuilds the game *now on the table*, so the
-// board is the same one and the history starts clean — and a session opened at a posed
-// position restarts to that game's real deal rather than the pose, which is exactly
-// what the button does.
-//
-// The board it rebuilds is the game's opening deal, so the number it reports is the
-// game's own: a restart from a posed position lands on a board that really is that
-// deal. The house rules carry over — restarting a game isn't changing the rules you're
-// playing it under.
+// Rebuilds the game *now on the table* from its opening layout, so a session opened at
+// a posed position restarts to that game's real deal rather than the pose — and reports
+// the game's own number, since the board really is that deal now. The house rules carry
+// over: restarting isn't changing the rules you're playing under.
 let redeal = (~clock: unit => float, s: t): (t, outcome) => (
   open_(~clock, ~options=s.options, ~seed=s.game.seed, s.game, GameState.initial(s.game)),
   {change: Dealt, reply: []},
@@ -477,20 +392,17 @@ let deal = (
     Some(open_(~clock, ~options, ~seed, game, state)),
     {change: Dealt, reply: []},
   )
-  // The two readings that name a number but no game — a bare `deal` (a number invented
-  // for it) and `deal 12345` — both lay out that deal of the default game. Which
-  // game a plain number belongs to is `Game`'s to say, not this interpreter's: it asks
-  // `Game.default` for another board rather than naming FreeCell's deal function, so a
-  // second seeded game costs nothing here.
+  // Which game a plain number belongs to is `Game`'s to say, not this interpreter's:
+  // this asks `Game.default` for another board rather than naming FreeCell's deal
+  // function, so a second seeded game costs nothing here.
   let numbered = seed => {
     let dealt = Game.dealt(Game.default, ~seed)
     opened(~seed=dealt.seed, dealt, GameState.initial(dealt))
   }
   switch Command.resolveDeal(~game, ~scenario) {
-  // A dealt board reports the number that dealt it (`Game.t`'s `seed` records it), a
-  // named game its own, and a posed position the deal it descends from — which for all
-  // but `almost-won` is none, so the board says nothing rather than naming a deal it
-  // didn't come from.
+  // Each opens reporting the deal it can prove: a dealt board the number that dealt it,
+  // a posed position the one it descends from — which for all but `almost-won` is none,
+  // so the board says nothing rather than naming a deal it didn't come from.
   | Command.Fresh => numbered(newSeed())
   | Command.Numbered({seed}) => numbered(seed)
   | Command.Named({game, position: None}) => opened(~seed=game.seed, game, GameState.initial(game))
@@ -509,13 +421,9 @@ let deal = (
 
 // --- The interpreter -----------------------------------------------------------
 
-// Run one parsed command against a session. Pure: no I/O — the caller shows what comes
-// back and carries the session forward.
-//
-// This is the *board* half of the command surface. A caller answers the rest itself
-// (`help`, `games`, `clear`, `quit`, `set`, `deal`) and forwards everything else here;
-// a verb this doesn't play is reported rather than silently ignored, so a caller that
-// forwards too much finds out.
+// Pure: the caller shows what comes back and carries the session forward. A verb this
+// doesn't play is *reported* rather than silently ignored, so a caller that forwards
+// more than the board half finds out.
 let step = (~clock: unit => float, s: t, command: Command.t): (t, outcome) =>
   switch command {
   | Command.Print => (s, {change: Shown, reply: []})
@@ -526,11 +434,10 @@ let step = (~clock: unit => float, s: t, command: Command.t): (t, outcome) =>
   | Command.Autoplay => autoplay(~clock, s)
   | Command.Home({card}) => home(~clock, s, card)
   | Command.Dispatch(action) => dispatched(~clock, s, action)
-  // A move with a half only a board can read: a destination named as a card or a column
-  // label (`move 8H 9S`, `move 8H T3`), a source named as the place it's showing in
-  // (`move C1 F1`, `moverun T6 T2`), or both. `Command`'s readers answer each against
-  // this session's board, and what comes back is dispatched through the very path an
-  // index typed by hand takes, so every way of saying a move is one move underneath.
+  // A move with a half only a board can read — `move 8H 9S`, `move C1 F1`. `Command`'s
+  // readers answer each against this session's board, and what comes back is dispatched
+  // through the very path a hand-typed index takes, so every way of saying a move is
+  // one move underneath.
   | Command.MoveTo({from, where}) =>
     switch (
       Command.resolveFrom(~game=s.game, present(s), from),

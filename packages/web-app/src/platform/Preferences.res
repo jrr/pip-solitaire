@@ -1,23 +1,20 @@
-// Persist a player's menu preferences across sessions in the browser's
-// localStorage, so a toggle they flip in the menu is still set on the next launch.
-// Only the web app persists preferences — the CLI takes its `Options` per run — so
-// this binding lives here rather than in `core`. The driver preferences speak the
-// shared `Options.t` (currently just `autoCollect`) so the stored shape tracks the
-// same seam both drivers already read; the *presentation-only* preferences (the
-// hand-placed card tilt) are web-app chrome the CLI has no notion of, so they
-// live outside `Options` and are persisted under their own keys here.
+// The menu's toggles, persisted in `localStorage` so a flip survives a launch. Only
+// the web app persists preferences — the CLI takes its `Options` per run — which is
+// why this lives here rather than in `core`.
 //
-// localStorage access can throw outright (Safari private mode, a sandboxed frame,
-// storage disabled), so every touch is guarded: a failure to read falls back to
-// the shipped default (auto-collect on, tilt on), and a failure to write is
-// swallowed — the preference simply won't persist, which is no worse than having
-// no storage at all.
+// Two kinds live side by side. The **driver** preferences speak the shared
+// `Options.t`, so the stored shape tracks the seam both front ends read; the
+// **presentation-only** ones (tilt, notch display, the console placement) are web-app
+// chrome the CLI has no notion of, so they sit outside `Options` under their own keys.
+//
+// Every touch of storage is guarded, because access can throw outright (Safari private
+// mode, a sandboxed frame, storage disabled). A failed read takes the shipped default
+// and a failed write is swallowed: the preference just doesn't persist.
 
 @val @scope("localStorage") external getItem: string => Nullable.t<string> = "getItem"
 @val @scope("localStorage") external setItem: (string, string) => unit = "setItem"
 
-// The storage keys, each namespaced so they won't collide with anything else the
-// app might persist later.
+// Namespaced, so they can't collide with anything else the app persists later.
 let autoCollectKey = "pip.autoCollect"
 let cardTiltKey = "pip.cardTilt"
 let wantsShakeKey = "pip.wantsShake"
@@ -26,16 +23,14 @@ let debugLogKey = "pip.debugLog"
 let revealHiddenKey = "pip.revealHidden"
 let consoleDockKey = "pip.consoleDock"
 
-// Read a boolean flag from storage: an explicit "true"/"false" wins, and anything
-// else — missing, garbage, or unreadable — keeps `fallback`. This is the shared
-// shape every flag below is stored in.
+// An explicit "true"/"false" wins; anything else — missing, garbage, unreadable —
+// keeps `fallback`.
 //
-// Honouring "true" matters for the flags that default *off* (`wantsShake`,
-// `debugLog`, `revealHidden`): reading only "false" and falling back otherwise
-// meant a stored `true` fell through to the off default, so those three could be
-// written but never read back — they silently failed to survive a reload. The
-// default-on flags were unaffected either way (their stored "true" and their
-// fallback agree), which is why it went unnoticed.
+// **Both spellings have to be honoured, not just the one that disagrees with the
+// default.** A flag that defaults off (`wantsShake`, `debugLog`, `revealHidden`) and
+// only reads "false" can be written but never read back: its stored "true" falls
+// through to the off default and the preference silently doesn't survive a reload.
+// The default-on flags hide this, since their stored value and their fallback agree.
 let loadFlag = (key, ~fallback) => {
   let stored = try getItem(key)->Nullable.toOption catch {
   | _ => None
@@ -47,78 +42,54 @@ let loadFlag = (key, ~fallback) => {
   }
 }
 
-// Persist a boolean flag. A write failure (storage disabled or full) is swallowed
-// — the preference just won't survive the session.
 let saveFlag = (key, value) =>
   try setItem(key, value ? "true" : "false") catch {
   | _ => ()
   }
 
-// Load the saved driver preferences, falling back to the shipped defaults for
-// anything missing, unparseable, or unreadable.
 let load = (): Options.t => {
   let autoCollect = loadFlag(autoCollectKey, ~fallback=Options.default.autoCollect)
-  // `allowColumnReorder` has no UI toggle yet, so it isn't persisted — it
-  // always takes the shipped default (our variant's house rule, on). When a
-  // settings control is wired later it can start saving its own key here.
+  // `allowColumnReorder` has no UI toggle yet, so it isn't persisted and always takes
+  // the shipped default. A settings control would start saving its own key here.
   {autoCollect, allowColumnReorder: Options.default.allowColumnReorder}
 }
 
-// Persist the current driver preferences.
 let save = (options: Options.t) => saveFlag(autoCollectKey, options.autoCollect)
 
-// The hand-placed card tilt defaults on, matching the shipped look; the
-// menu's toggle lets a player who'd rather see cards stacked dead-square turn it
-// off, and this remembers that across launches.
 let loadCardTilt = (): bool => loadFlag(cardTiltKey, ~fallback=true)
 let saveCardTilt = (enabled: bool) => saveFlag(cardTiltKey, enabled)
 
-// "Wiggle Waggle": whether the player wants shake-to-jostle on, defaulting
-// off. What's persisted is *intent*, not the OS permission — the grant can be
-// revoked behind us, so on relaunch the first board tap re-asks `Motion.requestAccess`
-// (which resolves silently if still granted) and the switch reflects whatever it
-// finds. Off by default: finding out what it does is the point, so it starts quiet.
+// What's persisted is *intent*, not the OS motion permission — that grant can be
+// revoked behind us, so on relaunch the first board tap re-asks
+// `Motion.requestAccess` and the switch reflects whatever it finds.
 let loadWantsShake = (): bool => loadFlag(wantsShakeKey, ~fallback=false)
 let saveWantsShake = (enabled: bool) => saveFlag(wantsShakeKey, enabled)
 
-// "Display content around screen notch" defaults on, matching today's
-// shipped landscape layout: the Menu/Undo rail rides out into the corner "wings"
-// beside the notch, sharing the strip that's unsafe anyway (see CutoutSide and the
-// wing-placement rules in styles/landscape-rail.css). A player on untested phone geometry, where
-// that placement could land a control awkwardly or unreachably, can turn it off to
-// fall back to a layout clamped entirely inside the browser-reported safe area —
-// worse-looking, but always playable. Presentation-only chrome the CLI has no
-// notion of, so it rides beside `options` like the tilt flag rather than inside
-// the shared `Options.t`.
+// On by default: the landscape rail rides out into the corner wings beside the notch
+// (`CutoutSide`, `styles/landscape-rail.css`). Turning it off clamps the layout
+// entirely inside the browser-reported safe area — worse-looking, but the way out on
+// untested phone geometry where a control could land unreachably.
 let loadNotchDisplay = (): bool => loadFlag(notchDisplayKey, ~fallback=true)
 let saveNotchDisplay = (enabled: bool) => saveFlag(notchDisplayKey, enabled)
 
-// "Console logging" defaults off — a developer aid that narrates the app's
-// UI↔Core traffic to the JS console, not something a player wants running. Unlike
-// the session-only safe-area overlay it *is* persisted, so a developer who turns it
-// on still sees logs after a reload (see DebugLog / the menu's Debug screen).
+// Persisted, unlike the session-only safe-area overlay, so a developer who turns
+// logging on still sees it after a reload.
 let loadDebugLog = (): bool => loadFlag(debugLogKey, ~fallback=false)
 let saveDebugLog = (enabled: bool) => saveFlag(debugLogKey, enabled)
 
-// Whether the hidden settings are showing on this device (`HiddenOptions`): off
-// until someone taps the Settings title ten times, and persisted either way so the
-// gesture is performed once, not once per launch. Written in both directions — ten
-// more taps hides the rows again, without turning off whatever they switched on.
+// `HiddenOptions`: persisted so the ten-tap gesture is performed once per device, not
+// once per launch. Written in both directions — ten more taps hides the rows again,
+// without turning off whatever they switched on.
 let loadRevealHidden = (): bool => loadFlag(revealHiddenKey, ~fallback=false)
 let saveRevealHidden = (revealed: bool) => saveFlag(revealHiddenKey, revealed)
 
-// Where the debug console sits: over the top of the board, docked into the width
-// beside it, along the bottom, or over the whole window (`ConsoleDock`). Persisted like
-// `debugLog` rather than left as session state, because the whole point of a placement
-// you flip by hand — rather than an automatic breakpoint — is that it stays flipped. It
-// defaults to the top overlay, which is the shape every window can show, including the
-// ones too narrow to dock.
+// Persisted rather than session state, because the point of a placement you flip by
+// hand — rather than an automatic breakpoint — is that it stays flipped. `Top` is the
+// default because it's the shape every window can show, including one too narrow to dock.
 //
-// Not a flag, so it doesn't go through `loadFlag`/`saveFlag`: the value is the
-// placement's own name, which is what let the bottom band and the full window join the
-// original two without a stored-shape migration (`ConsoleDock.fromString` still reads
-// the two older spellings). Everything unreadable — missing key, garbage, storage that
-// throws — resolves to the shipped default, exactly as the flags do.
+// Stored as the placement's own *name* rather than through `loadFlag`/`saveFlag`, which
+// is what lets a new placement join without a stored-shape migration; unreadable
+// resolves to the default exactly as the flags do.
 let loadConsoleDock = (): ConsoleDock.t => {
   let stored = try getItem(consoleDockKey)->Nullable.toOption catch {
   | _ => None

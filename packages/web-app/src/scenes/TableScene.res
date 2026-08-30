@@ -1,31 +1,18 @@
-// A card table that *interprets a modelled game* (`Game.t` from core) rather
-// than hard-coding one board. It is driven by data: the piles, their stacking
-// behaviours and the opening deal all come from the game, so a new game is a new
-// value in `Game`, not new code here.
+// A card table that *interprets a modelled game* rather than hard-coding one board:
+// the piles, their stacking behaviours and the opening deal all come from `Game.t`, so
+// a new game is a new value there and not new code here. What the view holds is the
+// presentation assumption the model has no opinion on — piles hang from the top of the
+// stage and grow downward, grouped into rows by role.
 //
-// The view holds its own presentation assumptions — the piles hang from the top
-// of the stage and grow downward — and applies them to whatever the model
-// describes, be it two piles or sixteen. The piles are grouped into rows by
-// role: free cells and foundations across the top, cascades below, so a full
-// FreeCell board is playable; a single-role board is just one row.
+// **Built with imperative DOM bindings rather than the `Html` Elm loop**, alone among
+// the scenes, because dragging is transient view state: a `pointermove` doesn't belong
+// in a reduced model, and driving the card straight from the event keeps it glued to
+// the finger. The card faces are still typed `CardArt` vnodes, materialised once with
+// `Html.create` and then moved by mutating `style.left/top`.
 //
-// Dragging is transient *view* state (where a finger is right now), so unlike
-// the other scenes this one is built with plain imperative DOM bindings rather
-// than the `Html` Elm loop — a pointermove doesn't belong in a reduced model,
-// and driving the card straight from the event keeps it glued to the finger.
-// The card faces themselves are still typed `CardArt` vnodes, materialised once
-// with `Html.create` and then moved around by mutating `style.left/top`.
-//
-// The mechanics the demo is here to exercise:
-//   - Pointer Events (`pointerdown`/`pointermove`/`pointerup`) instead of mouse
-//     + touch, so one code path covers phone and desktop.
-//   - `setPointerCapture`, so a card keeps receiving moves even when the pointer
-//     outruns it and leaves its bounds mid-drag.
-//   - `touch-action: none` (in CSS) on the cards, so a drag doesn't also scroll
-//     or trigger a browser gesture on touch.
-//   - Hit-testing the card's centre against each zone's rect to pick a drop
-//     target, and snapping the card to that zone's centre on release.
-//   - Squared vs fanned pile layout, reflowed live from the zones' rects.
+// One pointer path covers phone and desktop (Pointer Events, `setPointerCapture` so a
+// card keeps receiving moves when the pointer outruns it, `touch-action: none` so a
+// drag doesn't also scroll). The contract with the driver is `docs/board-driver.md`.
 
 %%raw(`import "./TableScene.css"`)
 
@@ -229,88 +216,51 @@ type shakeControl = {
   stop: unit => unit,
 }
 
-// Everything a mounted board offers the chrome — its published surface, as one
-// typed value handed over the moment the scene mounts (`~publish` below). One record
-// rather than a callback published per action, so a scene swap replaces the whole
-// surface at once: there is no list of hooks for a new action to be missing from, and
-// so no way for the chrome to be left driving a board that has been torn down.
-//
-// Every field here is *mount*-scoped, not build-scoped. A board is torn down and
-// rebuilt on every re-deal (New Game, Restart, a forced state, a shared game landing),
-// so the three that genuinely belong to a build — `undo`, `runCommand`, `relayout` —
-// dispatch through mount-scope refs that each `buildBoard` repoints at its own. The
-// record the chrome took at mount therefore goes on driving whatever is actually on
-// the table, and a stale closure over a torn-down build isn't something a caller can
-// hold even by accident.
-//
-// `newGame` and `loadDeal` are the two a board can genuinely lack: both open a board
-// the caller names — a fresh seed, a chosen deal number — which only a *re-dealable*
-// game has (`~newDeal`, and the game's own `Game.t.deal`; FreeCell today). A
-// fixed-layout demo answers `None`, which is what lets the menu and the console's
-// `deal` say so rather than silently doing nothing. Everything else is offered by every
-// card table.
+// Everything a mounted board offers the chrome, handed over whole by `~publish`. Why
+// it is one record, why every field is mount-scoped, and why two of them are `option`
+// is `docs/board-driver.md` § What `~publish` hands back.
 type controls = {
-  // Re-deal onto a fresh seed — the menu's New Game, and the console's
-  // bare `deal`.
+  // Re-deal onto a fresh seed — the menu's New Game, the console's bare `deal`.
   newGame: option<unit => unit>,
-  // Re-deal onto a *chosen* deal number — the addressed twin of `newGame`,
-  // behind the console's `deal <n>`. The number is turned into a board here, by the
-  // game on the table (`Game.t.deal`): the caller has a number and a board, and
-  // needn't know that a deal number is a seeded FreeCell shuffle to put the two
-  // together.
+  // Its addressed twin, behind the console's `deal <n>`. The number becomes a board
+  // here, by the game on the table, so the caller needn't know a deal number is a
+  // seeded shuffle to put the two together.
   loadDeal: option<int => unit>,
-  // Replay the deal now on the table — the menu's Restart, and the console's
-  // `redeal`. Every card table offers it: a fixed-layout demo restarts to its own deal.
+  // Replay the deal now on the table. Every card table offers it — a fixed-layout demo
+  // restarts to its own deal.
   restart: unit => unit,
-  // Rebuild the board into a forced position — the debug-states menu's live twin of the
-  // URL's `?state=`. Never persisted, so a debug jump can't clobber a saved game.
+  // The debug-states menu's live twin of `?state=`. **Never persisted**, so a debug
+  // jump can't clobber a saved game.
   loadState: GameState.t => unit,
-  // Rebuild the board onto a whole restored undo/redo stack (`ShareLink`): a shared
-  // game arrives with its history intact. *Unlike* a forced state this persists — a
-  // shared game is adopted as this device's saved game rather than borrowed.
+  // A shared game, history intact. *Unlike* a forced state this persists: a shared
+  // game is adopted as this device's saved game rather than borrowed.
   loadHistory: SaveState.t => unit,
-  // …and the read side, for the share button: the live board's saved game, whatever
-  // build is currently on the table.
   readHistory: unit => option<SaveState.t>,
-  // Step the board's history back — the top bar's Undo button.
   undo: unit => unit,
-  // Play one parsed command against this board and answer with whatever
-  // `DebugLog` won't already have said. Not a second interpreter: the command goes to
-  // `Session.step` like the terminal's does, and what comes back is turned into cards
-  // moving on a screen.
+  // Not a second interpreter: the command goes to `Session.step` exactly as the
+  // terminal's does, and what comes back is turned into cards moving on a screen.
   runCommand: Command.t => array<Render.line>,
-  // Re-lay every resting card, so the menu's tilt switch re-tilts the board in
-  // place rather than only on the next move.
+  // Re-lay every resting card, so the tilt switch re-tilts the board in place rather
+  // than only on the next move.
   relayout: unit => unit,
-  // The board's answer to one question: could you give up this many px of stage
-  // width and still deal cards above `minScale`? What the console's dock toggle
-  // consults, so the refusal is the layout's own verdict rather than a guessed
-  // breakpoint.
+  // Could you give up this many px of stage width and still deal cards above
+  // `minScale`? What the console's dock toggle consults, so the refusal is the
+  // layout's own verdict rather than a guessed breakpoint.
   dockFit: float => bool,
-  // Start/stop listening for shakes. See `shakeControl` above.
   shake: shakeControl,
 }
 
-// What the driver offers the win overlay's Share button, the victory twin of
-// the menu's Share Seed. `available` is asked as the overlay goes up and decides
-// whether the button is built at all; `share` hands the win over and resolves with
-// the one-line status to show beneath the buttons.
+// What the driver offers the win overlay's Share button. `available` is asked as the
+// overlay goes up and decides whether the button is built at all — asking then, rather
+// than at build time, keeps the answer about the board that was just won.
 //
-// The driver answers both because the board can't. A deal number survives a resume
-// only in the driver's storage, and a board showing a shared or posed position has
-// none at all — which is exactly why `~onDeal` below reports `None` on those builds
-// and leaves `Main` to fill the gap. Asking at overlay time rather than at build time
-// keeps the answer about the board that was just won.
-//
-// A pair rather than two separate props because they have to agree: offering a
-// button that then has no deal to share is the one failure a share button can't
-// afford, and a single record makes that a type-level impossibility rather than a
-// convention two call sites have to keep.
+// A pair rather than two props because they have to agree: offering a button that then
+// has no deal to share is the one failure a share button can't afford, and one record
+// makes that a type error instead of a convention two call sites keep.
 type winShare = {
   available: unit => bool,
-  // `~moves`/`~undos` are the won game's tally (`Stats`), read off the live
-  // board as the button is pressed. The board counts them because it's the thing
-  // moves and undos happen to; what the driver does with them — a message, nothing —
+  // The won game's tally, read off the live board at the press. The board counts them
+  // because it's the thing moves and undos happen to; what the driver does with them
   // is its own business.
   share: (~moves: int, ~undos: int) => promise<string>,
 }
@@ -487,111 +437,61 @@ let clearTiltTiming = wrapper => {
 // varies with the setting.
 let tiltFor = (~enabled, ~card, ~pile, ~slot) => enabled ? cardTilt(~card, ~pile, ~slot) : 0.
 
-// Build a scene that plays `game`: its id/label name the scene in the picker,
-// and its piles and opening deal drive everything below.
-//
-// `~initial` forces the board into a given `GameState` instead of the opening
-// deal — the hook the URL's `?state=` scenario uses to drop straight into a
-// mid-game position (see `AppUrl` / `Scenario`). Omitted, the scene opens from the
-// game's own deal exactly as before.
-//
-// `~newDeal` makes the board *re-dealable*: a thunk that yields a fresh
-// game to open — a new seed each call, decided by the caller (the web-app deals
-// FreeCell a random seed; a deal-number entry supplies a chosen one).
-// Omitted, the board isn't re-dealable (the fixed-layout demos).
-//
-// `~publish` is how the chrome reaches everything the board does *on request* — the
-// re-deals, Undo, the console runner, the relayout, the share-link hooks, the shake
-// control. One record, handed over once as the scene mounts; see `controls` above for
-// what's on it. Omitted, the board simply publishes nothing: the tests that only
-// watch a board play, and any caller with no chrome to drive.
-//
-// `~options` is a *ref* to the driver preference record, read *live* at
-// each post-move step so a menu toggle that flips a field takes effect on
-// the very next move without rebuilding the board. Its `autoCollect` flag (on by
-// its `default`) sends every *safe* card home after an accepted move; the app's
-// menu owns this ref and rewrites it when the player flips the setting.
-//
-// `~tiltEnabled` is a *ref* to the hand-placed-tilt preference, read *live* wherever
-// a card is laid out — the same trick as `~options`, with `controls.relayout` as its
-// companion. Both halves are docs/card-tilt.md § The preference.
-//
-// `~onHistory` is the reverse channel to `controls.undo` — after every state
-// change the board calls it with the current `canUndo` so the top bar can enable or
-// disable the button. Undo works even from a won board: a victory is just another
-// recorded state, so stepping back tears the win overlay down and returns to the prior
-// position. (Redo lives in `core`'s `History` for the CLI; the web app's top bar doesn't
-// surface it.)
-//
-// `~loadHistory` restores a *whole* saved game: the board's undo/redo stack,
-// not just its present position — so a resumed game comes back with Undo still
-// walking back through the moves played before the player left. It applies only to
-// the opening build of each mount (a re-deal starts a clean history); when it
-// yields a save, that save's present state seeds the board and `~initial` is
-// ignored. It carries the play tally too (`SaveState.t`), so a resumed game's
-// move and undo counts pick up where they left off rather than restarting at zero
-// on a game that's half played.
-//
-// It's a *thunk*, read afresh on every mount, and that matters: a scene can be
-// mounted more than once (the switcher re-mounts on a scene change), and a value
-// read when the scene was *built* is a snapshot of storage at page load. Re-opening
-// a board from that snapshot silently rewinds the game to where it stood when the
-// page loaded — and if the player had resumed a finished game that session, brings
-// the victory back with it. Reading at mount time resumes whatever is saved *now*,
-// which is the board they were just playing.
-//
-// `~persist` is its write side: a
-// sink handed the board's full history after every change (each move, undo, and the
-// opening/New Game/Restart builds), so the driver can save it. Both are omitted for
-// the demos and for any board opened from a `?state=`/`?seed=` link, so
-// save-and-resume attaches only to a plain FreeCell game.
 // The game clock, read where the impurity belongs: `Session` stamps a win with a
 // moment it's handed, and this is the layer that has a wall clock to hand it. The same
 // line the terminal draws — see the comment above `Cli.randomSeed`.
 let clock = () => Date.now()
 
+// Build a scene that plays `game`: its id and label name it in the picker, its piles
+// and opening deal drive everything below.
+//
+// **The contract with the driver — what each argument is for, why the preferences are
+// refs, why the read-backs are thunks, and who resolves the deal number — is
+// `docs/board-driver.md`.** Read it before adding an argument; the seam is told from
+// `Main`'s side too, and that page is the one place it's told whole.
+//
+// The notes below are only what a reader needs *here*: which arguments a board can do
+// without, and what happens when one is left out.
 let make = (
+  // Forces the board into a given position instead of the opening deal — what the
+  // URL's `?state=` uses. Ignored when `~loadHistory` yields a save, whose present
+  // state seeds the board instead.
   ~initial: option<GameState.t>=?,
+  // Restores a *whole* saved game, tally included, so Undo still walks back through
+  // the moves played before the player left. The opening build of each mount only: a
+  // re-deal starts a clean history.
   ~loadHistory: unit => option<SaveState.t>=() => None,
+  // Its write side — handed the full history after every change, including the
+  // opening/New Game/Restart builds. Omitted, the board saves nothing.
   ~persist: option<SaveState.t => unit>=?,
+  // What makes the board *re-dealable*: a thunk yielding a fresh game to open, a new
+  // seed each call. Omitted, `controls.newGame` and `controls.loadDeal` are `None` —
+  // the fixed-layout demos.
   ~newDeal: option<unit => Game.t>=?,
-  // The board's published surface, handed over once as this scene mounts. See
-  // `controls` above, and the note on `~publish` in the prose above this signature.
+  // The board's published surface (`controls` above), handed over once as this scene
+  // mounts. Omitted, the board publishes nothing: a test that only watches it play.
   ~publish: option<controls => unit>=?,
+  // After every state change, whether there is anything to undo. Undo works even from
+  // a won board — a victory is just another recorded state — so stepping back tears
+  // the win overlay down and returns to the prior position.
   ~onHistory: option<bool => unit>=?,
-  // The board's other reverse channel, sibling of `~onHistory`: the deal number
-  // of the board now on the table, or `None` for a board that isn't showing a deal —
-  // a fixed-layout demo (no seed at all), or a build that restored a *history*, where
-  // the cards came from a saved or shared stack and the deal underneath them is not
-  // this build's to name (the driver knows; see `Main`). Called on every build, so a
-  // New Game reports its fresh seed and a scene switch to a demo reports `None` — the
-  // chrome's Share button always offers the deal actually showing rather than the one
-  // this scene first mounted with. Reported rather than read for the same reason
-  // `~onHistory` is: the chrome renders from it, so it can't reach into the board.
+  // The deal number this build is showing, or `None` where the board can't say. Called
+  // on every build, so a New Game reports its fresh seed and a scene switch reports
+  // `None`.
   ~onDeal: option<option<int> => unit>=?,
-  // …and its read side, for the one thing the board draws rather than reports: the
-  // console's `print` renders a text board, and a board names the deal it's
-  // showing. The number can't come from `game.seed` — a posed position sits on a game
-  // whose own seed didn't produce it, and a resumed game's number lives in the driver's
-  // storage — so the chrome, which resolves all of that for the Share buttons, hands
-  // back whatever it resolved. Defaults to "no number", which is the truthful answer for
-  // a board built by a test or a demo.
+  // …and the read side, for the console's printed board. Defaults to "no number",
+  // which is the truthful answer for a board built by a test or a demo.
   ~currentDeal: unit => option<int>=() => None,
-  // The victory share: what the win overlay's Share button calls, and whether
-  // it's offered at all. Omitted by the demos and the tests that don't care, in which
-  // case the overlay is the New Game button alone, exactly as before.
+  // Omitted, the win overlay is the New Game button alone.
   ~winShare: option<winShare>=?,
+  // Both read *live*, so a menu toggle lands without rebuilding the board.
   ~options: ref<Options.t>=ref(Options.default),
   ~tiltEnabled: ref<bool>=ref(true),
-  // `~skipDealAnimation` drops the cards straight into their resting places instead
-  // of flying them in — the URL's `?animate=off` (see `AppUrl`), for a screenshot of
-  // the *already-dealt* board rather than a frame mid-deal. The board is laid out at
-  // its rest positions either way; this only suppresses the cosmetic flight, exactly
-  // as the OS "reduce motion" preference already does. Applies to every deal this
-  // scene runs, re-deals included — and, because every flight path goes through one
-  // implementation (`flyCards`), to the finish sweep and a commanded move as well.
-  // The name is narrower than its scope: what it means is "this board
-  // isn't animating", which is what a screenshot or a deterministic test wants.
+  // Drops the cards straight into their resting places — the URL's `?animate=off`, for
+  // a shot of the already-dealt board. The layout is identical either way; only the
+  // cosmetic flight is suppressed, as "reduce motion" already does. **Its name is
+  // narrower than its scope**: every flight goes through `flyCards`, so this silences
+  // the finish sweep and a commanded move too, which is what a deterministic test wants.
   ~skipDealAnimation: bool=false,
   game: Game.t,
 ): Scene.t => {
@@ -634,50 +534,25 @@ let make = (
     let playToken = ref(0)
     let interruptPlay = () => playToken := playToken.contents + 1
 
-    // The deal currently on the table, held at mount scope so Restart can
-    // replay it. `buildBoard` records its `game` here on every build, so a New Game
-    // re-deal updates it and a later Restart rebuilds the *new* seed's opening
-    // layout rather than the one the scene first mounted with.
-    let currentGame = ref(game)
-
-    // The current board's resize relayout, held at mount scope so the
-    // `ResizeObserver` set up once below always drives the *live* board. Every
-    // `buildBoard` swaps in its own board's relayout here, so a resize after a New
-    // Game reflows the fresh board rather than the torn-down one whose closure the
-    // observer would otherwise still hold. Starts a no-op until the first build.
-    let resizeRelayout = ref(() => ())
-
-    // The live board's answer to the debug console's dock-refusal test, held at
-    // mount scope for the same reason as `resizeRelayout` above: the column count it
-    // measures against belongs to a *build*, so each `buildBoard` repoints this at its
-    // own. Until the first build there's no board to ask, so nothing may be docked.
-    let dockFit: ref<float => bool> = ref(_ => false)
-
-    // The live board's shake operations, held at mount scope so the single
-    // shake subscription below always jostles — or squares up — the *current* board:
-    // every `buildBoard` repoints these at its own fresh card nodes. No-ops until the
-    // first build.
-    let boardOps = ref({jostle: () => (), squareUp: () => ()})
-
-    // The live board's undo/redo history, held at mount scope for the same reason as
-    // `resizeRelayout` above: `history` is rebound by every `buildBoard`, so a reader
-    // that closed over one build would go on reporting a torn-down board's stack
-    // after a New Game. Each build repoints this at its own; the share button
-    // (`ShareLink`, via `controls.readHistory`) reads through it and so always
-    // encodes what's actually on the table. `None` until the first build.
-    let readHistory: ref<unit => option<SaveState.t>> = ref(() => None)
-
-    // The three published actions that genuinely belong to a *build* rather than to the
-    // mount — the top bar's Undo, the console's command runner and the
-    // tilt relayout — held here for the same reason as `readHistory` above. Each
-    // closes over one board's nodes and history, so every `buildBoard` repoints these
-    // at its own, and the `controls` record published once at mount dispatches through
-    // them. That's what lets the chrome take the board's surface a single time and
-    // still be driving the board actually on the table after a New Game — where before
-    // each of the three had to be re-published, by name, on every build.
+    // --- The mount-scope refs -------------------------------------------------
+    // Everything below belongs to a *build* but is held at *mount* scope, because
+    // something set up once — the `ResizeObserver`, the shake subscription, the
+    // `controls` record the chrome took at mount — has to go on driving the board
+    // actually on the table. Every `buildBoard` repoints them at its own; a reader
+    // that closed over one build would go on answering for a torn-down one after a
+    // New Game.
     //
-    // No-ops until the first build: nothing to undo, nothing to re-lay, and a command
-    // answers with nothing, which is the truthful reply for a board not yet dealt.
+    // They all start as no-ops or `None`, which is the truthful answer for a board
+    // not yet dealt: nothing to undo, nothing to re-lay, nowhere to dock.
+
+    let currentGame = ref(game) // what Restart replays — the *latest* deal, not the first
+    let resizeRelayout = ref(() => ())
+    let dockFit: ref<float => bool> = ref(_ => false)
+    let boardOps = ref({jostle: () => (), squareUp: () => ()})
+    let readHistory: ref<unit => option<SaveState.t>> = ref(() => None)
+    // The three published actions that genuinely belong to a build. `controls`
+    // dispatches through these, which is what lets the chrome take the board's surface
+    // a single time instead of each of the three being re-published on every build.
     let liveUndo: ref<unit => unit> = ref(() => ())
     let liveRunCommand: ref<Command.t => array<Render.line>> = ref(_ => [])
     let liveRelayout: ref<unit => unit> = ref(() => ())
@@ -733,41 +608,23 @@ let make = (
       cancelOutstanding()
       interruptPlay()
       WebDom.clear(boardHost)
-      // Narrate the (re)deal to the debug console: every board rebuild — the
-      // opening deal, a New Game, a Restart, or a debug-states load — passes through
-      // here, so this one line covers them all. A forced `~initial` state marks the
-      // scenario/debug-states loads apart from a fresh deal.
+      // One line covering every rebuild — the opening deal, a New Game, a Restart, a
+      // debug-states load — since all of them pass through here.
       DebugLog.message(
         "build board: " ++ game.id ++ (initial->Option.isSome ? " (forced state)" : ""),
       )
-      // Record the deal now on the table so Restart can replay this exact
-      // game — a New Game re-deal that lands here updates what Restart will rebuild.
       currentGame := game
-      // Tell the chrome which deal is showing, from the same spot and for the
-      // same reason: every board rebuild passes through here, so a New Game reports
-      // its new seed and a scene switch to a demo reports `None`.
+      // **The rule is "what's on the table *is* this deal's opening position"**, which
+      // is the only claim a deal-number share can make good on. So a fresh deal reports
+      // the game's seed, and a restored history or a forced state reports `None` — the
+      // driver knows where either came from and fills the gap (`docs/board-driver.md`
+      // § Who resolves the deal number).
       //
-      // The rule is exactly "what's on the table *is* this deal's opening position",
-      // which is the only claim a deal-number share can make good on. So a *fresh*
-      // deal — the opening one, a New Game, a Restart — reports the game's seed, and
-      // the two builds that put something else on the table report `None`:
+      // That also keeps reporting in step with saving: a seed is reported on precisely
+      // the builds that become the saved game, so the driver needs no second rule.
       //
-      //   - a restored `~history` (a resumed save, or a shared game landing): the
-      //     cards come from that stack, and the deal they were first dealt from isn't
-      //     the one `game` carries — a resume mounts on a freshly-seeded deal whose
-      //     only job is to supply card nodes. Naming that seed would send someone to a
-      //     board nobody is looking at, the one failure a share button can't afford.
-      //     The driver knows where the history came from and fills the gap (`Main`);
-      //   - a forced `~initial` state (`?state=`, or the debug-states rows): a posed
-      //     position, not a deal.
-      //
-      // Falling to `None` on those two also keeps the reporting in step with saving:
-      // a seed is reported precisely on the builds that become the saved game
-      // (`~persistThis`), so the driver can persist it without a second rule.
-      //
-      // Named, because the session below carries the same fact for the same reason — the
-      // deal a board can honestly say it is — and two spellings of one rule is one too
-      // many.
+      // Named, because the session below carries the same fact for the same reason and
+      // two spellings of one rule is one too many.
       let boardSeed = initial->Option.isSome || seedHistory->Option.isSome ? None : game.seed
       switch onDeal {
       | Some(report) => report(boardSeed)
@@ -838,23 +695,14 @@ let make = (
         Array.length(game.piles)
       }
 
-      // The single source of truth for this board: one `Session.t` holding where
-      // every card rests, the history behind it, the tally and the
-      // clock beside it, and the house rules it's played under. The view
-      // re-derives every pile's layout from its present state and keeps only transient
-      // geometry (below).
+      // The single source of truth for this board. The view re-derives every pile's
+      // layout from its present state and keeps only transient geometry.
       //
       // **A move hands an action to `Session.dispatch` and the view adopts what comes
-      // back.** Settling, the undo step, the tally and the clock are that one call, and
-      // it's the same call the terminal makes. Three sites move a card — the drop, the
-      // double-tap send-home, a typed command — so stepping written out at each of them
-      // is three copies to keep in lockstep, and the field one of them forgets is the
-      // one nothing notices.
-      //
-      // Seeded from a saved game when there is one, otherwise from the board's
-      // opening deal or the forced `~initial` scenario. Per-build, like everything else
-      // here, so a New Game or a Restart starts from a zero tally and a running clock
-      // while a resumed or shared game picks up what its save carried.
+      // back** — settling, the undo step, the tally and the clock are that one call,
+      // the same one the terminal makes. Three sites move a card here, so stepping
+      // written out at each is three copies to keep in lockstep, and the field one of
+      // them forgets is the one nothing notices.
       let session = ref(
         switch seedHistory {
         | Some(saved) => Session.restore(~seed=boardSeed, ~options=options.contents, game, saved)
@@ -869,52 +717,42 @@ let make = (
         },
       )
 
-      // Where every card rests right now. A function rather than a stored value, so the
-      // session stays the one answer to the question.
+      // A function rather than a stored value, so the session stays the one answer.
       let state = () => Session.present(session.contents)
 
-      // The live session with the driver's current house rules pushed into it. The
-      // switches live at mount scope and outlive any one board — a New Game doesn't
-      // change the rules you're playing under — so they're the driver's to carry and the
-      // session's to consult, which is the split the terminal draws too (see `Repl`).
+      // The house rules live at mount scope and outlive any one board — a New Game
+      // doesn't change the rules you're playing under — so they're the driver's to
+      // carry and the session's to consult, the split the terminal draws too.
       let current = () => Session.withOptions(session.contents, options.contents)
 
-      // What this build would save: read at call time, so a caller always gets the board
-      // as it now stands.
+      // Read at call time, so a caller always gets the board as it now stands.
       let currentSave = (): SaveState.t => Session.save(session.contents)
 
       // Point the mount-scope reader at *this* build's save, so the share button
       // encodes the board on the table rather than one a re-deal has since replaced.
       readHistory := (() => Some(currentSave()))
 
-      // Persist the board's whole undo/redo history and tally after any change, when
-      // the driver wired a `~persist` sink. A no-op otherwise — the demos,
-      // and any board opened from a `?state=`/`?seed=` link, pass none — so saving
-      // attaches only to a plain FreeCell game. Called from `afterChange`, `undo`,
-      // and each fresh build.
+      // A no-op unless the driver wired a `~persist` sink, which it does only for the
+      // opens that save (`docs/board-driver.md` § Which opens touch storage).
       let persistCurrent = () =>
         switch persist {
         | Some(save) => save(currentSave())
         | None => ()
         }
 
-      // The DOM node for each model card, so a pile derived from `state` (structural
-      // `{suit, rank}` cards) lays out onto the *same* elements every reflow — the
-      // identity bridge from model card to node. Every `makeCard` registers
-      // itself here; lookup is the deck-scoped `GameState.sameCard`.
+      // The identity bridge from a model card to its node, so a pile derived from
+      // `state` lays out onto the *same* elements every reflow.
       let nodes: array<card> = []
       let nodeFor = (data: Deck.card) => nodes->Array.find(n => GameState.sameCard(n.data, data))
 
-      // Put every card's tilt transition back to the stylesheet's in-game snap,
-      // dropping the per-card delay/duration a finish sweep borrowed. Called
-      // wherever a sweep ends — its own settle, or an undo cutting it short — so a
-      // later drop re-tilts immediately instead of on the dead sweep's schedule.
+      // Drop the per-card delay/duration a finish sweep borrowed, so a later drop
+      // re-tilts immediately rather than on the dead sweep's schedule. Called wherever
+      // a sweep can end — its own settle, or an undo cutting it short.
       let clearTiltTimings = () => nodes->Array.forEach(c => clearTiltTiming(c.wrapper))
 
-      // The depth the height fit sizes the deepest fan to: the deepest *opening* pile
-      // plus `TableLayout.fanHeadroom`. Captured once, here, so cards keep a stable
-      // size as piles grow and shrink through play — and read from the opening
-      // `state`, so a New Game rebuild recomputes it for that deal.
+      // The depth the height fit sizes the deepest fan to. **Captured once**, from the
+      // opening state, so cards keep a stable size as piles grow and shrink through
+      // play; a New Game rebuild recomputes it for that deal.
       let hasFanned = game.piles->Array.some((p: Game.pile) => p.stacking == Game.Fanned)
       let openingMaxDepth =
         zones->Array.reduce(0, (m, z) =>
@@ -922,15 +760,11 @@ let make = (
         )
       let referenceDepth = openingMaxDepth + TableLayout.fanHeadroom
 
-      // The live scale the design footprints are multiplied by — `TableLayout.scaleFor`
-      // is what computes it (both fits and the clamp); this is where it's kept. Held in
-      // a ref because the geometry (reflow, the deal) reads it, and recomputed from the
-      // stage's live width the moment before the deal — the one point at which the
-      // stage is known laid out.
+      // The live scale every design footprint is multiplied by — `TableLayout.scaleFor`
+      // computes it; this is where it's kept, in a ref because the reflow and the deal
+      // both read it.
       let scale = ref(1.)
-      // The stage width the layout was last sized to. Zero until the first
-      // `deal` runs, which is what gates the resize relayout below (nothing to
-      // reflow yet).
+      // Zero until the first `deal` runs, which is what gates the resize relayout below.
       let lastWidth = ref(0.)
       let applyScale = () => {
         // Everything this function does is measure, ask and publish. The two fits and
@@ -1140,22 +974,17 @@ let make = (
         requestAnimationFrame(() => classList(playfield)->removeClass("dealing"))->ignore
       }
 
-      // Narrate one change to the debug console. Every way a card can move — a
-      // drop, a double-tap send-home, a typed command, a step of a solver's line — ends
-      // in a `Session.change`, and this is the one thing that turns one into a sentence.
-      // That's why the change carries its `action`: the move a typed command made is one
-      // this file never saw, and it still has to be able to say it.
+      // Every way a card can move — a drop, a send-home, a typed command, a step of a
+      // solver's line — ends in a `Session.change`, and this is the one thing that turns
+      // one into a sentence. That's why a change carries its `action`: the move a typed
+      // command made is one this file never saw, and it still has to be able to say it.
       //
-      // **One line per move**, not two. The old pair said the action and then its
-      // outcome, which meant the commonest thing in the log — a move that worked — cost
-      // two lines to say one thing, and the second of them said it in the reducer's
-      // vocabulary (`result: accepted`) rather than the board's. Now the move is a
-      // sentence (`Render.action`) with a ✓ on the end of it, and only a *rejection*
-      // spends a second line: the mark says it bounced, the line under it says why, in
-      // `core`'s own words (`Command.reason`) so a refusal reads the same in a terminal.
+      // **One line per move**, not two: the move is a sentence with a ✓ on the end of
+      // it, and only a *rejection* spends a second line saying why, in `core`'s own
+      // words so a refusal reads the same in a terminal.
       //
-      // Built only when something is listening: `DebugLog`'s own calls short-circuit on
-      // that, and this composes a document before it calls one, so it checks first.
+      // Built only when something is listening. `DebugLog`'s own calls short-circuit on
+      // that, but this composes a document *before* calling one, so it checks first.
       let narrate = (~before: GameState.t, change: Session.change) => {
         if DebugLog.enabled() {
           let accepted: Render.span = {text: " ✓", ink: Render.Title}
@@ -1188,15 +1017,12 @@ let make = (
         }
       }
 
-      // Play an action into the board's session. The pointer paths — a drop
-      // (`endDrag`) and the double-tap send-home — come through here; a typed command
-      // reaches the same `Session.dispatch` through `Session.step` instead, and is
-      // narrated by the same `narrate` above.
+      // The pointer paths — a drop, the double-tap send-home — come through here; a
+      // typed command reaches the same `Session.dispatch` via `Session.step`.
       let dispatch = (action: Reducer.action): Session.change => {
-        // A move of the player's own — a drop, a send-home, a typed one — takes the
-        // board off whatever line an autoplay was walking, so it stops the run.
-        // Autoplay's own steps are committed by the session and never come through here,
-        // which is what makes this the clean "the player did something" signal.
+        // Autoplay's own steps are committed by the session and never come through
+        // here, which is what makes this the clean "the player did something" signal —
+        // and a move of the player's own takes the board off the line a run was walking.
         interruptPlay()
         let before = state()
         let (next, change) = Session.dispatch(~clock, current(), action)
@@ -1205,35 +1031,25 @@ let make = (
         change
       }
 
-      // The win overlay. The panel itself is `<WinOverlay>` — what it holds and
-      // why lives in that file; what lives here is *when* it is raised and torn
-      // down, which is the half that needs this closure.
-      //
-      // Raised when a move completes every foundation (`GameState.hasWon`), built with
-      // `Html.create` like the 52 cards are, and appended to `boardHost` — so
+      // The panel is `<WinOverlay>`; what lives here is *when* it is raised and torn
+      // down, which is the half that needs this closure. Appended to `boardHost`, so
       // `buildBoard` clearing that host is also what stops a panel lingering onto the
-      // next board. Only one is ever raised at a time.
+      // next board.
       //
-      // It reports the game — the clock and the tally — but doesn't *take* either. Both
-      // were settled by the move that won, which is why this raises a panel and
-      // saves nothing: the winning move's own save already says the game is over.
+      // It **reports** the clock and the tally but doesn't take either: both were
+      // settled by the move that won, which is why raising a panel saves nothing.
       let winShown = ref(false)
-      // The live overlay element, kept so undo can tear it down when stepping back
-      // out of a win — undoing a victory removes the panel and returns the
-      // board to the prior, still-playable position.
+      // Kept so undo can tear the panel down when stepping back out of a win.
       let winOverlay = ref(None)
       let showWin = () =>
         if !winShown.contents {
           DebugLog.message("win")
           winShown := true
-          // The clock stopped when the *board* was won, not here: the
-          // session stamps it as it records the winning move, so the number reports how
-          // long the game took rather than how long the last card took to fly. A save
-          // that already carries a `wonAt` keeps it, so reopening a won board reports the
-          // game's own length rather than how long ago you played it. Both numbers are
-          // read *now*, as the panel goes up, so they describe the game that was just
-          // won — undoing back out of a victory and playing on raises a fresh panel with
-          // the larger numbers it earned.
+          // **The clock stopped when the board was won, not here** — the session stamps
+          // it as it records the winning move, so the number is how long the game took
+          // rather than how long the last card took to fly. Both numbers are read
+          // *now*, as the panel goes up, so they describe the game just won: undoing
+          // back out and playing on raises a fresh panel with the larger numbers.
           let overlay = Html.create(
             WinOverlay.make({
               time: Timing.summary(session.contents.timing),
@@ -1243,15 +1059,11 @@ let make = (
                 | Some(freshDeal) => buildBoard(freshDeal())
                 | None => buildBoard(game)
                 },
-              // Offered only when the driver has a deal to hand out — asked *now*, as
-              // the panel goes up, so the answer is about the board that was just won
-              // rather than whatever the scene mounted with — and withheld entirely
-              // from a game the solver had a hand in. `Stats.usedAutoplay` is
-              // why the tally counts autoplays at all: it's the one fact about a game
-              // that has to survive every undo back past the solver's moves, and it
-              // does because the tally only ever counts up and is only ever reset by a
-              // board being replaced (a New Game or a Restart, both of which build
-              // afresh from `Stats.zero`).
+              // Offered only when the driver has a deal to hand out, and withheld
+              // entirely from a game the solver had a hand in. That second half is why
+              // the tally counts autoplays at all: it's the one fact about a game that
+              // has to survive every undo back past the solver's moves, which it does
+              // because `Stats` only ever counts up.
               share: switch winShare {
               | Some(offer) if offer.available() && !Stats.usedAutoplay(session.contents.stats) =>
                 Some({
@@ -1268,14 +1080,9 @@ let make = (
           boardHost->WebDom.appendChild(overlay)->ignore
           winOverlay := Some(overlay)
         }
-      // Tear the win overlay down — undo out of a victory removes the panel
-      // and clears the flag so a later win can raise it again. A no-op when no
-      // overlay is up.
-      //
-      // The clock starts again with it, but not from here: stepping the session
-      // back is what clears the won-at, because a board that isn't won hasn't been. It
-      // stamps afresh on winning again, and the time then covers the detour — the same
-      // stance the tally takes, where undoing never gives a move back.
+      // Clears the flag too, so a later win can raise the panel again. The clock starts
+      // again with it, but not from here: stepping the *session* back is what clears
+      // the won-at, because a board that isn't won hasn't been.
       let removeWinOverlay = () =>
         switch winOverlay.contents {
         | Some(overlay) =>
@@ -1285,41 +1092,31 @@ let make = (
         | None => ()
         }
 
-      // Report the current undo availability to the chrome so the top bar
-      // can enable or disable its button. Called after every state change.
       let reportHistory = () =>
         switch onHistory {
         | Some(f) => f(Session.canUndo(session.contents))
         | None => ()
         }
 
-      // What's left to do once the session has taken a change: tell the chrome the undo
-      // button has something to undo, and write the board to storage so a reload
-      // resumes here, mid-game.
-      //
-      // The recording itself isn't here any more. One undoable step per accepted
-      // move, one move on the tally per recorded step, the clock stamped when the board
-      // is won — that is `Session.dispatch`'s, which is what makes the drop, the
-      // send-home, the typed command and the terminal agree by construction rather than
-      // by four places remembering to.
+      // All that's left once the session has taken a change. **The recording is not
+      // here**: one undoable step per accepted move, one move on the tally per step,
+      // the clock stamped on a win — all `Session.dispatch`'s, which is what makes the
+      // drop, the send-home, the typed command and the terminal agree by construction
+      // rather than by four places remembering to.
       let afterChange = () => {
         reportHistory()
         persistCurrent()
       }
 
-      // Fly a set of cards to wherever the *already-committed* `state` says they now
-      // rest — the shared flight path. Each card travels from where it was resting to
-      // its new slot, `stagger` ms apart, over `flight` ms each, and `onDone` fires
-      // once the last card lands. Where the two numbers come from, what rides along
-      // with a flight, and the three ways it collapses to an instant `reflowAll`
-      // instead: `docs/animation-timing.md`.
+      // The shared flight path: fly cards to wherever the *already-committed* `state`
+      // says they now rest. Where the two timings come from, what rides along, and the
+      // three ways this collapses to an instant `reflowAll`: `docs/animation-timing.md`.
       //
-      // The mechanism is the inverse-offset trick `animateDeal` uses: capture each
-      // card's current spot, let `reflowAll` snap every node onto its new home, then
-      // animate the transform back from (start − end) to zero. The z-hold is what
-      // that trick costs — `reflowAll` relayers every pile by slot the instant it
-      // runs, so without the hold a departing card drops behind the fan it is still
-      // visually on top of.
+      // The mechanism is `animateDeal`'s inverse-offset trick — capture each card's
+      // current spot, let `reflowAll` snap every node onto its new home, then animate
+      // the transform back from (start − end) to zero. **The z-hold is what that trick
+      // costs**: `reflowAll` relayers every pile by slot the instant it runs, so
+      // without it a departing card drops behind the fan it is still visually atop.
       let flyCards = (movedCards: array<Deck.card>, ~flight: float, ~stagger: float, ~onDone) => {
         let reduceMotion = matchMedia("(prefers-reduced-motion: reduce)")["matches"]
         let cards = movedCards->Array.filterMap(nodeFor)
@@ -1446,15 +1243,10 @@ let make = (
         flyCards(movedCards, ~flight, ~stagger, ~onDone)
       }
 
-      // The end-game "Finish" button: a conditional control — the same
-      // show-when-relevant shape as the win overlay above — that appears exactly
-      // when the board can be drained to a win by foundation moves alone
-      // (`Reducer.canFinish`), i.e. victory is one tap away, and is hidden the rest
-      // of the time. Tapping it plays the finishing sweep (`Session.finish`)
-      // home to the detected win. It never gates manual play: you can still drag or
-      // double-tap cards home one at a time — this is only the shortcut. Held in a
-      // ref so `updateFinishButton` can add or remove it as `canFinish` flips after
-      // each move; `winShown` hides it once the win overlay has taken over.
+      // The end-game "Finish" button — the same show-when-relevant shape as the win
+      // overlay above, appearing exactly when `Session.canFinish` says victory is one
+      // tap away. Held in a ref so `updateFinishButton` can add or remove it as that
+      // flips after each move; `winShown` hides it once the overlay has taken over.
       let finishButton = ref(None)
       let removeFinishButton = () =>
         switch finishButton.contents {
@@ -1464,21 +1256,16 @@ let make = (
         | None => ()
         }
 
-      // Play the finishing sweep, whoever asked for it — the button below, or the
-      // console's `finish` verb. Written once so the two can't drift on what
-      // "finish" does to the model: the sweep is committed *immediately* as one
-      // undoable step, so undo after a finish steps back to the position it
-      // started from regardless of what the animation is doing.
-      // The view's half of a sweep: the session has already taken it (one undoable step,
-      // and the clock stamped if it won), so what's left is to say it, save it and fly
-      // it. Shared by the Finish button below and the typed `finish` verb, which reach
+      // The *view's* half of a sweep: the session has already taken it — one undoable
+      // step, the clock stamped if it won — so what's left is to say it, save it and
+      // fly it. Shared by the Finish button and the typed `finish` verb, which reach
       // the sweep by different routes and have to land it the same way.
       let flySweep = (moved: array<Deck.card>) => {
         DebugLog.line(Render.concat([[Render.plain("finish ")], Render.cardSpans(moved)]))
         afterChange()
         removeFinishButton()
-        // Deliver the sweep as a staggered flight rather than an instant
-        // jump; the win overlay lands only once the last card has arrived.
+        // A staggered flight rather than an instant jump, so the win overlay lands only
+        // once the last card has arrived.
         animateFinish(moved, ~onDone=() =>
           if Session.hasWon(session.contents) {
             showWin()
@@ -1525,39 +1312,31 @@ let make = (
           }
         }
 
-      // Adopt whatever `history` now points at as the board's position — the shared
-      // tail of undo and redo. It re-derives the layout from the restored state
-      // rather than animating: a step through history isn't a *move*, and easing cards
-      // along a path they never took would misreport what happened.
+      // The shared tail of undo and redo. It **re-derives** the layout rather than
+      // animating: a step through history isn't a *move*, and easing cards along a path
+      // they never took would misreport what happened.
       let adoptHistoryPresent = () => {
-        // Stop any finish sweep still in flight before laying out the restored
-        // position, so its cards don't keep flying toward foundations the step has
-        // just emptied (the state is already committed, so nothing corrupts) — and
-        // any autoplay still playing forward, since a step through history is
-        // the player saying they'd like the board back.
+        // A sweep still in flight would keep flying toward foundations the step has
+        // just emptied, and an autoplay would keep playing forward — but a step through
+        // history is the player saying they'd like the board back. (The state is
+        // already committed either way, so nothing corrupts.)
         cancelOutstanding()
         interruptPlay()
-        // …including the tilt timing a cut-short sweep left on its cards, or
-        // the restored position's angles would arrive on the dead sweep's schedule.
+        // …including the tilt timing a cut-short sweep left on its cards, or the
+        // restored angles arrive on the dead sweep's schedule.
         clearTiltTimings()
         reflowAll()
         updateFinishButton()
         reportHistory()
-        // Save the stepped position, redo stack and all, so a reload resumes
-        // exactly where the step left the board.
+        // The redo stack too, so a reload resumes exactly where the step left it.
         persistCurrent()
       }
 
-      // Step the board's history back, re-deriving the layout from the
-      // restored state. Undo doesn't re-run auto-collect — it restores the prior
-      // *settled* state exactly. It tears down the win overlay first, so it steps
-      // cleanly back out of a victory.
       // Bring the view to whatever position the session now holds after a step through
-      // history — the shared tail of undo and redo, whoever asked for one: the top bar's
-      // button, or the console's `undo`/`redo` verb.
+      // history, whoever asked for one: the top bar's button, or a typed verb.
       //
-      // Symmetric in the win overlay, and it has to be: undoing out of a victory takes
-      // the panel down, and redoing back into the move that won raises it again.
+      // **Symmetric in the win overlay, and it has to be**: undoing out of a victory
+      // takes the panel down, and redoing back into the winning move raises it again.
       let adoptRestored = () => {
         if !Session.hasWon(session.contents) {
           removeWinOverlay()
@@ -1568,19 +1347,13 @@ let make = (
         }
       }
 
-      // The top bar's Undo button. The console's `undo` verb doesn't come through
-      // here — it goes through `Session.step` like every other typed verb — but both end
-      // in the same `Session.undo` and the same `adoptRestored`, so they can't drift.
-      //
-      // (`redo` has no button; it exists only as a typed verb, which is why there's no
-      // twin of this function. `core`'s `History` has always carried the redo side.)
+      // The top bar's Undo button. The console's `undo` verb doesn't come through here —
+      // it goes through `Session.step` like every other typed verb — but both end in
+      // the same `Session.undo` and the same `adoptRestored`, so they can't drift.
+      // (`redo` has no button, only a typed verb, so there's no twin of this.)
       let undo = () =>
         if Session.canUndo(session.contents) {
           DebugLog.message("undo")
-          // Counted as an undo, never as a move, and it never takes a move back off the
-          // tally — the session's rule, applied wherever a board is stepped back.
-          // Inside the `canUndo` guard, so a press with nothing behind the present isn't
-          // counted as one.
           let (stepped, _) = Session.undo(~clock, current())
           session := stepped
           adoptRestored()
@@ -1623,19 +1396,16 @@ let make = (
 
       // Play a solver's line, a move at a time.
       //
-      // The thinking and the playing are both `Session`'s: it hands back the line already
-      // played, as a *trail* of sessions — one per planned move, each the board as that
-      // move left it. What's this file's is the pace. Adopting them one at a time, each
-      // as the previous flight lands, is what makes a run something you watch being
-      // played rather than a board that changes while you blink, and it's the whole
-      // reason to hand a board to a solver in front of a person rather than in a test.
+      // The thinking and the playing are both `Session`'s — it hands back a *trail* of
+      // sessions, one per planned move. **What's this file's is the pace**: adopting
+      // them one at a time, each as the previous flight lands, is what makes a run
+      // something you watch being played rather than a board that changes while you
+      // blink, and it's the whole reason to autoplay in front of a person.
       //
-      // That makes this the one thing on the board that runs *forward in time* after the
-      // command has answered, so it holds the interruption token (see `interruptPlay`)
-      // and re-checks it before every step: an undo, a move of the player's own, a New
-      // Game, a second `autoplay` — any of those and the run stops where it stands. It
-      // can afford to stop anywhere precisely because each entry is a whole session: what
-      // it stops on is a real position with a real history and a real tally behind it,
+      // That makes this the one thing on the board that runs *forward in time* after
+      // the command has answered, so it holds the interruption token and re-checks it
+      // before every step. It can afford to stop anywhere precisely because each entry
+      // is a whole session: a real position with a real history and tally behind it,
       // not something half-applied that has to be unwound.
       let playLine = (~reached: Session.t, ~trail: array<Session.played>) => {
         DebugLog.message("autoplay")
@@ -1691,19 +1461,15 @@ let make = (
               animateAutoplayStep(step.moved, ~onDone=() => playFrom(i + 1))
             }
           }
-        // Started on the next tick, not here. Everything above is bookkeeping the command
-        // has to do before it answers — the tally, the cancellations, the token — but the
-        // first *move* is the first line of a play-by-play, and the command's reply is the
-        // sentence that heads it. Played inline, that reply came back to the console after
-        // the run had already narrated a move into it (the console prints a command's
-        // answer once the command returns), so the summary landed a line down its own
-        // play-by-play. A tick's delay is invisible next to a move's flight, and it puts
-        // the sentence back on top.
+        // **Started on the next tick, not here.** The command's reply is the sentence
+        // that heads a play-by-play, but the console prints a command's answer once the
+        // command *returns* — so a run played inline narrates its first move before the
+        // summary lands, and the summary arrives a line down its own play-by-play. A
+        // tick is invisible next to a flight and puts the sentence back on top.
         //
         // Safe to defer for the same reason the run is safe to interrupt: `playFrom`
-        // re-checks `token` before every step, and anything that happens in between — a
-        // drag, an undo, a re-deal, a second `autoplay` — bumps it, so a run whose board
-        // has moved on never plays its first move at all.
+        // re-checks `token` before every step, so a run whose board moved on in the
+        // meantime never plays its first move at all.
         setTimeout(() => playFrom(0), 0)->ignore
       }
 
@@ -1908,16 +1674,12 @@ let make = (
           }
         )
 
-        // Send this card home: a top-of-pile card whose foundation
-        // will take it flies straight to that foundation — the FreeCell shortcut for
-        // the tedium of dragging every card home one at a time. Both eligibility and
-        // legality come from the shared `core` primitive `validMoves`: it lists
-        // every drop a hand-drag would accept, movability already gated in core, so
-        // the send-home is just "find the `Foundation` move and take it". At most one
-        // foundation ever accepts a card, so this is behaviour-identical to the old
-        // `foundationTarget` path; a buried card, or one no foundation wants, yields no
-        // such move and is ignored. The move dispatched is the very `Move` a drag
-        // would, so a completing card still raises the win overlay.
+        // Send this card home — the shortcut for the tedium of dragging every card home
+        // one at a time. Eligibility and legality both come from `core`'s `validMoves`,
+        // which lists every drop a hand-drag would accept with movability already
+        // gated, so this is just "find the `Foundation` move and take it". At most one
+        // foundation ever accepts a card. The move dispatched is the very `Move` a drag
+        // would make, so a completing card still raises the win overlay.
         let sendHome = () =>
           switch Reducer.validMoves(~game, state(), self.data)->Array.find(m =>
             m.role == Game.Foundation
@@ -1943,25 +1705,18 @@ let make = (
           }
 
         // When no foundation will take a double-tapped card but it can still move
-        // somewhere, flash those destinations instead of sending it home: each
-        // legal target's *exposed card* pulses a green mask, then clears. Purely
-        // informational: no card moves, nothing is selected, `state` is untouched.
-        // Free cells and empty board spaces are never hinted — only the eligible
-        // card of an occupied pile lights, matching the menu's accent green.
+        // somewhere, flash those destinations instead. Purely informational: no card
+        // moves, nothing is selected, `state` is untouched.
         //
-        // Reduced-motion users still get the information: a colour fade
-        // carries no movement, so instead of dropping the hint entirely the pulse
-        // becomes a single hold-then-fade — the targets are lit long enough to read,
-        // then settle back. (Reading `matchMedia`/`animate` also keeps clear of jsdom,
-        // which implements neither.)
+        // **Reduced motion keeps the information rather than losing it.** A colour fade
+        // carries no movement, so the pulse becomes a single hold-then-fade — lit long
+        // enough to read, then settled — instead of the hint being dropped. (Reading
+        // `matchMedia`/`animate` also keeps clear of jsdom, which implements neither.)
         let flashMoveTargets = (moves: array<Reducer.move>) => {
           let reduceMotion = matchMedia("(prefers-reduced-motion: reduce)")["matches"]
-          // The mask goes mostly-green at its peak — opaque enough to read the card as
-          // "green for a frame or two" while a little translucency keeps the pip
-          // showing through — then fades to nothing. No `fill`, so the mask ends fully
-          // transparent (and is removed on finish anyway). Reduced-motion users get a
-          // single hold-then-fade rather than the two-beat pulse: the colour still lands
-          // long enough to read without the flashing.
+          // Mostly-green at its peak — opaque enough to read as green for a frame or
+          // two, translucent enough to keep the pip showing through — then fades to
+          // nothing. No `fill`, so the mask ends fully transparent.
           let peak = "0.82"
           let (keyframes, options) = reduceMotion
             ? (
