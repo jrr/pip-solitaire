@@ -174,6 +174,18 @@ Two paths are coupled and will not follow a move on their own: `index.html`
 names `./src/Main.res.mjs` and `./src/styles/index.css`, and
 `scripts/generate/icons.mjs` names `src/cards/IconArt.res.mjs`.
 
+## The board and its driver
+
+`Main.res` and `scenes/TableScene.res` are the widest seam in the app, and the
+only one told from two files at once: fourteen arguments in, one `controls`
+record back. The split is that the board owns the cards and the driver owns
+everything a card can't answer — storage, the URL, the menu's preferences.
+
+`docs/board-driver.md` is that contract: the three kinds of argument (value, live
+ref, channel), why the first board mounts before `dispatch` exists and what that
+costs, who resolves the deal number, and which of the four opens touch storage.
+Read it before adding an argument to `TableScene.make`.
+
 ## Styling
 
 CSS is **one file per component**, next to the component that renders it —
@@ -243,6 +255,13 @@ that before retuning" names what the doc owns and the moment you'd need it, and
 stops. The same rule sends a mechanism that outgrows its margin to `docs/`, with
 the local fact and one pointer left at the call site; if a file's comment lines
 outnumber its code lines, the argument in it has stopped being marginal.
+
+That ratio only means something above roughly **fifty comment lines**. Below it
+the numbers are too small to weigh: a nine-line pure component whose header is
+one good paragraph is a file with one fact and one line of code in it, and the
+ratio would ask you to delete the fact. `components/menu/MenuNavRow.res` and
+`runtime/StaticRender.res` are both far past 1.0 and both correct. Read the ratio
+as a way of *finding* files worth looking at, never as a target.
 
 **A comment is about the file it is in.** A sentence true of every component, or
 of every test of a kind, is a convention — and a convention belongs here or in

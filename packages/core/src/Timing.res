@@ -1,20 +1,16 @@
-// How long a game took: `wonAt - dealtAt`, two readings off the wall clock. The
-// victory screen's third number, beside the moves and the undos.
+// How long a game took: `wonAt - dealtAt`, two readings off the wall clock. **Not a
+// measure of attention** — a game left open over lunch counts every one of those
+// minutes, because a play clock would have to decide what idleness is.
 //
-// It is *not* a measure of attention — a game left open over lunch, or resumed from
-// `localStorage` the next morning, counts every one of those minutes. A play clock
-// would have to decide what idleness is, which is a much larger feature.
-//
-// A sibling of `Stats`, not a field in it: the tally is monotonic counters over what
-// the player did, pure and constructible in a test, while these are timestamps whose
-// origin is impure (the caller passes `Date.now()`; this module never reads a clock).
-// Mixing them would give `Stats.zero` a meaningless "dealt at the epoch".
+// A sibling of `Stats`, not a field in it: the tally is pure counters constructible in
+// a test, while these are timestamps whose origin is impure (the caller passes
+// `Date.now()`; this module never reads a clock).
 //
 // Both stamps are optional, and the absence carries information rather than being
-// defensive typing: a save from a build that predates stamps has neither, and an
-// in-progress game has a deal but no win. No stamps, no time on the panel.
+// defensive typing: a save predating stamps has neither, an in-progress game has a
+// deal but no win. No stamps, no time on the panel.
 
-// Milliseconds since the Unix epoch, as `Date.now()` gives them.
+// Milliseconds since the Unix epoch.
 type t = {
   dealtAt: option<float>, // when this deal was built
   wonAt: option<float>, // when the win landed
@@ -22,8 +18,7 @@ type t = {
 
 let unknown: t = {dealtAt: None, wonAt: None}
 
-// The opening deal, a New Game and a Restart each start their own clock, the same way
-// each starts a fresh `Stats.zero`.
+// A New Game and a Restart each start their own clock, as each starts a fresh `zero`.
 let dealt = (~at: float): t => {dealtAt: Some(at), wonAt: None}
 
 // Stamped once. A victory resumed from a save raises its overlay again on every
@@ -61,6 +56,5 @@ let label = (ms: float): string => {
     : Int.toString(minutes) ++ ":" ++ pad(seconds)
 }
 
-// The one call the victory panel makes, so "is there a time, and how does it read" is
-// answered here rather than as an `Option.map` at the call site.
+// The one call the victory panel makes, so it needn't compose the two itself.
 let summary = (t: t): option<string> => elapsed(t)->Option.map(label)
