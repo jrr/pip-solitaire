@@ -114,6 +114,10 @@ that alone, with no browser: seconds instead of a minute, so it's what you
 measure a solver change with before playing one for real. `docs/solver.md` has
 the contract, the heuristic, and the benchmark record to beat.
 
+The game can also be *typed* — `mise run cli -- play`, or the web app's debug
+console behind `` ` ``. Both take the same lines, because the grammar lives in
+`core` (`Command.res`); `docs/command-grammar.md` is the reference.
+
 ## Formatting
 
 Code is formatted by ReScript's own formatter. **Run `mise run format` before

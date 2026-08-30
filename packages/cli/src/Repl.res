@@ -22,30 +22,9 @@
 //     nothing.
 //
 // The *grammar* isn't here either (#273): `Command.parse` in `core` turns a line into a
-// `Command.t`. The split is the point — the web app's debug console types the same
-// commands at the same reducer, so `move 8H 5` had better mean one thing rather than
-// two.
-//
-// The command surface, deliberately small:
-//   deal <n>             deal FreeCell game number <n>
-//   deal <game> [pos]    a game `core` knows, at one of its named positions if given
-//   new                  a fresh board, from a seed the driver invents
-//   redeal / restart     play the current deal again from its opening layout
-//   move <card> <where>  dispatch a Move onto a slot, a card, or a pile index
-//   mv / m               the same verb, for the command you type most
-//   movecol <from> <to>  reorder the cascade columns — insert-and-shift (#159)
-//   autoplay             let the solver play the rest of the game (#291)
-//   undo / redo          step back and forth over the history of accepted moves (#85)
-//   print                re-print the current board
-//   set [<setting> on|off]  show the driver's flags, or change one
-//   games                list the available games
-//   help                 show this command surface
-//   quit / exit          end an interactive session (Ctrl-D does it too)
-//
-// A card is addressed by its compact identity (`AS`, `TH`, `KD` — see `CardText`).
-// A *destination* is said three ways (see `Command.where`): the slot name printed above
-// the column (`T3`, `C1`, `F2` — see `Slot`), the card to land on (`move 2H 3C`), or the
-// absolute pile index.
+// `Command.t`, and `Session.step` plays the board verbs. The commands themselves are
+// documented in docs/command-grammar.md and listed for a player in this package's
+// README; a verb answered only in this file is a verb the panel doesn't have.
 //
 // A line whose first non-space character is `#` is a comment: it's skipped
 // entirely (not echoed, not run), so a piped script can document itself. Blank lines

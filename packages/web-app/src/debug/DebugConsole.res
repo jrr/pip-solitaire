@@ -8,9 +8,9 @@
 // Desktop-only on purpose: a keypress is the only way in (see the issue — a touch
 // affordance would need its own Debug-screen row or hidden gesture).
 //
-// It isn't read-only any more (#273). Under the scrollback is an **input line**, and a
-// command typed into it plays the game: the line is parsed by the grammar `core` shares
-// with the CLI (`Command.parse`) and the result is pushed through the very `dispatch` a
+// Under the scrollback is an **input line**, and a command typed into it plays the game
+// (#273): the line is parsed by the grammar `core` shares with the CLI (`Command.parse`,
+// docs/command-grammar.md) and the result is pushed through the very `dispatch` a
 // pointer drop uses, so a typed `move 8H 5` is the move a drag would have made — same
 // auto-collect, same undo step, same save. This module owns the field, the echo and the
 // ↑/↓ history; who *runs* a line is installed from outside (`setRunner`, see `Main`),
@@ -335,10 +335,10 @@ let submit = (): unit => {
   }
 }
 
-// The console's own half of the help listing, composed around the shared verbs
-// (`Command.dealHelp`, `Command.boardHelp`) so the two front ends can't drift on what
-// `moverun` — or now `deal` — does, while each still describes its own surface: a terminal
-// has `print` and `games`, the panel has `clear`.
+// The console's own half of the help listing, composed around the shared rows
+// (`Command.dealHelp`, `Command.boardHelp`, `Command.driverHelp`). Only a verb the panel
+// alone offers belongs in the array below — a shared one described here is one the
+// terminal's listing will drift from.
 let helpText = () =>
   "Commands:\n" ++
   Command.renderHelp(
