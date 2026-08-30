@@ -17,11 +17,9 @@
 //    but it's still *there* — a confirmation that appeared out of nothing would shove
 //    every section below it down the panel as it came and went.
 //
-// Rendered through `Html.create` like the other component tests here (see
-// `AboutFooter_test`), which needs no DOM beyond what jsdom gives. `Menu` takes a
-// props record per screen, so only the main screen's is interesting here —
-// the other two are built because the pane's record wants them, not because anything
-// places them while `screen` is `Main`.
+// `Menu` takes a props record per screen, so only the main screen's is
+// interesting here — the other two are built because the pane's record wants
+// them, not because anything places them while `screen` is `Main`.
 open Vitest
 open TestDom
 

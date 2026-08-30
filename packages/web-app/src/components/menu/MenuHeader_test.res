@@ -13,9 +13,6 @@
 //    dropped from the node it was on — it's also what *clears* the handler from the
 //    reused <h1> when the player leaves Settings. A leak here would be invisible
 //    until someone found it, which is exactly why it's pinned.
-//
-// Rendered through `Html.create` like the other component tests here (see
-// `AboutFooter_test`), which needs no DOM beyond what jsdom gives.
 open Vitest
 open TestDom
 

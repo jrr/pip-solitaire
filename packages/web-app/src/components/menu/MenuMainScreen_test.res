@@ -17,9 +17,6 @@
 //    pinned.
 // 4. **The Settings button sits in the bottom group.** `menu-section--bottom` is what
 //    pushes it to the foot of the panel; without the class it drifts up under Games.
-//
-// Rendered through `Html.create` like the other component tests here (see
-// `AboutFooter_test`), which needs no DOM beyond what jsdom gives.
 open Vitest
 open TestDom
 

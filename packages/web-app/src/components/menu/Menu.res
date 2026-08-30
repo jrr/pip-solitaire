@@ -31,7 +31,6 @@
 // exactly what `<MenuSettingsScreen …/>` lowers to — the JSX form builds the record
 // from attributes, and here the record already exists. Layout lives in Menu.css.
 
-// This component's stylesheet, in the `components` layer (see src/styles/index.css).
 %%raw(`import "./Menu.css"`)
 
 // Which of the pane's three screens is showing. Reopening the menu

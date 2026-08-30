@@ -17,9 +17,6 @@
 //    can be crossed. The "games" group is placed only when it has entries, so
 //    the default here — no extra games — is still scenes then states.
 // 5. **Back goes one step, to Settings** — not all the way out of the pane.
-//
-// Rendered through `Html.create` like the other component tests here (see
-// `AboutFooter_test`), which needs no DOM beyond what jsdom gives.
 open Vitest
 open TestDom
 

@@ -17,11 +17,7 @@
 // `refresh` is a ready-made vnode (a `<RefreshControl>` when a service-worker state
 // is known, otherwise an empty node), so the footer stays a dumb layout and `Menu`
 // decides whether there's a button to show.
-//
-// A component is just a `props => vnode` function (see `VersionBadge` for why the
-// record is spelled out by hand).
 
-// This component's stylesheet, in the `components` layer (see src/styles/index.css).
 %%raw(`import "./AboutFooter.css"`)
 
 type props = {

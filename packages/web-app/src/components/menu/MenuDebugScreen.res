@@ -22,9 +22,6 @@
 // with FreeCell the only game this screen shows two groups, scenes then states. It
 // exists so that a *second* game lands among the games rather than under "scenes",
 // between Gallery and Motion, filed as a render demo.
-//
-// A component is just a `props => vnode` function (see `VersionBadge` for why the
-// record is spelled out by hand).
 type props = {
   onClose: unit => unit,
   onBackToSettings: unit => unit,

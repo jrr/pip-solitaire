@@ -6,7 +6,6 @@
 // The grid never changes, so this is a `Scene.static` rather than an Elm loop
 // — see `Scene.static` for when that's the right shape.
 
-// This component's stylesheet, in the `scenes` layer (see src/styles/index.css).
 %%raw(`import "./GalleryScene.css"`)
 
 let view =

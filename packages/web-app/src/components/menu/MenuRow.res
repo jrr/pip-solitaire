@@ -14,11 +14,7 @@
 // a highlight for the scene currently mounted, and the `aria-current` that goes with
 // it. `<MenuDisclosure>` draws its rows this way and so does the main screen's games
 // list — the switcher builds no DOM for the menu itself.
-//
-// A component is just a `props => vnode` function (see `VersionBadge` for why the
-// record is spelled out by hand).
 
-// This component's stylesheet, in the `components` layer (see src/styles/index.css).
 %%raw(`import "./MenuRow.css"`)
 
 // What sits at the right-hand end, which is also what *kind* of row this is:

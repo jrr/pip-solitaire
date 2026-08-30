@@ -16,9 +16,6 @@
 // Top to bottom: the headline, the time it took, the tally, the buttons, and the
 // share status. Each of the two optional pieces is optional for its own reason,
 // spelled out on its field.
-//
-// A component is just a `props => vnode` function (see `VersionBadge` for why the
-// record is spelled out by hand).
 
 // The victory share, offered only when the driver has a deal to hand out.
 //

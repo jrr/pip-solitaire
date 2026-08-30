@@ -48,7 +48,6 @@
 // `browser-tests/trail.spec.mjs`, which can move a pointer and read the overlay's
 // own buffer back.
 
-// This component's stylesheet, in the `scenes` layer (see src/styles/index.css).
 %%raw(`import "./TrailScene.css"`)
 // …and the board's, because the backdrop is deliberately the *real* resting card
 // — `.stacking-card` is `TableScene`'s rule, and what this scene is proving is

@@ -16,9 +16,6 @@
 // Whether the row shows at all is the *caller's* business — it's hidden until the
 // Settings title has been tapped ten times (`HiddenOptions`), which
 // `<MenuSettingsScreen>` decides.
-//
-// A component is just a `props => vnode` function (see `VersionBadge` for why the
-// record is spelled out by hand).
 type props = {
   state: Motion.state,
   // Asks for motion permission on the flip; see `Main`'s handler for why that has

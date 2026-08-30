@@ -17,9 +17,6 @@
 //    isn't in Libre Franklin and each platform would substitute a different
 //    fallback face for that one character (see `TopBar.res`). It's `aria-hidden`,
 //    so the button is named by its label rather than by its artwork.
-//
-// Rendered through `Html.create` like the other component tests here (see
-// `AboutFooter_test`), which needs no DOM beyond what jsdom gives.
 open Vitest
 open TestDom
 

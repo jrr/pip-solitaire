@@ -12,11 +12,7 @@
 // knows nothing about scenes, `Scenario` or the switcher. What a tap *does* is the
 // caller's business (`Main` wires a state row to surface FreeCell and force the
 // position onto it; `SceneSwitcher` wires a scene row to mount that scene).
-//
-// A component is just a `props => vnode` function (see `VersionBadge` for why the
-// record is spelled out by hand).
 
-// This component's stylesheet, in the `components` layer (see src/styles/index.css).
 %%raw(`import "./MenuDisclosure.css"`)
 
 // One row: its menu `label`, the action a tap runs, and whether it's the one

@@ -24,11 +24,7 @@
 // The screen renders as a fragment (header + sections, no wrapper), so the panel's
 // flex column still sees the sections directly and `--bottom`'s `margin-top: auto`
 // keeps pushing the Settings button to the foot.
-//
-// A component is just a `props => vnode` function (see `VersionBadge` for why the
-// record is spelled out by hand).
 
-// This component's stylesheet, in the `components` layer (see src/styles/index.css).
 %%raw(`import "./MenuMainScreen.css"`)
 
 type props = {

@@ -16,9 +16,6 @@
 //   - a **Debug** nav row (`onOpenDebug`) that opens the Debug screen — the debug
 //     tools moved off Settings entirely onto their own screen so the player
 //     preferences stand alone.
-//
-// A component is just a `props => vnode` function (see `VersionBadge` for why the
-// record is spelled out by hand).
 type props = {
   onClose: unit => unit,
   onBackToMenu: unit => unit,
