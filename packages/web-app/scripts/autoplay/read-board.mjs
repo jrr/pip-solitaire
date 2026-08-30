@@ -10,7 +10,7 @@
 // about the *app* rather than about the harness.
 //
 // The last thing it does is hand what it read to `core` as a `Position` — the
-// board the solver thinks with (#290). Everything about *cards* below therefore
+// board the solver thinks with. Everything about *cards* below therefore
 // speaks core's vocabulary: `CardText`'s two-character codes, and the card numbers
 // `Position` packs them into.
 
@@ -62,7 +62,7 @@ export async function readGeometry(page) {
         name: el.querySelector("[aria-label]")?.getAttribute("aria-label") ?? null,
         // Is this card in the accessible tree — i.e. would a screen reader be told
         // about it? A card the board draws underneath another is marked
-        // `aria-hidden` by reflow (#267), which is what lets a squared pile say
+        // `aria-hidden` by reflow, which is what lets a squared pile say
         // which of its cards is the live one. `closest`, not the card's own
         // attribute, so a card hidden by an ancestor counts as hidden too.
         announced: el.closest('[aria-hidden="true"]') === null,
@@ -86,8 +86,8 @@ export async function readGeometry(page) {
  * Within a pile the cards come back top-of-screen first, which for a `Fanned`
  * cascade is bottom-of-pile first — the order `GameState.cardsInPile` uses.
  * `Squared` piles stack every card at identical coordinates, so their order is
- * *not* recoverable from geometry — but since #267 the board says which card is
- * the live one by leaving only that one in the accessible tree. See
+ * *not* recoverable from geometry — but the board says which card is the live
+ * one by leaving only that one in the accessible tree. See
  * `foundationTop` below.
  */
 export function assignPiles(geom) {
@@ -107,8 +107,8 @@ export function assignPiles(geom) {
  *
  * A foundation is `Squared` — every card at identical coordinates, DOM order is
  * z-order — so its order can't be read from geometry, and it once came back as
- * `3H AH 4H 2H`. What can be read is which card the board *shows*: since #267
- * reflow leaves only the top card of a squared pile in the accessible tree, so
+ * `3H AH 4H 2H`. What can be read is which card the board *shows*: reflow leaves
+ * only the top card of a squared pile in the accessible tree, so
  * exactly one card here is announced, and that one is the top.
  *
  * That's the first reading. The second is the pile's contents, which under

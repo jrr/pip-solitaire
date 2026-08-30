@@ -1,4 +1,4 @@
-// The main menu's **Share Seed** button (#98).
+// The main menu's **Share Seed** button.
 //
 // The button hands over a link to the *deal* on the table — `?seed=N`, which deals
 // the identical board wherever it's opened. Two things about that are worth pinning,
@@ -19,7 +19,7 @@
 //
 // Rendered through `Html.create` like the other component tests here (see
 // `AboutFooter_test`), which needs no DOM beyond what jsdom gives. `Menu` takes a
-// props record per screen (#308), so only the main screen's is interesting here —
+// props record per screen, so only the main screen's is interesting here —
 // the other two are built because the pane's record wants them, not because anything
 // places them while `screen` is `Main`.
 open Vitest
@@ -107,7 +107,7 @@ let line = (menu): string =>
 // through `line`, and only one of them holds the layout still.
 let hasLine = (menu): bool => menu->find(".menu-share-line")->Option.isSome
 
-describe("Menu Share Seed button (#98)", () => {
+describe("Menu Share Seed button", () => {
   test("names the seed on the table, which is what the link carries", () => {
     // On the button itself, so the label and the number a player would read out are
     // one control rather than a caption that has to be associated with it.

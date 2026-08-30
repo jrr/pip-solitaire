@@ -1,6 +1,6 @@
-// The debug log's publish/subscribe seam (#213, reshaped by #271). Neither real
+// The debug log's publish/subscribe seam. Neither real
 // destination is asserted here — not the JS console, not the in-app panel — because
-// both are just subscribers now: the tests subscribe their own, which is exactly how
+// both are just subscribers: the tests subscribe their own, which is exactly how
 // the panel receives its lines, and check what does (and doesn't) come through.
 //
 // The property worth pinning is the *derived gate*: with nobody listening, a `log`
@@ -29,7 +29,7 @@ let entry = (~seq=1, ~label, ~value=None, ~spans=None): DebugLog.entry => {
   spans,
 }
 
-describe("DebugLog gate (#213)", () => {
+describe("DebugLog gate", () => {
   test("publishes nothing while nobody is listening", () => {
     // The gate in its shipped state: no subscribers at all.
     expect(DebugLog.enabled())->toBe(false)
@@ -75,7 +75,7 @@ describe("DebugLog gate (#213)", () => {
   })
 })
 
-describe("DebugLog entries (#271)", () => {
+describe("DebugLog entries", () => {
   test("an entry carries its label, its value as JSON, and a rising seq", () => {
     withSubscriber(
       (entries, _) => {
@@ -110,11 +110,11 @@ describe("DebugLog entries (#271)", () => {
   })
 })
 
-// The seam that carries a rendered board to the panel (#282). The property worth pinning
+// The seam that carries a rendered board to the panel. The property worth pinning
 // is *graceful degradation*: spans are additional to the plain text, never instead of it,
 // so the subscriber that can paint them does, and every other subscriber — the JS console,
 // and any test — keeps showing exactly what it showed before.
-describe("DebugLog.line (#282)", () => {
+describe("DebugLog.line", () => {
   let row: Render.line = [
     {text: "│", ink: Render.Plain},
     {text: `K♥  `, ink: Render.Suit(Rules.Red)},
@@ -163,7 +163,7 @@ describe("DebugLog.line (#282)", () => {
   })
 })
 
-describe("DebugLog.Ring (#271)", () => {
+describe("DebugLog.Ring", () => {
   test("keeps the newest entries and reports each one it drops", () => {
     let ring = DebugLog.Ring.make(~capacity=3)
     let dropped =

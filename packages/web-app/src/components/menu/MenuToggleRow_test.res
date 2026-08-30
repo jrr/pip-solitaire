@@ -1,5 +1,5 @@
-// The settings toggle row (#139), exercised in isolation now that it's a component
-// of its own (#307).
+// The settings toggle row, exercised in isolation now that it's a component
+// of its own.
 //
 // Three things are worth pinning about a row like this, and they're what this file
 // tests: it *says* both halves of its copy (a label with no description would leave
@@ -26,7 +26,7 @@ let text = (row, selector) => row->textIn(selector)
 
 let attr = (row, name) => row->attrOr(name)
 
-describe("MenuToggleRow (#307)", () => {
+describe("MenuToggleRow", () => {
   test("shows the label and the line explaining what the setting does", () => {
     let row = render(~on=false)
     expect(row->text(".menu-row__label"))->toBe("Auto-collect")

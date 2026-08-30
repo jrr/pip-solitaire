@@ -124,13 +124,13 @@ every card eases back to true. Nothing else about the layout changes.
 
 This is the part worth reading before touching anything.
 
-The tilt is keyed on **where a card rests**. The finish sweep (#160) begins by
+The tilt is keyed on **where a card rests**. The finish sweep begins by
 calling `reflowAll`, which lays every card onto its foundation slot *at once* —
 and therefore re-tilts every card at once — while the flight animations hold each
 card visually at its source until its staggered turn comes.
 
 Left alone, that is a boardful of cards all swinging to their landing angles, in
-unison, in place, before a single card has moved (#241). Small, but wrong in a
+unison, in place, before a single card has moved. Small, but wrong in a
 way that's hard to un-see: the board twitches, then plays.
 
 The fix is to give each card's *rotation* the same schedule as its *flight*:

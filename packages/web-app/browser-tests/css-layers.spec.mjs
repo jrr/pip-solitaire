@@ -1,4 +1,4 @@
-// The one thing the layer scheme can't survive losing (#306 follow-up).
+// The one thing the layer scheme can't survive losing.
 //
 // Since components import their own stylesheets, no file has a fixed position in
 // the bundle any more and the cascade is ordered by `@layer` instead — the four

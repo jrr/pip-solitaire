@@ -1,4 +1,4 @@
-// Tests for the shared command parser (`Command.res`, #273).
+// Tests for the shared command parser (`Command.res`).
 //
 // The parser is the seam two front ends meet at — the CLI's reducer driver and the
 // web app's debug console — so what's locked in here is the *grammar itself*, once,
@@ -232,8 +232,8 @@ describe("Command.parse", () => {
     test("undo", () => expect(Command.parse("undo"))->toEqual(Command.Undo))
     test("redo", () => expect(Command.parse("redo"))->toEqual(Command.Redo))
     test("finish", () => expect(Command.parse("finish"))->toEqual(Command.Finish))
-    // No arguments: what autoplay does is decided entirely by the board it's typed at
-    // (#291), so there's nothing about the line left to read.
+    // No arguments: what autoplay does is decided entirely by the board it's typed
+    // at, so there's nothing about the line left to read.
     test(
       "autoplay, down to a bare a",
       () => {
@@ -998,9 +998,9 @@ describe("Command.reason", () => {
   )
 })
 
-// What autoplay says when it played (#291, revised): the line's length, the time it
-// took to find, and what the search spent — the numbers that were missing from
-// "Autoplay played 58 moves.", which said the least interesting of the three.
+// What autoplay says when it played: the line's length, the time it took to find,
+// and what the search spent. A bare "Autoplay played 58 moves." says the least
+// interesting of the three.
 describe("Command.describeAutoplay", () => {
   test("says the length, the time and the cost", () =>
     expect(

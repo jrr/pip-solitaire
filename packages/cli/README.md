@@ -76,7 +76,7 @@ is going to type into.
 ### Where the code lives
 
 Neither the *grammar* nor the *board drawing* is the CLI's own: `Command.res` and
-`Render.res` both live in `core`, shared with the web app's debug console (#273),
+`Render.res` both live in `core`, shared with the web app's debug console,
 which types the same commands at the same reducer and prints the same board — see
 [`docs/command-grammar.md`](../../docs/command-grammar.md). `Repl` is the half
 that needs a session — the game in play, the history to undo over, the board to

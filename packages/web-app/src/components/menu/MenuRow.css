@@ -1,19 +1,12 @@
 @layer components {
   /* The menu's row (see MenuRow.res), and the three shapes its right-hand end takes.
 
-     These rules are the union of what `MenuToggleRow.css`, `MenuActionRow.css` and
-     `MenuNavRow.css` used to hold — three copies of the same box, differing only in
-     the two declarations noted below. Nothing here is new: the toggle row's box is
-     the base, and the two rules that were genuinely per-kind (the nav row's heavier
-     weight, the action row's disabled styling) are modifiers on it.
+     One box for all three kinds: the toggle row's is the base, and what's genuinely
+     per-kind (the nav row's heavier weight, the action row's disabled styling) is a
+     modifier on it. A fourth kind is a modifier here, not a fourth stylesheet.
 
-     `.menu-row__switch`'s rules used to trail the action/nav rows in the old single
-     Menu.css and were moved back beside the toggle in #307; nothing ties on
-     specificity across that move — a switch span only exists inside a `--switch`
-     row. Consolidating the three files here changes no computed style: the action
-     row's box lacked `justify-content`/`gap`, but it renders a single flex child, for
-     which `space-between` and `flex-start` place identically and a gap has nothing to
-     sit between. */
+     Nothing in here ties on specificity — `.menu-row__switch` only ever matches
+     inside a `--switch` row — so the rules can be read in any order. */
 
   /* A full-width control styled like the scene rows: label on the left, and
      whatever the row's kind puts on the right. It's a <button> throughout — the
@@ -21,7 +14,7 @@
      than a checkbox.
 
      "Styled like the scene rows" is now literal rather than a claim in a comment:
-     the box is the `--control-*` tokens in `styles/base.css` (#334), and what's
+     the box is the `--control-*` tokens in `styles/base.css`, and what's
      left here is the row's own flex layout. */
   .menu-row {
     display: flex;
@@ -48,8 +41,8 @@
   /* The row that is currently in effect, out of a set that picks between
      alternatives: the mounted scene among the scene rows. These three declarations
      are `SceneSwitcher.css`'s `.scene-menu__row--active`, arriving here with the
-     rows they highlight (#335) — the switcher's own `.scene-menu__row` was the same
-     `--control-*` box as `.menu-row` (#334), so what was left to move was the
+     rows they highlight — the switcher's own `.scene-menu__row` was the same
+     `--control-*` box as `.menu-row`, so what was left to move was the
      highlight alone.
 
      After the kind modifiers on purpose: `--active` and `--nav`/`--action` are the
@@ -66,7 +59,7 @@
      (no game on screen, or the encode still in flight). The muted styling and
      `cursor: default` that announce it were the same two declarations `.menu-button`
      carried, so they now sit once in `Menu.css` — the sheet for the menu as a
-     whole, which is the smallest thing that owns both kinds of control (#334). */
+     whole, which is the smallest thing that owns both kinds of control. */
 
   /* The label + description stack on the left. The label leads; the muted
      description under it says what the row does. `min-width: 0` lets a long

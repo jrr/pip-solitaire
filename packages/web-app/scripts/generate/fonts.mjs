@@ -1,5 +1,5 @@
 // Vendored-font generator — the self-hosted, offline-precached type the app and
-// cards render with (issue #114). It regenerates every font file the app ships,
+// cards render with. It regenerates every font file the app ships,
 // so the faces are reproducible from their upstream `@fontsource` sources rather
 // than opaque binaries checked in by hand — the same task-interface convention
 // as `mise run icons`. Run it with `mise run fonts`.

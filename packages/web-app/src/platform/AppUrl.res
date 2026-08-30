@@ -5,7 +5,7 @@
 //
 //   - `game` — which game to open, by its id (`?game=mini`), resolved against
 //     `Game.byId`. It's the half of a deal link that says *which game* the deal number
-//     belongs to (#353); `ShareLink.urlForDeal` writes it for any game but the default
+//     belongs to; `ShareLink.urlForDeal` writes it for any game but the default
 //     one, which is why the spelling lives over there beside `seed`'s. A name that
 //     isn't a game reads as `None` rather than as a scene to go looking for.
 //   - `scene` — which scene to mount, by its id (`?scene=gallery`), so a link always
@@ -22,10 +22,10 @@
 //   - `seed` — the deal number to open (`?seed=1`), pinning the otherwise random
 //     opening shuffle so a link (and the screenshot report) lands on the same board
 //     every time. It's a deal of whichever game is mounted, laid out by that game's
-//     own `deal` (#349), and `Game.default`'s when the URL names none — which falls out
+//     own `deal`, and `Game.default`'s when the URL names none — which falls out
 //     of `~default=Game.default.id` rather than needing a branch, and is the receiving
 //     end of `urlForDeal` omitting the game for that one. This is where the menu's
-//     **Share** button (#98) lands: the deal number a player shares arrives back here. Ignored when a `state` is forced (that mounts the fixed deal itself)
+//     **Share** button lands: the deal number a player shares arrives back here. Ignored when a `state` is forced (that mounts the fixed deal itself)
 //     or by the fixed-layout demos, which have no seed to vary.
 //   - `animate` — whether to play the opening-deal fly-in. On by default; `off`
 //     (also `no`/`false`/`0`) drops the cards straight into their resting places, so

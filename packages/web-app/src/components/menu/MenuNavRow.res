@@ -1,8 +1,7 @@
 // A nav row that opens a deeper menu screen, lifted out of `Menu` into its own
-// pure component (#307). The same box as the other rows but with a ›-chevron on
+// pure component. The same box as the other rows but with a ›-chevron on
 // the right in place of a switch, marking it as "goes somewhere" rather than
-// "flips here" — the Settings screen's **Debug** entry is the one of these today
-// (#191).
+// "flips here" — the Settings screen's **Debug** entry is the one of these today.
 //
 // The chevron and the heavier weight that goes with it both come from `<MenuRow>`'s
 // `Chevron` trailing, which is also what makes the chevron `aria-hidden`: it's a

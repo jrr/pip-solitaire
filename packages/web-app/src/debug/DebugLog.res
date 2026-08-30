@@ -1,4 +1,4 @@
-// Debug logging (#213): a developer aid narrating every UI↔Core interaction — the
+// Debug logging: a developer aid narrating every UI↔Core interaction — the
 // moves the board dispatches into `core`'s reducer and the Ok/Error results it hands
 // back, auto-collect, the finish sweep, undo, and each board (re)deal.
 //
@@ -7,8 +7,8 @@
 // the same traffic in different places:
 //
 //   - the **JS console** (`setConsoleEnabled`, driven by the Debug screen's "Console
-//     logging" switch, #213) — it renders each entry to a prefixed line with `format`;
-//   - the **drop-down debug console** (#271, `DebugConsole`) — the in-app panel, which
+//     logging" switch) — it renders each entry to a prefixed line with `format`;
+//   - the **drop-down debug console** (`DebugConsole`) — the in-app panel, which
 //     keeps its own bounded scrollback (`Ring` below) so the instrumentation is
 //     readable without devtools docked: in the installed PWA, on a phone, mid-demo.
 //
@@ -39,7 +39,7 @@ type entry = {
   time: float,
   label: string,
   value: option<string>,
-  // A line `core` rendered as a document rather than as text (#282): the ink-tagged
+  // A line `core` rendered as a document rather than as text: the ink-tagged
   // spans a board's row is made of, for a subscriber that can paint them. `None` for
   // every ordinary line, and *additional* to `label` rather than instead of it —
   // `label` always carries the plain text, so a subscriber that doesn't understand
@@ -100,7 +100,7 @@ let message = (label: string): unit =>
     publish(~label, ~value=None)
   }
 
-// One row of a document `core` rendered (#282) — a board's line, or a line of ordinary
+// One row of a document `core` rendered — a board's line, or a line of ordinary
 // reply text, which is the same thing with everything inked plain. The row's plain text
 // goes in `label` as usual, so this is a `message` that happens to carry the spans it was
 // flattened from: every existing subscriber keeps working, and one that can paint them
@@ -137,7 +137,7 @@ let setConsoleEnabled = (on: bool): unit =>
 
 // --- A bounded scrollback ------------------------------------------------------
 // What a viewer subscribes *with*: the last `capacity` entries, oldest dropped first.
-// The panel (#271) holds one of these and mirrors it into the DOM, so the bound is
+// The panel holds one of these and mirrors it into the DOM, so the bound is
 // what stops a long session's log from growing without limit.
 //
 // `push` hands back whichever entry fell off the front (`None` while there's still
@@ -156,7 +156,7 @@ module Ring = {
   let entries = (ring: t): array<entry> => ring.entries->Array.copy
   let length = (ring: t): int => Array.length(ring.entries)
 
-  // Drop everything, keeping the ring itself — what the console's `clear` verb (#273)
+  // Drop everything, keeping the ring itself — what the console's `clear` verb
   // does to the scrollback. In place rather than by handing back a fresh ring, because
   // the panel holds this one and a view rendering a ring it no longer shares would
   // start trimming against the wrong length.

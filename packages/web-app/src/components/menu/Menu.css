@@ -3,7 +3,7 @@
      screens lay their rows out in (see Menu.res).
 
      This file used to hold every rule the menu's contents needed too. Those moved
-     out with the components they style when the chrome was split up (#307) —
+     out with the components they style when the chrome was split up —
      MenuHeader.css, MenuGameButton.css, MenuMainScreen.css, MenuToggleRow.css,
      MenuActionRow.css, MenuNavRow.css — and each is imported by the component it
      styles, into this same `components` layer. No rule changed. What's left is what `Menu`
@@ -11,7 +11,7 @@
      share and the panel's flex column depends on — and the one rule that spans two of
      those components rather than belonging to either (the disabled control, below). */
 
-  /* The slide-over menu (#109): the title, the debug/demo scene rows, and the
+  /* The slide-over menu: the title, the debug/demo scene rows, and the
      version info. A full-screen overlay so it floats above the game; `hidden`
      (set by the chrome model) collapses it entirely when closed. */
   #menu-overlay {
@@ -32,7 +32,7 @@
     background: rgba(2, 6, 16, 0.6);
   }
 
-  /* …but it stops at the dock edge while a *side-docked* console is showing (#275),
+  /* …but it stops at the dock edge while a *side-docked* console is showing,
      so the two can be up together: the board dims and the log stays readable beside
      it, which is the whole point of dropping the menu/console exclusion in that one
      placement (open the menu, flip a debug setting, watch the line it emits). The
@@ -96,7 +96,7 @@
   /* The first of a screen's bottom-group elements is pushed to the foot of the
      panel by this auto top margin, so the sections above it stay up top and the
      empty space grows between the two groups. On the main menu that's the
-     Settings button (#191), just above the About footer; on the Settings screen
+     Settings button, just above the About footer; on the Settings screen
      it's the Settings toggle section, which drags Debug and the footer down with
      it. (The footer no longer needs its own `margin-top: auto` for this — see
      `.menu-footer`.) */
@@ -104,7 +104,7 @@
     margin-top: auto;
   }
 
-  /* **A disabled menu control, whichever kind it is** (#334). `.menu-row--action`
+  /* **A disabled menu control, whichever kind it is**. `.menu-row--action`
      and `.menu-button` each carried these same two declarations — an action row
      with no link to hand over, Share Seed on a board with no seed — so the rule
      lives once, here, rather than in each of the two component sheets.
@@ -127,7 +127,7 @@
     cursor: default;
   }
 
-  /* A small muted heading for a menu section (the Settings group, #139), set
+  /* A small muted heading for a menu section (the Settings group), set
      apart from the tappable rows below it. */
   .menu-section__heading {
     margin: 0 0 0.1rem;

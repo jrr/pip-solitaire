@@ -1,5 +1,5 @@
-// The menu's **Settings screen** (#191), lifted out of `Menu` into its own pure
-// component (#307): the player-facing preferences, the toggles a player can flip
+// The menu's **Settings screen**, lifted out of `Menu` into its own pure
+// component: the player-facing preferences, the toggles a player can flip
 // mid-game. `Menu` puts the About footer under it.
 //
 // Its content flows from the *top*: the panel grows the space *below* the sections
@@ -10,7 +10,7 @@
 //     the ✕ (`onClose`, still closes the whole menu). Its title doubles as the
 //     hidden-options tap target — see `<MenuHeader>` for why that handler is
 //     attached here and nowhere else;
-//   - the preference toggles (#139), one per row with a one-line description under
+//   - the preference toggles, one per row with a one-line description under
 //     its label; no section heading — the "Settings" title in the header already
 //     names them;
 //   - a **Debug** nav row (`onOpenDebug`) that opens the Debug screen — the debug
@@ -28,11 +28,11 @@ type props = {
   onTapSettingsTitle: unit => unit,
   autoCollect: bool,
   onToggleAutoCollect: unit => unit,
-  // "Sloppy placement" (#65) — the slight resting-card tilt, for players who'd
+  // "Sloppy placement" — the slight resting-card tilt, for players who'd
   // rather see cards stacked dead-square.
   cardTilt: bool,
   onToggleCardTilt: unit => unit,
-  // "Wiggle Waggle" (#235): not a bool — its `Motion.state` decides both the switch
+  // "Wiggle Waggle": not a bool — its `Motion.state` decides both the switch
   // position and the problem-only subtitle (see `<MenuWiggleRow>`).
   wiggle: Motion.state,
   onToggleWiggle: unit => unit,
@@ -40,7 +40,7 @@ type props = {
   // just the Wiggle Waggle row. A hidden row says nothing about whether its setting
   // is *on*: hiding leaves it running.
   revealHidden: bool,
-  // "Display content around notch" (#204) — whether the landscape rail may ride out
+  // "Display content around notch" — whether the landscape rail may ride out
   // into the corner wings beside the notch; off clamps every control inside the safe
   // area.
   notchDisplay: bool,
@@ -83,7 +83,7 @@ let make = ({
         onToggle=onToggleCardTilt
       />
       {
-        // "Wiggle Waggle" (#235) sits below "Sloppy placement" but is *not* nested
+        // "Wiggle Waggle" sits below "Sloppy placement" but is *not* nested
         // under it — the two are independent settings. It's hidden until the Settings
         // title has been tapped ten times (`HiddenOptions`) — not ready to be found by
         // a player yet, but reachable on a test device. Ten more taps hide the row

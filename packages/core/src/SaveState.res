@@ -1,5 +1,5 @@
 // Serialize a game's *progress* — its undo/redo history, the play tally beside it,
-// the clock, and which game it is a game of — to a string and back (#177), so the web
+// the clock, and which game it is a game of — to a string and back, so the web
 // app can persist an in-progress game and resume it after a reload, a closed tab, or a
 // crash.
 //
@@ -24,7 +24,7 @@ open Card
 let version = 1
 
 // What a save *is*: the line of play, the tally of how much play it took, and the
-// clock either side of it (#302). Three fields rather than one because they answer to
+// clock either side of it. Three fields rather than one because they answer to
 // different rules — the history is stepped by undo/redo, the tally only ever counts
 // up (see `Stats`), the clock is two wall-clock readings (see `Timing`) — and keeping
 // them apart is what lets `undo` stay the plain pop it has always been.
@@ -32,7 +32,7 @@ type t = {
   history: History.t<GameState.t>,
   stats: Stats.t,
   timing: Timing.t,
-  // **The game these piles are of** (#354), by id — `Game.t`'s `id`, the same string the
+  // **The game these piles are of**, by id — `Game.t`'s `id`, the same string the
   // scene picker, the CLI and `SavedGame`'s storage key use. `None` is a save that
   // doesn't say, which a reader resolves to the default game. An id rather than a
   // `Game.t` because a save is a *string* either side of this type, and a board that
@@ -66,7 +66,7 @@ let ofHistory = (history: History.t<GameState.t>): t => {
 
 // Could this save be read onto `game`? The id says which game the save *claims*; this
 // says whether the cards agree — a ten-pile state is not a save of a sixteen-pile board,
-// whatever it calls itself (#354).
+// whatever it calls itself.
 //
 // **Every state is checked, not just the present**: `past` and `future` are positions the
 // player can step to with Undo and Redo, so a save that fits only at the present would
@@ -183,7 +183,7 @@ let encodeStats = (s: Stats.t): JSON.t => JSON.Object(
   ]),
 )
 
-// The clock (#302), written as only the stamps that exist: an unfinished game has no
+// The clock, written as only the stamps that exist: an unfinished game has no
 // `"wonAt"`, and a game whose clock was never kept writes `{}`. Absence is how this
 // format says "not recorded", so a `null` or a `0` standing in for a missing stamp would
 // be a second, worse way to say it — and a `0` in particular is a real timestamp
@@ -248,7 +248,7 @@ let decodeCount = (json: JSON.t): option<int> =>
   | _ => None
   }
 
-// A *missing* `autoplays` (#291) is a save written before the counter existed and reads
+// A *missing* `autoplays` is a save written before the counter existed and reads
 // as none — the truthful answer, since a game played before autoplay could be reached
 // for can't have used it. A present-but-malformed one fails the object like any other
 // field.
@@ -272,7 +272,7 @@ let decodeStats = (json: JSON.t): option<Stats.t> =>
   | _ => None
   }
 
-// A stamp on the clock (#302): milliseconds since the epoch, so a whole number isn't
+// A stamp on the clock: milliseconds since the epoch, so a whole number isn't
 // required (fractional milliseconds are a legal `Date.now()` in some browsers) but a
 // finite, non-negative one is — a game dealt before the epoch is a blob we didn't write.
 let decodeStamp = (dict: Dict.t<JSON.t>, key: string): option<option<float>> =>
@@ -282,7 +282,7 @@ let decodeStamp = (dict: Dict.t<JSON.t>, key: string): option<option<float>> =>
   | Some(_) => None
   }
 
-// The game a save names (#354). Any string is accepted, id or not: whether it names a
+// The game a save names. Any string is accepted, id or not: whether it names a
 // game this build knows is a question about `Game.all`, which is the reader's to ask and
 // not this format's.
 let decodeGameId = (dict: Dict.t<JSON.t>): option<option<string>> =>
@@ -307,7 +307,7 @@ let decodeTiming = (json: JSON.t): option<Timing.t> =>
 // Serialize a saved game — the whole undo/redo history, and the tally beside it —
 // to a storable string.
 let encode = (s: t): string => {
-  // The game (#354), written only when the save names one — the same way the clock
+  // The game, written only when the save names one — the same way the clock
   // writes only the stamps it has (`encodeTiming`), so absence keeps meaning exactly one
   // thing on the way back in. Beside `"v"` because the two together are what a reader
   // has to agree with before the cards mean anything.
@@ -334,9 +334,9 @@ let encode = (s: t): string => {
 // not valid JSON, the wrong (or missing) format version, or any structural
 // mismatch — a card that isn't a real card, a field of the wrong JSON shape. The
 // caller treats `None` as "no saved game" and deals fresh, so a corrupt or
-// outdated blob degrades to a new board instead of an error (#177).
+// outdated blob degrades to a new board instead of an error.
 //
-// A blob with no `"stats"` (#289), no `"timing"` (#302) or no `"game"` (#354) is *not*
+// A blob with no `"stats"`, no `"timing"` or no `"game"` is *not*
 // one of those failures — it's an older save, and it decodes. That's the whole reason the
 // version didn't move; see `docs/save-and-share.md` for what each absence reads as.
 let decode = (raw: string): option<t> => {

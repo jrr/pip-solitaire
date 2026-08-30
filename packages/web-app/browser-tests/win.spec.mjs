@@ -1,4 +1,4 @@
-// The web win flow, end to end (issue #121): load the near-won FreeCell position
+// The web win flow, end to end: load the near-won FreeCell position
 // (`?state=almost-won`), play the single winning move by dragging the pending
 // King onto its foundation, and confirm the win overlay appears — then that New
 // Game tears it down.
@@ -6,7 +6,7 @@
 // Needs a real browser for the input half: the move is a pointer drag across the
 // board, which jsdom can't dispatch against a layout it doesn't have.
 //
-// Run twice, once per input path (issue #244). TableScene binds Pointer Events
+// Run twice, once per input path. TableScene binds Pointer Events
 // deliberately — "pointerdown/pointermove/pointerup instead of mouse + touch, so
 // one code path covers phone and desktop" — and this is what checks that the
 // claim holds: the same drag, once from a mouse on a roomy desktop viewport and
@@ -65,7 +65,7 @@ for (const input of inputs) {
       await page.goto("/?game=freecell&state=almost-won&animate=off")
 
       // Check the premise before the drag: a phone-sized desktop context reports
-      // no touch at all (that was the old screenshot harness's bug, #244), and
+      // no touch at all (that was the old screenshot harness's bug), and
       // this case would then be the mouse case with extra steps.
       const touchCapable = await page.evaluate(
         () => "ontouchstart" in window && navigator.maxTouchPoints > 0,
@@ -96,13 +96,13 @@ for (const input of inputs) {
       await expect(page.locator(".win-panel__title")).toBeVisible()
       await expect(page.locator(".win-panel__title")).not.toHaveText("")
 
-      // …and what the game cost (#289). A `?state=` board starts a fresh tally, so the
+      // …and what the game cost. A `?state=` board starts a fresh tally, so the
       // single drag above is the whole game: one move, no undos. The counting rules
       // are `Stats_test`'s and the wiring is `TableScene_test`'s — what only a browser
       // can show is that a real drag on a real board reaches the counter at all.
       await expect(page.locator(".win-panel__stats")).toHaveText("1 move · 0 undos")
 
-      // …and how long it took (#302). The board was dealt when the page loaded and won
+      // …and how long it took. The board was dealt when the page loaded and won
       // by the drag above, so the digits belong to however long this test took to get
       // here — what a browser can show that a unit test can't is that a real deal
       // starts a real clock and a real drag stops it. The reading itself is
@@ -125,7 +125,7 @@ for (const input of inputs) {
       expect(Math.abs(room.above - room.below)).toBeLessThan(8)
 
       // By name, not by class: the panel grew a second button when the victory share
-      // landed (#264), and this scenario carries a deal number so both are on offer
+      // landed, and this scenario carries a deal number so both are on offer
       // here. `share-win.spec.mjs` covers the other one.
       await page.getByRole("button", { name: "New Game" }).click()
       await expect(overlay).toHaveCount(0)

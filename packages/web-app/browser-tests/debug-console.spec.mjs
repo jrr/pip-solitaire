@@ -1,5 +1,5 @@
-// The drop-down debug console (#271): press `` ` `` and the log the app already
-// publishes (#213) drops over the board, live, with no devtools in sight.
+// The drop-down debug console: press `` ` `` and the log the app already
+// publishes drops over the board, live, with no devtools in sight.
 //
 // Browser-only by nature, on all three counts. The way in is a *physical key*
 // (`event.code === "Backquote"`, so the panel opens on layouts where backtick is a
@@ -23,7 +23,7 @@ const consoleLines = (page) => page.locator("#debug-console-lines li")
 const consoleInput = (page) => page.locator("#debug-console-input")
 
 // Open the console and wait for the prompt to have taken the keyboard — focus follows
-// the panel (#273), so this is also the premise for every `type` below.
+// the panel, so this is also the premise for every `type` below.
 async function openConsole(page) {
   await page.keyboard.press("Backquote")
   await expect(consolePanel(page)).toBeVisible()
@@ -36,7 +36,7 @@ async function runCommand(page, line) {
   await page.keyboard.press("Enter")
 }
 
-// ⇧` steps the console round its four placements (#275) — top, side, bottom, full. The
+// ⇧` steps the console round its four placements — top, side, bottom, full. The
 // console is keyboard-only, so its placement is too: same physical key as the toggle,
 // shifted.
 const pressPlace = (page) => page.keyboard.press("Shift+Backquote")
@@ -211,7 +211,7 @@ test("an open console takes no input away from the board", async ({ page }) => {
   await expect(page.locator(".win-overlay")).toHaveCount(1)
 })
 
-// --- The input line (#273) ---------------------------------------------------------
+// --- The input line ---------------------------------------------------------
 //
 // The claim under test is that a typed command *plays the game* — not that it prints
 // something plausible. So the assertions are about the board: a card ends up somewhere
@@ -301,7 +301,7 @@ test("a slot name and a named card reach the same foundation a pile index does",
   await expect(consoleLines(page).filter({ hasText: "No such tableau column: T9" })).toHaveCount(1)
 })
 
-// Autoplay (#291), in the only place it can be seen doing what it's for: a real deal,
+// Autoplay, in the only place it can be seen doing what it's for: a real deal,
 // played out by the solver, ending on the real victory screen. The unit tests pin the
 // pieces — the line `core` finds (`Solver_test`), the steps the board records and the
 // button it withholds (`TableScene_test`) — but "type one word and the game plays
@@ -359,7 +359,7 @@ test("autoplay plays the deal out and wins it", async ({ page }) => {
 // A run that kept stamping its precomputed states over a board the player had undone
 // would be the one way an animated autoplay is worse than the instant one, so an undo
 // (or a drag, or a New Game — all of them the same signal) ends it where it stands.
-test("taking the board back mid-line stops the solver (#291)", async ({ page }) => {
+test("taking the board back mid-line stops the solver", async ({ page }) => {
   // The search runs before the first card moves, and it's the slow part here — the
   // rest is a couple of moves and a deliberate wait.
   test.setTimeout(180_000)
@@ -383,7 +383,7 @@ test("taking the board back mid-line stops the solver (#291)", async ({ page }) 
   await expect(page.locator(".win-overlay")).toHaveCount(0)
 })
 
-test("a win the solver played keeps its Share button to itself (#291)", async ({ page }) => {
+test("a win the solver played keeps its Share button to itself", async ({ page }) => {
   // The almost-won position, won two ways on the same board. By hand it's shareable —
   // that's `share-win.spec.mjs`'s whole subject — so the *only* difference here is who
   // played the last move, which is exactly the claim being made.
@@ -444,7 +444,7 @@ test("home finds the foundation itself, and undo/redo walk the same history", as
 // because the two refusals read completely differently, and the panel used to give the
 // wrong one: it resolved the target through `validMoves`, which returns nothing at all
 // for a buried card, so it answered "no foundation is ready" about a foundation that was
-// sitting there waiting. Since the verb became `core`'s (#298) it takes the terminal's
+// sitting there waiting. Since the verb became `core`'s it takes the terminal's
 // route — find the foundation, dispatch, let the reducer say why not — and the answer is
 // the true one.
 test("home on a buried card says it's buried, not that nothing wants it", async ({ page }) => {
@@ -466,8 +466,8 @@ test("a rejected command explains itself in the same words the CLI uses", async 
   await settleBoard(page)
   await openConsole(page)
 
-  // The shared parser's prose, verbatim: this is the point of #273's split, checked from
-  // the far side of it.
+  // The shared parser's prose, verbatim: the point of putting the grammar in `core`,
+  // checked from the far side of it.
   await runCommand(page, "move XX 0")
   await expect(
     consoleLines(page).filter({ hasText: `Not a card or a place to move from: "XX"` }),
@@ -583,7 +583,7 @@ test("the prompt remembers what was typed, and clear empties the log", async ({ 
   await expect(consoleInput(page)).toHaveValue("clear")
 })
 
-// The flight itself (#273). A card moved by a command must *fly* — over the fan it's
+// The flight itself. A card moved by a command must *fly* — over the fan it's
 // leaving, not under it — rather than take the plain left/top slide `.stacking-card`
 // would give it for free, because `reflowAll` relayers every pile the instant it runs
 // and would drop the departing card behind cards it's still on top of.
@@ -675,7 +675,7 @@ test("deal <game> <position> poses the board", async ({ page }) => {
   // One move from won: the pending King is parked in the first free cell.
   const cell = await page.locator(".drop-zone").nth(0).boundingBox()
   expect(encloses(cell, await cardBox(page, PENDING_KING))).toBe(true)
-  // And the deal it descends from is reported, exactly as the menu row reports it (#264).
+  // And the deal it descends from is reported, exactly as the menu row reports it.
   await page.getByRole("button", { name: "Open menu" }).click()
   await expect(page.getByRole("button", { name: /^Share Seed/ })).toHaveText("Share Seed 264")
 })
@@ -769,7 +769,7 @@ test.describe("a log line wider than the panel", () => {
 })
 
 // The driver's flags, typed. Auto-collect has a menu switch; the column-reorder house
-// rule (#159) has no control anywhere, so the console is the only way to reach it.
+// rule has no control anywhere, so the console is the only way to reach it.
 test("set changes the driver's flags, through the app's own switch", async ({ page }) => {
   await page.goto(FREECELL)
   await settleBoard(page)
@@ -823,7 +823,7 @@ test("the backtick still closes the console from inside the prompt", async ({ pa
   await expect(consolePanel(page)).toBeHidden()
 })
 
-// --- The four placements (#275) ---------------------------------------------------
+// --- The four placements ---------------------------------------------------
 //
 // ⇧` steps the panel through top → side → bottom → full and round again. The side dock is
 // the one with an argument behind it: the top overlay is the wrong axis for FreeCell in a
@@ -831,8 +831,8 @@ test("the backtick still closes the console from inside the prompt", async ({ pa
 // the available *height*, so a band across the top eats the scarce dimension and shrinks
 // every card, while past a point the layout throws surplus *width* away as equal
 // left/right margins. Docked, the console is built out of that discard — and the board is
-// told about it in exactly one way: `.table-board`, the box its `ResizeObserver` watches
-// (#172), gets narrower. The other three cover the board rather than displacing it, so
+// told about it in exactly one way: `.table-board`, the box its `ResizeObserver`
+// watches, gets narrower. The other three cover the board rather than displacing it, so
 // what they have to prove is what they cover and whether the game underneath is still
 // reachable through them.
 //
@@ -968,7 +968,7 @@ test.describe("docked beside the board", () => {
 test.describe("docked into a window with nothing to spare", () => {
   // Wide enough to dock, but not wide enough to do it out of discarded margin: the board
   // is at its `maxScale` ceiling undocked and drops below it once the dock is taken, so
-  // here the cards really do rescale — the `ResizeObserver` path (#172) doing its work.
+  // here the cards really do rescale — the `ResizeObserver` path doing its work.
   test.use({ viewport: { width: 1000, height: 900 } })
 
   test("the board reflows into the remaining width", async ({ page }) => {
@@ -1163,7 +1163,7 @@ test.describe("over the whole window", () => {
   })
 })
 
-// The panel paints the board itself (#282). `core` names the *role* each run of characters
+// The panel paints the board itself. `core` names the *role* each run of characters
 // plays — a red suit's face, a title, the board's furniture — and each front end answers in
 // its own alphabet: ANSI escapes in the terminal, these classes here. So the check is that
 // the roles arrive intact and reach the right glyphs, not that any particular colour was

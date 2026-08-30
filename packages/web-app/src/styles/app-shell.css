@@ -19,7 +19,7 @@
      fill it (`align-items: stretch`) rather than shrink-wrapping its content.
      Full-bleed: negative horizontal margins cancel the body's horizontal
      padding (safe-area inset + 1.5rem) so the shaded band spans the page edge
-     to edge, rather than floating in a padded column (issue #59). */
+     to edge, rather than floating in a padded column. */
   #scene-area {
     flex: 1;
     align-self: stretch;
@@ -32,9 +32,9 @@
 
   /* The shaded band behind the scene. A conventional full-width section:
      edge-to-edge shading, horizontal rules top and bottom (no left/right
-     borders), and no corner radius (issue #59). It fills the whole scene
+     borders), and no corner radius. It fills the whole scene
      area and centers the active scene within it. The band now runs to the
-     bottom edge (body no longer pads there — #199), so it carries the
+     bottom edge (body no longer pads there), so it carries the
      home-indicator clearance itself as `padding-bottom`: the shading still
      bleeds under the indicator while the playfield inside is inset above it, so
      the height fit keeps the cards clear. Off a home-indicator device the inset

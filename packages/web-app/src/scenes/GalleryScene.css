@@ -1,5 +1,5 @@
 @layer scenes {
-  /* Card gallery scene (issue #36): the full 52-card deck, each a generated
+  /* Card gallery scene: the full 52-card deck, each a generated
      inline <svg> from CardArt, laid out in a responsive grid. Cards size
      themselves to the column via `width: 100%` and keep their 5:7 ratio from
      the viewBox, so the grid stays legible as it reflows. */

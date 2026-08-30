@@ -1,7 +1,7 @@
 open Vitest
 open Card
 
-// `Position` is a *mirror* of the rules, not a second set of them (#290) — so what
+// `Position` is a *mirror* of the rules, not a second set of them — so what
 // has to be tested is the mirroring itself. Every test here holds the packed model
 // up against `Rules`/`Reducer` on the same board and insists they say the same
 // thing: the same legal moves, the same supermove limit, the same auto-collect,

@@ -1,6 +1,5 @@
 // The devices the screenshot report is shot on — taken from Playwright's own
-// `devices` registry rather than a hand-rolled `{ width, height, dpr }` list
-// (issue #244).
+// `devices` registry rather than a hand-rolled `{ width, height, dpr }` list.
 //
 // The registry entry for a phone is a `DeviceDescriptor`: viewport, screen,
 // deviceScaleFactor, userAgent, and — the two that matter here — `isMobile` and

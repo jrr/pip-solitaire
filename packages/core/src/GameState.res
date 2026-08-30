@@ -1,7 +1,7 @@
 // An immutable snapshot of *where every card currently rests* — the in-progress
 // gameplay state — kept deliberately separate from the board *definition*
 // (`Game.t`, the empty board plus its rules). This is the first migration step
-// toward M1 (#77): the load-bearing roadmap principle is that all game state
+// toward M1: the load-bearing roadmap principle is that all game state
 // lives in `core` as immutable data plus pure transition functions, with the UI
 // holding only transient view state. Today the live "where is each card" lives
 // as mutable refs in the view (`TableScene`); this type is where it will move.
@@ -94,12 +94,12 @@ let locationOf = (state: t, card: card): option<location> => {
   }
 }
 
-// Do two snapshots rest every card the same way (#215)? True when the piles hold
+// Do two snapshots rest every card the same way? True when the piles hold
 // the same cards in the same order and the loose table matches. Compared explicitly
 // via `sameCard`, matching how identity is decided everywhere else here (see
 // `sameCard`) rather than a whole-structure `==`. This lets a driver ask "did this
 // move actually change the board?" and treat a lawful no-op — an identity re-drop,
-// or a `MoveColumn` with `from == to` — as un-undoable (#85) rather than a fresh
+// or a `MoveColumn` with `from == to` — as un-undoable rather than a fresh
 // step, and log it as a no-op instead of "accepted".
 let equal = (a: t, b: t): bool => {
   let sameCards = (xs: array<card>, ys: array<card>) =>
@@ -112,12 +112,12 @@ let equal = (a: t, b: t): bool => {
   sameCards(a.loose, b.loose)
 }
 
-// Has the game been won (#121)? True when every foundation on the board holds a
+// Has the game been won? True when every foundation on the board holds a
 // complete run of the board's own deck — for FreeCell's `Cards.standard`, an
-// Ace→King run: the natural end of a game, and the "done" marker of M2 (#98). Win
+// Ace→King run: the natural end of a game, and the "done" marker of M2. Win
 // detection just *observes* the foundations: it targets the foundation group by
-// role (`Game.pileIndices`, #94) and asks the per-pile check whether each is
-// finished (`Rules.isCompleteRun`, #76, against `game.deck` — #351), so how the
+// role (`Game.pileIndices`) and asks the per-pile check whether each is
+// finished (`Rules.isCompleteRun`, against `game.deck`), so how the
 // cards got there — a drag, a later auto-to-foundation — is beside the point.
 //
 // A board with *no* foundations is never won: `Array.every` over an empty group is

@@ -1,7 +1,7 @@
 // The `raster` scene: all 52 cards, drawn one of three ways, with the sheet
 // staying put as you switch between them.
 //
-// This is step one of the victory animation (#225). The animation wants to fling
+// This is step one of the victory animation. The animation wants to fling
 // hundreds of card images around at 60fps, which means pre-rasterized sprites
 // rather than 52 live SVG text subtrees — and rasterizing a text-heavy SVG is
 // the part that doesn't work by default (see `CardRaster`'s header for why).
@@ -24,7 +24,7 @@
 // between renderings but the pixels under test, so anything that shifts is real.
 //
 // A third rendering lived here for a while: a second sprite painted with the
-// canvas 2D API, so the two could be picked between by looking (#225). It lost
+// canvas 2D API, so the two could be picked between by looking. It lost
 // and was removed; `CardRaster`'s header keeps the account of why. What's left is
 // the comparison that was always the point — the sprite against the live card.
 //

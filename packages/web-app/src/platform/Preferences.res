@@ -1,10 +1,10 @@
-// Persist a player's menu preferences (#139) across sessions in the browser's
+// Persist a player's menu preferences across sessions in the browser's
 // localStorage, so a toggle they flip in the menu is still set on the next launch.
 // Only the web app persists preferences — the CLI takes its `Options` per run — so
 // this binding lives here rather than in `core`. The driver preferences speak the
 // shared `Options.t` (currently just `autoCollect`) so the stored shape tracks the
 // same seam both drivers already read; the *presentation-only* preferences (the
-// hand-placed card tilt, #65) are web-app chrome the CLI has no notion of, so they
+// hand-placed card tilt) are web-app chrome the CLI has no notion of, so they
 // live outside `Options` and are persisted under their own keys here.
 //
 // localStorage access can throw outright (Safari private mode, a sandboxed frame,
@@ -58,7 +58,7 @@ let saveFlag = (key, value) =>
 // anything missing, unparseable, or unreadable.
 let load = (): Options.t => {
   let autoCollect = loadFlag(autoCollectKey, ~fallback=Options.default.autoCollect)
-  // `allowColumnReorder` (#159) has no UI toggle yet, so it isn't persisted — it
+  // `allowColumnReorder` has no UI toggle yet, so it isn't persisted — it
   // always takes the shipped default (our variant's house rule, on). When a
   // settings control is wired later it can start saving its own key here.
   {autoCollect, allowColumnReorder: Options.default.allowColumnReorder}
@@ -67,13 +67,13 @@ let load = (): Options.t => {
 // Persist the current driver preferences.
 let save = (options: Options.t) => saveFlag(autoCollectKey, options.autoCollect)
 
-// The hand-placed card tilt (#65) defaults on, matching the shipped look; the
+// The hand-placed card tilt defaults on, matching the shipped look; the
 // menu's toggle lets a player who'd rather see cards stacked dead-square turn it
 // off, and this remembers that across launches.
 let loadCardTilt = (): bool => loadFlag(cardTiltKey, ~fallback=true)
 let saveCardTilt = (enabled: bool) => saveFlag(cardTiltKey, enabled)
 
-// "Wiggle Waggle" (#235): whether the player wants shake-to-jostle on, defaulting
+// "Wiggle Waggle": whether the player wants shake-to-jostle on, defaulting
 // off. What's persisted is *intent*, not the OS permission — the grant can be
 // revoked behind us, so on relaunch the first board tap re-asks `Motion.requestAccess`
 // (which resolves silently if still granted) and the switch reflects whatever it
@@ -81,7 +81,7 @@ let saveCardTilt = (enabled: bool) => saveFlag(cardTiltKey, enabled)
 let loadWantsShake = (): bool => loadFlag(wantsShakeKey, ~fallback=false)
 let saveWantsShake = (enabled: bool) => saveFlag(wantsShakeKey, enabled)
 
-// "Display content around screen notch" (#204) defaults on, matching today's
+// "Display content around screen notch" defaults on, matching today's
 // shipped landscape layout: the Menu/Undo rail rides out into the corner "wings"
 // beside the notch, sharing the strip that's unsafe anyway (see CutoutSide and the
 // wing-placement rules in styles/landscape-rail.css). A player on untested phone geometry, where
@@ -93,7 +93,7 @@ let saveWantsShake = (enabled: bool) => saveFlag(wantsShakeKey, enabled)
 let loadNotchDisplay = (): bool => loadFlag(notchDisplayKey, ~fallback=true)
 let saveNotchDisplay = (enabled: bool) => saveFlag(notchDisplayKey, enabled)
 
-// "Console logging" (#213) defaults off — a developer aid that narrates the app's
+// "Console logging" defaults off — a developer aid that narrates the app's
 // UI↔Core traffic to the JS console, not something a player wants running. Unlike
 // the session-only safe-area overlay it *is* persisted, so a developer who turns it
 // on still sees logs after a reload (see DebugLog / the menu's Debug screen).
@@ -107,7 +107,7 @@ let saveDebugLog = (enabled: bool) => saveFlag(debugLogKey, enabled)
 let loadRevealHidden = (): bool => loadFlag(revealHiddenKey, ~fallback=false)
 let saveRevealHidden = (revealed: bool) => saveFlag(revealHiddenKey, revealed)
 
-// Where the debug console sits (#275): over the top of the board, docked into the width
+// Where the debug console sits: over the top of the board, docked into the width
 // beside it, along the bottom, or over the whole window (`ConsoleDock`). Persisted like
 // `debugLog` rather than left as session state, because the whole point of a placement
 // you flip by hand — rather than an automatic breakpoint — is that it stays flipped. It

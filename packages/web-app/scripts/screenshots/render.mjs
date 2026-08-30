@@ -12,8 +12,8 @@
 // The devices come from Playwright's `devices` registry (lib/devices.mjs), so a
 // phone shot is a phone: meta viewport honoured, touch events on, and
 // `(pointer: coarse)` / `(hover: none)` resolving the way they do on the real
-// thing. Before #244 this list was hand-rolled sizes, which meant the report was
-// phone-shaped *desktop* Chromium and any touch-only CSS was invisible in it.
+// thing. Don't hand-roll sizes here instead: that makes the report phone-shaped
+// *desktop* Chromium, and any touch-only CSS invisible in it.
 //
 // How it works, end to end:
 //   1. Serve the already-built web app (packages/web-app/dist) with Vite's own
@@ -47,8 +47,8 @@ const outDir = path.join(webAppRoot, "screenshots");
 //     and shot with the fly-in suppressed (`animate=off`) so it captures the settled
 //     opening layout rather than a frame mid-deal (see AppUrl's seed/animate knobs).
 //   - Mid-game — a representative in-progress FreeCell layout.
-//   - Finish — the finishable endgame (#132), shot to show the "Finish" button.
-//   - Card raster — not a board at all: the sprite-fidelity sheet (#225), all 52
+//   - Finish — the finishable endgame, shot to show the "Finish" button.
+//   - Card raster — not a board at all: the sprite-fidelity sheet, all 52
 //     of the bitmaps the victory animation will blit. It's here because the failure
 //     mode it guards against — a rasterization that loses the card's fonts — is
 //     invisible to any assertion and obvious to an eye, which is exactly what a
@@ -57,7 +57,7 @@ const outDir = path.join(webAppRoot, "screenshots");
 //     device-pixel ratio reads as slightly soft, and only the retina shots show it.
 //     The scene draws one rendering at a time (`?raster=live|svg|canvas`); the plain
 //     query shoots its default, the sprite path that ships.
-//   - Menu — the slide-over menu open on its root screen (#324), the one piece of
+//   - Menu — the slide-over menu open on its root screen, the one piece of
 //     chrome the board shots never show. It's the panel that has to fit a narrow
 //     phone and a notch's safe area alike, so how it lands per device is worth an
 //     eye. The nested Settings/Debug screens are deliberately not shot: the root

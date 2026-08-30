@@ -1,11 +1,11 @@
-// The Wiggle Waggle switch's pure helpers (#235): the state → is-it-on mapping and
+// The Wiggle Waggle switch's pure helpers: the state → is-it-on mapping and
 // the problem-only subtitle. These are what the Settings row renders, so they're
 // worth pinning without a device — the capability/permission side (`requestAccess`,
 // the subscription) needs a real sensor and secure origin and is verified on a phone.
 
 open Vitest
 
-describe("Motion switch state (#235)", () => {
+describe("Motion switch state", () => {
   test("only the listening state reads as on", () => {
     expect(Motion.isOn(Motion.On))->toBe(true)
     expect(Motion.isOn(Motion.Off))->toBe(false)

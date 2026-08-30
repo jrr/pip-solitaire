@@ -1,4 +1,4 @@
-// Size-stability test for the `AboutFooter` component (#201): the footer has to be
+// Size-stability test for the `AboutFooter` component: the footer has to be
 // the same height whether or not an update is waiting, or it shoves the version
 // line and everything above it the moment an update arrives (see `AboutFooter.res`).
 // The Update button stays laid out at all times and is hidden with *visibility*
@@ -38,7 +38,7 @@ let render = (~updateVisible): Html.element =>
 
 let button = (footer): option<Html.element> => footer->find(".menu-update__button")
 
-describe("AboutFooter size stability (#201)", () => {
+describe("AboutFooter size stability", () => {
   let noUpdate = render(~updateVisible=false)
   let updateWaiting = render(~updateVisible=true)
 

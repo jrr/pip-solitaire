@@ -10,7 +10,7 @@
 // board, share it, then open the resulting link cold and confirm the same position
 // comes back — card for card, in the same place.
 //
-// Since #354 that includes *which board*: the blob names its game, and a link shared
+// That includes *which board*: the blob names its game, and a link shared
 // from Mini has to bring Mini's scene forward on a cold open rather than dropping a
 // ten-pile position onto the sixteen-pile board the app launches into.
 
@@ -30,7 +30,7 @@ test.use({
 const MIDGAME = "/?game=freecell&state=midgame&animate=off"
 
 // A board of a *different* game, for the half of the round trip that only a second game
-// can ask (#354): the blob names the game it was shared from, and the link has to open
+// can ask: the blob names the game it was shared from, and the link has to open
 // that game rather than whichever board the app happens to launch into. Deal #1 of Mini,
 // so the position is fixed and its 20 cards are unmistakably not FreeCell's 52.
 const MINI = "/?game=mini&seed=1&animate=off"
@@ -111,11 +111,11 @@ test("a shared link takes over the saved game", async ({ page }) => {
 })
 
 test("a shared link opens the game it was shared from", async ({ page }) => {
-  // The link carries the cards and, since #354, the name of the board they belong to.
+  // The link carries the cards *and* the name of the board they belong to.
   // Nothing in the URL says which game — no `?game=`, only the fragment — so opening it
   // on Mini is the app reading the name out of the blob and bringing that scene forward.
-  // Before that, the position landed on whatever was mounted, which is the FreeCell the
-  // app launches into: 52 cards under a 20-card game's history.
+  // Without the name the position lands on whatever was mounted, which is the FreeCell
+  // the app launches into: 52 cards under a 20-card game's history.
   await page.goto(MINI)
   await settleBoard(page)
   const shared = await readBoard(page)

@@ -21,7 +21,7 @@
 // into per-card sprites. See `markup` for why: it is the difference between a
 // ~60ms build and a ~400ms one, and it costs nothing.
 //
-// This was one of two strategies for a while (#225). The other painted the face
+// This was one of two strategies for a while. The other painted the face
 // with the canvas 2D API — `roundRect` and `fillText`, no font embedding needed
 // because canvas sees the document's own fonts — and the `raster` scene existed
 // to pick between them by looking. It lost, and was removed once it had. It was
@@ -109,7 +109,7 @@ type url
 // --- The faces the card face uses --------------------------------------------
 // Only these two: the rank (and its corner pip's sibling) is Libre Franklin 600,
 // the suit glyphs are the merged "Pip Suits" subset. Both are vendored into
-// public/fonts by `mise run fonts` (#114). Weight is spelled out because the
+// public/fonts by `mise run fonts`. Weight is spelled out because the
 // embedded copy has to declare the same weight the card art asks for — a
 // `@font-face` at the default 400 wouldn't match `font-weight: 600` text.
 //

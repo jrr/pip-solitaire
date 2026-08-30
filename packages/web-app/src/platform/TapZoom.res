@@ -14,7 +14,7 @@
 // `touchend` of a double-tap. It is not a wider policy than the stylesheet's —
 // it is the stylesheet's policy, enforced. Pinch-zoom is untouched, which is the
 // point: `user-scalable=no` in the meta viewport would settle all of this in one
-// line and take pinch with it, and index.html keeps pinch deliberately (#113).
+// line and take pinch with it, and index.html keeps pinch deliberately.
 //
 // The board's send-home double-tap is unaffected. It is timed off Pointer Events
 // (TableScene's `doubleTapMs`), and preventing a touch event's default suppresses

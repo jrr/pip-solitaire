@@ -1,4 +1,4 @@
-// The win overlay's Share button, end to end (#264).
+// The win overlay's Share button, end to end.
 //
 // What the feature promises is a *boast that's also an invitation*: when you win, the
 // button hands over a message naming the deal you beat and a link that deals that same
@@ -93,8 +93,8 @@ test("a won game shares the deal it came from, and that link deals it", async ({
 
   // The message: the suits that make it recognisable in a chat, the game it was won on
   // and the deal that was beaten, and what it cost — one move, since a forced position
-  // starts a fresh tally (#289). No undos were used, so the message says nothing about
-  // them. The game's name is read off the game since #353, not spelled into the string,
+  // starts a fresh tally. No undos were used, so the message says nothing about
+  // them. The game's name is read off the game, not spelled into the string,
   // so what's checked here is that the board on the table is the one being named.
   expect(shared).toContain(`♣️♥️♠️♦️ Pip FreeCell #${ALMOST_WON_DEAL}`)
   expect(shared).toContain("Solved in 1 move")
@@ -103,7 +103,7 @@ test("a won game shares the deal it came from, and that link deals it", async ({
   // …and the link. It has to be the *deal*, not the position: a link to the board as
   // it stands would hand the recipient a solved game, which is the one thing this share
   // must never do. It's the same link the menu's Share Seed builds, down to leaving
-  // `?game=` out for the default game (#353) — one function builds both.
+  // `?game=` out for the default game — one function builds both.
   const url = new URL(shared.slice(shared.indexOf("http")))
   expect(url.searchParams.get("seed")).toBe(ALMOST_WON_DEAL)
   expect(url.searchParams.get("game")).toBe(null)
@@ -119,7 +119,7 @@ test("a won game shares the deal it came from, and that link deals it", async ({
 })
 
 test("the deal it hands over reads the same spelled out in full", async ({ page }) => {
-  // The other half of #353, from the victory share's side: the link is short because
+  // The other half of the naming rule, from the victory share's side: the link is short because
   // FreeCell is the game a nameless deal number belongs to, not because a deal number
   // can only mean FreeCell. Spelled out — `?game=freecell&seed=264`, the shape a
   // *second* game's link would take — it opens the very same board, so the two forms

@@ -1,16 +1,16 @@
 // The scene switcher: which scene is mounted into a shared container, and the list
-// of them the menu offers as tappable rows (#109). Selecting a scene tears the
+// of them the menu offers as tappable rows. Selecting a scene tears the
 // current one down, clears the container, and mounts the chosen one — exactly one
 // scene is live at a time. Mount and teardown is *all* this module is — the menu
-// draws the rows themselves (#336, #337).
+// draws the rows themselves.
 //
 // The rows aren't a flat list: the primary game (the launch `~default`, FreeCell)
 // sits as a single row in the menu's "games" section, and the rest are buried inside
-// collapsible disclosures (#135) that the menu tucks under its bottom "debug" section
-// header (#185), so the menu leads with the game and keeps the demos out of the way.
+// collapsible disclosures that the menu tucks under its bottom "debug" section
+// header, so the menu leads with the game and keeps the demos out of the way.
 //
 // There are two of those disclosures, not one, and which a scene goes in is the
-// scene's own `Scene.kind` (#352) — the non-primary `Game` scenes have a "games" group
+// scene's own `Scene.kind` — the non-primary `Game` scenes have a "games" group
 // of their own, and "scenes" holds the `Demo`s. **Group on `kind`, never on "is this
 // the launch default?"**: that reads as games-vs-demos only while there is exactly one
 // game, and a second game would land under "scenes" between Gallery and Motion, filed
@@ -23,7 +23,7 @@
 //
 // `render` hands the menu's scene lists and the scene container back separately (see
 // `t`) so the caller can place the rows (inside the menu) apart from the scene box.
-// **It builds no menu DOM at all** (#336, #337): the scenes leave as *data* — a list
+// **It builds no menu DOM at all**: the scenes leave as *data* — a list
 // of `{label, onSelect}` for `<MenuDisclosure>` to draw — and which one is mounted is a
 // *value* this module reports (`active`, and each entry's `selected`) for the menu to
 // re-render from. Keep it that way: a highlight written onto a row by hand is the job
@@ -36,7 +36,7 @@
 type choice = {id: string, label: string}
 
 // The switcher's pieces, handed back separately so the caller can place them
-// independently (#185): the primary game row(s) go in the menu's "games" section up
+// independently: the primary game row(s) go in the menu's "games" section up
 // top, while the remaining scenes go in the "debug" section pushed to the bottom, as
 // two `<MenuDisclosure>`s beside the debug-states group. The `scene` container is the
 // one real node here, and the only thing that has to be one — a scene mounts a foreign
@@ -62,7 +62,7 @@ type t = {
   // re-mount it. An unknown id does nothing.
   select: string => unit,
   // The `Game` scenes that aren't the primary one, as menu entries for a "games"
-  // disclosure of their own (#352). Empty while FreeCell is the only game, and an
+  // disclosure of their own. Empty while FreeCell is the only game, and an
   // empty group is one the menu simply doesn't place — which is why this lands as a
   // no-op today.
   gameScenes: unit => array<MenuDisclosure.entry>,
@@ -121,7 +121,7 @@ let render = (
     ->Option.orElse(scenes[0])
 
   // The one scene surfaced at the top of the menu: the launch default (FreeCell —
-  // the game is home, #135) if it names a scene, else the first scene. Every other
+  // the game is home) if it names a scene, else the first scene. Every other
   // scene goes into one of the two Debug groups below, by kind.
   let primaryId =
     default->Option.flatMap(byId)->Option.orElse(scenes[0])->Option.map(scene => scene.id)
@@ -131,7 +131,7 @@ let render = (
   // Which of the three groups a scene belongs to. The primary keeps its top-level row
   // and appears in neither disclosure — including when the launch `~default` names a
   // demo, where surfacing it up top *and* in the demos group would list it twice.
-  // Everything else falls to the group its own `Scene.kind` names (#352).
+  // Everything else falls to the group its own `Scene.kind` names.
   let group = (scene: Scene.t) =>
     if isPrimary(scene) {
       #primary
@@ -144,7 +144,7 @@ let render = (
 
   // The scenes the menu names at top level, as data. Nothing is built for them here:
   // the chrome draws each as a `<MenuRow>` and the highlight follows from the active
-  // id, so there is no row to walk and no class to rewrite (#337).
+  // id, so there is no row to walk and no class to rewrite.
   let primaryScenes =
     scenes
     ->Array.filter(isPrimary)
@@ -179,8 +179,8 @@ let render = (
       activate(scene)
     }
 
-  // A disclosure group's entries, as menu data for `<MenuDisclosure>` to draw (#336).
-  // Both groups live under the menu's "debug" section header (#185), which is why
+  // A disclosure group's entries, as menu data for `<MenuDisclosure>` to draw.
+  // Both groups live under the menu's "debug" section header, which is why
   // their labels — the chrome's, not ours — are just "games" and "scenes"; the
   // sibling "states" group is the same component fed by `Main`.
   //

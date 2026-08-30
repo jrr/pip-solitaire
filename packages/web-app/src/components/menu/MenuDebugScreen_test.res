@@ -1,5 +1,5 @@
 // The menu's Debug screen, exercised in isolation now that it's a component of its
-// own (#307).
+// own.
 //
 // The rows themselves are pinned by `MenuToggleRow_test` / `MenuActionRow_test`. What
 // this file pins is what the *screen* decides:
@@ -12,9 +12,9 @@
 // 3. **It's disabled while there's nothing to share** — a scene with no game, or the
 //    moment between opening the screen and the encode resolving — and says which.
 // 4. **Each list lands as its own group, in order.** They are the same component now
-//    (`<MenuDisclosure>`, #336), which is exactly why the screen has to be pinned on
+//    (`<MenuDisclosure>`), which is exactly why the screen has to be pinned on
 //    giving each its own entries: calls that differ only in their data are calls that
-//    can be crossed. The "games" group (#352) is placed only when it has entries, so
+//    can be crossed. The "games" group is placed only when it has entries, so
 //    the default here — no extra games — is still scenes then states.
 // 5. **Back goes one step, to Settings** — not all the way out of the pane.
 //
@@ -67,7 +67,7 @@ let render = (
 
 let shareDesc = screen => screen->textIn(".menu-row--action .menu-row__desc")
 
-describe("MenuDebugScreen (#307)", () => {
+describe("MenuDebugScreen", () => {
   test("offers the two developer toggles", () => {
     expect(render()->findAll(".menu-row--switch .menu-row__label")->Array.map(text))->toEqual([
       "Safe-area overlay",
@@ -134,7 +134,7 @@ describe("MenuDebugScreen (#307)", () => {
     expect(rowsIn(1))->toEqual(["Mid-game", "Almost won"])
   })
 
-  test("places the games group above the other two, when there is one (#352)", () => {
+  test("places the games group above the other two, when there is one", () => {
     // A second game belongs among the games, not under "scenes" between Gallery and
     // Motion — which is where the switcher's old primary-vs-rest split put it.
     let screen = render(~gameScenes=[{label: "Klondike", onSelect: () => ()}])
@@ -156,8 +156,8 @@ describe("MenuDebugScreen (#307)", () => {
 
   test("leaves the games group out entirely when it's empty", () => {
     // Today's shape: FreeCell is the only game and it already has the main menu's
-    // games row, so this screen renders exactly as it did before #352 — an empty
-    // `<details>` would be a summary opening onto nothing.
+    // games row, so this screen shows no games group at all — an empty `<details>`
+    // would be a summary opening onto nothing.
     expect(render()->findAll(".scene-menu__group > summary")->Array.map(text))->toEqual([
       "scenes",
       "states",

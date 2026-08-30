@@ -2,8 +2,8 @@
 // typed vnodes rendered through `Html` — never `innerHTML` strings — so a card is
 // an ordinary node the diff can patch.
 //
-// This is the rudimentary first cut called for by #36: a rounded-rect frame,
-// the rank glyph — with a small suit pip (#223) pinned to the far right so the
+// The face is deliberately rudimentary: a rounded-rect frame,
+// the rank glyph — with a small suit pip pinned to the far right so the
 // suit shows in the thin strip a fanned card exposes — in two opposite corners
 // (the bottom-right
 // one rotated 180° so the card reads the same either way up), and one large suit
@@ -128,7 +128,7 @@ let body = (~detail=Full, card: Deck.card) => {
   let label = Deck.rankLabel(card.rank)
   let glyph = Deck.suitSymbol(card.suit)
 
-  // Corner rank glyph, with a small suit pip (#223) pinned to the far right. The
+  // Corner rank glyph, with a small suit pip pinned to the far right. The
   // top-left one uses these coordinates as-is; the bottom-right one reuses the
   // exact same node but rotates the whole thing 180° about the card's center,
   // which maps top-left to bottom-right and flips it upside down — so the two

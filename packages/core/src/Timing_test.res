@@ -1,6 +1,6 @@
 open Vitest
 
-// The game clock (#302). Two stamps and a subtraction, so what's worth pinning isn't
+// The game clock. Two stamps and a subtraction, so what's worth pinning isn't
 // the arithmetic but the three decisions around it: a win is stamped *once* (or a
 // resumed victory would re-time itself on every reload), stepping back out of a
 // victory un-stamps it, and a pair of stamps that can't be a real game reports
@@ -27,7 +27,7 @@ describe("Timing", () => {
   })
 
   test("a win is stamped once and stays stamped", () => {
-    // The property the resumed victory (#177) depends on: reopening a won board raises
+    // The property the resumed victory depends on: reopening a won board raises
     // its overlay again, and if that re-stamped, "how long the game took" would drift
     // into "how long ago you played it" — growing every time you came back to it.
     let won = Timing.dealt(~at=noon)->Timing.won(~at=noon +. 60_000.)
@@ -37,7 +37,7 @@ describe("Timing", () => {
   })
 
   test("stepping back out of a victory un-stamps it, and winning again re-times", () => {
-    // Undo out of a win (#85): the board isn't won, so it has no won-at. Playing on and
+    // Undo out of a win: the board isn't won, so it has no won-at. Playing on and
     // winning again times the *whole* game, detour included — the same stance the tally
     // takes, where undoing never gives a move back.
     let t = Timing.dealt(~at=noon)->Timing.won(~at=noon +. 60_000.)->Timing.unwon

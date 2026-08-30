@@ -1,5 +1,5 @@
 @layer scenes {
-  /* Raster scene (issue #225): the card-sprite fidelity check — all 52 cards
+  /* Raster scene: the card-sprite fidelity check — all 52 cards
      drawn one of three ways (live CardArt <svg>, or either CardRaster
      bitmap), one rendering at a time, switched by the toolbar or the 1/2/3
      keys. The comparison is made by *flipping*, not by looking side by side:

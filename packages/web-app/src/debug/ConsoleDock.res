@@ -1,8 +1,8 @@
-// Where the drop-down debug console sits (#275): over the top of the board, docked into
+// Where the drop-down debug console sits: over the top of the board, docked into
 // the width beside it, along the bottom, or over the whole window. ⇧` steps through the
 // four in that order.
 //
-// The console (#271) started as a top-anchored translucent overlay — the familiar Quake
+// The console started as a top-anchored translucent overlay — the familiar Quake
 // shape, and the only sensible one in a small window. In a desktop window it's the wrong
 // axis for FreeCell: `TableScene` fits the tallest cascade fan plus the top row into the
 // available *height*, so a top overlay eats the scarce dimension and shrinks every
@@ -20,7 +20,7 @@
 //     the board is never told about), so it's a preference between two coverings rather
 //     than a trade.
 //   - **Full** gives the log the whole window, for the times the board isn't what you're
-//     reading: `print` draws a ~150-column, ~20-row text board (#273), which a 340px dock
+//     reading: `print` draws a ~150-column, ~20-row text board, which a 340px dock
 //     crops in both axes and a 40vh band crops in one. Full window is the only placement
 //     a printed board arrives in whole — the one that admits the game can wait.
 //
@@ -36,7 +36,7 @@
 //     *showing* and removed when it isn't. It's the placement's own name (`toString`), so
 //     the stylesheet's four branches read as the four shapes. The inset the `side` branch
 //     switches on lands on `.table-board`, the box `TableScene`'s `ResizeObserver`
-//     watches (#172), so narrowing that box re-runs the whole existing relayout:
+//     watches, so narrowing that box re-runs the whole existing relayout:
 //     `applyScale` resizes the cards, `reflowAll` moves the piles, loose cards scale by
 //     the width ratio. Nothing else has to know the console exists. The attribute going
 //     away on close is what keeps a closed console from holding a strip of the board.

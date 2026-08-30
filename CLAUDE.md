@@ -219,6 +219,28 @@ consumes them and derives nothing.
 `docs/board-geometry.md` has the derivations, the footprint table, and what a
 change to one constant costs elsewhere.
 
+## Comments
+
+Two rules, and both are about what a comment is *for*: warning the next person
+off a path they'd otherwise take.
+
+**Write forwards, not backwards.** A comment that says what changed is a
+changelog, and `git log` keeps a better one. If history is worth writing down, it
+is because it stands in front of a real path — so write the path, not the
+history. "This control must stay size-stable in every state; the About footer
+reflows everything below it if the height changes" beats "this used to carry a
+status line that grew and shrank it." A mechanism that outgrows its margin —
+longer than the code it annotates, or told across several files — belongs in
+`docs/`, with the local fact and one pointer left at the call site.
+
+**An issue number stays only when a reader has to open the thread to act
+correctly** — an unresolved trade-off, a decision deliberately deferred.
+Everywhere else the sentence has to stand on its own, because a comment that
+needs a closed issue to be understood is a comment that isn't finished. `#259`
+in `Main.res` and `#204` in `landscape-rail.css` are the shape that qualifies:
+both name a question still open. *This line arrived in #217* is what `git blame`
+answers, and it answers more precisely, because it can't drift.
+
 ## Conventions
 
 - Prefer a framework's own CLI (invoked through a mise task) over hand-writing
@@ -230,7 +252,7 @@ change to one constant costs elsewhere.
 - The leaf packages (`cli`, `web-app`) set `"namespace": true` in their
   `rescript.json`, so their modules live under `Cli`/`WebApp` and can't collide
   with `core`'s. `core` stays un-namespaced, which is why dependents still say
-  `Card`, `Reducer`, `Render` rather than `Core.Card` (#299). A leaf module that
+  `Card`, `Reducer`, `Render` rather than `Core.Card`. A leaf module that
   shares a name with a `core` one shadows it *within that leaf only* — legal, but
   still worth avoiding.
 - Leave the `hello` / `hello-cli` example packages in place for now; they exist

@@ -1,7 +1,7 @@
 // The "game" action button — New, Restart, Share Seed — exercised in isolation now
-// that it's a component of its own (#307).
+// that it's a component of its own.
 //
-// `Menu_test` already pins what Share Seed does *through the menu* (#98); this file
+// `Menu_test` already pins what Share Seed does *through the menu*; this file
 // pins the button's own two behaviours, which the other two game buttons rely on
 // just as much: a button with no `value` is a bare label and nothing else, and a
 // button with one keeps the accessible name and the visible text the same string —
@@ -16,7 +16,7 @@ open TestDom
 let render = (~label="Share Seed", ~value=None, ~enabled=true, ~onClick=() => ()) =>
   Html.create(MenuGameButton.make({label, value, enabled, onClick}))
 
-describe("MenuGameButton (#307)", () => {
+describe("MenuGameButton", () => {
   test("is the bare label when it carries no value", () => {
     let button = render(~label="New")
     expect(button->text)->toBe("New")

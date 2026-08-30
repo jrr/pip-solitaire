@@ -1,9 +1,9 @@
 open Vitest
 open Card
 
-// Serializing a game's progress (#177): the round-trip must be lossless — a saved
+// Serializing a game's progress: the round-trip must be lossless — a saved
 // game decodes back to the *exact* board, positions, undo/redo stack and play tally
-// (#289) — and anything untrustworthy (corrupt, foreign, or an older format) must
+// — and anything untrustworthy (corrupt, foreign, or an older format) must
 // decode to `None` so the app deals fresh rather than showing a misread board.
 describe("SaveState", () => {
   // A small, hand-built history over FreeCell states: an opening deal, a move to a
@@ -16,11 +16,11 @@ describe("SaveState", () => {
   // …and the game around it: two moves played and one undone, which is a tally no
   // fallback could invent (`History.steps` of this history is 1, not 2) — so a save
   // that dropped the counts would fail here rather than pass by looking plausible.
-  // …and the clock beside it (#302): a deal and a win, far enough apart that a
+  // …and the clock beside it: a deal and a win, far enough apart that a
   // dropped or rounded stamp would show up as a different elapsed time rather than
   // as the same one.
   let dealtAt = 1_700_000_000_000.
-  // …and the board it's all a game of (#354), which is what a real save carries: every
+  // …and the board it's all a game of, which is what a real save carries: every
   // one written from a session names its game (`Session.save`).
   let saved: SaveState.t = {
     history,
@@ -52,14 +52,14 @@ describe("SaveState", () => {
     }
   })
 
-  test("the move, undo and autoplay counts survive the round-trip (#289, #291)", () => {
+  test("the move, undo and autoplay counts survive the round-trip", () => {
     switch SaveState.decode(SaveState.encode(saved)) {
     | Some(restored) => expect(restored.stats)->toEqual({Stats.moves: 2, undos: 1, autoplays: 1})
     | None => expect("decoded")->toBe("but got None")
     }
   })
 
-  // `autoplays` joined the tally after the tally itself had shipped (#291), so a save
+  // `autoplays` joined the tally after the tally itself had shipped, so a save
   // written between the two has `stats` but no `autoplays` — and has to keep working
   // for the same reason a pre-tally save does. A game saved before the solver could be
   // reached for cannot have used it, so none is the truthful reading, not a guess.
@@ -112,11 +112,11 @@ describe("SaveState", () => {
     expect(SaveState.decode(`{"v":1,"present":42}`))->toEqual(None)
   })
 
-  // The tally arrived after the format did (#289), and the version deliberately
+  // The tally arrived after the format did, and the version deliberately
   // didn't move for it — so a blob written by an older build has to keep working,
   // both out of `localStorage` and out of a share link somebody already sent.
   describe("a save written before the tally existed", () => {
-    // Exactly what a pre-#289 `encode` produced: two states behind the present, and
+    // Exactly what a pre-tally `encode` produced: two states behind the present, and
     // neither the `stats` key nor the `timing` key that came after it.
     let legacy =
       SaveState.encode(saved)
@@ -154,7 +154,7 @@ describe("SaveState", () => {
     )
 
     test(
-      "reports no time at all, rather than inventing one (#302)",
+      "reports no time at all, rather than inventing one",
       () => {
         // Unlike the move count, nothing in a history hints at when it was dealt. A
         // save from before the clock existed is a game whose length is simply not
@@ -169,7 +169,7 @@ describe("SaveState", () => {
     )
   })
 
-  // The clock (#302) rides in the envelope on the same additive terms the tally does,
+  // The clock rides in the envelope on the same additive terms the tally does,
   // one level further down: `timing` may be absent, and either stamp inside it may be
   // absent, but a stamp that's present and isn't a timestamp fails the save.
   describe("the clock", () => {
@@ -223,7 +223,7 @@ describe("SaveState", () => {
     )
   })
 
-  // Which game the piles are a game of (#354). The format carried the cards and not the
+  // Which game the piles are a game of. The format carried the cards and not the
   // board, so a blob decoded onto whatever was mounted; now it says, on the same
   // additive terms `"stats"` and `"timing"` arrived on — which is what keeps every share
   // link already sent, and every saved game on every device, readable.

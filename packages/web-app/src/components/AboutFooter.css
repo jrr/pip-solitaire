@@ -1,7 +1,7 @@
 @layer components {
-  /* The About footer (#165): the build/version line and, when an update is
+  /* The About footer: the build/version line and, when an update is
      waiting, the note + Update button below it. It stays put at the foot of the
-     panel on both the main menu and the Settings screen (#191) as the last of
+     panel on both the main menu and the Settings screen as the last of
      the bottom group — the bottom group's leading `margin-top: auto` (see
      `.menu-section--bottom`) already pushes that group and this footer down
      together, so the footer needs no auto margin of its own (a second one would
@@ -13,7 +13,7 @@
     gap: 0.4rem;
   }
 
-  /* The About footer's one row (#201): the build/version line on the left, the
+  /* The About footer's one row: the build/version line on the left, the
      Update button on the right, vertically centred. The button reserves its box
      even when hidden (see `.menu-update--hidden`), so the row is the same height
      whether or not an update is waiting. */
@@ -26,14 +26,14 @@
 
   /* Reserve an element's space while hiding it: `visibility` keeps the layout
      box (unlike `display: none`, which collapses it), so a control can come and
-     go without reflowing its neighbours (#201). Used for the About Update button
+     go without reflowing its neighbours. Used for the About Update button
      when no update is waiting. */
   .menu-update--hidden {
     visibility: hidden;
   }
 
-  /* The green call-to-action (#165), keeping the accent fill it wore on the bar:
-     a short button at the end of the About row (#201), sized so the row's height
+  /* The green call-to-action, keeping the accent fill it wore on the bar:
+     a short button at the end of the About row, sized so the row's height
      doesn't depend on it. */
   .menu-update__button {
     flex: none;
@@ -47,7 +47,7 @@
     cursor: pointer;
   }
 
-  /* The on-button progress spinner for the Settings refresh control (#201):
+  /* The on-button progress spinner for the Settings refresh control:
      a ¾ ring in the button's own text colour, spinning while a check/refresh is
      in flight. Keep it smaller than the line box it rides in: showing it must
      not change the button's or the section's height (see `RefreshControl.res`). */

@@ -1,5 +1,5 @@
 // The typed-command grammar: `string => Command.t` as a pure parser, plus the
-// board-side readers a parsed command needs before it can be run (#273). Shared by
+// board-side readers a parsed command needs before it can be run. Shared by
 // both front ends — the CLI's `Repl` and the web app's debug console — because
 // `move 8H 5` has to mean one thing in a terminal and in the panel.
 //
@@ -53,7 +53,7 @@ type t =
   | Help
   | Games
   | Print
-  | Clear // console-only: wipe the scrollback (#273); a scrolling CLI has none
+  | Clear // console-only: wipe the scrollback; a scrolling CLI has none
   // The mirror image of `Clear`: CLI-only, because only an interactive session is
   // something you can *leave*. A verb one front end can't act on is still a verb both
   // front ends know — the panel answers this rather than reporting an unknown command.
@@ -73,7 +73,7 @@ type t =
   // `home <card>` names a card but no destination — see the module note above.
   | Home({card: card})
   | Finish
-  // `autoplay` (#291): hand the board to the solver and let it play the thinking part
+  // `autoplay`: hand the board to the solver and let it play the thinking part
   // of the game out (`Solver.autoplay`, docs/solver.md).
   | Autoplay
   | Undo
@@ -653,7 +653,7 @@ let describeRejection = (err: Reducer.moveError, ~action: Reducer.action): strin
     }
   }
 
-// --- What autoplay had to say (#291) -----------------------------------------
+// --- What autoplay had to say -----------------------------------------
 // The two ways `Solver.autoplay` can decline, in words. Here rather than in the
 // solver for the reason every other refusal in this module is: it's what a *front
 // end* says to someone who typed something, and a terminal and a panel saying it
@@ -732,7 +732,7 @@ let boardHelp: array<helpRow> = [
     "movecol <from> <to>",
     "reorder cascade columns: pull column <from> and drop it at <to> (e.g. movecol 8 15)",
   ),
-  ("finish", "sweep every card home to win, when the board is drainable (#132)"),
+  ("finish", "sweep every card home to win, when the board is drainable"),
   (
     "autoplay",
     "let the solver play the game out from here — counted, and it withdraws the win screen's Share",

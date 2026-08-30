@@ -1,5 +1,4 @@
-// The "Wiggle Waggle" row (#235), lifted out of `Menu` into its own pure component
-// (#307): the shake-to-jostle switch.
+// The "Wiggle Waggle" row: the shake-to-jostle switch.
 //
 // Unlike the plain `<MenuToggleRow>`, its label is title-cased and it deliberately
 // carries *no* description — the other settings explain themselves; finding out

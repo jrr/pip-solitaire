@@ -1,6 +1,6 @@
-// How much play a game has taken (#289): how many moves the player has made, how
+// How much play a game has taken: how many moves the player has made, how
 // many times they've reached for Undo, and how many times they've handed the game
-// to the solver (#291). The numbers the victory screen reports, and the only things
+// to the solver. The numbers the victory screen reports, and the only things
 // about a game that aren't a card position.
 //
 // It lives *beside* the game rather than in it, and that's the point. `GameState.t`
@@ -26,7 +26,7 @@
 // five and replays five different ones has a ten-step line and twenty moves made,
 // and both numbers are true about different questions.
 //
-// `autoplays` (#291) is the third of those, and it counts the *reaching* rather than
+// `autoplays` is the third of those, and it counts the *reaching* rather than
 // the playing: one `autoplay` command is one autoplay, however many moves the solver
 // went on to play. Those moves are moves like any other — they're recorded steps, and
 // the tally says so — so the two numbers answer different questions: "how long was
@@ -40,7 +40,7 @@
 type t = {
   moves: int, // moves played; undo never subtracts, redo adds
   undos: int, // times the player stepped back
-  autoplays: int, // times the player handed the game to the solver (#291)
+  autoplays: int, // times the player handed the game to the solver
 }
 
 // A game not yet played: what a fresh deal (and every New Game / Restart) starts on.
@@ -54,7 +54,7 @@ let autoplay = (s: t): t => {...s, autoplays: s.autoplays + 1}
 // reads as what happened rather than as what it's counted as.
 let redo = move
 
-// Has the solver played any part of this game (#291)? The question the victory
+// Has the solver played any part of this game? The question the victory
 // screen's Share button asks — a win the player didn't play isn't theirs to boast
 // about — written here rather than as a `> 0` at each call site, so "was this
 // autoplayed" has one answer.

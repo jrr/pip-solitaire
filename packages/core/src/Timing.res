@@ -1,4 +1,4 @@
-// How long a game took (#302): when the deal hit the table, and when the win
+// How long a game took: when the deal hit the table, and when the win
 // landed. The victory screen's third number, beside the moves and the undos.
 //
 // It's the deliberately simple thing the issue asked for — `wonAt - dealtAt`, two
@@ -31,7 +31,8 @@ type t = {
   wonAt: option<float>, // when the win landed
 }
 
-// A game whose clock nobody kept: what a save written before #302 decodes to, and
+// A game whose clock nobody kept: what a save written before `timing` existed
+// decodes to, and
 // the starting point for any board that isn't being dealt right now.
 let unknown: t = {dealtAt: None, wonAt: None}
 
@@ -40,7 +41,7 @@ let unknown: t = {dealtAt: None, wonAt: None}
 // so each starts its own clock.
 let dealt = (~at: float): t => {dealtAt: Some(at), wonAt: None}
 
-// The win landing at `at` — stamped once. A victory *resumed* from a save (#177)
+// The win landing at `at` — stamped once. A victory *resumed* from a save
 // raises its overlay again on every reload, and re-stamping there would quietly turn
 // "how long the game took" into "how long ago you played it": the number would grow
 // each time you came back to a board you'd already won. So an existing stamp wins,
@@ -51,7 +52,7 @@ let won = (t: t, ~at: float): t =>
   | None => {...t, wonAt: Some(at)}
   }
 
-// Undo out of a victory (#85): the game isn't won any more, so the win it was won at
+// Undo out of a victory: the game isn't won any more, so the win it was won at
 // isn't a fact about it any more either. Playing on and winning again stamps afresh,
 // and the time then covers the whole game — including the detour — which is the same
 // stance the tally takes (`Stats.undo` never gives a move back).

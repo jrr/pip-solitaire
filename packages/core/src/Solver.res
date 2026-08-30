@@ -286,7 +286,7 @@ let hint = (~game: Game.t, state: GameState.t): option<Reducer.action> =>
   ->Option.flatMap(moves => moves->Array.get(0))
   ->Option.flatMap(move => Position.toAction(~game, state, move))
 
-// --- Autoplay: the plan, played out (#291) ------------------------------------
+// --- Autoplay: the plan, played out ------------------------------------
 // `plan` says which moves win from here and `Position.toAction` says one of them in
 // the reducer's terms. What's left — running them one after another against a real
 // `GameState` and keeping the board in step — is the part *both* front ends would

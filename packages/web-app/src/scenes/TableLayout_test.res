@@ -1,4 +1,4 @@
-// The card table's fits, checked without a browser (#319). The geometry itself is
+// The card table's fits, checked without a browser. The geometry itself is
 // `docs/board-geometry.md`.
 //
 // These are the claims answerable from arithmetic alone: which of the two fits binds
@@ -33,7 +33,7 @@ let freecellFan = TableLayout.fanExtent(
 let fit = (~w, ~h, ~fanExtent=freecellFan, ~widestRow=columns, ~rowsCount=rows) =>
   TableLayout.scaleFor(~avail=w, ~availH=h, ~vFixed=8., ~widestRow, ~rowsCount, ~fanExtent)
 
-describe("TableLayout — the fits (#319)", () => {
+describe("TableLayout — the fits", () => {
   test("a stage with nothing to divide by yields no scale at all", () => {
     // Not a fallback number: the caller keeps the scale it had. A playfield measures 0
     // wide before it has been laid out and again mid-resize on some engines, and a
@@ -135,7 +135,7 @@ describe("TableLayout — the fits (#319)", () => {
   })
 })
 
-describe("TableLayout — docking (#275)", () => {
+describe("TableLayout — docking", () => {
   // `ConsoleDock.width` is 340; the stages are real device widths.
   let dock = 340.
 
@@ -156,7 +156,7 @@ describe("TableLayout — docking (#275)", () => {
   })
 
   test("the display cutaway comes off the stage before the dock is considered", () => {
-    // The safe-area insets `.drop-rows` is pinned inside (#179) are stage the board
+    // The safe-area insets `.drop-rows` is pinned inside are stage the board
     // never had, so a window that would just fit the dock stops fitting it once a
     // cutout takes its share.
     expect(TableLayout.fitsDock(~stage=700., ~cutaway=0., ~inset=dock, ~columns))->toBe(true)
@@ -185,8 +185,8 @@ describe("TableLayout — the published footprints", () => {
   })
 
   test("the zone box is the card plus a uniform inset on every side", () => {
-    // The #166 follow-up, in one line: equal breathing room all the way round rather
-    // than the old hand-picked box with a wider top gap than side gap.
+    // Equal breathing room all the way round, rather than a hand-picked box with a
+    // wider top gap than side gap.
     let v = varsAt(0.73)
     expect(v("--zone-w") -. v("--card-w"))->toBeCloseToWithin(
       2. *. TableLayout.zoneInset *. 0.73,
@@ -225,7 +225,7 @@ describe("TableLayout — the published footprints", () => {
   })
 
   test("the row cap is the columns plus the gaps around and between them", () => {
-    // Eight zones and nine gaps (#173) — the point past which extra stage width becomes
+    // Eight zones and nine gaps — the point past which extra stage width becomes
     // equal left/right margins instead of ever-wider column gaps.
     expect(TableLayout.rowsMaxWidth(~widestRow=columns))->toBeCloseToWithin(
       Int.toFloat(columns) *. TableLayout.zoneWidth +.
@@ -235,7 +235,7 @@ describe("TableLayout — the published footprints", () => {
   })
 })
 
-describe("TableLayout — the drop hit-test (#183)", () => {
+describe("TableLayout — the drop hit-test", () => {
   let zone: TableLayout.rect = {left: 100., top: 100., width: 88., height: 124.}
   let card = (~left, ~top): TableLayout.rect => {left, top, width: 80., height: 112.}
 

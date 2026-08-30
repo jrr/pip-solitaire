@@ -1,4 +1,4 @@
-// What a squared pile announces (issue #267). Every card is a `role="img"`
+// What a squared pile announces. Every card is a `role="img"`
 // carrying the card's name (`CardArt` via `Deck.cardName`), and a `Squared` pile
 // — the free cells and the foundations — draws its whole contents on one spot. So
 // the covered cards were named to a screen reader as if they were on the table:
@@ -30,13 +30,13 @@ test("a mid-game board announces only the cards it shows", async ({ page }) => {
   // four and two high (`Scenario.freecellMidgame`), which is nine cards showing
   // three tops. Nothing else on this board occludes anything — the cells hold one
   // card each and the cascades are fanned, every card of them still announced —
-  // so the whole difference is those six, exactly the count #267 opens with.
+  // so the whole difference is those six.
   await expect(page.locator('.stacking-card[aria-hidden="true"]')).toHaveCount(6)
   await expect(announcedCards(page)).toHaveCount(46)
 })
 
 test("the win screen announces four cards, not fifty-two", async ({ page }) => {
-  // One move short of a win, so the Finish shortcut (#132) is on offer: tapping it
+  // One move short of a win, so the Finish shortcut is on offer: tapping it
   // sends every remaining card home and raises the overlay over four full
   // foundations — the whole deck, stacked into four visible cards.
   await page.goto("/?game=freecell&state=almost-won&animate=off")

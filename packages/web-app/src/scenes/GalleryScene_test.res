@@ -1,4 +1,4 @@
-// The gallery is a `Scene.static` (#338): no model, no messages, no teardown.
+// The gallery is a `Scene.static`: no model, no messages, no teardown.
 // What that swapped out was an `Html.mount` loop over a unit model, so what's
 // worth pinning is that the switch didn't cost the scene anything a scene has —
 // it still puts all 52 cards into the container it's handed, and it still hands

@@ -1,4 +1,4 @@
-// The adaptive "get the latest build" control (#112). Installed to the home
+// The adaptive "get the latest build" control. Installed to the home
 // screen, the app has no browser refresh, so a stale version has no built-in
 // way out. This module powers a single Settings-screen button whose label and
 // behaviour both adapt to whether a service worker is registered — detected

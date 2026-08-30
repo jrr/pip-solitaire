@@ -1,19 +1,19 @@
 @layer components {
-  /* The drop-down debug console (#271): the Quake-style panel `` ` `` drops over
+  /* The drop-down debug console: the Quake-style panel `` ` `` drops over
      the top of the board, showing the lines the app publishes through `DebugLog`.
      Top-anchored and translucent so the board stays readable underneath — you're
      meant to watch the log *and* the game it's narrating — and monospace, because
      the payloads are JSON.
 
      These are the *top* placement's rules, and they're the base ones: the three
-     other placements ⇧` steps to (#275) are written below as overrides keyed off
+     other placements ⇧` steps to are written below as overrides keyed off
      `html[data-console-dock="<placement>"]`, the attribute `ConsoleDock.reflect`
      publishes while the panel is showing.
 
      `z-index: 15` puts it above the board (which isolates its own large numbers;
      see `.table-board`) and **below the menu** at 20: the menu is the modal chrome
      and wins. In this shape the chrome model keeps the two from being up at once
-     anyway, so this is the belt to that pair of braces — but side-docked (#275) the
+     anyway, so this is the belt to that pair of braces — but side-docked the
      two *do* coexist, and then the ordering is load-bearing rather than
      belt-and-braces (see the backdrop inset that goes with it, further down).
 
@@ -51,7 +51,7 @@
        underneath. The scrollback is still scrollable: with no element to receive
        them, wheel events are forwarded to it by hand while the panel is open (see
        `DebugConsole.res`). The one deliberate exception is the prompt line at the
-       foot (#273), which takes events back for its own single row — see
+       foot, which takes events back for its own single row — see
        `.debug-console__prompt` below.
 
        `touch-action`/`overscroll-behavior` say the same thing to the touch and
@@ -62,8 +62,8 @@
     touch-action: pan-y;
     /* The page centres its text (`body` above) because the board is a centred thing;
        a log is not. It went unnoticed while every line was a flex row — flex items
-       don't take `text-align` — and showed up the moment a *rendered* line (#282,
-       `display: block`) was short enough to see it float: a one-line move sentence
+       don't take `text-align` — and showed up the moment a *rendered* line
+       (`display: block`) was short enough to see it float: a one-line move sentence
        sitting halfway across the panel while the echo above it started at the left.
        Said once here rather than per line, so the prompt and the status row are
        covered by the same statement. */
@@ -74,7 +74,7 @@
     display: none;
   }
 
-  /* --- Side-docked (#275) -----------------------------------------------------
+  /* --- Side-docked -----------------------------------------------------
      The same panel, turned through 90°: a full-height column down the edge
      *beside* the board rather than a band across the top of it. The axis is the
      whole argument — `TableScene` fits the tallest cascade fan plus the top row
@@ -110,7 +110,7 @@
     border-left: 1px solid #2b3b58;
     box-shadow: -8px 0 24px rgba(0, 0, 0, 0.45);
     /* **Takes pointer events**, the exact inverse of the overlay's trick above and
-       the reason this had to land before the input line (#273). The overlay is
+       the reason this had to land before the input line. The overlay is
        pointer-transparent because it covers the free cells, the foundations and the
        Menu button; docked it covers none of them — the board has been narrowed out
        of the way — so nothing is gained by refusing input and a great deal is lost:
@@ -146,7 +146,7 @@
 @layer overrides {
   /* The other half of docking, and the only thing the board is ever told about it:
      narrow `.table-board`. That box is what `TableScene`'s `ResizeObserver` watches
-     (#172), so shrinking it re-runs the layout the resize path already runs —
+    , so shrinking it re-runs the layout the resize path already runs —
      `applyScale` resizes the cards, `reflowAll` moves the piles, loose cards scale
      by the width ratio — and the board simply reflows into what's left. Every other
      scene is untouched, which a flex-sibling restructure of the chrome would not
@@ -167,7 +167,7 @@
 }
 
 @layer components {
-  /* --- Along the bottom (#275) ------------------------------------------------
+  /* --- Along the bottom ------------------------------------------------
      The top band's mirror image, and the same bargain: an overlay the board is never
      told about, pointer-transparent so the game underneath stays playable, costing
      the layout nothing. What changes is *which* row it hides — and that's the whole
@@ -189,8 +189,8 @@
     box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.45);
   }
 
-  /* --- The whole window (#275) ------------------------------------------------
-     For when the board isn't what you're reading. `print` draws a text board (#273)
+  /* --- The whole window ------------------------------------------------
+     For when the board isn't what you're reading. `print` draws a text board
      some 150 columns across and 20 rows down: the 340px dock crops it in both axes,
      the 40vh band in one, and either way it's read through a letterbox. At full
      window it simply arrives.
@@ -214,7 +214,7 @@
     pointer-events: auto;
   }
 
-  /* The prompt (#273): the caret glyph and the command field, in a row between the
+  /* The prompt: the caret glyph and the command field, in a row between the
      scrollback and the status line. `flex: none` so it keeps exactly its own line
      while the log above takes all the slack. */
   .debug-console__prompt {
@@ -229,7 +229,7 @@
        deliberately one line at the foot of the band rather than the whole panel:
        what it costs the board underneath is a single row, and the way in is a
        keypress that focuses it anyway, so this is for the mouse that wants to fix
-       a typo. Docked (#275) the whole panel already takes events and this adds
+       a typo. Docked the whole panel already takes events and this adds
        nothing. */
     pointer-events: auto;
   }
@@ -278,7 +278,7 @@
   }
 
   /* The scrollback: a plain <ol> owned by DebugConsole.res and spliced in with
-     `Html.node`, appended to one <li> at a time (#45 — an unkeyed list re-patches
+     `Html.node`, appended to one <li> at a time (an unkeyed list re-patches
      every visible line when it changes). It's the scroller,
      and it grows to fill whatever the header leaves. */
   .debug-console__lines {
@@ -287,7 +287,7 @@
     padding: 0 0 0.3rem 0;
     /* Both axes. Vertical is the log itself; horizontal is for the lines wider than
        the panel — the aligned help table, and now the text board `print` draws
-       (#273), which is ~150 columns and has to stay aligned to be a board at all.
+      , which is ~150 columns and has to stay aligned to be a board at all.
        Before this they were simply clipped at the right edge with no way to reach
        the rest. Scrolling the list moves every line together, which is what keeps a
        printed board readable as one picture. */
@@ -327,7 +327,7 @@
     color: #c8d6ea;
   }
 
-  /* A row `core` rendered as spans (#282) — a printed board, or any console reply,
+  /* A row `core` rendered as spans — a printed board, or any console reply,
      which is the same document with everything inked plain. `display: block` rather
      than the flex row above: the spans are a continuous run of text, and as flex
      items they would take the 0.5rem `gap` between *every* card and its frame and

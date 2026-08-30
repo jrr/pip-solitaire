@@ -1,4 +1,4 @@
-// The browser-driven test suite (issue #243): the checks that need a real
+// The browser-driven test suite: the checks that need a real
 // engine — layout, `calc()`, media queries, resolved transform matrices, live
 // transitions, pointer input — none of which jsdom has. Those are the cases that
 // can't live in `mise run test` (Vitest + jsdom, over the compiled ReScript), so

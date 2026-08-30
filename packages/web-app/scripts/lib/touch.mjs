@@ -1,4 +1,4 @@
-// A finger dragging across the board (issue #244).
+// A finger dragging across the board.
 //
 // Playwright's `Touchscreen` has exactly one method — `tap(x, y)`, which fires a
 // `touchstart` and a `touchend` and nothing in between. There's no swipe, and

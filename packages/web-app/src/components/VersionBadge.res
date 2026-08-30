@@ -1,7 +1,6 @@
 // The build-version badge tucked into the corner of the chrome: version and
-// build time. (It once carried an "offline-ready" suffix too, but the About
-// footer now sits the Update button beside this line, so the suffix was dropped
-// to keep the row short — #201.)
+// build time. Keep it to one short line: the About footer sits the Update button
+// beside it, and the footer has to stay the same height in every state.
 //
 // A component is just a `props => vnode` function. The JSX transform lowers
 // `<VersionBadge .../>` to `Html.jsx(VersionBadge.make, props)` and fills this
@@ -23,7 +22,7 @@ let pad2 = n => n < 10 ? `0${n->Int.toString}` : n->Int.toString
 
 // Reformat the raw build timestamp — an ISO 8601 string baked in at build time
 // (`2026-07-21T11:03:00.000Z`, always UTC — see vite.config.js's `toISOString`)
-// — into a fixed-width, unambiguous stamp, in *their own* time zone (#185):
+// — into a fixed-width, unambiguous stamp, in *their own* time zone:
 // `2026.07.21 · 06:03` for a viewer six hours behind UTC. It's parsed through
 // `Date`, whose `get*` accessors report local time, so the same build reads
 // differently depending on where it's opened — no "UTC" suffix, because it's no

@@ -1,4 +1,4 @@
-// The build-version badge, and the timestamp formatting behind it (#185).
+// The build-version badge, and the timestamp formatting behind it.
 //
 // The badge itself is one line of text, but `formatBuildTime` has three behaviours
 // worth pinning, all of which fail quietly:
@@ -7,7 +7,7 @@
 //    6th reads `2026.7.6 · 6:3` — still parseable by a human, but no longer
 //    fixed-width, so the badge's width jumps around between builds and two stamps
 //    can't be compared down a column.
-// 2. **It reports the viewer's own time zone**, not UTC (#185): the ISO string is
+// 2. **It reports the viewer's own time zone**, not UTC: the ISO string is
 //    parsed through `Date`, whose `get*` accessors are local. That's the reason the
 //    stamp carries no "UTC" suffix.
 // 3. **An unparseable stamp falls back to itself.** It shouldn't happen — the value

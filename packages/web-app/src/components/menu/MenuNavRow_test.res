@@ -1,5 +1,5 @@
 // The nav row that opens a deeper menu screen (the Settings screen's "Debug" entry),
-// exercised in isolation now that it's a component of its own (#307).
+// exercised in isolation now that it's a component of its own.
 //
 // What's worth pinning: it wears a **chevron rather than a switch** — the one visual
 // difference that says "goes somewhere" instead of "flips here" — and that chevron is
@@ -12,7 +12,7 @@ open TestDom
 
 let render = (~onClick=() => ()) => Html.create(MenuNavRow.make({label: "Debug", onClick}))
 
-describe("MenuNavRow (#307)", () => {
+describe("MenuNavRow", () => {
   test("shows its label", () => {
     expect(
       render()

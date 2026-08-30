@@ -1,4 +1,4 @@
-// Persist an in-progress game across sessions (#177): the browser-storage half of
+// Persist an in-progress game across sessions: the browser-storage half of
 // save-and-resume, sibling to `Preferences`. The pure wire format — encoding a board's
 // undo/redo history and everything beside it to a string and back — lives in `core`'s
 // `SaveState`; this module only owns the impure edges: which `localStorage` key holds a
@@ -23,7 +23,7 @@
 // `Preferences` keys so it won't collide with anything else the app persists.
 let key = (gameId: string): string => "pip.savedGame." ++ gameId
 
-// The saved game for `gameId` — its history and its play tally (#289) — or `None`
+// The saved game for `gameId` — its history and its play tally — or `None`
 // when there's nothing saved, storage is unreadable, or the stored blob can't be
 // trusted (corrupt or an older format — `SaveState.decode` rejects it). Any of
 // these means "deal fresh" to the caller.
@@ -42,7 +42,7 @@ let save = (gameId: string, saved: SaveState.t): unit =>
   | _ => ()
   }
 
-// --- The deal number behind a saved game (#98) --------------------------------
+// --- The deal number behind a saved game --------------------------------
 //
 // Stored beside the history rather than inside it, because a resumed board can't work
 // its own deal number out: the history restores the *positions*, and the deal that

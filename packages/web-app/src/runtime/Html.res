@@ -11,7 +11,7 @@
 // before changing anything about the build; nothing checks that those four agree,
 // and `mise run dev-smoke` is the only task that catches them when they don't.
 //
-// Hooks are available in principle (#308), but see `create` below for the large
+// Hooks are available in principle, but see `create` below for the large
 // part of this app where they are not.
 
 // A real DOM node: what `Html.node` splices, what `Html.create` answers with, and
@@ -236,7 +236,7 @@ let node = el => jsx(rawHost, {node: el})
 // whose root is a fragment) in a DocumentFragment. See `docs/rendering.md`.
 //
 // **What comes back is a node, not a mounted tree, and this is the one rule to
-// know before reaching for hooks (#308).** The host is thrown away, so nothing
+// know before reaching for hooks.** The host is thrown away, so nothing
 // ever renders into it again: a component reached through `create` renders
 // exactly once, for ever. `useState` in one would hold state that no re-render
 // could ever read back, and a `useEffect` cleanup would never run — both failing

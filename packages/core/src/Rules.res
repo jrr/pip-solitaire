@@ -7,10 +7,10 @@
 // highlight and its drop-accept/reject decision call `accepts` with that rule,
 // so the green "valid" outline and the accepted drop can never disagree.
 //
-// #76 generalises #75's single hard-coded rule into *data* — a `rule` per pile —
-// so one board can carry piles that stack by different laws (a #75 alternating
-// tableau and a same-suit foundation) with no rule-specific code path: both are
-// values of the same `rule` type, weighed by the same `accepts`.
+// A rule is *data* — one per pile — so a board can carry piles that stack by
+// different laws (an alternating-colour tableau and a same-suit foundation) with
+// no rule-specific code path: both are values of the same `rule` type, weighed by
+// the same `accepts`.
 
 open Card
 
@@ -47,9 +47,9 @@ let rankValue = rank =>
   | King => 13
   }
 
-// --- Rule as data (#76) ------------------------------------------------------
+// --- Rule as data ------------------------------------------------------
 // A pile's stacking law, described by three independent knobs so today's two
-// ordered behaviours — #75's tableau and a foundation — and a future FreeCell
+// ordered behaviours — an alternating tableau and a foundation — and a future FreeCell
 // cascade all fall out of one type rather than bespoke branches. The permissive
 // free-arrangement mode is the one law that constrains nothing, so it's its own
 // `Free`; every *ordered* pile is a parameterised `Ordered`.
@@ -81,7 +81,7 @@ type rule =
 // time, and only an Ace may open the empty pile.
 let foundation = Ordered({direction: Up, color: SameSuit, empty: AceOnly})
 
-// A FreeCell cascade (#95): build *down* in alternating colour — a black Six
+// A FreeCell cascade: build *down* in alternating colour — a black Six
 // lands on a red Seven — with any card founding an empty column. The mirror
 // image of the ascending `foundation`, and the only user of the `Down` direction.
 let cascade = Ordered({direction: Down, color: Alternating, empty: AnyCard})
@@ -116,7 +116,7 @@ let accepts = (rule: rule, candidate: card, onto: option<card>): bool =>
 
 // Do `cards` (bottom-first, as a pile holds them) form a legal run under `rule` —
 // each card lawfully stacked on the one below it? This is the pairwise reading of
-// `accepts` that the supermove (#123) lifts a span by: the maximal *tail* of a
+// `accepts` that the supermove lifts a span by: the maximal *tail* of a
 // cascade that is a run is the most that may move at once. A run of zero or one
 // card is trivially a run (nothing to disagree), and the bottom card founds the
 // run so it's unconstrained here — `isRun` judges only the internal ordering, not
@@ -133,10 +133,10 @@ let isRun = (rule: rule, cards: array<card>): bool =>
 
 // Has a pile completed a full run? True when it holds *as many cards as `deck` has
 // ranks*, topped by the deck's highest rank — the "done" moment a foundation builds
-// toward (#76). This only *signals* a finished pile; win detection across every
+// toward. This only *signals* a finished pile; win detection across every
 // foundation is `GameState.hasWon`.
 //
-// The deck is a parameter rather than the ambient pack (#351): this used to read
+// The deck is a parameter rather than the ambient pack: this used to read
 // `top.rank == King && Array.length(cards) == 13`, which quietly hard-coded the
 // 52-card deck into what "complete" means. For `Cards.standard` the two say exactly
 // the same thing — thirteen ranks, King highest — so FreeCell is unchanged.

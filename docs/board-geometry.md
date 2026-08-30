@@ -114,7 +114,7 @@ arguments:
 
 | | |
 |---|---|
-| `avail` | the playfield's width, **less the display cutaway**. `.drop-rows` is pinned inside `env(safe-area-inset-left/right)` (#179), so on a landscape phone with a side notch that width was never the board's. Sizing to the raw stage packs the columns together. The nav rail is already excluded — the playfield is laid out beside it, not under it. |
+| `avail` | the playfield's width, **less the display cutaway**. `.drop-rows` is pinned inside `env(safe-area-inset-left/right)`, so on a landscape phone with a side notch that width was never the board's. Sizing to the raw stage packs the columns together. The nav rail is already excluded — the playfield is laid out beside it, not under it. |
 | `availH` | the playfield's height. |
 | `vFixed` | the rows' `top`, plus the inter-row `rowGap` on a two-row board — read off the *computed* style, so the stylesheet stays the one place either is written down. |
 | `widestRow` | the busiest row's pile count, not a constant eight. |
@@ -181,7 +181,7 @@ Below the ceiling, a wider stage means bigger cards. Above it, the cards have
 stopped growing and the extra width keeps pouring into the `space-evenly` gaps —
 on a wide desktop that leaves the columns marooned in a sea of green.
 
-So the row's width is capped (#173):
+So the row's width is capped:
 
 ```
 rowsMaxWidth = widestRow · zoneWidth + (widestRow + 1) · maxColumnGap
@@ -206,7 +206,7 @@ minStageWidth(columns) = minScale · columns · cardW / fillFraction
 ```
 
 That is, the narrowest stage a row of `columns` piles can be laid into with the
-cards still clearing the floor. Docking the debug console (#275) takes
+cards still clearing the floor. Docking the debug console takes
 `ConsoleDock.width` (340px) of stage away from the board, and is *refused* when
 what's left falls below this:
 
@@ -269,7 +269,7 @@ anywhere).
 shared primitive for both the live hover highlight and the snap-on-drop decision —
 one function, so the highlight can't promise a drop the drop then refuses.
 
-It is **deliberately asymmetric** (#183):
+It is **deliberately asymmetric**:
 
 - **Horizontally strict** — the card's *centre* must fall inside the zone, so
   tightly packed columns stay distinguishable.

@@ -1,14 +1,11 @@
-// The win overlay (#121): a dimmed panel over the board announcing the win, with a
+// The win overlay: a dimmed panel over the board announcing the win, with a
 // New Game button to play on — and, when the driver has a deal number to hand out, a
-// Share button beside it (#264).
+// Share button beside it.
 //
-// **Lifted out of `TableScene`'s `mount` body (#319).** It was ~115 lines of
-// `createElement` / `setAttribute` / `appendChild` in the middle of a 1,989-line
-// function, and it is one of the two cuts that issue names as not needing the
-// board's closure: it wants the tally, the timing and a couple of callbacks, and
-// nothing at all about `nodes` or `zones`. Which makes it a component in exactly the
-// sense #307 gave the menu — and its stylesheet (`TableScene.css`) was already
-// sitting beside it.
+// It needs nothing of the board's closure — the tally, the timing and a couple of
+// callbacks, and nothing at all about `nodes` or `zones` — which is what lets it be
+// a pure component rather than more of `TableScene`'s `mount` body. Its stylesheet
+// is `TableScene.css`, which owns the board this panel is raised over.
 //
 // The panel is **raised once and torn down whole**, never diffed: `TableScene` builds
 // it with `Html.create` (as it already does for all 52 cards) and removes the node
@@ -23,7 +20,7 @@
 // A component is just a `props => vnode` function (see `VersionBadge` for why the
 // record is spelled out by hand).
 
-// The victory share (#264), offered only when the driver has a deal to hand out.
+// The victory share, offered only when the driver has a deal to hand out.
 //
 // `onShare` is called straight from the click with nothing awaited in front of it, so
 // the gesture's transient activation survives into `navigator.share` (see
@@ -33,7 +30,7 @@
 type share = {onShare: unit => promise<string>}
 
 type props = {
-  // How long it took (#302), between the headline and the tally: the biggest of the
+  // How long it took, between the headline and the tally: the biggest of the
   // three numbers to look at, since it's the one you'd say out loud. Its own element
   // rather than another clause on the tally line, because it's the one that can be
   // missing — a game restored from a save written before the clock existed has no
@@ -41,14 +38,14 @@ type props = {
   // sometimes "4:07 · 94 moves · 0 undos" is harder to read at a glance than a line
   // that's sometimes simply not there.
   time: option<string>,
-  // What the game cost (#289): every move made and every undo taken.
+  // What the game cost: every move made and every undo taken.
   tally: string,
   // Re-deal and play on. `TableScene` builds a fresh board, which tears this panel
   // down with the rest of the old one.
   onNewGame: unit => unit,
   // `None` withholds the Share button entirely — on a board with no deal number to
   // name (a posed `?state=` position, or a game landed from a `#g=` link), and on a
-  // game the solver had a hand in (#291). A shared victory is a claim about how you
+  // game the solver had a hand in. A shared victory is a claim about how you
   // played, and "I typed `autoplay`" isn't one worth passing on, so the button is
   // simply not built rather than built and made to explain itself. Deciding that is
   // the caller's: this component only knows whether it was handed one.

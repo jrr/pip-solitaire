@@ -1,20 +1,20 @@
 // Web-app entry point. The app *opens as a game*: on startup it mounts the
-// FreeCell board straight away (#109), and all the chrome — a single top bar plus
+// FreeCell board straight away, and all the chrome — a single top bar plus
 // a slide-over menu — is expressed as ReScript JSX on the `Html` runtime and
 // driven by its Elm-style loop. The bottom of the screen is left
 // clear for dragging cards; every control lives up top.
 //
 // The chrome is two components over the scene:
 //   - `<TopBar>` — Menu · Undo. Always visible across the top; the Menu
-//     button carries a green pip when a version update is waiting (#165).
+//     button carries a green pip when a version update is waiting.
 //   - `<Menu>` — the slide-over holding the title ("Pip", moved out of the
-//     retired Home scene), a **game** section (New · Restart · Share Seed, #156/#98), the
+//     retired Home scene), a **game** section (New · Restart · Share Seed), the
 //     debug/demo scene list as tappable rows, and the About footer (build/version
-//     info plus the conditional "Update" button beside it, #165).
+//     info plus the conditional "Update" button beside it).
 // The scene area underneath is still the imperative `SceneSwitcher`, and its scene
 // container is spliced into the scene band untouched with `Html.node`, which is
 // exactly how a JSX chrome wraps a subtree it doesn't own. That container is now the
-// *only* node it hands over: the menu's scene rows left as data (#336, #337), so the
+// *only* node it hands over: the menu's scene rows left as data, so the
 // switcher is the mount/teardown engine and nothing else.
 
 @val @scope("document") external body: Html.element = "body"
@@ -62,16 +62,16 @@ type model = {
   buildTime: string,
   updateAvailable: bool,
   menuOpen: bool,
-  // Which screen the open menu shows (#191): the main menu, the Settings
+  // Which screen the open menu shows: the main menu, the Settings
   // screen, or the Debug screen nested below it. Reset to `Main` whenever the menu
   // opens or closes, so reopening always lands on the main menu.
   menuScreen: Menu.screen,
-  // Whether the drop-down debug console is showing (#271). Dev chrome, so it lives
+  // Whether the drop-down debug console is showing. Dev chrome, so it lives
   // here in the chrome model and never reaches `core`'s reducer — and it's session
   // state, deliberately unpersisted: the panel is always closed on load, so a
   // rendered screenshot or OG image can never carry one.
   consoleOpen: bool,
-  // Where that console sits when it's up (#275): over the top of the board, docked into
+  // Where that console sits when it's up: over the top of the board, docked into
   // the discarded width beside it, along the bottom, or over the whole window
   // (`ConsoleDock`). Unlike `consoleOpen` this *is* persisted — a placement you flip by
   // hand rather than an automatic breakpoint has to stay flipped — and it mirrors the
@@ -79,18 +79,18 @@ type model = {
   consoleDock: ConsoleDock.t,
   autoCollect: bool,
   cardTilt: bool,
-  // "Wiggle Waggle" (#235): the shake-to-jostle switch, a state machine rather than a
+  // "Wiggle Waggle": the shake-to-jostle switch, a state machine rather than a
   // bool. `Motion.state` carries whether we're off/listening/blocked/unavailable, which
   // drives both the switch position and its problem-only subtitle. Settings owns the
   // motion grant; the board only listens when this is `On`.
   wiggle: Motion.state,
-  // "Display content around screen notch" (#204): on (default) lets the landscape
+  // "Display content around screen notch": on (default) lets the landscape
   // rail ride out into the corner wings beside the notch; off clamps every control
   // inside the safe area. Presentation-only chrome, so it mirrors a `Preferences`
   // flag (like `cardTilt`) rather than a driver `Options` field.
   notchDisplay: bool,
   cutoutDebug: bool,
-  // "Console logging" (#213): the Debug screen's switch for narrating every UI↔Core
+  // "Console logging": the Debug screen's switch for narrating every UI↔Core
   // interaction to the JS console. Mirrors the persisted `Preferences` flag (like
   // `cutoutDebug`) so the switch opens in the right position; the logging itself is
   // driven by the shared `DebugLog.enabled` gate the toggle flips.
@@ -99,7 +99,7 @@ type model = {
   // `revealed` is persisted; the tap count is session state, cleared on the way out
   // of the Settings screen so a half-finished run can't be resumed later.
   hidden: HiddenOptions.t,
-  // Which scene is mounted (#337). The menu's games rows render their highlight from
+  // Which scene is mounted. The menu's games rows render their highlight from
   // this, so a scene change moves it through the diff rather than through a class
   // rewritten on a button the switcher kept hold of. Seeded from `switcher.active`
   // (the initial mount happens before this loop exists) and moved by `SceneActivated`
@@ -107,11 +107,11 @@ type model = {
   // mounted; in practice there is always one.
   activeScene: option<string>,
   canUndo: bool,
-  // The adaptive Settings refresh control (#112). `refreshMode` is `None` until
+  // The adaptive Settings refresh control. `refreshMode` is `None` until
   // `Refresh.detect` resolves (and stays effectively hidden on an unsupported
   // browser); it decides the button's "Refresh" vs "Check for updates" shape.
   // `refreshBusy` is whether a check/refresh is in flight — it spins the on-button
-  // indicator rather than a status line beneath it (#201).
+  // indicator rather than a status line beneath it.
   refreshMode: option<Refresh.mode>,
   refreshBusy: bool,
   // The Debug screen's "Share game state" row (`ShareLink`). `shareUrl` is the
@@ -124,13 +124,13 @@ type model = {
   // renders disabled. `shareStatus` is the transient line reporting what happened.
   shareUrl: option<string>,
   shareStatus: option<string>,
-  // The main menu's Share Seed button (#98): the seed of the board on the table,
+  // The main menu's Share Seed button: the seed of the board on the table,
   // reported by the scene (`~onDeal` below), and the transient line under the buttons
   // reporting where its link went. `None` greys the button out — a demo scene, or a
   // game resumed from a save with no deal number recorded. Unlike `shareUrl` above
   // there's nothing to prepare: the link is a `?seed=` string built on the press
   // (`ShareLink.urlForDeal`), so only the number has to be to hand — that, and the game
-  // it's a deal of, which the press reads off `liveGame` rather than the model (#353).
+  // it's a deal of, which the press reads off `liveGame` rather than the model.
   dealSeed: option<int>,
   shareDealStatus: option<string>,
 }
@@ -140,33 +140,33 @@ type msg =
   | Reload // user asked to activate the waiting worker and reload
   | ToggleMenu // the top bar's Menu button
   | CloseMenu // backdrop / close button / a scene row was tapped
-  | ToggleConsole // the ` key — drop the debug console over the board, or put it away (#271)
-  | CloseConsole // Escape while the console is showing (#271)
-  // ⇧` — step the console round its four placements (#275): top, side, bottom, full. The
+  | ToggleConsole // the ` key — drop the debug console over the board, or put it away
+  | CloseConsole // Escape while the console is showing
+  // ⇧` — step the console round its four placements: top, side, bottom, full. The
   // flag is the *live board's* verdict on whether it can spare the side dock's width,
   // read at the keypress and carried in (like `RefreshDetected`) so `update` stays a pure
   // function of the model rather than reaching into the layout.
   | ToggleConsoleDock(bool)
-  | OpenSettings // the main menu's Settings button — swap to the Settings screen (#191)
-  | BackToMenu // the Settings screen's back button — swap back to the main menu (#191)
+  | OpenSettings // the main menu's Settings button — swap to the Settings screen
+  | BackToMenu // the Settings screen's back button — swap back to the main menu
   | OpenDebug // the Settings screen's Debug row — swap to the Debug screen
   | BackToSettings // the Debug screen's back button — swap back to Settings
-  | ToggleAutoCollect // the menu's Auto-collect switch (#139)
-  | ToggleCardTilt // the menu's hand-placed-tilt switch (#65)
-  | WiggleOff // the Wiggle Waggle switch turned off (#235) — stop listening, square up
-  | WiggleResolved(Motion.state) // a motion-permission request resolved to a new state (#235)
-  | ToggleNotchDisplay // the menu's "Display content around screen notch" switch (#204)
+  | ToggleAutoCollect // the menu's Auto-collect switch
+  | ToggleCardTilt // the menu's hand-placed-tilt switch
+  | WiggleOff // the Wiggle Waggle switch turned off — stop listening, square up
+  | WiggleResolved(Motion.state) // a motion-permission request resolved to a new state
+  | ToggleNotchDisplay // the menu's "Display content around screen notch" switch
   | ToggleCutoutDebug // the menu's safe-area overlay switch (debug)
-  | ToggleDebugLog // the Debug screen's console-logging switch (#213)
+  | ToggleDebugLog // the Debug screen's console-logging switch
   | SettingsTitleTapped // a tap on the Settings screen's title — ten reveal the hidden settings
-  | SceneActivated(string) // the switcher mounted a scene — which one the menu highlights (#337)
-  | HistoryChanged(bool) // whether the board can undo after a move (#85)
-  | RefreshDetected(Refresh.mode) // service-worker presence detected — sets the button's shape (#112)
-  | RefreshStarted // the refresh button was tapped — start spinning the button (#112/#201)
+  | SceneActivated(string) // the switcher mounted a scene — which one the menu highlights
+  | HistoryChanged(bool) // whether the board can undo after a move
+  | RefreshDetected(Refresh.mode) // service-worker presence detected — sets the button's shape
+  | RefreshStarted // the refresh button was tapped — start spinning the button
   | RefreshChecked // an update check finished — stop the spinner (a found update surfaces as the About button)
   | ShareLinkReady(option<string>) // the open Debug screen's board, encoded into a link (`ShareLink`)
   | ShareStatus(option<string>) // the share row's transient status line; `None` clears it
-  | DealChanged(option<int>) // the board reported which deal it's showing (#98)
+  | DealChanged(option<int>) // the board reported which deal it's showing
   | ShareDealStatus(option<string>) // the Share button's transient status line; `None` clears it
 
 // `updateSW` only exists once registerSW has run, which needs `dispatch`, which
@@ -174,7 +174,7 @@ type msg =
 // that's filled in just after mount (see below).
 let updateSW: ref<option<bool => promise<unit>>> = ref(None)
 
-// The board on screen, and everything it offers this chrome (#300): one
+// The board on screen, and everything it offers this chrome: one
 // `TableScene.controls` record, handed over as the scene mounts (see `gameScene`) and
 // dropped whole on every scene change (see the switcher's `onActivate`).
 //
@@ -186,7 +186,7 @@ let liveBoard: ref<option<TableScene.controls>> = ref(None)
 
 // The live board's saved game, or `None` on a scene that has none (a demo) or
 // before a board has mounted. What the share button encodes — its undo/redo history
-// and its play tally (#289), rebuilt into a board at the far end by
+// and its play tally, rebuilt into a board at the far end by
 // `controls.loadHistory`.
 let currentHistory = () => liveBoard.contents->Option.flatMap(board => board.readHistory())
 
@@ -197,17 +197,17 @@ let currentHistory = () => liveBoard.contents->Option.flatMap(board => board.rea
 // over the player's own saved game, and a link that turns out to be corrupt must leave
 // that game untouched.
 //
-// It carries the *game* rather than a bare "landed" flag because the blob names one
-// (#354), and every scene has to be able to ask whether the link was for it: a link
+// It carries the *game* rather than a bare "landed" flag because the blob names
+// one, and every scene has to be able to ask whether the link was for it: a link
 // shared from Mini takes over Mini's save and leaves FreeCell's alone.
 //
-// A ref at all only because a shared open builds the board twice (#259) — and now also
+// A ref at all only because a shared open builds the board twice — and now also
 // because the name arrives asynchronously, after every scene has been built. Close that
 // gap and the placeholder build goes with it, and so does the need for this.
 let sharedGame: ref<option<Game.t>> = ref(None)
 
 // The undo availability the board reports during its *opening* mount, captured to
-// seed the model below (#177). That first report fires while the switcher mounts
+// seed the model below. That first report fires while the switcher mounts
 // the initial scene (see `switcher` below) — which happens during module init,
 // before `dispatch` (and so `reportHistory`'s real dispatcher) exists — so a
 // resumed game whose restored stack can already undo would otherwise lose its
@@ -215,7 +215,7 @@ let sharedGame: ref<option<Game.t>> = ref(None)
 // default `reportHistory` records the latest value here; the model reads it at init.
 let initialCanUndo = ref(false)
 
-// The board's reverse channel (#85): after every state change it reports whether
+// The board's reverse channel: after every state change it reports whether
 // there's anything to undo so the top bar can enable/disable the button. Filled
 // with a real dispatcher just after mount (like `closeMenu`); until then it stashes
 // the value into `initialCanUndo` (above) so the opening report survives to seed the
@@ -223,7 +223,7 @@ let initialCanUndo = ref(false)
 // the button disabled.
 let reportHistory: ref<bool => unit> = ref(canUndo => initialCanUndo := canUndo)
 
-// The deal number the board reports during its *opening* mount (#98), captured to
+// The deal number the board reports during its *opening* mount, captured to
 // seed the model — the same pre-mount problem `initialCanUndo` solves, and here it's
 // the ordinary case rather than a corner: every plain open deals a board and reports
 // its number while the switcher mounts the initial scene, which is during module
@@ -231,7 +231,7 @@ let reportHistory: ref<bool => unit> = ref(canUndo => initialCanUndo := canUndo)
 // every load and only light up after a New Game.
 let initialDealSeed: ref<option<int>> = ref(None)
 
-// The board's deal-number channel (#98), sibling of `reportHistory`: the deal now on
+// The board's deal-number channel, sibling of `reportHistory`: the deal now on
 // the table, for the menu's Share button. Filled with a real dispatcher just after
 // mount; until then it stashes the value for the model to read at init, and it's
 // reset to `None` on each scene change so a demo scene offers nothing to share.
@@ -239,7 +239,7 @@ let reportDeal: ref<option<int> => unit> = ref(seed => initialDealSeed := seed)
 
 // The deal number on the table right now, mirrored out of the reports below. The
 // menu's Share Seed button renders from the *model* (through `DealChanged`), but the
-// win overlay's Share button (#264) is built by the board itself, outside the loop,
+// win overlay's Share button is built by the board itself, outside the loop,
 // and asks at the moment the overlay goes up — so it needs the live value rather
 // than a dispatched copy of it.
 let liveDealSeed: ref<option<int>> = ref(None)
@@ -254,7 +254,7 @@ let publishDeal = (seed: option<int>): unit => {
   reportDeal.contents(seed)
 }
 
-// The *game* the board on the table is a board of (#353), the companion to
+// The *game* the board on the table is a board of, the companion to
 // `liveDealSeed`: a deal link now says which game its number belongs to, so a share
 // needs both halves. Set beside `liveBoard` as a card table mounts (`gameScene` closes
 // over its own game) and cleared with it on a scene change, so the two can't disagree
@@ -271,33 +271,33 @@ let liveGame: ref<option<Game.t>> = ref(None)
 // during module init. It reaches the loop through this ref, filled in just after mount.
 let closeMenu: ref<unit => unit> = ref(() => ())
 
-// The scene the switcher just mounted, on its way to the model's `activeScene` (#337).
+// The scene the switcher just mounted, on its way to the model's `activeScene`.
 // Same ref-until-mounted arrangement as `closeMenu`, and it can afford to *drop* the
 // opening report the way `reportHistory` can't: the initial scene is `switcher.active`,
 // which `init` reads directly, so the pre-dispatch default has nothing to remember.
 let reportScene: ref<string => unit> = ref(_ => ())
 
-// The live driver preferences (#139), seeded from the persisted settings (#134's
-// auto-collect defaults on). This is the same ref the board reads at each
+// The live driver preferences, seeded from the persisted settings (auto-collect
+// defaults on). This is the same ref the board reads at each
 // post-move step (see `gameScene` → `TableScene`), so the menu's Auto-collect
 // switch flipping a field here changes the board's behaviour on the very next move
 // — no rebuild — while the model's mirror of the flag keeps the switch in sync.
 let options: ref<Options.t> = ref(Preferences.load())
 
-// The live hand-placed-tilt preference (#65), seeded from storage (defaults on).
+// The live hand-placed-tilt preference, seeded from storage (defaults on).
 // A presentation-only flag the CLI has no notion of, so it rides beside `options`
 // rather than inside the shared `Options.t`. The board reads this ref wherever it
 // lays a card out, so the menu's tilt switch flipping it here re-tilts the board on
 // its next relayout, and the model's mirror keeps the switch in sync.
 let tiltEnabled: ref<bool> = ref(Preferences.loadCardTilt())
 
-// The persisted "Display content around screen notch" preference (#204, defaults
+// The persisted "Display content around screen notch" preference (defaults
 // on). Presentation-only and read entirely by the CSS via the document-root
 // attribute (see `NotchDisplay`), so unlike `tiltEnabled` the board never reads it
 // — a plain value seeds the model's mirror and the startup attribute apply below.
 let notchDisplayEnabled = Preferences.loadNotchDisplay()
 
-// The persisted "Console logging" preference (#213, defaults off). Read once at
+// The persisted "Console logging" preference (defaults off). Read once at
 // startup to seed both the model's toggle and the shared `DebugLog` gate, and the gate
 // is opened straight away — before the first board is built below — so a developer who
 // left logging on sees the opening deal's UI↔Core traffic too, not only interactions
@@ -305,13 +305,13 @@ let notchDisplayEnabled = Preferences.loadNotchDisplay()
 let debugLogEnabled = Preferences.loadDebugLog()
 DebugLog.setConsoleEnabled(debugLogEnabled)
 
-// The persisted console placement (#275, defaults to the top overlay). Unlike the flag
+// The persisted console placement (defaults to the top overlay). Unlike the flag
 // above there's nothing to apply at startup: the console is always closed on load, so
 // the placement only reaches the document root once one is opened (see
 // `ConsoleDock.reflect` — the attribute is published only while the panel shows).
 let consoleDockMode = Preferences.loadConsoleDock()
 
-// Whether the console may dock right now (#275), asked of the stage as it actually
+// Whether the console may dock right now, asked of the stage as it actually
 // stands: "could you give up this many px of stage width and still deal cards above
 // `minScale`?" (see `TableScene.controls.dockFit`). No board on the scene means no,
 // since there's nothing to dock beside. Read at the keypress rather than inside
@@ -324,7 +324,7 @@ let dockFits = () =>
   | None => false
   }
 
-// The persisted Wiggle Waggle *intent* (#235), read once at startup. It's intent, not
+// The persisted Wiggle Waggle *intent*, read once at startup. It's intent, not
 // permission — the OS can revoke the grant behind us — so on relaunch the first board
 // tap re-asks `Motion.requestAccess` (silent if still granted; see the wiring at the
 // foot of the file) and the switch reflects whatever it finds.
@@ -337,7 +337,7 @@ let wantsShake = Preferences.loadWantsShake()
 let wiggleInit = Motion.initialState(~wantsShake)
 Motion.current := wiggleInit
 
-// Whether the board *should* be listening for shakes right now (#235): true once
+// Whether the board *should* be listening for shakes right now: true once
 // Wiggle Waggle is on and permission is granted. Held outside the Elm model so a
 // scene mount — which happens through the imperative switcher — can re-apply it to
 // the board that just published its controls (see `~publish` in `gameScene`).
@@ -347,13 +347,13 @@ let update = (msg, model) =>
   switch msg {
   | UpdateAvailable => ({...model, updateAvailable: true}, Html.noEffect)
   // Opening or closing the menu resets it to the main screen, so a visit to
-  // Settings never lingers into the next open (#191).
+  // Settings never lingers into the next open.
   // Every screen change also abandons a part-finished run of reveal taps
   // (`HiddenOptions.reset`), here and in the five branches below: the counter only
   // ever spans one uninterrupted visit to the Settings screen.
-  // Opening the menu also puts an *overlapping* debug console away (#271): the menu is
+  // Opening the menu also puts an *overlapping* debug console away: the menu is
   // the modal chrome and takes the screen for itself, and the console's twin rule below
-  // closes the menu on the way in. A **side-docked** console is exempt (#275) — it's
+  // closes the menu on the way in. A **side-docked** console is exempt — it's
   // beside the board rather than over the Menu button or under the menu's own panel, so
   // nothing is in anything's way, and leaving the log up is the point: flip a debug
   // setting and watch the line it emits.
@@ -373,7 +373,7 @@ let update = (msg, model) =>
         ? () => DebugConsole.apply(~open_=false, ~dock=model.consoleDock)
         : Html.noEffect,
     )
-  // The ` key (#271). Opening subscribes the panel to `DebugLog` — a closed console
+  // The ` key. Opening subscribes the panel to `DebugLog` — a closed console
   // isn't listening, so it costs nothing — and closes the menu if it was showing, unless
   // it's opening docked, in which case the two coexist (see `ToggleMenu` above).
   | ToggleConsole =>
@@ -395,7 +395,7 @@ let update = (msg, model) =>
           () => DebugConsole.apply(~open_=false, ~dock=model.consoleDock),
         )
       : (model, Html.noEffect)
-  // ⇧` steps to the next placement (#275). `fits` is the live board's verdict on whether
+  // ⇧` steps to the next placement. `fits` is the live board's verdict on whether
   // it can spare the side dock's width: a window too narrow *steps over* that placement
   // rather than landing on it — and says so in the log — instead of silently docking into
   // a board that would then deal cards below `minScale`. The three placements that cover
@@ -432,7 +432,7 @@ let update = (msg, model) =>
         Preferences.saveConsoleDock(consoleDock)
       },
     )
-  // A scene mounted (#337). Only ever a scene *change* — the switcher answers a tap on
+  // A scene mounted. Only ever a scene *change* — the switcher answers a tap on
   // the row of the scene already showing with `~onReselect` instead, precisely so the
   // live board isn't torn down — so there's no no-change guard here to write.
   | SceneActivated(id) => ({...model, activeScene: Some(id)}, Html.noEffect)
@@ -508,10 +508,10 @@ let update = (msg, model) =>
         liveBoard.contents->Option.forEach(board => board.relayout())
       },
     )
-  // Wiggle Waggle turned off (#235): stop listening and square the board back up
+  // Wiggle Waggle turned off: stop listening and square the board back up
   // (the board's `stop` does both), persist the flipped-off intent, and drop the
   // shared state to `Off`. Snapping the mess back is the deliberate way out — a
-  // hidden square-up gesture can't be the only one (#236).
+  // hidden square-up gesture can't be the only one.
   | WiggleOff => (
       {...model, wiggle: Motion.Off},
       () => {
@@ -521,7 +521,7 @@ let update = (msg, model) =>
         liveBoard.contents->Option.forEach(board => board.shake.stop())
       },
     )
-  // A motion-permission request resolved (#235). `On` — granted or ungated: start
+  // A motion-permission request resolved. `On` — granted or ungated: start
   // listening and persist the intent so the next launch resumes. `Blocked` — the OS
   // refused: the switch snaps back to off (its subtitle explains why) and we stop;
   // crucially we *don't* persist a false intent, so a grant revoked behind us (the
@@ -568,8 +568,8 @@ let update = (msg, model) =>
     (
       {...model, debugLog},
       // Subscribe (or drop) the JS console on the shared log the whole app publishes
-      // through (#213) and persist the choice so it survives a reload. Both run as the
-      // post-update effect. The drop-down console (#271) is a separate subscriber, so
+      // through and persist the choice so it survives a reload. Both run as the
+      // post-update effect. The drop-down console is a separate subscriber, so
       // the two are independent: either, both, or neither can be listening.
       () => {
         DebugLog.setConsoleEnabled(debugLog)
@@ -612,7 +612,7 @@ let update = (msg, model) =>
   | RefreshChecked => ({...model, refreshBusy: false}, Html.noEffect)
   | ShareLinkReady(shareUrl) => ({...model, shareUrl}, Html.noEffect)
   | ShareStatus(shareStatus) => ({...model, shareStatus}, Html.noEffect)
-  // A new deal reached the table (#98). Whatever status line the previous deal's
+  // A new deal reached the table. Whatever status line the previous deal's
   // share left up goes with it — "Link copied to clipboard." must not sit under a
   // number it no longer refers to.
   | DealChanged(dealSeed) =>
@@ -625,7 +625,7 @@ let update = (msg, model) =>
 // The scene area (switcher + demos) is built imperatively and owns its own
 // subtree. `render` hands back one real DOM node — the scene container, wrapped by
 // the scene band and spliced in with `Html.node`, never re-rendered — plus the menu's
-// scene lists as plain data for the chrome to draw (#336, #337).
+// scene lists as plain data for the chrome to draw.
 //
 // The app always opens on the FreeCell board: `~default="freecell"` is the launch
 // scene, replacing the old "resume the last scene" behaviour — the game is always
@@ -636,8 +636,8 @@ let update = (msg, model) =>
 // shuffle today.
 let url = AppUrl.parse()
 
-// A fresh seed for each New Game (#108). The seed is the future "deal number"
-// (#98): random for now, so every re-deal lays out a different board; a deal-number
+// A fresh seed for each New Game. The seed is the future "deal
+// number": random for now, so every re-deal lays out a different board; a deal-number
 // entry point can later supply a chosen seed to the game's own `deal`. `Math.random`
 // is fine here — this is the impure view layer, not `core`'s deterministic deal path.
 let randomSeed = () => (Math.random() *. 1_000_000.)->Float.toInt
@@ -648,11 +648,11 @@ let randomSeed = () => (Math.random() *. 1_000_000.)->Float.toInt
 // is what decides both (see `TableScene.controls`).
 let gameScene = (game: Game.t) => {
   // The question every decision below turns on, asked of the game in hand rather than of
-  // its id (#349): can this board deal another of itself? A second seeded game answers
+  // its id: can this board deal another of itself? A second seeded game answers
   // yes on the day it's added, with no edit here.
   let canDeal = game.deal->Option.isSome
-  // A *plain* open of a re-dealable game is the only place save-and-resume applies
-  // (#177): the app's primary kind of game — one you can be handed a fresh board of —
+  // A *plain* open of a re-dealable game is the only place save-and-resume
+  // applies: the app's primary kind of game — one you can be handed a fresh board of —
   // opened without a URL asking for a specific position. A `?state=` scenario or a
   // `?seed=` deal link addresses an exact board, so it opens
   // that board and leaves any saved game strictly alone — neither resumed nor
@@ -666,7 +666,7 @@ let gameScene = (game: Game.t) => {
   // exactly as if it had been dealt here. Opening someone's link adopts their game
   // rather than borrowing it, so the two halves are gated separately below.
   //
-  // Which asks *whose* save it takes over, and the link now says (#354). Two questions,
+  // Which asks *whose* save it takes over, and the link now says. Two questions,
   // asked at two different times, because the answer to the second isn't available when
   // this scene is built: inflating the blob is asynchronous, so at build time all any
   // scene knows is that some link is coming (`sharePending`), and only later does one of
@@ -684,9 +684,9 @@ let gameScene = (game: Game.t) => {
   // mount would restore over the game actually being played.
   let loadHistory = () => plainOpen ? SavedGame.load(game.id) : None
 
-  // Open a re-dealable game from a fresh random seed on each load too (#108/#98), so a
+  // Open a re-dealable game from a fresh random seed on each load too, so a
   // plain reload with nothing saved lays out a new board instead of always deal #1 —
-  // matching what New Game does. A `?seed=` pins that deal number instead (#98), so a
+  // matching what New Game does. A `?seed=` pins that deal number instead, so a
   // link — and the screenshot report's dealt-board shot — lands on the same board
   // every time. The game value as `Game.all` holds it (FreeCell's is deal #1) stays the
   // deterministic fallback for a forced `?state=` scenario, which screenshots depend
@@ -710,7 +710,7 @@ let gameScene = (game: Game.t) => {
   let newDeal = game.deal->Option.map(deal => () => deal(randomSeed()))
   TableScene.make(
     ~initial=?url.state->Option.flatMap(name => Scenario.forName(game, name)),
-    // Restore the saved undo/redo stack (#177) and, when saving applies, hand the
+    // Restore the saved undo/redo stack and, when saving applies, hand the
     // board a sink that writes each change back to storage. New Game/Restart/every
     // move flow through this same sink, so the saved game always tracks the live one.
     ~loadHistory,
@@ -719,7 +719,7 @@ let gameScene = (game: Game.t) => {
     // the fixed deal the board is built from while the blob inflates is scaffolding,
     // and writing *that* to storage would clobber the player's own game with a board
     // nobody asked for. It also means a link that fails to decode — or one that names
-    // another game (#354) — leaves this game's save exactly as it was: nothing landed
+    // another game — leaves this game's save exactly as it was: nothing landed
     // here, so nothing is written.
     //
     // The sink is wired for any scene a pending link *might* name, and the gate inside
@@ -734,14 +734,14 @@ let gameScene = (game: Game.t) => {
         )
       : None,
     ~newDeal?,
-    // Adopt the mounting board whole (#300) — its re-deals, Undo, console runner,
+    // Adopt the mounting board whole — its re-deals, Undo, console runner,
     // relayout, share-link hooks and shake control, in one record that replaces
     // whatever the outgoing scene left here. Then, if Wiggle Waggle is already on,
     // start the new board listening straight away: this is what re-applies an active
     // shake to a board that mounts after the switch was flipped.
     ~publish=board => {
       liveBoard := Some(board)
-      // …and which game it's a board of (#353), for the two share links that now name
+      // …and which game it's a board of, for the two share links that now name
       // it. This is the one place that knows: the scene publishes controls, not the
       // `Game.t` they were built from, and `gameScene` has it in hand right here.
       liveGame := Some(game)
@@ -756,7 +756,7 @@ let gameScene = (game: Game.t) => {
     // a `game.seed` that a posed or resumed board would make a liar of.
     ~currentDeal=() => liveDealSeed.contents,
     // The deal number behind the board, resolved from what the scene can see to what
-    // is actually true of the game on screen (#98).
+    // is actually true of the game on screen.
     //
     // `Some(n)` is a board freshly dealt from `n` — the opening deal, a New Game, a
     // Restart. When this open is one that saves, the number is saved with it: it's
@@ -771,7 +771,7 @@ let gameScene = (game: Game.t) => {
     //     stored last time, so it's read back here;
     //   - a `?state=` scenario asks `core` which deal that position descends from
     //     (`Scenario.seedForName`). Only a scenario that has *proved* a line to itself
-    //     answers — `almost-won` from deal 264 (#264) — so a posed board either offers
+    //     answers — `almost-won` from deal 264 — so a posed board either offers
     //     the deal it genuinely came from or offers nothing;
     //   - a `#g=` shared game has a real position with no deal number attached to it,
     //     so there's nothing to name and the Share buttons stay dark rather than
@@ -790,7 +790,7 @@ let gameScene = (game: Game.t) => {
             : url.state->Option.flatMap(name => Scenario.seedForName(game, name))
         },
       ),
-    // The win overlay's Share button (#264): the same deal number the menu's Share
+    // The win overlay's Share button: the same deal number the menu's Share
     // Seed offers, wrapped in a message and handed over when the player wins. It's
     // resolved here rather than in the board for the reason spelled out on `~onDeal`
     // above — a resumed game's number lives in this driver's storage, not in the
@@ -810,7 +810,7 @@ let gameScene = (game: Game.t) => {
         switch liveDealSeed.contents {
         | Some(seed) =>
           // The game is this scene's own, not `liveGame`'s: the overlay is over *this*
-          // board, and the two say the same thing anyway (#353).
+          // board, and the two say the same thing anyway.
           ShareLink.deliver(
             ~text=ShareLink.victoryMessage(~game, ~seed, ~moves, ~undos),
             ShareLink.urlForDeal(~game, ~seed),
@@ -834,7 +834,7 @@ let gameScene = (game: Game.t) => {
 }
 let switcher = SceneSwitcher.render(
   // The launch scene, spelled as the game `core` says a nameless deal number belongs to
-  // rather than as the literal `"freecell"` (#353). That's the same fact twice
+  // rather than as the literal `"freecell"`. That's the same fact twice
   // otherwise, and the two halves of one property: `urlForDeal` omits `?scene=` for
   // `Game.default`, so a bare `?seed=7` has to land on `Game.default`'s scene for the
   // link to mean what it says. Written this way the round trip can't drift.
@@ -849,20 +849,20 @@ let switcher = SceneSwitcher.render(
   // to drive), reset the two things the board *reports* rather than offers, and close
   // the menu after a row tap.
   ~onActivate=scene => {
-    // One line, and it can't be incomplete (#300): the whole published surface goes at
+    // One line, and it can't be incomplete: the whole published surface goes at
     // once. The outgoing board's shake subscription is already detached by its own
     // teardown, and `~publish` re-applies `shakeActive` to whichever board mounts next.
     liveBoard := None
-    // …and the game that board was a board of (#353), which goes with it: a demo scene
+    // …and the game that board was a board of, which goes with it: a demo scene
     // publishes neither, and the two must never be one scene apart.
     liveGame := None
     // Reset the top bar's Undo to disabled; the mounting scene reports its own
-    // history (#85).
+    // history.
     reportHistory.contents(false)
-    // …and clear the deal number with it (#98), so the Share buttons are dark for the
+    // …and clear the deal number with it, so the Share buttons are dark for the
     // moment between scenes; the mounting scene reports its own (a demo reports none).
     publishDeal(None)
-    // Move the menu's highlight to the scene coming up (#337). The switcher no longer
+    // Move the menu's highlight to the scene coming up. The switcher no longer
     // owns a row to mark, so this report *is* the highlight.
     reportScene.contents(scene.id)
     closeMenu.contents()
@@ -874,7 +874,7 @@ let switcher = SceneSwitcher.render(
   Array.concat(
     [
       GalleryScene.make(),
-      // The card-sprite fidelity check (#225). `?raster=` picks which of the
+      // The card-sprite fidelity check. `?raster=` picks which of the
       // three renderings it opens on; without it the scene's own default wins.
       RasterScene.make(~rendering=?url.raster),
       MotionScene.make(),
@@ -889,9 +889,9 @@ let switcher = SceneSwitcher.render(
 // fixed opening deal by the time the history arrives, and this drops the real
 // position onto it. That's one frame of a stable, un-animated FreeCell deal before
 // the swap; both are arranged above precisely so this reads as the board settling
-// rather than as a board changing its mind. The frame itself is #259.
+// rather than as a board changing its mind. Closing that frame is #259.
 //
-// **The blob says which game it is a game of** (#354), so the first thing that happens
+// **The blob says which game it is a game of**, so the first thing that happens
 // here is bringing that game's scene forward. `ensureActive` is exactly that job — mount
 // the scene, or do nothing when it's already the one showing, which is the common case
 // of a FreeCell link landing on the FreeCell the app launches into — and it's the same
@@ -926,14 +926,14 @@ switch url.shared {
         switcher.ensureActive(game.id)
         sharedGame := Some(game)
         // The shared game takes over storage, so the previous game's deal number must
-        // not stay behind to be read as its own (#98): a shared position was never
+        // not stay behind to be read as its own: a shared position was never
         // dealt from a number here, and a later resume asking "which deal is this?"
         // has to be told there isn't one rather than handed the last one this device
         // dealt for itself.
         //
-        // The key is the *board being played*, not a hardcoded game (#349) — and since
-        // #354 that board is named by the link rather than inferred from whichever
-        // scene it opened onto, which is the same fact one step earlier.
+        // The key is the *board being played*, not a hardcoded game — and that board
+        // is named by the link rather than inferred from whichever scene it opened
+        // onto, which is the same fact one step earlier.
         SavedGame.clearSeed(game.id)
         // Read *after* `ensureActive`, so this is the board of the game the link named
         // rather than the one that happened to be showing when the blob arrived.
@@ -947,13 +947,13 @@ switch url.shared {
 // The debug "states" menu (sibling to the switcher's "Debug scenes"): one row per
 // named FreeCell position (`Scenario.scenariosFor`). Tapping a row surfaces FreeCell
 // — mounting it if a demo scene is showing — then forces that position onto the
-// board through the mounted board's `loadState` (#300), the live in-app twin of the
+// board through the mounted board's `loadState`, the live in-app twin of the
 // URL's `?state=`. `ensureActive` runs first so the board is FreeCell's, and closing
 // the menu is explicit (a no-op if `ensureActive` already closed it on a scene
 // change).
 //
 // A list of entries rather than a built node: `<MenuDisclosure>` renders them — the
-// same component the switcher's "scenes" group is drawn with (#336). Module-level,
+// same component the switcher's "scenes" group is drawn with. Module-level,
 // because nothing about a row depends on the chrome model — the same array is handed
 // down on every render.
 let debugStates = Scenario.scenariosFor(
@@ -964,7 +964,7 @@ let debugStates = Scenario.scenariosFor(
     switcher.ensureActive("freecell")
     liveBoard.contents->Option.forEach(board => board.loadState(scenario.build(Game.freecell)))
     // Say which deal the board is now showing, the menu twin of the `?state=` rule
-    // above (#264): a posed position offers the deal it's been shown to descend from,
+    // above: a posed position offers the deal it's been shown to descend from,
     // and nothing otherwise. This runs *after* the load because the rebuild it
     // triggers reports `None` through `~onDeal` on its way past — on a plain open
     // that resolves to the saved game's seed, which is the board this load has just
@@ -990,7 +990,7 @@ let openNamedDeal = (~game: Game.t, ~position: option<Scenario.named>): string =
     | Some(board) =>
       board.loadState(p.build(game))
       // Say which deal the posed board descends from, for the same reason the menu row
-      // does it (#264): the rebuild reports `None` on its way past, and leaving it there
+      // does it: the rebuild reports `None` on its way past, and leaving it there
       // would point the Share buttons at the deal the player was on a moment ago.
       publishDeal(p.seed)
       ""
@@ -1011,13 +1011,13 @@ let openNamedDeal = (~game: Game.t, ~position: option<Scenario.named>): string =
   }
 }
 
-// The menu's four prop records (#308). Each is the screen's own contract with this
+// The menu's four prop records. Each is the screen's own contract with this
 // chrome, built here and handed to `<Menu>` whole — the pane places whichever screen
 // `menuScreen` names and never looks inside. Grouping them this way is what lets a
 // new setting be declared once in `Main` and once on the screen that shows it,
 // rather than a third and fourth time on the way through the pane.
 
-// The main screen (#109/#191): re-deal the board, share its deal number, pick a
+// The main screen: re-deal the board, share its deal number, pick a
 // game, go on to Settings.
 let mainScreen = (model, dispatch): MenuMainScreen.props => {
   onClose: () => dispatch(CloseMenu),
@@ -1032,7 +1032,7 @@ let mainScreen = (model, dispatch): MenuMainScreen.props => {
   shareDealSeed: model.dealSeed,
   shareDealStatus: model.shareDealStatus,
   onShareDeal: () =>
-    // Share the *deal* (#98). The link is a `?seed=` string, so it's built right
+    // Share the *deal*. The link is a `?seed=` string, so it's built right
     // here and handed straight to `deliver` — no `await` between the click and
     // `navigator.share`, which is what keeps the gesture's transient activation
     // intact for the OS share sheet (the Debug screen's whole-game share has to
@@ -1044,7 +1044,7 @@ let mainScreen = (model, dispatch): MenuMainScreen.props => {
     // sheet to acknowledge it — closing over it would leave nothing to see. It
     // clears itself a few seconds later so it can't go stale.
     //
-    // Both halves of the link have to be to hand at once (#353): the number the model
+    // Both halves of the link have to be to hand at once: the number the model
     // carries, and the game the live board is a board of. A seed with no game behind it
     // is the moment between two scenes, and there's nothing to share then anyway — the
     // button is dark, so this is a guard rather than a case.
@@ -1058,7 +1058,7 @@ let mainScreen = (model, dispatch): MenuMainScreen.props => {
       ->ignore
     | _ => ()
     },
-  // The games list (#337): the switcher's primary scenes, paired with the one the model
+  // The games list: the switcher's primary scenes, paired with the one the model
   // says is mounted. The switcher hands over scenes, not rows — which of them is
   // current is the chrome's to know, being what a re-render has to reflect — so the
   // `selected` flag and the tap are joined up here.
@@ -1075,7 +1075,7 @@ let mainScreen = (model, dispatch): MenuMainScreen.props => {
   },
 }
 
-// The Settings screen (#191): the player-facing preferences.
+// The Settings screen: the player-facing preferences.
 let settingsScreen = (model, dispatch): MenuSettingsScreen.props => {
   onClose: () => dispatch(CloseMenu),
   onBackToMenu: () => dispatch(BackToMenu),
@@ -1103,7 +1103,7 @@ let settingsScreen = (model, dispatch): MenuSettingsScreen.props => {
   onToggleCardTilt: () => dispatch(ToggleCardTilt),
   wiggle: model.wiggle,
   onToggleWiggle: () =>
-    // The single chance to ask (#235): flip *on* asks for the motion grant under
+    // The single chance to ask: flip *on* asks for the motion grant under
     // this real click's transient activation — iOS won't prompt without it and
     // remembers a denial per origin. Flip *off* just stops. An `Unavailable` switch
     // has nothing to grant, so a tap is inert.
@@ -1150,7 +1150,7 @@ let debugScreen = (model, dispatch): MenuDebugScreen.props => {
   debugStates,
 }
 
-// The adaptive update-check control (#112), or `None` while the service-worker state
+// The adaptive update-check control, or `None` while the service-worker state
 // is still being detected — and on a browser that has no `serviceWorker` at all,
 // where there is nothing a button could do. `Refresh.mode` is what decides its shape:
 // "Refresh" force-reloads a cache-only install, "Check for updates" checks a real one
@@ -1179,7 +1179,7 @@ let refreshControl = (model, dispatch): option<RefreshControl.props> =>
   }
 
 // The About footer, under all three screens: the build/version line, the Update
-// button when a new build is waiting (#165), and the update-check control tucked
+// button when a new build is waiting, and the update-check control tucked
 // under them.
 let aboutFooter = (model, dispatch): AboutFooter.props => {
   version: model.version,
@@ -1208,7 +1208,7 @@ let view = (model, dispatch) => <>
       <div id="scene-box"> {Html.node(switcher.scene)} </div>
     </section>
   </main>
-  // The drop-down debug console (#271). Only its shell is JSX; the scrollback itself
+  // The drop-down debug console. Only its shell is JSX; the scrollback itself
   // is a real `<ol>` the module appends to, spliced in with `Html.node` — the same
   // arrangement as the scene container above, and for the same reason (a spliced
   // node's subtree is outside the diff, so a growing log never re-patches its lines).
@@ -1240,7 +1240,7 @@ body->WebDom.appendChild(root)->ignore
 // the `[data-cutout="left"]` rules in styles/landscape-rail.css).
 CutoutSide.install()
 
-// Reflect the persisted "Display content around screen notch" preference (#204)
+// Reflect the persisted "Display content around screen notch" preference
 // onto the document root up front, so a player who turned wing placement off sees
 // the clamped layout from the first paint rather than after a toggle.
 NotchDisplay.setEnabled(notchDisplayEnabled)
@@ -1257,12 +1257,12 @@ let dispatch = Html.mount(
     buildTime,
     updateAvailable: false,
     menuOpen: false,
-    // The menu opens on its main screen; Settings and Debug are swap-ins (#191).
+    // The menu opens on its main screen; Settings and Debug are swap-ins.
     menuScreen: Menu.Main,
-    // The debug console is closed on every load (#271) — it's opened by a keypress and
+    // The debug console is closed on every load — it's opened by a keypress and
     // never remembered, so a rendered screenshot or link-preview image can't show one.
     consoleOpen: false,
-    // …but *where* it opens is remembered (#275): the mode is a deliberate choice, so
+    // …but *where* it opens is remembered: the mode is a deliberate choice, so
     // it survives a reload. Nothing shows until a keypress opens the panel, so a
     // screenshot taken on a load with `docked` saved still sees an untouched board.
     consoleDock: consoleDockMode,
@@ -1270,7 +1270,7 @@ let dispatch = Html.mount(
     // position (the board reads the `options` and `tiltEnabled` refs directly).
     autoCollect: options.contents.autoCollect,
     cardTilt: tiltEnabled.contents,
-    // The Wiggle Waggle switch opens in its computed startup state (#235): its saved
+    // The Wiggle Waggle switch opens in its computed startup state: its saved
     // intent, or an `Unavailable` reason on a device/origin that can't do motion. The
     // real grant is deferred to the first board tap (wired at the foot of the file).
     wiggle: wiggleInit,
@@ -1281,33 +1281,33 @@ let dispatch = Html.mount(
     // Debug overlay starts off each session (not persisted); the model keeps it
     // across rotations.
     cutoutDebug: false,
-    // Mirror the persisted console-logging preference (#213) so the switch opens in
+    // Mirror the persisted console-logging preference so the switch opens in
     // the right position; the `DebugLog` gate itself was seeded above.
     debugLog: debugLogEnabled,
     // The hidden settings open showing or not according to whether this device has
     // ever completed the ten-tap unlock; the tap run always starts fresh.
     hidden: HiddenOptions.initial(~revealed=Preferences.loadRevealHidden()),
-    // The scene the switcher mounted on its way up (#337) — read straight off it,
+    // The scene the switcher mounted on its way up — read straight off it,
     // since the mount above happened before this loop existed and so before any
     // message could carry the news. Every later change arrives as `SceneActivated`.
     // Unlike `canUndo` and `dealSeed` below this needs no capturing ref: the value is
     // the switcher's own, not something a board reported into a callback.
     activeScene: switcher.active,
-    // Seeded from the board's opening history report (#177): a fresh deal reports
+    // Seeded from the board's opening history report: a fresh deal reports
     // `false` (nothing to undo yet), but a resumed game with a restored undo stack
     // reports `true`, and that report already fired during the switcher's initial
     // mount above — before `dispatch` existed — so it's read back from
-    // `initialCanUndo` here rather than hardcoded off (#85).
+    // `initialCanUndo` here rather than hardcoded off.
     canUndo: initialCanUndo.contents,
     // The refresh button starts hidden until `Refresh.detect` reports the
-    // service-worker state (#112); not busy until an action runs.
+    // service-worker state; not busy until an action runs.
     refreshMode: None,
     refreshBusy: false,
     // The share row is filled in when the Debug screen opens (`ShareLink`), not at
     // startup — there's no point encoding a board nobody has asked to share.
     shareUrl: None,
     shareStatus: None,
-    // Seeded from the board's opening deal report (#98), for the same reason
+    // Seeded from the board's opening deal report, for the same reason
     // `canUndo` is: it fired during the switcher's initial mount above, before
     // `dispatch` existed. On a plain open that report *is* the deal number the Share
     // button offers, so reading it back here is what lets the button work on the
@@ -1320,23 +1320,23 @@ let dispatch = Html.mount(
 )
 
 // Now that `dispatch` exists, let a scene row close the menu through it — and let a
-// scene change move the menu's highlight (#337) the same way.
+// scene change move the menu's highlight the same way.
 closeMenu := (() => dispatch(CloseMenu))
 reportScene := (id => dispatch(SceneActivated(id)))
 
-// …and arm the debug console's keys (#271): ` drops it over the board, ` or Escape puts
+// …and arm the debug console's keys: ` drops it over the board, ` or Escape puts
 // it away. A window listener, so it works wherever the focus happens to be — the board
 // is plain DOM with nothing focusable in the way.
 DebugConsole.installKeys(
   ~onToggle=() => dispatch(ToggleConsole),
   ~onClose=() => dispatch(CloseConsole),
-  // ⇧` steps it round its four placements instead (#275). The board is asked *here*, at the
+  // ⇧` steps it round its four placements instead. The board is asked *here*, at the
   // keypress, whether it can spare the width — the answer is live layout, so it can't
   // come from inside the loop's pure update.
   ~onDock=() => dispatch(ToggleConsoleDock(dockFits())),
 )
 
-// …and wire what the console's input line *does* with a typed line (#273). The grammar
+// …and wire what the console's input line *does* with a typed line. The grammar
 // is shared with the CLI (`Command.parse`), and the split of who answers what follows
 // the app's own shape: the chrome owns the verbs about the session and the panel (help,
 // clear, dealing a new board — the things that live out here in `Main`), and everything
@@ -1359,7 +1359,7 @@ DebugConsole.setRunner(line => {
   // The driver's flags, typed rather than switched. Auto-collect goes through the menu's
   // own action rather than straight to the ref, so the switch and the saved preference
   // stay in step with a typed change — it *toggles*, hence the guard. The column-reorder
-  // house rule (#159) has no switch anywhere, so the console is the only way to reach it:
+  // house rule has no switch anywhere, so the console is the only way to reach it:
   // the board reads the ref live at each move, so it takes hold on the very next one.
   | Command.Set({setting, on}) =>
     switch setting {
@@ -1397,9 +1397,9 @@ DebugConsole.setRunner(line => {
       | None => Render.text("Nothing to deal on this scene.")
       }
     // `deal <n>` opens a *chosen* deal number, on the board it's typed at: the number
-    // goes straight to the live board, which lays it out with its own game's deal
-    // (#349). This used to build the board out here from `Game.freecellDeal`, which
-    // meant a console command deciding for itself which game a number belonged to.
+    // goes straight to the live board, which lays it out with its own game's deal.
+    // Don't build the board out here: a console command that reaches for a specific
+    // game's deal is a console command deciding which game a number belongs to.
     | Command.Numbered({seed}) =>
       switch liveBoard.contents->Option.flatMap(board => board.loadDeal) {
       | Some(load) =>
@@ -1433,7 +1433,7 @@ DebugConsole.setRunner(line => {
   DebugConsole.say(reply)
 })
 
-// Resume the shake grant on the first tap (#235). With `wantsShake` set, the switch
+// Resume the shake grant on the first tap. With `wantsShake` set, the switch
 // opened optimistically `On`, but iOS may require transient activation to (re)confirm
 // the grant, and it can have been revoked behind us — so we defer to the first user
 // gesture rather than prompting at startup. This one-shot `pointerdown` listener asks
@@ -1453,10 +1453,10 @@ if Motion.isOn(wiggleInit) {
 }
 
 // …and let the board's history reports reach the loop, so Undo enables and
-// disables as moves are played and undone (#85).
+// disables as moves are played and undone.
 reportHistory := (canUndo => dispatch(HistoryChanged(canUndo)))
 
-// …and the same for the deal number (#98), so the Share button follows the board: a
+// …and the same for the deal number, so the Share button follows the board: a
 // New Game's fresh deal, a Restart's same one, a scene switch to a board with none.
 reportDeal := (seed => dispatch(DealChanged(seed)))
 
@@ -1467,7 +1467,7 @@ reportDeal := (seed => dispatch(DealChanged(seed)))
 TapZoom.arm()
 
 // Detect the service-worker state up front so the Settings refresh button opens
-// with the right label (#112). It's re-detected each time Settings opens too (see
+// with the right label. It's re-detected each time Settings opens too (see
 // the view), which also covers the first-load race where the worker registers
 // just after this runs.
 Refresh.detect(mode => dispatch(RefreshDetected(mode)))

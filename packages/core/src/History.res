@@ -1,4 +1,4 @@
-// Undo/redo as a stack of prior states (#85) — the payoff immutability buys.
+// Undo/redo as a stack of prior states — the payoff immutability buys.
 // Now that the source of truth for a game is an immutable `GameState.t` owned by
 // `core`, undo is just a pop: keep the states you've passed through and step back
 // and forth over them.
@@ -20,7 +20,7 @@
 //
 // There is nothing here that a "game over" could snag on: a won `GameState` is
 // just another value in `past`/`present`, so undoing back out of a victory is the
-// same pop as any other (#85 follow-up) — the state model imposes no one-way door.
+// same pop as any other — the state model imposes no one-way door.
 
 type t<'a> = {
   past: array<'a>, // states behind the present, oldest first
@@ -47,7 +47,7 @@ let canRedo = (h: t<'a>): bool => Array.length(h.future) > 0
 // line" — and it's the only one available without the history growing a counter that
 // `undo` would then have to lie to.
 //
-// Which is exactly why the count of moves the player *made* isn't here (#289): that
+// Which is exactly why the count of moves the player *made* isn't here: that
 // number only goes up, so it lives outside the zipper, in `Stats`. The two agree
 // until the first undo and answer different questions after it. This one still has a
 // job: it's the best a save written before `Stats` existed can say about how it got

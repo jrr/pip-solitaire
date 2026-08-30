@@ -1,5 +1,5 @@
 // The CLI's driver loop: everything a terminal needs around a session, and nothing a
-// session needs itself. The *thinking* moved to `core`'s `Session` (#298) — which game
+// session needs itself. The *thinking* moved to `core`'s `Session` — which game
 // is in play, the history to undo over, the tallies and the clock beside it, the
 // post-move auto-collect, and running a board command against all of it. Both front
 // ends go through that one implementation now, which is what stops the next `Stats` or
@@ -21,7 +21,7 @@
 //     readline plumbing, and the shape that can't be tested without a pty decides
 //     nothing.
 //
-// The *grammar* isn't here either (#273): `Command.parse` in `core` turns a line into a
+// The *grammar* isn't here either: `Command.parse` in `core` turns a line into a
 // `Command.t`, and `Session.step` plays the board verbs. The commands themselves are
 // documented in docs/command-grammar.md and listed for a player in this package's
 // README; a verb answered only in this file is a verb the panel doesn't have.
@@ -66,7 +66,7 @@ ${gamesList()}`
 // `0:00` rather than inventing a duration.
 let stoppedClock = () => 0.
 
-// What the game cost, once it's over (#289/#302) — the very numbers the web app's
+// What the game cost, once it's over — the very numbers the web app's
 // victory panel reports, from the very same session, because they now ride in the
 // session rather than in whichever front end remembered to count them.
 //
@@ -81,7 +81,7 @@ let tallyLine = (s: Session.t): string =>
   | None => Stats.summary(s.stats)
   }
 
-// The win report shown beneath a board once every foundation is complete (#121), and
+// The win report shown beneath a board once every foundation is complete, and
 // what the game took to get there.
 let winLines = (s: Session.t): array<Render.line> => [
   [],
@@ -123,7 +123,7 @@ let playByPlay = (~game: Game.t, ~swept: array<card>, trail: array<Session.playe
 }
 
 // The board a change leaves behind, as this driver prints it — and *whether* it prints
-// one. A move that landed carries the win line with it (#121), since that's the moment
+// one. A move that landed carries the win line with it, since that's the moment
 // a victory becomes news; `print` and a fresh deal show the board as it stands; and a
 // command that moved nothing shows none at all, because the board above it is still
 // the board.
@@ -152,8 +152,8 @@ let transcript = (s: Session.t, outcome: Session.outcome): string =>
   ->Array.join("\n\n")
 
 // What "deal a game first" points at. It used to differ by verb — a plain `move`
-// suggested a demo board, a `moverun` FreeCell — but FreeCell is the only game there is
-// (#342), so every board verb is answered with the same one. Asked before the command
+// suggested a demo board, a `moverun` FreeCell — but FreeCell is the only game
+// there is, so every board verb is answered with the same one. Asked before the command
 // runs, so this is said ahead of any complaint about the arguments.
 let dealFirstHint = "freecell"
 
@@ -173,7 +173,7 @@ let dealFirstHint = "freecell"
 // layer, not in `core`'s deal path.
 //
 // `~clock` is the other impurity a session needs, and it's here for the same reason:
-// `Timing` (#302) stamps a win with a real moment, and `core` doesn't invent one.
+// `Timing` stamps a win with a real moment, and `core` doesn't invent one.
 let stepCommand = (
   ~options: Options.t,
   ~newSeed: unit => int=() => Game.freecellSeed,
@@ -198,7 +198,7 @@ let stepCommand = (
   | Command.Blank => (session, "") // blank line: nothing to do
   | Command.Help => (session, help())
   | Command.Games => (session, gamesList())
-  // The panel's scrollback verb (#273). A scrolling transcript has no screen to
+  // The panel's scrollback verb. A scrolling transcript has no screen to
   // wipe, so the CLI takes it as a well-formed no-op rather than an unknown verb —
   // the grammar is shared even where the effect isn't.
   | Command.Clear => (session, "")
@@ -215,7 +215,7 @@ let stepCommand = (
   | Command.Settings => (session, Command.describeSettings(options))
   | Command.Set(_) => (session, "")
   | Command.Unknown({verb}) => (session, Command.describeUnknown(verb))
-  // A prefix that fit more than one verb (#286-era shorthands): text-level, like an
+  // A prefix that fit more than one verb: text-level, like an
   // unknown verb, so it's answered before any question about a board.
   | Command.Ambiguous({verb, matches}) => (session, Command.describeAmbiguous(~verb, ~matches))
   // Every shape of `deal` — bare, numbered, named, at a position — reads the same here as

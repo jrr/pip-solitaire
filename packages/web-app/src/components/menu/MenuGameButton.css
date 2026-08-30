@@ -1,13 +1,13 @@
 @layer components {
   /* The "game" action buttons — New, Restart, Share Seed (see MenuGameButton.res).
-     Moved here with the component (#307); the rules are unchanged.
+     Moved here with the component; the rules are unchanged.
 
      `.menu-button` is the menu's general button look, so it has two borrowers
      besides this component: the Settings button at the foot of the main menu
      (MenuMainScreen) and the update-check button (RefreshControl). It stays here,
      with the component that defines the shape. */
 
-  /* The game section's actions (#156, #98): New, Restart and Share Seed, sitting
+  /* The game section's actions: New, Restart and Share Seed, sitting
      side by side so the three read as one control group. They share the width
      evenly, and wrap rather than squeeze: with a `min-width` per button (below)
      a panel too narrow for three across drops Share Seed onto its own full-width
@@ -18,7 +18,7 @@
     gap: 0.4rem;
   }
 
-  /* A game-section action button (#156), styled like the scene rows/toggle but
+  /* A game-section action button, styled like the scene rows/toggle but
      centred, since it's a command rather than a labelled row. `flex: 1` so the
      row's buttons split the width evenly, and `min-width` a legibility floor, so
      a row too narrow for its buttons wraps rather than squeezing them. That's the
@@ -29,7 +29,7 @@
      Settings button at the foot of the main menu borrows this class too.
 
      "Styled like the scene rows/toggle" is now literal rather than a claim in a
-     comment: the box is the `--control-*` tokens in `styles/base.css` (#334), and
+     comment: the box is the `--control-*` tokens in `styles/base.css`, and
      what's left here is what makes this a *button* rather than a row — it splits
      the group's width, holds a legibility floor, centres its label, and is set in
      the heavier weight. */
@@ -51,7 +51,7 @@
     cursor: pointer;
   }
 
-  /* A number a game button carries as *data* rather than prose (#98): the seed
+  /* A number a game button carries as *data* rather than prose: the seed
      on Share Seed. The mono stack — the one the board readout and the motion
      panel already use — plus a step down in weight and colour make the digits
      read as a value beside the label rather than as more of the sentence, and

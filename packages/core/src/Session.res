@@ -1,12 +1,12 @@
 // A *session*: everything a front end has to know about a game in progress, and
-// the one place a `Command.t` is run against one (#298).
+// the one place a `Command.t` is run against one.
 //
 // `Reducer.reduce` is the single way a card moves; this module is the layer around it
 // — which game is in play, the history to undo over, the tallies beside it, the
 // post-move auto-collect, and the settle-record-check-win sequence every place a card
 // can move runs through (a drop, a double-tap send-home, a typed command). It lives
 // here rather than in each front end so that **a front end can't opt out**: `Stats`
-// (#289) and `Timing` (#302) ride in the `SaveState` envelope, and a session that owns
+// and `Timing` ride in the `SaveState` envelope, and a session that owns
 // them means every front end has them.
 //
 // What's here is the board half of the command surface: the verbs that need a dealt
@@ -70,7 +70,7 @@ type played = {action: Reducer.action, moved: array<card>, session: t}
 // that the command never mentioned.
 //
 // The `action` rides along for the same sort of reason. A caller that narrates a move
-// (the web app's debug console, #213) needs to say *which* move, in `Render.action`'s
+// (the web app's debug console) needs to say *which* move, in `Render.action`'s
 // words — and once the interpreting happens in here, a command's action is something it
 // never saw. Handing it back is what lets one narrator serve a drop, a typed command and
 // a solver's step alike.
@@ -80,14 +80,14 @@ type change =
   | Blocked({reason: string}) // a house rule refused it before the reducer saw it
   | Rejected({action: Reducer.action, error: Reducer.moveError}) // the reducer refused it
   // An accepted move: `moved` is what the action named, `collected` whatever safe
-  // auto-collect swept up behind it (#125). Kept apart because a caller that narrates
+  // auto-collect swept up behind it. Kept apart because a caller that narrates
   // says two different things about them — the move is what you did, the collection is
   // what the board did back — while a caller that animates flies them as one gesture.
   | Settled({action: Reducer.action, moved: array<card>, collected: array<card>})
-  | Swept({moved: array<card>}) // the end-game finish sequence (#132)
+  | Swept({moved: array<card>}) // the end-game finish sequence
   | Restored // undo/redo: a position the board already held
   | Dealt // a different board entirely (`redeal`)
-  // A solver line (#291). `reached` is the session the moment the player reached for
+  // A solver line. `reached` is the session the moment the player reached for
   // the solver — the tally already counting the reach, no move played yet — and it's
   // what a caller that plays the line itself starts from. A caller that just wants the
   // result takes the session returned beside this outcome and ignores all three.
@@ -101,8 +101,8 @@ type change =
 // can derive: why a move bounced, that there was nothing to undo, how long the solver
 // thought. A caller draws the board for itself, from the `change` it gets back.
 //
-// A document (`Render.line`) rather than text, for the reason `Render` splits the two
-// (#282): a terminal paints the red suits in ANSI and a panel paints them in CSS, and
+// A document (`Render.line`) rather than text, for the reason `Render` splits the
+// two: a terminal paints the red suits in ANSI and a panel paints them in CSS, and
 // neither should be reading the other's alphabet out of a string.
 type outcome = {change: change, reply: array<Render.line>}
 
@@ -116,7 +116,7 @@ let hasWon = (s: t): bool => GameState.hasWon(s.game, present(s))
 let canUndo = (s: t): bool => History.canUndo(s.history)
 let canRedo = (s: t): bool => History.canRedo(s.history)
 
-// Can the board be drained to a win by foundation moves alone (#132)? What the `finish`
+// Can the board be drained to a win by foundation moves alone? What the `finish`
 // verb and the button that offers it both ask.
 let canFinish = (s: t): bool => Reducer.canFinish(~game=s.game, present(s))
 
@@ -131,7 +131,7 @@ let boardLines = (s: t): array<Render.line> =>
 // them.
 let withOptions = (s: t, options: Options.t): t => {...s, options}
 
-// Stamp the clock against the board as it now stands (#302). One rule, applied after
+// Stamp the clock against the board as it now stands. One rule, applied after
 // every change: a won board records when it was won, and a board that isn't won has no
 // won-at. `Timing.won` keeps the first stamp, so a resumed victory reports the game's
 // own length rather than how long ago it was played; stepping back out of a win clears
@@ -143,7 +143,7 @@ let stamp = (~clock: unit => float, s: t): t => {
 }
 
 // Open a session on a state. A deal starts a clean history — there's nothing before the
-// opening position to undo back to (#85) — a zero tally, and a running clock.
+// opening position to undo back to — a zero tally, and a running clock.
 let open_ = (
   ~clock: unit => float,
   ~options: Options.t=Options.default,
@@ -159,11 +159,11 @@ let open_ = (
   options,
 }
 
-// Restore a session from what a save carried (#177/#289/#302). The envelope holds the
+// Restore a session from what a save carried. The envelope holds the
 // history, the tally and the clock; the game, the deal number and the house rules come
 // from whoever knew which board this save was of.
 //
-// `saved.gameId` is deliberately not consulted (#354). It's how a *reader* works out
+// `saved.gameId` is deliberately not consulted. It's how a *reader* works out
 // which board a loose blob is of — a `#g=` link's, before there's a session to restore
 // into — and by the time a save reaches here that question is answered: the caller is
 // handing over the game it resolved. Reading it again here could only disagree with the
@@ -181,7 +181,7 @@ let restore = (~seed: option<int>, ~options: Options.t, game: Game.t, saved: Sav
 // envelope: the first is how the save was found in the first place, and the second is
 // the driver's, not the board's.
 //
-// The game *is* in it, as its id (#354). It used to be left out on the same "that's how
+// The game *is* in it, as its id. It used to be left out on the same "that's how
 // the save was found" reasoning, which held for `localStorage` — the key names the game
 // — and quietly didn't for the other thing this envelope is: a share link, which is
 // found by nothing at all and so arrived at the far end naming no board. This is the one
@@ -195,18 +195,18 @@ let save = (s: t): SaveState.t => {
   gameId: Some(s.game.id),
 }
 
-// Settle an accepted move: run safe auto-collect (#125) when the option is on,
+// Settle an accepted move: run safe auto-collect when the option is on,
 // returning the settled state and the cards it sent home. `autoCollect: false` (or a
 // finishable board) leaves the state exactly as the reducer returned it — the exact
 // no-op path. Applied *before* the win check so a collection that plays the final cards
-// still trips the win line (#121).
+// still trips the win line.
 //
-// Once the board is finishable (#132) safe auto-collect steps aside — the `finish` verb
+// Once the board is finishable safe auto-collect steps aside — the `finish` verb
 // owns the end-game sweep, so auto-collect doesn't race it to the win and rob the
 // player of the trigger.
 //
 // This settles a *state*, not a session: the caller records the settled result into the
-// session's history as a single undoable step (#85), so a move and the collection it
+// session's history as a single undoable step, so a move and the collection it
 // triggered undo together. The swept cards come back because the one caller that
 // animates needs them — a typed or dragged move flies the cards it displaced *and*
 // whatever the collection swept up behind them, so the two read as one gesture rather
@@ -220,12 +220,12 @@ let settle = (~game: Game.t, ~options: Options.t, state: GameState.t): (GameStat
 
 // Adopt a settled state as the session's new present, recording it as one undoable
 // step and counting it as one move. Only accepted transitions ever reach here, so a
-// rejected move leaves the history untouched (#85). A lawful *no-op* — dropping a card
+// rejected move leaves the history untouched. A lawful *no-op* — dropping a card
 // back where it already rests, or a `MoveColumn` with `from == to` — reduces to `Ok`
-// but changes nothing, so it records no step and counts no move either (#215): there's
+// but changes nothing, so it records no step and counts no move either: there's
 // nothing to undo back to, and nothing was played.
 //
-// One recorded step is one move made (#289). Counting here rather than at each verb
+// One recorded step is one move made. Counting here rather than at each verb
 // means every way to play a move agrees by construction — a drop, a typed command, a
 // solver's step, and the finish sweep, which records itself as a single step.
 let commit = (~clock: unit => float, s: t, next: GameState.t): t =>
@@ -298,7 +298,7 @@ let dispatched = (~clock: unit => float, s: t, action: Reducer.action): (t, outc
   )
 }
 
-// Send the named card to the foundation that will take it, if any (#122). The target is
+// Send the named card to the foundation that will take it, if any. The target is
 // found by `Reducer.foundationTarget` — the shared legality behind the drop itself — and
 // the send-home routes through `dispatch`, so it's the ordinary `Move` onto that pile: a
 // card that completes the board still wins exactly as a dragged one would. A card no
@@ -321,8 +321,8 @@ let home = (~clock: unit => float, s: t, card: card): (t, outcome) =>
     )
   }
 
-// The finishing sweep (#132), without the reply that wraps it: the settled session and
-// the cards it sent home. The whole sweep is one undoable step (#85), so undo after a
+// The finishing sweep, without the reply that wraps it: the settled session and
+// the cards it sent home. The whole sweep is one undoable step, so undo after a
 // `finish` steps back to the position the sweep started from.
 //
 // Split out because `autoplay` hands over to this same sweep and wants to *say* what it
@@ -338,7 +338,7 @@ let notFinishable = "Not finishable yet — some cards still need a tableau move
 // Play the finishing sweep when the board can be drained to a win by foundation moves
 // alone (`Reducer.canFinish`); otherwise report it's not yet finishable. The sweep is
 // the very drain `canFinish` proves, so a `finish` that's offered always completes —
-// and, like a hand-played final card, trips the win (#121). It never blocks manual
+// and, like a hand-played final card, trips the win. It never blocks manual
 // play: `home`/`move` still work card-by-card, this is only the shortcut.
 let finish = (~clock: unit => float, s: t): (t, outcome) =>
   if canFinish(s) {
@@ -348,7 +348,7 @@ let finish = (~clock: unit => float, s: t): (t, outcome) =>
     (s, {change: Unchanged, reply: Render.text(notFinishable)})
   }
 
-// Hand the board to the solver (#291): play the line `core` finds from here, then the
+// Hand the board to the solver: play the line `core` finds from here, then the
 // finishing sweep it deliberately stops short of, so `autoplay` on a solvable deal ends
 // on a won board rather than on a board with the Finish button lit.
 //
@@ -408,13 +408,13 @@ let autoplay = (~clock: unit => float, s: t): (t, outcome) => {
 
 // --- Stepping through history --------------------------------------------------
 
-// Step back one move (#85): pop the history to the prior state, or report there's
+// Step back one move: pop the history to the prior state, or report there's
 // nothing to undo. Undo is available even from a won position — a victory is just
 // another recorded state — so a player can step back out of the win and keep playing,
 // which is what un-stamps the clock (see `stamp`).
 //
-// Counted as an undo, never as a move, and it never takes a move back off the tally
-// (#289): the move was still made. Inside the guard, so a press with nothing behind the
+// Counted as an undo, never as a move, and it never takes a move back off the
+// tally: the move was still made. Inside the guard, so a press with nothing behind the
 // present isn't counted as one.
 let undo = (~clock: unit => float, s: t): (t, outcome) =>
   if canUndo(s) {
@@ -428,7 +428,7 @@ let undo = (~clock: unit => float, s: t): (t, outcome) =>
 
 // …and forward again. A fresh move after an undo has cleared the future, so redo only
 // replays an unbroken back-step chain. A redo puts a move back on the board, so it
-// counts as one (#289) — the only rule that keeps undo-then-redo from being a way to
+// counts as one — the only rule that keeps undo-then-redo from being a way to
 // play for free.
 let redo = (~clock: unit => float, s: t): (t, outcome) =>
   if canRedo(s) {
@@ -479,7 +479,7 @@ let deal = (
     {change: Dealt, reply: []},
   )
   // The two readings that name a number but no game — a bare `deal` (a number invented
-  // for it) and `deal 12345` — both lay out that deal of the default game (#349). Which
+  // for it) and `deal 12345` — both lay out that deal of the default game. Which
   // game a plain number belongs to is `Game`'s to say, not this interpreter's: it asks
   // `Game.default` for another board rather than naming FreeCell's deal function, so a
   // second seeded game costs nothing here.

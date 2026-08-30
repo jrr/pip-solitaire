@@ -1,5 +1,5 @@
 @layer scenes {
-  /* Motion scene (#231): raw accelerometer readout. Per-axis bars swing from
+  /* Motion scene: raw accelerometer readout. Per-axis bars swing from
      a centre line, a peak-magnitude bar decays, and a big counter ticks on
      each shake. Verified on a real phone — desktop has no sensor. */
   .motion-panel {

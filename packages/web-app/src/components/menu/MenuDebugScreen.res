@@ -1,11 +1,11 @@
-// The menu's **Debug screen** (#307): the developer tools, on their own screen a level
-// below Settings (#191). `Menu` puts the About footer under it.
+// The menu's **Debug screen**: the developer tools, on their own screen a level
+// below Settings. `Menu` puts the About footer under it.
 //
 // Top to bottom:
 //   - a header whose **back** button (`onBackToSettings`) returns to Settings — one
 //     step back up, not all the way out — beside the ✕;
 //   - the **Safe-area overlay** toggle (`cutoutDebug`) and the **Console logging**
-//     toggle (`debugLog`, #213 — narrates the UI↔core traffic to the JS console);
+//     toggle (`debugLog` — narrates the UI↔core traffic to the JS console);
 //   - **Share game state** (`ShareLink`), the action row;
 //   - the collapsible groups: the
 //     games that aren't the one in the main menu (`gameScenes`, labelled "games"),
@@ -14,11 +14,11 @@
 //     twin of `?state=`.
 //
 // The groups arrive the same way and are drawn by the same component: a list of
-// `<MenuDisclosure>` entries each, two from `SceneSwitcher` and one from `Main` (#336).
+// `<MenuDisclosure>` entries each, two from `SceneSwitcher` and one from `Main`.
 // All three calls differ only in their data — a group that needs its own markup wants
 // a prop on `<MenuDisclosure>`, not a fourth way of drawing a disclosure here.
 //
-// The "games" group is the odd one: it is placed only when it has entries (#352), so
+// The "games" group is the odd one: it is placed only when it has entries, so
 // with FreeCell the only game this screen shows two groups, scenes then states. It
 // exists so that a *second* game lands among the games rather than under "scenes",
 // between Gallery and Motion, filed as a render demo.

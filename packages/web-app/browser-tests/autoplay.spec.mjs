@@ -1,5 +1,5 @@
-// A whole game of FreeCell, played through the UI (issue #243's suite, the
-// autoplay harness from `scripts/autoplay/`).
+// A whole game of FreeCell, played through the UI by the autoplay harness in
+// `scripts/autoplay/`.
 //
 // This is the widest end-to-end check in the repo: one fixed deal, played from
 // the opening layout to the win overlay, entirely by pointer drags on the

@@ -1,9 +1,9 @@
-// The Settings screen's update-check control (#112): the adaptive refresh button
+// The Settings screen's update-check control: the adaptive refresh button
 // whose `label` and `onClick` adapt to whether a service worker is registered (see
 // Refresh/Main). It's an aria-labelled "Updates" band with no heading of its own,
 // folded into the **About** footer beside the version line.
 //
-// **This control must stay size-stable in every state (#201).** It sits inside the
+// **This control must stay size-stable in every state.** It sits inside the
 // About footer, which reflows the menu around it if its height changes — so
 // progress goes *on the button's own line* (a spinner, and the label swapped to
 // "Checking…") rather than into a status line beneath it. Don't add a line that

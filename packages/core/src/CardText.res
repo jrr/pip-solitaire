@@ -5,7 +5,7 @@
 //
 // It lives in `core` beside the parser that consumes it (`Command`), because both
 // front ends that take typed commands need it and neither owns it: the CLI's
-// reducer driver (#84) and the web app's debug console (#273) name cards the same
+// reducer driver and the web app's debug console name cards the same
 // way, so a transcript reads the same in a terminal and in the panel. `Card.res`
 // keeps *display* concerns out of the model, and this is display of the narrowest
 // kind — a name, not a glyph.

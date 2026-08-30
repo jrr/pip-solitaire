@@ -5,10 +5,10 @@ test("greeting returns the expected message", () => {
   expect(Core.greeting())->toBe("Hello from ReScript core!")
 })
 
-// The modelled games (#62): assert the rules the presentation layer reads back.
+// The modelled games: assert the rules the presentation layer reads back.
 describe("Game", () => {
   test("every game is listed with a stable id and a non-empty name", () => {
-    // FreeCell and its two short-deck siblings (#350) — the list the scene picker and
+    // FreeCell and its two short-deck siblings — the list the scene picker and
     // the CLI's `games`/`deal <id>` enumerate, in picker order.
     expect(Game.all->Array.map(g => g.id))->toEqual(["freecell", "mini", "micro"])
     expect(Game.all->Array.every(g => g.name != ""))->toBe(true)
@@ -23,9 +23,9 @@ describe("Game", () => {
     )->toEqual([])
   })
 
-  // The assembled FreeCell board (#97): the four enablers (#93 capacity, #94
-  // roles, #95 the cascade rule, #96 the seeded deck) converge into one 16-pile
-  // `Game.t`, dealt from a seed and playable through the existing reducer.
+  // The assembled FreeCell board: pile capacity, pile roles, the cascade rule and
+  // the seeded deck converge into one 16-pile `Game.t`, dealt from a seed and
+  // playable through the existing reducer.
   describe("freecell", () => {
     test(
       "is sixteen piles: 4 free cells, 4 foundations, then 8 cascades",
@@ -52,7 +52,7 @@ describe("Game", () => {
           Game.Cascade,
           Game.Cascade,
         ])
-        // `pileIndices` addresses each group by role (#94).
+        // `pileIndices` addresses each group by role.
         expect(Game.pileIndices(board, Game.FreeCell))->toEqual([0, 1, 2, 3])
         expect(Game.pileIndices(board, Game.Foundation))->toEqual([4, 5, 6, 7])
         expect(Game.pileIndices(board, Game.Cascade))->toEqual([8, 9, 10, 11, 12, 13, 14, 15])
@@ -117,7 +117,7 @@ describe("Game", () => {
       "the deal is reproducible: the same seed lays out the same cascades",
       () => {
         // The default board is deal #1, and rebuilding that seed reproduces it
-        // exactly (the basis for shareable deal numbers, #96).
+        // exactly (the basis for shareable deal numbers).
         let byDefault = Game.freecell.piles->Array.map(p => p.cards)
         let rebuilt = Game.freecellDeal(~seed=1).piles->Array.map(p => p.cards)
         expect(rebuilt)->toEqual(byDefault)
@@ -134,7 +134,7 @@ describe("Game", () => {
     )
 
     test(
-      "a dealt board carries the seed that reproduces it (#98)",
+      "a dealt board carries the seed that reproduces it",
       () => {
         // The board says where it came from, which is what lets the app report a
         // deal number and build a `?seed=` link back to it.
@@ -156,7 +156,7 @@ describe("Game", () => {
     )
 
     test(
-      "a board says how to deal another of its own game (#349)",
+      "a board says how to deal another of its own game",
       () => {
         // The inverse of `seed`, and the half that used to be missing: `seed` says which
         // number produced *this* board, `deal` says how to produce the next one. So
@@ -226,7 +226,7 @@ describe("Game", () => {
           state
         }
 
-        // A second card onto the full cell bounces with `PileFull` (#93).
+        // A second card onto the full cell bounces with `PileFull`.
         expect(
           Reducer.reduce(
             ~game=board,
@@ -235,7 +235,7 @@ describe("Game", () => {
           ),
         )->toEqual(Error(Reducer.PileFull))
 
-        // Only an Ace founds a foundation: a non-Ace is `Rejected` (#95/#76).
+        // Only an Ace founds a foundation: a non-Ace is `Rejected`.
         expect(
           Reducer.reduce(
             ~game=board,
@@ -310,10 +310,10 @@ describe("Game", () => {
     )
   })
 
-  // The short-deck siblings (#350): FreeCell in every mechanic, differing only in
+  // The short-deck siblings: FreeCell in every mechanic, differing only in
   // deck and shape. What's asserted here is the shape each declares and the two
   // things a short deck changes downstream — what "complete" means, and which suits
-  // auto-collect waits on — since those are the assumptions #351 pulled out.
+  // auto-collect waits on — the two places a four-suit assumption would hide.
   describe("mini and micro", () => {
     // The board shape as a table, so the two are read side by side rather than as
     // two near-identical blocks.
@@ -337,7 +337,7 @@ describe("Game", () => {
               foundations,
             ))
             // Cells and foundations first, cascades below — the board order the view
-            // groups its two rows by (#94).
+            // groups its two rows by.
             expect((label, Game.pileIndices(board, Game.FreeCell)))->toEqual((
               label,
               Array.fromInitializer(~length=cells, i => i),
@@ -429,7 +429,7 @@ describe("Game", () => {
     test(
       "a foundation is complete at the short deck's own highest rank",
       () => {
-        // The assumption #351 removed, seen from the boards that need it: `mini`
+        // The whole-pack assumption, seen from the boards that break it: `mini`
         // finishes at the Five and `micro` at the Eight, so a 13-card, King-topped
         // definition of "complete" would leave either board unwinnable.
         let run = (~suit, ~upTo) =>
@@ -457,7 +457,7 @@ describe("Game", () => {
     test(
       "auto-collect on micro waits only on the suits its two-colour deck actually has",
       () => {
-        // The case a hard-coded four-suit rule would stall (#351, and the reason
+        // The case a hard-coded four-suit rule would stall (and the reason
         // `micro` needs it): with only ♠ and ♥ in play, a black card waits on Hearts
         // alone. Both foundations up to the Two, the Three of Spades on a cascade —
         // asking `[Hearts, Diamonds]` would find Diamonds stuck at rank 0 forever and
@@ -511,7 +511,7 @@ describe("Game", () => {
       "the slot labels fall out of the role counts, with no per-game table",
       () => {
         // `Slot` counts within a role, so a shorter board simply has shorter runs of
-        // labels — nothing here was edited for #350.
+        // labels, and a new short board needs no edit here.
         expect(Slot.labels(~game=Game.mini))->toEqual([
           "C1",
           "C2",
@@ -540,7 +540,7 @@ describe("Game", () => {
     test(
       "the solver declines them rather than mis-reading a board it can't model",
       () => {
-        // Out of scope for #350 and deliberately so: `Position` models exactly the
+        // Out of the solver's scope, and deliberately so: `Position` models exactly the
         // 4/4/8 FreeCell shape, so these two get an honest `None` and autoplay answers
         // `NotFreeCell` — rather than a position with pieces missing.
         expect(
@@ -553,7 +553,7 @@ describe("Game", () => {
     )
   })
 
-  // Addressing piles by role (#94): the two helpers every group-targeted query is
+  // Addressing piles by role: the two helpers every group-targeted query is
   // built on — the deal, auto-to-foundation, win detection, the supermove limit.
   // A little three-role board makes the ordering and the absent-role case legible
   // without leaning on FreeCell's sixteen piles (which the `freecell` describe
@@ -604,7 +604,7 @@ describe("Game", () => {
   })
 })
 
-// The immutable game-state snapshot (#77): where each card rests, derived from a
+// The immutable game-state snapshot: where each card rests, derived from a
 // board definition and read back through pure queries — no view, no behaviour.
 describe("GameState", () => {
   // A hand-built board whose opening deal is written down here, so the queries are
@@ -700,7 +700,7 @@ describe("GameState", () => {
   })
 })
 
-// The stackability rules (#76): pure predicates over `rule` data, tested without
+// The stackability rules: pure predicates over `rule` data, tested without
 // any view.
 describe("Rules", () => {
   test("suits map to their two colours", () => {
@@ -753,7 +753,7 @@ describe("Rules", () => {
   })
 
   // A FreeCell cascade (`Rules.cascade`): build *down* in alternating colour.
-  // The first exercise of the `Down` direction (#95).
+  // The first exercise of the `Down` direction.
   describe("cascade (alternating colour, descending)", () => {
     let accepts = (c, onto) => Rules.accepts(Rules.cascade, c, onto)
 
@@ -804,7 +804,7 @@ describe("Rules", () => {
     expect(Rules.accepts(Rules.Free, {suit: Spades, rank: Two}, None))->toBe(true)
   })
 
-  // A legal ordered run (#123): the maximal tail a supermove may lift, decided
+  // A legal ordered run: the maximal tail a supermove may lift, decided
   // pairwise by `accepts`. Exercised against the cascade rule (build down in
   // alternating colour), the rule a FreeCell run is built on.
   describe("isRun (cascade)", () => {
@@ -887,7 +887,7 @@ describe("Rules", () => {
       },
     )
 
-    // "Complete" is read off the deck, not the 52 (#351): a short deck's run is as
+    // "Complete" is read off the deck, not the 52: a short deck's run is as
     // long as *its* ranks and topped by *its* highest.
     describe(
       "a short deck",
@@ -937,7 +937,7 @@ describe("Rules", () => {
   })
 })
 
-// The action variant + pure reducer (#82): transitions `GameState` and enforces
+// The action variant + pure reducer: transitions `GameState` and enforces
 // the rules, tested without any view. The load-bearing roadmap principle —
 // immutable state + action + pure reducer, illegal actions rejected — as tests.
 describe("Reducer", () => {
@@ -1090,7 +1090,7 @@ describe("Reducer", () => {
     }
   })
 
-  test("GameState.equal tells a no-op re-drop from a real move (#215)", () => {
+  test("GameState.equal tells a no-op re-drop from a real move", () => {
     let state = fresh()
     // The identity re-drop the reducer returns is `equal` to the state it started
     // from — the signal a driver reads to skip the undo record for a no-op.
@@ -1168,7 +1168,7 @@ describe("Reducer", () => {
     )->toEqual(Error(Reducer.NoSuchPile))
   })
 
-  // Pile capacity → free cells (#93): a capped `Free` pile holds exactly one
+  // Pile capacity → free cells: a capped `Free` pile holds exactly one
   // card. A tiny board of one capacity-1 cell (pile 0) beside an uncapped `Free`
   // pile (pile 1), with two cards each parked alone on a column of their own
   // (piles 2 and 3) so both are liftable.
@@ -1298,7 +1298,7 @@ describe("Reducer", () => {
     )
   })
 
-  // Auto-move to foundation (#122): `foundationTarget` finds the foundation a card
+  // Auto-move to foundation: `foundationTarget` finds the foundation a card
   // may be sent *home* to — the query the web double-click and the CLI `home` verb
   // both dispatch through. Exercised against the outer `game` (a single foundation
   // at pile 0) and the real sixteen-pile FreeCell board (four foundations).
@@ -1398,7 +1398,7 @@ describe("Reducer", () => {
     )
   })
 
-  // The single-card move query (#196): `validMoves` lists every legal destination
+  // The single-card move query: `validMoves` lists every legal destination
   // for one card, role-tagged, built on the same `canDrop` a hand-drag consults. A
   // little four-pile board covers all three roles at once — a foundation, a free
   // cell, and two cascades — so one movable card can offer a move of each kind.
@@ -1534,7 +1534,7 @@ describe("Reducer", () => {
     )
   })
 
-  // Safe auto-collect (#125): `isSafeToCollect` (accepted *and* safe) and the
+  // Safe auto-collect: `isSafeToCollect` (accepted *and* safe) and the
   // `autoCollect` fixpoint that sends every safe card home. Exercised on a little
   // four-foundation board — one foundation per suit, plus a Free cascade and a free
   // cell to hold candidate cards — so the opposite-colour safe rule is testable by
@@ -1705,7 +1705,7 @@ describe("Reducer", () => {
     )
   })
 
-  // The end-game finish sweep (#132): `canFinish` (drainable to a win by
+  // The end-game finish sweep: `canFinish` (drainable to a win by
   // foundation moves alone?) and `finishSequence` (the ordered drain that
   // completes it). Exercised on a little FreeCell-shaped board — four same-suit
   // foundations then eight `Rules.cascade` columns, cards confined to piles — so a
@@ -1766,7 +1766,7 @@ describe("Reducer", () => {
     )
 
     test(
-      "true on the trapped ♠6-over-♥3 tail that safe auto-collect (#125) stalls on",
+      "true on the trapped ♠6-over-♥3 tail that safe auto-collect stalls on",
       () => {
         // The scenario the issue calls out: foundations ♠5/♣5/♥2/♦2 with ♠6 sitting
         // on ♥3. Built over the real FreeCell board, so it's a genuine 52-card tail.
@@ -1775,7 +1775,7 @@ describe("Reducer", () => {
         expect(Reducer.canFinish(~game=Game.freecell, state))->toBe(true)
         let (settled, _moved) = Reducer.finishSequence(~game=Game.freecell, state)
         expect(GameState.hasWon(Game.freecell, settled))->toBe(true)
-        // …but #125's conservative safe rule jams: ♠6 is accepted yet not safe (reds
+        // …but the conservative safe rule jams: ♠6 is accepted yet not safe (reds
         // at the Two), trapping ♥3, so auto-collect alone can never complete it.
         let (acSettled, _acMoved) = Reducer.autoCollect(~game=Game.freecell, state)
         expect(GameState.hasWon(Game.freecell, acSettled))->toBe(false)
@@ -1822,7 +1822,7 @@ describe("Reducer", () => {
     )
   })
 
-  // The supermove (#123): a multi-card `MoveRun` and its `(1 + free cells) × 2 ^
+  // The supermove: a multi-card `MoveRun` and its `(1 + free cells) × 2 ^
   // (empty columns)` limit. A little FreeCell-shaped board — two capacity-1 free
   // cells then four `Rules.cascade` columns, cards confined to piles — lets the
   // tests pose exact free-cell/empty-column combinations by hand.
@@ -1988,13 +1988,13 @@ describe("Reducer", () => {
         )
 
         test(
-          "a multi-card run onto a free cell is refused — a cell holds one card (#133)",
+          "a multi-card run onto a free cell is refused — a cell holds one card",
           () => {
             // The run is legal and well within the supermove limit, but a free cell
             // (capacity 1) can't hold two cards. The drop bounces with PileFull — the
-            // count-aware refusal (#93), not RunTooLong — for an empty cell and an
+            // count-aware refusal, not RunTooLong — for an empty cell and an
             // occupied one alike, and the shared `canMoveRun` query agrees so the
-            // view's drop highlight refuses too (the #133 bug: it used to accept).
+            // view's drop highlight refuses too.
             let twoRun = [{suit: Hearts, rank: Eight}, {suit: Spades, rank: Seven}]
             // Cell 0 the empty target, cell 1 empty, cascade 2 holds the run, 3–5
             // empty → a generous limit, so capacity is the sole reason it's refused.
@@ -2161,7 +2161,7 @@ describe("Reducer", () => {
     )
   })
 
-  // Column reorder (#159): `MoveColumn` pulls the cascade at `from` out and
+  // Column reorder: `MoveColumn` pulls the cascade at `from` out and
   // reinserts it at `to`, the rest sliding over (insert-and-shift, not a swap). A
   // little board — two free cells then two foundations then four cascades, each
   // cascade opening with one distinct marker card so a permutation is legible —
@@ -2316,7 +2316,7 @@ describe("Reducer", () => {
   })
 })
 
-// The deck as data (#96): the 52-card pack, a deterministic seeded shuffle, and
+// The deck as data: the 52-card pack, a deterministic seeded shuffle, and
 // the round-robin deal — the reproducible basis for numbered deals, all pure and
 // tested without any view.
 describe("Cards", () => {
@@ -2367,7 +2367,7 @@ describe("Cards", () => {
     expect(Cards.all)->toEqual(before)
   })
 
-  // The deck as a *parameter* (#351): a subset of one pack, with `standard` the
+  // The deck as a *parameter*: a subset of one pack, with `standard` the
   // four × thirteen everything plays with today. The same two properties the full
   // pack is pinned by — a shuffle is a permutation, and a seed reproduces it —
   // hold for a short deck too.
@@ -2484,14 +2484,14 @@ describe("Cards", () => {
   })
 })
 
-// Driver options (#125): the preference record threaded into the post-move step.
-// Today it carries a single flag; a settings toggle (#112) will flip it later.
+// Driver options: the preference record threaded into the post-move step.
+// Today it carries a single flag; a settings toggle will flip it later.
 describe("Options", () => {
   test("defaults auto-collect on", () => {
     expect(Options.default.autoCollect)->toBe(true)
   })
 
-  test("defaults column reorder on (our variant's house rule, #159)", () => {
+  test("defaults column reorder on (our variant's house rule)", () => {
     expect(Options.default.allowColumnReorder)->toBe(true)
   })
 })

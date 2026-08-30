@@ -10,10 +10,10 @@
 // the shape here. They keep their own files and their own tests, which is where the
 // reasoning about each variant belongs.
 //
-// The scene rows come through here too, which is what `selected` below is for (#335):
+// The scene rows come through here too, which is what `selected` below is for:
 // a highlight for the scene currently mounted, and the `aria-current` that goes with
 // it. `<MenuDisclosure>` draws its rows this way and so does the main screen's games
-// list (#337) — the switcher builds no DOM for the menu itself.
+// list — the switcher builds no DOM for the menu itself.
 //
 // A component is just a `props => vnode` function (see `VersionBadge` for why the
 // record is spelled out by hand).
@@ -39,8 +39,8 @@ type trailing =
 
 // **A row as data**, for the lists whose rows a *caller* knows and a component draws:
 // what the row says, what a tap runs, and whether it's the one currently in effect.
-// `<MenuDisclosure>`'s entries are these (#336) and so is the main screen's games list
-// (#337) — the same three fields, because they are the same thing seen twice: scenes,
+// `<MenuDisclosure>`'s entries are these and so is the main screen's games list
+// — the same three fields, because they are the same thing seen twice: scenes,
 // split across two groups of the menu.
 //
 // It lives here rather than in either of those, being the data one `<MenuRow>` is
@@ -73,7 +73,7 @@ type props = {
   // at the row's right-hand end: a `Switch` row could perfectly well be the
   // selected one, and a variant would make those two states mutually exclusive for
   // no reason. `MenuDisclosure`'s `entry` arrived at the same shape independently
-  // (#336) and now hands it straight through.
+  // and now hands it straight through.
   selected?: bool,
   onClick: unit => unit,
 }
@@ -86,8 +86,7 @@ type props = {
 // `--active` is appended to whichever kind the row is, rather than replacing it —
 // the highlight is a state the row is *in*, not a kind it is. Exported with a
 // labelled argument because `SceneSwitcher` still writes this class list onto a
-// button it builds by hand, and there should be one spelling of it (#337 hands
-// that DOM here too).
+// button it builds by hand, and there should be one spelling of it.
 let classesFor = (~selected=false, trailing) => {
   let kind = switch trailing {
   | Switch(true) => "menu-row menu-row--switch menu-row--on"

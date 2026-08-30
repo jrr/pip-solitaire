@@ -1,6 +1,6 @@
-// The drop-down debug console (#271): a Quake-style panel that drops over the top of
+// The drop-down debug console: a Quake-style panel that drops over the top of
 // the board when you press `` ` ``, showing the lines the app already publishes
-// through `DebugLog` (#213) — dispatch/result, auto-collect, the finish sweep, undo,
+// through `DebugLog` — dispatch/result, auto-collect, the finish sweep, undo,
 // win. The point is *reach*: the instrumentation was only readable with devtools
 // docked, which rules out the installed PWA, a phone on the desk, and a screen-share.
 // A key and a panel put it everywhere the game runs.
@@ -8,8 +8,8 @@
 // Desktop-only on purpose: a keypress is the only way in (see the issue — a touch
 // affordance would need its own Debug-screen row or hidden gesture).
 //
-// Under the scrollback is an **input line**, and a command typed into it plays the game
-// (#273): the line is parsed by the grammar `core` shares with the CLI (`Command.parse`,
+// Under the scrollback is an **input line**, and a command typed into it plays the
+// game: the line is parsed by the grammar `core` shares with the CLI (`Command.parse`,
 // docs/command-grammar.md) and the result is pushed through the very `dispatch` a
 // pointer drop uses, so a typed `move 8H 5` is the move a drag would have made — same
 // auto-collect, same undo step, same save. This module owns the field, the echo and the
@@ -17,7 +17,7 @@
 // because running one means reaching the board and the chrome, which the panel has no
 // business knowing about.
 //
-// It has more shapes than one (#275): ⇧` steps the panel through four placements — over
+// It has more shapes than one: ⇧` steps the panel through four placements — over
 // the top of the board, **docked** into the discarded width beside it, along the bottom,
 // and over the whole window. The placement is persisted rather than derived from an
 // automatic breakpoint — resize the window and a silent reversal would undo the choice
@@ -118,12 +118,12 @@ lines->WebDom.addEventListener("scroll", () => stickToBottom := atBottom(lines))
 // instead of scrolling the log. Nothing on the board reads `wheel`, so the panel picks
 // it up from the window while it's overlaid and scrolls itself — reading back through
 // history without the console ever taking input away from the game. `stickToBottom`
-// follows from the `scroll` listener above. Docked or full-window (#275) the panel takes
+// follows from the `scroll` listener above. Docked or full-window the panel takes
 // pointer events natively — it covers nothing, or it covers everything — so this is
 // unbound in those placements: left on, every turn would scroll the log twice.
 //
 // Both axes, because the log now carries lines wider than the panel: `print` draws a text
-// board (#273) about 150 columns across, and the overlay is the shape that can't scroll
+// board about 150 columns across, and the overlay is the shape that can't scroll
 // itself. Forwarding only `deltaY` would leave the right-hand cascades of a printed board
 // unreachable in the very shape the panel opens in.
 let onWheel = (event: wheelEvent): unit => {
@@ -215,7 +215,7 @@ let append = (entry: DebugLog.entry): unit => {
   }
 }
 
-// Empty the scrollback — the console's own `clear` verb (#273). Both halves go
+// Empty the scrollback — the console's own `clear` verb. Both halves go
 // together, the ring and the `<ol>`, for the same reason `append` keeps them the same
 // length: the DOM *is* the ring's view, and a view that outlived its model would start
 // dropping the wrong lines.
@@ -225,10 +225,10 @@ let clear = (): unit => {
   stickToBottom := true
 }
 
-// --- The input line (#273) --------------------------------------------------------
+// --- The input line --------------------------------------------------------
 // A real `<input>` this module owns and splices into the shell, exactly like the
-// scrollback above and for the same reason: unkeyed children are diffed by position
-// (#45), and a re-created input is an input that loses its caret, its
+// scrollback above and for the same reason: unkeyed children are diffed by
+// position, and a re-created input is an input that loses its caret, its
 // selection and whatever was half-typed in it every time a line arrives in the log.
 //
 // The panel is *keyboard* chrome — a physical key is the only way in — so this is
@@ -293,7 +293,7 @@ let setRunner = (run: string => unit): unit => runner := Some(run)
 // same stream — and in the same order — as the `dispatch`/`result` lines the command
 // itself provokes. (It also means the JS console sees a typed command, which is right:
 // it's an interaction like any other.)
-// `reply` is a *document* now (#282), not a string: `core` renders one for a board and
+// `reply` is a *document* now, not a string: `core` renders one for a board and
 // `Render.text` makes a trivial one out of ordinary prose, so a printed board and a
 // rejection travel one channel rather than two. A reply can be several rows (help is, a
 // board very much is); each becomes its own entry, so the scrollback's one-node-per-line
@@ -393,7 +393,7 @@ let apply = (~open_: bool, ~dock: ConsoleDock.t): unit => {
     subscription := None
   | (true, Some(_)) | (false, None) => ()
   }
-  // Focus follows the panel (#273). Opening it means you want to type at it — there's
+  // Focus follows the panel. Opening it means you want to type at it — there's
   // no other reason to press the key — and closing it must hand the keyboard back to
   // the page rather than leaving a hidden field holding it, which would swallow every
   // keystroke aimed at the game. Called on every apply, not just on the transitions
@@ -414,7 +414,7 @@ let apply = (~open_: bool, ~dock: ConsoleDock.t): unit => {
 }
 
 // --- The key that opens it ------------------------------------------------------
-// `` ` `` toggles, ⇧` steps the panel round its four placements (#275), Escape closes.
+// `` ` `` toggles, ⇧` steps the panel round its four placements, Escape closes.
 // Matched on `event.code`
 // rather than `event.key` because backtick is a dead key on several layouts (and
 // shifted into `~` on all of them): `code` names the physical key regardless, so the
@@ -453,7 +453,7 @@ let make = ({open_, body}) =>
     ariaHidden={open_ ? "false" : "true"}
   >
     {Html.node(body)}
-    // The prompt, under the scrollback (#273) — the seam #271 left open here. Spliced
+    // The prompt, under the scrollback. Spliced
     // like the scrollback rather than rendered as JSX, so the diff never touches
     // the live field (see `input` above). The `>` is a plain sibling: a `::before` on
     // the input itself isn't possible, and putting the caret behind a padded background
@@ -465,7 +465,7 @@ let make = ({open_, body}) =>
     // The status line sits at the *foot*, under the prompt: up top it would land on the
     // top bar's Menu button, which the panel drops over.
     <footer className="debug-console__status">
-      // Just the panel's name: which of the four placements (#275) it's in is plain from
+      // Just the panel's name: which of the four placements it's in is plain from
       // where it is, and each change already names itself in the log as it happens (see
       // `Main`'s ⇧` branch). A second copy here only crowded the status line — in the
       // 340px dock, the placement with the least room for it.

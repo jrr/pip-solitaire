@@ -1,4 +1,4 @@
-// The end-game "Finish" button (#132): it appears in the mounted board exactly
+// The end-game "Finish" button: it appears in the mounted board exactly
 // when the position is drainable to a win by foundation moves alone
 // (`Reducer.canFinish`), and is absent otherwise. Mounting the real scene into a
 // jsdom container and querying for the control proves the conditional wiring end
@@ -45,7 +45,7 @@ open TestDom
 // How many nodes in the mounted board match a selector.
 let countOf = (container, selector) => container->findAll(selector)->Array.length
 
-// The board's published surface (#300), as the tests below take hold of it. The scene
+// The board's published surface, as the tests below take hold of it. The scene
 // hands the whole thing over as one `TableScene.controls` record when it mounts
 // (`~publish`), so a test that wants to press Undo or type a command captures the
 // record and reads the action off it — where it used to name a `~publishUndo` or
@@ -59,7 +59,7 @@ let live = (board: ref<option<TableScene.controls>>) => board.contents->Option.g
 
 let hasFinishButton = (container): bool => container->find(".finish-button")->Option.isSome
 
-describe("TableScene Finish button (#132)", () => {
+describe("TableScene Finish button", () => {
   test("appears when the opening position is drainable to a win", () => {
     // The trapped-tail scenario is finishable by foundation moves alone, so the
     // button shows the moment the board mounts.
@@ -83,11 +83,11 @@ describe("TableScene Finish button (#132)", () => {
 // card's name (`CardArt`). Without a mark saying so, a screen reader is read a
 // foundation's whole history as if it were laid out on the table: forty-eight of
 // the fifty-two cards on a won board that shows exactly four. Reflow marks the
-// covered ones `aria-hidden`, so the page announces what it actually shows (#267).
+// covered ones `aria-hidden`, so the page announces what it actually shows.
 //
 // These read the *laid-out* board rather than the chrome, so each flushes the deal's
 // deferred frame first (see `flushFrames` above).
-describe("TableScene squared-pile occlusion (#267)", () => {
+describe("TableScene squared-pile occlusion", () => {
   let cards = container => container->countOf(".stacking-card")
   let hidden = container => container->countOf(".stacking-card[aria-hidden='true']")
 
@@ -150,12 +150,12 @@ describe("TableScene squared-pile occlusion (#267)", () => {
   )
 })
 
-// Save-and-resume (#177): the board hands its whole undo/redo history to the
+// Save-and-resume: the board hands its whole undo/redo history to the
 // `~persist` sink as it changes, and re-seeds from a `~loadHistory` on the way back —
 // so a reload lands on the same board with the same Undo stack. These prove the
 // scene-level wiring; the byte-level round-trip is `SaveState_test`, and the
 // storage edge is `SavedGame_test`.
-describe("TableScene save/resume (#177)", () => {
+describe("TableScene save/resume", () => {
   let hasWinOverlay = (container): bool => container->find(".win-overlay")->Option.isSome
 
   test("persists the opening board so a plain reload can resume it", () => {
@@ -170,7 +170,7 @@ describe("TableScene save/resume (#177)", () => {
 
   test("a resumed game already won comes back to the won board", () => {
     // Drain an almost-won board to a real win, then resume from that saved state: the
-    // board opens with the win overlay already up (#177's "come back to the won board").
+    // board opens with the win overlay already up.
     let game = Game.freecell
     let (won, _moved) = Reducer.finishSequence(~game, Scenario.freecellAlmostWon(game))
     expect(GameState.hasWon(game, won))->toBe(true) // the setup really is a win
@@ -243,7 +243,7 @@ describe("TableScene re-mount", () => {
       game,
     )
     let _teardown = scene.mount(container)
-    // The resumed victory, as #177 intends.
+    // The resumed victory.
     expect(hasWinOverlay(container))->toBe(true)
     // New Game deals a fresh board: the win is over and done with, and the fresh
     // board is what's saved from here on.
@@ -258,7 +258,7 @@ describe("TableScene re-mount", () => {
   })
 })
 
-// The board's published surface (#300). The scene hands the chrome one
+// The board's published surface. The scene hands the chrome one
 // `TableScene.controls` record when it mounts, and never another — so the record has to
 // go on meaning the board *now on the table*, across every re-deal that tears one board
 // down and builds the next. That's the invariant the whole hand-over rests on: get it
@@ -267,7 +267,7 @@ describe("TableScene re-mount", () => {
 // It can't be seen from the DOM — a stale action reaches a torn-down board's `session`,
 // and the give-away is what that board *saves*. So these read the `~persist` sink, the
 // same way the tally tests below do.
-describe("TableScene published controls (#300)", () => {
+describe("TableScene published controls", () => {
   let tallyOf = (saved: ref<option<SaveState.t>>) =>
     saved.contents->Option.map((s: SaveState.t) => (s.stats.moves, s.stats.undos))
 
@@ -311,8 +311,8 @@ describe("TableScene published controls (#300)", () => {
   )
 
   test("`loadDeal` opens the number it's given, laid out by the game on the table", () => {
-    // The console's `deal <n>` (#273). Turning the number into a board is the *game's*
-    // job now (`Game.t.deal`, #349) rather than the driver's: the chrome hands over a
+    // The console's `deal <n>`. Turning the number into a board is the *game's*
+    // job now (`Game.t.deal`) rather than the driver's: the chrome hands over a
     // number and the board deals its own game from it, so nothing out there has to know
     // that a deal number is a seeded FreeCell shuffle.
     let saved = ref(None)
@@ -350,21 +350,21 @@ describe("TableScene published controls (#300)", () => {
   })
 })
 
-// The win overlay's Share button (#264). The button is the driver's to offer: the
+// The win overlay's Share button. The button is the driver's to offer: the
 // board asks `available` as the overlay goes up and builds the button only if the
 // answer is yes, because a deal number can outlive the board that was dealt from it
 // (a resumed game's lives in storage) and can also be missing entirely (a posed or
 // shared position). Mounting the real scene onto a won history and querying for the
 // control proves that conditional end to end, the same way the Finish button above is
 // covered.
-describe("TableScene win share (#264)", () => {
+describe("TableScene win share", () => {
   let shareButton = (container): option<WebDom.element> =>
     container->find(".win-panel__button--share")
 
   // A won board resumed with a tally already on it — three moves and one undo — so a
   // share that reported a hardcoded zero, or re-derived the count from the one-step
   // history, would fail rather than pass by looking plausible.
-  // `~autoplays` is the #291 half: a game the solver had a hand in is a game whose
+  // `~autoplays` is the solver's half: a game the solver had a hand in is a game whose
   // victory isn't the player's to pass on, and the tally is where that fact lives.
   let wonHistory = (~autoplays=0, game) => {
     let (won, _moved) = Reducer.finishSequence(~game, Scenario.freecellAlmostWon(game))
@@ -404,7 +404,7 @@ describe("TableScene win share (#264)", () => {
     expect(shareButton(container)->Option.isSome)->toBe(false)
   })
 
-  test("withholds it from a game the solver played (#291)", () => {
+  test("withholds it from a game the solver played", () => {
     // The driver has a deal and would happily share it; the *game* is the problem. A
     // win reached by typing `autoplay` isn't a claim about how you played, so the
     // button is never built — and the fact that it was autoplayed rides in on the
@@ -423,8 +423,8 @@ describe("TableScene win share (#264)", () => {
   })
 
   test("a driver that offers no share at all still wins normally", () => {
-    // The demos and the CLI-ish call sites pass no `~winShare`; the overlay they get
-    // is exactly the one #121 built.
+    // The demos and the CLI-ish call sites pass no `~winShare`; they still get the
+    // plain win overlay.
     let game = Game.freecell
     let container = host("div")
     let scene = TableScene.make(~loadHistory=() => Some(wonHistory(game)), game)
@@ -433,7 +433,7 @@ describe("TableScene win share (#264)", () => {
     expect(shareButton(container)->Option.isSome)->toBe(false)
   })
 
-  test("shares the tally the won game carried (#289)", () => {
+  test("shares the tally the won game carried", () => {
     // The counts come off the live game's `Stats`, not the board's opening state and
     // not the shape of its history — so a win resumed mid-tally reports the numbers
     // the player actually earned, undos included.
@@ -457,12 +457,12 @@ describe("TableScene win share (#264)", () => {
   })
 })
 
-// Counting moves and undos (#289). The tally is the board's to keep — moves and
+// Counting moves and undos. The tally is the board's to keep — moves and
 // undos are things that happen *to* a board — so these drive the real scene and read
 // what it saved, rather than testing `Stats` again (that's `Stats_test`). What's at
 // stake is the wiring: that every countable thing is counted once, that the count
 // survives a resume, and that a fresh deal starts it over.
-describe("TableScene move/undo counts (#289)", () => {
+describe("TableScene move/undo counts", () => {
   // The tally as the board last persisted it — the same channel `Main` saves through.
   let tallyOf = (saved: ref<option<SaveState.t>>) =>
     saved.contents->Option.map(s => (s.stats.moves, s.stats.undos))
@@ -591,12 +591,12 @@ describe("TableScene move/undo counts (#289)", () => {
   })
 })
 
-// How long the game took (#302), where the player sees it. The arithmetic and the
+// How long the game took, where the player sees it. The arithmetic and the
 // `M:SS` reading are `core`'s (`Timing_test`); what's at stake here is the board's
 // half — that the clock starts with the deal, stops at the win, reaches the save so a
 // reload doesn't lose the one number that can only be measured as it happens, and
 // reports the same length however often a won board is reopened.
-describe("TableScene win time (#302)", () => {
+describe("TableScene win time", () => {
   let timeOf = (container): option<string> => container->find(".win-panel__time")->Option.map(text)
 
   // A won board, with whatever clock the caller wants beside it.
@@ -626,7 +626,7 @@ describe("TableScene win time (#302)", () => {
   })
 
   test("a resumed victory reports the game's length, not how long ago it was", () => {
-    // The overlay goes up again on every reload of a won board (#177). Re-stamping the
+    // The overlay goes up again on every reload of a won board. Re-stamping the
     // win there would make the number grow each time you came back to it, so the saved
     // stamp stands — even though this board is being opened long after it was won.
     let game = Game.freecell
@@ -652,7 +652,7 @@ describe("TableScene win time (#302)", () => {
     // The stamp used to be taken in `showWin`, which runs once the sweep's last card has
     // flown — so the time included the flight, and the save the winning move wrote
     // carried no win at all until a second one caught up behind it. The session stamps it
-    // as it records the move (#298), so the save that move writes already says the game
+    // as it records the move, so the save that move writes already says the game
     // is over.
     let game = Game.freecell
     let saved = ref(None)
@@ -744,13 +744,13 @@ describe("TableScene win time (#302)", () => {
   })
 })
 
-// Autoplay, wired to the board (#291). The thinking is `core`'s and is tested there
+// Autoplay, wired to the board. The thinking is `core`'s and is tested there
 // (`Solver_test`); what's at stake here is the board's half — that the reach is
 // counted, that the moves it plays are recorded like any other, and that the counter
 // is the undo-proof thing the victory screen reads. The scenario is deliberately one
 // the solver has nothing left to think about (`freecellFinish` is already finishable),
 // so these run in milliseconds and still go through the whole path.
-describe("TableScene autoplay (#291)", () => {
+describe("TableScene autoplay", () => {
   let statsOf = (saved: ref<option<SaveState.t>>) => saved.contents->Option.map(s => s.stats)
   let hasWinOverlay = (container): bool => container->find(".win-overlay")->Option.isSome
 

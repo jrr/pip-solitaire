@@ -1,17 +1,17 @@
-// The menu (#109): a slide-over overlay opened from the top bar's Menu button,
+// The menu: a slide-over overlay opened from the top bar's Menu button,
 // holding everything that isn't day-to-day play.
 //
-// **This file is the pane, and only the pane (#307/#308).** It owns the overlay, the
+// **This file is the pane, and only the pane.** It owns the overlay, the
 // backdrop, the panel, which of the three screens is showing, and the fact that the
 // About footer sits under all of them. Everything inside a screen is a component of
 // its own under `components/` — `<MenuMainScreen>`, `<MenuSettingsScreen>`,
 // `<MenuDebugScreen>`, and the rows they're built from (`<MenuHeader>`, `<MenuRow>`
 // and its four variants, `<MenuGameButton>`) — each with its own props record and its
 // own test, the shape `<AboutFooter>` established when it was lifted out of here for
-// the same reason (#201). What each screen holds, and why, is documented in its own
+// the same reason. What each screen holds, and why, is documented in its own
 // file.
 //
-// **The props are a screen apiece, not a field apiece** (#308). Each screen's props
+// **The props are a screen apiece, not a field apiece**. Each screen's props
 // record *is* the field: `Menu` hands `settings` to `<MenuSettingsScreen>` whole and
 // never looks inside it, which is why adding a setting doesn't touch this file at all.
 // Don't flatten a screen's fields up to here — it would put every setting in the app
@@ -20,7 +20,7 @@
 // one's: this isn't the single boundary between the chrome model and the menu, it's the
 // pane that arranges three of them.
 //
-// The pane has **three screens** (#191): the **main menu**, a dedicated **Settings**
+// The pane has **three screens**: the **main menu**, a dedicated **Settings**
 // screen, and a **Debug** screen nested one level below Settings — which one shows
 // is chosen by the `screen` variant. The **About** footer (version line + update
 // controls) stays put across all three — only the content above it swaps. Reopening
@@ -34,7 +34,7 @@
 // This component's stylesheet, in the `components` layer (see src/styles/index.css).
 %%raw(`import "./Menu.css"`)
 
-// Which of the pane's three screens is showing (#191). Reopening the menu
+// Which of the pane's three screens is showing. Reopening the menu
 // resets this to `Main` (see the chrome model), so a visit to Settings/Debug never
 // lingers into the next open.
 type screen =
@@ -60,7 +60,7 @@ type props = {
   settings: MenuSettingsScreen.props,
   debug: MenuDebugScreen.props,
   // The About footer, under every screen. Its `refresh` slot — the adaptive
-  // update-check button (#112), or an empty node — is filled in by `Main`, which is
+  // update-check button, or an empty node — is filled in by `Main`, which is
   // where both halves of that decision live: whether a service-worker state has been
   // detected yet, and which screen is showing (it never appears on the main menu).
   about: AboutFooter.props,

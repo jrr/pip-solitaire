@@ -173,7 +173,7 @@ most of that too. **Call it 3–4× available without leaving the language, and 
 rules untouched by any of it.**
 
 What WASM adds on top is the usual 1.2–2× of integer loops over an optimising
-JIT — and it costs the thing #290 bought:
+JIT — and it costs the thing having the solver in `core` buys:
 
 - The search asks `legalMoves` / `applyMove` / `canFinish` millions of times a
   deal, so the boundary **can't** sit between the search and the rules. The rules

@@ -1,6 +1,5 @@
-// A settings toggle row (#139), lifted out of `Menu` into its own pure component
-// (#307): the label with a one-line description under it on the left, a switch
-// track on the right.
+// A settings toggle row: the label with a one-line description under it on the
+// left, a switch track on the right.
 //
 // It's the menu's most-used row and the plainest use of `<MenuRow>`: a `Switch`
 // trailing, whose state comes straight from a bool. `MenuRow` is what makes it a

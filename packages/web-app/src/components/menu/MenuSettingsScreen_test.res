@@ -1,5 +1,5 @@
 // The menu's Settings screen, exercised in isolation now that it's a component of
-// its own (#307).
+// its own.
 //
 // The rows themselves are pinned by `MenuToggleRow_test` / `MenuWiggleRow_test` /
 // `MenuNavRow_test`. What's left to this file is what the *screen* decides:
@@ -7,7 +7,7 @@
 // 1. **Which rows are there, and in what order.** Auto-collect, Sloppy placement,
 //    (Wiggle Waggle), Display content around notch — then Debug in a section of its
 //    own, below the preferences rather than among them.
-// 2. **Wiggle Waggle is hidden until it's revealed** (`HiddenOptions`, #235), and
+// 2. **Wiggle Waggle is hidden until it's revealed** (`HiddenOptions`), and
 //    when it appears it appears *between* Sloppy placement and the notch row rather
 //    than nested under either — the three are independent settings.
 // 3. **Each switch is wired to its own setting.** Four toggles that all look alike is
@@ -55,7 +55,7 @@ let rowLabels = screen =>
   ->findAll("[aria-label=\"Settings\"] .menu-row--switch .menu-row__label")
   ->Array.map(text)
 
-describe("MenuSettingsScreen (#307)", () => {
+describe("MenuSettingsScreen", () => {
   test("lists the player's preferences, top to bottom", () => {
     expect(rowLabels(render()))->toEqual([
       "Auto-collect",
@@ -109,7 +109,7 @@ describe("MenuSettingsScreen (#307)", () => {
   })
 
   test("puts Debug in a section below the preferences, not among them", () => {
-    // The debug tools moved off this screen entirely (#191); what's left is a way in.
+    // The debug tools moved off this screen entirely; what's left is a way in.
     let screen = render()
     expect(rowLabels(screen)->Array.includes("Debug"))->toBe(false)
     expect(screen->textIn(".menu-row--nav .menu-row__label"))->toBe("Debug")

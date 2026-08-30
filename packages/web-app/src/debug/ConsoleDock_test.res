@@ -1,4 +1,4 @@
-// Where the debug console sits (#275), on the parts of it that are answerable without a
+// Where the debug console sits, on the parts of it that are answerable without a
 // browser: the placement's trip through `localStorage`, the order ⇧` walks them in (and
 // what it does with a placement the window can't show), and the arithmetic that decides
 // whether a window is wide enough to dock into at all.
@@ -30,7 +30,7 @@
 
 open Vitest
 
-describe("ConsoleDock (#275)", () => {
+describe("ConsoleDock", () => {
   test("a placement round-trips through storage", () => {
     // Every one of them, in both directions: the placement has to survive a reload for
     // the choice to mean anything, and `Top` has to be *written back* rather than merely

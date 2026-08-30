@@ -1,4 +1,4 @@
-// The finish sweep must not re-tilt cards before it moves them (#241) — see
+// The finish sweep must not re-tilt cards before it moves them — see
 // docs/card-tilt.md § The sweep problem for the mechanism this pins.
 //
 // It has to be measured in a real browser: jsdom has no layout, no CSS

@@ -1,5 +1,5 @@
 // The text renderer, now that it's `core`'s: one board drawing served to a terminal and
-// to the web app's debug console (#273). It moved here from `packages/cli` when the
+// to the web app's debug console. It moved here from `packages/cli` when the
 // console's `print` stopped answering "the board is on screen" and started showing one.
 //
 // The property that matters most is the one the move introduced: **colour is a front
@@ -106,7 +106,7 @@ describe("Render layout", () => {
 
   // Sixteen columns in one row is wider than a terminal, and the two halves aren't the
   // same kind of thing: the free cells and foundations sit above the tableau, the way
-  // the web table lays them out (#94).
+  // the web table lays them out.
   test("a FreeCell board is drawn in two rows, cells and foundations above", () => {
     // Title, top row, bottom row.
     expect(Array.length(sections))->toBe(3)
@@ -349,7 +349,7 @@ describe("Render portability", () => {
 })
 
 // --- A move, in words ----------------------------------------------------------
-// The line the debug console narrates a dispatched move with (#213). It replaced the
+// The line the debug console narrates a dispatched move with. It replaced the
 // reducer's own action, stringified, so what's being pinned down is that it says the move
 // the way the *board* says it: the verb you would type, the card's face, and the label
 // printed over the pile rather than the index underneath it.

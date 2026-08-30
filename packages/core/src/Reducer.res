@@ -1,6 +1,6 @@
-// The missing middle of the reduxey loop (#82): an `action` variant and a pure
-// `reduce` that transitions the immutable `GameState.t` (#77) and enforces the
-// stacking rules (#76). This is the ROADMAP's load-bearing principle made real —
+// The missing middle of the reduxey loop: an `action` variant and a pure
+// `reduce` that transitions the immutable `GameState.t` and enforces the
+// stacking rules. This is the ROADMAP's load-bearing principle made real —
 // "immutable state + action variant + pure reducer, illegal actions rejected."
 //
 // The shapes:
@@ -17,18 +17,17 @@ open Card
 
 // Where a `Move` sends a card: onto a specific pile. A one-armed variant rather
 // than a bare `int` because it names what the index *means* at every call site,
-// and because a second destination kind would join it here (a loose table was one,
-// retired with the demo boards in #342).
+// and because a second destination kind would join it here.
 type target = ToPile(int)
 
 // The moves the current games allow. A `Move` is one card; a `MoveRun` is the
-// FreeCell **supermove** (#123) — an ordered run of `cards` (bottom-first, the way
+// FreeCell **supermove** — an ordered run of `cards` (bottom-first, the way
 // a pile holds them) lifted and dropped as one gesture, as if each had been
 // shuffled through the free cells and empty columns.
 type action =
   | Move({card: card, to: target})
   | MoveRun({cards: array<card>, to: target})
-  // Reorder the cascade columns (#159): pull the column at pile index `from` out
+  // Reorder the cascade columns: pull the column at pile index `from` out
   // and reinsert it at `to`, the intervening columns sliding over to accommodate —
   // insert-and-shift, *not* a swap. A house-rule organizational move (our variant's
   // `Options.allowColumnReorder`), so a player can arrange the board how they like.
@@ -36,7 +35,7 @@ type action =
   // `ToPile(int)`), and both must be `Cascade` piles — foundations and free cells
   // aren't reorderable. Since the eight cascades are structurally identical pile
   // defs, this only permutes `GameState.piles`; the board `Game.piles` is untouched,
-  // so it's a pure state transition recording as one clean undo step (#85).
+  // so it's a pure state transition recording as one clean undo step.
   | MoveColumn({from: int, to: int})
 
 // Why a move was rejected. Distinguishing these lets a driver react precisely —
@@ -45,12 +44,12 @@ type action =
 // re-drop is a lawful `Ok`).
 type moveError =
   | Rejected // the destination pile's rule refused the card
-  | PileFull // the destination pile is at its capacity (#93 — e.g. a full free cell)
+  | PileFull // the destination pile is at its capacity (e.g. a full free cell)
   | NoSuchPile // the target pile index is out of range
   | CardNotFound // the card isn't anywhere in this state
-  | NotARun // a `MoveRun`'s cards aren't a legal ordered run (#123)
-  | RunTooLong // a `MoveRun`'s run exceeds the supermove limit (#123)
-  | NotAColumn // a `MoveColumn` addressed a pile that isn't a `Cascade` (#159)
+  | NotARun // a `MoveRun`'s cards aren't a legal ordered run
+  | RunTooLong // a `MoveRun`'s run exceeds the supermove limit
+  | NotAColumn // a `MoveColumn` addressed a pile that isn't a `Cascade`
   | CardBuried // a `Move`'s card has other cards resting on it (see `isFree`)
   | NotASpan // a `MoveRun`'s cards aren't one liftable span (see `isSpan`)
 
@@ -94,7 +93,7 @@ let isSpan = (state: GameState.t, cards: array<card>): bool =>
   }
 
 // Is pile `onto` already full — holding as many cards as its `capacity` allows
-// (#93)? A pile with `capacity: None` is unbounded and never full; a `Some(cap)`
+//? A pile with `capacity: None` is unbounded and never full; a `Some(cap)`
 // pile is full once its current count reaches `cap`. This is the count-aware
 // check `Rules.accepts` deliberately can't make — it sees only the top card, not
 // how many sit below — so it lives here, alongside the state that holds the count.
@@ -104,24 +103,24 @@ let isFull = (~game: Game.t, state: GameState.t, ~onto: int): bool =>
   | _ => false
   }
 
-// Would landing `adding` more cards on pile `onto` fit within its `capacity`
-// (#93)? The count-aware companion `isFull` can't express for a *supermove*
-// (#123): `isFull` asks "is there room for one more?", but a run lands several at
+// Would landing `adding` more cards on pile `onto` fit within its `capacity`? The
+// count-aware companion `isFull` can't express this for a *supermove*: `isFull`
+// asks "is there room for one more?", but a run lands several at
 // once, so a two-card run onto a capacity-1 free cell must be refused even though
 // the empty cell isn't full. Room means the current count plus the newcomers
 // stays within `cap`; a `capacity: None` pile is unbounded and always has room.
-// This is what stops a run from being dropped onto a free cell — the bug in #133.
+// This is what stops a run from being dropped onto a free cell.
 let hasRoomFor = (~game: Game.t, state: GameState.t, ~onto: int, ~adding: int): bool =>
   switch game.piles->Array.get(onto) {
   | Some({capacity: Some(cap)}) => Array.length(GameState.cardsInPile(state, onto)) + adding <= cap
   | _ => true
   }
 
-// The shared legality query (#82): may `card` be dropped onto pile `onto` given
+// The shared legality query: may `card` be dropped onto pile `onto` given
 // the current state? Folds the view's current ad-hoc check into one entry point,
 // so the reducer and (later) the view's hover highlight both call *this* — "valid
-// outline" and "accepted drop" can never disagree, the property #75 relies on,
-// now centralised. A drop is legal only if the pile isn't already full (#93) and
+// outline" and "accepted drop" can never disagree. A drop is legal only if the
+// pile isn't already full and
 // the pure `Rules.accepts` clears the card against the pile's `rule` and its
 // current top card; an out-of-range pile accepts nothing.
 let canDrop = (~game: Game.t, state: GameState.t, card: card, ~onto: int): bool =>
@@ -131,11 +130,11 @@ let canDrop = (~game: Game.t, state: GameState.t, card: card, ~onto: int): bool 
   | None => false
   }
 
-// The foundation a `card` may be sent *home* to (#122): the index of the first
+// The foundation a `card` may be sent *home* to: the index of the first
 // foundation pile (in board order) whose rule will take this card — an Ace onto
 // an empty foundation, or the next rank up in the same suit — or `None` when no
 // foundation accepts it (wrong rank/suit, or every foundation full). A thin
-// wrapper over `canDrop` restricted to the Foundation role group (#94), so the
+// wrapper over `canDrop` restricted to the Foundation role group, so the
 // double-click / `home` shortcut and a hand-dragged drop agree on legality by
 // construction — the auto-move can only send a card where a drag could.
 //
@@ -143,18 +142,18 @@ let canDrop = (~game: Game.t, state: GameState.t, card: card, ~onto: int): bool 
 // `Move({card, to: ToPile(i)})` — auto-to-foundation only computes `i` here
 // rather than the player dragging there, so no new reducer transition is needed.
 // The web double-click and the CLI `home` verb both dispatch through it, and safe
-// auto-collect (#125) builds on it.
+// auto-collect builds on it.
 let foundationTarget = (~game: Game.t, state: GameState.t, card: card): option<int> =>
   Game.pileIndices(game, Game.Foundation)->Array.find(i => canDrop(~game, state, card, ~onto=i))
 
-// One legal single-card destination in `validMoves` (#196): the pile index `to`
+// One legal single-card destination in `validMoves`: the pile index `to`
 // a drop would land on, tagged with that pile's `role` so a caller can prioritise
 // — the double-tap send-home wants the `Foundation` move, a later hint might rank
 // cascades first. `to` is a pile index into `Game.piles`/`GameState.piles`,
 // exactly the `ToPile(i)` a `Move` carries.
 type move = {to: int, role: Game.role}
 
-// Every legal single-card destination for `card` from the current state (#196),
+// Every legal single-card destination for `card` from the current state,
 // each role-tagged so callers can prioritise. Built on `canDrop`, so the moves
 // listed are *exactly* the drops a hand-drag would accept — "valid outline" and
 // "accepted drop" can never disagree, the same property `foundationTarget` gives
@@ -189,11 +188,11 @@ let validMoves = (~game: Game.t, state: GameState.t, card: card): array<move> =>
     moves
   }
 
-// The standard FreeCell **supermove limit** (#123): the most cards you can move
+// The standard FreeCell **supermove limit**: the most cards you can move
 // as one ordered run is `(1 + emptyFreeCells) × 2 ^ emptyCascades` — exactly the
 // number you could relay one at a time through the empty free cells and empty
 // columns and back. The empties are read straight from the FreeCell/Cascade role
-// groups (#94), so any board that declares those roles gets the right limit.
+// groups, so any board that declares those roles gets the right limit.
 //
 // `~ignoring`, when given, drops one pile from the empty tally: a move's own
 // destination doesn't lend its emptiness to the exponent — an empty *destination*
@@ -210,13 +209,13 @@ let maxSupermove = (~game: Game.t, state: GameState.t, ~ignoring: option<int>=?)
 }
 
 // May the ordered run `cards` (bottom-first) legally supermove onto pile `onto`
-// given the current state (#123)? The shared legality query the reducer's
+// given the current state? The shared legality query the reducer's
 // `MoveRun` and the view's span hover both consult — so the "valid" outline and
 // the accepted drop can never disagree, the same property `canDrop` gives
 // single-card moves. A run moves only when it's a genuine run under the pile's
 // rule, its bottom card `accepts` onto the pile's current top, the pile has room
-// for the whole run under its `capacity` (#93 — so a run can't land on a free
-// cell, #133), and it's within the supermove limit (the destination excluded from
+// for the whole run under its `capacity` (so a run can't land on a free
+// cell), and it's within the supermove limit (the destination excluded from
 // the empty tally).
 let canMoveRun = (~game: Game.t, state: GameState.t, cards: array<card>, ~onto: int): bool =>
   switch game.piles->Array.get(onto) {
@@ -259,7 +258,7 @@ let placeRun = (state: GameState.t, cards: array<card>, i: int): GameState.t =>
 
 // `state` with the pile at index `from` pulled out and reinserted at index `to`,
 // the intervening piles sliding over — insert-and-shift, the reorder behind
-// `MoveColumn` (#159). A fresh `piles` array is built (copy-on-write like the
+// `MoveColumn`. A fresh `piles` array is built (copy-on-write like the
 // primitives above), so the input snapshot is never mutated. `from == to` rebuilds
 // the same order — an exact no-op. Callers guarantee both indices are in range and
 // address `Cascade` piles, so only cascade columns are ever permuted; every other
@@ -307,7 +306,7 @@ let reduce = (~game: Game.t, state: GameState.t, action: action): result<GameSta
         | None => Error(NoSuchPile)
         | Some(pile) =>
           // A full pile rejects before the rule is even consulted, and reports
-          // `PileFull` so a driver can tell "no room" from a rule refusal (#93).
+          // `PileFull` so a driver can tell "no room" from a rule refusal.
           // The identity re-drop above already returned `Ok`, so a card already
           // topping a capacity-1 cell isn't counted as a new arrival here.
           if isFull(~game, state, ~onto=i) {
@@ -320,7 +319,7 @@ let reduce = (~game: Game.t, state: GameState.t, action: action): result<GameSta
         }
       }
     }
-  // The supermove (#123): an ordered run moved as one gesture. Accepted only when
+  // The supermove: an ordered run moved as one gesture. Accepted only when
   // every card is in play, the `cards` are a legal run in order, the destination
   // `accepts` the run's bottom card, and the run fits the supermove limit — each
   // failure carrying its own `moveError` so a driver can say precisely why.
@@ -341,9 +340,9 @@ let reduce = (~game: Game.t, state: GameState.t, action: action): result<GameSta
       } else if !Rules.accepts(pile.rule, cards->Array.getUnsafe(0), GameState.topOf(state, i)) {
         Error(Rejected)
       } else if !hasRoomFor(~game, state, ~onto=i, ~adding=Array.length(cards)) {
-        // A capped pile (a free cell, #93) has no room for a multi-card run — the
-        // #133 bug: without this a run landed on a one-card cell. `PileFull` is the
-        // same "no room" refusal a second single card gets on a full cell.
+        // A capped pile (a free cell) has no room for a multi-card run: without this
+        // check a run lands on a one-card cell. `PileFull` is the same "no room"
+        // refusal a second single card gets on a full cell.
         Error(PileFull)
       } else if Array.length(cards) > maxSupermove(~game, state, ~ignoring=i) {
         Error(RunTooLong)
@@ -351,14 +350,14 @@ let reduce = (~game: Game.t, state: GameState.t, action: action): result<GameSta
         Ok(placeRun(state, cards, i))
       }
     }
-  // Reorder two cascade columns (#159): pull the column at `from` out and reinsert
+  // Reorder two cascade columns: pull the column at `from` out and reinsert
   // it at `to`, the rest sliding over. Both indices must be in range *and* address
   // `Cascade` piles — reordering a free cell or foundation is out of scope — else a
   // typed rejection (`NoSuchPile` / `NotAColumn`) so a driver can say precisely why.
   // On success only `GameState.piles` is permuted (foundations, free cells and the
   // loose table untouched), so the reorder is purely organizational: win-state,
   // `canFinish` and auto-collect eligibility are all invariant under it. This is a
-  // *board rule* — the `allowColumnReorder` house-rule gate (#159) lives in the
+  // *board rule* — the `allowColumnReorder` house-rule gate lives in the
   // driver, which withholds the action entirely when the option is off, mirroring
   // how `autoCollect` is applied driver-side rather than inside the pure reducer.
   | MoveColumn({from, to}) =>
@@ -373,12 +372,12 @@ let reduce = (~game: Game.t, state: GameState.t, action: action): result<GameSta
     }
   }
 
-// --- Safe auto-collect (#125) ------------------------------------------------
+// --- Safe auto-collect ------------------------------------------------
 // Auto-collect sends *safe* cards home after each move, so a player never has to
 // play the obvious ones by hand. It's driver behaviour gated by an `Options` flag
 // (the seam a future menu toggle flips), but the decision — *which* cards are safe
 // and the fixpoint that collects them — is pure `core` logic, built on the same
-// `foundationTarget` the manual send-home (#122) uses.
+// `foundationTarget` the manual send-home uses.
 
 // The rank a foundation has climbed to in `suit` — the `rankValue` of that suit's
 // top foundation card, or 0 when the suit hasn't been founded yet (no Ace home).
@@ -394,7 +393,7 @@ let foundationRank = (~game: Game.t, state: GameState.t, suit: suit): int =>
 
 // The suits on this board of the *opposite* colour to `card` — the ones the safe
 // rule below waits on. Read off `game.deck` rather than written out as the literal
-// pairs (#351): for `Cards.standard` this yields exactly `[Spades, Clubs]` for a red
+// pairs: for `Cards.standard` this yields exactly `[Spades, Clubs]` for a red
 // card and `[Hearts, Diamonds]` for a black one, so it's a strict generalization and
 // FreeCell's behaviour is unchanged. On a deck missing a suit the literal pairs named
 // a suit no foundation could ever hold, whose `foundationRank` therefore stayed 0
@@ -405,7 +404,7 @@ let oppositeColorSuits = (~game: Game.t, card: card): array<suit> => {
   game.deck.suits->Array.filter(s => Rules.color(s) != mine)
 }
 
-// Is `card` *safe* to auto-collect home (#125)? Two things must hold, and it's
+// Is `card` *safe* to auto-collect home? Two things must hold, and it's
 // deliberately stricter than `foundationTarget` alone: a foundation must currently
 // *accept* the card, *and* sending it home can never strand a card that still
 // needs it on a cascade — the conservative standard rule. A card of rank r is safe
@@ -428,11 +427,11 @@ let isSafeToCollect = (~game: Game.t, state: GameState.t, card: card): bool =>
       oppositeColorSuits(~game, card)->Array.every(s => foundationRank(~game, state, s) >= r - 1)
   }
 
-// Auto-collect (#125): repeatedly send every *safe* card home until none remain —
+// Auto-collect: repeatedly send every *safe* card home until none remain —
 // a fixpoint, since collecting one card can make the next one safe (its own
 // follow-up, or a card of the other colour once this colour advances). Returns the
 // settled state and, in the order they were collected, the cards it moved; the
-// moved list lets a view animate the cascade later (#22) and lets undo (#85) group
+// moved list lets a view animate the cascade later and lets undo group
 // a move and the collection it triggered as one unit. When nothing is safe — and
 // in particular on a board with no foundations — it returns the state unchanged
 // and an empty list, so a driver can adopt the result unconditionally.
@@ -479,11 +478,11 @@ let autoCollect = (~game: Game.t, state: GameState.t): (GameState.t, array<card>
   (current.contents, moved)
 }
 
-// --- End-game finish sweep (#132) --------------------------------------------
+// --- End-game finish sweep --------------------------------------------
 // The user-triggered finish: no automatic end-game sweep, but a "Finish" button
 // (the web) / `finish` verb (the CLI) that appears exactly when the board can be
 // completed **by foundation moves alone** from here — no card ever returning to a
-// cascade or free cell. That's a genuinely *looser* rule than #125's safe
+// cascade or free cell. That's a genuinely *looser* rule than safe
 // auto-collect: it plays any card a foundation will *accept*, safe or not, so it
 // finishes the trapped tails auto-collect stalls on (a ♠6 sitting on ♥3 with the
 // reds still low — the ♠6 is accepted but not safe, trapping the wanted ♥3).
@@ -498,8 +497,8 @@ let autoCollect = (~game: Game.t, state: GameState.t): (GameState.t, array<card>
 
 // Run the greedy foundation-only drain from `state`, returning the settled state
 // and, in play order, the cards it sent home — the same `(state, movedCards)`
-// shape `autoCollect` returns, so a view can animate the sweep (#22) and undo can
-// group it (#85). When the board is drainable the sequence completes it (the
+// shape `autoCollect` returns, so a view can animate the sweep and undo can
+// group it. When the board is drainable the sequence completes it (the
 // settled state is a win); when a card genuinely needs a tableau move first the
 // drain jams and returns early with whatever it could play. `canFinish` reads the
 // same routine and asks only whether the settled state won. Cost is negligible —
@@ -547,7 +546,7 @@ let finishSequence = (~game: Game.t, state: GameState.t): (GameState.t, array<ca
   (current.contents, moved)
 }
 
-// Can the board be drained to a win by foundation moves alone from here (#132)?
+// Can the board be drained to a win by foundation moves alone from here?
 // True exactly when the greedy drain reaches a completed board — the trigger the
 // "Finish" button appears on, and the guard the drivers suppress safe
 // auto-collect behind (once the finish is available, the button owns it). A board

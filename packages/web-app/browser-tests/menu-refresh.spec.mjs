@@ -1,9 +1,9 @@
 // The About footer's update-check control appears on the Settings and Debug screens
-// and never on the main menu (#112).
+// and never on the main menu.
 //
 // Why this can't be a unit test. The rule reads two things at once — whether
 // `Refresh.detect` has reported a service-worker state yet, and which screen is
-// showing — and it now lives in `Main` (#308), where the props record for the About
+// showing — and it now lives in `Main`, where the props record for the About
 // footer is assembled. `Main` is the entry point: importing it mounts the app,
 // registers a service worker and takes over `<body>`, so there is nothing for a
 // Vitest file to call. The rule was previously inside `Menu`, reachable from

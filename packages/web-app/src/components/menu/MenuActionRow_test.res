@@ -1,5 +1,5 @@
 // The action row (the Debug screen's "Share game state"), exercised in isolation now
-// that it's a component of its own (#307).
+// that it's a component of its own.
 //
 // What's worth pinning: it carries **no switch** — that's the whole difference from
 // `<MenuToggleRow>`, and a switch appearing here would claim the row holds a state it
@@ -16,7 +16,7 @@ let render = (~enabled, ~desc="Copy a link that reopens this exact game.", ~onCl
 
 let text = (row, selector) => row->textIn(selector)
 
-describe("MenuActionRow (#307)", () => {
+describe("MenuActionRow", () => {
   test("shows the label and its description in the toggle row's stack", () => {
     let row = render(~enabled=true)
     expect(row->text(".menu-row__label"))->toBe("Share game state")
