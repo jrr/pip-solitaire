@@ -1,22 +1,8 @@
 // The menu's collapsible group (`MenuDisclosure`). The Debug screen's two — "scenes"
 // and "states" — are the same component, so both halves are covered here, and a group
 // that reached the menu as an opaque `Html.element` instead couldn't be covered at all.
-// What's worth pinning:
-//
-// 1. **One row per entry, in the order given.** The rows are scenes to mount and
-//    positions a tap drops the board into; a menu that reordered or dropped one
-//    would send a tester to a board they didn't ask for.
-// 2. **Each row runs its own entry's action.** Rows that look alike is exactly the
-//    arrangement where a crossed wire goes unnoticed — the same reason
-//    `MenuSettingsScreen_test` checks its four switches by name.
-// 3. **It opens collapsed unless asked, and never writes `open` for the closed
-//    case.** The group hides a long list under a summary; the attribute is the
-//    browser's to write from a click, and a diff with an opinion about it would slam
-//    the group shut under a reader on the next re-render. `open_` is the one
-//    exception, and exists for the deep link (`?scene=gallery`) that lands on a row
-//    inside the group.
-// 4. **`selected` marks a row, and only when asked.** It's the active scene's
-//    highlight; the state rows leave it off and must come out plain.
+// The rows are scenes to mount and positions a tap drops the board into, so getting one
+// wrong sends a tester to a board they didn't ask for rather than to an error.
 open Vitest
 open TestDom
 
@@ -33,8 +19,9 @@ describe("MenuDisclosure", () => {
     let group = render([inert("Mid-game")])
     expect(group->tag)->toBe("DETAILS")
     expect(group->textIn("summary"))->toBe("states")
-    // No `open` attribute — the group starts collapsed, and from here on the
-    // attribute belongs to the browser rather than to the diff.
+    // No `open` attribute — the group starts collapsed, and from here on the attribute
+    // belongs to the browser rather than to the diff: one with an opinion about it
+    // would slam the group shut under a reader on the next re-render.
     expect(group->hasAttr("open"))->toBe(false)
   })
 

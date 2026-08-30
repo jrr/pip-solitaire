@@ -3,11 +3,10 @@
 // both are just subscribers: the tests subscribe their own, which is exactly how
 // the panel receives its lines, and check what does (and doesn't) come through.
 //
-// The property worth pinning is the *derived gate*: with nobody listening, a `log`
-// costs nothing at all, which is what lets the instrumentation stay in the shipped
-// code. The scrollback `Ring` is checked here too, since it's the piece that bounds a
-// long session's log (the panel that renders it needs a browser; see
-// browser-tests/debug-console.spec.mjs).
+// The gate is derived from the subscribers rather than set, which is what lets the
+// instrumentation stay in the shipped code. The scrollback `Ring` is checked here too,
+// since it's the piece that bounds a long session's log (the panel that renders it
+// needs a browser; see browser-tests/debug-console.spec.mjs).
 
 open Vitest
 

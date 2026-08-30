@@ -1,17 +1,8 @@
 // The "Wiggle Waggle" row, exercised in isolation.
 //
 // The row's whole shape is decided by `Motion.state`, and the four states don't map
-// onto one bool — which is why it isn't a `<MenuToggleRow>` call. What this file
-// pins:
-//
-// 1. **A healthy row says nothing.** Off or listening, there's no description at all
-//    — the other settings explain themselves; finding out what this one does is the
-//    point. A `desc` element appearing in those states would give the game away.
-// 2. **A problem does get a line.** Blocked, no sensor, insecure origin: the subtitle
-//    is the only place the reason can surface, since the switch itself just reads off.
-// 3. **`Blocked` reads off but keeps its reason.** The OS refused, so the switch has
-//    to snap back — but silently snapping back with no line is indistinguishable from
-//    a tap that didn't register.
+// onto one bool — which is why it isn't a `<MenuToggleRow>` call, and why there is a
+// case here per state.
 open Vitest
 open TestDom
 
@@ -25,6 +16,8 @@ let isOn = row => row->classes->String.includes("menu-row--on")
 
 describe("MenuWiggleRow", () => {
   test("is titled, and deliberately unexplained, while it's healthy", () => {
+    // The other settings explain themselves; finding out what this one does is the
+    // point, so a `desc` element here would give the game away.
     let off = render(Motion.Off)
     expect(off->find(".menu-row__label")->Option.mapOr("", text))->toBe("Wiggle Waggle")
     expect(off->subtitle)->toBe(None)
@@ -47,6 +40,8 @@ describe("MenuWiggleRow", () => {
   })
 
   test("explains a device or origin it can't even ask on", () => {
+    // The subtitle is the only place a reason can surface: the switch itself just
+    // reads off, the same as a setting nobody has turned on.
     expect(render(Motion.Unavailable(Motion.NoSensor))->subtitle->Option.isSome)->toBe(true)
     expect(render(Motion.Unavailable(Motion.Insecure))->subtitle->Option.isSome)->toBe(true)
   })

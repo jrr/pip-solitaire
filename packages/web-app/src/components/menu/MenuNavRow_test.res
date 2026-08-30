@@ -1,9 +1,5 @@
 // The nav row that opens a deeper menu screen (the Settings screen's "Debug" entry),
 // exercised in isolation.
-//
-// What's worth pinning: it wears a **chevron rather than a switch** — the one visual
-// difference that says "goes somewhere" instead of "flips here" — and that chevron is
-// `aria-hidden`, so the row's accessible name is its label and not "Debug ›".
 open Vitest
 open TestDom
 
@@ -19,6 +15,7 @@ describe("MenuNavRow", () => {
   })
 
   test("marks the way onward with a chevron, not a switch", () => {
+    // The one visual difference that says "goes somewhere" instead of "flips here".
     let row = render()
     expect(row->find(".menu-row__chevron")->Option.isSome)->toBe(true)
     expect(row->find(".menu-row__switch")->Option.isSome)->toBe(false)

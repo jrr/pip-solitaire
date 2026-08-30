@@ -1,21 +1,7 @@
 // The main menu's **Share Seed** button.
 //
 // The button hands over a link to the *deal* on the table — `?seed=N`, which deals
-// the identical board wherever it's opened. Two things about that are worth pinning,
-// and they're what this file tests:
-//
-// 1. **The number on the button is the seed.** The button shows it as well as sharing
-//    it, so a player can read it off (or dictate it) on a browser where the link can't
-//    be delivered at all. If it rendered anything else — an index, a stale number from
-//    the previous deal — the share would quietly send someone to a different board,
-//    which is the one failure a share button can't afford.
-// 2. **A board with no seed offers nothing.** A demo scene, or a game resumed from a
-//    save that predates seeds being kept, has no board to point at. The button must be
-//    genuinely `disabled` (so no click is emitted at all) rather than lit and inert,
-//    and the line beneath must say why.
-// 3. **The line beneath holds its slot.** It's empty while there's nothing to report,
-//    but it's still *there* — a confirmation that appeared out of nothing would shove
-//    every section below it down the panel as it came and went.
+// the identical board wherever it's opened.
 //
 // `Menu` takes a props record per screen, so only the main screen's is
 // interesting here — the other two are built because the pane's record wants
@@ -108,7 +94,9 @@ let hasLine = (menu): bool => menu->find(".menu-share-line")->Option.isSome
 describe("Menu Share Seed button", () => {
   test("names the seed on the table, which is what the link carries", () => {
     // On the button itself, so the label and the number a player would read out are
-    // one control rather than a caption that has to be associated with it.
+    // one control rather than a caption that has to be associated with it. Render
+    // anything else here — an index, the previous deal's number — and the share sends
+    // someone to a different board, which is the one failure this button can't afford.
     let text = switch render(~seed=Some(123456), ~status=None)->shareButton {
     | Some(b) => b->text
     | None => "<no button>"
@@ -145,6 +133,8 @@ describe("Menu Share Seed button", () => {
   })
 
   test("disables the button on a board with no seed, and says why", () => {
+    // A demo scene, or a game resumed from a save that predates seeds being kept: there
+    // is no board to point at, so the button has nothing to share.
     let menu = render(~seed=None, ~status=None)
     switch menu->shareButton {
     | Some(b) => expect(b->hasAttr("disabled"))->toBe(true)

@@ -1,17 +1,6 @@
-// The header shared by all three menu screens, exercised in isolation.
-//
-// Two things here are load-bearing rather than cosmetic:
-//
-// 1. **The back button is a slot, not a fixture.** The main menu has nowhere to go
-//    back to, so it renders none at all — a disabled or invisible one would still
-//    take a place in the header's flex row and shift the title off centre.
-// 2. **The title is only tappable on one screen.** It doubles as the hidden-options
-//    tap target (`HiddenOptions`) on Settings; the identical `menu-title` renders
-//    "Pip" and "Debug" elsewhere and must stay inert. `onTitleTap: None` is what
-//    keeps it that way, and — because a handler that is no longer in the props is
-//    dropped from the node it was on — it's also what *clears* the handler from the
-//    reused <h1> when the player leaves Settings. A leak here would be invisible
-//    until someone found it, which is exactly why it's pinned.
+// The header shared by all three menu screens, exercised in isolation. What differs
+// between the three is which of its slots are filled, so every case here is one
+// rendering with a different set of them.
 open Vitest
 open TestDom
 
@@ -70,9 +59,12 @@ describe("MenuHeader", () => {
     settings->find(".menu-title")->Option.forEach(click)
     expect(taps.contents)->toBe(2)
 
-    // …and the identical title on the other screens is inert. A real listener leaves
-    // nothing on the element for a test to read back, so this is asserted through
-    // behaviour: tapping the other screen's title counts nothing.
+    // …and the identical title on the other screens is inert — it doubles as the
+    // hidden-options tap target (`HiddenOptions`) on Settings alone. `onTitleTap: None`
+    // is also what *clears* the handler off the reused <h1> on the way out of Settings,
+    // since a handler no longer in the props is dropped from the node it was on. A real
+    // listener leaves nothing on the element for a test to read back, so this is
+    // asserted through behaviour: tapping the other screen's title counts nothing.
     let main = render(~title="Pip")
     main->find(".menu-title")->Option.forEach(click)
     expect(taps.contents)->toBe(2)

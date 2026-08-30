@@ -1,8 +1,8 @@
 // The `localStorage` edge of save-and-resume: `SavedGame` writes a game's
 // history — and the play tally beside it — under a per-game-type key
 // and reads it back, delegating the actual encoding to `core`'s `SaveState`
-// (round-tripped in `SaveState_test`). These exercise the storage path end to end —
-// save→load, the no-save-yet case, and `clear`.
+// (round-tripped in `SaveState_test`). What's left to this file is the storage path
+// itself.
 //
 // jsdom on an opaque origin exposes no `localStorage`, so — exactly as
 // `TableScene_test` stubs `matchMedia` — a minimal in-memory Storage is installed

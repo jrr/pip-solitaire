@@ -2,20 +2,7 @@
 //
 // `Menu_test` pins what **Share Seed** does through the whole pane and
 // `MenuGameButton_test` pins the button itself; this file pins what's left — the
-// screen's own *arrangement*, the thing a refactor here could quietly change:
-//
-// 1. **Three game buttons, in that order** — New, Restart, Share Seed. The share
-//    tests below (and `Menu_test`'s) reach the third one positionally, so the order
-//    is load-bearing beyond how it looks.
-// 2. **The share line is always there.** Empty most of the time, but rendered — a
-//    confirmation that appeared out of nothing would shove every section below it
-//    down the panel as it came and went.
-// 3. **The Games rows are drawn from the list handed in**, in order, as
-//    `<MenuRow>`s, with the highlight on whichever one says it's selected. The
-//    switcher hands over the list and builds no DOM, so this is where its rows are
-//    pinned.
-// 4. **The Settings button sits in the bottom group.** `menu-section--bottom` is what
-//    pushes it to the foot of the panel; without the class it drifts up under Games.
+// screen's own *arrangement*, the thing a refactor here could quietly change.
 open Vitest
 open TestDom
 
@@ -46,6 +33,8 @@ let gameButtons = (screen): array<string> =>
 
 describe("MenuMainScreen", () => {
   test("offers New, Restart and Share Seed, in that order", () => {
+    // The share tests below (and `Menu_test`'s) reach the third button positionally, so
+    // the order is load-bearing beyond how it looks.
     expect(render(~shareDealSeed=Some(4242))->gameButtons)->toEqual([
       "New",
       "Restart",
@@ -66,6 +55,8 @@ describe("MenuMainScreen", () => {
   })
 
   test("keeps the share line's slot even when it has nothing to say", () => {
+    // Empty but rendered: a confirmation that appeared out of nothing would shove every
+    // section below it down the panel as it came and went.
     let quiet = render(~shareDealSeed=Some(9))
     expect(quiet->find(".menu-share-line")->Option.isSome)->toBe(true)
     expect(quiet->textIn(".menu-share-line"))->toBe("")
@@ -83,10 +74,10 @@ describe("MenuMainScreen", () => {
   })
 
   test("draws the games it's given as rows, marking the one that's showing", () => {
-    // The switcher's rows, which arrive as data: the labels in order,
-    // and the highlight — `menu-row--active` plus `aria-current` — on the scene
-    // mounted. A second game would list beneath the first, which is what this section
-    // is a section for.
+    // The switcher's rows, which arrive as data: the labels in order, and the highlight
+    // — `menu-row--active` plus `aria-current` — on the scene mounted. The switcher
+    // builds no DOM of its own, so this is where its rows are pinned. A second game
+    // would list beneath the first, which is what this section is a section for.
     let taps = []
     let screen = render(
       ~games=[
@@ -107,6 +98,8 @@ describe("MenuMainScreen", () => {
   })
 
   test("hangs the Settings button off the bottom group, above the About footer", () => {
+    // `menu-section--bottom` is what pushes it to the foot of the panel; without the
+    // class it drifts up under Games.
     let taps = ref(0)
     let screen = render(~onOpenSettings=() => taps := taps.contents + 1)
     let button = screen->find(".menu-section--bottom .menu-button")

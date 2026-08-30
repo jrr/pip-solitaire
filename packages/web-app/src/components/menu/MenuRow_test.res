@@ -2,24 +2,7 @@
 // right-hand end takes.
 //
 // The four row variants hand their box here, so this is where the box's own contract
-// lives and their tests pin only what each variant adds. Three things are worth
-// pinning about a shared base like this, and they're what this file tests:
-//
-// 1. **The trailing decides the row's semantics, not just its looks.** `Switch`
-//    makes it a real `role="switch"` with `aria-checked`; the other two kinds hold
-//    no state, so both attributes have to be *absent* rather than "false" — an
-//    announced "not checked" on a row that can't be checked is worse than silence.
-// 2. **Every kind names itself in the class list.** `--switch` / `--nav` /
-//    `--action` carry the styling that differs (the nav row's weight, the action
-//    row's disabled look) and are how a screen's test asks for one kind of row
-//    without matching the others.
-// 3. **A missing description renders nothing at all**, rather than an empty
-//    element — `<MenuWiggleRow>` depends on that: a healthy switch shows just its
-//    title, and a stray empty `desc` span would put a gap under it.
-// 4. **`selected` is orthogonal to the kind, in the class list and in ARIA.** It
-//    marks the row currently in effect out of a set (the mounted scene), so it has
-//    to sit *alongside* the kind modifier rather than replace it, and `aria-current`
-//    follows the same absent-not-"false" rule as `aria-checked` above.
+// lives and their tests pin only what each variant adds.
 open Vitest
 open TestDom
 
@@ -49,11 +32,15 @@ describe("MenuRow", () => {
     expect(render(~desc="Cards don't line up perfectly.")->text(".menu-row__desc"))->toBe(
       "Cards don't line up perfectly.",
     )
-    // Not an empty element: the wiggle row's healthy states show a bare title.
+    // Not an empty element: the wiggle row's healthy states show a bare title, and a
+    // stray empty `desc` span would put a gap under it.
     expect(render()->has(".menu-row__desc"))->toBe(false)
   })
 
   test("names its kind in the class list", () => {
+    // `--switch` / `--nav` / `--action` carry the styling that differs (the nav row's
+    // weight, the action row's disabled look), and are how a screen's test asks for one
+    // kind of row without matching the others.
     expect(render(~trailing=MenuRow.Switch(false))->classes)->toBe("menu-row menu-row--switch")
     expect(render(~trailing=MenuRow.Switch(true))->classes)->toBe(
       "menu-row menu-row--switch menu-row--on",

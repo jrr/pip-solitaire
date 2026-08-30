@@ -4,12 +4,9 @@
 // The rasterization itself needs a real engine — an `<img>` decode, a canvas,
 // and the actual font files — so its fidelity is measured in the browser suite
 // (browser-tests/raster.spec.mjs). What can be pinned here, cheaply and without
-// one, is the *shape of the document* that gets handed to the engine, and it's
-// worth pinning because every one of these is a silent failure rather than a
-// crash: an SVG with no intrinsic size rasterizes at whatever the engine feels
-// like, an SVG with no `xmlns` isn't an SVG at all through `<img>`, and an SVG
-// whose `@font-face` block went missing renders in a fallback face with tofu
-// where the pips should be. All three produce a picture; none produces an error.
+// one, is the *shape of the document* that gets handed to the engine — and it's worth
+// pinning because every way it can be wrong still produces a picture rather than an
+// error, so nothing downstream will say so.
 open Vitest
 
 let card: Deck.card = {suit: Deck.Spades, rank: Deck.Ace}
@@ -27,8 +24,9 @@ let has = (haystack, needle) => haystack->String.includes(needle)
 describe("CardRaster's standalone SVG", () => {
   test("carries an intrinsic pixel size as well as the viewBox", () => {
     let markup = svg()
-    // `CardArt.svg` emits only a viewBox, which is fine inline and not fine
-    // through `<img>`; these two are the difference.
+    // `CardArt.svg` emits only a viewBox, which is fine inline and not fine through
+    // `<img>`; these two are the difference. Without them the engine rasterizes at
+    // whatever size it feels like.
     expect(markup->has(`width="160"`))->toBe(true)
     expect(markup->has(`height="224"`))->toBe(true)
     expect(markup->has(`viewBox="${CardArt.viewBox}"`))->toBe(true)
@@ -39,6 +37,8 @@ describe("CardRaster's standalone SVG", () => {
   })
 
   test("embeds the font rules inside the document", () => {
+    // A document whose `@font-face` block went missing renders in a fallback face,
+    // with tofu where the pips should be.
     expect(svg()->has(`<style>${fontCss}</style>`))->toBe(true)
   })
 

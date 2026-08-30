@@ -3,9 +3,7 @@ open Card
 
 // `Position` is a *mirror* of the rules, not a second set of them — so what
 // has to be tested is the mirroring itself. Every test here holds the packed model
-// up against `Rules`/`Reducer` on the same board and insists they say the same
-// thing: the same legal moves, the same supermove limit, the same auto-collect,
-// the same finishable, the same board after a move.
+// up against `Rules`/`Reducer` on the same board and insists they say the same thing.
 //
 // This is the check the old JavaScript mirror could only make in a browser, by
 // playing a whole game through the DOM and counting the times the screen surprised

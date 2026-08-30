@@ -5,15 +5,10 @@
 // question about a drawing surface, and lives in `browser-tests/trail.spec.mjs`
 // where there's an engine to draw with and a pointer to move.
 //
-// Two things are worth pinning without one, and both are the kind of mistake that
-// produces a plausible-looking picture rather than an error:
-//
-//   - **The ratio arithmetic.** The cap, and the rule that the display always
-//     wins below it. A sprite sheet built at one ratio and blitted onto a store
-//     sized at another still draws cards; they're just soft, and nothing says so.
-//   - **That the scene survives an engine with no 2D context.** Which is the
-//     whole reason `Canvas.context2d` answers an `option` — and it isn't a
-//     hypothetical for a test environment, it's this one.
+// What is worth pinning without one is the kind of mistake that produces a
+// plausible-looking picture rather than an error — a sprite sheet built at one ratio
+// and blitted onto a store sized at another still draws cards; they're just soft, and
+// nothing says so.
 //
 // So jsdom's canvas is made to answer the way an engine without a 2D
 // implementation does — explicitly, rather than leaving it to jsdom's own
@@ -66,6 +61,8 @@ describe("TrailScene's pixel ratio", () => {
   })
 })
 
+// An engine with no 2D context is the whole reason `Canvas.context2d` answers an
+// `option`, and it isn't a hypothetical for a test environment — it's this one.
 describe("the trail scene, on an engine that can't draw", () => {
   test("mounts a backdrop of real board cards under a transparent overlay", () => {
     let (host, _) = mount()
