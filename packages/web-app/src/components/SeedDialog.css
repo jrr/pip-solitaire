@@ -1,0 +1,146 @@
+@layer components {
+  /* The "enter seed" modal (see SeedDialog.res): a dimmed screen with one field on a
+     panel in the middle of it.
+
+     It borrows the win panel's look — dark slate, a gold border, the same shadow (see
+     `.win-panel` in scenes/TableScene.css) — rather than sharing a class with it. The
+     two have no box to share: that panel is raised over the board by the scene and
+     sized by its own contents, this one is chrome sized to a phone's width. So the
+     values are repeated here the way `.finish-button` repeats the panel's button, and
+     changing one is a prompt to look at the other. */
+
+  #seed-dialog {
+    position: fixed;
+    inset: 0;
+    /* Over the menu it was opened from (z-index: 20 — see Menu.css), which is what
+       makes it modal: the menu stays up behind the dim, so dismissing lands back on
+       the screen the dialog was raised from rather than on the bare board. */
+    z-index: 30;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    /* Clear of the notch and the home indicator, since this floats rather than
+       sitting in the body's padded box. */
+    padding: calc(env(safe-area-inset-top) + 1rem) 1rem
+      calc(env(safe-area-inset-bottom) + 1rem);
+    animation: seed-dialog-in 0.15s ease-out;
+  }
+
+  @keyframes seed-dialog-in {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+
+  /* Its own element rather than a background on the overlay, so a tap on the dim —
+     the gesture that dismisses — is a click on something with a handler, and a tap on
+     the panel is not. */
+  .seed-dialog__backdrop {
+    position: absolute;
+    inset: 0;
+    background: rgba(2, 6, 16, 0.7);
+  }
+
+  /* `position: relative` is what lifts the panel over its backdrop sibling; without
+     it the dim paints on top of the field. */
+  .seed-dialog__panel {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    width: min(20rem, 100%);
+    padding: 24px;
+    background: #0f172a;
+    border: 2px solid #eab308;
+    border-radius: 14px;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+    text-align: center;
+  }
+
+  .seed-dialog__title {
+    margin: 0;
+    font: 600 22px "Libre Franklin", sans-serif;
+    color: #eab308;
+  }
+
+  /* What the number does, since a field labelled only "deal number" says what to
+     type and not what typing it gets you. The panel's own `gap` spaces both lines, so
+     neither carries a margin. */
+  .seed-dialog__hint {
+    margin: 0;
+    font: 14px "Libre Franklin", sans-serif;
+    color: #cbd5e1;
+  }
+
+  /* Mono for the digits, the same stack the seed on Share Seed is set in: this is
+     where a number read off that button is typed back in, and 0/O and 1/l have to be
+     unambiguous at both ends of that trip. Centred, because it holds a number rather
+     than a sentence — and 18px because iOS Safari zooms the page when a field under
+     16px takes focus, which on a fixed overlay leaves the panel off-centre. */
+  .seed-dialog__field {
+    width: 100%;
+    padding: 10px 12px;
+    font: 18px ui-monospace, "SF Mono", Menlo, monospace;
+    text-align: center;
+    color: #f8fafc;
+    background: #0b1220;
+    border: 1px solid #334155;
+    border-radius: 8px;
+  }
+
+  .seed-dialog__field::placeholder {
+    color: #64748b;
+  }
+
+  .seed-dialog__field:focus {
+    outline: 2px solid #eab308;
+    outline-offset: 1px;
+  }
+
+  /* The two buttons split the panel's width evenly, so neither is the one you hit by
+     accident reaching for the other. */
+  .seed-dialog__actions {
+    display: flex;
+    gap: 12px;
+  }
+
+  .seed-dialog__button {
+    flex: 1 1 0;
+    padding: 10px 22px;
+    font: 600 16px "Libre Franklin", sans-serif;
+    color: #f8fafc;
+    background: #166534;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+  }
+
+  /* `:enabled`, because a disabled Deal still takes `:hover` in most browsers and
+     lighting up under the pointer is exactly what a button that can't be pressed must
+     not do. */
+  .seed-dialog__button:enabled:hover {
+    background: #15803d;
+  }
+
+  /* Deal, with nothing in the field to deal. The menu's own disabled rule
+     (`.menu-button:disabled`, Menu.css) doesn't reach here — these buttons are the win
+     panel's family, not the menu's — so the pair of declarations is stated again. */
+  .seed-dialog__button:disabled {
+    opacity: 0.5;
+    cursor: default;
+  }
+
+  .seed-dialog__button--cancel {
+    background: #334155;
+  }
+
+  /* Matching the specificity of the green hover above rather than beating it by
+     source order: that rule is (0,3,0), so a plain `--cancel:hover` would lose and
+     Cancel would light up green. */
+  .seed-dialog__button--cancel:enabled:hover {
+    background: #475569;
+  }
+}

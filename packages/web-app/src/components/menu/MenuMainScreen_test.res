@@ -10,9 +10,7 @@ let render = (
   ~shareDealSeed=None,
   ~shareDealStatus=None,
   ~onNewGame=() => (),
-  ~seedInput="",
-  ~onSeedInput=_ => (),
-  ~onDealSeed=_ => (),
+  ~onEnterSeed=() => (),
   ~onRestart=() => (),
   ~onShareDeal=() => (),
   ~onOpenSettings=() => (),
@@ -22,9 +20,7 @@ let render = (
     MenuMainScreen.make({
       onClose: () => (),
       onNewGame,
-      seedInput,
-      onSeedInput,
-      onDealSeed,
+      onEnterSeed,
       onRestart,
       shareDealSeed,
       shareDealStatus,
@@ -48,7 +44,7 @@ describe("MenuMainScreen", () => {
     let screen = render(~shareDealSeed=Some(4242))
     expect(screen->section("new game")->findAll("button")->Array.map(text))->toEqual([
       "Random",
-      "Deal",
+      "Enter Seed",
     ])
     expect(screen->section("this game")->findAll("button")->Array.map(text))->toEqual([
       "Restart",
@@ -61,28 +57,20 @@ describe("MenuMainScreen", () => {
     let screen = render(
       ~shareDealSeed=Some(1),
       ~onNewGame=() => log->Array.push("new"),
+      ~onEnterSeed=() => log->Array.push("enter seed"),
       ~onRestart=() => log->Array.push("restart"),
       ~onShareDeal=() => log->Array.push("share"),
     )
     screen->findAll(".menu-buttons button")->Array.forEach(click)
-    expect(log)->toEqual(["new", "restart", "share"])
+    expect(log)->toEqual(["new", "enter seed", "restart", "share"])
   })
 
-  test("hands the seed field's two ends straight through", () => {
-    // The screen holds no seed state of its own: the text comes in as a prop and the
-    // typing and the deal go back out. `MenuSeedEntry_test` covers the control itself;
-    // this is only that it's wired to the props and not to something local.
-    let log = []
-    let screen = render(
-      ~seedInput="24680",
-      ~onSeedInput=text => log->Array.push("typed " ++ text),
-      ~onDealSeed=seed => log->Array.push("deal " ++ Int.toString(seed)),
-    )
-    let field = screen->find(".menu-seed__field")->Option.getExn
-    expect(field->value)->toBe("24680")
-    field->typeInto("13579")
-    screen->find(".menu-seed")->Option.forEach(submit)
-    expect(log)->toEqual(["typed 13579", "deal 24680"])
+  test("asks for the seed dialog rather than holding a field of its own", () => {
+    // Enter Seed reports the press and stops there: the typing, the parse and the
+    // deal are all `SeedDialog`'s, raised over this screen by the chrome. A field
+    // here would be a second place a deal number could be typed.
+    let screen = render()
+    expect(screen->has("input"))->toBe(false)
   })
 
   test("keeps the share line's slot even when it has nothing to say", () => {

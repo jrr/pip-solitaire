@@ -63,9 +63,7 @@ let render = (~seed, ~status): Html.element =>
       main: {
         onClose: () => (),
         onNewGame: () => (),
-        seedInput: "",
-        onSeedInput: _ => (),
-        onDealSeed: _ => (),
+        onEnterSeed: () => (),
         onRestart: () => (),
         // The three under test.
         shareDealSeed: seed,

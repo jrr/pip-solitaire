@@ -5,9 +5,9 @@
 // Top to bottom:
 //   - the **title** ("Pip") beside the ✕;
 //   - a **"new game"** section — the two ways to open a board that isn't this one:
-//     **Random** (a seed the driver invents) and **Enter seed**, a deal number typed
-//     in (`<MenuSeedEntry>`, which owns that control entirely). The split is which
-//     board you get, which is the question a player actually has;
+//     **Random** (a seed the driver invents) and **Enter Seed**, which raises the
+//     `<SeedDialog>` modal over the menu for a deal number to be typed into. The
+//     split is which board you get, which is the question a player actually has;
 //   - a **"this game"** section — what can be done with the deal already on the
 //     table: **Restart** (re-deals the *same* seed to replay it) and **Share Seed**
 //     (hands over a `?seed=` link to it).
@@ -35,13 +35,10 @@
 type props = {
   onClose: unit => unit,
   onNewGame: unit => unit,
-  // The seed being typed into "Enter seed", and the two ends of it: each keystroke
-  // out through `onSeedInput`, and a number `core` accepts in through `onDealSeed`.
-  // The text is the chrome's to hold — see `MenuSeedEntry` for why it can't be the
-  // control's own.
-  seedInput: string,
-  onSeedInput: string => unit,
-  onDealSeed: int => unit,
+  // "Enter Seed" — raise the seed dialog. The typing and the dealing are that
+  // modal's, and it is raised over this screen rather than placed in it, so all this
+  // screen holds of the feature is the button that asks for it.
+  onEnterSeed: unit => unit,
   onRestart: unit => unit,
   // "Share Seed": the seed the board reports, and `None` is why the button
   // greys out — a demo scene has no seed, and neither does a game restored from a
@@ -78,9 +75,7 @@ let shareLine = (~seed: option<int>, ~status: option<string>): string =>
 let make = ({
   onClose,
   onNewGame,
-  seedInput,
-  onSeedInput,
-  onDealSeed,
+  onEnterSeed,
   onRestart,
   shareDealSeed,
   shareDealStatus,
@@ -92,8 +87,8 @@ let make = ({
   <MenuSection label="new game" heading="new game">
     <div className="menu-buttons">
       <MenuGameButton label="Random" value=None enabled=true onClick=onNewGame />
+      <MenuGameButton label="Enter Seed" value=None enabled=true onClick=onEnterSeed />
     </div>
-    <MenuSeedEntry seed=seedInput onSeed=onSeedInput onDeal=onDealSeed />
   </MenuSection>
   <MenuSection label="this game" heading="this game">
     <div className="menu-buttons">

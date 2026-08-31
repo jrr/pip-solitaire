@@ -56,7 +56,7 @@ type elementProps = {
   // because the raster scene passes a custom property (`--raster-card-w`).
   style?: string,
   onClick?: domEvent => unit,
-  // --- text entry. The menu's seed field is the only one the diff owns (the debug
+  // --- text entry. The seed dialog's field is the only one the diff owns (the debug
   // console's input is live DOM the module holds itself), and it is *controlled*:
   // `value` is written from the model every render and `onInput` reports each
   // keystroke back, so what's on screen is a fact the loop holds rather than one
@@ -85,6 +85,7 @@ type elementProps = {
   @as("aria-label") ariaLabel?: string,
   @as("aria-hidden") ariaHidden?: string,
   @as("aria-live") ariaLive?: string,
+  @as("aria-modal") ariaModal?: string,
   @as("aria-busy") ariaBusy?: string,
   @as("aria-checked") ariaChecked?: string,
   @as("aria-current") ariaCurrent?: string,
