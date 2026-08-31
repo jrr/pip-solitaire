@@ -136,7 +136,7 @@ test("the deal it hands over reads the same spelled out in full", async ({ page 
   // …and the board that opened names deal 264 back, so the round trip closes on a game
   // that knows which deal it is rather than merely on identical card positions.
   await page.getByRole("button", { name: "Open menu" }).click()
-  await expect(menuSeed(page)).toHaveText(ALMOST_WON_DEAL)
+  await expect(menuSeed(page)).toHaveText(`#${ALMOST_WON_DEAL}`)
 })
 
 test("a scenario with no deal behind it offers no share", async ({ page }) => {
@@ -159,5 +159,5 @@ test("the almost-won board names its deal on the menu too", async ({ page }) => 
   await settleBoard(page)
 
   await page.getByRole("button", { name: "Open menu" }).click()
-  await expect(menuSeed(page)).toHaveText(ALMOST_WON_DEAL)
+  await expect(menuSeed(page)).toHaveText(`#${ALMOST_WON_DEAL}`)
 })

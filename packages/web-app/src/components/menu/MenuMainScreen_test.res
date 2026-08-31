@@ -58,7 +58,9 @@ describe("MenuMainScreen", () => {
     // control. Keeping it off the buttons is also what lets the four be one grid: a
     // label that grows by five digits on some boards can't line up with the pair above.
     let screen = render(~shareDealSeed=Some(4242))
-    expect(screen->section("this game")->textIn(".menu-section__heading"))->toBe("this game 4242")
+    expect(screen->section("this game")->textIn(".menu-section__heading"))->toBe(
+      "this game – #4242",
+    )
     expect(screen->section("new game")->textIn(".menu-section__heading"))->toBe("new game")
   })
 

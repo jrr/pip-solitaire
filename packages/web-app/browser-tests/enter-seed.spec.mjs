@@ -59,7 +59,7 @@ test("deals the number typed in, and it's the same board the link would open", a
 
   // The deal the board now reports is the one asked for…
   await openMenu(page)
-  await expect(menuSeed(page)).toHaveText("24680")
+  await expect(menuSeed(page)).toHaveText("#24680")
 
   // …and it is card-for-card the board `?seed=24680` opens, which is the promise a
   // number handed between two people makes.
@@ -81,7 +81,7 @@ test("takes Enter as the deal, since the keyboard is already up", async ({ page 
   await expect(page.locator("#seed-dialog")).toBeHidden()
   await settleBoard(page)
   await openMenu(page)
-  await expect(menuSeed(page)).toHaveText("24680")
+  await expect(menuSeed(page)).toHaveText("#24680")
 })
 
 test("opens focused, so a number can be typed without aiming at the field first", async ({
@@ -109,7 +109,7 @@ test("leaves the board and the menu alone when it's dismissed", async ({ page })
   await page.getByRole("button", { name: "Cancel" }).click()
   await expect(page.locator("#seed-dialog")).toBeHidden()
   await expect(page.locator("#menu-overlay")).toBeVisible()
-  await expect(menuSeed(page)).toHaveText("13579")
+  await expect(menuSeed(page)).toHaveText("#13579")
 
   // The dim behind the panel dismisses too, and lands in the same place. A corner
   // rather than the default centre, which the panel is sitting on.

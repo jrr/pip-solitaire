@@ -137,6 +137,29 @@
     color: #64748b;
   }
 
+  /* What stands between the caption and the number ("THIS GAME – #24680"). The
+     margin is the whole reason it is an element: HTML collapses runs of whitespace,
+     so the breathing room either side has to come from the box, and the character's
+     own spaces (see MenuSection.res) are there for a screen reader rather than the
+     eye. It takes the heading's colour, being the heading's punctuation.
+
+     **The raise is not a nudge to taste.** A dash is drawn centred on the x-height,
+     because that is where it belongs in the lowercase prose every text face is cut
+     for: in Libre Franklin the en dash's optical centre sits at 0.256em, against
+     0.265em for `x`. This heading has no lowercase in it — uppercase on the left,
+     lining figures on the right — and caps and digits share a centre of 0.371em. So
+     the dash lands 0.115em below everything beside it, which is what the raise
+     undoes. Any face's dash will do this here; the number is Libre Franklin's, so it
+     is worth re-measuring if the heading ever changes font.
+
+     `position` rather than `vertical-align` because a raised inline grows the line
+     box, and this heading is 0.1rem clear of the buttons under it. */
+  .menu-section__dash {
+    position: relative;
+    top: -0.115em;
+    margin: 0 0.25em;
+  }
+
   /* A number the heading names as *data* rather than prose: the seed of the deal
      "this game" is about. The mono stack — the one the board readout and the seed
      dialog already use — keeps 0/O and 1/l unambiguous for a number meant to be read

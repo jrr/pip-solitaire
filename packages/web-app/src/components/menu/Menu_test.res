@@ -106,7 +106,7 @@ describe("Menu Share Seed button", () => {
     // as true of Restart beside it, and a button that grows by five digits on some
     // boards and not others can't line up with the pair above it.
     let menu = render(~seed=Some(123456), ~status=None)
-    expect(menu->seedNamed)->toBe("123456")
+    expect(menu->seedNamed)->toBe("#123456")
     let text = switch menu->shareButton {
     | Some(b) => b->text
     | None => "<no button>"
@@ -150,7 +150,7 @@ describe("Menu Share Seed button", () => {
     // naming its seed throughout, since nothing about the deal has changed.
     let menu = render(~seed=Some(24680), ~status=Some("Link copied to clipboard."))
     expect(menu->line)->toBe("Link copied to clipboard.")
-    expect(menu->seedNamed)->toBe("24680")
+    expect(menu->seedNamed)->toBe("#24680")
   })
 
   test("still offers the share while a status is up", () => {

@@ -2,12 +2,11 @@
   /* The "enter seed" modal (see SeedDialog.res): a dimmed screen with one field on a
      panel in the middle of it.
 
-     It borrows the win panel's look — dark slate, a gold border, the same shadow (see
-     `.win-panel` in scenes/TableScene.css) — rather than sharing a class with it. The
-     two have no box to share: that panel is raised over the board by the scene and
-     sized by its own contents, this one is chrome sized to a phone's width. So the
-     values are repeated here the way `.finish-button` repeats the panel's button, and
-     changing one is a prompt to look at the other. */
+     Its look is the win panel's, taken from the `--panel-*` tokens in styles/base.css
+     — which is where a change to the palette or to the buttons goes, since both
+     panels read it from there. What stays here is what is genuinely this one's: it is
+     chrome sized to a phone's width where the win panel is sized by its contents
+     inside the board, so the box, the scrim and the field are its own. */
 
   #seed-dialog {
     position: fixed;
@@ -53,17 +52,17 @@
     gap: 14px;
     width: min(20rem, 100%);
     padding: 24px;
-    background: #0f172a;
-    border: 2px solid #eab308;
-    border-radius: 14px;
-    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+    background: var(--panel-bg);
+    border: var(--panel-border);
+    border-radius: var(--panel-radius);
+    box-shadow: var(--panel-shadow);
     text-align: center;
   }
 
   .seed-dialog__title {
     margin: 0;
     font: 600 22px "Libre Franklin", sans-serif;
-    color: #eab308;
+    color: var(--panel-accent);
   }
 
   /* What the number does, since a field labelled only "deal number" says what to
@@ -72,7 +71,7 @@
   .seed-dialog__hint {
     margin: 0;
     font: 14px "Libre Franklin", sans-serif;
-    color: #cbd5e1;
+    color: var(--panel-ink-quiet);
   }
 
   /* Mono for the digits, the same stack the menu names the seed in
@@ -87,7 +86,7 @@
     padding: 10px 12px;
     font: 18px ui-monospace, "SF Mono", Menlo, monospace;
     text-align: center;
-    color: #f8fafc;
+    color: var(--panel-ink);
     background: #0b1220;
     border: 1px solid #334155;
     border-radius: 8px;
@@ -98,7 +97,7 @@
   }
 
   .seed-dialog__field:focus {
-    outline: 2px solid #eab308;
+    outline: 2px solid var(--panel-accent);
     outline-offset: 1px;
   }
 
@@ -111,12 +110,12 @@
 
   .seed-dialog__button {
     flex: 1 1 0;
-    padding: 10px 22px;
-    font: 600 16px "Libre Franklin", sans-serif;
-    color: #f8fafc;
-    background: #166534;
+    padding: var(--panel-button-pad);
+    font: var(--panel-button-font);
+    color: var(--panel-ink);
+    background: var(--panel-button-bg);
     border: none;
-    border-radius: 8px;
+    border-radius: var(--panel-button-radius);
     cursor: pointer;
   }
 
@@ -124,7 +123,7 @@
      lighting up under the pointer is exactly what a button that can't be pressed must
      not do. */
   .seed-dialog__button:enabled:hover {
-    background: #15803d;
+    background: var(--panel-button-bg-hover);
   }
 
   /* Deal, with nothing in the field to deal. The menu's own disabled rule
@@ -136,13 +135,13 @@
   }
 
   .seed-dialog__button--cancel {
-    background: #334155;
+    background: var(--panel-button-alt-bg);
   }
 
   /* Matching the specificity of the green hover above rather than beating it by
      source order: that rule is (0,3,0), so a plain `--cancel:hover` would lose and
      Cancel would light up green. */
   .seed-dialog__button--cancel:enabled:hover {
-    background: #475569;
+    background: var(--panel-button-alt-bg-hover);
   }
 }

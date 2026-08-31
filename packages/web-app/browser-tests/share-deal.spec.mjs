@@ -67,7 +67,7 @@ test("shares a link to the deal on the table, and that link reopens it", async (
   expect(dealt.length).toBe(52)
 
   await openMenu(page)
-  await expect(menuSeed(page)).toHaveText("24680")
+  await expect(menuSeed(page)).toHaveText("#24680")
   // The line beneath is empty until there's something to report, but present: the
   // confirmation below takes a slot that's already holding its height, so nothing
   // below it moves when it appears.
@@ -103,7 +103,7 @@ test("offers the fresh deal after a random new game", async ({ page }) => {
   await settleBoard(page)
 
   await openMenu(page)
-  await expect(menuSeed(page)).toHaveText("13579")
+  await expect(menuSeed(page)).toHaveText("#13579")
 
   // Random deals a fresh seed and closes the menu; reopen and look again.
   await page.getByRole("button", { name: "Random", exact: true }).click()
@@ -111,7 +111,7 @@ test("offers the fresh deal after a random new game", async ({ page }) => {
   const afterNewGame = await readBoard(page)
 
   await openMenu(page)
-  await expect(menuSeed(page)).not.toHaveText("13579")
+  await expect(menuSeed(page)).not.toHaveText("#13579")
 
   // …and whatever it now offers is a link to *this* board.
   const url = await shareDeal(page)
@@ -130,7 +130,7 @@ test("a resumed game can still say which seed it is", async ({ page }) => {
   await settleBoard(page)
   await openMenu(page)
   const dealt = await menuSeed(page).textContent()
-  expect(dealt).toMatch(/^\d+$/)
+  expect(dealt).toMatch(/^#\d+$/)
 
   // Reload with a bare URL: no seed to pin the deal, so the board that comes back is
   // the saved one, resumed.
@@ -162,7 +162,7 @@ test("a bare `?seed=` opens FreeCell — the short form `urlForDeal` writes", as
   // …and it's FreeCell that opened, not merely *a* board: the menu names deal 7, and
   // Share Seed hands over the short form again.
   await openMenu(page)
-  await expect(menuSeed(page)).toHaveText("7")
+  await expect(menuSeed(page)).toHaveText("#7")
   const url = new URL(await shareDeal(page))
   expect(url.searchParams.get("seed")).toBe("7")
   expect(url.searchParams.get("game")).toBe(null)

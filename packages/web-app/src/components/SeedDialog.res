@@ -7,8 +7,8 @@
 // **A modal rather than a row in the menu.** Typing is the whole of what this asks
 // for, and on a phone the keyboard that arrives to do it covers most of the slide-over
 // panel a field would have sat in. Raised over the screen instead, it wears the win
-// overlay's dimmed-panel look (`SeedDialog.css` names the values it repeats and why),
-// so the two moments the app stops to hold a conversation read as one shape.
+// overlay's dimmed-panel look — the `--panel-*` tokens in `styles/base.css` — so the
+// two moments the app stops to hold a conversation read as one shape.
 //
 // **What's typed is not this component's to hold.** It arrives as `seed` and goes back
 // out through `onSeed`, because a component under `components/` renders once into a

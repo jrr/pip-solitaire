@@ -44,8 +44,11 @@ type props = {
   // "this game" is about. It rides on the heading rather than on one of the buttons
   // below because it describes the whole section: every control in the group acts on
   // that deal, and a number sitting on one of them reads as belonging to it alone.
-  // Set in mono a step dimmer than the heading (see `.menu-section__value`), the
-  // label/value split the About footer's build string already uses.
+  // Rendered as "this game – #24680": a dash so the number reads as a second thing
+  // the heading names rather than as a word in it, and a `#` so it reads as a number
+  // to be quoted — which is what it is for, since the seed dialog is where one comes
+  // back in. Set in mono a step dimmer than the heading (see `.menu-section__value`),
+  // the label/value split the About footer's build string already uses.
   headingValue?: string,
   tag?: tag,
   // An extra class alongside `menu-section`, for the two that vary:
@@ -64,11 +67,17 @@ let make = (props: props) => {
       {switch props.heading {
       | Some(heading) =>
         <h2 className="menu-section__heading">
-          // The trailing space is what keeps the words and the digits apart when a
-          // screen reader concatenates them — "this game24680" without it.
-          {Html.string(props.headingValue->Option.isSome ? heading ++ " " : heading)}
+          {Html.string(heading)}
           {switch props.headingValue {
-          | Some(value) => <span className="menu-section__value"> {Html.string(value)} </span>
+          | Some(value) =>
+            <>
+              // The separator is an element so the sheet can space it (a second literal
+              // space would collapse into the first), and it carries its own spaces so
+              // the words and the digits stay apart when a screen reader concatenates
+              // the heading — "this game–#24680" without them.
+              <span className="menu-section__dash"> {Html.string(" – ")} </span>
+              <span className="menu-section__value"> {Html.string("#" ++ value)} </span>
+            </>
           | None => Html.empty
           }}
         </h2>
