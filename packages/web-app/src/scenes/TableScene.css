@@ -58,17 +58,17 @@
     align-items: center;
     gap: 16px;
     padding: 28px 36px;
-    background: #0f172a;
-    border: 2px solid #eab308;
-    border-radius: 14px;
-    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+    background: var(--panel-bg);
+    border: var(--panel-border);
+    border-radius: var(--panel-radius);
+    box-shadow: var(--panel-shadow);
     text-align: center;
   }
 
   .win-panel__title {
     margin: 0;
     font: 600 26px "Libre Franklin", sans-serif;
-    color: #eab308;
+    color: var(--panel-accent);
   }
 
   /* How long the game took: "4:07", between the title and the tally. The
@@ -91,21 +91,21 @@
   .win-panel__stats {
     margin: 0;
     font: 15px "Libre Franklin", sans-serif;
-    color: #cbd5e1;
+    color: var(--panel-ink-quiet);
   }
 
   .win-panel__button {
-    padding: 10px 22px;
-    font: 600 16px "Libre Franklin", sans-serif;
-    color: #f8fafc;
-    background: #166534;
+    padding: var(--panel-button-pad);
+    font: var(--panel-button-font);
+    color: var(--panel-ink);
+    background: var(--panel-button-bg);
     border: none;
-    border-radius: 8px;
+    border-radius: var(--panel-button-radius);
     cursor: pointer;
   }
 
   .win-panel__button:hover {
-    background: #15803d;
+    background: var(--panel-button-bg-hover);
   }
 
   /* The panel's button row, so Share sits beside New Game rather than
@@ -120,11 +120,11 @@
   /* Share is the secondary action of the two: New Game keeps the green, this
      takes the panel's slate so the eye lands on "play on" first. */
   .win-panel__button--share {
-    background: #334155;
+    background: var(--panel-button-alt-bg);
   }
 
   .win-panel__button--share:hover {
-    background: #475569;
+    background: var(--panel-button-alt-bg-hover);
   }
 
   /* Where the share reports what it did ("Link copied to clipboard."). Its
@@ -164,16 +164,16 @@
     z-index: 900;
     padding: 12px 30px;
     font: 600 17px "Libre Franklin", sans-serif;
-    color: #f8fafc;
-    background: #166534;
-    border: 2px solid #eab308;
+    color: var(--panel-ink);
+    background: var(--panel-button-bg);
+    border: var(--panel-border);
     border-radius: 9px;
     box-shadow: 0 6px 22px rgba(0, 0, 0, 0.45);
     cursor: pointer;
   }
 
   .finish-button:hover {
-    background: #15803d;
+    background: var(--panel-button-bg-hover);
   }
 
   /* The card table: a stage holding pointer-draggable cards and a row of drop

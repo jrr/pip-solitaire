@@ -137,6 +137,15 @@
     color: #64748b;
   }
 
+  /* What stands between the caption and the number ("THIS GAME – #24680"). The
+     margin is the whole reason it is an element: HTML collapses runs of whitespace,
+     so the breathing room either side has to come from the box, and the character's
+     own spaces (see MenuSection.res) are there for a screen reader rather than the
+     eye. It takes the heading's colour, being the heading's punctuation. */
+  .menu-section__dash {
+    margin: 0 0.25em;
+  }
+
   /* A number the heading names as *data* rather than prose: the seed of the deal
      "this game" is about. The mono stack — the one the board readout and the seed
      dialog already use — keeps 0/O and 1/l unambiguous for a number meant to be read

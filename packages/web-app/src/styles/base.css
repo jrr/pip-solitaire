@@ -33,6 +33,42 @@
     /* The one consumer that is deliberately quieter than the rest: the "Debug"
        disclosure header, a muted row heading the rows it hides. */
     --control-ink-muted: #94a3b8;
+
+    /* **The raised panel, stated once**. The two moments the app stops the board to
+       hold a conversation — the win panel (`.win-panel`, scenes/TableScene.css) and
+       the "enter seed" modal (`.seed-dialog__panel`, components/SeedDialog.css) — are
+       one look worn twice: dark slate behind a gold border, and a pair of buttons
+       under it. They share no box and no class, because one is sized by its contents
+       inside the board and the other is chrome sized to a phone's width; what they
+       share is the palette and the button, and that is what these name. The
+       tokens-not-a-class reasoning is the `--control-*` set's above, unchanged.
+
+       `.finish-button` is the third consumer and takes only the colours: it is a
+       floating control on the board rather than anything on a panel, so its own
+       larger box stays a literal. Same for the dimensions each panel sets for itself
+       — padding, gap, the title's size — which are genuinely different in the two and
+       were never the thing that drifted.
+
+       These deliberately do *not* reach past that family. `#334155` is also the
+       top bar's border and the menu header's rule, and `#166534` is a menu button;
+       those are a different family that happens to share a hex, and pointing them
+       here would tie four unrelated sheets to one edit. */
+    --panel-bg: #0f172a;
+    --panel-accent: #eab308;
+    --panel-border: 2px solid var(--panel-accent);
+    --panel-radius: 14px;
+    --panel-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+    --panel-ink: #f8fafc;
+    --panel-ink-quiet: #cbd5e1;
+    /* The button the panel is answered with, and the quieter one beside it —
+       Share next to New Game, Cancel next to Deal. */
+    --panel-button-pad: 10px 22px;
+    --panel-button-font: 600 16px "Libre Franklin", sans-serif;
+    --panel-button-radius: 8px;
+    --panel-button-bg: #166534;
+    --panel-button-bg-hover: #15803d;
+    --panel-button-alt-bg: #334155;
+    --panel-button-alt-bg-hover: #475569;
   }
 
   *,
