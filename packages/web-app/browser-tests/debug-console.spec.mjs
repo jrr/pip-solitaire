@@ -9,6 +9,7 @@
 
 import { expect, test } from "@playwright/test"
 import { settleBoard } from "./lib/board.mjs"
+import { menuSeed } from "./lib/menu.mjs"
 
 test.use({ viewport: { width: 800, height: 1000 } })
 
@@ -636,7 +637,7 @@ test("deal <n> opens that deal number", async ({ page }) => {
   // The board on the table really is deal 24680 — asked of the chrome that has to know,
   // the same place a Share would read it from.
   await page.getByRole("button", { name: "Open menu" }).click()
-  await expect(page.getByRole("button", { name: /^Share Seed/ })).toHaveText("Share Seed 24680")
+  await expect(menuSeed(page)).toHaveText("24680")
 })
 
 // A game id means here what it means in the CLI: that game's board, on screen — so
@@ -658,7 +659,7 @@ test("deal <game> brings up that game's board", async ({ page }) => {
   await settleBoard(page)
   await expect(page.locator(".drop-zone")).toHaveCount(16)
   await page.getByRole("button", { name: "Open menu" }).click()
-  await expect(page.getByRole("button", { name: /^Share Seed/ })).toHaveText("Share Seed 1")
+  await expect(menuSeed(page)).toHaveText("1")
 })
 
 // The second token is a named `Scenario` position — the same vocabulary `?state=` and the
@@ -676,7 +677,7 @@ test("deal <game> <position> poses the board", async ({ page }) => {
   expect(encloses(cell, await cardBox(page, PENDING_KING))).toBe(true)
   // And the deal it descends from is reported, exactly as the menu row reports it.
   await page.getByRole("button", { name: "Open menu" }).click()
-  await expect(page.getByRole("button", { name: /^Share Seed/ })).toHaveText("Share Seed 264")
+  await expect(menuSeed(page)).toHaveText("264")
 })
 
 // `redeal` is the menu's Restart button as a verb — same hook, so the same board comes

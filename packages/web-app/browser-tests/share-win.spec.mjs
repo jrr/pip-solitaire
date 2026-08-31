@@ -15,6 +15,7 @@
 
 import { expect, test } from "@playwright/test"
 import { settleBoard } from "./lib/board.mjs"
+import { menuSeed } from "./lib/menu.mjs"
 
 // The deal `Scenario`'s almost-won position was played from.
 const ALMOST_WON_DEAL = "264"
@@ -135,9 +136,7 @@ test("the deal it hands over reads the same spelled out in full", async ({ page 
   // …and the board that opened names deal 264 back, so the round trip closes on a game
   // that knows which deal it is rather than merely on identical card positions.
   await page.getByRole("button", { name: "Open menu" }).click()
-  await expect(page.getByRole("button", { name: /^Share Seed/ })).toHaveText(
-    `Share Seed ${ALMOST_WON_DEAL}`,
-  )
+  await expect(menuSeed(page)).toHaveText(ALMOST_WON_DEAL)
 })
 
 test("a scenario with no deal behind it offers no share", async ({ page }) => {
@@ -154,13 +153,11 @@ test("a scenario with no deal behind it offers no share", async ({ page }) => {
 })
 
 test("the almost-won board names its deal on the menu too", async ({ page }) => {
-  // Both share buttons read the same number, so the menu is where it can be seen
-  // without winning first.
+  // The win overlay's share and the menu read the same number, so the menu is where it
+  // can be seen without winning first.
   await page.goto("/?game=freecell&state=almost-won&animate=off")
   await settleBoard(page)
 
   await page.getByRole("button", { name: "Open menu" }).click()
-  await expect(page.getByRole("button", { name: /^Share Seed/ })).toHaveText(
-    `Share Seed ${ALMOST_WON_DEAL}`,
-  )
+  await expect(menuSeed(page)).toHaveText(ALMOST_WON_DEAL)
 })

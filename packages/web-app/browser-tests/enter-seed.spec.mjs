@@ -9,6 +9,7 @@
 
 import { expect, test } from "@playwright/test"
 import { settleBoard } from "./lib/board.mjs"
+import { menuSeed } from "./lib/menu.mjs"
 
 test.use({ viewport: { width: 800, height: 1000 } })
 
@@ -25,7 +26,6 @@ async function openSeedDialog(page) {
 
 const seedField = (page) => page.getByRole("textbox", { name: "Deal number" })
 const dealButton = (page) => page.getByRole("button", { name: "Deal", exact: true })
-const shareButton = (page) => page.getByRole("button", { name: /^Share Seed/ })
 
 // The board's cards by name and resting place — the same reading `share-deal` makes,
 // and what "the same deal" means to a player. Sorted, since DOM order follows
@@ -59,7 +59,7 @@ test("deals the number typed in, and it's the same board the link would open", a
 
   // The deal the board now reports is the one asked for…
   await openMenu(page)
-  await expect(shareButton(page)).toHaveText("Share Seed 24680")
+  await expect(menuSeed(page)).toHaveText("24680")
 
   // …and it is card-for-card the board `?seed=24680` opens, which is the promise a
   // number handed between two people makes.
@@ -81,7 +81,7 @@ test("takes Enter as the deal, since the keyboard is already up", async ({ page 
   await expect(page.locator("#seed-dialog")).toBeHidden()
   await settleBoard(page)
   await openMenu(page)
-  await expect(shareButton(page)).toHaveText("Share Seed 24680")
+  await expect(menuSeed(page)).toHaveText("24680")
 })
 
 test("opens focused, so a number can be typed without aiming at the field first", async ({
@@ -109,7 +109,7 @@ test("leaves the board and the menu alone when it's dismissed", async ({ page })
   await page.getByRole("button", { name: "Cancel" }).click()
   await expect(page.locator("#seed-dialog")).toBeHidden()
   await expect(page.locator("#menu-overlay")).toBeVisible()
-  await expect(shareButton(page)).toHaveText("Share Seed 13579")
+  await expect(menuSeed(page)).toHaveText("13579")
 
   // The dim behind the panel dismisses too, and lands in the same place. A corner
   // rather than the default centre, which the panel is sitting on.
@@ -121,8 +121,8 @@ test("leaves the board and the menu alone when it's dismissed", async ({ page })
 
 test("opens empty every time, rather than offering the last number back", async ({ page }) => {
   // The field belongs to the open dialog, not to the session: a number already dealt is
-  // on Share Seed, and a half-typed one that outlived the dialog it was typed into would
-  // be a press away from a board nobody asked for.
+  // named on the menu, and a half-typed one that outlived the dialog it was typed into
+  // would be a press away from a board nobody asked for.
   await page.goto("/?seed=13579&animate=off")
   await settleBoard(page)
 

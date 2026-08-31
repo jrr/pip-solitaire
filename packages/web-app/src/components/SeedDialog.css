@@ -75,9 +75,11 @@
     color: #cbd5e1;
   }
 
-  /* Mono for the digits, the same stack the seed on Share Seed is set in: this is
-     where a number read off that button is typed back in, and 0/O and 1/l have to be
-     unambiguous at both ends of that trip. Centred, because it holds a number rather
+  /* Mono for the digits, the same stack the menu names the seed in
+     (`.menu-section__value`): this is where a number read off that heading is typed
+     back in, and 0/O and 1/l have to be unambiguous at both ends of that trip —
+     that's the whole stack, not a coincidence of two files picking the same fonts.
+     Centred, because it holds a number rather
      than a sentence — and 18px because iOS Safari zooms the page when a field under
      16px takes focus, which on a fixed overlay leaves the panel off-centre. */
   .seed-dialog__field {

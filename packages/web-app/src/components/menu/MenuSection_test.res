@@ -44,6 +44,27 @@ describe("MenuSection", () => {
     expect(unheaded->find(".menu-section__heading")->Option.isSome)->toBe(false)
   })
 
+  test("lets the heading name a number, keeping a space in front of it", () => {
+    // The accessible name is the visible text, so this one space is all that stands
+    // between the words and the digits when a screen reader runs them together —
+    // "this game24680" without it.
+    let named = Html.create(
+      MenuSection.make({label: "this game", heading: "this game", headingValue: "24680"}),
+    )
+    expect(named->textIn(".menu-section__heading"))->toBe("this game 24680")
+    // Its own element, so CSS can set the digits in mono rather than in the heading's
+    // uppercased sans.
+    expect(named->textIn(".menu-section__value"))->toBe("24680")
+  })
+
+  test("leaves no empty value element behind when there's no number to name", () => {
+    // It would show as a stray gap after the heading, and read as one to a screen
+    // reader — a board with no seed has nothing to say here at all.
+    let bare = Html.create(MenuSection.make({label: "this game", heading: "this game"}))
+    expect(bare->textIn(".menu-section__heading"))->toBe("this game")
+    expect(bare->find(".menu-section__value")->Option.isSome)->toBe(false)
+  })
+
   test("holds a single child", () => {
     let section = Html.create(<MenuSection label="Games"> {row("only")} </MenuSection>)
     expect(section->childCount)->toBe(1)

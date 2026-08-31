@@ -48,8 +48,26 @@ describe("MenuMainScreen", () => {
     ])
     expect(screen->section("this game")->findAll("button")->Array.map(text))->toEqual([
       "Restart",
-      "Share Seed 4242",
+      "Share Seed",
     ])
+  })
+
+  test("names the deal on the heading of the section that acts on it", () => {
+    // Both buttons under it are about that one board — Restart re-deals it, Share Seed
+    // hands over a link to it — so the number belongs to the group, not to either
+    // control. Keeping it off the buttons is also what lets the four be one grid: a
+    // label that grows by five digits on some boards can't line up with the pair above.
+    let screen = render(~shareDealSeed=Some(4242))
+    expect(screen->section("this game")->textIn(".menu-section__heading"))->toBe("this game 4242")
+    expect(screen->section("new game")->textIn(".menu-section__heading"))->toBe("new game")
+  })
+
+  test("leaves the heading bare on a board with no seed", () => {
+    // A demo scene, or a save from before seeds were kept: there is nothing to name, and
+    // the share line below says why rather than a stray gap after the heading.
+    let screen = render(~shareDealSeed=None)
+    expect(screen->section("this game")->textIn(".menu-section__heading"))->toBe("this game")
+    expect(screen->find(".menu-section__value")->Option.isSome)->toBe(false)
   })
 
   test("wires each game button to its own action", () => {

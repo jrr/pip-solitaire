@@ -127,8 +127,9 @@ type model = {
   // renders disabled. `shareStatus` is the transient line reporting what happened.
   shareUrl: option<string>,
   shareStatus: option<string>,
-  // The main menu's Share Seed button: the seed of the board on the table,
-  // reported by the scene (`~onDeal` below), and the transient line under the buttons
+  // The main menu's "this game" section: the seed of the board on the table, which the
+  // heading names and Share Seed hands over a link to, reported by the scene (`~onDeal`
+  // below) — and the transient line under the buttons
   // reporting where its link went. `None` greys the button out — a demo scene, or a
   // game resumed from a save with no deal number recorded. Unlike `shareUrl` above
   // there's nothing to prepare: the link is a `?seed=` string built on the press
@@ -640,8 +641,8 @@ let update = (msg, model) =>
 let url = AppUrl.parse()
 
 // The seed a *Random* new game gets: six digits, so every re-deal lays out a
-// different board and the number stays short enough to read off Share Seed and type
-// back into the menu's seed field. A board the player names goes to `deal` directly
+// different board and the number stays short enough to read off the menu's "this game"
+// heading and type back into the seed dialog. A board the player names goes to `deal` directly
 // and never comes through here. `Math.random` is fine — this is the impure view
 // layer, not `core`'s deterministic deal path.
 let randomSeed = () => (Math.random() *. 1_000_000.)->Float.toInt

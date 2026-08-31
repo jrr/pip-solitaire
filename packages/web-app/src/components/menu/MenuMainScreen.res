@@ -10,7 +10,9 @@
 //     split is which board you get, which is the question a player actually has;
 //   - a **"this game"** section — what can be done with the deal already on the
 //     table: **Restart** (re-deals the *same* seed to replay it) and **Share Seed**
-//     (hands over a `?seed=` link to it).
+//     (hands over a `?seed=` link to it). Which deal that is, the *heading* names —
+//     "this game 24680" — so the number describes the section rather than one of the
+//     two buttons under it, and both buttons stay the same size on every board;
 //
 //     Everything that re-deals — Random, Deal, Restart — calls the scene's hook for it
 //     and closes the menu, so the board it opened is what you're looking at; on a scene
@@ -40,11 +42,11 @@ type props = {
   // screen holds of the feature is the button that asks for it.
   onEnterSeed: unit => unit,
   onRestart: unit => unit,
-  // "Share Seed": the seed the board reports, and `None` is why the button
-  // greys out — a demo scene has no seed, and neither does a game restored from a
-  // save written before seeds were kept. The seed is passed rather than a bare bool
-  // so the group can *name* it: a share is easier to trust when you can see the
-  // number going out.
+  // The seed of the board on the table: the "this game" heading names it, and Share
+  // Seed hands over a link to it. `None` is why that button greys out — a demo scene
+  // has no seed, and neither does a game restored from a save written before seeds
+  // were kept. The seed is passed rather than a bare bool so the section can *name*
+  // it: a share is easier to trust when you can see the number going out.
   shareDealSeed: option<int>,
   // The transient line under the buttons reporting where the link went.
   shareDealStatus: option<string>,
@@ -59,7 +61,7 @@ type props = {
 
 // The line under the "this game" buttons. It reports what became of a share ("Link
 // copied to clipboard.") or, on a board with nothing to share, why the button is
-// greyed out — and is otherwise *empty*, because the seed itself rides on the button.
+// greyed out — and is otherwise *empty*, the seed itself riding on the heading.
 //
 // Empty, but always rendered: the slot holds its height (`min-height`, see
 // MenuMainScreen.css) so the confirmation appears and clears without shoving the
@@ -86,25 +88,26 @@ let make = ({
   <MenuHeader title="Pip" back=None onTitleTap=None onClose />
   <MenuSection label="new game" heading="new game">
     <div className="menu-buttons">
-      <MenuGameButton label="Random" value=None enabled=true onClick=onNewGame />
-      <MenuGameButton label="Enter Seed" value=None enabled=true onClick=onEnterSeed />
+      <MenuGameButton label="Random" enabled=true onClick=onNewGame />
+      <MenuGameButton label="Enter Seed" enabled=true onClick=onEnterSeed />
     </div>
   </MenuSection>
-  <MenuSection label="this game" heading="this game">
+  // The heading carries the deal number, so the section says which board its two
+  // buttons act on. A player can read it off (or dictate it) where no link can be
+  // delivered at all — which is the far end of `SeedDialog`. Absent on a board with
+  // no seed, where the line below says why.
+  <MenuSection
+    label="this game"
+    heading="this game"
+    headingValue=?{shareDealSeed->Option.map(seed => Int.toString(seed))}
+  >
     <div className="menu-buttons">
-      <MenuGameButton label="Restart" value=None enabled=true onClick=onRestart />
+      <MenuGameButton label="Restart" enabled=true onClick=onRestart />
       // Share Seed. The only game button that ever goes `disabled` — the
       // real attribute, so no click is emitted at all, with the handler guard behind
       // it as belt and braces — because a board with no seed has no link to hand out.
-      // It carries the seed as its value: the label says what kind of thing goes out,
-      // the digits say exactly which, and a player can read the number off (or
-      // dictate it) where no link can be delivered at all. A disabled button shows the
-      // bare label, there being no number to name.
       <MenuGameButton
-        label="Share Seed"
-        value={shareDealSeed->Option.map(seed => Int.toString(seed))}
-        enabled={shareDealSeed->Option.isSome}
-        onClick=onShareDeal
+        label="Share Seed" enabled={shareDealSeed->Option.isSome} onClick=onShareDeal
       />
     </div>
     <p className="menu-share-line" ariaLive="polite">
