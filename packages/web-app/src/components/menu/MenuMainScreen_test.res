@@ -10,6 +10,9 @@ let render = (
   ~shareDealSeed=None,
   ~shareDealStatus=None,
   ~onNewGame=() => (),
+  ~seedInput="",
+  ~onSeedInput=_ => (),
+  ~onDealSeed=_ => (),
   ~onRestart=() => (),
   ~onShareDeal=() => (),
   ~onOpenSettings=() => (),
@@ -19,6 +22,9 @@ let render = (
     MenuMainScreen.make({
       onClose: () => (),
       onNewGame,
+      seedInput,
+      onSeedInput,
+      onDealSeed,
       onRestart,
       shareDealSeed,
       shareDealStatus,
@@ -28,15 +34,23 @@ let render = (
     }),
   )
 
-let gameButtons = (screen): array<string> =>
-  screen->findAll(".menu-buttons button")->Array.map(text)
+// A section by its accessible name, which is how the two groups of controls are told
+// apart now that there are two.
+let section = (screen, label): element => screen->find(`[aria-label="${label}"]`)->Option.getExn
 
 describe("MenuMainScreen", () => {
-  test("offers New, Restart and Share Seed, in that order", () => {
-    // The share tests below (and `Menu_test`'s) reach the third button positionally, so
-    // the order is load-bearing beyond how it looks.
-    expect(render(~shareDealSeed=Some(4242))->gameButtons)->toEqual([
-      "New",
+  test("splits the controls into a board to open and the board in hand", () => {
+    // Which board you get is the question a player has, so it's the one the screen
+    // asks: "new game" offers the two ways to a board that isn't this one, "this
+    // game" what can be done with the one on the table. The share tests below (and
+    // `Menu_test`'s) reach Share Seed positionally within its group, so the order
+    // inside each is load-bearing beyond how it looks.
+    let screen = render(~shareDealSeed=Some(4242))
+    expect(screen->section("new game")->findAll("button")->Array.map(text))->toEqual([
+      "Random",
+      "Deal",
+    ])
+    expect(screen->section("this game")->findAll("button")->Array.map(text))->toEqual([
       "Restart",
       "Share Seed 4242",
     ])
@@ -52,6 +66,23 @@ describe("MenuMainScreen", () => {
     )
     screen->findAll(".menu-buttons button")->Array.forEach(click)
     expect(log)->toEqual(["new", "restart", "share"])
+  })
+
+  test("hands the seed field's two ends straight through", () => {
+    // The screen holds no seed state of its own: the text comes in as a prop and the
+    // typing and the deal go back out. `MenuSeedEntry_test` covers the control itself;
+    // this is only that it's wired to the props and not to something local.
+    let log = []
+    let screen = render(
+      ~seedInput="24680",
+      ~onSeedInput=text => log->Array.push("typed " ++ text),
+      ~onDealSeed=seed => log->Array.push("deal " ++ Int.toString(seed)),
+    )
+    let field = screen->find(".menu-seed__field")->Option.getExn
+    expect(field->value)->toBe("24680")
+    field->typeInto("13579")
+    screen->find(".menu-seed")->Option.forEach(submit)
+    expect(log)->toEqual(["typed 13579", "deal 24680"])
   })
 
   test("keeps the share line's slot even when it has nothing to say", () => {

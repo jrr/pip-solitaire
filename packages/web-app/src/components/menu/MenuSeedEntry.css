@@ -1,0 +1,43 @@
+@layer components {
+  /* The "enter seed" control (see MenuSeedEntry.res): a field and its Deal
+     button, side by side on one line under the Random button. */
+
+  .menu-seed {
+    display: flex;
+    gap: 0.4rem;
+  }
+
+  /* The field takes what Deal doesn't. `min-width: 0` because a flex item's
+     default `min-width: auto` is its intrinsic width — an input's is its `size`
+     attribute's worth of characters, wider than a narrow panel has to give, so
+     without this the pair overflows the panel instead of the field shrinking.
+
+     Mono for the digits, the same stack the seed on Share Seed is set in: this is
+     where a number read off that button is typed back in, and 0/O and 1/l have to
+     be unambiguous at both ends of that trip. The box is the chrome's shared
+     control box (`--control-*` in styles/base.css), so the field sits in the same
+     family as the buttons either side of it. */
+  .menu-seed__field {
+    flex: 1 1 auto;
+    min-width: 0;
+    padding: var(--control-pad);
+    font: 13px ui-monospace, "SF Mono", Menlo, monospace;
+    color: var(--control-ink);
+    background: var(--control-bg);
+    border: var(--control-border);
+    border-radius: var(--control-radius);
+  }
+
+  .menu-seed__field::placeholder {
+    color: var(--control-ink-muted);
+  }
+
+  /* Deal borrows `.menu-button` for its look; what it needs of its own is to
+     stop growing. `.menu-button` is `flex: 1 1 auto` with a 6.5rem floor, meant
+     for a row of buttons splitting the width evenly — here the width belongs to
+     the field, so the button takes only what its label needs. */
+  .menu-seed__deal {
+    flex: 0 0 auto;
+    min-width: 0;
+  }
+}

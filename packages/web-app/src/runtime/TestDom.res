@@ -57,6 +57,12 @@ type htmlCollection
 @send external clickNode: element => unit = "click"
 @val @scope("document") external createElement: string => element = "createElement"
 
+// Driving a field: its text, and the events a browser would emit around it.
+type event
+@set external setValue: (element, string) => unit = "value"
+@new external makeEvent: (string, {"bubbles": bool, "cancelable": bool}) => event = "Event"
+@send external dispatchEvent: (element, event) => bool = "dispatchEvent"
+
 // --- Finding ------------------------------------------------------------------
 
 // The first descendant matching `selector`, if there is one.
@@ -100,6 +106,12 @@ let tag = (el: element): string => el->tagName
 
 let attr = (el: element, name: string): option<string> => el->getAttribute(name)->Nullable.toOption
 
+// What a field is showing. The *property*, not the `value` attribute: a controlled
+// input is written by the diff as a property, and the attribute keeps whatever it
+// was rendered with, so only this answers "what would the player see in there".
+@get external valueProperty: element => string = "value"
+let value = (el: element): string => el->valueProperty
+
 let hasAttr = (el: element, name: string): bool => el->hasAttribute(name)
 
 // The text of the first match, or `"<missing>"` when nothing matched — so a failed
@@ -115,6 +127,24 @@ let attrOr = (el: element, name: string): string => el->attr(name)->Option.getOr
 // --- Acting -------------------------------------------------------------------
 
 let click = (el: element): unit => el->clickNode
+
+// Type into a field: put the text in, then let the `input` event out. Two steps
+// because a synthetic event carries no text of its own — a handler reads it off the
+// element (see `Html.inputValue`), so setting the value without the event changes
+// nothing the app can see, and firing the event without setting it reports "".
+//
+// `bubbles`, as a real keystroke's does, so a listener anywhere up the tree sees it
+// and not only one sitting on the field.
+let typeInto = (el: element, text: string): unit => {
+  el->setValue(text)
+  el->dispatchEvent(makeEvent("input", {"bubbles": true, "cancelable": false}))->ignore
+}
+
+// Submit a form the way Enter does. `cancelable`, or the handler's
+// `preventDefault` would have nothing to prevent — and jsdom, which has no
+// navigation to perform, would complain about the submission it can't carry out.
+let submit = (form: element): unit =>
+  form->dispatchEvent(makeEvent("submit", {"bubbles": true, "cancelable": true}))->ignore
 
 // A detached element to render or mount into. jsdom gives a document; this is the
 // throwaway root the loop-driving tests hang their tree from.

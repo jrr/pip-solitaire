@@ -133,6 +133,14 @@ type model = {
   // it's a deal of, which the press reads off `liveGame` rather than the model.
   dealSeed: option<int>,
   shareDealStatus: option<string>,
+  // What's typed into the main menu's "Enter seed" field. A string, not a number:
+  // it is the *text* in the field, which is only sometimes a deal number, and the
+  // field can't hold it itself (see `MenuSeedEntry`).
+  //
+  // It belongs to the open menu rather than to the session — closing clears it, the
+  // way the screen resets to Main and the ten-tap counter goes back to zero. A menu
+  // reopened is a menu as it first opens.
+  seedInput: string,
 }
 
 type msg =
@@ -168,6 +176,7 @@ type msg =
   | ShareStatus(option<string>) // the share row's transient status line; `None` clears it
   | DealChanged(option<int>) // the board reported which deal it's showing
   | ShareDealStatus(option<string>) // the Share button's transient status line; `None` clears it
+  | SeedTyped(string) // a keystroke in the menu's "Enter seed" field
 
 // `updateSW` only exists once registerSW has run, which needs `dispatch`, which
 // needs the loop to be mounted — so the Reload effect reaches it through a ref
@@ -323,7 +332,8 @@ let update = (msg, model) =>
   // Settings never lingers into the next open.
   // Every screen change also abandons a part-finished run of reveal taps
   // (`HiddenOptions.reset`), here and in the five branches below: the counter only
-  // ever spans one uninterrupted visit to the Settings screen.
+  // ever spans one uninterrupted visit to the Settings screen. A half-typed seed goes
+  // the same way when the menu closes — see `seedInput`.
   // Opening the menu also puts an *overlapping* debug console away: the menu is
   // the modal chrome and takes the screen for itself, and the console's twin rule below
   // closes the menu on the way in. A **side-docked** console is exempt — it's
@@ -340,6 +350,7 @@ let update = (msg, model) =>
         menuScreen: Menu.Main,
         refreshBusy: false,
         hidden: HiddenOptions.reset(model.hidden),
+        seedInput: "",
         consoleOpen: putConsoleAway ? false : model.consoleOpen,
       },
       putConsoleAway
@@ -420,6 +431,7 @@ let update = (msg, model) =>
             menuScreen: Menu.Main,
             refreshBusy: false,
             hidden: HiddenOptions.reset(model.hidden),
+            seedInput: "",
           },
           Html.noEffect,
         )
@@ -593,6 +605,7 @@ let update = (msg, model) =>
       ? (model, Html.noEffect) // no change — don't re-render
       : ({...model, dealSeed, shareDealStatus: None}, Html.noEffect)
   | ShareDealStatus(shareDealStatus) => ({...model, shareDealStatus}, Html.noEffect)
+  | SeedTyped(seedInput) => ({...model, seedInput}, Html.noEffect)
   }
 
 // The scene area (switcher + demos) is built imperatively and owns its own
@@ -609,10 +622,11 @@ let update = (msg, model) =>
 // shuffle today.
 let url = AppUrl.parse()
 
-// A fresh seed for each New Game. The seed is the future "deal
-// number": random for now, so every re-deal lays out a different board; a deal-number
-// entry point can later supply a chosen seed to the game's own `deal`. `Math.random`
-// is fine here — this is the impure view layer, not `core`'s deterministic deal path.
+// The seed a *Random* new game gets: six digits, so every re-deal lays out a
+// different board and the number stays short enough to read off Share Seed and type
+// back into the menu's seed field. A board the player names goes to `deal` directly
+// and never comes through here. `Math.random` is fine — this is the impure view
+// layer, not `core`'s deterministic deal path.
 let randomSeed = () => (Math.random() *. 1_000_000.)->Float.toInt
 
 // The driver's half of the board contract — every argument below is settled here.
@@ -935,12 +949,24 @@ let openNamedDeal = (~game: Game.t, ~position: option<Scenario.named>): string =
 // new setting be declared once in `Main` and once on the screen that shows it,
 // rather than a third and fourth time on the way through the pane.
 
-// The main screen: re-deal the board, share its deal number, pick a
-// game, go on to Settings.
+// The main screen: re-deal the board — at random or at a number typed in — share its
+// deal number, pick a game, go on to Settings.
 let mainScreen = (model, dispatch): MenuMainScreen.props => {
   onClose: () => dispatch(CloseMenu),
   onNewGame: () => {
     liveBoard.contents->Option.forEach(board => board.newGame->Option.forEach(deal => deal()))
+    dispatch(CloseMenu)
+  },
+  seedInput: model.seedInput,
+  onSeedInput: text => dispatch(SeedTyped(text)),
+  // A deal number the player named. `loadDeal` is the board's own — the same hook
+  // the console's `deal <n>` reaches, so a typed number and a tapped one open the
+  // very same board — and it's absent on a scene with no game to deal, where this
+  // is a no-op exactly as Random and Restart are. Closing the menu clears the field
+  // as well as showing the board (see `seedInput`), so the next open asks afresh
+  // rather than offering the number already on the table.
+  onDealSeed: seed => {
+    liveBoard.contents->Option.flatMap(board => board.loadDeal)->Option.forEach(load => load(seed))
     dispatch(CloseMenu)
   },
   onRestart: () => {
@@ -1232,6 +1258,8 @@ let dispatch = Html.mount(
     // first menu open rather than only after a re-deal.
     dealSeed: initialDealSeed.contents,
     shareDealStatus: None,
+    // The menu's seed field opens empty, and every open finds it that way.
+    seedInput: "",
   },
   ~update,
   ~view,

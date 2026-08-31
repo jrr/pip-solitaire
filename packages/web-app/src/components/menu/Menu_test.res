@@ -63,6 +63,9 @@ let render = (~seed, ~status): Html.element =>
       main: {
         onClose: () => (),
         onNewGame: () => (),
+        seedInput: "",
+        onSeedInput: _ => (),
+        onDealSeed: _ => (),
         onRestart: () => (),
         // The three under test.
         shareDealSeed: seed,
@@ -77,8 +80,9 @@ let render = (~seed, ~status): Html.element =>
     }),
   )
 
-// The Share Seed button — the third of the "game" buttons.
-let shareButton = (menu): option<Html.element> => menu->find(".menu-buttons button:nth-child(3)")
+// The Share Seed button — the second of the "this game" buttons.
+let shareButton = (menu): option<Html.element> =>
+  menu->find(`[aria-label="this game"] .menu-buttons button:nth-child(2)`)
 
 // The line beneath the buttons: where a link just went, or why the button is dark.
 let line = (menu): string =>

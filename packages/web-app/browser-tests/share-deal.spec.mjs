@@ -93,7 +93,7 @@ test("shares a link to the deal on the table, and that link reopens it", async (
   expect(await readBoard(page)).toEqual(dealt)
 })
 
-test("offers the fresh deal after a New Game", async ({ page }) => {
+test("offers the fresh deal after a random new game", async ({ page }) => {
   // The regression this guards: the line must track the board actually on the table,
   // not the deal the page opened with. A stale number here would be the worst kind of
   // bug for a share feature — it sends someone to a board you're not playing.
@@ -103,8 +103,8 @@ test("offers the fresh deal after a New Game", async ({ page }) => {
   await openMenu(page)
   await expect(shareButton(page)).toHaveText("Share Seed 13579")
 
-  // New Game deals a fresh random seed and closes the menu; reopen and look again.
-  await page.getByRole("button", { name: "New", exact: true }).click()
+  // Random deals a fresh seed and closes the menu; reopen and look again.
+  await page.getByRole("button", { name: "Random", exact: true }).click()
   await settleBoard(page)
   const afterNewGame = await readBoard(page)
 
