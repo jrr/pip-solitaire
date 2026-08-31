@@ -8,9 +8,12 @@
 //   - `<TopBar>` — Menu · Undo. Always visible across the top; the Menu
 //     button carries a green pip when a version update is waiting.
 //   - `<Menu>` — the slide-over holding the title ("Pip", moved out of the
-//     retired Home scene), a **game** section (New · Restart · Share Seed), the
-//     debug/demo scene list as tappable rows, and the About footer (build/version
-//     info plus the conditional "Update" button beside it).
+//     retired Home scene), a **new game** section (Random · Enter Seed) and a **this
+//     game** one (Restart · Share Seed), the debug/demo scene list as tappable rows,
+//     and the About footer (build/version info plus the conditional "Update" button
+//     beside it).
+//   - `<SeedDialog>` — the modal Enter Seed raises, over the menu and over
+//     everything else; it is in the tree only while it's showing.
 // The scene area underneath is still the imperative `SceneSwitcher`, and its scene
 // container is spliced into the scene band untouched with `Html.node`, which is
 // exactly how a JSX chrome wraps a subtree it doesn't own. That container is now the
@@ -124,8 +127,9 @@ type model = {
   // renders disabled. `shareStatus` is the transient line reporting what happened.
   shareUrl: option<string>,
   shareStatus: option<string>,
-  // The main menu's Share Seed button: the seed of the board on the table,
-  // reported by the scene (`~onDeal` below), and the transient line under the buttons
+  // The main menu's "this game" section: the seed of the board on the table, which the
+  // heading names and Share Seed hands over a link to, reported by the scene (`~onDeal`
+  // below) — and the transient line under the buttons
   // reporting where its link went. `None` greys the button out — a demo scene, or a
   // game resumed from a save with no deal number recorded. Unlike `shareUrl` above
   // there's nothing to prepare: the link is a `?seed=` string built on the press
@@ -133,6 +137,16 @@ type model = {
   // it's a deal of, which the press reads off `liveGame` rather than the model.
   dealSeed: option<int>,
   shareDealStatus: option<string>,
+  // The "Enter seed" modal: whether it's up, and what's been typed into it. The text
+  // is a string rather than a number because it is the *text* in the field, which is
+  // only sometimes a deal number, and the field can't hold it itself (see
+  // `SeedDialog`).
+  //
+  // Both belong to the open menu rather than to the session — the menu closing takes
+  // the dialog with it and clears the field, the way the screen resets to Main and the
+  // ten-tap counter goes back to zero. A menu reopened is a menu as it first opens.
+  seedDialogOpen: bool,
+  seedInput: string,
 }
 
 type msg =
@@ -168,6 +182,9 @@ type msg =
   | ShareStatus(option<string>) // the share row's transient status line; `None` clears it
   | DealChanged(option<int>) // the board reported which deal it's showing
   | ShareDealStatus(option<string>) // the Share button's transient status line; `None` clears it
+  | OpenSeedDialog // the main menu's Enter Seed button — raise the modal over the menu
+  | CloseSeedDialog // its Cancel, or a tap on the dim behind it
+  | SeedTyped(string) // a keystroke in the seed dialog's field
 
 // `updateSW` only exists once registerSW has run, which needs `dispatch`, which
 // needs the loop to be mounted — so the Reload effect reaches it through a ref
@@ -323,7 +340,8 @@ let update = (msg, model) =>
   // Settings never lingers into the next open.
   // Every screen change also abandons a part-finished run of reveal taps
   // (`HiddenOptions.reset`), here and in the five branches below: the counter only
-  // ever spans one uninterrupted visit to the Settings screen.
+  // ever spans one uninterrupted visit to the Settings screen. A half-typed seed goes
+  // the same way when the menu closes — see `seedInput`.
   // Opening the menu also puts an *overlapping* debug console away: the menu is
   // the modal chrome and takes the screen for itself, and the console's twin rule below
   // closes the menu on the way in. A **side-docked** console is exempt — it's
@@ -340,6 +358,8 @@ let update = (msg, model) =>
         menuScreen: Menu.Main,
         refreshBusy: false,
         hidden: HiddenOptions.reset(model.hidden),
+        seedDialogOpen: false,
+        seedInput: "",
         consoleOpen: putConsoleAway ? false : model.consoleOpen,
       },
       putConsoleAway
@@ -411,8 +431,12 @@ let update = (msg, model) =>
   | SceneActivated(id) => ({...model, activeScene: Some(id)}, Html.noEffect)
   | HistoryChanged(canUndo) =>
     canUndo == model.canUndo ? (model, Html.noEffect) : ({...model, canUndo}, Html.noEffect) // no change — don't re-render
+  // Closing the menu takes the seed dialog down with it, which is what lets Deal say
+  // `CloseMenu` alone and get the whole chrome out of the board's way. The guard asks
+  // about both for that reason: a dialog up over a menu already gone would otherwise
+  // survive the very message meant to clear the screen.
   | CloseMenu =>
-    model.menuOpen
+    model.menuOpen || model.seedDialogOpen
       ? (
           {
             ...model,
@@ -420,10 +444,16 @@ let update = (msg, model) =>
             menuScreen: Menu.Main,
             refreshBusy: false,
             hidden: HiddenOptions.reset(model.hidden),
+            seedDialogOpen: false,
+            seedInput: "",
           },
           Html.noEffect,
         )
       : (model, Html.noEffect)
+  // The dialog opens empty and closes empty: a number is dealt or abandoned, never
+  // left half-typed for the next open to offer back.
+  | OpenSeedDialog => ({...model, seedDialogOpen: true, seedInput: ""}, Html.noEffect)
+  | CloseSeedDialog => ({...model, seedDialogOpen: false, seedInput: ""}, Html.noEffect)
   // Enter Settings clean: clear any stale spinner from a prior visit. The label
   // itself is re-detected on open (see the view's `onOpenSettings`).
   | OpenSettings => (
@@ -593,6 +623,7 @@ let update = (msg, model) =>
       ? (model, Html.noEffect) // no change — don't re-render
       : ({...model, dealSeed, shareDealStatus: None}, Html.noEffect)
   | ShareDealStatus(shareDealStatus) => ({...model, shareDealStatus}, Html.noEffect)
+  | SeedTyped(seedInput) => ({...model, seedInput}, Html.noEffect)
   }
 
 // The scene area (switcher + demos) is built imperatively and owns its own
@@ -609,10 +640,11 @@ let update = (msg, model) =>
 // shuffle today.
 let url = AppUrl.parse()
 
-// A fresh seed for each New Game. The seed is the future "deal
-// number": random for now, so every re-deal lays out a different board; a deal-number
-// entry point can later supply a chosen seed to the game's own `deal`. `Math.random`
-// is fine here — this is the impure view layer, not `core`'s deterministic deal path.
+// The seed a *Random* new game gets: six digits, so every re-deal lays out a
+// different board and the number stays short enough to read off the menu's "this game"
+// heading and type back into the seed dialog. A board the player names goes to `deal` directly
+// and never comes through here. `Math.random` is fine — this is the impure view
+// layer, not `core`'s deterministic deal path.
 let randomSeed = () => (Math.random() *. 1_000_000.)->Float.toInt
 
 // The driver's half of the board contract — every argument below is settled here.
@@ -935,14 +967,15 @@ let openNamedDeal = (~game: Game.t, ~position: option<Scenario.named>): string =
 // new setting be declared once in `Main` and once on the screen that shows it,
 // rather than a third and fourth time on the way through the pane.
 
-// The main screen: re-deal the board, share its deal number, pick a
-// game, go on to Settings.
+// The main screen: re-deal the board — at random or at a number typed in — share its
+// deal number, pick a game, go on to Settings.
 let mainScreen = (model, dispatch): MenuMainScreen.props => {
   onClose: () => dispatch(CloseMenu),
   onNewGame: () => {
     liveBoard.contents->Option.forEach(board => board.newGame->Option.forEach(deal => deal()))
     dispatch(CloseMenu)
   },
+  onEnterSeed: () => dispatch(OpenSeedDialog),
   onRestart: () => {
     liveBoard.contents->Option.forEach(board => board.restart())
     dispatch(CloseMenu)
@@ -991,6 +1024,25 @@ let mainScreen = (model, dispatch): MenuMainScreen.props => {
     Refresh.detect(mode => dispatch(RefreshDetected(mode)))
     dispatch(OpenSettings)
   },
+}
+
+// The "Enter seed" modal, raised over the menu by its Enter Seed button. It is built
+// only while it's showing, so the field's focus-on-mount is a mount rather than a
+// render (see `SeedDialog`).
+let seedDialog = (model, dispatch): SeedDialog.props => {
+  seed: model.seedInput,
+  onSeed: text => dispatch(SeedTyped(text)),
+  // A deal number the player named. `loadDeal` is the board's own — the same hook the
+  // console's `deal <n>` reaches, so a typed number and a tapped one open the very same
+  // board — and it's absent on a scene with no game to deal, where this is a no-op
+  // exactly as Random and Restart are. `CloseMenu` clears the whole chrome, dialog
+  // included, so the board it opened is what you're looking at.
+  onDeal: seed => {
+    liveBoard.contents->Option.flatMap(board => board.loadDeal)->Option.forEach(load => load(seed))
+    dispatch(CloseMenu)
+  },
+  // Cancel leaves the menu up, since that's where the dialog was raised from.
+  onCancel: () => dispatch(CloseSeedDialog),
 }
 
 // The Settings screen: the player-facing preferences.
@@ -1140,6 +1192,10 @@ let view = (model, dispatch) => <>
     debug={debugScreen(model, dispatch)}
     about={aboutFooter(model, dispatch)}
   />
+  // Over the menu rather than inside it, and in the tree only while it's up: the field
+  // takes focus as it mounts, so a dialog that were merely hidden between opens would
+  // have taken focus once, at startup, and never again.
+  {model.seedDialogOpen ? SeedDialog.make(seedDialog(model, dispatch)) : Html.empty}
 </>
 
 // --- Wire it up --------------------------------------------------------------
@@ -1232,6 +1288,10 @@ let dispatch = Html.mount(
     // first menu open rather than only after a re-deal.
     dealSeed: initialDealSeed.contents,
     shareDealStatus: None,
+    // The seed dialog is raised by a press and opens empty, so there is nothing for a
+    // load to restore — and every later open finds it this way again.
+    seedDialogOpen: false,
+    seedInput: "",
   },
   ~update,
   ~view,

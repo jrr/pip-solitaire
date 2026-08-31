@@ -10,6 +10,7 @@ let render = (
   ~shareDealSeed=None,
   ~shareDealStatus=None,
   ~onNewGame=() => (),
+  ~onEnterSeed=() => (),
   ~onRestart=() => (),
   ~onShareDeal=() => (),
   ~onOpenSettings=() => (),
@@ -19,6 +20,7 @@ let render = (
     MenuMainScreen.make({
       onClose: () => (),
       onNewGame,
+      onEnterSeed,
       onRestart,
       shareDealSeed,
       shareDealStatus,
@@ -28,18 +30,44 @@ let render = (
     }),
   )
 
-let gameButtons = (screen): array<string> =>
-  screen->findAll(".menu-buttons button")->Array.map(text)
+// A section by its accessible name, which is how the two groups of controls are told
+// apart now that there are two.
+let section = (screen, label): element => screen->find(`[aria-label="${label}"]`)->Option.getExn
 
 describe("MenuMainScreen", () => {
-  test("offers New, Restart and Share Seed, in that order", () => {
-    // The share tests below (and `Menu_test`'s) reach the third button positionally, so
-    // the order is load-bearing beyond how it looks.
-    expect(render(~shareDealSeed=Some(4242))->gameButtons)->toEqual([
-      "New",
-      "Restart",
-      "Share Seed 4242",
+  test("splits the controls into a board to open and the board in hand", () => {
+    // Which board you get is the question a player has, so it's the one the screen
+    // asks: "new game" offers the two ways to a board that isn't this one, "this
+    // game" what can be done with the one on the table. The share tests below (and
+    // `Menu_test`'s) reach Share Seed positionally within its group, so the order
+    // inside each is load-bearing beyond how it looks.
+    let screen = render(~shareDealSeed=Some(4242))
+    expect(screen->section("new game")->findAll("button")->Array.map(text))->toEqual([
+      "Random",
+      "Enter Seed",
     ])
+    expect(screen->section("this game")->findAll("button")->Array.map(text))->toEqual([
+      "Restart",
+      "Share Seed",
+    ])
+  })
+
+  test("names the deal on the heading of the section that acts on it", () => {
+    // Both buttons under it are about that one board — Restart re-deals it, Share Seed
+    // hands over a link to it — so the number belongs to the group, not to either
+    // control. Keeping it off the buttons is also what lets the four be one grid: a
+    // label that grows by five digits on some boards can't line up with the pair above.
+    let screen = render(~shareDealSeed=Some(4242))
+    expect(screen->section("this game")->textIn(".menu-section__heading"))->toBe("this game 4242")
+    expect(screen->section("new game")->textIn(".menu-section__heading"))->toBe("new game")
+  })
+
+  test("leaves the heading bare on a board with no seed", () => {
+    // A demo scene, or a save from before seeds were kept: there is nothing to name, and
+    // the share line below says why rather than a stray gap after the heading.
+    let screen = render(~shareDealSeed=None)
+    expect(screen->section("this game")->textIn(".menu-section__heading"))->toBe("this game")
+    expect(screen->find(".menu-section__value")->Option.isSome)->toBe(false)
   })
 
   test("wires each game button to its own action", () => {
@@ -47,11 +75,20 @@ describe("MenuMainScreen", () => {
     let screen = render(
       ~shareDealSeed=Some(1),
       ~onNewGame=() => log->Array.push("new"),
+      ~onEnterSeed=() => log->Array.push("enter seed"),
       ~onRestart=() => log->Array.push("restart"),
       ~onShareDeal=() => log->Array.push("share"),
     )
     screen->findAll(".menu-buttons button")->Array.forEach(click)
-    expect(log)->toEqual(["new", "restart", "share"])
+    expect(log)->toEqual(["new", "enter seed", "restart", "share"])
+  })
+
+  test("asks for the seed dialog rather than holding a field of its own", () => {
+    // Enter Seed reports the press and stops there: the typing, the parse and the
+    // deal are all `SeedDialog`'s, raised over this screen by the chrome. A field
+    // here would be a second place a deal number could be typed.
+    let screen = render()
+    expect(screen->has("input"))->toBe(false)
   })
 
   test("keeps the share line's slot even when it has nothing to say", () => {

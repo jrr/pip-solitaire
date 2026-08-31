@@ -1,36 +1,20 @@
-// The "game" action button — New, Restart, Share Seed — exercised in isolation.
+// The "game" action button — Random, Enter Seed, Restart, Share Seed — exercised in
+// isolation.
 //
 // `Menu_test` already pins what Share Seed does *through the menu*; what's left to this
-// file is the button's own contract, which the other two game buttons lean on just as
-// much even though neither carries a value.
+// file is the button's own contract, which all four lean on equally.
 open Vitest
 open TestDom
 
-let render = (~label="Share Seed", ~value=None, ~enabled=true, ~onClick=() => ()) =>
-  Html.create(MenuGameButton.make({label, value, enabled, onClick}))
+let render = (~label="Share Seed", ~enabled=true, ~onClick=() => ()) =>
+  Html.create(MenuGameButton.make({label, enabled, onClick}))
 
 describe("MenuGameButton", () => {
-  test("is the bare label when it carries no value", () => {
-    let button = render(~label="New")
-    expect(button->text)->toBe("New")
-    // No empty value span left behind — it would show as a stray gap.
-    expect(button->find(".menu-button__value")->Option.isSome)->toBe(false)
-  })
-
-  test("keeps a space between the label and the value it carries", () => {
-    // The accessible name is the visible text, so this one space is the only thing
-    // between the word and the digits when a screen reader concatenates them —
-    // "Share Seed123456" without it.
-    expect(render(~value=Some("123456"))->text)->toBe("Share Seed 123456")
-  })
-
-  test("sets the value apart from the label, as data rather than more prose", () => {
-    // Its own element so CSS can give the digits the mono stack and a dimmer colour.
-    expect(
-      render(~value=Some("777"))
-      ->find(".menu-button__value")
-      ->Option.mapOr("<missing>", text),
-    )->toBe("777")
+  test("is its label and nothing else", () => {
+    // No number on the button, whatever board is up: which deal the section is about is
+    // the heading's to say (`MenuSection`'s `headingValue`), which is what keeps all
+    // four buttons the same size.
+    expect(render(~label="Random")->text)->toBe("Random")
   })
 
   test("acts when tapped", () => {

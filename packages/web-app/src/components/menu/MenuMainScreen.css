@@ -6,7 +6,7 @@
 
   /* The line under the game section's buttons: where a share link just
      went, or why Share Seed is greyed out — and empty the rest of the time, the
-     seed itself now riding on the button. `min-height` is what makes the empty
+     seed itself riding on the section heading. `min-height` is what makes the empty
      case work: the slot holds its height, so a confirmation appears and clears
      without shoving the sections below it. */
   .menu-share-line {

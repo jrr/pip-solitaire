@@ -15,6 +15,12 @@ type element = Html.element
 @send external addEventListener: (element, string, unit => unit) => unit = "addEventListener"
 @set external setTextContent: (element, string) => unit = "textContent"
 
+// Move keyboard focus. Called from a callback ref rather than by a scene, which is
+// the one thing to know about it: Preact re-runs a ref on every render, so this is
+// called far more often than it does anything — focusing the element that already has
+// focus is defined to do nothing (see `SeedDialog`'s field).
+@send external focus: element => unit = "focus"
+
 // Window-level listeners. The element bindings above hang a listener on a
 // specific node, which the scene container's `clear` drops along with the node.
 // A few events (device motion, orientation) only fire on `window`, so a scene

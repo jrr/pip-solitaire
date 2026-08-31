@@ -40,6 +40,13 @@ type props = {
   // A visible `<h2>` at the top of the section. Only the main screen's groups
   // carry one; Settings and Debug are labelled but unheaded.
   heading?: string,
+  // A number the heading names *as data* rather than prose — the seed of the board
+  // "this game" is about. It rides on the heading rather than on one of the buttons
+  // below because it describes the whole section: every control in the group acts on
+  // that deal, and a number sitting on one of them reads as belonging to it alone.
+  // Set in mono a step dimmer than the heading (see `.menu-section__value`), the
+  // label/value split the About footer's build string already uses.
+  headingValue?: string,
   tag?: tag,
   // An extra class alongside `menu-section`, for the two that vary:
   // `menu-section--bottom` (pushed to the foot of the screen) and `menu-refresh`.
@@ -55,7 +62,16 @@ let make = (props: props) => {
   let body =
     <>
       {switch props.heading {
-      | Some(heading) => <h2 className="menu-section__heading"> {Html.string(heading)} </h2>
+      | Some(heading) =>
+        <h2 className="menu-section__heading">
+          // The trailing space is what keeps the words and the digits apart when a
+          // screen reader concatenates them — "this game24680" without it.
+          {Html.string(props.headingValue->Option.isSome ? heading ++ " " : heading)}
+          {switch props.headingValue {
+          | Some(value) => <span className="menu-section__value"> {Html.string(value)} </span>
+          | None => Html.empty
+          }}
+        </h2>
       | None => Html.empty
       }}
       {props.children->Option.getOr(Html.empty)}

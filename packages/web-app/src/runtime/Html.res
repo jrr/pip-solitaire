@@ -56,6 +56,21 @@ type elementProps = {
   // because the raster scene passes a custom property (`--raster-card-w`).
   style?: string,
   onClick?: domEvent => unit,
+  // --- text entry. The seed dialog's field is the only one the diff owns (the debug
+  // console's input is live DOM the module holds itself), and it is *controlled*:
+  // `value` is written from the model every render and `onInput` reports each
+  // keystroke back, so what's on screen is a fact the loop holds rather than one
+  // the DOM keeps to itself. `onSubmit` is the field's `<form>` — Enter (and a
+  // phone keyboard's Go key) reaches the action through it, which a click handler
+  // on the button alone would not.
+  value?: string,
+  placeholder?: string,
+  // Lower-case: the DOM property is `inputMode`, so Preact finds no property of
+  // this name and sets the attribute, which is what the browser reads.
+  @as("inputmode") inputMode?: string,
+  autocomplete?: string,
+  onInput?: domEvent => unit,
+  onSubmit?: domEvent => unit,
   // A callback ref, called with the element on mount and `null` on unmount.
   // This is Preact's splice point, and what `node` below is built on.
   ref?: Nullable.t<element> => unit,
@@ -70,6 +85,7 @@ type elementProps = {
   @as("aria-label") ariaLabel?: string,
   @as("aria-hidden") ariaHidden?: string,
   @as("aria-live") ariaLive?: string,
+  @as("aria-modal") ariaModal?: string,
   @as("aria-busy") ariaBusy?: string,
   @as("aria-checked") ariaChecked?: string,
   @as("aria-current") ariaCurrent?: string,
@@ -113,6 +129,16 @@ type elementProps = {
 }
 
 type fragmentProps = {children?: vnode}
+
+// --- Reading an event ---------------------------------------------------------
+// The two things a handler here ever asks of the event it was given: don't do
+// the browser's default (a form submit is a page navigation otherwise), and what
+// is in the field this came from — an `input` event carries no value of its own,
+// so the text is read off the element the event is on.
+@send external preventDefault: domEvent => unit = "preventDefault"
+@get external eventTarget: domEvent => element = "target"
+@get external fieldValue: element => string = "value"
+let inputValue = (event: domEvent): string => event->eventTarget->fieldValue
 
 // --- The JSX transform's contract -------------------------------------------
 // **These must stay `@module` externals, and the types above must mirror

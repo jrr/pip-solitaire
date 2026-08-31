@@ -63,6 +63,7 @@ let render = (~seed, ~status): Html.element =>
       main: {
         onClose: () => (),
         onNewGame: () => (),
+        onEnterSeed: () => (),
         onRestart: () => (),
         // The three under test.
         shareDealSeed: seed,
@@ -77,8 +78,14 @@ let render = (~seed, ~status): Html.element =>
     }),
   )
 
-// The Share Seed button — the third of the "game" buttons.
-let shareButton = (menu): option<Html.element> => menu->find(".menu-buttons button:nth-child(3)")
+// The Share Seed button — the second of the "this game" buttons.
+let shareButton = (menu): option<Html.element> =>
+  menu->find(`[aria-label="this game"] .menu-buttons button:nth-child(2)`)
+
+// The seed the section names, which is the number the button would hand out. On the
+// heading rather than on the button, so it describes both controls under it.
+let seedNamed = (menu): string =>
+  menu->find(`[aria-label="this game"] .menu-section__value`)->Option.mapOr("<none>", text)
 
 // The line beneath the buttons: where a link just went, or why the button is dark.
 let line = (menu): string =>
@@ -93,43 +100,31 @@ let hasLine = (menu): bool => menu->find(".menu-share-line")->Option.isSome
 
 describe("Menu Share Seed button", () => {
   test("names the seed on the table, which is what the link carries", () => {
-    // On the button itself, so the label and the number a player would read out are
-    // one control rather than a caption that has to be associated with it. Render
-    // anything else here — an index, the previous deal's number — and the share sends
-    // someone to a different board, which is the one failure this button can't afford.
-    let text = switch render(~seed=Some(123456), ~status=None)->shareButton {
+    // Render anything else here — an index, the previous deal's number — and the share
+    // sends someone to a different board, which is the one failure this feature can't
+    // afford. The number is the section's heading rather than the button's label: it is
+    // as true of Restart beside it, and a button that grows by five digits on some
+    // boards and not others can't line up with the pair above it.
+    let menu = render(~seed=Some(123456), ~status=None)
+    expect(menu->seedNamed)->toBe("123456")
+    let text = switch menu->shareButton {
     | Some(b) => b->text
     | None => "<no button>"
     }
-    expect(text)->toBe("Share Seed 123456")
+    expect(text)->toBe("Share Seed")
   })
 
-  test("sets the seed apart from the label, as a value rather than more prose", () => {
-    // The digits are their own element so CSS can give them the mono stack and a
-    // dimmer colour; without it the number reads as part of the sentence.
-    let value = switch render(~seed=Some(777), ~status=None)->shareButton {
-    | Some(b) =>
-      b
-      ->find(".menu-button__value")
-      ->Option.mapOr("<none>", text)
-    | None => "<no button>"
-    }
-    expect(value)->toBe("777")
-  })
-
-  test("says nothing on the line while the seed is simply on the button", () => {
+  test("says nothing on the line while the seed is simply named above", () => {
     // Empty, but the element is still rendered — `min-height` holds the slot so the
     // confirmation below can appear and clear without moving the panel.
     expect(render(~seed=Some(123456), ~status=None)->line)->toBe("")
     expect(render(~seed=Some(123456), ~status=None)->hasLine)->toBe(true)
   })
 
-  test("shows the bare label when there's no seed to name", () => {
-    let text = switch render(~seed=None, ~status=None)->shareButton {
-    | Some(b) => b->text
-    | None => "<no button>"
-    }
-    expect(text)->toBe("Share Seed")
+  test("leaves the heading bare when there's no seed to name", () => {
+    // No trailing element after "this game" — an empty one would read as a gap where a
+    // number belongs, and the line below is what actually explains the absence.
+    expect(render(~seed=None, ~status=None)->seedNamed)->toBe("<none>")
   })
 
   test("disables the button on a board with no seed, and says why", () => {
@@ -150,16 +145,12 @@ describe("Menu Share Seed button", () => {
     }
   })
 
-  test("reports where the link went on the line, leaving the button alone", () => {
-    // The confirmation takes the slot that was empty a moment ago; the button keeps
+  test("reports where the link went on the line, leaving the section alone", () => {
+    // The confirmation takes the slot that was empty a moment ago; the heading keeps
     // naming its seed throughout, since nothing about the deal has changed.
     let menu = render(~seed=Some(24680), ~status=Some("Link copied to clipboard."))
     expect(menu->line)->toBe("Link copied to clipboard.")
-    let text = switch menu->shareButton {
-    | Some(b) => b->text
-    | None => "<no button>"
-    }
-    expect(text)->toBe("Share Seed 24680")
+    expect(menu->seedNamed)->toBe("24680")
   })
 
   test("still offers the share while a status is up", () => {

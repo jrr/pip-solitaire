@@ -146,7 +146,7 @@ test("refuses a pair anywhere on the stage, not just on a card", async ({ page }
 test.describe("in the menu", () => {
   test.beforeEach(async ({ page }) => {
     await page.getByRole("button", { name: /Open menu/ }).click()
-    await expect(page.getByRole("button", { name: "New" })).toBeVisible()
+    await expect(page.getByRole("button", { name: "Random" })).toBeVisible()
     // Cleared after the tap that opened the menu, so the recording starts clean.
     await resetTouchEnds(page)
   })
@@ -179,16 +179,16 @@ test.describe("in the menu", () => {
   test("leaves two quick taps on different controls alone", async ({ page }) => {
     // The case that set `suppressMoveTol`. Refusing a `touchend` suppresses that
     // tap's synthesised `click` along with the zoom, so a pair refused on time
-    // alone would eat the second control: open the menu and go straight for New —
-    // well inside 350ms — and New would never fire. Distinct controls are further
+    // alone would eat the second control: open the menu and go straight for Random —
+    // well inside 350ms — and Random would never fire. Distinct controls are further
     // apart than the tolerance, so both taps stay live.
     //
     // Asserted through `defaultPrevented` rather than by watching for a click:
     // Chromium synthesises no click from injected touch events at all (a single
-    // `touchscreen.tap` on New doesn't close the menu even with this module gone),
+    // `touchscreen.tap` on Random doesn't close the menu even with this module gone),
     // so the flag is the only observable here — and it is the one WebKit reads.
     const settings = await page.getByRole("button", { name: "Settings", exact: true }).boundingBox()
-    const newGame = await page.getByRole("button", { name: "New" }).boundingBox()
+    const newGame = await page.getByRole("button", { name: "Random" }).boundingBox()
     expect(Math.abs(newGame.y - settings.y)).toBeGreaterThan(MOVE_TOL)
 
     await page.touchscreen.tap(newGame.x + newGame.width / 2, newGame.y + newGame.height / 2)

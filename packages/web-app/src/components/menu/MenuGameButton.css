@@ -7,35 +7,34 @@
      (MenuMainScreen) and the update-check button (RefreshControl). It stays here,
      with the component that defines the shape. */
 
-  /* The game section's actions: New, Restart and Share Seed, sitting
-     side by side so the three read as one control group. They share the width
-     evenly, and wrap rather than squeeze: with a `min-width` per button (below)
-     a panel too narrow for three across drops Share Seed onto its own full-width
-     line instead of clipping it — the labels stay whole either way. */
+  /* A section's actions, **two across**: Random · Enter Seed above Restart · Share
+     Seed. Fixed tracks rather than shared-out flex widths, and the same two tracks in
+     both sections, so the four buttons read as one grid — each button is half the
+     panel and the lower pair's edges land under the upper pair's. Get this from
+     `flex: 1` instead and the widths follow the labels, which differ per row.
+
+     `minmax(0, 1fr)` rather than a bare `1fr`: a track's floor is its content by
+     default, so on the narrowest phone the pair would push past the panel instead of
+     the labels giving way inside their half. */
   .menu-buttons {
-    display: flex;
-    flex-wrap: wrap;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 0.4rem;
   }
 
   /* A game-section action button, styled like the scene rows/toggle but
-     centred, since it's a command rather than a labelled row. `flex: 1` so the
-     row's buttons split the width evenly, and `min-width` a legibility floor, so
-     a row too narrow for its buttons wraps rather than squeezing them. That's the
-     ordinary case here: "Share Seed" plus a six-digit seed is wider than the panel
-     has left beside New and Restart, so it takes the second line and grows to fill
-     it. Disabled — Share Seed on a board with no seed — is muted and inert (the
-     rule for that is in `Menu.css`, shared with the disabled menu row). The
-     Settings button at the foot of the main menu borrows this class too.
+     centred, since it's a command rather than a labelled row. Disabled — Share Seed
+     on a board with no seed — is muted and inert (the rule for that is in `Menu.css`,
+     shared with the disabled menu row). The Settings button at the foot of the main
+     menu borrows this class too, and the update-check button; both stand alone in
+     their section rather than in a `.menu-buttons` grid, so the width is the
+     section's and nothing here has to say so.
 
-     "Styled like the scene rows/toggle" is now literal rather than a claim in a
+     "Styled like the scene rows/toggle" is literal rather than a claim in a
      comment: the box is the `--control-*` tokens in `styles/base.css`, and
-     what's left here is what makes this a *button* rather than a row — it splits
-     the group's width, holds a legibility floor, centres its label, and is set in
-     the heavier weight. */
+     what's left here is what makes this a *button* rather than a row — it centres
+     its label and is set in the heavier weight. */
   .menu-button {
-    flex: 1 1 auto;
-    min-width: 6.5rem;
     text-align: center;
     white-space: nowrap;
     padding: var(--control-pad);
@@ -49,16 +48,5 @@
     border: var(--control-border);
     border-radius: var(--control-radius);
     cursor: pointer;
-  }
-
-  /* A number a game button carries as *data* rather than prose: the seed
-     on Share Seed. The mono stack — the one the board readout and the motion
-     panel already use — plus a step down in weight and colour make the digits
-     read as a value beside the label rather than as more of the sentence, and
-     mono keeps 0/O and 1/l unambiguous for a number meant to be read aloud or
-     typed in by hand. */
-  .menu-button__value {
-    font: 13px ui-monospace, "SF Mono", Menlo, monospace;
-    color: #94a3b8;
   }
 }

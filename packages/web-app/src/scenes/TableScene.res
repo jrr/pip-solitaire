@@ -2051,12 +2051,13 @@ let make = (
     //   - `shake` drives the live board's nodes through `boardOps`, the same way.
     //
     // The two re-deals that open a board the caller names are the re-dealable game's: a
-    // fresh seed for `newGame` (the menu's New Game and the console's bare
-    // `deal`), invented by the driver and handed over as `~newDeal`, and a *chosen* one
-    // for `loadDeal` (`deal <n>`), laid out by the game itself (`Game.t.deal`) —
-    // a board knows how to deal another of its own. A fixed-layout demo
-    // has no seed to vary and offers neither — `~newDeal` is still what says so, since
-    // it's the driver that decides whether a board may be re-dealt at all.
+    // fresh seed for `newGame` (the menu's Random and the console's bare `deal`),
+    // invented by the driver and handed over as `~newDeal`, and a *chosen* one for
+    // `loadDeal` (the menu's Enter seed and the console's `deal <n>`), laid out by the
+    // game itself (`Game.t.deal`) — a board knows how to deal another of its own. A
+    // fixed-layout demo has no seed to vary and offers neither — `~newDeal` is still
+    // what says so, since it's the driver that decides whether a board may be re-dealt
+    // at all.
     //
     // `restart` is offered by *every* card table — a demo restarts to its own
     // opening deal — and rebuilds from `currentGame`, the deal actually on the table, so

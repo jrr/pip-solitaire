@@ -13,6 +13,7 @@
 
 import { expect, test } from "@playwright/test"
 import { settleBoard } from "./lib/board.mjs"
+import { menuSeed } from "./lib/menu.mjs"
 
 test.use({
   viewport: { width: 800, height: 1000 },
@@ -44,8 +45,9 @@ async function openMenu(page) {
   await expect(page.locator("#menu-overlay")).toBeVisible()
 }
 
-// The Share Seed button, which names the seed it would hand out.
-const shareButton = (page) => page.getByRole("button", { name: /^Share Seed/ })
+// The Share Seed button. What it would hand out is named on the section heading
+// above it — `menuSeed` — rather than on the button itself.
+const shareButton = (page) => page.getByRole("button", { name: "Share Seed", exact: true })
 
 // The line under the buttons: where a link just went, or why the button is dark.
 const shareLine = (page) => page.locator(".menu-share-line")
@@ -65,7 +67,7 @@ test("shares a link to the deal on the table, and that link reopens it", async (
   expect(dealt.length).toBe(52)
 
   await openMenu(page)
-  await expect(shareButton(page)).toHaveText("Share Seed 24680")
+  await expect(menuSeed(page)).toHaveText("24680")
   // The line beneath is empty until there's something to report, but present: the
   // confirmation below takes a slot that's already holding its height, so nothing
   // below it moves when it appears.
@@ -93,7 +95,7 @@ test("shares a link to the deal on the table, and that link reopens it", async (
   expect(await readBoard(page)).toEqual(dealt)
 })
 
-test("offers the fresh deal after a New Game", async ({ page }) => {
+test("offers the fresh deal after a random new game", async ({ page }) => {
   // The regression this guards: the line must track the board actually on the table,
   // not the deal the page opened with. A stale number here would be the worst kind of
   // bug for a share feature — it sends someone to a board you're not playing.
@@ -101,15 +103,15 @@ test("offers the fresh deal after a New Game", async ({ page }) => {
   await settleBoard(page)
 
   await openMenu(page)
-  await expect(shareButton(page)).toHaveText("Share Seed 13579")
+  await expect(menuSeed(page)).toHaveText("13579")
 
-  // New Game deals a fresh random seed and closes the menu; reopen and look again.
-  await page.getByRole("button", { name: "New", exact: true }).click()
+  // Random deals a fresh seed and closes the menu; reopen and look again.
+  await page.getByRole("button", { name: "Random", exact: true }).click()
   await settleBoard(page)
   const afterNewGame = await readBoard(page)
 
   await openMenu(page)
-  await expect(shareButton(page)).not.toHaveText("Share Seed 13579")
+  await expect(menuSeed(page)).not.toHaveText("13579")
 
   // …and whatever it now offers is a link to *this* board.
   const url = await shareDeal(page)
@@ -127,15 +129,15 @@ test("a resumed game can still say which seed it is", async ({ page }) => {
   await page.goto("/?animate=off")
   await settleBoard(page)
   await openMenu(page)
-  const dealt = await shareButton(page).textContent()
-  expect(dealt).toMatch(/^Share Seed \d+$/)
+  const dealt = await menuSeed(page).textContent()
+  expect(dealt).toMatch(/^\d+$/)
 
   // Reload with a bare URL: no seed to pin the deal, so the board that comes back is
   // the saved one, resumed.
   await page.goto("/")
   await settleBoard(page)
   await openMenu(page)
-  await expect(shareButton(page)).toHaveText(dealt)
+  await expect(menuSeed(page)).toHaveText(dealt)
 })
 
 test("a bare `?seed=` opens FreeCell — the short form `urlForDeal` writes", async ({ page }) => {
@@ -157,10 +159,10 @@ test("a bare `?seed=` opens FreeCell — the short form `urlForDeal` writes", as
   await settleBoard(page)
   expect(await readBoard(page)).toEqual(bare)
 
-  // …and it's FreeCell that opened, not merely *a* board: the menu's Share Seed offers
-  // deal 7 back, and hands over the short form again.
+  // …and it's FreeCell that opened, not merely *a* board: the menu names deal 7, and
+  // Share Seed hands over the short form again.
   await openMenu(page)
-  await expect(shareButton(page)).toHaveText("Share Seed 7")
+  await expect(menuSeed(page)).toHaveText("7")
   const url = new URL(await shareDeal(page))
   expect(url.searchParams.get("seed")).toBe("7")
   expect(url.searchParams.get("game")).toBe(null)
@@ -182,12 +184,13 @@ test("a `?game=` that isn't a game falls through rather than forcing a scene", a
 test("says so on a board with no seed, rather than offering one", async ({ page }) => {
   // A posed position only names a deal it has been *proved* to descend from, and
   // `midgame` is assembled from the deck rather than played to — so it has no deal
-  // number. The button is disabled and the line explains, rather than offering a link
-  // to a board the sender isn't looking at.
+  // number. The heading names nothing, the button is disabled and the line explains,
+  // rather than offering a link to a board the sender isn't looking at.
   await page.goto("/?game=freecell&state=midgame&animate=off")
   await settleBoard(page)
 
   await openMenu(page)
-  await expect(page.getByRole("button", { name: "Share Seed", exact: true })).toBeDisabled()
+  await expect(menuSeed(page)).toHaveCount(0)
+  await expect(shareButton(page)).toBeDisabled()
   await expect(shareLine(page)).toHaveText("No seed for this board.")
 })

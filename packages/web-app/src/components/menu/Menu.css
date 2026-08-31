@@ -106,8 +106,8 @@
 
   /* **A disabled menu control, whichever kind it is**. `.menu-row--action`
      and `.menu-button` each carried these same two declarations — an action row
-     with no link to hand over, Share Seed on a board with no seed — so the rule
-     lives once, here, rather than in each of the two component sheets.
+     with no link to hand over, Share Seed on a board with no seed — so the rule lives
+     once, here, rather than in each of the two component sheets.
 
      `Menu.css` is the home because the menu is the smallest thing that owns both
      kinds of control: neither component can state the other's rule without reaching
@@ -135,5 +135,19 @@
     letter-spacing: 0.05em;
     text-transform: uppercase;
     color: #64748b;
+  }
+
+  /* A number the heading names as *data* rather than prose: the seed of the deal
+     "this game" is about. The mono stack — the one the board readout and the seed
+     dialog already use — keeps 0/O and 1/l unambiguous for a number meant to be read
+     aloud or typed in by hand, and `text-transform: none` undoes the heading's
+     uppercasing, which does nothing to digits but would to a value that isn't one.
+     Brighter than the heading, not dimmer: the words are the caption here and the
+     number is the thing worth reading. */
+  .menu-section__value {
+    font: 13px ui-monospace, "SF Mono", Menlo, monospace;
+    letter-spacing: normal;
+    text-transform: none;
+    color: #94a3b8;
   }
 }
