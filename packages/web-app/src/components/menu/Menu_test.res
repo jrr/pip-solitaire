@@ -1,4 +1,5 @@
-// The main menu's **Share Seed** button.
+// What `Menu` places on the main screen: the **Share Seed** button, and the About
+// footer under it.
 //
 // The button hands over a link to the *deal* on the table — `?seed=N`, which deals
 // the identical board wherever it's opened.
@@ -9,8 +10,9 @@
 open Vitest
 open TestDom
 
-// The two screens this file never shows, and the footer under all three. Scenery:
-// held fixed across every case, and never placed while `screen` is `Main`.
+// The two screens this file never shows: scenery, held fixed across every case and
+// never placed while `screen` is `Main`. The footer below is not scenery — it is
+// placed under all three screens, and the last `describe` is about that.
 let settings: MenuSettingsScreen.props = {
   onClose: () => (),
   onBackToMenu: () => (),
@@ -160,5 +162,21 @@ describe("Menu Share Seed button", () => {
     | Some(b) => expect(b->hasAttr("disabled"))->toBe(false)
     | None => expect("share button")->toBe("missing")
     }
+  })
+})
+
+// The footer is `Menu`'s to place, under whichever screen is showing, so a footer that
+// renders perfectly on its own — which is all `AboutFooter_test` asks — can still fail
+// to arrive here. That failure is silent both ways: nothing throws, and the panel is a
+// full menu with its foot missing.
+describe("Menu About footer", () => {
+  test("places the footer under the screen, carrying the build it was handed", () => {
+    let menu = render(~seed=Some(123456), ~status=None)
+    expect(menu->has(".menu-footer"))->toBe(true)
+    // The version line, and not merely something at that selector: the build string is
+    // what proves the footer was *rendered* with the props record rather than named in
+    // a position that renders it as text (see docs/rendering.md § What the binding
+    // shape has to get right).
+    expect(menu->textIn("#version-badge")->String.startsWith("v1.2.3 ·"))->toBe(true)
   })
 })

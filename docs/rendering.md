@@ -92,9 +92,11 @@ rather than around it.
 
 ## What the binding shape has to get right
 
-Two properties of `Html.res` are load-bearing, and both fail quietly. The
-reasoning is here, and only here. The code carries the warning on the definition
-it guards and points back to this section rather than arguing it a second time.
+Three things about this arrangement are load-bearing, and every one of them fails
+quietly. The first two are properties of `Html.res`; the third is a limit of
+preserve mode that no binding can fix. The reasoning is here, and only here. The
+code carries the warning on the definition it guards and points back to this
+section rather than arguing it a second time.
 
 **1. The jsx functions must be `@module` externals.** With plain `let` bindings
 the compiler quietly falls back to lowering JSX into calls on this module: the
@@ -105,6 +107,22 @@ transparent alias for `'props => vnode` via `%component_identity`, and
 `string`/`array` are `%identity`. An abstract component type makes `<>…</>` emit
 `<prim => JsxRuntime.Fragment(prim)>`, which is not valid JSX and no bundler will
 parse; a non-identity `array` wraps every children list in a runtime call.
+
+**3. A props spread is not preserved.** `<Comp {...props} />` type-checks, and the
+compiler then lowers it to a `jsx` *call* instead of emitting JSX. In a children
+position that call lands in the output unbraced —
+
+```jsx
+{screenVnode}
+JsxRuntime.jsx(AboutFooter$WebApp.make, param.about)
+```
+
+— so esbuild reads it as a **text child**, and the component renders as the literal
+text of its own call. `mise run build` and `mise run test` both pass. Hand a props
+record over as `Comp.make(props)`, which is what the call sites holding one as a
+value already do: `Menu`'s three screens, `Main`'s `RefreshControl` and `SeedDialog`,
+`TableScene`'s `WinOverlay`. Spelling the record's fields out as JSX attributes works
+too, and restates the record to do it.
 
 The transform's contract itself is ordinary: `<Comp prop=… />` → `jsx(Comp.make,
 props)`, `<div>…</div>` → `Elements.jsx("div", props)`, `<>…</>` →
