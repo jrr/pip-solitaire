@@ -363,7 +363,11 @@ let make = (~mode=Live, ~seed as initialSeed=1): Scene.t => {
     // A knob: its name, a range input, and the value it is at. The readout is beside
     // the slider because a slider alone says "somewhere in the middle", and what you
     // want to leave this scene with is a number to put in the source.
-    let knob = (~label, ~min, ~max, ~step, ~value, ~format, ~onChange) => {
+    //
+    // `~wide` is for a readout that says more than its own number: the row is sized for
+    // the longest string it can hold, so dragging one doesn't shove the knobs beside it
+    // along the row.
+    let knob = (~label, ~min, ~max, ~step, ~value, ~format, ~onChange, ~wide=false) => {
       let row = el("label", "cascade-knob")
       let name = el("span", "cascade-knob__label")
       name->WebDom.setTextContent(label)
@@ -374,7 +378,10 @@ let make = (~mode=Live, ~seed as initialSeed=1): Scene.t => {
       input->WebDom.setAttribute("step", Float.toString(step))
       input->WebDom.setAttribute("value", Float.toString(value))
       input->WebDom.setAttribute("data-knob", label)
-      let readout = el("span", "cascade-knob__value")
+      let readout = el(
+        "span",
+        wide ? "cascade-knob__value cascade-knob__value--wide" : "cascade-knob__value",
+      )
       readout->WebDom.setTextContent(format(value))
       row->WebDom.appendChild(name)->ignore
       row->WebDom.appendChild(input)->ignore
@@ -443,13 +450,25 @@ let make = (~mode=Live, ~seed as initialSeed=1): Scene.t => {
             minSpeed: Math.min(knobs.contents.minSpeed, value),
           },
     )
+    // The interval between two cards, and what a deck of them costs: one card per
+    // interval is the whole cascade's length, and at the top of this range that is most
+    // of two minutes — the number worth having in front of you *while* you drag rather
+    // than after a run has taken that long. `cards × interval` rather than the
+    // `cards - 1` the launches actually span, because the last card still has the stage
+    // to cross after it leaves, which takes about the interval back.
     knob(
       ~label="launch",
       ~min=20.,
-      ~max=600.,
+      ~max=2000.,
       ~step=10.,
       ~value=knobs.contents.launchMs,
-      ~format=value => `${whole(value)} ms`,
+      ~wide=true,
+      ~format=value => {
+        let cards = Array.length(run.contents.cards)
+        `${whole(value)} ms · ${Int.toString(cards)} cards in ${tenth(
+            value *. Int.toFloat(cards) /. 1000.,
+          )}s`
+      },
       ~onChange=value => knobs := {...knobs.contents, launchMs: value},
     )
     knob(

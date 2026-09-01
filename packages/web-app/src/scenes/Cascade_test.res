@@ -196,6 +196,52 @@ describe("the launch", () => {
   })
 })
 
+describe("what a won game leaves to fall", () => {
+  test("takes the deck off four complete foundations, kings first and aces last", () => {
+    let cards = Cascade.foundationOrder(~seed=1)
+    let ranks = (~start, ~end) =>
+      cards->Array.slice(~start, ~end)->Array.map((card: Deck.card) => card.rank)
+    expect(Array.length(cards))->toBe(52)
+    // Four to a round — the top card of each pile in turn — and a rank lower every
+    // round, all the way down to the aces that went up first.
+    expect(ranks(~start=0, ~end=4))->toEqual([Deck.King, Deck.King, Deck.King, Deck.King])
+    expect(ranks(~start=4, ~end=8))->toEqual([Deck.Queen, Deck.Queen, Deck.Queen, Deck.Queen])
+    expect(ranks(~start=48, ~end=52))->toEqual([Deck.Ace, Deck.Ace, Deck.Ace, Deck.Ace])
+  })
+
+  test("deals the whole pack, so no card falls twice and none is left behind", () => {
+    let cards = Cascade.foundationOrder(~seed=12)
+    let times = card => cards->Array.filter(other => other == card)->Array.length
+    expect(Deck.allCards->Array.every(card => times(card) == 1))->toBe(true)
+  })
+
+  test("keeps a suit on one foundation, so a card falls from where it sat", () => {
+    // `step` seats a card by `mod(index, seats)` and the deal above is round-robin over
+    // the same four, which is the whole reason the seats read as foundations: every
+    // spade comes off the pile the first spade came off.
+    let cards = Cascade.foundationOrder(~seed=3)
+    let seat = index => (cards->Array.getUnsafe(mod(index, 4))).suit
+    expect(cards->Array.everyWithIndex((card: Deck.card, index) => card.suit == seat(index)))->toBe(
+      true,
+    )
+  })
+
+  test("varies which suit ended up on which foundation, and nothing else", () => {
+    // The one thing a finished game varies. Two seeds rather than a claim about all of
+    // them, because there are only twenty-four permutations to go round.
+    let piles = seed =>
+      Cascade.foundationOrder(~seed)
+      ->Array.slice(~start=0, ~end=4)
+      ->Array.map((card: Deck.card) => card.suit)
+    expect(piles(1))->toEqual(piles(1))
+    expect(piles(1) == piles(2))->toBe(false)
+  })
+
+  test("is what a run deals from when the caller hands it no cards", () => {
+    expect(Cascade.make(~seed=6).cards)->toEqual(Cascade.foundationOrder(~seed=6))
+  })
+})
+
 describe("leaving the stage", () => {
   let stage: Cascade.stage = {width: 10., height: 6., seats: [(5., 0.)]}
 

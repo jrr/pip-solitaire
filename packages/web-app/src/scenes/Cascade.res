@@ -26,7 +26,8 @@
 // Randomness is `Cards.xorshift`, threaded through the run as `rng`: a seed replays a
 // cascade exactly, and `Math.random` stays banned. The launch *order* is the caller's
 // (`~cards`), because the integration will hand over the cards the board's foundations
-// give up, in the order they give them up.
+// give up, in the order they give them up — and with nothing handed over, the default is
+// that same order played off a won game (`foundationOrder`).
 
 // A card's height, in card-widths — the only proportion this module needs, and
 // `CardArt` is where the app keeps it.
@@ -37,7 +38,9 @@ type flyer = {card: Deck.card, x: float, y: float, vx: float, vy: float}
 
 // The arena, in card-widths, and the seats cards launch from — top-left corners, taken
 // in turn. Seats are the stage's rather than a knob because the integration's are the
-// board's foundations, which are wherever the board put them.
+// board's foundations, which are wherever the board put them. Taking them in turn is
+// what makes a seat a foundation: `foundationOrder` deals in the same round-robin, so
+// with four of each every card leaves from the pile it sat on.
 type stage = {width: float, height: float, seats: array<(float, float)>}
 
 // The feel, all of it. On screen in the scene rather than in here, because whether a
@@ -84,9 +87,32 @@ let draw = (state: int) => {
   (next, Int.toFloat(next->Int.bitwiseAnd(0x7fffffff)) /. 2147483648.)
 }
 
+// --- What a won game leaves on the table --------------------------------------
+
+// Which suit ended up on which foundation. That is the one thing a finished game
+// varies — the piles themselves are always the same thirteen cards — so it is the one
+// thing the seed picks here. A one-rank deck shuffled is exactly a permutation of the
+// four suits, so `Cards.shuffle` does the drawing rather than a second Fisher–Yates.
+let foundationSuits = (~seed) =>
+  Cards.shuffle(~deck={suits: Cards.suits, ranks: [Deck.Ace]}, ~seed)->Array.map(card => card.suit)
+
+// The deck in the order a won game gives it up: four complete foundations, each an A→K
+// run with the King on top, taken from the top one pile at a time. So the cards come off
+// by descending rank, four suits to a round, and the aces go last.
+//
+// The round-robin is the *same* round-robin `step` seats a card by, which is what keeps
+// a suit falling from its own foundation the whole way down rather than wandering across
+// the four seats.
+let foundationOrder = (~seed): array<Deck.card> => {
+  let suits = foundationSuits(~seed)
+  Cards.ranks
+  ->Array.toReversed
+  ->Array.flatMap(rank => suits->Array.map((suit): Deck.card => {suit, rank}))
+}
+
 let make = (~seed: int, ~cards: option<array<Deck.card>>=?) => {
   rng: Cards.seedState(seed),
-  cards: cards->Option.getOr(Cards.shuffle(~seed)),
+  cards: cards->Option.getOr(foundationOrder(~seed)),
   launched: 0,
   flying: [],
   // The first card goes on the first step (see `step`), so this starts at rest.

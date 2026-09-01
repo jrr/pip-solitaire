@@ -66,6 +66,13 @@
     font-variant-numeric: tabular-nums;
   }
 
+  /* A readout that carries more than its own number — the launch knob also says how
+     long a whole deck at that interval takes — sized for the longest string it can hold
+     rather than the shortest, for the same reason. */
+  .cascade-knob__value--wide {
+    min-width: 12rem;
+  }
+
   .cascade-status {
     margin: 0;
     font-size: 0.78rem;
