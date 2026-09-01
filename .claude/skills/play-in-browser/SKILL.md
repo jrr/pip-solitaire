@@ -98,7 +98,8 @@ hand-run script doesn't.)
 Query parameters, all documented in `src/platform/AppUrl.res`:
 
 - `?game=freecell` — open a game by id (`freecell`, `mini`, `micro`).
-- `?scene=gallery` — mount a non-game scene (`gallery`, `raster`, `motion`).
+- `?scene=gallery` — mount a non-game scene (`gallery`, `raster`, `trail`,
+  `cascade`, `motion`).
 - `?seed=N` — open deal N of whichever game is mounted. Deterministic: the same N
   always deals the same board.
 - `?animate=off` — skip the opening fly-in, so the board is at its resting

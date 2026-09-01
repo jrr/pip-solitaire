@@ -57,6 +57,12 @@ const outDir = path.join(webAppRoot, "screenshots");
 //     device-pixel ratio reads as slightly soft, and only the retina shots show it.
 //     The scene draws one rendering at a time (`?raster=live|svg|canvas`); the plain
 //     query shoots its default, the sprite path that ships.
+//   - Cascade — the victory animation's motion, frozen (`?cascade=pose`) at a fixed
+//     simulated time on a fixed seed, so the same picture comes out on every run. It
+//     earns a shot for the reason the raster sheet does: whether a cascade *reads*
+//     right is a question for an eye, and the per-device spread is where it is asked
+//     properly — the scene opens on a card size its stage has room for, so what the
+//     shots show is the same motion in a phone's arena and a desktop's.
 //   - Menu — the slide-over menu open on its root screen, the one piece of
 //     chrome the board shots never show. It's the panel that has to fit a narrow
 //     phone and a notch's safe area alike, so how it lands per device is worth an
@@ -94,6 +100,13 @@ const scenes = [
     // The scene sets this once all 52 bitmaps have decoded; there's nothing else
     // to wait on, since the decodes are async and start off-frame.
     ready: '.raster-scene[data-raster="ready"]',
+  },
+  {
+    name: "Cascade",
+    query: "?scene=cascade&cascade=pose&seed=24680",
+    // Set once the pose has been drawn — which is after the sprite sheet decodes, so
+    // there is nothing else to wait on.
+    ready: '.cascade-scene[data-cascade="posed"]',
   },
 ];
 

@@ -5,6 +5,7 @@
 //   ?game=mini     which game, by id       ?state=midgame  a named `Scenario`
 //   ?scene=raster  which scene, by id      ?seed=7         the deal number
 //   ?animate=off   skip the deal fly-in    ?raster=svg     the raster scene's rendering
+//   ?cascade=pose  freeze the cascade at a fixed frame
 //   #g=<blob>      a whole shared game, compressed
 //
 // Two things are load-bearing here. **`game` and `scene` ask separate questions** — a
@@ -37,6 +38,10 @@ type t = {
   seed: option<int>,
   animate: bool,
   raster: option<RasterScene.rendering>,
+  // The cascade demo's mode. `seed` is read twice, deliberately: it is the deal number
+  // to a board and the cascade's PRNG seed to that scene, and both are "the number this
+  // link replays".
+  cascade: option<CascadeScene.mode>,
   shared: option<string>,
 }
 
@@ -56,6 +61,7 @@ let parse = (): t => {
   | _ => true
   }
   let raster = read("raster")->Option.flatMap(RasterScene.renderingFromString)
+  let cascade = read("cascade")->Option.flatMap(CascadeScene.modeFromString)
   // The fragment goes through the same parser once its leading `#` is off, so `#g=…`
   // escapes and repeats by the query's rules — `URLSearchParams` wants bare `k=v`.
   let fragment = makeSearchParams(hash->String.replace("#", ""))
@@ -66,5 +72,5 @@ let parse = (): t => {
   // An unknown `?game=` falls through to `?scene=` and the launch default, rather than
   // forcing a scene id nothing can mount.
   let game = read(ShareLink.gameKey)->Option.flatMap(Game.byId)
-  {game, scene: read("scene"), state: read("state"), seed, animate, raster, shared}
+  {game, scene: read("scene"), state: read("state"), seed, animate, raster, cascade, shared}
 }

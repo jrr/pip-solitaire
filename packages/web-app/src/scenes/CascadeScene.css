@@ -1,0 +1,103 @@
+@layer scenes {
+  /* The cascade scene's frame: a dark stage, a transparent overlay filling it, and
+     the controls above. What the scene is *for* is CascadeScene.res; nothing here
+     draws a card — every pixel of the cascade is painted onto the canvas. */
+  .cascade-scene {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.6rem;
+    width: min(96vw, 1100px);
+  }
+
+  .cascade-toolbar,
+  .cascade-knobs {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    align-items: center;
+    gap: 0.5rem 0.9rem;
+  }
+
+  .cascade-toggle,
+  .cascade-action {
+    font: inherit;
+    font-size: 0.85rem;
+    padding: 0.35rem 0.7rem;
+    border-radius: 999px;
+    border: 1px solid #2d4066;
+    background: #16233a;
+    color: #cbd5e1;
+    cursor: pointer;
+  }
+
+  .cascade-toggle--on {
+    border-color: #22c55e;
+    background: #14532d;
+    color: #f0fdf4;
+  }
+
+  .cascade-action[disabled] {
+    opacity: 0.45;
+    cursor: default;
+  }
+
+  /* A knob is its name, the slider, and the number it is at — the number being the
+     point: a slider on its own says "somewhere in the middle", and what you leave
+     this scene with is a value to put in `Cascade.defaults`. */
+  .cascade-knob {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.78rem;
+    color: #94a3b8;
+  }
+
+  .cascade-knob input {
+    width: 7rem;
+    accent-color: #22c55e;
+  }
+
+  /* Fixed width and tabular figures, so a value changing under a drag doesn't shuffle
+     the knobs beside it along the row. */
+  .cascade-knob__value {
+    min-width: 4.6rem;
+    color: #cbd5e1;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .cascade-status {
+    margin: 0;
+    font-size: 0.78rem;
+    color: #94a3b8;
+    text-align: center;
+  }
+
+  /* The stage, and the box the overlay covers. Framed with an inset `box-shadow`
+     rather than a `border`: the canvas is sized from its own measured rect, and a
+     border would make the padding box it fills smaller than that rect reports, so
+     every stamp would land slightly off its own coordinates. */
+  .cascade-stage {
+    position: relative;
+    width: 100%;
+    height: min(64vh, 560px);
+    border-radius: 12px;
+    background: #0b1220;
+    box-shadow: inset 0 0 0 1px #2d4066;
+    overflow: hidden;
+  }
+
+  /* Transparent — nothing ever fills it, and nothing is ever cleared — and out of
+     hit-testing, the two halves of an overlay that can sit over a live board.
+     `width`/`height` are spelled out because a canvas is a replaced element: with
+     `width: auto` it lays out at its intrinsic 300x150 store size and ignores the
+     insets. */
+  .cascade-overlay {
+    position: absolute;
+    inset: 0;
+    display: block;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+  }
+}
