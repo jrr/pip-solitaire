@@ -23,17 +23,7 @@ let cornerR = 12.
 let viewBox = `0 0 ${boxW->Float.toString} ${boxH->Float.toString}`
 let aspect = boxH /. boxW
 
-// The card the design box is a picture of: poker size, 2.5 × 3.5 inches, in metres.
-//
-// The only place the app claims a *physical* size rather than a proportion, and it is
-// here because it has to agree with the box above: 3.5 / 2.5 is exactly `aspect`, which
-// is what makes 2.5in the width this drawing is of rather than a width picked to sound
-// plausible. (Bridge size, 2.25 × 3.5, comes out at 1.56 and would not fit the art.)
-// `CardArt_test` holds the two together.
-//
-// What wants it is the cascade: gravity means nothing in card-widths per second squared
-// until a card-width is a length, and `Cascade.toMetric` is where the two meet.
-let widthMetres = 0.0635
+let widthMetres = 0.0635 // 2.5" to m
 
 // The radius of the frame's *path*. The stroke is centred on it and extends half its
 // width further out, so the painted outer corner is marginally rounder; boxes that
