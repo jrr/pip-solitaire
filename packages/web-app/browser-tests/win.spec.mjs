@@ -134,3 +134,53 @@ for (const input of inputs) {
     })
   })
 }
+
+// The victory cascade, wired into the win flow behind its hidden flag. What only a
+// browser can show is the part that isn't a decision: sprites really rasterize, cards
+// really come off the foundations, and a real tap really ends it. The motion is
+// `Cascade_test`'s, the surface `browser-tests/cascade.spec.mjs`'s, and which wins take
+// this path at all is `TableScene_test`'s.
+test.describe("with the victory animation on", () => {
+  test.use({ viewport: { width: 800, height: 1000 } })
+
+  // A sprite sheet is built at the moment of victory, and CI runners are slow at the
+  // 52-card decode; the default 30s leaves little room around it.
+  test.setTimeout(90_000)
+
+  test("the win cascades the foundations, and a tap skips to the panel", async ({ page }) => {
+    // The flag is a stored preference with no URL of its own — it's hidden behind ten
+    // taps on the Settings title precisely so it isn't reachable by accident — so seed
+    // storage before the app boots rather than driving the menu.
+    await page.addInitScript(() => {
+      window.localStorage.setItem("pip.victoryAnimation", "true")
+    })
+    // `state=finish` opens one press of Finish away from a win, and `animate=off` puts
+    // the board at its resting positions with the sweep collapsed to an instant — so
+    // the press wins the game immediately and what follows is the cascade alone.
+    await page.goto("/?game=freecell&state=finish&animate=off")
+    await expect(page.locator(".finish-button")).toBeVisible()
+    await settleBoard(page)
+
+    await page.locator(".finish-button").click()
+
+    // The canvas is up with the win, and the panel is waiting behind it.
+    const cascade = page.locator(".table-cascade")
+    const overlay = page.locator(".win-overlay")
+    await expect(cascade).toHaveCount(1)
+    await expect(overlay).toHaveCount(0)
+
+    // The foundations empty a card at a time: each node stops being drawn as its sprite
+    // takes over, which is the half of the effect that isn't on the canvas at all.
+    await expect
+      .poll(() => page.locator(".stacking-card--flown").count(), { timeout: 30_000 })
+      .toBeGreaterThan(0)
+
+    // A tap anywhere skips the rest of it. The panel goes up, the canvas comes down,
+    // and every card it had flung off the table is back on it — the cascade leaves
+    // nothing of itself behind.
+    await cascade.click()
+    await expect(overlay).toHaveCount(1)
+    await expect(cascade).toHaveCount(0)
+    await expect(page.locator(".stacking-card--flown")).toHaveCount(0)
+  })
+})

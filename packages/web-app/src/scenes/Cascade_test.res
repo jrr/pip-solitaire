@@ -292,8 +292,8 @@ describe("which way a card is thrown", () => {
   })
 
   test("never asks for a chance it can't have, from a seat off the edge", () => {
-    // Not reachable from `spreadSeats`, but #228's seats are the board's and a foundation
-    // can sit anywhere.
+    // Not reachable from `spreadSeats`, but a board hands over seats of its own and a
+    // foundation can sit anywhere.
     expect(Cascade.rightwardChance(~seatX=-4., ~stage))->toBe(1.)
     expect(Cascade.rightwardChance(~seatX=stage.width +. 4., ~stage))->toBe(0.)
   })

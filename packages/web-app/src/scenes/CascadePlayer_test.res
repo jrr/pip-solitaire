@@ -48,7 +48,8 @@ describe("where a cascade launches from", () => {
   test(
     "takes the caller's own seats as given — a board's foundations are where it put them",
     () => {
-      // The seam #228 arrives through, in card-widths like everything the motion sees.
+      // The seam a board arrives through, in card-widths like everything the motion
+      // sees: its foundations are wherever it put them.
       let seats = [(1.5, 0.4), (3.5, 0.4)]
       let player = ready(~options={...CascadePlayer.defaults, launchpad: CascadePlayer.At(seats)})
       after(player, () => expect(CascadePlayer.stageOf(player).seats)->toEqual(seats))
@@ -62,6 +63,30 @@ describe("where a cascade launches from", () => {
     ]
     let player = ready(~options={...CascadePlayer.defaults, cards: Some(cards)})
     after(player, () => expect(player.run.cards)->toEqual(cards))
+  })
+
+  test("hands each card back as it leaves, in launch order", () => {
+    // What a board empties its foundations off: the node a sprite has taken over
+    // from is hidden on this call. It can't ride on `onChange`, which is a half-second
+    // heartbeat — a card left on the table for half a second after its copy has flown
+    // off it is a card in two places.
+    let cards: array<Deck.card> = [
+      {suit: Deck.Spades, rank: Deck.King},
+      {suit: Deck.Hearts, rank: Deck.Queen},
+      {suit: Deck.Clubs, rank: Deck.Jack},
+    ]
+    let launched = []
+    let player = CascadePlayer.attach(
+      ~canvas=Canvas.make(),
+      ~options={...CascadePlayer.defaults, cards: Some(cards)},
+      ~onLaunch=card => launched->Array.push(card),
+    )
+    player.sprites = Some(sheet(~cssWidth=CascadePlayer.defaults.cardWidth))
+    // A pose rather than a live run: the same `advance`, off a fixed number of steps
+    // instead of a clock, so the count is the launch interval's rather than the
+    // runner's. Two seconds is the first card plus two more at 750ms apiece.
+    CascadePlayer.pose(player, ~seconds=2.)
+    after(player, () => expect(launched)->toEqual(cards))
   })
 })
 

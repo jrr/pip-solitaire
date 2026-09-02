@@ -10,6 +10,34 @@
 // button itself is added synchronously at mount, before any frame.
 %%raw(`globalThis.matchMedia = () => ({ matches: true })`)
 
+// The victory cascade builds a sprite sheet the moment a win plays it, which reaches two
+// things jsdom hasn't got. Both are answered here the way `CascadePlayer_test` answers
+// them: a 2D context that isn't there, and a `fetch` that rejects rather than leaving the
+// runner on a socket. What that makes the cascade tests below is a check that a *failed*
+// sheet still ends at the win panel — which is the behaviour the win flow can least
+// afford to get wrong.
+%%raw(`
+  if (globalThis.HTMLCanvasElement) {
+    globalThis.HTMLCanvasElement.prototype.getContext = () => null
+  }
+  globalThis.fetch = () => Promise.reject(new Error("no network in jsdom"))
+`)
+
+// The stub above reports reduced motion for the whole file, which is what keeps every
+// flight within jsdom's reach — and it is also what sends a win straight to the panel.
+// The cascade tests borrow the other answer for the length of one board; they pass
+// `~skipDealAnimation` instead, which collapses the same flights without touching the
+// preference the cascade actually reads.
+let withMotionAllowed: (unit => unit) => unit = %raw(`(body) => {
+  const reduced = globalThis.matchMedia
+  globalThis.matchMedia = () => ({ matches: false })
+  try {
+    body()
+  } finally {
+    globalThis.matchMedia = reduced
+  }
+}`)
+
 // The opening deal itself is deferred to the next animation frame — the stage is
 // detached at mount and has no layout yet — and jsdom's own frames never run
 // inside a synchronous test body. Queueing the callbacks instead makes that frame
@@ -819,5 +847,166 @@ describe("TableScene autoplay", () => {
     expect(Render.toPlain(live(board).runCommand(Command.Autoplay)))->toBe(
       Command.autoplayNotFreeCell,
     )
+  })
+})
+
+// The victory cascade's wiring. The motion is `Cascade_test`'s, the mechanics
+// `CascadePlayer_test`'s and the pixels `browser-tests/cascade.spec.mjs`'s; what only
+// this file can show is **which wins play one** — the split between a game being won and
+// a victory being restored — and that every way out of a run still ends at the panel.
+describe("TableScene victory animation", () => {
+  let game = Game.freecell
+  let hasCascade = (container): bool => container->find(".table-cascade")->Option.isSome
+  let hasWinOverlay = (container): bool => container->find(".win-overlay")->Option.isSome
+
+  // A board one press of Finish away from a win, with the flag on and every flight
+  // collapsed to an instant placement — so the press wins the game without reaching an
+  // `Element.animate` jsdom hasn't got, and the cascade decides on its own merits.
+  let winnable = (~victoryAnimation=true, ~board=ref(None), container) => {
+    let scene = TableScene.make(
+      ~initial=Scenario.freecellFinish(game),
+      ~newDeal=() => Game.freecellDeal(~seed=7),
+      ~publish=published => board := Some(published),
+      ~victoryAnimation=ref(victoryAnimation),
+      ~skipDealAnimation=true,
+      game,
+    )
+    let teardown = scene.mount(container)
+    // The cascade falls the cards the *nodes* are resting on, and those don't exist
+    // until the deferred opening deal has run.
+    flushFrames()
+    teardown
+  }
+
+  // Win the board, with the OS answering that movement is welcome — which is the state
+  // the flag is a question about. It has to wrap the press rather than the mount: the
+  // preference is read at the moment the game is won.
+  let playWin = container =>
+    withMotionAllowed(() => container->find(".finish-button")->Option.getOrThrow->click)
+
+  // A tap on the canvas, as a finger delivers it: the skip is a `pointerdown` listener
+  // rather than a click, so the celebration ends on the press.
+  let tap = el =>
+    el->dispatchEvent(makeEvent("pointerdown", {"bubbles": true, "cancelable": true}))->ignore
+
+  test("wins quietly when the flag is off", () => {
+    // The default, and so what every other suite in this file is testing against: the
+    // panel goes up on the winning move with nothing in front of it.
+    let container = host("div")
+    let teardown = winnable(~victoryAnimation=false, container)
+    playWin(container)
+    expect(hasCascade(container))->toBe(false)
+    expect(hasWinOverlay(container))->toBe(true)
+    teardown()
+  })
+
+  test("plays the cascade in front of the panel when the flag is on", () => {
+    // The whole point of the flag: the win is real and recorded, but the panel waits
+    // behind a canvas full of falling cards.
+    let container = host("div")
+    let teardown = winnable(container)
+    playWin(container)
+    expect(hasCascade(container))->toBe(true)
+    expect(hasWinOverlay(container))->toBe(false)
+    teardown()
+  })
+
+  test("skips to the panel on a tap", () => {
+    // Tap-to-skip has to work from the moment the win lands, not from the first card:
+    // the canvas is up while the sprite sheet is still building, which is exactly the
+    // window a slow build would otherwise read as a hang.
+    let container = host("div")
+    let teardown = winnable(container)
+    playWin(container)
+    container->find(".table-cascade")->Option.getOrThrow->tap
+    expect(hasCascade(container))->toBe(false)
+    expect(hasWinOverlay(container))->toBe(true)
+    teardown()
+  })
+
+  test("skips straight to the panel under reduced motion", () => {
+    // Winning without `withMotionAllowed`, so the file's own stub answers: the OS is
+    // asking for less movement, and a cascade is nothing but movement. The same answer
+    // the flag being off gives, reached by a different route.
+    let container = host("div")
+    let teardown = winnable(container)
+    container->find(".finish-button")->Option.getOrThrow->click
+    expect(hasCascade(container))->toBe(false)
+    expect(hasWinOverlay(container))->toBe(true)
+    teardown()
+  })
+
+  test("never replays it for a victory restored from storage", () => {
+    // Reopening a game finished days ago is not a game being won. The panel comes back
+    // as it always did, with no cascade in front of it and nothing to skip.
+    let (won, _moved) = Reducer.finishSequence(~game, Scenario.freecellAlmostWon(game))
+    let container = host("div")
+    let teardown = ref(() => ())
+    withMotionAllowed(
+      () => {
+        let scene = TableScene.make(
+          ~loadHistory=() => Some(SaveState.ofHistory(History.make(won))),
+          ~victoryAnimation=ref(true),
+          ~skipDealAnimation=true,
+          game,
+        )
+        teardown := scene.mount(container)
+      },
+    )
+    expect(hasCascade(container))->toBe(false)
+    expect(hasWinOverlay(container))->toBe(true)
+    teardown.contents()
+  })
+
+  test("undoing out of the victory ends the run", () => {
+    // A win is undoable, so a cascade is interruptible from underneath. The canvas goes
+    // with the victory it was celebrating — left up it would paint a trail over a board
+    // that is being played again.
+    let container = host("div")
+    let board = ref(None)
+    let teardown = winnable(~board, container)
+    playWin(container)
+    expect(hasCascade(container))->toBe(true)
+    live(board).undo()
+    expect(hasCascade(container))->toBe(false)
+    expect(hasWinOverlay(container))->toBe(false)
+    teardown()
+  })
+
+  test("a New Game ends a run the board it replaces was playing", () => {
+    let container = host("div")
+    let board = ref(None)
+    let teardown = winnable(~board, container)
+    playWin(container)
+    expect(hasCascade(container))->toBe(true)
+    (live(board).newGame->Option.getOrThrow)()
+    expect(hasCascade(container))->toBe(false)
+    teardown()
+  })
+
+  test("tearing the scene down ends the run", () => {
+    // The switcher clears the container anyway; what this pins is that the *scene*
+    // takes the canvas down itself, because the frame loop and the window listener
+    // behind it are not in the container to be cleared.
+    let container = host("div")
+    let teardown = winnable(container)
+    playWin(container)
+    expect(hasCascade(container))->toBe(true)
+    teardown()
+    expect(hasCascade(container))->toBe(false)
+  })
+
+  testAsync("raises the panel anyway when the sprite sheet never arrives", async () => {
+    // The failure this file's stubs guarantee: `CardRaster.build` rejects, and a won
+    // game must never be held up by its celebration failing to load. The rejection
+    // lands a tick later, and the panel with it.
+    let container = host("div")
+    let teardown = winnable(container)
+    playWin(container)
+    expect(hasWinOverlay(container))->toBe(false)
+    await nextTick()
+    expect(hasCascade(container))->toBe(false)
+    expect(hasWinOverlay(container))->toBe(true)
+    teardown()
   })
 })

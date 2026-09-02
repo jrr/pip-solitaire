@@ -265,6 +265,19 @@ type winShare = {
   share: (~moves: int, ~undos: int) => promise<string>,
 }
 
+// A victory cascade in flight, and everything ending one has to reach. Held at *mount*
+// scope, because a run outlives the build that started it: an undo, a New Game, or a
+// scene switch can all land while cards are still falling, and each has to be able to
+// take the canvas down, stop the loop, and put back the cards the run hid.
+//
+// `reveal` closes over the build's own card nodes, which is why the run carries it rather
+// than the mount re-deriving it from a board that may since have been replaced.
+type cascadeRun = {
+  player: CascadePlayer.t,
+  canvas: WebDom.element,
+  reveal: unit => unit,
+}
+
 // The design footprints, the fits they feed, and the hit-test that compares the
 // rects — all of it arithmetic over rects and counts, and all of it in
 // `TableLayout`; `docs/board-geometry.md` derives it. Referenced by name
@@ -484,9 +497,13 @@ let make = (
   ~currentDeal: unit => option<int>=() => None,
   // Omitted, the win overlay is the New Game button alone.
   ~winShare: option<winShare>=?,
-  // Both read *live*, so a menu toggle lands without rebuilding the board.
+  // All three read *live*, so a menu toggle lands without rebuilding the board.
   ~options: ref<Options.t>=ref(Options.default),
   ~tiltEnabled: ref<bool>=ref(true),
+  // The hidden "Victory animation" flag. Read at the moment a game is won, so flipping
+  // it mid-game decides what *this* win does — and a board built by a test or a demo
+  // wins quietly, which is what keeps every other suite here free of a sprite build.
+  ~victoryAnimation: ref<bool>=ref(false),
   // Drops the cards straight into their resting places — the URL's `?animate=off`, for
   // a shot of the already-dealt board. The layout is identical either way; only the
   // cosmetic flight is suppressed, as "reduce motion" already does. **Its name is
@@ -518,6 +535,25 @@ let make = (
       outstandingAnimations.contents->Array.forEach(cancel)
       outstandingAnimations := []
     }
+
+    // The victory cascade, if one is falling. Mount scope for the same reason the
+    // flights above are: a run started by one build can still be in the air when an
+    // undo, a re-deal or a scene teardown arrives, and every one of those has to be able
+    // to end it.
+    let cascade: ref<option<cascadeRun>> = ref(None)
+    // Stop the loop, take the canvas off the board, and put back the cards the run hid
+    // as it launched them — in that order, so nothing is drawn onto a surface that is
+    // about to be removed. Says nothing about the win: raising the panel is
+    // `celebrate`'s, and a teardown wants the cascade gone *without* one.
+    let endCascade = () =>
+      switch cascade.contents {
+      | Some(run) =>
+        cascade := None
+        CascadePlayer.detach(run.player)
+        WebDom.remove(run.canvas)
+        run.reveal()
+      | None => ()
+      }
 
     // An autoplay in progress is the one thing on this board that spans several
     // *moves*: it commits each planned move as its own undoable step, flies the cards,
@@ -607,6 +643,10 @@ let make = (
       // line, which the cancelled flight would otherwise hand straight on to.
       cancelOutstanding()
       interruptPlay()
+      // A cascade celebrating the board being replaced goes with it — its canvas hangs
+      // off the playfield the clear below drops, but its frame loop and its window
+      // listener don't, and neither would notice the board had gone.
+      endCascade()
       WebDom.clear(boardHost)
       // One line covering every rebuild — the opening deal, a New Game, a Restart, a
       // debug-states load — since all of them pass through here.
@@ -1092,6 +1132,148 @@ let make = (
         | None => ()
         }
 
+      // --- The victory cascade --------------------------------------------------
+      // The Windows 3.1 payoff: the foundations give their cards up one at a time and
+      // each one bounces its way off the table, leaving a trail behind it. The motion,
+      // the sprite sheet, the frame loop and the resize policy are all
+      // `CascadePlayer`'s — `docs/cascade.md` is the model. What belongs *here* is the
+      // board's half: which cards fall, from where, and every way a run can end.
+
+      // The one exit every cascade takes, however it got there — it emptied the
+      // foundations, a tap skipped it, a resize wiped the surface, the sprites never
+      // arrived. The panel is the point; the cascade is only what plays in front of it.
+      let finishCascade = () => {
+        endCascade()
+        showWin()
+      }
+
+      // Each foundation as the cascade needs it: where its cards fall from, in
+      // card-widths, paired with the cards themselves. The seat is the resting spot of
+      // the pile's own top card — a Squared pile draws every card it holds on that one
+      // spot, so one reading serves the whole pile, and it is the pixel the DOM has
+      // been drawing there, so a sprite takes over exactly where its node left off.
+      let foundationPiles = () => {
+        let cardWidth = TableLayout.cardW *. scale.contents
+        game.piles
+        ->Array.mapWithIndex((pile: Game.pile, index) => (pile.role, index))
+        ->Array.filterMap(((role, index)) =>
+          switch role {
+          | Game.Cascade | Game.FreeCell => None
+          | Game.Foundation =>
+            let cards = GameState.cardsInPile(state(), index)
+            // An empty foundation has nothing to give up, and no node to read a seat
+            // off either — so it contributes neither cards nor a seat, rather than a
+            // seat nothing ever launches from.
+            cards
+            ->Array.at(-1)
+            ->Option.flatMap(nodeFor)
+            ->Option.map(node => (
+              (node.x.contents /. cardWidth, node.y.contents /. cardWidth),
+              cards,
+            ))
+          }
+        )
+      }
+
+      // The deck in the order a won game gives it up: King first, one pile at a time,
+      // round-robin. **That round-robin is what seats each card**: `Cascade` launches
+      // card `i` from seat `i mod seats`, so taking the piles in the same turn is what
+      // makes a card fall from the foundation it was resting on. A won board gives
+      // every foundation the same depth, which is what keeps the two in step.
+      let cascadeOrder = piles => {
+        let depth = piles->Array.reduce(0, (m, (_, cards)) => Math.Int.max(m, Array.length(cards)))
+        let ordered = []
+        for slot in depth - 1 downto 0 {
+          piles->Array.forEach(((_, cards)) =>
+            switch cards[slot] {
+            | Some(card) => ordered->Array.push(card)
+            | None => ()
+            }
+          )
+        }
+        ordered
+      }
+
+      // Raise the cascade over the live board. The canvas covers the *playfield*, not
+      // the board host, so it shares an origin with the cards' own left/top and a
+      // flight starts at the very pixel its node was resting on — no conversion to get
+      // wrong. It layers above the cards and below the panel it ends with
+      // (`.table-cascade` in `TableScene.css`).
+      //
+      // **It takes pointer events**, which is the one way it differs from the demo
+      // scene's overlay: a tap anywhere skips to the panel. It is in the DOM from the
+      // moment the win lands rather than from the first card, so a tap lands during the
+      // sprite build too — otherwise a slow first build reads as a hang on the most
+      // emotionally loaded screen in the app.
+      let startCascade = () => {
+        let piles = foundationPiles()
+        let canvas = Canvas.make()
+        let canvasEl = Canvas.element(canvas)
+        canvasEl->WebDom.setAttribute("class", "table-cascade")
+        playfield->WebDom.appendChild(canvasEl)->ignore
+
+        // The nodes the run has hidden, so ending it anywhere puts every one of them
+        // back — an undo mid-cascade returns to a board with all its cards on it.
+        let flown: array<card> = []
+        let reveal = () =>
+          flown->Array.forEach(c => classList(c.wrapper)->removeClass("stacking-card--flown"))
+
+        let player = CascadePlayer.attach(
+          ~canvas,
+          ~options={
+            ...CascadePlayer.defaults,
+            cards: Some(cascadeOrder(piles)),
+            // The deal the board is showing, so one game's victory always falls the
+            // same way; a board with no number to name takes the demo's own seed.
+            seed: currentDeal()->Option.getOr(CascadePlayer.defaults.seed),
+            cardWidth: TableLayout.cardW *. scale.contents,
+            launchpad: CascadePlayer.At(piles->Array.map(((seat, _)) => seat)),
+          },
+          // Hide each card as its copy leaves, so the foundation empties under the
+          // cascade rather than sitting full behind it.
+          ~onLaunch=card =>
+            nodeFor(card)->Option.forEach(c => {
+              flown->Array.push(c)
+              classList(c.wrapper)->addClass("stacking-card--flown")
+            }),
+          ~onChange=status =>
+            switch status.phase {
+            // The three ways a run stops without being skipped, and they all end the
+            // same: the last card left, a resize wiped the surface (rescaling a painted
+            // trail isn't worth it), or the sprite sheet never arrived. **A failed
+            // build degrades rather than throwing** — a won game must never be held up
+            // by its celebration failing to load.
+            | CascadePlayer.Settled | Interrupted | Failed(_) => finishCascade()
+            | Building | Running | Posed => ()
+            },
+        )
+        canvasEl->WebDom.addEventListener("pointerdown", finishCascade)
+        cascade := Some({player, canvas: canvasEl, reveal})
+        CascadePlayer.start(player)
+      }
+
+      // **A win as it happens**, as against one restored from storage — which is the
+      // whole distinction between this and the bare `showWin` below it. Three things
+      // send a live win down the quiet path anyway: the hidden flag is off, the OS asks
+      // for reduced motion, or a panel is already up. All three land on the same
+      // `showWin` the cascade itself ends with.
+      let celebrate = () =>
+        switch cascade.contents {
+        // Already celebrating. Every call site guards on `Session.hasWon`, so this only
+        // catches a second ask about the *same* win — which is one cascade, not two.
+        | Some(_) => ()
+        | None =>
+          if (
+            winShown.contents ||
+            !victoryAnimation.contents ||
+            matchMedia("(prefers-reduced-motion: reduce)")["matches"]
+          ) {
+            showWin()
+          } else {
+            startCascade()
+          }
+        }
+
       let reportHistory = () =>
         switch onHistory {
         | Some(f) => f(Session.canUndo(session.contents))
@@ -1264,11 +1446,11 @@ let make = (
         DebugLog.line(Render.concat([[Render.plain("finish ")], Render.cardSpans(moved)]))
         afterChange()
         removeFinishButton()
-        // A staggered flight rather than an instant jump, so the win overlay lands only
+        // A staggered flight rather than an instant jump, so the celebration lands only
         // once the last card has arrived.
         animateFinish(moved, ~onDone=() =>
           if Session.hasWon(session.contents) {
-            showWin()
+            celebrate()
           }
         )
       }
@@ -1322,6 +1504,10 @@ let make = (
         // already committed either way, so nothing corrupts.)
         cancelOutstanding()
         interruptPlay()
+        // A cascade in the air belongs to a victory the step has just walked out of, so
+        // it ends with the rest of them — putting back every card it had already flung
+        // off the table.
+        endCascade()
         // …including the tilt timing a cut-short sweep left on its cards, or the
         // restored angles arrive on the dead sweep's schedule.
         clearTiltTimings()
@@ -1337,6 +1523,11 @@ let make = (
       //
       // **Symmetric in the win overlay, and it has to be**: undoing out of a victory
       // takes the panel down, and redoing back into the winning move raises it again.
+      //
+      // Raises it *quietly*, though — `showWin`, never `celebrate`. A step through
+      // history is a position being restored, not a game being won, and a cascade on
+      // every redo would make undo-then-redo a forty-second round trip through a
+      // celebration the player has already watched.
       let adoptRestored = () => {
         if !Session.hasWon(session.contents) {
           removeWinOverlay()
@@ -1385,10 +1576,10 @@ let make = (
         }
         animateCommand(Array.concat(moved, collected), ~onDone=() => {
           // A move that completes every foundation ends the game. Raised once the
-          // cards have landed, so the overlay is the payoff of the flight rather than
-          // something that beats it to the board.
+          // cards have landed, so the celebration is the payoff of the flight rather
+          // than something that beats it to the board.
           if Session.hasWon(session.contents) {
-            showWin()
+            celebrate()
           }
           updateFinishButton()
         })
@@ -1433,7 +1624,7 @@ let make = (
           if Session.canFinish(session.contents) {
             playFinish()->ignore
           } else if Session.hasWon(session.contents) {
-            showWin()
+            celebrate()
           }
         }
 
@@ -1696,7 +1887,7 @@ let make = (
               }
               reflowAll()
               if Session.hasWon(session.contents) {
-                showWin()
+                celebrate()
               }
               updateFinishButton()
             | _ => ()
@@ -1808,11 +1999,11 @@ let make = (
                 }
                 reflowAll()
 
-                // A move that completes every foundation ends the game: raise
-                // the win overlay following the accepted `reduce` (and any auto-collect
-                // that played the final cards).
+                // A move that completes every foundation ends the game: celebrate it
+                // following the accepted `reduce` (and any auto-collect that played the
+                // final cards).
                 if Session.hasWon(session.contents) {
-                  showWin()
+                  celebrate()
                 }
                 // Recompute the "Finish" button: a move can make the board
                 // drainable (show it) or, via auto-collect, no longer so (hide it).
@@ -2001,6 +2192,9 @@ let make = (
 
       // Come back to a won board: a resumed game saved in its victory state
       // opens with the win overlay already up, rather than a silently finished board.
+      // **Quietly** — `showWin`, not `celebrate`: this is a victory from storage,
+      // possibly days old, and replaying the cascade every time a finished game is
+      // reopened would be both wrong and unasked for.
       // Checked before the "Finish" button below so a completed board never offers to
       // finish itself. A fresh deal, a re-deal, or a `?state=` scenario is never
       // already won, so this only fires on a restored victory.
@@ -2123,14 +2317,20 @@ let make = (
       )
       observer->observe(boardHost)
       // The switcher clears the container on scene change, dropping the board host,
-      // the New Game control and every listener with them; the observer and the
-      // window-level shake listener are all that outlive the DOM, so tear both down
-      // here (the `devicemotion` subscription must be detached explicitly).
+      // the New Game control and every listener with them. What outlives the DOM is
+      // everything hung off `window` or a clock: the `devicemotion` subscription, a
+      // cascade's frame loop, its own resize listener and a sprite build still in
+      // flight, and this observer. Each has to be detached explicitly.
       () => {
         unsubscribeShake()
+        endCascade()
         observer->disconnect
       }
-    | None => () => unsubscribeShake()
+    | None =>
+      () => {
+        unsubscribeShake()
+        endCascade()
+      }
     }
   },
 }

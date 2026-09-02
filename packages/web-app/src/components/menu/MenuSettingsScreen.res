@@ -33,8 +33,8 @@ type props = {
   wiggle: Motion.state,
   onToggleWiggle: unit => unit,
   // "Victory animation" — a plain persisted flag, and the second of the hidden
-  // settings. Nothing plays off it yet: the switch stores the intent so the animation
-  // has a flag to read once there is one to play.
+  // settings. A win with it on plays the cascade before raising the panel; off, or
+  // under reduced motion, the panel goes up alone.
   victoryAnimation: bool,
   onToggleVictoryAnimation: unit => unit,
   // Whether the not-ready-yet settings are showing (`HiddenOptions`). Today that's the
