@@ -29,7 +29,7 @@ type props = {
   cardTilt: bool,
   onToggleCardTilt: unit => unit,
   // "Wiggle Waggle": not a bool — its `Motion.state` decides both the switch
-  // position and the problem-only subtitle (see `<MenuWiggleRow>`).
+  // position and which of the two lines the subtitle carries (see `<MenuWiggleRow>`).
   wiggle: Motion.state,
   onToggleWiggle: unit => unit,
   // "Victory animation" — a plain persisted flag, and the second of the hidden

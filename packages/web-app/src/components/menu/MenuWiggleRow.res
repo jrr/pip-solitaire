@@ -1,17 +1,19 @@
 // The "Wiggle Waggle" row: the shake-to-jostle switch.
 //
-// Unlike the plain `<MenuToggleRow>`, its label is title-cased and it deliberately
-// carries *no* description — the other settings explain themselves; finding out
-// what this one does is the point. That's why it's a component rather than a
-// `<MenuToggleRow>` call: the row's whole shape is decided by `Motion.state`
-// rather than by a bool plus a fixed line of copy.
+// It's a component rather than a `<MenuToggleRow>` call because the row's whole
+// shape is decided by `Motion.state` rather than by a bool plus a fixed line of
+// copy — and the description is the sharpest edge of that. Two things want the one
+// subtitle line, so they're ranked rather than concatenated:
 //
-// The subtitle line under the title appears *only* to report a problem
-// (`Motion.subtitle`): blocked, no sensor, or an insecure origin. A healthy switch
-// — off or listening — shows just the title and the switch, so `desc` is simply
-// absent in those states and `<MenuRow>` renders no description element at all.
+//   - a **problem** (`Motion.subtitle`): blocked, no sensor, or an insecure origin.
+//     It wins whenever there is one, because it's the only place a snap-back to off
+//     can explain itself — without it the switch reads as a dropped tap.
+//   - otherwise the **teaser**, which explains nothing on purpose. The other
+//     settings say what they do; finding out what this one does is the point, so the
+//     line asks the question rather than answering it.
+//
 // The switch reads on only while actually listening (`Motion.isOn`); a `Blocked`
-// state snaps it back to off but keeps its subtitle.
+// state snaps it back to off but keeps its problem subtitle.
 //
 // Whether the row shows at all is the *caller's* business — it's hidden until the
 // Settings title has been tapped ten times (`HiddenOptions`), which
@@ -23,10 +25,13 @@ type props = {
   onToggle: unit => unit,
 }
 
+// The line under the title when nothing is wrong: an invitation, not an explanation.
+let teaser = "What might this do?"
+
 let make = ({state, onToggle}) =>
   <MenuRow
     label="Wiggle Waggle"
-    desc=?{Motion.subtitle(state)}
+    desc={Motion.subtitle(state)->Option.getOr(teaser)}
     trailing={MenuRow.Switch(Motion.isOn(state))}
     onClick=onToggle
   />

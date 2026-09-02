@@ -15,13 +15,13 @@ let checked = row => row->attrOr("aria-checked")
 let isOn = row => row->classes->String.includes("menu-row--on")
 
 describe("MenuWiggleRow", () => {
-  test("is titled, and deliberately unexplained, while it's healthy", () => {
-    // The other settings explain themselves; finding out what this one does is the
-    // point, so a `desc` element here would give the game away.
+  test("is titled, and asks rather than explains, while it's healthy", () => {
+    // The other settings say what they do; this one poses the question instead, in
+    // both healthy states — the same line whether it's listening or not.
     let off = render(Motion.Off)
     expect(off->find(".menu-row__label")->Option.mapOr("", text))->toBe("Wiggle Waggle")
-    expect(off->subtitle)->toBe(None)
-    expect(render(Motion.On)->subtitle)->toBe(None)
+    expect(off->subtitle)->toBe(Some(MenuWiggleRow.teaser))
+    expect(render(Motion.On)->subtitle)->toBe(Some(MenuWiggleRow.teaser))
   })
 
   test("reads on only while it's actually listening", () => {
@@ -34,16 +34,25 @@ describe("MenuWiggleRow", () => {
   test("snaps back to off when the OS refuses — but says why", () => {
     let blocked = render(Motion.Blocked)
     expect(blocked->isOn)->toBe(false)
+    // The reason displaces the teaser rather than queueing behind it: the two share
+    // one line, and a snap-back still asking "what might this do?" reads as a
+    // dropped tap.
     expect(blocked->subtitle)->toBe(Motion.subtitle(Motion.Blocked))
-    // The reason has to be *something*, or the snap-back reads as a dropped tap.
-    expect(blocked->subtitle->Option.isSome)->toBe(true)
+    expect(blocked->subtitle == Some(MenuWiggleRow.teaser))->toBe(false)
   })
 
   test("explains a device or origin it can't even ask on", () => {
     // The subtitle is the only place a reason can surface: the switch itself just
-    // reads off, the same as a setting nobody has turned on.
-    expect(render(Motion.Unavailable(Motion.NoSensor))->subtitle->Option.isSome)->toBe(true)
-    expect(render(Motion.Unavailable(Motion.Insecure))->subtitle->Option.isSome)->toBe(true)
+    // reads off, the same as a setting nobody has turned on. So the teaser has to
+    // give way to it — a row that only ever asked "what might this do?" would leave
+    // an inert switch looking like a working one.
+    let states = [Motion.Unavailable(Motion.NoSensor), Motion.Unavailable(Motion.Insecure)]
+    states->Array.forEach(
+      state => {
+        expect(render(state)->subtitle)->toBe(Motion.subtitle(state))
+        expect(render(state)->subtitle == Some(MenuWiggleRow.teaser))->toBe(false)
+      },
+    )
   })
 
   test("asks to be toggled when tapped", () => {
