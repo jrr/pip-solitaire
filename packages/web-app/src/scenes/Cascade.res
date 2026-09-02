@@ -10,7 +10,9 @@
 // changes meaning between a 40px card on a phone and a 140px one on a desktop, and a
 // gravity in pixels/s² makes the small board's cascade a slow drift and the large
 // board's a plummet. `CascadePlayer` converts once, at the edge (`arenaOf`, and the
-// `cardWidth` it multiplies by when it draws).
+// `cardWidth` it multiplies by when it draws). Metres are the same bargain in the other
+// direction: a card-width *is* a length (`toMetric`), so a person can read the gravity
+// as m/s² — but the conversion sits at the edge a person meets, never in `step`.
 //
 // **The integration is `v += g·dt; p += v·dt`, and `dt` is clamped here** rather than
 // left to the caller. A frame's `dt` is whatever the display and the browser felt like
@@ -32,6 +34,28 @@
 // A card's height, in card-widths — the only proportion this module needs, and
 // `CardArt` is where the app keeps it.
 let cardHeight = CardArt.aspect
+
+// --- Card-widths as a length --------------------------------------------------
+
+// A card-width is 2.5 inches of real card (`CardArt.widthMetres`), which is what lets a
+// gravity in card-widths per second squared be read as one in m/s² — and *only* read as
+// one. The simulation stays in card-widths, because that is what makes it the same
+// motion at a 40px card and a 140px one; metres are how a person judges the number, so
+// the conversion belongs at the edge where a person meets it, next to `snapToDevice`
+// rather than inside `step`.
+//
+// Worth knowing before reaching for the slider: at the default gravity a card falls at
+// about a sixth of a g. Earth is `fromMetric(9.81)`, a shade over 154 card-widths per
+// second squared.
+let metresPerCardWidth = CardArt.widthMetres
+
+// Card-widths to metres, and back. Every quantity here is a length or a length per
+// second, so one pair covers speeds and accelerations alike.
+let toMetric = value => value *. metresPerCardWidth
+let fromMetric = value => value /. metresPerCardWidth
+
+// Earth's, for a scene that wants to say how far from it a setting is.
+let earthGravity = 9.80665
 
 // One card in flight: where it is, and how fast, in card-widths.
 type flyer = {card: Deck.card, x: float, y: float, vx: float, vy: float}
@@ -58,11 +82,16 @@ type knobs = {
 
 // A starting point to tune away from: a card falls the height of a stage in about
 // half a second, crosses it in two or three, and bounces four or five times on the way.
+//
+// **Written in the unit the sliders read them in**, so the scene opens on round numbers
+// rather than on whatever 26 card-widths per second squared comes to in metres. What
+// they come to here is a sixth of a g and a gentle toss — this is a slow-motion cascade,
+// and saying so in metres is the point of saying it in metres at all.
 let defaults = {
-  gravity: 26.,
+  gravity: fromMetric(1.65),
   bounciness: 0.62,
-  minSpeed: 3.,
-  maxSpeed: 7.,
+  minSpeed: fromMetric(0.2),
+  maxSpeed: fromMetric(0.45),
   launchMs: 200.,
 }
 

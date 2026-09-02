@@ -69,11 +69,26 @@ describe("the cascade scene, on an engine that can't draw", () => {
     ])
   })
 
+  let readout = (host, knob) =>
+    TestDom.textIn(host, `.cascade-knob[data-knob="${knob}"] .cascade-knob__value`)
+
   test("shows each knob's value, not just where its slider sits", () => {
     let (host, _) = mount()
     let gravity = TestDom.find(host, `input[data-knob="gravity"]`)->Option.getOrThrow
-    TestDom.typeInto(gravity, "40")
-    expect(TestDom.textIn(host, ".cascade-knob__value"))->toBe("40 cw/s²")
+    // Earth, which the slider reaches on purpose: a cascade that wants real gravity is
+    // a drag away rather than a rebuild away, and the share of a g is what says so.
+    TestDom.typeInto(gravity, "9.81")
+    expect(readout(host, "gravity"))->toBe("9.81 m/s² · 1 g")
+  })
+
+  test("opens on a sixth of a g, which is the fact metres are there to tell", () => {
+    // The cascade is slow motion, and the unit is what makes that legible rather than a
+    // number nobody can place. `Cascade.defaults` is written in metres for the same
+    // reason: what opens on screen is the number that was chosen.
+    let (host, _) = mount()
+    expect(readout(host, "gravity"))->toBe("1.65 m/s² · 0.17 g")
+    expect(readout(host, "slowest"))->toBe("0.2 m/s")
+    expect(readout(host, "fastest"))->toBe("0.45 m/s")
   })
 
   test("says what a deck at the launch interval costs, not just the interval", () => {
@@ -84,7 +99,7 @@ describe("the cascade scene, on an engine that can't draw", () => {
     let launch = TestDom.find(host, `input[data-knob="launchInterval"]`)->Option.getOrThrow
     expect(TestDom.attrOr(launch, "max"))->toBe("2000")
     TestDom.typeInto(launch, "2000")
-    expect(TestDom.textIn(host, ".cascade-knob__value--wide"))->toBe("2000 ms · 52 cards in 104s")
+    expect(readout(host, "launchInterval"))->toBe("2000 ms · 52 cards in 104s")
   })
 
   test("opens on the largest card its stage has room for", () => {

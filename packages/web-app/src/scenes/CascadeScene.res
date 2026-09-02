@@ -187,6 +187,9 @@ let make = (~mode=Live, ~seed as initialSeed=1): Scene.t => {
     // along the row.
     let knob = (~label, ~min, ~max, ~step, ~value, ~format, ~onChange, ~wide=false) => {
       let row = el("label", "cascade-knob")
+      // On the row as well as the input, so a reader — a test, or an eye down the
+      // list — can name a knob's *readout* rather than counting rows to it.
+      row->WebDom.setAttribute("data-knob", label)
       let name = el("span", "cascade-knob__label")
       name->WebDom.setTextContent(label)
       let input = WebDom.createElement("input")
@@ -214,14 +217,21 @@ let make = (~mode=Live, ~seed as initialSeed=1): Scene.t => {
       )
     }
 
+    // Gravity, in the unit gravity is quoted in. A card-width is 2.5 inches of card
+    // (`Cascade.metresPerCardWidth`), so the physics' card-widths per second squared is
+    // an acceleration like any other and there is no reason to make anyone read it in
+    // card-widths. The share of a g rides along because it is the only number that says
+    // *how far from real* a setting is at a glance, and this scene is where that is
+    // decided: 9.81 is on the slider, a drag away, rather than a rebuild away.
     knob(
       ~label="gravity",
-      ~min=4.,
-      ~max=80.,
-      ~step=1.,
-      ~value=knobs.contents.gravity,
-      ~format=value => `${tenth(value)} cw/s²`,
-      ~onChange=value => knobs := {...knobs.contents, gravity: value},
+      ~min=0.2,
+      ~max=12.,
+      ~step=0.05,
+      ~value=Cascade.toMetric(knobs.contents.gravity),
+      ~wide=true,
+      ~format=value => `${hundredth(value)} m/s² · ${hundredth(value /. Cascade.earthGravity)} g`,
+      ~onChange=value => knobs := {...knobs.contents, gravity: Cascade.fromMetric(value)},
     )
     knob(
       ~label="bounciness",
@@ -235,36 +245,34 @@ let make = (~mode=Live, ~seed as initialSeed=1): Scene.t => {
       ~format=hundredth,
       ~onChange=value => knobs := {...knobs.contents, bounciness: value},
     )
-    knob(
-      ~label="slowest",
-      ~min=0.,
-      ~max=12.,
-      ~step=0.1,
-      ~value=knobs.contents.minSpeed,
-      ~format=value => `${tenth(value)} cw/s`,
-      // The range is a range: dragging one end past the other would otherwise ask for
-      // a negative span, which `Cascade.spawn` floors at zero — a silent collapse to a
-      // single speed rather than the two ends swapping visibly.
-      ~onChange=value =>
-        knobs := {
-            ...knobs.contents,
-            minSpeed: value,
-            maxSpeed: Math.max(knobs.contents.maxSpeed, value),
-          },
+    // The two ends of the sideways throw, in metres per second for the same reason as
+    // gravity — and they have to move with it. Falling three times faster and being
+    // thrown no harder is a cascade that lands in a heap under the foundations, so a
+    // range that reaches earth gravity has to reach a throw that crosses a table: 3 m/s
+    // is about a card flicked hard, and roughly what 9.81 wants.
+    let speedKnob = (~label, ~value, ~onChange) =>
+      knob(
+        ~label,
+        ~min=0.,
+        ~max=3.,
+        ~step=0.05,
+        ~value=Cascade.toMetric(value),
+        ~format=value => `${hundredth(value)} m/s`,
+        ~onChange=value => onChange(Cascade.fromMetric(value)),
+      )
+    speedKnob(~label="slowest", ~value=knobs.contents.minSpeed, ~onChange=value =>
+      knobs := {
+          ...knobs.contents,
+          minSpeed: value,
+          maxSpeed: Math.max(knobs.contents.maxSpeed, value),
+        }
     )
-    knob(
-      ~label="fastest",
-      ~min=0.,
-      ~max=12.,
-      ~step=0.1,
-      ~value=knobs.contents.maxSpeed,
-      ~format=value => `${tenth(value)} cw/s`,
-      ~onChange=value =>
-        knobs := {
-            ...knobs.contents,
-            maxSpeed: value,
-            minSpeed: Math.min(knobs.contents.minSpeed, value),
-          },
+    speedKnob(~label="fastest", ~value=knobs.contents.maxSpeed, ~onChange=value =>
+      knobs := {
+          ...knobs.contents,
+          maxSpeed: value,
+          minSpeed: Math.min(knobs.contents.minSpeed, value),
+        }
     )
     // The interval between two cards, and what a deck of them costs: one card per
     // interval is the whole cascade's length, and at the top of this range that is most
@@ -356,9 +364,15 @@ let make = (~mode=Live, ~seed as initialSeed=1): Scene.t => {
               }
               `seed ${Int.toString(seed.contents)} · ` ++
               `${whole(cardWidth.contents)}px card @${hundredth(built.pixelRatio)}× · ` ++
+              // The arena three ways: what the browser laid out, what the physics sees,
+              // and how big a table that is. The last one is what makes a gravity in
+              // m/s² mean anything — 1.65 across a third of a metre is a different
+              // picture from 1.65 across a room.
               `stage ${whole(state.cssWidth)}×${whole(state.cssHeight)} css = ${tenth(
                   state.stage.width,
-                )}×${tenth(state.stage.height)} cards · ` ++
+                )}×${tenth(state.stage.height)} cards = ${hundredth(
+                  Cascade.toMetric(state.stage.width),
+                )}×${hundredth(Cascade.toMetric(state.stage.height))} m · ` ++
               `${counts} · ${pace}`
             },
           )
