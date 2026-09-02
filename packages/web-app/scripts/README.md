@@ -26,7 +26,7 @@ imports the shared browser boot from `lib/`.
 | `generate/icons.mjs` | `mise run icons` | `public/*.png` — the PWA icons, composed from the real `CardArt` cards and rasterized |
 | `generate/og-image.mjs` | `mise run og-image` | `public/og-image.png` — the link-preview crop of a rendered mid-game board |
 | `dev-smoke.mjs` | `mise run dev-smoke` | nothing — it boots the dev server, loads the app in a browser, and fails if either the page or the server complains (see the file for why the build's green suite can't cover this) |
-| `screenshots/render.mjs` | `mise run screenshots` | `screenshots/` — the report: FreeCell scenes (plus the card-raster fidelity sheet) × emulated devices × orientation, and an `index.html` contact sheet |
+| `screenshots/render.mjs` | `mise run screenshots` | `screenshots/` — the report: FreeCell scenes (plus the card-raster fidelity sheet and the posed cascade) × emulated devices × orientation, and an `index.html` contact sheet |
 | `screenshots/stage.mjs` | `mise run stage-screenshots -- <dir> <stamp>` | a local staging dir for `peaceiris/actions-gh-pages` to publish |
 | `screenshots/hub.mjs` | `mise run screenshots-hub -- <dir>` | `<dir>/index.html` — the `/screenshots/` hub listing every published report |
 | `autoplay/play.mjs` | `mise run autoplay -- <seed…>` | nothing on disk — a game played to the win overlay, and a play-by-play on stdout (`--shots <dir>` also writes screenshots) |

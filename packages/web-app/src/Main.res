@@ -826,6 +826,10 @@ let switcher = SceneSwitcher.render(
       // Step two of the same animation: the overlay mechanics — a
       // transparent canvas over real cards, and the DOM→canvas hand-off.
       TrailScene.make(),
+      // Step three: the motion itself, with the feel on sliders. `?cascade=pose`
+      // freezes it at a fixed frame, and `?seed=` — the same deal number a board
+      // reads — is what the cascade replays.
+      CascadeScene.make(~mode=?url.cascade, ~seed=?url.seed),
       MotionScene.make(),
     ],
     Game.all->Array.map(gameScene),

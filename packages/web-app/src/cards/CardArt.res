@@ -23,6 +23,8 @@ let cornerR = 12.
 let viewBox = `0 0 ${boxW->Float.toString} ${boxH->Float.toString}`
 let aspect = boxH /. boxW
 
+let widthMetres = 0.0635 // 2.5" to m
+
 // The radius of the frame's *path*. The stroke is centred on it and extends half its
 // width further out, so the painted outer corner is marginally rounder; boxes that
 // trace the card match the path.

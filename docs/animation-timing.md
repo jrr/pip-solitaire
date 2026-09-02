@@ -138,6 +138,17 @@ The model is already committed before any of this runs — a flight is a purely
 it is always safe, and undo and persistence stay correct however a sequence is
 interrupted.
 
+## What this model is not for
+
+The victory cascade (`scenes/Cascade`) launches cards one at a time too, and it is
+**not** a staggered flight. Every number above exists because a flight has a
+*destination*: `T` is when the last card lands, `t` is how long one takes to get
+where it belongs, and `C` trades one against the other. A cascading card has no
+destination — it falls, bounces, and leaves the stage whenever its own speed takes
+it there — so there is no `T` to divide up, and its launch interval is a plain
+interval on the clock rather than a `Δ` derived from anything. Conforming it to
+this page would mean inventing a landing for it.
+
 ## Before you retune
 
 1. **Change the pair, not the derivation.** If a sequence feels wrong, it's C or
