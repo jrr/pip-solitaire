@@ -94,7 +94,7 @@ describe("the cascade scene, on an engine that can't draw", () => {
   test("says what band a ± makes, rather than leaving it to be worked out", () => {
     let (host, _) = mount()
     expect(readout(host, "speedVariance"))->toBe("± 0.1 · 0.3–0.5 m/s")
-    expect(readout(host, "bouncinessVariance"))->toBe("± 0.1 · 0.65–0.85")
+    expect(readout(host, "bouncinessVariance"))->toBe("± 0.15 · 0.65–0.95")
   })
 
   test("and moves that band when the value under it moves, not only when ± does", () => {

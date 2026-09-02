@@ -100,8 +100,8 @@ type knobs = {
 // metres is the point of saying it in metres at all.
 let defaults = {
   gravity: fromMetric(4.),
-  bounciness: 0.75,
-  bouncinessVariance: 0.1,
+  bounciness: 0.8,
+  bouncinessVariance: 0.15,
   speed: fromMetric(0.4),
   speedVariance: fromMetric(0.1),
   launchMs: 750.,
