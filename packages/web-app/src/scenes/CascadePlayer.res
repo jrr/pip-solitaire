@@ -87,7 +87,7 @@ let defaults = {
   cardWidth: 90.,
   launchpad: Spread(4),
   knobs: Cascade.defaults,
-  stampMs: 32.,
+  stampMs: 16.,
   snap: true,
 }
 

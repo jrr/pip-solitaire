@@ -65,10 +65,14 @@ let fitCardSize = (~stageWidth) =>
   ->Array.at(-1)
   ->Option.getOr(cardSizes->Array.getUnsafe(0))
 
-// How far a posed cascade is run. Far enough that a dozen cards have launched and the
-// first trails have crossed the stage; short enough that the trails are still arcs
-// rather than a stage painted white, which is what the picture is for.
-let poseSeconds = 3.5
+// How far a posed cascade is run, **in cards rather than in seconds**. A still wants a
+// stage with a certain amount on it — enough that the trails have crossed and started
+// to overlap, short of the point where they paint it white — and that is a number of
+// cards, not an elapsed time. Counting in seconds meant a still that emptied out the
+// moment the launch interval was dragged, since the same 3.5s went from eighteen cards
+// to five.
+let poseCards = 16.
+let poseSeconds = (knobs: Cascade.knobs) => poseCards *. knobs.launchMs /. 1000.
 
 // --- The mode ----------------------------------------------------------------
 
@@ -156,7 +160,7 @@ let make = (~mode=Live, ~seed as initialSeed=1): Scene.t => {
     let perform = () =>
       switch mode {
       | Live => CascadePlayer.start(player)
-      | Pose => CascadePlayer.pose(player, ~seconds=poseSeconds)
+      | Pose => CascadePlayer.pose(player, ~seconds=poseSeconds(knobs.contents))
       }
 
     // ---- Controls ----
@@ -354,7 +358,7 @@ let make = (~mode=Live, ~seed as initialSeed=1): Scene.t => {
                   )} launched · ` ++
                 `${Int.toString(Array.length(state.run.flying))} in flight`
               let pace = switch state.phase {
-              | Posed => `posed at ${tenth(poseSeconds)}s`
+              | Posed => `posed at ${tenth(poseSeconds(knobs.contents))}s`
               | Interrupted => "resized — the run ended, the store was wiped"
               | Building
               | Failed(_)
@@ -366,8 +370,8 @@ let make = (~mode=Live, ~seed as initialSeed=1): Scene.t => {
               `${whole(cardWidth.contents)}px card @${hundredth(built.pixelRatio)}× · ` ++
               // The arena three ways: what the browser laid out, what the physics sees,
               // and how big a table that is. The last one is what makes a gravity in
-              // m/s² mean anything — 1.65 across a third of a metre is a different
-              // picture from 1.65 across a room.
+              // m/s² mean anything — 4 across a third of a metre is a different picture
+              // from 4 across a room.
               `stage ${whole(state.cssWidth)}×${whole(state.cssHeight)} css = ${tenth(
                   state.stage.width,
                 )}×${tenth(state.stage.height)} cards = ${hundredth(

@@ -81,14 +81,14 @@ describe("the cascade scene, on an engine that can't draw", () => {
     expect(readout(host, "gravity"))->toBe("9.81 m/s² · 1 g")
   })
 
-  test("opens on a sixth of a g, which is the fact metres are there to tell", () => {
+  test("opens on four tenths of a g, which is the fact metres are there to tell", () => {
     // The cascade is slow motion, and the unit is what makes that legible rather than a
     // number nobody can place. `Cascade.defaults` is written in metres for the same
     // reason: what opens on screen is the number that was chosen.
     let (host, _) = mount()
-    expect(readout(host, "gravity"))->toBe("1.65 m/s² · 0.17 g")
-    expect(readout(host, "slowest"))->toBe("0.2 m/s")
-    expect(readout(host, "fastest"))->toBe("0.45 m/s")
+    expect(readout(host, "gravity"))->toBe("4 m/s² · 0.41 g")
+    expect(readout(host, "slowest"))->toBe("0.3 m/s")
+    expect(readout(host, "fastest"))->toBe("0.5 m/s")
   })
 
   test("says what a deck at the launch interval costs, not just the interval", () => {

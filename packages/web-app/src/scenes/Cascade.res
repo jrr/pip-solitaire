@@ -45,8 +45,8 @@ let cardHeight = CardArt.aspect
 // rather than inside `step`.
 //
 // Worth knowing before reaching for the slider: at the default gravity a card falls at
-// about a sixth of a g. Earth is `fromMetric(9.81)`, a shade over 154 card-widths per
-// second squared.
+// about four tenths of a g. Earth is `fromMetric(9.81)`, a shade over 154 card-widths
+// per second squared.
 let metresPerCardWidth = CardArt.widthMetres
 
 // Card-widths to metres, and back. Every quantity here is a length or a length per
@@ -80,19 +80,21 @@ type knobs = {
   launchMs: float, // between one card leaving and the next
 }
 
-// A starting point to tune away from: a card falls the height of a stage in about
-// half a second, crosses it in two or three, and bounces four or five times on the way.
+// Tuned by dragging the sliders in `CascadeScene` until it looked right, which is what
+// that scene is for. On a desktop stage a card falls its height in about four tenths of
+// a second, takes two to cross, and bounces half a dozen times on the way — a card at a
+// time, three quarters of a second apart, so the deck is most of a minute.
 //
-// **Written in the unit the sliders read them in**, so the scene opens on round numbers
-// rather than on whatever 26 card-widths per second squared comes to in metres. What
-// they come to here is a sixth of a g and a gentle toss — this is a slow-motion cascade,
-// and saying so in metres is the point of saying it in metres at all.
+// **Written in the unit the sliders read them in**, so the scene opens on the numbers
+// that were chosen rather than on whatever they come to in card-widths. What they come
+// to is four tenths of a g and a gentle toss: this is slow motion, and saying so in
+// metres is the point of saying it in metres at all.
 let defaults = {
-  gravity: fromMetric(1.65),
-  bounciness: 0.62,
-  minSpeed: fromMetric(0.2),
-  maxSpeed: fromMetric(0.45),
-  launchMs: 200.,
+  gravity: fromMetric(4.),
+  bounciness: 0.75,
+  minSpeed: fromMetric(0.3),
+  maxSpeed: fromMetric(0.5),
+  launchMs: 750.,
 }
 
 // A run in progress. `cards` is the launch order and never changes; `launched` is how
