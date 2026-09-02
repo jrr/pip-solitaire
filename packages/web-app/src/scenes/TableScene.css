@@ -441,11 +441,13 @@
      animates the snap-into-place on drop, and is switched off while dragging
      (below) so the card tracks the pointer without lag.
 
-     `translateZ(0)` forces the card onto its own compositing layer. Without
-     it, WebKit (Safari) doesn't invalidate the old `drop-shadow` region as
-     the card is repositioned via left/top, so the shadow smears into a trail
-     of ghosts behind the moving card. On its own layer the whole card —
-     shadow included — is repainted each frame, and the trail disappears.
+     `translateZ(0)` gives every card its own compositing layer, and it is
+     **load-bearing for the frame rate**, not a tidiness flourish: a card moved
+     by left/top with nothing promoted repaints itself *and* the fan it
+     uncovers, which is a screenful of SVG text every frame. Don't drop it, and
+     don't try to promote only the card in hand — the cards it slides over are
+     the ones that then repaint. Both are measured in
+     docs/card-compositing.md, which is also where the shadow below is argued.
 
      The stacking order (`z-index`) is set imperatively in TableScene.res:
      a monotonic counter bumped on create/grab/drop, so the most-recently
@@ -465,19 +467,6 @@
     cursor: grab;
     transform: translateZ(0);
     transition: left 0.18s ease, top 0.18s ease;
-    /* Two shadows, because a cascade fans *downward*: each card covers the
-       one before it, so the edge you actually look at is the top edge of the
-       covering card, and a shadow that only falls below it would be hidden
-       under the next card. The first is a tight contact shadow with no
-       offset — it darkens all four edges, which is the one that separates
-       overlapping faces. The second is the drop proper, small and soft, and
-       lifts the card off the table. Both are deliberately tiny — a blur
-       wider than a couple of pixels stops drawing the covering card's edge
-       and just greys the face beneath it, which is most of a cascade. The
-       card frame itself is a hairline now (`CardArt.strokeW`) — these carry
-       the separation the thick pale stroke used to attempt. */
-    filter: drop-shadow(0 0 1px rgba(15, 23, 42, 0.55))
-      drop-shadow(0 1px 2px rgba(15, 23, 42, 0.4));
   }
 
   /* The hand-placed tilt — see docs/card-tilt.md. Three rules here, each
@@ -497,6 +486,27 @@
     transform: rotate(var(--card-rot, 0deg));
     transform-origin: 50% 50%;
     transition: transform var(--card-rot-dur, 0.18s) ease var(--card-rot-delay, 0s);
+    /* Two shadows, because a cascade fans *downward*: each card covers the
+       one before it, so the edge you actually look at is the top edge of the
+       covering card, and a shadow that only falls below it would be hidden
+       under the next card. The first is a tight contact shadow with no
+       offset — it darkens all four edges, which is the one that separates
+       overlapping faces. The second is the drop proper, small and soft, and
+       lifts the card off the table. Both are deliberately tiny — a blur
+       wider than a couple of pixels stops drawing the covering card's edge
+       and just greys the face beneath it, which is most of a cascade. The
+       card frame itself is a hairline (`CardArt.strokeW`) — these carry
+       the separation the thick pale stroke used to attempt.
+
+       **A box-shadow, and on the art rather than the wrapper.** `drop-shadow()`
+       reads the layer's alpha, so it needs a render surface per card — 52 of
+       them, re-composited every frame a single card moves, which is most of
+       what a slow Chromebook spends a drag on (docs/card-compositing.md). The
+       card is an opaque rounded rect, so tracing `--card-radius` draws the same
+       shadow for free; putting it here rather than on `.stacking-card` also
+       means it rides the tilt rotation instead of sitting square behind it. */
+    border-radius: var(--card-radius);
+    box-shadow: 0 0 1px rgba(15, 23, 42, 0.55), 0 1px 2px rgba(15, 23, 42, 0.4);
   }
 
   /* During the opening deal each card is positioned instantly — the
@@ -511,7 +521,13 @@
   .stacking-card.dragging {
     cursor: grabbing;
     transition: none;
-    filter: drop-shadow(0 12px 22px rgba(0, 0, 0, 0.5));
+  }
+
+  /* The card in hand casts a bigger, softer shadow, so it reads as lifted off
+     the table rather than sliding along it. On the art for the same reason the
+     resting shadow is. */
+  .stacking-card.dragging .card-art {
+    box-shadow: 0 12px 22px rgba(0, 0, 0, 0.5);
   }
 
   /* A buried card (any pile card but the top one) can't be picked up yet, so
