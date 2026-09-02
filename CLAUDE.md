@@ -146,6 +146,12 @@ that carries JSX, so a build script goes through `load-jsx-module.mjs`.
 Attributes are typed props on `Html.elementProps`, not a generic string map:
 adding an attribute the app has never used means adding a field there.
 
+How the board *performs* is a separate matter with two facts of its own: every
+card is promoted to its own compositing layer, and the card shadow is a
+`box-shadow` rather than a `drop-shadow` filter. Both are worth about a quarter
+of the frame budget on a slow device, and both are invisible from the main thread
+— `docs/card-compositing.md` has the measurements and the trap.
+
 ## Where things live
 
 `src/` is filed by **who owns the DOM**, which is the distinction the code
