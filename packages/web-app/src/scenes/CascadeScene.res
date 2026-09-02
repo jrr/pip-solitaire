@@ -1,61 +1,43 @@
-// The `cascade` scene: the victory animation's motion, with no game and no board
-// under it — the step that answers whether the thing in issue #224 actually looks
-// good. That is a question about feel, so **every number that decides how it feels is
-// on screen**: gravity, restitution, the horizontal speed range, the launch interval
-// and how far apart the trail is stamped are sliders, not constants you rebuild to
-// change. The physics they drive is `Cascade`, which knows nothing about canvases; this
-// file is the surface it is drawn on and the controls that tune it.
+// The `cascade` scene: the victory animation's motion, with no game and no board under
+// it — the step that answers whether the thing in issue #224 actually looks good. That is
+// a question about feel, so **every number that decides how it feels is on screen**:
+// gravity, restitution, the horizontal speed range, the launch interval and how far apart
+// the trail is stamped are sliders, not constants you rebuild to change.
+//
+// The motion is `Cascade` and the machinery that draws it is `CascadePlayer`. What is left
+// here is the surface, the chrome, and one `options` handed over on every drag — the same
+// value the victory overlay will pass once and never touch, which is what keeps this scene
+// a tuning instrument for the real animation rather than a rehearsal of it.
 //
 // Three things here are not feel at all — they are the scene's own claims, put where an
 // eye can check them:
 //
-// **The card size (40 / 90 / 140px)** is the claim that the motion is in card-widths.
-// A cascade that reads the same at all three is one whose gravity means something on a
+// **The card size (40 / 90 / 140px)** is the claim that the motion is in card-widths. A
+// cascade that reads the same at all three is one whose gravity means something on a
 // phone; one tuned in pixels turns into a slow drift at 40 and a plummet at 140.
 //
-// **The device-pixel snap** can be turned off, which is the only way to see what it
-// buys. Under the overlay's `ctx.scale(ratio, ratio)` an unsnapped blit is resampled on
-// every frame at any fractional ratio — browser zoom reaches 1.5 and 3.75 — and what
-// that looks like is not blur: a sub-pixel scale acts about the centre, so the card's
-// two ends move in opposite directions and it reads as the ends disagreeing. Worth
-// knowing by sight, because the natural diagnosis sends you into the rasterizer instead
-// of the compositor. `Cascade.snapToDevice` is the fix and the arithmetic is pinned in
-// `Cascade_test`; the toggle is how you see it.
+// **The device-pixel snap** can be turned off, which is the only way to see what it buys.
+// What an unsnapped blit looks like is not blur: a sub-pixel scale acts about the centre,
+// so the card's two ends move in opposite directions and it reads as the ends disagreeing.
+// Worth knowing by sight, because the natural diagnosis sends you into the rasterizer
+// instead of the compositor. `Cascade.snapToDevice` is the fix and the arithmetic is
+// pinned in `Cascade_test`; the toggle is how you see it.
 //
-// **Pose** (`?cascade=pose`) runs a fixed number of fixed-size steps and stops, so the
-// picture is a pure function of the seed and the knobs — the same cascade, to the
-// pixel, on every load. That is what the screenshot report shoots and what the browser
-// suite compares two loads of; a live run has the display's own timing in it and no two
-// are identical.
-//
-// **Nothing is ever cleared.** The trail *is* the effect (#224), and it is why this is
-// a canvas at all: per-frame cost tracks the cards in flight, not the length of the
-// trail behind them.
-//
-// Two mechanics are inherited from the `trail` scene rather than re-argued here: the
-// backing store is `css × CardRaster.displayPixelRatio()` and the sprites are built at
-// that same one number, and **assigning `canvas.width` wipes the surface** — so a
-// resize *ends* the run rather than rescaling it mid-flight. A ratio change usually
-// arrives as a resize (browser zoom), which is this scene's answer to #253's open
-// question: sprites are rebuilt when the run ends and the ratio has moved, never under
-// a card in flight.
+// **Pose** (`?cascade=pose`) is the player's still: the same cascade to the pixel on every
+// load. That is what the screenshot report shoots and what the browser suite compares two
+// loads of; a live run has the display's own timing in it and no two are identical.
 //
 // The launch interval here is deliberately **not** the C/P staggered-flight model in
-// `docs/animation-timing.md` — see that page's note on the cascade for why the four
-// board movers time themselves that way and this doesn't.
+// `docs/animation-timing.md` — see that page's note on the cascade for why the four board
+// movers time themselves that way and this doesn't.
 
 %%raw(`import "./CascadeScene.css"`)
 
 // --- Bindings ----------------------------------------------------------------
-// The frame clock, the element's own box, and the value of a range input. Everything
-// else the scene touches is `WebDom`'s or `Canvas`'s.
-
-// The timestamp form: a fixed-step loop needs the frame's own time, not a `unit`.
-@val external requestAnimationFrame: (float => unit) => int = "requestAnimationFrame"
-@val external cancelAnimationFrame: int => unit = "cancelAnimationFrame"
-
-type rect = {left: float, top: float, width: float, height: float}
-@send external boundingRect: WebDom.element => rect = "getBoundingClientRect"
+// The scene mounts detached, so the overlay has no box until it is in the document and
+// laid out; the first card size is chosen a frame later. The value of a range input is
+// the only other thing here that isn't `WebDom`'s.
+@val external requestAnimationFrame: (unit => unit) => int = "requestAnimationFrame"
 
 @get external inputValue: WebDom.element => string = "value"
 
@@ -66,7 +48,6 @@ type rect = {left: float, top: float, width: float, height: float}
 // and a desktop's", which wants two extremes and the middle, and each change rebuilds
 // 52 sprites.
 let cardSizes = [40., 90., 140.]
-let defaultCardSize = 90.
 
 // How much room a cascade wants, in card-widths. Below about this the arena is narrower
 // than a card's flight and every trail runs into the far wall at once, which is a
@@ -83,25 +64,6 @@ let fitCardSize = (~stageWidth) =>
   ->Array.filter(size => stageWidth /. size >= minArenaCards)
   ->Array.at(-1)
   ->Option.getOr(cardSizes->Array.getUnsafe(0))
-
-// The simulation's step, fixed, and small enough that a bounce is a bounce rather than
-// a corner. Nothing about the *drawing* is keyed to it: how often a card is stamped is
-// its own interval below.
-let stepSeconds = 1. /. 120.
-let stepMs = stepSeconds *. 1000.
-
-// How much *simulated* time passes between one stamp of a card and the next — which is
-// what the spacing of the trail is made of, since a faster card covers more ground
-// between two stamps. Deliberately neither the step nor the frame: stamping every step
-// paints a solid white sheet you cannot see a card in, and stamping every frame makes
-// the picture denser on a 120Hz display than on a 60Hz one, which is the one thing a
-// trail is not allowed to depend on.
-let defaultStampMs = 32.
-
-// The most arrears one frame may work off. A backgrounded tab comes back owing
-// seconds; without this, working that off in one frame is thousands of steps and a
-// locked-up page. The run loses the time instead, which is the right thing to lose.
-let maxCatchUpMs = 100.
 
 // How far a posed cascade is run. Far enough that a dozen cards have launched and the
 // first trails have crossed the stage; short enough that the trails are still arcs
@@ -163,183 +125,39 @@ let make = (~mode=Live, ~seed as initialSeed=1): Scene.t => {
     overlayEl->WebDom.setAttribute("class", "cascade-overlay")
     stage->WebDom.appendChild(overlayEl)->ignore
 
-    // ---- State ----
+    // ---- The settings the controls edit ----
+    // One ref per control, gathered into the player's `options` whenever one moves. The
+    // controls own these and nothing else: what a new value *does* — take effect on the
+    // next step, rebuild a sheet, redraw a still — is `CascadePlayer.retune`'s to decide,
+    // so the answer is the same one the victory overlay would get.
     let knobs = ref(Cascade.defaults)
-    let stampMs = ref(defaultStampMs)
-    let cardWidth = ref(defaultCardSize)
+    let stampMs = ref(CascadePlayer.defaults.stampMs)
+    let cardWidth = ref(CascadePlayer.defaults.cardWidth)
     let seed = ref(initialSeed)
     let snap = ref(true)
-    let paused = ref(false)
-    let cache: ref<option<CardRaster.t>> = ref(None)
-    let error: ref<option<string>> = ref(None)
-    let run = ref(Cascade.make(~seed=initialSeed))
-    // Nothing may be drawn before the scene has a box to draw in: it mounts detached,
-    // so the first rect arrives a frame later (see the `requestAnimationFrame` at the
-    // bottom).
-    let laidOut = ref(false)
-    // Set when a resize has ended a run, so the status says why the cascade stopped
-    // rather than looking like one that finished.
-    let interrupted = ref(false)
-    let frame: ref<option<int>> = ref(None)
-    let lastFrameAt: ref<option<float>> = ref(None)
-    let carryMs = ref(0.)
-    let sinceStamp = ref(0.)
-    let framesSeen = ref(0)
-    let fpsSince = ref(0.)
-    let fps = ref(0.)
-    // The build whose result is still wanted, numbered as `RasterScene` and
-    // `TrailScene` number theirs: a card-size change or an unmount abandons whatever is
-    // in flight. No request holds 0.
-    let wanted = ref(0)
 
-    let ratio = () => CardRaster.displayPixelRatio()
+    let options = () => {
+      ...CascadePlayer.defaults,
+      seed: seed.contents,
+      cardWidth: cardWidth.contents,
+      knobs: knobs.contents,
+      stampMs: stampMs.contents,
+      snap: snap.contents,
+    }
 
     let refresh = ref(() => ())
 
-    // ---- The surface ----
-    // The standard hi-dpi setup: the store in device pixels, the context scaled so
-    // everything below draws in CSS pixels. Assigning the store clears it and resets
-    // the transform, so the scale is reapplied here every time — and the clearing is
-    // exactly why a resize ends a run.
-    let sizeStore = () => {
-      let box = boundingRect(overlayEl)
-      let scale = ratio()
-      overlay->Canvas.setPixelWidth(Math.round(box.width *. scale)->Float.toInt)
-      overlay->Canvas.setPixelHeight(Math.round(box.height *. scale)->Float.toInt)
-      Canvas.context2d(overlay)->Option.forEach(ctx => ctx->Canvas.scale(scale, scale))
-    }
-
-    let stageNow = () => {
-      let box = boundingRect(overlayEl)
-      Cascade.stageOf(~cssWidth=box.width, ~cssHeight=box.height, ~cardWidth=cardWidth.contents)
-    }
-
-    // One frame of the cascade, stamped over whatever is already there.
-    //
-    // The blit is 1:1 with the bitmap by construction: the sprite's device size back in
-    // CSS pixels, rather than the size it was *asked* for, so a card size the ratio
-    // doesn't divide evenly (90px at 1.25×) still copies pixel for pixel instead of
-    // resampling by a hair. With the corner snapped to the device grid, that leaves the
-    // whole card on whole device pixels.
-    let drawRun = () =>
-      switch (Canvas.context2d(overlay), cache.contents) {
-      | (Some(ctx), Some(built)) =>
-        let scale = ratio()
-        let place = value => snap.contents ? Cascade.snapToDevice(value, ~ratio=scale) : value
-        run.contents.flying->Array.forEach(flyer =>
-          switch CardRaster.get(built, flyer.card) {
-          | Some(sprite) =>
-            CardRaster.blit(
-              ctx,
-              sprite,
-              ~x=place(flyer.x *. cardWidth.contents),
-              ~y=place(flyer.y *. cardWidth.contents),
-              ~width=sprite.pxWidth /. scale,
-              ~height=sprite.pxHeight /. scale,
-            )
-          | None => ()
-          }
-        )
-      | _ => ()
-      }
-
-    // ---- The loop ----
-    let stop = () => {
-      frame.contents->Option.forEach(cancelAnimationFrame)
-      frame := None
-      lastFrameAt := None
-    }
-
-    // One step of the simulation, and a stamp if one has come due. The two are counted
-    // separately so the trail's spacing is a distance a card has travelled rather than
-    // a number of steps the machine happened to take.
-    let advance = stage => {
-      run := Cascade.step(run.contents, ~knobs=knobs.contents, ~stage, ~dt=stepSeconds)
-      sinceStamp := sinceStamp.contents +. stepMs
-      if sinceStamp.contents >= stampMs.contents {
-        drawRun()
-        sinceStamp := Math.max(sinceStamp.contents -. stampMs.contents, 0.)
-      }
-    }
-
-    let rec tick = now => {
-      let elapsed = switch lastFrameAt.contents {
-      | Some(previous) => Math.min(now -. previous, maxCatchUpMs)
-      | None => 0.
-      }
-      lastFrameAt := Some(now)
-      carryMs := carryMs.contents +. elapsed
-
-      let stage = stageNow()
-      while carryMs.contents >= stepMs && !Cascade.isDone(run.contents) {
-        advance(stage)
-        carryMs := carryMs.contents -. stepMs
-      }
-
-      // The frame rate is worth showing: this scene's whole premise is that a canvas
-      // and a sprite sheet hold 60fps where a screenful of live SVGs would not.
-      framesSeen := framesSeen.contents + 1
-      if now -. fpsSince.contents >= 500. {
-        fps := Int.toFloat(framesSeen.contents) *. 1000. /. (now -. fpsSince.contents)
-        framesSeen := 0
-        fpsSince := now
-        refresh.contents()
-      }
-
-      if Cascade.isDone(run.contents) {
-        stop()
-        refresh.contents()
-      } else {
-        frame := Some(requestAnimationFrame(tick))
-      }
-    }
-
-    let start = () => {
-      stop()
-      carryMs := 0.
-      framesSeen := 0
-      fpsSince := 0.
-      frame :=
-        Some(
-          requestAnimationFrame(now => {
-            fpsSince := now
-            tick(now)
-          }),
-        )
-    }
-
-    // The pose: a fixed count of fixed steps, drawn as it goes, then nothing. Same
-    // `Cascade.step` the live loop calls — a pose that ran its own simplified physics
-    // would be a picture of something the scene doesn't do.
-    let pose = () => {
-      let stage = stageNow()
-      let steps = Math.round(poseSeconds /. stepSeconds)->Float.toInt
-      for _ in 1 to steps {
-        if !Cascade.isDone(run.contents) {
-          advance(stage)
-        }
-      }
-    }
-
-    // Start the cascade over: wipe the surface (the only way there is), take the run
-    // back to its first card, and either run it or pose it. A no-op until there are
-    // sprites to draw and a box to draw them in — both arrive asynchronously, and
-    // whichever lands second calls this.
-    let restart = () => {
-      if laidOut.contents && cache.contents->Option.isSome {
-        stop()
-        interrupted := false
-        paused := false
-        sizeStore()
-        sinceStamp := 0.
-        run := Cascade.make(~seed=seed.contents)
-        switch mode {
-        | Live => start()
-        | Pose => pose()
-        }
-      }
+    let player = CascadePlayer.attach(~canvas=overlay, ~options=options(), ~onChange=_ =>
       refresh.contents()
-    }
+    )
+
+    // What the mode asks for, and the only place the two differ: a run, or the still.
+    // Also what Replay means, in either.
+    let perform = () =>
+      switch mode {
+      | Live => CascadePlayer.start(player)
+      | Pose => CascadePlayer.pose(player, ~seconds=poseSeconds)
+      }
 
     // ---- Controls ----
     let button = (~parent, ~className, ~label) => {
@@ -391,12 +209,7 @@ let make = (~mode=Live, ~seed as initialSeed=1): Scene.t => {
         Float.fromString(inputValue(input))->Option.forEach(next => {
           readout->WebDom.setTextContent(format(next))
           onChange(next)
-          // A live run takes the new number on its next step — which is the point of
-          // tuning by ear. A pose has already been drawn, so it has to be drawn again.
-          switch mode {
-          | Live => refresh.contents()
-          | Pose => restart()
-          }
+          CascadePlayer.retune(player, options())
         })
       )
     }
@@ -464,7 +277,7 @@ let make = (~mode=Live, ~seed as initialSeed=1): Scene.t => {
       ~value=knobs.contents.launchMs,
       ~wide=true,
       ~format=value => {
-        let cards = Array.length(run.contents.cards)
+        let cards = Array.length(CascadePlayer.status(player).run.cards)
         `${whole(value)} ms · ${Int.toString(cards)} cards in ${tenth(
             value *. Int.toFloat(cards) /. 1000.,
           )}s`
@@ -485,6 +298,7 @@ let make = (~mode=Live, ~seed as initialSeed=1): Scene.t => {
     refresh :=
       (
         () => {
+          let state = CascadePlayer.status(player)
           sizeButtons->Array.forEach(((size, node)) =>
             node->WebDom.setAttribute(
               "class",
@@ -495,7 +309,7 @@ let make = (~mode=Live, ~seed as initialSeed=1): Scene.t => {
             "class",
             snap.contents ? "cascade-toggle cascade-toggle--on" : "cascade-toggle",
           )
-          pauseButton->WebDom.setTextContent(paused.contents ? "Resume" : "Pause")
+          pauseButton->WebDom.setTextContent(state.paused ? "Resume" : "Pause")
           // Pausing a pose would pause nothing: there is no loop to stop.
           switch mode {
           | Live => pauseButton->WebDom.removeAttribute("disabled")
@@ -503,122 +317,67 @@ let make = (~mode=Live, ~seed as initialSeed=1): Scene.t => {
           }
           scene->WebDom.setAttribute("data-seed", Int.toString(seed.contents))
           scene->WebDom.setAttribute("data-card", Float.toString(cardWidth.contents))
-          scene->WebDom.setAttribute("data-ratio", hundredth(ratio()))
+          scene->WebDom.setAttribute("data-ratio", hundredth(CardRaster.displayPixelRatio()))
           scene->WebDom.setAttribute("data-snap", snap.contents ? "on" : "off")
 
-          let state = switch (error.contents, cache.contents) {
-          | (Some(_), _) => None
-          | (None, None) => None
-          | (None, Some(_)) =>
-            switch mode {
-            | Pose => Some("posed")
-            | Live =>
-              if interrupted.contents {
-                Some("ended")
-              } else if Cascade.isDone(run.contents) {
-                Some("settled")
-              } else {
-                Some("running")
-              }
-            }
-          }
-          switch state {
-          | Some(value) => scene->WebDom.setAttribute("data-cascade", value)
-          | None => scene->WebDom.removeAttribute("data-cascade")
+          // No `data-cascade` until there is a cascade — the browser suite and the
+          // screenshot report both wait on this attribute appearing.
+          switch state.phase {
+          | Building
+          | Failed(_) =>
+            scene->WebDom.removeAttribute("data-cascade")
+          | Running => scene->WebDom.setAttribute("data-cascade", "running")
+          | Settled => scene->WebDom.setAttribute("data-cascade", "settled")
+          | Interrupted => scene->WebDom.setAttribute("data-cascade", "ended")
+          | Posed => scene->WebDom.setAttribute("data-cascade", "posed")
           }
 
           status->WebDom.setTextContent(
-            switch (error.contents, cache.contents) {
-            | (Some(message), _) => `couldn't build sprites — ${message}`
-            | (None, None) => "rasterizing 52 cards…"
-            | (None, Some(built)) =>
-              let box = boundingRect(overlayEl)
-              let stage = stageNow()
+            switch (state.phase, state.sprites) {
+            | (Failed(message), _) => `couldn't build sprites — ${message}`
+            | (_, None) => "rasterizing 52 cards…"
+            | (_, Some(built)) =>
               let counts =
-                `${Int.toString(run.contents.launched)}/${Int.toString(
-                    Array.length(run.contents.cards),
+                `${Int.toString(state.run.launched)}/${Int.toString(
+                    Array.length(state.run.cards),
                   )} launched · ` ++
-                `${Int.toString(Array.length(run.contents.flying))} in flight`
-              let pace = switch mode {
-              | Pose => `posed at ${tenth(poseSeconds)}s`
-              | Live =>
-                interrupted.contents
-                  ? "resized — the run ended, the store was wiped"
-                  : `${whole(fps.contents)} fps`
+                `${Int.toString(Array.length(state.run.flying))} in flight`
+              let pace = switch state.phase {
+              | Posed => `posed at ${tenth(poseSeconds)}s`
+              | Interrupted => "resized — the run ended, the store was wiped"
+              | Building
+              | Failed(_)
+              | Running
+              | Settled =>
+                `${whole(state.fps)} fps`
               }
               `seed ${Int.toString(seed.contents)} · ` ++
               `${whole(cardWidth.contents)}px card @${hundredth(built.pixelRatio)}× · ` ++
-              `stage ${whole(box.width)}×${whole(box.height)} css = ${tenth(stage.width)}×${tenth(
-                  stage.height,
-                )} cards · ` ++
+              `stage ${whole(state.cssWidth)}×${whole(state.cssHeight)} css = ${tenth(
+                  state.stage.width,
+                )}×${tenth(state.stage.height)} cards · ` ++
               `${counts} · ${pace}`
             },
           )
         }
       )
 
-    // ---- Building the sprites ----
-    // At the ratio the store is sized at, which is the one number both ends of a blit
-    // have to agree on (see `CardRaster.displayPixelRatio`). A card-size change
-    // rebuilds: a sprite scaled to a size it wasn't rasterized at is the resample this
-    // whole approach exists to avoid.
-    //
-    // `~andRun` is what happens when it lands: a new card size wants the cascade that
-    // was asked for, and a rebuild forced by a ratio change on an *ended* run must not
-    // quietly start one — the run ended, and Replay is how it comes back.
-    let build = (~andRun) => {
-      wanted := wanted.contents + 1
-      let mine = wanted.contents
-      let stillWanted = () => mine == wanted.contents
-      stop()
-      cache := None
-      error := None
-      refresh.contents()
-      CardRaster.build(~cssWidth=cardWidth.contents, ~pixelRatio=ratio(), Deck.allCards)
-      ->Promise.thenResolve(built =>
-        if stillWanted() {
-          cache := Some(built)
-          andRun ? restart() : refresh.contents()
-        }
-      )
-      ->Promise.catch(exn => {
-        if stillWanted() {
-          error :=
-            Some(
-              switch exn->JsExn.fromException {
-              | Some(e) => e->JsExn.message->Option.getOr("unknown error")
-              | None => "unknown error"
-              },
-            )
-          refresh.contents()
-        }
-        Promise.resolve()
-      })
-      ->ignore
-    }
-
     // ---- Wiring ----
-    replayButton->WebDom.addEventListener("click", () => restart())
+    replayButton->WebDom.addEventListener("click", () => perform())
     seedButton->WebDom.addEventListener("click", () => {
       seed := seed.contents + 1
-      restart()
+      CascadePlayer.retune(player, options())
     })
-    pauseButton->WebDom.addEventListener("click", () => {
-      paused := !paused.contents
-      if paused.contents {
-        stop()
-      } else {
-        // `lastFrameAt` is dropped by `stop`, so the pause itself contributes no
-        // elapsed time and the cascade resumes rather than jumping.
-        start()
-      }
-      refresh.contents()
-    })
+    pauseButton->WebDom.addEventListener("click", () =>
+      CascadePlayer.status(player).paused
+        ? CascadePlayer.resume(player)
+        : CascadePlayer.pause(player)
+    )
     sizeButtons->Array.forEach(((size, node)) =>
       node->WebDom.addEventListener("click", () =>
         if size != cardWidth.contents {
           cardWidth := size
-          build(~andRun=true)
+          CascadePlayer.retune(player, options())
         }
       )
     )
@@ -626,55 +385,25 @@ let make = (~mode=Live, ~seed as initialSeed=1): Scene.t => {
       snap := !snap.contents
       // Live, the change shows on the next stamp and the trail keeps what it has —
       // which is the comparison worth having, both kinds of edge in one picture.
-      switch mode {
-      | Live => refresh.contents()
-      | Pose => restart()
-      }
+      CascadePlayer.retune(player, options())
     })
 
-    // A resize is a wipe, unasked for: the store has to follow the element's CSS size,
-    // and following it costs every pixel already drawn. So a live run *ends* here
-    // rather than being rescaled mid-flight — and if the ratio moved with it (a browser
-    // zoom is a resize), the sprites are rebuilt now, while nothing is in the air,
-    // which is this scene's answer to #253: never under a card.
-    //
-    // A pose loses nothing by a resize, because it is a pure function of the box and
-    // the seed: it is simply drawn again, at the size the box is now.
-    let onResize = () => {
-      let stale = cache.contents->Option.mapOr(false, built => built.pixelRatio != ratio())
-      stop()
-      switch mode {
-      | Live => interrupted := true
-      | Pose => ()
-      }
-      sizeStore()
-      switch (stale, mode) {
-      | (true, _) => build(~andRun=mode == Pose)
-      | (false, Pose) => restart()
-      | (false, Live) => refresh.contents()
-      }
-    }
-    WebDom.addWindowListener("resize", onResize)
-
-    // The scene mounts detached, so the overlay has no box until it is in the document
-    // and laid out — which is also the first moment a card size can be chosen to fit
-    // it, so the build waits for the frame rather than racing it and rasterizing 52
-    // cards at a size the stage turns out to have no room for.
+    // The overlay has no box until the scene is in the document and laid out — which is
+    // also the first moment a card size can be chosen to fit it, so the run waits for the
+    // frame rather than racing it and rasterizing 52 cards at a size the stage turns out
+    // to have no room for.
     refresh.contents()
-    requestAnimationFrame(_ => {
-      laidOut := true
-      cardWidth := fitCardSize(~stageWidth=boundingRect(overlayEl).width)
-      sizeStore()
-      build(~andRun=true)
+    requestAnimationFrame(() => {
+      let (stageWidth, _) = CascadePlayer.cssSize(player)
+      cardWidth := fitCardSize(~stageWidth)
+      CascadePlayer.retune(player, options())
+      perform()
     })->ignore
 
     // ---- Teardown ----
     // The container's `clear` takes the stage and the canvas; the frame loop, the
-    // `window` listener and an in-flight build are what it can't reach.
-    () => {
-      stop()
-      wanted := 0
-      WebDom.removeWindowListener("resize", onResize)
-    }
+    // `window` listener and an in-flight build are what it can't reach, and what
+    // `detach` is for.
+    () => CascadePlayer.detach(player)
   },
 }

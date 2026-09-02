@@ -9,7 +9,7 @@
 // speed is card-widths per second. Pixels never enter: they are the one unit that
 // changes meaning between a 40px card on a phone and a 140px one on a desktop, and a
 // gravity in pixels/s² makes the small board's cascade a slow drift and the large
-// board's a plummet. The scene converts once, at the edge (`stageOf`, and the
+// board's a plummet. `CascadePlayer` converts once, at the edge (`arenaOf`, and the
 // `cardWidth` it multiplies by when it draws).
 //
 // **The integration is `v += g·dt; p += v·dt`, and `dt` is clamped here** rather than
@@ -214,12 +214,20 @@ let spreadSeats = (~width, ~count) =>
     seatTop,
   ))
 
-// A CSS-pixel box as a stage. The one conversion in the whole model, and the reason
-// nothing downstream of it has to know what a pixel is.
-let stageOf = (~cssWidth, ~cssHeight, ~cardWidth, ~seats=4) => {
+// A CSS-pixel box measured in card-widths. The one conversion in the whole model, and the
+// reason nothing downstream of it has to know what a pixel is — separate from the stage
+// it usually becomes, because a caller whose seats are its own (a board's foundations,
+// rather than the spread below) still has to measure its arena by this and no other
+// arithmetic.
+let arenaOf = (~cssWidth, ~cssHeight, ~cardWidth) => {
   let scale = Math.max(cardWidth, 1.)
-  let width = cssWidth /. scale
-  {width, height: cssHeight /. scale, seats: spreadSeats(~width, ~count=seats)}
+  (cssWidth /. scale, cssHeight /. scale)
+}
+
+// That box as a stage, with `count` seats spread across the top of it.
+let stageOf = (~cssWidth, ~cssHeight, ~cardWidth, ~seats=4) => {
+  let (width, height) = arenaOf(~cssWidth, ~cssHeight, ~cardWidth)
+  {width, height, seats: spreadSeats(~width, ~count=seats)}
 }
 
 // Put a CSS-pixel coordinate on the *device*-pixel grid.
