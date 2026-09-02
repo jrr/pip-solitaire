@@ -93,8 +93,8 @@ describe("the bounce", () => {
     expect(apexes->Array.getUnsafe(1) < apexes->Array.getUnsafe(2))->toBe(true)
   })
 
-  test("keeps nothing at all when restitution is zero — the card just lands", () => {
-    let dead = {...dropping, restitution: 0.}
+  test("keeps nothing at all at zero bounciness — the card just lands", () => {
+    let dead = {...dropping, bounciness: 0.}
     let run = runFor(~knobs=dead, ~stage, ~seconds=3., ~dt=1. /. 120.)
     expect(first(run).y)->toBe(Cascade.floorOf(stage))
     // Through `Math.abs` because a bounce that keeps nothing negates a positive speed,

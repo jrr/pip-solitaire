@@ -47,7 +47,10 @@ type stage = {width: float, height: float, seats: array<(float, float)>}
 // cascade looks right is not a question source can answer (see CascadeScene).
 type knobs = {
   gravity: float, // card-widths / s²
-  restitution: float, // the fraction of falling speed a bounce keeps
+  // The fraction of falling speed a bounce keeps. Physics calls this the coefficient of
+  // restitution; the plainer word is the one on the slider, and 0 to 1 means the same
+  // thing either way — 0 lands dead, 1 would bounce back to where it fell from.
+  bounciness: float,
   minSpeed: float, // horizontal launch speed, card-widths / s
   maxSpeed: float,
   launchMs: float, // between one card leaving and the next
@@ -57,7 +60,7 @@ type knobs = {
 // half a second, crosses it in two or three, and bounces four or five times on the way.
 let defaults = {
   gravity: 26.,
-  restitution: 0.62,
+  bounciness: 0.62,
   minSpeed: 3.,
   maxSpeed: 7.,
   launchMs: 200.,
@@ -145,7 +148,7 @@ let advance = (flyer, ~knobs, ~stage, ~dt) => {
   let x = flyer.x +. flyer.vx *. dt
   let floor = floorOf(stage)
   if y >= floor && vy > 0. {
-    {...flyer, x, y: floor, vy: -.vy *. knobs.restitution}
+    {...flyer, x, y: floor, vy: -.vy *. knobs.bounciness}
   } else {
     {...flyer, x, y, vy}
   }
@@ -239,5 +242,5 @@ let stageOf = (~cssWidth, ~cssHeight, ~cardWidth, ~seats=4) => {
 // ends in opposite directions, which reads as the ends disagreeing rather than as blur.
 //
 // **Snap the drawing, never the simulation.** Quantising a position feeds back into the
-// next bounce, and restitution that depends on the display is a bug you cannot see.
+// next bounce, and a bounce that depends on the display is a bug you cannot see.
 let snapToDevice = (value, ~ratio) => ratio > 0. ? Math.round(value *. ratio) /. ratio : value

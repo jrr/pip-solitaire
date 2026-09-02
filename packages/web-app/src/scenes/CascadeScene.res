@@ -1,7 +1,7 @@
 // The `cascade` scene: the victory animation's motion, with no game and no board under
 // it — the step that answers whether the thing in issue #224 actually looks good. That is
 // a question about feel, so **every number that decides how it feels is on screen**:
-// gravity, restitution, the horizontal speed range, the launch interval and how far apart
+// gravity, bounciness, the horizontal speed range, the launch interval and how far apart
 // the trail is stamped are sliders, not constants you rebuild to change.
 //
 // The motion is `Cascade` and the machinery that draws it is `CascadePlayer`. What is left
@@ -224,13 +224,16 @@ let make = (~mode=Live, ~seed as initialSeed=1): Scene.t => {
       ~onChange=value => knobs := {...knobs.contents, gravity: value},
     )
     knob(
-      ~label="restitution",
+      ~label="bounciness",
       ~min=0.,
       ~max=0.95,
       ~step=0.01,
-      ~value=knobs.contents.restitution,
+      ~value=knobs.contents.bounciness,
+      // A bare fraction: the share of its falling speed a card keeps off the floor, so
+      // 0 lands dead and 1 would come back up to where it fell from. Stops short of 1
+      // because a card that keeps everything never settles and never leaves.
       ~format=hundredth,
-      ~onChange=value => knobs := {...knobs.contents, restitution: value},
+      ~onChange=value => knobs := {...knobs.contents, bounciness: value},
     )
     knob(
       ~label="slowest",
@@ -270,7 +273,7 @@ let make = (~mode=Live, ~seed as initialSeed=1): Scene.t => {
     // `cards - 1` the launches actually span, because the last card still has the stage
     // to cross after it leaves, which takes about the interval back.
     knob(
-      ~label="launch",
+      ~label="launchInterval",
       ~min=20.,
       ~max=2000.,
       ~step=10.,

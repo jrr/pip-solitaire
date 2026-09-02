@@ -59,7 +59,14 @@ describe("the cascade scene, on an engine that can't draw", () => {
       TestDom.findAll(host, ".cascade-knob input")->Array.map(
         input => TestDom.attrOr(input, "data-knob"),
       )
-    expect(knobs)->toEqual(["gravity", "restitution", "slowest", "fastest", "launch", "trail"])
+    expect(knobs)->toEqual([
+      "gravity",
+      "bounciness",
+      "slowest",
+      "fastest",
+      "launchInterval",
+      "trail",
+    ])
   })
 
   test("shows each knob's value, not just where its slider sits", () => {
@@ -74,7 +81,7 @@ describe("the cascade scene, on an engine that can't draw", () => {
     // wait for, and its range now reaches a run of most of two minutes — so the total
     // is on the slider rather than left to be discovered by watching one.
     let (host, _) = mount()
-    let launch = TestDom.find(host, `input[data-knob="launch"]`)->Option.getOrThrow
+    let launch = TestDom.find(host, `input[data-knob="launchInterval"]`)->Option.getOrThrow
     expect(TestDom.attrOr(launch, "max"))->toBe("2000")
     TestDom.typeInto(launch, "2000")
     expect(TestDom.textIn(host, ".cascade-knob__value--wide"))->toBe("2000 ms · 52 cards in 104s")

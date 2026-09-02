@@ -150,7 +150,7 @@ test.describe("a live run", () => {
     // Wound up to the fastest launch the knob offers, so the run is a test's length
     // rather than a minute. The interval is the knob it is precisely so this is
     // possible without a second code path.
-    await page.locator('input[data-knob="launch"]').fill("20")
+    await page.locator('input[data-knob="launchInterval"]').fill("20")
     await expect(scene(page)).toHaveAttribute("data-cascade", "settled", { timeout: 30000 })
     await expect(page.locator(".cascade-status")).toContainText("52/52 launched")
     await expect(page.locator(".cascade-status")).toContainText("0 in flight")
