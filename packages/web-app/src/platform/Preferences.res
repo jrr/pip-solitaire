@@ -21,6 +21,7 @@ let wantsShakeKey = "pip.wantsShake"
 let notchDisplayKey = "pip.notchDisplay"
 let debugLogKey = "pip.debugLog"
 let revealHiddenKey = "pip.revealHidden"
+let victoryAnimationKey = "pip.victoryAnimation"
 let consoleDockKey = "pip.consoleDock"
 
 // An explicit "true"/"false" wins; anything else — missing, garbage, unreadable —
@@ -76,6 +77,12 @@ let saveNotchDisplay = (enabled: bool) => saveFlag(notchDisplayKey, enabled)
 // logging on still sees it after a reload.
 let loadDebugLog = (): bool => loadFlag(debugLogKey, ~fallback=false)
 let saveDebugLog = (enabled: bool) => saveFlag(debugLogKey, enabled)
+
+// "Victory animation": one of the hidden settings, so it is only reachable once the
+// ten-tap gesture has been performed — but the flip itself is persisted like any other
+// preference, so a device left with it on comes back with it on. Off by default.
+let loadVictoryAnimation = (): bool => loadFlag(victoryAnimationKey, ~fallback=false)
+let saveVictoryAnimation = (enabled: bool) => saveFlag(victoryAnimationKey, enabled)
 
 // `HiddenOptions`: persisted so the ten-tap gesture is performed once per device, not
 // once per launch. Written in both directions — ten more taps hides the rows again,

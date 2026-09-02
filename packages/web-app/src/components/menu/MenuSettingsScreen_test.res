@@ -11,10 +11,12 @@ let render = (
   ~autoCollect=true,
   ~cardTilt=true,
   ~wiggle=Motion.Off,
+  ~victoryAnimation=false,
   ~notchDisplay=true,
   ~onToggleAutoCollect=() => (),
   ~onToggleCardTilt=() => (),
   ~onToggleWiggle=() => (),
+  ~onToggleVictoryAnimation=() => (),
   ~onToggleNotchDisplay=() => (),
   ~onOpenDebug=() => (),
   ~onTapSettingsTitle=() => (),
@@ -31,6 +33,8 @@ let render = (
       onToggleCardTilt,
       wiggle,
       onToggleWiggle,
+      victoryAnimation,
+      onToggleVictoryAnimation,
       revealHidden,
       notchDisplay,
       onToggleNotchDisplay,
@@ -43,6 +47,10 @@ let rowLabels = screen =>
   ->findAll("[aria-label=\"Settings\"] .menu-row--switch .menu-row__label")
   ->Array.map(text)
 
+// Just the rows reading *on*, by name.
+let onRowLabels = screen =>
+  screen->findAll("[aria-label=\"Settings\"] .menu-row--on .menu-row__label")->Array.map(text)
+
 describe("MenuSettingsScreen", () => {
   test("lists the player's preferences, top to bottom", () => {
     expect(rowLabels(render()))->toEqual([
@@ -52,50 +60,61 @@ describe("MenuSettingsScreen", () => {
     ])
   })
 
-  test("keeps Wiggle Waggle out of sight until it's been found", () => {
-    // Ten taps on the title reveal it (`HiddenOptions`); until then it isn't in the
-    // screen at all.
-    expect(rowLabels(render(~revealHidden=false))->Array.includes("Wiggle Waggle"))->toBe(false)
+  test("keeps the hidden settings out of sight until they've been found", () => {
+    // Ten taps on the title reveal them (`HiddenOptions`); until then they aren't in
+    // the screen at all.
+    let labels = rowLabels(render(~revealHidden=false))
+    expect(labels->Array.includes("Wiggle Waggle"))->toBe(false)
+    expect(labels->Array.includes("Victory animation"))->toBe(false)
   })
 
-  test("slots Wiggle Waggle in beside the others once revealed, not under one", () => {
-    // Between Sloppy placement and the notch row rather than nested under either: the
-    // three are independent settings.
+  test("slots the hidden settings in beside the others once revealed, not under one", () => {
+    // Between Sloppy placement and the notch row rather than nested under either: all
+    // of them are independent settings.
     expect(rowLabels(render(~revealHidden=true)))->toEqual([
       "Auto-collect",
       "Sloppy placement",
       "Wiggle Waggle",
+      "Victory animation",
       "Display content around notch",
     ])
   })
 
   test("wires each switch to its own setting", () => {
-    // Four rows that look alike: a crossed wire here would be invisible.
+    // Five rows that look alike: a crossed wire here would be invisible.
     let log = []
     let screen = render(
       ~revealHidden=true,
       ~onToggleAutoCollect=() => log->Array.push("auto-collect"),
       ~onToggleCardTilt=() => log->Array.push("card-tilt"),
       ~onToggleWiggle=() => log->Array.push("wiggle"),
+      ~onToggleVictoryAnimation=() => log->Array.push("victory-animation"),
       ~onToggleNotchDisplay=() => log->Array.push("notch"),
     )
     screen->findAll("[aria-label=\"Settings\"] .menu-row--switch")->Array.forEach(click)
-    expect(log)->toEqual(["auto-collect", "card-tilt", "wiggle", "notch"])
+    expect(log)->toEqual(["auto-collect", "card-tilt", "wiggle", "victory-animation", "notch"])
   })
 
   test("shows each switch in the state it was handed", () => {
-    // Which rows read *on*, by name — the crossed-wire check's static twin.
-    let states = screen =>
-      screen
-      ->findAll("[aria-label=\"Settings\"] .menu-row--on .menu-row__label")
-      ->Array.map(text)
-    expect(states(render(~autoCollect=true, ~cardTilt=false, ~notchDisplay=false)))->toEqual([
+    // The crossed-wire check's static twin.
+    expect(onRowLabels(render(~autoCollect=true, ~cardTilt=false, ~notchDisplay=false)))->toEqual([
       "Auto-collect",
     ])
-    expect(states(render(~autoCollect=false, ~cardTilt=true, ~notchDisplay=true)))->toEqual([
+    expect(onRowLabels(render(~autoCollect=false, ~cardTilt=true, ~notchDisplay=true)))->toEqual([
       "Sloppy placement",
       "Display content around notch",
     ])
+    expect(
+      onRowLabels(
+        render(
+          ~revealHidden=true,
+          ~autoCollect=false,
+          ~cardTilt=false,
+          ~notchDisplay=false,
+          ~victoryAnimation=true,
+        ),
+      ),
+    )->toEqual(["Victory animation"])
   })
 
   test("puts Debug in a section below the preferences, not among them", () => {

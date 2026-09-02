@@ -32,9 +32,14 @@ type props = {
   // position and the problem-only subtitle (see `<MenuWiggleRow>`).
   wiggle: Motion.state,
   onToggleWiggle: unit => unit,
-  // Whether the not-ready-yet settings are showing (`HiddenOptions`). Today that's
-  // just the Wiggle Waggle row. A hidden row says nothing about whether its setting
-  // is *on*: hiding leaves it running.
+  // "Victory animation" — a plain persisted flag, and the second of the hidden
+  // settings. Nothing plays off it yet: the switch stores the intent so the animation
+  // has a flag to read once there is one to play.
+  victoryAnimation: bool,
+  onToggleVictoryAnimation: unit => unit,
+  // Whether the not-ready-yet settings are showing (`HiddenOptions`). Today that's the
+  // Wiggle Waggle and Victory animation rows. A hidden row says nothing about whether
+  // its setting is *on*: hiding leaves it running.
   revealHidden: bool,
   // "Display content around notch" — whether the landscape rail may ride out
   // into the corner wings beside the notch; off clamps every control inside the safe
@@ -54,6 +59,8 @@ let make = ({
   onToggleCardTilt,
   wiggle,
   onToggleWiggle,
+  victoryAnimation,
+  onToggleVictoryAnimation,
   revealHidden,
   notchDisplay,
   onToggleNotchDisplay,
@@ -79,13 +86,24 @@ let make = ({
         onToggle=onToggleCardTilt
       />
       {
-        // "Wiggle Waggle" sits below "Sloppy placement" but is *not* nested
-        // under it — the two are independent settings. It's hidden until the Settings
+        // The hidden settings sit below "Sloppy placement" but are *not* nested
+        // under it — each is an independent setting. They're hidden until the Settings
         // title has been tapped ten times (`HiddenOptions`) — not ready to be found by
-        // a player yet, but reachable on a test device. Ten more taps hide the row
-        // again *without* stopping the shake, so an absent row here doesn't mean the
-        // board is sitting still.
-        revealHidden ? <MenuWiggleRow state=wiggle onToggle=onToggleWiggle /> : Html.empty
+        // a player yet, but reachable on a test device. Ten more taps hide the rows
+        // again *without* turning either off, so an absent row here doesn't mean its
+        // setting is off — Wiggle Waggle can still be jostling a board with no switch
+        // on screen to stop it.
+        revealHidden
+          ? <>
+              <MenuWiggleRow state=wiggle onToggle=onToggleWiggle />
+              <MenuToggleRow
+                label="Victory animation"
+                desc="Celebrate a win with an animation."
+                on=victoryAnimation
+                onToggle=onToggleVictoryAnimation
+              />
+            </>
+          : Html.empty
       }
       <MenuToggleRow
         label="Display content around notch"

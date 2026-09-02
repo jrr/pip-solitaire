@@ -22,6 +22,8 @@ let settings: MenuSettingsScreen.props = {
   onToggleCardTilt: () => (),
   wiggle: Motion.Off,
   onToggleWiggle: () => (),
+  victoryAnimation: false,
+  onToggleVictoryAnimation: () => (),
   revealHidden: false,
   notchDisplay: true,
   onToggleNotchDisplay: () => (),
