@@ -35,9 +35,9 @@ let isOn = state =>
   | Off | Blocked | Unavailable(_) => false
   }
 
-// The subtitle line the Settings row carries. It exists *only* to surface a
-// problem: a healthy switch (off or listening) shows nothing under its title, so a
-// present subtitle always means "here's what's wrong".
+// The problem line the Settings row carries, if there is a problem. `None` is the
+// healthy answer (off or listening); the row falls back to its own copy there, so a
+// `Some` here is always "here's what's wrong" rather than "here's what this does".
 let subtitle = state =>
   switch state {
   | Off | On => None

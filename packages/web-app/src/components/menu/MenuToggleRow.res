@@ -13,9 +13,9 @@
 // now hand that shape to `<MenuRow>` instead of drawing it themselves.
 type props = {
   label: string,
-  // The one-line explanation under the label. Every plain toggle carries one —
-  // the row that deliberately has none is `<MenuWiggleRow>`, which is why it's a
-  // component of its own rather than a `desc=""` call here.
+  // The one-line explanation under the label. Every toggle carries one; the row that
+  // can't take it as a fixed string is `<MenuWiggleRow>`, whose line is ranked out of
+  // `Motion.state`, which is why it's a component of its own rather than a call here.
   desc: string,
   on: bool,
   onToggle: unit => unit,

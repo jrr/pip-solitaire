@@ -87,6 +87,11 @@ type model = {
   // drives both the switch position and its problem-only subtitle. Settings owns the
   // motion grant; the board only listens when this is `On`.
   wiggle: Motion.state,
+  // "Victory animation": the second hidden setting, and a plain persisted bool
+  // rather than a state machine. Nothing reads it yet — the switch is here so the
+  // intent has somewhere to live (and to survive a reload) before there's an
+  // animation to play off it.
+  victoryAnimation: bool,
   // "Display content around screen notch": on (default) lets the landscape
   // rail ride out into the corner wings beside the notch; off clamps every control
   // inside the safe area. Presentation-only chrome, so it mirrors a `Preferences`
@@ -169,6 +174,7 @@ type msg =
   | ToggleCardTilt // the menu's hand-placed-tilt switch
   | WiggleOff // the Wiggle Waggle switch turned off — stop listening, square up
   | WiggleResolved(Motion.state) // a motion-permission request resolved to a new state
+  | ToggleVictoryAnimation // the hidden Victory animation switch
   | ToggleNotchDisplay // the menu's "Display content around screen notch" switch
   | ToggleCutoutDebug // the menu's safe-area overlay switch (debug)
   | ToggleDebugLog // the Debug screen's console-logging switch
@@ -545,6 +551,14 @@ let update = (msg, model) =>
         | Unavailable(_) | Off => ()
         }
       },
+    )
+  | ToggleVictoryAnimation =>
+    let victoryAnimation = !model.victoryAnimation
+    (
+      {...model, victoryAnimation},
+      // Persist and nothing else: no board reads this flag yet, so the flip has
+      // nowhere to land beyond storage. A win animation would start here.
+      () => Preferences.saveVictoryAnimation(victoryAnimation),
     )
   | ToggleNotchDisplay =>
     let notchDisplay = !model.notchDisplay
@@ -1087,6 +1101,8 @@ let settingsScreen = (model, dispatch): MenuSettingsScreen.props => {
     | Off | Blocked =>
       Motion.requestAccess()->Promise.thenResolve(state => dispatch(WiggleResolved(state)))->ignore
     },
+  victoryAnimation: model.victoryAnimation,
+  onToggleVictoryAnimation: () => dispatch(ToggleVictoryAnimation),
   revealHidden: model.hidden.revealed,
   notchDisplay: model.notchDisplay,
   onToggleNotchDisplay: () => dispatch(ToggleNotchDisplay),
@@ -1252,6 +1268,10 @@ let dispatch = Html.mount(
     // intent, or an `Unavailable` reason on a device/origin that can't do motion. The
     // real grant is deferred to the first board tap (wired at the foot of the file).
     wiggle: wiggleInit,
+    // Mirror the persisted victory-animation flag so its switch opens in the right
+    // position. Read here at mount rather than through a module-level ref like
+    // `tiltEnabled`, because nothing outside this loop consumes it yet.
+    victoryAnimation: Preferences.loadVictoryAnimation(),
     // Mirror the persisted notch-display preference so the switch opens in the
     // right position; the layout itself is driven by the root attribute applied
     // above (see `NotchDisplay`).
