@@ -157,16 +157,49 @@ let make = (~seed: int, ~cards: option<array<Deck.card>>=?) => {
 // has a floor a card can be put on rather than one it bounces below.
 let floorOf = (stage: stage) => Math.max(stage.height -. cardHeight, 0.)
 
+// How hard a card is aimed away from the nearer wall.
+//
+// Which way a card goes is a coin flip, and from a seat close to an edge half of them
+// were leaving over that edge a card-width later — gone before they had crossed
+// anything, which is a card of the deck spent on nothing. So the coin is weighted by
+// how much room there is each way: the same two distances `hasLeft` retires a card at,
+// read forwards instead of backwards.
+//
+//   p(right) = 0.5 + inwardBias × (roomRight / (roomLeft + roomRight) − 0.5)
+//
+// At 0 the coin is fair and this changes nothing; at 1 — here — the chance is exactly
+// the share of the room, so the leftmost of four seats sends about one card in five
+// over the near wall instead of one in two, and a seat with equal room either way stays
+// a fair coin however hard the thumb presses. Above 1 it leans harder than the room
+// warrants, which is what the clamp in `rightwardChance` is for.
+//
+// Deliberately a constant rather than a slider: a card that ducks out early is worth
+// seeing *sometimes* — it is where the cascade looks least mechanical — and this is the
+// setting where it happens without being half of what you watch.
+let inwardBias = 1.
+
+// The chance a card launched from `seatX` is thrown to the right. See `inwardBias`; the
+// clamp is what keeps a bias over 1, or a seat already off the edge, from asking for a
+// chance outside [0, 1].
+let rightwardChance = (~seatX, ~stage: stage) => {
+  let roomLeft = Math.max(seatX +. 1., 0.)
+  let roomRight = Math.max(stage.width -. seatX, 0.)
+  let room = roomLeft +. roomRight
+  let share = room > 0. ? roomRight /. room : 0.5
+  Math.min(Math.max(0.5 +. inwardBias *. (share -. 0.5), 0.), 1.)
+}
+
 // The next card off the pile, given the seat it launches from and two draws: how fast
-// it goes sideways, and which way. Speed is the only thing randomized — a card leaves
-// its seat at rest vertically, so every card traces the same parabola family and the
-// picture reads as one cascade rather than as 52 unrelated throws.
-let spawn = (rng, ~knobs, ~card, ~seat) => {
+// it goes sideways, and which way. Nothing is thrown upwards — a card leaves its seat
+// at rest vertically, so every card traces the same parabola family and the picture
+// reads as one cascade rather than as 52 unrelated throws.
+let spawn = (rng, ~knobs, ~stage, ~card, ~seat) => {
   let (rng, speedDraw) = draw(rng)
   let (rng, sideDraw) = draw(rng)
   let (seatX, seatY) = seat
   let speed = knobs.minSpeed +. speedDraw *. Math.max(knobs.maxSpeed -. knobs.minSpeed, 0.)
-  (rng, {card, x: seatX, y: seatY, vx: sideDraw < 0.5 ? -.speed : speed, vy: 0.})
+  let rightward = sideDraw < rightwardChance(~seatX, ~stage)
+  (rng, {card, x: seatX, y: seatY, vx: rightward ? speed : -.speed, vy: 0.})
 }
 
 // One card, one step. Gravity into the velocity, velocity into the position, and the
@@ -215,7 +248,7 @@ let step = (run, ~knobs, ~stage, ~dt) => {
   while launched.contents < total && (launched.contents == 0 || sinceLaunch.contents >= interval) {
     let card = run.cards->Array.getUnsafe(launched.contents)
     let seat = seats == 0 ? (0., 0.) : stage.seats->Array.getUnsafe(mod(launched.contents, seats))
-    let (next, flyer) = spawn(rng.contents, ~knobs, ~card, ~seat)
+    let (next, flyer) = spawn(rng.contents, ~knobs, ~stage, ~card, ~seat)
     rng := next
     flying->Array.push(flyer)
     launched := launched.contents + 1

@@ -183,6 +183,7 @@ describe("the launch", () => {
     let (_, flyer) = Cascade.spawn(
       Cards.seedState(9),
       ~knobs=Cascade.defaults,
+      ~stage,
       ~card={suit: Deck.Spades, rank: Deck.Ace},
       ~seat=(3.5, Cascade.seatTop),
     )
@@ -193,6 +194,54 @@ describe("the launch", () => {
     expect(flyer.vy)->toBe(0.)
     let speed = Math.abs(flyer.vx)
     expect(speed >= Cascade.defaults.minSpeed && speed <= Cascade.defaults.maxSpeed)->toBe(true)
+  })
+})
+
+describe("which way a card is thrown", () => {
+  // Eleven and a bit card-widths across, which is a desktop stage at a 90px card.
+  let stage = Cascade.stageOf(~cssWidth=1056., ~cssHeight=560., ~cardWidth=90.)
+  let seatX = index => stage.seats->Array.getUnsafe(index)->fst
+
+  test("is an even coin from a seat with the same room either way", () => {
+    // The middle of the stage, where there is nothing to prefer — and the two inner
+    // seats of four, which are near enough symmetric that the thumb barely moves.
+    expect(Cascade.rightwardChance(~seatX=stage.width /. 2. -. 0.5, ~stage))->toBeCloseTo(0.5)
+    expect(Cascade.rightwardChance(~seatX=seatX(1), ~stage))->toBeCloseToWithin(0.6, 1)
+    expect(Cascade.rightwardChance(~seatX=seatX(2), ~stage))->toBeCloseToWithin(0.4, 1)
+  })
+
+  test("leans away from the wall it is near, by the room it has each way", () => {
+    // The outer seats. At `inwardBias` 1 the chance *is* the share of the room: the
+    // left seat has about a fifth of the table to its left, so about a fifth of its
+    // cards go that way.
+    expect(Cascade.rightwardChance(~seatX=seatX(0), ~stage))->toBeCloseToWithin(0.78, 2)
+    expect(Cascade.rightwardChance(~seatX=seatX(3), ~stage))->toBeCloseToWithin(0.22, 2)
+  })
+
+  test("never asks for a chance it can't have, from a seat off the edge", () => {
+    // Not reachable from `spreadSeats`, but the integration's seats are the board's and
+    // a foundation can sit anywhere; a card already past the left edge has no room that
+    // way at all, which is a chance of 1 rather than of more than 1.
+    expect(Cascade.rightwardChance(~seatX=-4., ~stage))->toBe(1.)
+    expect(Cascade.rightwardChance(~seatX=stage.width +. 4., ~stage))->toBe(0.)
+  })
+
+  test("so about a fifth of the left seat's deck leaves over the near wall, not half", () => {
+    // The mechanism end to end, counted rather than reasoned about: 200 launches from
+    // the leftmost seat, through the real PRNG. Deterministic — the chain is seeded —
+    // so the range is slack for the sampling, not for flake.
+    let seat = (seatX(0), Cascade.seatTop)
+    let card: Deck.card = {suit: Deck.Spades, rank: Deck.Ace}
+    let rng = ref(Cards.seedState(11))
+    let leftward = ref(0)
+    for _ in 1 to 200 {
+      let (next, flyer) = Cascade.spawn(rng.contents, ~knobs=Cascade.defaults, ~stage, ~card, ~seat)
+      rng := next
+      if flyer.vx < 0. {
+        leftward := leftward.contents + 1
+      }
+    }
+    expect(leftward.contents > 25 && leftward.contents < 65)->toBe(true)
   })
 })
 
