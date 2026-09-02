@@ -124,7 +124,7 @@ test.describe("the device-pixel snap", () => {
 
     // The same cascade with the snap off — the only difference is where the blits
     // land, so any change in the edges is the resampling and nothing else.
-    await page.locator(".cascade-toggle", { hasText: "device snap" }).click()
+    await page.locator(".cascade-toggle", { hasText: "whole pixels" }).click()
     await expect(scene(page)).toHaveAttribute("data-snap", "off")
     const loose = await ink(page)
 

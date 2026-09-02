@@ -141,13 +141,13 @@ describe("the cascade scene, on an engine that can't draw", () => {
     expect(TestDom.classes(large)->String.includes("cascade-toggle--on"))->toBe(true)
   })
 
-  test("snaps to the device grid unless you ask it not to", () => {
+  test("draws on whole device pixels unless you ask it not to", () => {
     let (host, _) = mount()
     let scene = sceneNode(host)
     expect(TestDom.attrOr(scene, "data-snap"))->toBe("on")
     let snap =
       TestDom.findAll(host, ".cascade-toggle")
-      ->Array.find(button => TestDom.text(button) == "device snap")
+      ->Array.find(button => TestDom.text(button) == "whole pixels")
       ->Option.getOrThrow
     TestDom.click(snap)
     expect(TestDom.attrOr(scene, "data-snap"))->toBe("off")

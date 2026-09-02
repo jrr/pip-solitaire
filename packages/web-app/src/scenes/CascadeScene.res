@@ -18,12 +18,18 @@
 // cascade that reads the same at all three is one whose gravity means something on a
 // phone; one tuned in pixels turns into a slow drift at 40 and a plummet at 140.
 //
-// **The device-pixel snap** can be turned off, which is the only way to see what it buys.
-// What an unsnapped blit looks like is not blur: a sub-pixel scale acts about the centre,
-// so the card's two ends move in opposite directions and it reads as the ends disagreeing.
-// Worth knowing by sight, because the natural diagnosis sends you into the rasterizer
-// instead of the compositor. `Cascade.snapToDevice` is the fix and the arithmetic is
-// pinned in `Cascade_test`; the toggle is how you see it.
+// **`whole pixels`** can be turned off, which is the only way to see what it buys. What an
+// unsnapped blit looks like is not blur: a sub-pixel scale acts about the centre, so the
+// card's two ends move in opposite directions and it reads as the ends disagreeing. Worth
+// knowing by sight, because the natural diagnosis sends you into the rasterizer instead of
+// the compositor. `Cascade.snapToDevice` is the fix and the arithmetic is pinned in
+// `Cascade_test`; the toggle is how you see it.
+//
+// The button names the state it produces — cards land on whole device pixels — where the
+// source names the mechanism (`snapToDevice`), because a chip that names a topic leaves a
+// reader working out which way "on" points. Not "pixel perfect": in the games that phrase
+// comes from it means an integer *scale*, and this blit is 1:1 with the bitmap whatever
+// the toggle says, so the name would promise a property the button doesn't control.
 //
 // **Pose** (`?cascade=pose`) is the player's still: the same cascade to the pixel on every
 // load. That is what the screenshot report shoots and what the browser suite compares two
@@ -182,7 +188,7 @@ let make = (~mode=Live, ~seed as initialSeed=1): Scene.t => {
         size,
         button(~parent=toolbar, ~className="cascade-toggle", ~label=`${Float.toString(size)}px`),
       ))
-    let snapButton = button(~parent=toolbar, ~className="cascade-toggle", ~label="device snap")
+    let snapButton = button(~parent=toolbar, ~className="cascade-toggle", ~label="whole pixels")
 
     // A knob: its name, a range input, and the value it is at. The readout is beside
     // the slider because a slider alone says "somewhere in the middle", and what you
