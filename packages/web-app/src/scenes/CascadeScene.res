@@ -1,8 +1,10 @@
 // The `cascade` scene: the victory animation's motion, with no game and no board under
 // it — the step that answers whether the thing in issue #224 actually looks good. That is
 // a question about feel, so **every number that decides how it feels is on screen**:
-// gravity, bounciness, the horizontal speed range, the launch interval and how far apart
-// the trail is stamped are sliders, not constants you rebuild to change.
+// gravity, the sideways throw, the launch interval and how far apart the trail is stamped
+// are sliders, not constants you rebuild to change — and the two a card can differ in,
+// its throw and its bounce, are a pair each: the value, and the ± the deck is scattered
+// over (see `Cascade.knobs`).
 //
 // The motion is `Cascade` and the machinery that draws it is `CascadePlayer`. What is left
 // here is the surface, the chrome, and one `options` handed over on every drag — the same
@@ -189,6 +191,11 @@ let make = (~mode=Live, ~seed as initialSeed=1): Scene.t => {
     // `~wide` is for a readout that says more than its own number: the row is sized for
     // the longest string it can hold, so dragging one doesn't shove the knobs beside it
     // along the row.
+    //
+    // **Every readout is repainted on every drag**, not just the one being dragged: a ±
+    // knob reads out the band it makes, which is a fact about its neighbour's value too,
+    // and a row that only refreshes when *it* moves shows a band the run isn't using.
+    let redraws = []
     let knob = (~label, ~min, ~max, ~step, ~value, ~format, ~onChange, ~wide=false) => {
       let row = el("label", "cascade-knob")
       // On the row as well as the input, so a reader — a test, or an eye down the
@@ -212,10 +219,15 @@ let make = (~mode=Live, ~seed as initialSeed=1): Scene.t => {
       row->WebDom.appendChild(input)->ignore
       row->WebDom.appendChild(readout)->ignore
       knobBar->WebDom.appendChild(row)->ignore
+      let paint = () =>
+        Float.fromString(inputValue(input))->Option.forEach(current =>
+          readout->WebDom.setTextContent(format(current))
+        )
+      redraws->Array.push(paint)
       input->WebDom.addEventListener("input", () =>
         Float.fromString(inputValue(input))->Option.forEach(next => {
-          readout->WebDom.setTextContent(format(next))
           onChange(next)
+          redraws->Array.forEach(repaint => repaint())
           CascadePlayer.retune(player, options())
         })
       )
@@ -237,6 +249,14 @@ let make = (~mode=Live, ~seed as initialSeed=1): Scene.t => {
       ~format=value => `${hundredth(value)} m/s² · ${hundredth(value /. Cascade.earthGravity)} g`,
       ~onChange=value => knobs := {...knobs.contents, gravity: Cascade.fromMetric(value)},
     )
+    // A ± knob reads out the band it makes, not just the number it is: the span is what
+    // you are actually choosing, and computing it in your head from the row above is the
+    // arithmetic this scene exists to save you.
+    let spread = (~centre, ~variance, ~unit) =>
+      `± ${hundredth(variance)} · ${hundredth(centre -. variance)}–${hundredth(
+          centre +. variance,
+        )}${unit}`
+
     knob(
       ~label="bounciness",
       ~min=0.,
@@ -249,34 +269,40 @@ let make = (~mode=Live, ~seed as initialSeed=1): Scene.t => {
       ~format=hundredth,
       ~onChange=value => knobs := {...knobs.contents, bounciness: value},
     )
-    // The two ends of the sideways throw, in metres per second for the same reason as
-    // gravity — and they have to move with it. Falling three times faster and being
-    // thrown no harder is a cascade that lands in a heap under the foundations, so a
-    // range that reaches earth gravity has to reach a throw that crosses a table: 3 m/s
-    // is about a card flicked hard, and roughly what 9.81 wants.
-    let speedKnob = (~label, ~value, ~onChange) =>
-      knob(
-        ~label,
-        ~min=0.,
-        ~max=3.,
-        ~step=0.05,
-        ~value=Cascade.toMetric(value),
-        ~format=value => `${hundredth(value)} m/s`,
-        ~onChange=value => onChange(Cascade.fromMetric(value)),
-      )
-    speedKnob(~label="slowest", ~value=knobs.contents.minSpeed, ~onChange=value =>
-      knobs := {
-          ...knobs.contents,
-          minSpeed: value,
-          maxSpeed: Math.max(knobs.contents.maxSpeed, value),
-        }
+    knob(
+      ~label="bouncinessVariance",
+      ~min=0.,
+      ~max=0.4,
+      ~step=0.01,
+      ~value=knobs.contents.bouncinessVariance,
+      ~wide=true,
+      ~format=variance => spread(~centre=knobs.contents.bounciness, ~variance, ~unit=""),
+      ~onChange=value => knobs := {...knobs.contents, bouncinessVariance: value},
     )
-    speedKnob(~label="fastest", ~value=knobs.contents.maxSpeed, ~onChange=value =>
-      knobs := {
-          ...knobs.contents,
-          maxSpeed: value,
-          minSpeed: Math.min(knobs.contents.minSpeed, value),
-        }
+    // The sideways throw, in metres per second for the same reason as gravity — and it
+    // has to reach as far as gravity does. Falling three times faster and being thrown no
+    // harder is a cascade that lands in a heap under the foundations, so a range that
+    // reaches earth gravity has to reach a throw that crosses a table: 3 m/s is about a
+    // card flicked hard, and roughly what 9.81 wants.
+    knob(
+      ~label="speed",
+      ~min=0.,
+      ~max=3.,
+      ~step=0.05,
+      ~value=Cascade.toMetric(knobs.contents.speed),
+      ~format=value => `${hundredth(value)} m/s`,
+      ~onChange=value => knobs := {...knobs.contents, speed: Cascade.fromMetric(value)},
+    )
+    knob(
+      ~label="speedVariance",
+      ~min=0.,
+      ~max=1.,
+      ~step=0.05,
+      ~value=Cascade.toMetric(knobs.contents.speedVariance),
+      ~wide=true,
+      ~format=variance =>
+        spread(~centre=Cascade.toMetric(knobs.contents.speed), ~variance, ~unit=" m/s"),
+      ~onChange=value => knobs := {...knobs.contents, speedVariance: Cascade.fromMetric(value)},
     )
     // The interval between two cards, and what a deck of them costs: one card per
     // interval is the whole cascade's length, and at the top of this range that is most

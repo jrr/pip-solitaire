@@ -10,9 +10,15 @@ open Vitest
 // card falling want gravity and nothing else.
 let openStage: Cascade.stage = {width: 1000., height: 1000., seats: [(0., 0.)]}
 
-// Straight down, at whatever gravity: a zero speed range takes the horizontal draw out
-// of the picture without taking the PRNG out of it.
-let dropping = {...Cascade.defaults, minSpeed: 0., maxSpeed: 0.}
+// Straight down, at whatever gravity, and 52 identical cards: zeroing the speed takes
+// the horizontal draw out of the picture, and zeroing both spreads makes every card the
+// one the knobs describe — which is what lets a test below name the card it is watching.
+let dropping = {
+  ...Cascade.defaults,
+  speed: 0.,
+  speedVariance: 0.,
+  bouncinessVariance: 0.,
+}
 
 let runFor = (~knobs, ~stage, ~seed=1, ~seconds, ~dt) => {
   let run = ref(Cascade.make(~seed, ~cards=Deck.allCards))
@@ -193,7 +199,96 @@ describe("the launch", () => {
     // what keeps 52 launches reading as one cascade.
     expect(flyer.vy)->toBe(0.)
     let speed = Math.abs(flyer.vx)
-    expect(speed >= Cascade.defaults.minSpeed && speed <= Cascade.defaults.maxSpeed)->toBe(true)
+    let {speed: centre, speedVariance: spread} = Cascade.defaults
+    expect(speed >= centre -. spread && speed <= centre +. spread)->toBe(true)
+  })
+})
+
+describe("a knob and its ±", () => {
+  let stage = Cascade.stageOf(~cssWidth=1056., ~cssHeight=560., ~cardWidth=90.)
+  let card: Deck.card = {suit: Deck.Spades, rank: Deck.Ace}
+
+  // Fifty-two launches from the middle seat, which is what a run actually draws.
+  let deal = knobs => {
+    let rng = ref(Cards.seedState(3))
+    Array.fromInitializer(~length=52, _ => {
+      let (next, flyer) = Cascade.spawn(
+        rng.contents,
+        ~knobs,
+        ~stage,
+        ~card,
+        ~seat=(stage.width /. 2., Cascade.seatTop),
+      )
+      rng := next
+      flyer
+    })
+  }
+
+  let span = values => (
+    values->Array.reduce(Float.Constants.positiveInfinity, Math.min),
+    values->Array.reduce(Float.Constants.negativeInfinity, Math.max),
+  )
+
+  test("scatters the deck across the band, and fills it", () => {
+    let knobs = {...Cascade.defaults, speed: 5., speedVariance: 1.}
+    let (slowest, fastest) = deal(knobs)->Array.map(flyer => Math.abs(flyer.vx))->span
+    expect(slowest >= 4.)->toBe(true)
+    expect(fastest <= 6.)->toBe(true)
+    // …and uses the band rather than hugging the middle of it: a uniform draw over 52
+    // cards lands within a tenth of both ends.
+    expect(slowest < 4.1)->toBe(true)
+    expect(fastest > 5.9)->toBe(true)
+  })
+
+  test("is 52 identical cards at a spread of zero, which is what the spread is against", () => {
+    let knobs = {...Cascade.defaults, speed: 5., speedVariance: 0., bouncinessVariance: 0.}
+    let (slowest, fastest) = deal(knobs)->Array.map(flyer => Math.abs(flyer.vx))->span
+    expect(slowest)->toBe(5.)
+    expect(fastest)->toBe(5.)
+  })
+
+  test("gives every card its own bounciness, and keeps it inside 0 and 1", () => {
+    // A spread wider than the value itself, which is reachable on the sliders: a card
+    // that keeps more than it landed with never comes down, and a negative one would
+    // launch itself off the floor.
+    let knobs = {...Cascade.defaults, bounciness: 0.9, bouncinessVariance: 0.4}
+    let (dullest, springiest) = deal(knobs)->Array.map(flyer => flyer.bounciness)->span
+    expect(dullest >= 0.5)->toBe(true)
+    expect(springiest <= 1.)->toBe(true)
+    expect(springiest > 0.99)->toBe(true) // the clamp is doing the work, not the draw
+  })
+
+  test("and a card keeps the bounciness it launched with, floor after floor", () => {
+    // Drawn once, at the seat — so a card is springy or dull for its whole flight rather
+    // than a different card off every bounce.
+    //
+    // One card, thrown at nothing sideways, on a stage it therefore never leaves: it
+    // bounces in place for seven seconds, and the whole time it is the same card. (A deck
+    // would not answer this — the card at the front of `flying` changes as cards retire,
+    // and comparing *those* compares two cards' draws.)
+    let stage: Cascade.stage = {width: 40., height: 8., seats: [(20., 0.)]}
+    let knobs = {...Cascade.defaults, speed: 0., speedVariance: 0.}
+    let run = ref(Cascade.make(~seed=2, ~cards=[card]))
+    let bouncinesses = []
+    let landings = ref(0)
+    for _ in 1 to 900 {
+      let before = run.contents.flying->Array.get(0)->Option.map(flyer => flyer.vy)
+      run := Cascade.step(run.contents, ~knobs, ~stage, ~dt=1. /. 120.)
+      run.contents.flying
+      ->Array.get(0)
+      ->Option.forEach(
+        flyer => {
+          bouncinesses->Array.push(flyer.bounciness)
+          if before->Option.getOr(0.) > 0. && flyer.vy < 0. {
+            landings := landings.contents + 1
+          }
+        },
+      )
+    }
+    expect(Array.length(bouncinesses))->toBe(900)
+    expect(landings.contents >= 3)->toBe(true) // it really did bounce, several times
+    let (lowest, highest) = span(bouncinesses)
+    expect(lowest)->toBe(highest)
   })
 })
 
@@ -301,6 +396,7 @@ describe("leaving the stage", () => {
       y: 0.,
       vx: -1.,
       vy: 0.,
+      bounciness: 0.5,
     }
     // Still half on stage, so still drawn: a card that vanished at the edge would
     // blink out with an edge showing.

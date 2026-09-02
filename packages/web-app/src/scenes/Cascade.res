@@ -57,8 +57,10 @@ let fromMetric = value => value /. metresPerCardWidth
 // Earth's, for a scene that wants to say how far from it a setting is.
 let earthGravity = 9.80665
 
-// One card in flight: where it is, and how fast, in card-widths.
-type flyer = {card: Deck.card, x: float, y: float, vx: float, vy: float}
+// One card in flight: where it is, how fast, in card-widths — and how well it bounces,
+// which is the card's own rather than the run's. Drawn once at launch and carried, so a
+// card keeps the character it left with instead of picking a new one off every floor.
+type flyer = {card: Deck.card, x: float, y: float, vx: float, vy: float, bounciness: float}
 
 // The arena, in card-widths, and the seats cards launch from — top-left corners, taken
 // in turn. Seats are the stage's rather than a knob because the integration's are the
@@ -69,14 +71,21 @@ type stage = {width: float, height: float, seats: array<(float, float)>}
 
 // The feel, all of it. On screen in the scene rather than in here, because whether a
 // cascade looks right is not a question source can answer (see CascadeScene).
+// **Anything a card can differ in is a value and a ± around it**, drawn once, when the
+// card launches. Not a low and a high: a pair of ends is two numbers to drag to move one
+// thing, and which of them is "the speed" has no answer. A centre and a spread has both
+// — the centre is the cascade's character and the spread is how much the deck varies
+// from it, and either can be moved without touching the other. A spread of 0 is 52
+// identical cards, which is the setting that shows what the spread was doing.
 type knobs = {
   gravity: float, // card-widths / s²
   // The fraction of falling speed a bounce keeps. Physics calls this the coefficient of
   // restitution; the plainer word is the one on the slider, and 0 to 1 means the same
   // thing either way — 0 lands dead, 1 would bounce back to where it fell from.
   bounciness: float,
-  minSpeed: float, // horizontal launch speed, card-widths / s
-  maxSpeed: float,
+  bouncinessVariance: float,
+  speed: float, // horizontal launch speed, card-widths / s
+  speedVariance: float,
   launchMs: float, // between one card leaving and the next
 }
 
@@ -92,8 +101,9 @@ type knobs = {
 let defaults = {
   gravity: fromMetric(4.),
   bounciness: 0.75,
-  minSpeed: fromMetric(0.3),
-  maxSpeed: fromMetric(0.5),
+  bouncinessVariance: 0.1,
+  speed: fromMetric(0.4),
+  speedVariance: fromMetric(0.1),
   launchMs: 750.,
 }
 
@@ -191,28 +201,51 @@ let rightwardChance = (~seatX, ~stage: stage) => {
   Math.min(Math.max(0.5 +. inwardBias *. (share -. 0.5), 0.), 1.)
 }
 
-// The next card off the pile, given the seat it launches from and two draws: how fast
-// it goes sideways, and which way. Nothing is thrown upwards — a card leaves its seat
-// at rest vertically, so every card traces the same parabola family and the picture
-// reads as one cascade rather than as 52 unrelated throws.
+// A value scattered around its centre: `value ± variance`, uniform, one draw. Held
+// inside `[low, high]` so a spread wider than the value has somewhere to land — a
+// negative speed would be a direction (which is `rightwardChance`'s business, not the
+// spread's), and a bounciness over 1 is a card that gains energy off the floor and never
+// comes down.
+let scatter = (~value, ~variance, ~low, ~high, unit) =>
+  Math.min(Math.max(value +. (unit *. 2. -. 1.) *. variance, low), high)
+
+// The next card off the pile, given the seat it launches from and three draws: how fast
+// it goes sideways, which way, and how well it bounces. Nothing is thrown upwards — a
+// card leaves its seat at rest vertically, so every card traces the same parabola family
+// and the picture reads as one cascade rather than as 52 unrelated throws.
 let spawn = (rng, ~knobs, ~stage, ~card, ~seat) => {
   let (rng, speedDraw) = draw(rng)
   let (rng, sideDraw) = draw(rng)
+  let (rng, bounceDraw) = draw(rng)
   let (seatX, seatY) = seat
-  let speed = knobs.minSpeed +. speedDraw *. Math.max(knobs.maxSpeed -. knobs.minSpeed, 0.)
+  let speed = scatter(
+    ~value=knobs.speed,
+    ~variance=knobs.speedVariance,
+    ~low=0.,
+    ~high=Float.Constants.positiveInfinity,
+    speedDraw,
+  )
+  let bounciness = scatter(
+    ~value=knobs.bounciness,
+    ~variance=knobs.bouncinessVariance,
+    ~low=0.,
+    ~high=1.,
+    bounceDraw,
+  )
   let rightward = sideDraw < rightwardChance(~seatX, ~stage)
-  (rng, {card, x: seatX, y: seatY, vx: rightward ? speed : -.speed, vy: 0.})
+  (rng, {card, x: seatX, y: seatY, vx: rightward ? speed : -.speed, vy: 0., bounciness})
 }
 
 // One card, one step. Gravity into the velocity, velocity into the position, and the
-// floor caught on the way past.
+// floor caught on the way past — off the card's own bounciness, not the run's, which is
+// what makes a spread something you can see rather than an average you can't.
 let advance = (flyer, ~knobs, ~stage, ~dt) => {
   let vy = flyer.vy +. knobs.gravity *. dt
   let y = flyer.y +. vy *. dt
   let x = flyer.x +. flyer.vx *. dt
   let floor = floorOf(stage)
   if y >= floor && vy > 0. {
-    {...flyer, x, y: floor, vy: -.vy *. knobs.bounciness}
+    {...flyer, x, y: floor, vy: -.vy *. flyer.bounciness}
   } else {
     {...flyer, x, y, vy}
   }

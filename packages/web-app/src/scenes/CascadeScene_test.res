@@ -62,8 +62,9 @@ describe("the cascade scene, on an engine that can't draw", () => {
     expect(knobs)->toEqual([
       "gravity",
       "bounciness",
-      "slowest",
-      "fastest",
+      "bouncinessVariance",
+      "speed",
+      "speedVariance",
       "launchInterval",
       "trail",
     ])
@@ -87,8 +88,22 @@ describe("the cascade scene, on an engine that can't draw", () => {
     // reason: what opens on screen is the number that was chosen.
     let (host, _) = mount()
     expect(readout(host, "gravity"))->toBe("4 m/s² · 0.41 g")
-    expect(readout(host, "slowest"))->toBe("0.3 m/s")
-    expect(readout(host, "fastest"))->toBe("0.5 m/s")
+    expect(readout(host, "speed"))->toBe("0.4 m/s")
+  })
+
+  test("says what band a ± makes, rather than leaving it to be worked out", () => {
+    let (host, _) = mount()
+    expect(readout(host, "speedVariance"))->toBe("± 0.1 · 0.3–0.5 m/s")
+    expect(readout(host, "bouncinessVariance"))->toBe("± 0.1 · 0.65–0.85")
+  })
+
+  test("and moves that band when the value under it moves, not only when ± does", () => {
+    // The readout of a ± is a fact about its neighbour too. A row repainted only when it
+    // is itself dragged shows a band the run stopped using two drags ago.
+    let (host, _) = mount()
+    let speed = TestDom.find(host, `input[data-knob="speed"]`)->Option.getOrThrow
+    TestDom.typeInto(speed, "1")
+    expect(readout(host, "speedVariance"))->toBe("± 0.1 · 0.9–1.1 m/s")
   })
 
   test("says what a deck at the launch interval costs, not just the interval", () => {
