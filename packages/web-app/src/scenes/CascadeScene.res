@@ -1,91 +1,47 @@
-// The `cascade` scene: the victory animation's motion, with no game and no board under
-// it — the step that answers whether the thing in issue #224 actually looks good. That is
-// a question about feel, so **every number that decides how it feels is on screen**:
-// gravity, the sideways throw, the launch interval and how far apart the trail is stamped
-// are sliders, not constants you rebuild to change — and the two a card can differ in,
-// its throw and its bounce, are a pair each: the value, and the ± the deck is scattered
-// over (see `Cascade.knobs`).
+// The `cascade` scene: the victory animation with no game and no board under it, and every
+// number that decides how it feels on a slider — because whether a cascade looks right is
+// not a question source can answer. What a control *does* is `CascadePlayer.retune`'s to
+// decide, so this scene is a tuning instrument for the real animation rather than a
+// rehearsal of it.
 //
-// The motion is `Cascade` and the machinery that draws it is `CascadePlayer`. What is left
-// here is the surface, the chrome, and one `options` handed over on every drag — the same
-// value the victory overlay will pass once and never touch, which is what keeps this scene
-// a tuning instrument for the real animation rather than a rehearsal of it.
+// Three controls are claims rather than feel, put where an eye can check them: the card
+// size (the motion is in card-widths, so it should read the same at 40px and 140px),
+// `whole pixels` (off is the only way to see what the snap buys), and the pose.
 //
-// Three things here are not feel at all — they are the scene's own claims, put where an
-// eye can check them:
-//
-// **The card size (40 / 90 / 140px)** is the claim that the motion is in card-widths. A
-// cascade that reads the same at all three is one whose gravity means something on a
-// phone; one tuned in pixels turns into a slow drift at 40 and a plummet at 140.
-//
-// **`whole pixels`** can be turned off, which is the only way to see what it buys. What an
-// unsnapped blit looks like is not blur: a sub-pixel scale acts about the centre, so the
-// card's two ends move in opposite directions and it reads as the ends disagreeing. Worth
-// knowing by sight, because the natural diagnosis sends you into the rasterizer instead of
-// the compositor. `Cascade.snapToDevice` is the fix and the arithmetic is pinned in
-// `Cascade_test`; the toggle is how you see it.
-//
-// The button names the state it produces — cards land on whole device pixels — where the
-// source names the mechanism (`snapToDevice`), because a chip that names a topic leaves a
-// reader working out which way "on" points. Not "pixel perfect": in the games that phrase
-// comes from it means an integer *scale*, and this blit is 1:1 with the bitmap whatever
-// the toggle says, so the name would promise a property the button doesn't control.
-//
-// **Pose** (`?cascade=pose`) is the player's still: the same cascade to the pixel on every
-// load. That is what the screenshot report shoots and what the browser suite compares two
-// loads of; a live run has the display's own timing in it and no two are identical.
-//
-// The launch interval here is deliberately **not** the C/P staggered-flight model in
-// `docs/animation-timing.md` — see that page's note on the cascade for why the four board
-// movers time themselves that way and this doesn't.
+// `docs/cascade.md` has the model, the knobs and the URL parameters.
 
 %%raw(`import "./CascadeScene.css"`)
 
-// --- Bindings ----------------------------------------------------------------
-// The scene mounts detached, so the overlay has no box until it is in the document and
-// laid out; the first card size is chosen a frame later. The value of a range input is
-// the only other thing here that isn't `WebDom`'s.
+// The scene mounts detached, so the overlay has no box until it is laid out; the first card
+// size is chosen a frame later.
 @val external requestAnimationFrame: (unit => unit) => int = "requestAnimationFrame"
 
 @get external inputValue: WebDom.element => string = "value"
 
-// --- The scene's own numbers --------------------------------------------------
-
-// What a card is drawn at, in CSS pixels, smallest first. Three sizes rather than a
-// slider because the question they answer is "does this read the same at a phone's card
-// and a desktop's", which wants two extremes and the middle, and each change rebuilds
-// 52 sprites.
+// Two extremes and the middle, in CSS pixels, smallest first. Not a slider: each change
+// rebuilds 52 sprites.
 let cardSizes = [40., 90., 140.]
 
-// How much room a cascade wants, in card-widths. Below about this the arena is narrower
-// than a card's flight and every trail runs into the far wall at once, which is a
-// picture of a small stage rather than of the motion.
+// Below about this the arena is narrower than a card's flight and every trail runs into the
+// far wall at once, which is a picture of a small stage rather than of the motion.
 let minArenaCards = 8.
 
-// The size to *open* on: the largest that leaves an arena worth watching, so a phone
-// gets the 40px card and a desktop the 90px one without anyone touching a control. The
-// buttons still say what they say — this only decides where the scene starts, and only
-// once, at the first layout. (A board has this for free: its cards are already scaled
-// to its stage, which is what the integration will hand over.)
+// The size to *open* on: the largest that leaves an arena worth watching, so a phone gets
+// the 40px card without anyone touching a control. Only where the scene starts, and only at
+// the first layout.
 let fitCardSize = (~stageWidth) =>
   cardSizes
   ->Array.filter(size => stageWidth /. size >= minArenaCards)
   ->Array.at(-1)
   ->Option.getOr(cardSizes->Array.getUnsafe(0))
 
-// How far a posed cascade is run, **in cards rather than in seconds**. A still wants a
-// stage with a certain amount on it — enough that the trails have crossed and started
-// to overlap, short of the point where they paint it white — and that is a number of
-// cards, not an elapsed time. Counting in seconds meant a still that emptied out the
-// moment the launch interval was dragged, since the same 3.5s went from eighteen cards
-// to five.
+// How far a posed cascade is run, in cards rather than seconds: a still wants a certain
+// amount on the stage, and counting in seconds empties it the moment the launch interval
+// is dragged.
 let poseCards = 16.
 let poseSeconds = (knobs: Cascade.knobs) => poseCards *. knobs.launchMs /. 1000.
 
-// --- The mode ----------------------------------------------------------------
-
-// Live, or the frozen deterministic pose. Parsed from `?cascade=`; anything else reads
-// as `None` and leaves the scene's own default (live) alone.
+// Parsed from `?cascade=`; anything else leaves the scene's own default alone.
 type mode =
   | Live
   | Pose
@@ -96,8 +52,6 @@ let modeFromString = value =>
   | "pose" => Some(Pose)
   | _ => None
   }
-
-// --- Formatting ---------------------------------------------------------------
 
 let whole = value => Math.round(value)->Float.toInt->Int.toString
 let tenth = value => (Math.round(value *. 10.) /. 10.)->Float.toString
@@ -127,8 +81,6 @@ let make = (~mode=Live, ~seed as initialSeed=1): Scene.t => {
     let status = el("p", "cascade-status")
     scene->WebDom.appendChild(status)->ignore
 
-    // The stage is framed with an inset `box-shadow` rather than a border, and the
-    // overlay reads its *own* rect — see CascadeScene.css for the trap that avoids.
     let stage = el("div", "cascade-stage")
     scene->WebDom.appendChild(stage)->ignore
 
@@ -138,10 +90,7 @@ let make = (~mode=Live, ~seed as initialSeed=1): Scene.t => {
     stage->WebDom.appendChild(overlayEl)->ignore
 
     // ---- The settings the controls edit ----
-    // One ref per control, gathered into the player's `options` whenever one moves. The
-    // controls own these and nothing else: what a new value *does* — take effect on the
-    // next step, rebuild a sheet, redraw a still — is `CascadePlayer.retune`'s to decide,
-    // so the answer is the same one the victory overlay would get.
+    // One ref per control, gathered into the player's `options` whenever one moves.
     let knobs = ref(Cascade.defaults)
     let stampMs = ref(CascadePlayer.defaults.stampMs)
     let cardWidth = ref(CascadePlayer.defaults.cardWidth)
@@ -163,8 +112,7 @@ let make = (~mode=Live, ~seed as initialSeed=1): Scene.t => {
       refresh.contents()
     )
 
-    // What the mode asks for, and the only place the two differ: a run, or the still.
-    // Also what Replay means, in either.
+    // The only place the two modes differ, and what Replay means in either.
     let perform = () =>
       switch mode {
       | Live => CascadePlayer.start(player)
@@ -188,24 +136,22 @@ let make = (~mode=Live, ~seed as initialSeed=1): Scene.t => {
         size,
         button(~parent=toolbar, ~className="cascade-toggle", ~label=`${Float.toString(size)}px`),
       ))
+    // Named for the state it produces, where the source names the mechanism
+    // (`Cascade.snapToDevice`): a chip that names a topic leaves a reader working out which
+    // way "on" points.
     let snapButton = button(~parent=toolbar, ~className="cascade-toggle", ~label="whole pixels")
 
-    // A knob: its name, a range input, and the value it is at. The readout is beside
-    // the slider because a slider alone says "somewhere in the middle", and what you
-    // want to leave this scene with is a number to put in the source.
+    // A knob: its name, a range input, and the value it is at — a slider alone says
+    // "somewhere in the middle", and what you want to leave with is a number to put in the
+    // source. `~wide` sizes a row for the longest string its readout can hold, so dragging
+    // doesn't shove the knobs beside it along.
     //
-    // `~wide` is for a readout that says more than its own number: the row is sized for
-    // the longest string it can hold, so dragging one doesn't shove the knobs beside it
-    // along the row.
-    //
-    // **Every readout is repainted on every drag**, not just the one being dragged: a ±
-    // knob reads out the band it makes, which is a fact about its neighbour's value too,
-    // and a row that only refreshes when *it* moves shows a band the run isn't using.
+    // Every readout repaints on every drag, not just the one being dragged: a ± reads out
+    // the band it makes, which is a fact about its neighbour's value too.
     let redraws = []
     let knob = (~label, ~min, ~max, ~step, ~value, ~format, ~onChange, ~wide=false) => {
       let row = el("label", "cascade-knob")
-      // On the row as well as the input, so a reader — a test, or an eye down the
-      // list — can name a knob's *readout* rather than counting rows to it.
+      // On the row as well as the input, so a reader can name a knob's *readout*.
       row->WebDom.setAttribute("data-knob", label)
       let name = el("span", "cascade-knob__label")
       name->WebDom.setTextContent(label)
@@ -239,12 +185,8 @@ let make = (~mode=Live, ~seed as initialSeed=1): Scene.t => {
       )
     }
 
-    // Gravity, in the unit gravity is quoted in. A card-width is 2.5 inches of card
-    // (`Cascade.metresPerCardWidth`), so the physics' card-widths per second squared is
-    // an acceleration like any other and there is no reason to make anyone read it in
-    // card-widths. The share of a g rides along because it is the only number that says
-    // *how far from real* a setting is at a glance, and this scene is where that is
-    // decided: 9.81 is on the slider, a drag away, rather than a rebuild away.
+    // In m/s², with its share of a g beside it: the only number that says how far from real
+    // a setting is, and 9.81 is on the slider rather than a rebuild away.
     knob(
       ~label="gravity",
       ~min=0.2,
@@ -255,9 +197,8 @@ let make = (~mode=Live, ~seed as initialSeed=1): Scene.t => {
       ~format=value => `${hundredth(value)} m/s² · ${hundredth(value /. Cascade.earthGravity)} g`,
       ~onChange=value => knobs := {...knobs.contents, gravity: Cascade.fromMetric(value)},
     )
-    // A ± knob reads out the band it makes, not just the number it is: the span is what
-    // you are actually choosing, and computing it in your head from the row above is the
-    // arithmetic this scene exists to save you.
+
+    // The band a ± makes, which is what you are actually choosing.
     let spread = (~centre, ~variance, ~unit) =>
       `± ${hundredth(variance)} · ${hundredth(centre -. variance)}–${hundredth(
           centre +. variance,
@@ -269,9 +210,7 @@ let make = (~mode=Live, ~seed as initialSeed=1): Scene.t => {
       ~max=0.95,
       ~step=0.01,
       ~value=knobs.contents.bounciness,
-      // A bare fraction: the share of its falling speed a card keeps off the floor, so
-      // 0 lands dead and 1 would come back up to where it fell from. Stops short of 1
-      // because a card that keeps everything never settles and never leaves.
+      // Short of 1, because a card that keeps everything never settles and never leaves.
       ~format=hundredth,
       ~onChange=value => knobs := {...knobs.contents, bounciness: value},
     )
@@ -285,11 +224,9 @@ let make = (~mode=Live, ~seed as initialSeed=1): Scene.t => {
       ~format=variance => spread(~centre=knobs.contents.bounciness, ~variance, ~unit=""),
       ~onChange=value => knobs := {...knobs.contents, bouncinessVariance: value},
     )
-    // The sideways throw, in metres per second for the same reason as gravity — and it
-    // has to reach as far as gravity does. Falling three times faster and being thrown no
-    // harder is a cascade that lands in a heap under the foundations, so a range that
-    // reaches earth gravity has to reach a throw that crosses a table: 3 m/s is about a
-    // card flicked hard, and roughly what 9.81 wants.
+    // Reaches 3 m/s — about a card flicked hard — because the range has to reach as far as
+    // gravity's does: falling three times faster and thrown no harder is a cascade that
+    // lands in a heap under the foundations.
     knob(
       ~label="speed",
       ~min=0.,
@@ -310,12 +247,9 @@ let make = (~mode=Live, ~seed as initialSeed=1): Scene.t => {
         spread(~centre=Cascade.toMetric(knobs.contents.speed), ~variance, ~unit=" m/s"),
       ~onChange=value => knobs := {...knobs.contents, speedVariance: Cascade.fromMetric(value)},
     )
-    // The interval between two cards, and what a deck of them costs: one card per
-    // interval is the whole cascade's length, and at the top of this range that is most
-    // of two minutes — the number worth having in front of you *while* you drag rather
-    // than after a run has taken that long. `cards × interval` rather than the
-    // `cards - 1` the launches actually span, because the last card still has the stage
-    // to cross after it leaves, which takes about the interval back.
+    // What a deck costs at that interval, because at the top of this range it is most of
+    // two minutes — worth having in front of you while you drag rather than after a run has
+    // taken that long.
     knob(
       ~label="launchInterval",
       ~min=20.,
@@ -398,12 +332,11 @@ let make = (~mode=Live, ~seed as initialSeed=1): Scene.t => {
               | Settled =>
                 `${whole(state.fps)} fps`
               }
+              // The arena three ways: what the browser laid out, what the physics sees, and
+              // how big a table that is — which is what makes a gravity in m/s² mean
+              // anything.
               `seed ${Int.toString(seed.contents)} · ` ++
               `${whole(cardWidth.contents)}px card @${hundredth(built.pixelRatio)}× · ` ++
-              // The arena three ways: what the browser laid out, what the physics sees,
-              // and how big a table that is. The last one is what makes a gravity in
-              // m/s² mean anything — 4 across a third of a metre is a different picture
-              // from 4 across a room.
               `stage ${whole(state.cssWidth)}×${whole(state.cssHeight)} css = ${tenth(
                   state.stage.width,
                 )}×${tenth(state.stage.height)} cards = ${hundredth(
@@ -436,15 +369,14 @@ let make = (~mode=Live, ~seed as initialSeed=1): Scene.t => {
     )
     snapButton->WebDom.addEventListener("click", () => {
       snap := !snap.contents
-      // Live, the change shows on the next stamp and the trail keeps what it has —
-      // which is the comparison worth having, both kinds of edge in one picture.
+      // Live, the trail keeps what it has, which is the comparison worth having: both kinds
+      // of edge in one picture.
       CascadePlayer.retune(player, options())
     })
 
-    // The overlay has no box until the scene is in the document and laid out — which is
-    // also the first moment a card size can be chosen to fit it, so the run waits for the
-    // frame rather than racing it and rasterizing 52 cards at a size the stage turns out
-    // to have no room for.
+    // The overlay has no box until the scene is laid out — which is also the first moment a
+    // card size can be chosen to fit it, so the run waits a frame rather than rasterizing 52
+    // cards at a size the stage turns out to have no room for.
     refresh.contents()
     requestAnimationFrame(() => {
       let (stageWidth, _) = CascadePlayer.cssSize(player)
@@ -453,10 +385,8 @@ let make = (~mode=Live, ~seed as initialSeed=1): Scene.t => {
       perform()
     })->ignore
 
-    // ---- Teardown ----
-    // The container's `clear` takes the stage and the canvas; the frame loop, the
-    // `window` listener and an in-flight build are what it can't reach, and what
-    // `detach` is for.
+    // The container's `clear` takes the stage and the canvas; the frame loop, the `window`
+    // listener and an in-flight build are what `detach` is for.
     () => CascadePlayer.detach(player)
   },
 }

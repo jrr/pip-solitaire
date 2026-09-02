@@ -1,31 +1,13 @@
-// The cascade on a surface: everything between `Cascade`'s numbers and a canvas that has
-// to draw them, owned once instead of twice.
+// The cascade on a surface: the backing store, the sprite sheet, the frame loop, and what
+// a resize does to a run in flight. `Cascade` is the motion and knows nothing else; this is
+// everything between those numbers and a canvas, owned once rather than once per caller —
+// the victory overlay (#228) needs all of it and the demo scene is only the first caller.
 //
-// `Cascade` is the motion and knows nothing else — no canvas, no clock. What is left over
-// is not the demo scene's either, even though the demo scene is the only caller today:
-// sizing a backing store, rasterizing 52 cards at the ratio that store was sized at, a
-// fixed-step loop off `requestAnimationFrame`, stamping on an interval of *simulated*
-// time, and what a resize does to a run already in flight. The victory overlay (#228)
-// needs every one of those, and a second copy of them is how the two drift — a store
-// sized at one ratio here and a sheet built at another there draws perfectly good cards,
-// softer by the ratio between them, with nothing saying so.
+// The caller owns the surface and the settings, the player owns the mechanics: hand over a
+// canvas and an `options`, hear back through `~onChange`. Nothing here reads a control or
+// writes a status line.
 //
-// The split is: **the caller owns the surface and the settings, the player owns the
-// mechanics.** A caller makes the canvas and puts it wherever its own layout wants it,
-// then hands over an `options` — so the demo scene can hand over a new one on every
-// slider drag (`retune`) while the victory overlay passes one literal and never speaks
-// again. Nothing here reads a knob out of the DOM or writes a status line; what it knows
-// it says through `~onChange`, and the caller decides whether that is a status line, a
-// `data-` attribute or nothing at all.
-//
-// **Nothing is ever cleared.** The trail *is* the effect (#224), and it is why this is a
-// canvas at all: per-frame cost tracks the cards in flight, not the length of the trail
-// behind them. The one thing that wipes it is assigning the backing store, which a resize
-// forces — see `resized` for what that costs a run and why it ends one.
-
-// --- Bindings ----------------------------------------------------------------
-// The frame clock in its timestamp form (a fixed-step loop needs the frame's own time,
-// not a `unit`), and the element's own box. The canvas half is `Canvas`'s.
+// `docs/cascade.md` has the model, the ratio rule and the resize policy.
 
 @val external requestAnimationFrame: (float => unit) => int = "requestAnimationFrame"
 @val external cancelAnimationFrame: int => unit = "cancelAnimationFrame"
@@ -33,51 +15,38 @@
 type rect = {left: float, top: float, width: float, height: float}
 @send external boundingRect: WebDom.element => rect = "getBoundingClientRect"
 
-// --- The mechanics' own numbers ----------------------------------------------
-
-// The simulation's step, fixed, and small enough that a bounce is a bounce rather than a
-// corner. Nothing about the *drawing* is keyed to it: how often a card is stamped is
-// `options.stampMs`, counted in the same simulated milliseconds.
+// Small enough that a bounce is a bounce rather than a corner. Nothing about the drawing is
+// keyed to it — that is `options.stampMs`, in the same simulated milliseconds.
 let stepSeconds = 1. /. 120.
 let stepMs = stepSeconds *. 1000.
 
-// The most arrears one frame may work off. A backgrounded tab comes back owing seconds;
-// without this, working that off in one frame is thousands of steps and a locked-up page.
-// The run loses the time instead, which is the right thing to lose.
+// The most arrears one frame may work off: a backgrounded tab comes back owing seconds, and
+// spending them is thousands of steps and a locked-up page. The run loses the time instead.
 let maxCatchUpMs = 100.
 
-// --- What a caller passes in --------------------------------------------------
-
-// Where cards launch from. `Spread` is a count of seats laid evenly across the top of the
-// stage — a demo's stand-in for a row of foundations, and what lines the round-robin in
-// `Cascade.step` up with the round-robin in `Cascade.foundationOrder`. `At` is the
-// caller's own seats, in card-widths: a board's foundations are wherever the board put
-// them, and a cascade that starts anywhere else starts by teleporting the cards.
+// Where cards launch from. `Spread` is the demo's row of seats; `At` is a caller's own, in
+// card-widths — a board's foundations are wherever the board put them, and a cascade that
+// starts anywhere else starts by teleporting the cards.
 type launchpad =
   | Spread(int)
   | At(array<(float, float)>)
 
-// Every setting the player has, in one value, so that adjusting one is the same operation
-// as adjusting none of them (see `retune`).
+// Every setting in one value, so adjusting one is the same operation as adjusting none
+// (see `retune`).
 type options = {
-  // The launch order. `None` deals what a won game leaves (`Cascade.foundationOrder`); a
-  // caller with real foundations to empty passes their cards in the order they come off.
+  // `None` deals what a won game leaves; a caller with real foundations to empty passes
+  // their cards in the order they come off.
   cards: option<array<Deck.card>>,
   seed: int,
-  // What a card is drawn at, in CSS pixels — the one place pixels enter (see `Cascade`),
-  // and the sprite sheet's size, so changing it is a rebuild.
+  // In CSS pixels — the sprite sheet's size, so changing it is a rebuild.
   cardWidth: float,
   launchpad: launchpad,
   knobs: Cascade.knobs,
-  // How much *simulated* time passes between one stamp of a card and the next, which is
-  // what the spacing of the trail is made of, since a faster card covers more ground
-  // between two stamps. Deliberately neither the step nor the frame: stamping every step
-  // paints a solid white sheet you cannot see a card in, and stamping every frame makes
-  // the picture denser on a 120Hz display than on a 60Hz one, which is the one thing a
-  // trail is not allowed to depend on.
+  // Simulated time between one stamp of a card and the next, which is what the spacing of
+  // the trail is made of. Neither the step nor the frame, deliberately: see the doc.
   stampMs: float,
-  // Whether a blit is put on the device-pixel grid. On everywhere except where the point
-  // is to see what it buys — `Cascade.snapToDevice` has the argument.
+  // Whether a blit is put on the device-pixel grid. On everywhere except where the point is
+  // to see what it buys.
   snap: bool,
 }
 
@@ -91,11 +60,8 @@ let defaults = {
   snap: true,
 }
 
-// --- What a caller gets back --------------------------------------------------
-
-// What the player is doing, for a caller that has somewhere to say so. `Building` and
-// `Failed` are the sprite sheet's: it decodes asynchronously, and there is nothing to draw
-// until it lands.
+// `Building` and `Failed` are the sprite sheet's: it decodes asynchronously, and there is
+// nothing to draw until it lands.
 type phase =
   | Building
   | Failed(string)
@@ -115,11 +81,8 @@ type status = {
   fps: float,
 }
 
-// --- The player ---------------------------------------------------------------
-
-// What the player has been asked for, which outlives any one attempt at it: the sheet
-// lands asynchronously and a resize can end a run, and both need to know whether what was
-// wanted was a live run or a still.
+// What the player has been asked for, which outlives any one attempt at it: the sheet lands
+// asynchronously and a resize can end a run, and both need to know which was wanted.
 type intent =
   | Idle
   | Live
@@ -143,16 +106,13 @@ type t = {
   mutable fpsSince: float,
   mutable fps: float,
   // The build whose result is still wanted, numbered as `RasterScene` and `TrailScene`
-  // number theirs: a card-size change or a `detach` abandons whatever is in flight. No
-  // request holds 0.
+  // number theirs. No request holds 0, so `detach` abandons everything in flight.
   mutable wanted: int,
-  // The card size and ratio a build in flight is for, and what to do when it lands. Held
-  // rather than closed over so a second ask can recognise the build it is already waiting
-  // on — see `launch`.
+  // What a build in flight is for, so a second ask can recognise the one it is already
+  // waiting on (see `launch`).
   mutable buildingFor: option<(float, float)>,
   mutable runWhenBuilt: bool,
-  // Held so it can be taken off again: `WebDom.removeWindowListener` wants the same value
-  // that was added, and the closure wants the player it is stored on.
+  // Held so it can be taken off again: removal wants the same value that was added.
   mutable resizeListener: unit => unit,
 }
 
@@ -160,9 +120,8 @@ let ratio = () => CardRaster.displayPixelRatio()
 
 let element = player => Canvas.element(player.canvas)
 
-// The surface's CSS box, measured now. The one thing a caller asks the player for rather
-// than the other way round: a card size chosen to fit the stage (the demo scene's three)
-// has to be chosen before there is anything to run in it.
+// The one thing a caller asks the player for rather than the other way round: a card size
+// chosen to fit the stage has to be chosen before there is anything to run in it.
 let cssSize = player => {
   let box = boundingRect(element(player))
   (box.width, box.height)
@@ -186,8 +145,7 @@ let phaseOf = player =>
   | (None, None) => Building
   | (None, Some(_)) =>
     switch player.intent {
-    // A sheet but nothing asked for yet, which is the gap between `attach` and the
-    // caller's first `start` — still getting ready, because that is what it is.
+    // A sheet but nothing asked for yet: the gap between `attach` and the first `start`.
     | Idle => Building
     | Pose(_) => Posed
     | Live =>
@@ -217,10 +175,9 @@ let status = player => {
 
 let notify = player => player.onChange(status(player))
 
-// The standard hi-dpi setup: the store in device pixels, the context scaled so everything
-// below draws in CSS pixels. Assigning the store clears it and resets the transform, so
-// the scale is reapplied here every time — and the clearing is exactly why a resize ends
-// a run.
+// The store in device pixels, the context scaled so everything else draws in CSS pixels.
+// Assigning the store clears it and resets the transform, so the scale is reapplied here —
+// and that clearing is why a resize ends a run.
 let sizeStore = player => {
   let (cssWidth, cssHeight) = cssSize(player)
   let scale = ratio()
@@ -229,13 +186,12 @@ let sizeStore = player => {
   Canvas.context2d(player.canvas)->Option.forEach(ctx => ctx->Canvas.scale(scale, scale))
 }
 
-// One stamp of the cards in flight, over whatever is already there.
+// One stamp of the cards in flight, over whatever is already there — nothing is ever
+// cleared, because the trail is the effect.
 //
 // The blit is 1:1 with the bitmap by construction: the sprite's device size back in CSS
-// pixels, rather than the size it was *asked* for, so a card size the ratio doesn't divide
-// evenly (90px at 1.25×) still copies pixel for pixel instead of resampling by a hair.
-// With the corner snapped to the device grid, that leaves the whole card on whole device
-// pixels.
+// pixels, rather than the size it was asked for, so a card size the ratio doesn't divide
+// evenly still copies pixel for pixel.
 let draw = player =>
   switch (Canvas.context2d(player.canvas), player.sprites) {
   | (Some(ctx), Some(built)) =>
@@ -265,9 +221,8 @@ let stop = player => {
   player.lastFrameAt = None
 }
 
-// One step of the simulation, and a stamp if one has come due. The two are counted
-// separately so the trail's spacing is a distance a card has travelled rather than a
-// number of steps the machine happened to take.
+// Step and stamp are counted separately, so the trail's spacing is a distance a card has
+// travelled rather than a number of steps the machine happened to take.
 let advance = (player, ~stage) => {
   player.run = Cascade.step(player.run, ~knobs=player.options.knobs, ~stage, ~dt=stepSeconds)
   player.sinceStamp = player.sinceStamp +. stepMs
@@ -291,8 +246,8 @@ let rec tick = (player, now) => {
     player.carryMs = player.carryMs -. stepMs
   }
 
-  // The frame rate is worth handing back: the whole premise of drawing this on a canvas
-  // is that a sprite sheet holds 60fps where a screenful of live SVGs would not.
+  // Worth handing back: the whole premise of a canvas and a sprite sheet is that they hold
+  // 60fps where a screenful of live SVGs would not.
   player.framesSeen = player.framesSeen + 1
   if now -. player.fpsSince >= 500. {
     player.fps = Int.toFloat(player.framesSeen) *. 1000. /. (now -. player.fpsSince)
@@ -322,10 +277,9 @@ let runLive = player => {
   )
 }
 
-// A fixed count of fixed steps, drawn as it goes, and then nothing — so the picture is a
-// pure function of the options, the seed and the box. The same `Cascade.step` the live
-// loop calls: a still that ran its own simplified physics would be a picture of something
-// the player doesn't do.
+// A fixed count of fixed steps and then nothing, so the picture is a pure function of the
+// options, the seed and the box. The same `Cascade.step` the live loop calls: a still that
+// ran its own simplified physics would be a picture of something the player doesn't do.
 let runPose = (player, ~seconds) => {
   let stage = stageOf(player)
   let steps = Math.round(seconds /. stepSeconds)->Float.toInt
@@ -336,8 +290,8 @@ let runPose = (player, ~seconds) => {
   }
 }
 
-// Start whatever was asked for over: wipe the surface (the only way there is), take the
-// run back to its first card, and then run it or pose it.
+// Start what was asked for over: wipe the surface (the only way there is), take the run
+// back to its first card, then run or pose it.
 let restart = player => {
   stop(player)
   player.interrupted = false
@@ -353,19 +307,17 @@ let restart = player => {
   notify(player)
 }
 
-// Whether the sheet in hand is the one a blit needs: built for this card size, at the
-// ratio the store is sized at. Either of those disagreeing turns every blit into a
-// resample (see `CardRaster.displayPixelRatio`), which draws perfectly good cards and says
-// nothing about it.
+// Whether the sheet in hand is the one a blit needs: this card size, at the ratio the store
+// is sized at. Either disagreeing turns every blit into a resample and says nothing.
 let spritesStale = player =>
   switch player.sprites {
   | None => true
   | Some(built) => built.cssWidth != player.options.cardWidth || built.pixelRatio != ratio()
   }
 
-// Rasterize the deck at the size and the ratio in force now. `~andRun` is what happens
-// when it lands: a new card size wants the cascade that was asked for, and a rebuild
-// forced by a ratio change on a run a resize already ended must not quietly start one.
+// Rasterize the deck at the size and ratio in force now. `~andRun` is what happens when it
+// lands: a new card size wants the cascade that was asked for, and a rebuild forced by a
+// ratio change on a run a resize already ended must not quietly start one.
 let build = (player, ~andRun) => {
   player.wanted = player.wanted + 1
   let mine = player.wanted
@@ -402,10 +354,9 @@ let build = (player, ~andRun) => {
   ->ignore
 }
 
-// Do what the intent says, rasterizing first if the sheet in hand can't serve it — unless
-// a build for that very sheet is already in flight, which the ask can simply wait on. The
-// deck takes tens of milliseconds to rasterize, and a control moved inside that window
-// would otherwise pay for it twice and hand back the same 52 cards.
+// Do what the intent says, rasterizing first if the sheet can't serve it — unless a build
+// for that very sheet is already in flight, which the ask can wait on rather than paying
+// tens of milliseconds twice for the same 52 cards.
 let launch = player =>
   switch (spritesStale(player), player.buildingFor) {
   | (false, _) => restart(player)
@@ -414,8 +365,6 @@ let launch = player =>
   | (true, _) => build(player, ~andRun=true)
   }
 
-// --- What a caller does with one ----------------------------------------------
-
 // A live run, from the first card. Also the way back from a run that settled or was ended
 // by a resize, which is why it is a restart rather than a resume.
 let start = player => {
@@ -423,9 +372,8 @@ let start = player => {
   launch(player)
 }
 
-// The same cascade frozen at a fixed simulated time: a fixed count of fixed steps, no
-// clock, so the picture is identical on every load. What a screenshot shoots, and what a
-// browser test can compare two loads of.
+// The same cascade frozen at a fixed simulated time — no clock, so the picture is identical
+// on every load. What a screenshot shoots and what a browser test compares two loads of.
 let pose = (player, ~seconds) => {
   player.intent = Pose(seconds)
   launch(player)
@@ -441,8 +389,8 @@ let pause = player =>
 let resume = player =>
   if player.paused {
     player.paused = false
-    // `lastFrameAt` was dropped by `stop`, so the pause itself contributes no elapsed time
-    // and the cascade carries on rather than jumping.
+    // `lastFrameAt` was dropped by `stop`, so the pause contributes no elapsed time and the
+    // cascade carries on rather than jumping.
     switch player.intent {
     | Live => runLive(player)
     | Idle | Pose(_) => ()
@@ -450,15 +398,11 @@ let resume = player =>
     notify(player)
   }
 
-// New settings, mid-flight. **A live run takes them on its next step** — which is what
-// makes a slider worth having, and why the settings are handed over rather than read back
-// out of the caller: a caller with nothing to adjust never calls this and gets the very
-// same code path.
-//
-// What can't be taken that way is a setting that isn't in the next step to begin with: a
-// card size is a sprite sheet, and a seed, a deck or a launchpad is a different cascade,
-// so those restart. A still is the other exception, and it is total — it has already been
-// drawn, so whatever moved, it has to be drawn again.
+// New settings, mid-flight: a live run takes them on its next step, which is what makes a
+// slider worth having. What can't be taken that way is a setting that isn't in the next
+// step to begin with — a card size is a sheet, and a seed, a deck or a launchpad is a
+// different cascade, so those restart. A still restarts whatever moved: it has already
+// been drawn.
 let retune = (player, options) => {
   let previous = player.options
   player.options = options
@@ -475,14 +419,10 @@ let retune = (player, options) => {
   }
 }
 
-// A resize is a wipe, unasked for: the store has to follow the element's CSS size, and
-// following it costs every pixel already drawn. So a live run *ends* here rather than
-// being rescaled mid-flight — and if the ratio moved with it (a browser zoom is a resize),
-// the sheet is rebuilt now, while nothing is in the air, which is this module's answer to
-// #253: never under a card.
-//
-// A still loses nothing by a resize, because it is a pure function of the box, the seed
-// and the options: it is simply drawn again, at the size the box is now.
+// A resize is a wipe, unasked for, so a live run *ends* here rather than being rescaled
+// mid-flight — and if the ratio moved with it (a browser zoom is a resize), the sheet is
+// rebuilt now, while nothing is in the air. A still is a pure function of the box, so it is
+// simply drawn again.
 let resized = player => {
   // A sheet that hasn't landed yet is not stale, it is unfinished — cancelling that build
   // to start the same one again is the one way to make a resize cost the cards twice.
@@ -504,9 +444,9 @@ let resized = player => {
   }
 }
 
-// Take a surface. Nothing is drawn and nothing is rasterized until the caller asks for a
-// run — which is deliberate: a scene mounts detached, and the card size worth building at
-// is often a question about a box that doesn't exist yet.
+// Nothing is drawn or rasterized until a caller asks for a run: a scene mounts detached,
+// and the card size worth building at is often a question about a box that doesn't exist
+// yet.
 let attach = (~canvas, ~options=defaults, ~onChange=(_: status) => ()) => {
   let player = {
     canvas,

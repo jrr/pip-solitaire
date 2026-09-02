@@ -1,7 +1,6 @@
 @layer scenes {
-  /* The cascade scene's frame: a dark stage, a transparent overlay filling it, and
-     the controls above. What the scene is *for* is CascadeScene.res; nothing here
-     draws a card — every pixel of the cascade is painted onto the canvas. */
+  /* The scene's frame only: every pixel of the cascade itself is painted onto the
+     canvas (CascadeScene.res). */
   .cascade-scene {
     display: flex;
     flex-direction: column;
@@ -42,9 +41,6 @@
     cursor: default;
   }
 
-  /* A knob is its name, the slider, and the number it is at — the number being the
-     point: a slider on its own says "somewhere in the middle", and what you leave
-     this scene with is a value to put in `Cascade.defaults`. */
   .cascade-knob {
     display: flex;
     align-items: center;
@@ -59,16 +55,14 @@
   }
 
   /* Fixed width and tabular figures, so a value changing under a drag doesn't shuffle
-     the knobs beside it along the row. */
+     the knobs beside it along the row; `--wide` is the same rule for a readout that
+     carries more than its own number. */
   .cascade-knob__value {
     min-width: 4.6rem;
     color: #cbd5e1;
     font-variant-numeric: tabular-nums;
   }
 
-  /* A readout that carries more than its own number — the launch knob also says how
-     long a whole deck at that interval takes — sized for the longest string it can hold
-     rather than the shortest, for the same reason. */
   .cascade-knob__value--wide {
     min-width: 12rem;
   }
@@ -80,10 +74,9 @@
     text-align: center;
   }
 
-  /* The stage, and the box the overlay covers. Framed with an inset `box-shadow`
-     rather than a `border`: the canvas is sized from its own measured rect, and a
-     border would make the padding box it fills smaller than that rect reports, so
-     every stamp would land slightly off its own coordinates. */
+  /* Framed with an inset `box-shadow` rather than a `border`: the canvas is sized from
+     its own measured rect, and a border would make the padding box it fills smaller
+     than that rect reports, so every stamp would land off its own coordinates. */
   .cascade-stage {
     position: relative;
     width: 100%;
@@ -94,11 +87,10 @@
     overflow: hidden;
   }
 
-  /* Transparent — nothing ever fills it, and nothing is ever cleared — and out of
-     hit-testing, the two halves of an overlay that can sit over a live board.
-     `width`/`height` are spelled out because a canvas is a replaced element: with
-     `width: auto` it lays out at its intrinsic 300x150 store size and ignores the
-     insets. */
+  /* Transparent and out of hit-testing, the two halves of an overlay that can sit over
+     a live board. `width`/`height` are spelled out because a canvas is a replaced
+     element: with `width: auto` it lays out at its intrinsic 300x150 store size and
+     ignores the insets. */
   .cascade-overlay {
     position: absolute;
     inset: 0;

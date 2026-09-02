@@ -1,16 +1,10 @@
-// The cascade's machinery where jsdom can reach it: the decisions, not the pixels.
+// The cascade's machinery where jsdom can reach it: the policies both callers inherit —
+// which settings restart a run and which one in flight simply takes, where cards launch
+// from, what a resize costs. The physics is `Cascade_test`'s and the pixels are
+// `browser-tests/cascade.spec.mjs`'s.
 //
-// The physics is `Cascade_test`'s and the drawing is `browser-tests/cascade.spec.mjs`'s,
-// which has an engine and a buffer to read back. What is left is what *both* callers of
-// the player inherit whether or not either ever draws — which settings restart a cascade
-// and which a run in flight simply takes, where a card launches from when the seats are
-// the caller's own rather than a demo's spread, and what a resize costs a run. Each of
-// those is a policy the victory overlay gets by asking for one and passing an `options`,
-// and the way it would otherwise arrive is as a second, slightly different copy.
-//
-// The stubs are `TrailScene_test`'s, for its reasons: jsdom is made to answer the way an
-// engine with no 2D implementation does, and `fetch` rejects immediately rather than
-// leaving the runner waiting on a socket that isn't there.
+// The stubs are `TrailScene_test`'s: jsdom answers the way an engine with no 2D
+// implementation does, and `fetch` rejects rather than leaving the runner on a socket.
 %%raw(`
   if (globalThis.HTMLCanvasElement) {
     globalThis.HTMLCanvasElement.prototype.getContext = () => null
@@ -20,12 +14,10 @@
 
 open Vitest
 
-// The resize the player listens for, as the window actually delivers it — so what these
-// check is the wiring and the policy together, and `detach` can be checked at all.
+// As the window delivers it, so these check the wiring and the policy together.
 let fireResize: unit => unit = %raw(`() => globalThis.dispatchEvent(new Event("resize"))`)
 
-// A sheet that is what it says it is, with no rasterizer under it. Only the two fields a
-// blit has to agree on are load-bearing here; nothing draws in jsdom.
+// A sheet with no rasterizer under it: only the two fields a blit has to agree on matter.
 let sheet = (~cssWidth, ~pixelRatio=CardRaster.displayPixelRatio()): CardRaster.t => {
   cssWidth,
   pixelRatio,
@@ -33,8 +25,7 @@ let sheet = (~cssWidth, ~pixelRatio=CardRaster.displayPixelRatio()): CardRaster.
   sprites: Dict.make(),
 }
 
-// A player with a sheet already in hand and something asked of it, so the paths that
-// would otherwise wait on a rasterizer run here and now.
+// A sheet already in hand, so paths that would wait on a rasterizer run here and now.
 let ready = (~options=CascadePlayer.defaults, ~intent=CascadePlayer.Live) => {
   let player = CascadePlayer.attach(~canvas=Canvas.make(), ~options)
   player.sprites = Some(sheet(~cssWidth=options.cardWidth))
@@ -42,8 +33,7 @@ let ready = (~options=CascadePlayer.defaults, ~intent=CascadePlayer.Live) => {
   player
 }
 
-// Every player here is detached before its test ends: an attached one keeps a `window`
-// listener, so it would hear the *next* test's resize and start a frame loop inside it.
+// Detach before a test ends, or an attached player hears the *next* test's resize.
 let after = (player, check) => {
   check()
   CascadePlayer.detach(player)
@@ -58,8 +48,7 @@ describe("where a cascade launches from", () => {
   test(
     "takes the caller's own seats as given — a board's foundations are where it put them",
     () => {
-      // The seam #228 arrives through. Seats are in card-widths, like everything else the
-      // motion sees, so a board hands over its foundations measured the way it draws them.
+      // The seam #228 arrives through, in card-widths like everything the motion sees.
       let seats = [(1.5, 0.4), (3.5, 0.4)]
       let player = ready(~options={...CascadePlayer.defaults, launchpad: CascadePlayer.At(seats)})
       after(player, () => expect(CascadePlayer.stageOf(player).seats)->toEqual(seats))
@@ -84,9 +73,8 @@ describe("the sprite sheet in hand", () => {
     player.sprites = Some(sheet(~cssWidth=140.))
     expect(CascadePlayer.spritesStale(player))->toBe(true)
 
-    // A ratio that moved under it — a browser zoom — is the same failure, and it is the
-    // one that shows as nothing at all: the cards come out softer by the ratio between
-    // the two, and no error says so.
+    // A ratio that moved under it — a browser zoom — is the same failure, and the one
+    // that shows as nothing at all: softer cards, and no error.
     player.sprites = Some(
       sheet(
         ~cssWidth=CascadePlayer.defaults.cardWidth,
@@ -108,8 +96,7 @@ describe("new settings, handed over mid-flight", () => {
     )
 
   test("a live run takes a knob on its next step rather than starting over", () => {
-    // The whole reason a slider is worth having: what you are tuning is the cascade in
-    // front of you, not the next one.
+    // What you tune is the cascade in front of you, not the next one.
     let player = ready()
     underway(player)
     CascadePlayer.retune(player, {...player.options, knobs: {...Cascade.defaults, gravity: 40.}})
@@ -133,8 +120,7 @@ describe("new settings, handed over mid-flight", () => {
   test("and a new card size is a new sheet, which the run waits for", () => {
     let player = ready()
     CascadePlayer.retune(player, {...player.options, cardWidth: 140.})
-    // The sheet in hand was cut at 90px, so it is dropped rather than scaled — the
-    // resample this whole approach exists to avoid.
+    // Dropped rather than scaled: scaling is the resample this approach exists to avoid.
     after(player, () => expect(CascadePlayer.status(player).sprites)->toEqual(None))
   })
 
@@ -142,8 +128,7 @@ describe("new settings, handed over mid-flight", () => {
     let player = CascadePlayer.attach(~canvas=Canvas.make())
     CascadePlayer.start(player)
     let inFlight = player.wanted
-    // A different cascade, but the same 52 bitmaps: the build already running is the one
-    // this is waiting for.
+    // A different cascade, but the same 52 bitmaps.
     CascadePlayer.retune(player, {...player.options, seed: 5})
     expect(player.wanted)->toBe(inFlight)
     // A different card size is not, and that one it does pay for.
@@ -169,8 +154,7 @@ describe("a resize", () => {
   })
 
   test("is not heard by a player that has been detached", () => {
-    // What a caller's own teardown can't reach: the container's `clear` takes the canvas
-    // and leaves the `window` listener holding a scene that is gone.
+    // A `clear` takes the canvas and leaves the listener holding a scene that is gone.
     let heard = ref(0)
     let player = CascadePlayer.attach(
       ~canvas=Canvas.make(),
@@ -192,8 +176,7 @@ describe("what the player says it is doing", () => {
   })
 
   test("is settled once the last card has left the stage", () => {
-    // A stage a card leaves at once, and two cards to leave it: what `isDone` is, seen
-    // through the phase a caller reads.
+    // `isDone`, seen through the phase a caller reads.
     let cards: array<Deck.card> = [{suit: Deck.Spades, rank: Deck.Ace}]
     let player = ready(~options={...CascadePlayer.defaults, cards: Some(cards)})
     let stage: Cascade.stage = {width: 4., height: 6., seats: [(2., 0.)]}
