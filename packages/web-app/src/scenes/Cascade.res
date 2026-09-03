@@ -14,8 +14,18 @@ let toMetric = value => value *. metresPerCardWidth
 let fromMetric = value => value /. metresPerCardWidth
 let earthGravity = 9.80665
 
-// `bounciness` is the card's own, drawn at launch, so it keeps what it left with.
-type flyer = {card: Deck.card, x: float, y: float, vx: float, vy: float, bounciness: float}
+// `bounciness` and `bounces` are the card's own, drawn at launch, so it keeps what it left
+// with. `bounces` is what the floor has left to give this card: at zero the floor stops
+// catching it and it drops out of the bottom of the stage.
+type flyer = {
+  card: Deck.card,
+  x: float,
+  y: float,
+  vx: float,
+  vy: float,
+  bounciness: float,
+  bounces: int,
+}
 
 // Seats are top-left corners, taken in turn — a board's foundations, when a board is
 // calling.
@@ -27,6 +37,8 @@ type knobs = {
   gravity: float, // card-widths / s²
   bounciness: float, // the share of falling speed a bounce keeps
   bouncinessVariance: float,
+  numBounces: int, // how many times the floor catches a card before letting it through
+  numBouncesVariance: int,
   speed: float, // horizontal launch speed, card-widths / s
   speedVariance: float,
   launchMs: float, // between one card leaving and the next
@@ -37,6 +49,8 @@ let defaults = {
   gravity: fromMetric(4.),
   bounciness: 0.8,
   bouncinessVariance: 0.15,
+  numBounces: 5,
+  numBouncesVariance: 3,
   speed: fromMetric(0.4),
   speedVariance: fromMetric(0.1),
   launchMs: 750.,
@@ -110,12 +124,22 @@ let rightwardChance = (~seatX, ~stage: stage) => {
 let scatter = (~value, ~variance, ~low, ~high, unit) =>
   Math.min(Math.max(value +. (unit *. 2. -. 1.) *. variance, low), high)
 
+// The integer twin, for a band that is a count of whole things: every number in it is
+// equally likely. Rounding a scattered float instead would give the two ends half the
+// weight of every number between them, which for `5 ± 3` is a visible lean off the ends.
+let scatterCount = (~value, ~variance, unit) => {
+  let low = Math.Int.max(value - variance, 0)
+  let span = Math.Int.max(value + variance, low) - low + 1
+  low + Math.Int.min(Float.toInt(unit *. Int.toFloat(span)), span - 1)
+}
+
 // Nothing is thrown upwards, so every card traces the same parabola family and the picture
 // reads as one cascade rather than 52 throws.
 let spawn = (rng, ~knobs, ~stage, ~card, ~seat) => {
   let (rng, speedDraw) = draw(rng)
   let (rng, sideDraw) = draw(rng)
   let (rng, bounceDraw) = draw(rng)
+  let (rng, countDraw) = draw(rng)
   let (seatX, seatY) = seat
   let speed = scatter(
     ~value=knobs.speed,
@@ -131,27 +155,41 @@ let spawn = (rng, ~knobs, ~stage, ~card, ~seat) => {
     ~high=1.,
     bounceDraw,
   )
+  let bounces = scatterCount(~value=knobs.numBounces, ~variance=knobs.numBouncesVariance, countDraw)
   let rightward = sideDraw < rightwardChance(~seatX, ~stage)
-  (rng, {card, x: seatX, y: seatY, vx: rightward ? speed : -.speed, vy: 0., bounciness})
+  (rng, {card, x: seatX, y: seatY, vx: rightward ? speed : -.speed, vy: 0., bounciness, bounces})
 }
 
 // The floor is caught by position rather than by reflecting the overshoot, so no step size
-// can tunnel a card through it.
+// can tunnel a card through it. What does put a card through it is running out of bounces:
+// the floor stops catching that card and it falls out of the bottom of the stage.
+//
+// A contact spends a bounce only if it sends the card back up. A floor with no give holds
+// the card where it landed instead of jittering it a bounce a frame into the cellar — which
+// is what a bounciness of zero has to keep looking like.
 let advance = (flyer, ~knobs, ~stage, ~dt) => {
   let vy = flyer.vy +. knobs.gravity *. dt
   let y = flyer.y +. vy *. dt
   let x = flyer.x +. flyer.vx *. dt
   let floor = floorOf(stage)
-  if y >= floor && vy > 0. {
-    {...flyer, x, y: floor, vy: -.vy *. flyer.bounciness}
+  if y >= floor && vy > 0. && flyer.bounces > 0 {
+    let rebound = -.vy *. flyer.bounciness
+    {
+      ...flyer,
+      x,
+      y: floor,
+      vy: rebound,
+      bounces: rebound < 0. ? flyer.bounces - 1 : flyer.bounces,
+    }
   } else {
     {...flyer, x, y, vy}
   }
 }
 
-// The whole card, so it doesn't blink out with an edge still showing. Nothing retires
-// downwards: the floor is a floor.
-let hasLeft = (flyer, ~stage: stage) => flyer.x +. 1. < 0. || flyer.x > stage.width
+// The whole card, so it doesn't blink out with an edge still showing — downwards as well as
+// sideways, because a card the floor has stopped catching leaves that way.
+let hasLeft = (flyer, ~stage: stage) =>
+  flyer.x +. 1. < 0. || flyer.x > stage.width || flyer.y > stage.height
 
 let isDone = run => run.launched == Array.length(run.cards) && Array.length(run.flying) == 0
 

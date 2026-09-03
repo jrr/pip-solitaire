@@ -204,6 +204,14 @@ let make = (~mode=Live, ~seed as initialSeed=1): Scene.t => {
           centre +. variance,
         )}${unit}`
 
+    // The same band for a count, which is the whole numbers in it and never a fraction of a
+    // bounce. Clamped at the bottom the way `Cascade.scatterCount` clamps it, so the readout
+    // is the band the run actually draws from.
+    let countSpread = (~centre, ~variance) =>
+      `± ${Int.toString(variance)} · ${Int.toString(
+          Math.Int.max(centre - variance, 0),
+        )}–${Int.toString(centre + variance)}`
+
     knob(
       ~label="bounciness",
       ~min=0.,
@@ -223,6 +231,29 @@ let make = (~mode=Live, ~seed as initialSeed=1): Scene.t => {
       ~wide=true,
       ~format=variance => spread(~centre=knobs.contents.bounciness, ~variance, ~unit=""),
       ~onChange=value => knobs := {...knobs.contents, bouncinessVariance: value},
+    )
+    // How many times the floor catches a card before letting it through. Reaches well past
+    // where a card would still be on the stage to reach it, because that is where you find
+    // out what the cascade looks like with the count taken out of it.
+    knob(
+      ~label="numBounces",
+      ~min=0.,
+      ~max=20.,
+      ~step=1.,
+      ~value=Int.toFloat(knobs.contents.numBounces),
+      ~format=whole,
+      ~onChange=value => knobs := {...knobs.contents, numBounces: Float.toInt(value)},
+    )
+    knob(
+      ~label="numBouncesVariance",
+      ~min=0.,
+      ~max=10.,
+      ~step=1.,
+      ~value=Int.toFloat(knobs.contents.numBouncesVariance),
+      ~wide=true,
+      ~format=variance =>
+        countSpread(~centre=knobs.contents.numBounces, ~variance=Float.toInt(variance)),
+      ~onChange=value => knobs := {...knobs.contents, numBouncesVariance: Float.toInt(value)},
     )
     // Reaches 3 m/s — about a card flicked hard — because the range has to reach as far as
     // gravity's does: falling three times faster and thrown no harder is a cascade that
