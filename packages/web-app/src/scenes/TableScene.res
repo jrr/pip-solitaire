@@ -552,6 +552,8 @@ let make = (
         CascadePlayer.detach(run.player)
         WebDom.remove(run.canvas)
         run.reveal()
+        // The panel is a modal again the moment there is nothing falling behind it.
+        classList(boardHost)->removeClass("table-board--cascading")
       | None => ()
       }
 
@@ -1078,13 +1080,27 @@ let make = (
       //
       // It **reports** the clock and the tally but doesn't take either: both were
       // settled by the move that won, which is why raising a panel saves nothing.
+      // **Whether the victory has taken over the board**, which is not the same question
+      // as whether the panel is on screen: a cascade takes the board over for forty
+      // seconds before raising anything, and a tap can put the panel away again while
+      // the cards are still falling. `updateFinishButton` is why the distinction has
+      // teeth — an already-won board is still `canFinish` (draining it wins it again),
+      // so without this the Finish button would offer itself over the celebration.
       let winShown = ref(false)
-      // Kept so undo can tear the panel down when stepping back out of a win.
+      // The panel, while it is actually up. Kept so undo can tear it down when stepping
+      // back out of a win, and so a tap can toggle it over a running cascade.
       let winOverlay = ref(None)
-      let showWin = () =>
+
+      // Say the game is won, once. A tap that brings the panel back is not the game
+      // being won again, which is why this is its own step rather than the panel's.
+      let announceWin = () =>
         if !winShown.contents {
           DebugLog.message("win")
           winShown := true
+        }
+
+      let raiseWin = () =>
+        if winOverlay.contents->Option.isNone {
           // **The clock stopped when the board was won, not here** — the session stamps
           // it as it records the winning move, so the number is how long the game took
           // rather than how long the last card took to fly. Both numbers are read
@@ -1120,16 +1136,41 @@ let make = (
           boardHost->WebDom.appendChild(overlay)->ignore
           winOverlay := Some(overlay)
         }
-      // Clears the flag too, so a later win can raise the panel again. The clock starts
-      // again with it, but not from here: stepping the *session* back is what clears
-      // the won-at, because a board that isn't won hasn't been.
-      let removeWinOverlay = () =>
+
+      // The victory, announced and shown. Idempotent in both halves and separately so:
+      // a cascade announces the win when it starts and raises the panel forty seconds
+      // later, and between those two a tap may have raised it already.
+      let showWin = () => {
+        announceWin()
+        raiseWin()
+      }
+
+      // The panel off the screen, without conceding that the game is still on. That is
+      // the whole difference between this and `removeWinOverlay` below: a tap over a
+      // running cascade wants the message out of the way, not the victory taken back.
+      let hideWin = () =>
         switch winOverlay.contents {
         | Some(overlay) =>
           WebDom.remove(overlay)
           winOverlay := None
-          winShown := false
         | None => ()
+        }
+
+      // Clears the flag too, so a later win can raise the panel again. The clock starts
+      // again with it, but not from here: stepping the *session* back is what clears
+      // the won-at, because a board that isn't won hasn't been.
+      let removeWinOverlay = () => {
+        hideWin()
+        winShown := false
+      }
+
+      // What a tap on a running cascade does. **It doesn't skip** — the cards go on
+      // falling either way; all that moves is whether the message is over them. Reading
+      // the panel rather than a flag of its own is what keeps the two from disagreeing.
+      let toggleWin = () =>
+        switch winOverlay.contents {
+        | Some(_) => hideWin()
+        | None => showWin()
         }
 
       // --- The victory cascade --------------------------------------------------
@@ -1140,8 +1181,9 @@ let make = (
       // board's half: which cards fall, from where, and every way a run can end.
 
       // The one exit every cascade takes, however it got there — it emptied the
-      // foundations, a tap skipped it, a resize wiped the surface, the sprites never
-      // arrived. The panel is the point; the cascade is only what plays in front of it.
+      // foundations, an undo stepped out of the victory, a resize wiped the surface, the
+      // sprites never arrived. The panel is the point; the cascade plays in front of it,
+      // and a tap can bring it forward without ending anything.
       let finishCascade = () => {
         endCascade()
         showWin()
@@ -1211,6 +1253,10 @@ let make = (
         let canvasEl = Canvas.element(canvas)
         canvasEl->WebDom.setAttribute("class", "table-cascade")
         playfield->WebDom.appendChild(canvasEl)->ignore
+        // Marks the board for the length of the run, which is what turns the win panel
+        // from a modal into a peek: the scrim stops hit-testing so a tap on it reaches
+        // the canvas underneath (see `.table-board--cascading`).
+        classList(boardHost)->addClass("table-board--cascading")
 
         // The nodes the run has hidden, so ending it anywhere puts every one of them
         // back — an undo mid-cascade returns to a board with all its cards on it.
@@ -1247,7 +1293,7 @@ let make = (
             | Building | Running | Posed => ()
             },
         )
-        canvasEl->WebDom.addEventListener("pointerdown", finishCascade)
+        canvasEl->WebDom.addEventListener("pointerdown", toggleWin)
         cascade := Some({player, canvas: canvasEl, reveal})
         CascadePlayer.start(player)
       }
@@ -1270,6 +1316,10 @@ let make = (
           ) {
             showWin()
           } else {
+            // Announced up front rather than when the panel finally goes up: the game is
+            // won *now*, and everything that reads `winShown` — the Finish button most
+            // of all — has forty seconds of cascade to be wrong for otherwise.
+            announceWin()
             startCascade()
           }
         }

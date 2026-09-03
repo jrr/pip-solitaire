@@ -252,17 +252,28 @@ the pile it was on — and each `.stacking-card` is hidden as its sprite leaves.
 redo back into the winning move, raise the panel alone: the cascade is what a
 game being won looks like, not what a won position looks like.
 
-Five things end a run, and all five end at the win panel: the last card leaves, a
-tap skips it, an undo steps out of the victory, a resize wipes the surface, or the
-sprite sheet fails to build. That last one is the one worth stating: **a won game
-is never held up by its celebration failing to load.** The canvas takes pointer
-events from the moment the win lands rather than from the first card, so the tap
-also covers the ~60ms the first sheet takes — otherwise a slow build reads as a
-hang on the most emotionally loaded screen in the app.
+**A tap is a peek, not a skip.** It toggles the win panel over the still-falling
+cards and nothing else; the run is unaffected either way. That costs the panel its
+hit-testing for the length of the run — the scrim goes click-through so the tap
+that puts it away can reach the canvas underneath, and only the panel itself keeps
+its own events (`.table-board--cascading`). The canvas takes pointer events from
+the moment the win lands rather than from the first card, so the peek covers the
+~60ms the first sheet takes to build — otherwise a slow build reads as a hang on
+the most emotionally loaded screen in the app.
+
+Four things end a run, and all four end with the panel up: the last card leaves,
+an undo steps out of the victory, a resize wipes the surface, or the sprite sheet
+fails to build. That last one is the one worth stating: **a won game is never held
+up by its celebration failing to load.**
 
 The whole run is 52 cards at the launch interval, so a victory is a ~40-second
-celebration unless it is skipped. That is the number the sliders were dragged to;
-retune it there, not here.
+celebration. That is the number the sliders were dragged to; retune it there, not
+here.
+
+**The victory takes the board over when the cascade starts, not when the panel
+goes up.** An already-won board is still `Reducer.canFinish` — draining it wins it
+again — so the Finish button is held off by that flag rather than by the position,
+and forty seconds of cascade is forty seconds for it to be wrong in.
 
 ## Still open
 

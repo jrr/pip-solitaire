@@ -911,16 +911,53 @@ describe("TableScene victory animation", () => {
     teardown()
   })
 
-  test("skips to the panel on a tap", () => {
-    // Tap-to-skip has to work from the moment the win lands, not from the first card:
-    // the canvas is up while the sprite sheet is still building, which is exactly the
-    // window a slow build would otherwise read as a hang.
+  test("a tap toggles the panel over the cascade without ending it", () => {
+    // A tap is a peek, not a skip: the cards go on falling either way, and all that
+    // moves is whether the message is over them. It works from the moment the win lands
+    // rather than from the first card, so the window the sprite sheet takes to build —
+    // which would otherwise read as a hang — is covered too.
     let container = host("div")
     let teardown = winnable(container)
     playWin(container)
-    container->find(".table-cascade")->Option.getOrThrow->tap
-    expect(hasCascade(container))->toBe(false)
+    let canvas = container->find(".table-cascade")->Option.getOrThrow
+
+    canvas->tap
     expect(hasWinOverlay(container))->toBe(true)
+    expect(hasCascade(container))->toBe(true)
+
+    canvas->tap
+    expect(hasWinOverlay(container))->toBe(false)
+    expect(hasCascade(container))->toBe(true)
+    teardown()
+  })
+
+  test("marks the board while cards are falling, so the panel is a peek", () => {
+    // The scrim's hit-testing is what the mark turns off (`.table-board--cascading` in
+    // `TableScene.css`) — without it the panel would swallow the tap that is supposed to
+    // put it away again, and there would be no way back to the cascade.
+    let container = host("div")
+    let teardown = winnable(container)
+    let cascading = () => container->find(".table-board--cascading")->Option.isSome
+    expect(cascading())->toBe(false)
+    playWin(container)
+    expect(cascading())->toBe(true)
+    container->find(".table-cascade")->Option.getOrThrow->tap
+    // Still a peek with the panel up: the mark belongs to the run, not to the panel.
+    expect(cascading())->toBe(true)
+    teardown()
+  })
+
+  test("never offers to finish a game the cascade is already celebrating", () => {
+    // An already-won board is still `Reducer.canFinish` — draining it wins it again —
+    // so the Finish button is held off by the victory having taken the board over, not
+    // by the position. A cascade takes it over forty seconds before the panel appears,
+    // which is forty seconds for the button to be wrong in.
+    let container = host("div")
+    let teardown = winnable(container)
+    expect(hasFinishButton(container))->toBe(true)
+    playWin(container)
+    expect(hasCascade(container))->toBe(true)
+    expect(hasFinishButton(container))->toBe(false)
     teardown()
   })
 
@@ -999,7 +1036,8 @@ describe("TableScene victory animation", () => {
   testAsync("raises the panel anyway when the sprite sheet never arrives", async () => {
     // The failure this file's stubs guarantee: `CardRaster.build` rejects, and a won
     // game must never be held up by its celebration failing to load. The rejection
-    // lands a tick later, and the panel with it.
+    // lands a tick later, and the panel with it — the one path that raises the panel
+    // without anybody asking for it.
     let container = host("div")
     let teardown = winnable(container)
     playWin(container)
