@@ -124,8 +124,8 @@ identical cards, which is the setting that shows what the spread was doing.
 A count is the exception to *uniform*, not to the shape: `numBounces ±
 numBouncesVariance` is drawn from the whole numbers in the band, each equally
 likely (`Cascade.scatterCount`). Rounding a scattered float instead would hand
-the two ends half the weight of every number between them, which at `5 ± 3` is a
-sixth of the deck landing on the wrong count.
+the two ends half the weight of every number between them, which at `3 ± 2` is a
+seventh of the deck landing on the wrong count.
 
 Bounciness and the bounce budget ride on the `flyer`, not on the knobs, so a card
 keeps the character it launched with instead of picking a new one off every
@@ -219,7 +219,7 @@ chosen.
 |---|---|---|
 | gravity | 4 m/s² | 0.41 g — this is slow motion, deliberately. Earth is `fromMetric(9.81)`, ~154 card-widths/s² |
 | bounciness | 0.8 ± 0.15 | the share of its speed a bounce keeps, off the floor and off a wall alike |
-| numBounces | 5 ± 3 | contacts — landings and walls together — before the table lets the card through |
+| numBounces | 3 ± 2 | contacts — landings and walls together — before the table lets the card through |
 | speed | 0.4 ± 0.1 m/s | the sideways throw |
 | launchInterval | 750 ms | so a 52-card deck takes ~39s |
 | trail | 16 ms | of simulated time between stamps |
