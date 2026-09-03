@@ -58,6 +58,22 @@ the right thing to lose.
 sets `y` to the floor and negates `vy`, so no step size can tunnel a card
 through it however fast it falls.
 
+### A floor with a budget
+
+**A card is caught a fixed number of times and then it isn't.** Each card draws
+its own `numBounces ± numBouncesVariance` at launch, spends one per landing, and
+once it has none left the floor simply stops catching *that* card: it drops
+through and out of the bottom of the stage. Without a budget the floor is
+forever and the last of a card's energy goes into a Zeno tail of hops too small
+to see — which reads as a card stuck to the table while the rest of the deck
+goes past it.
+
+**A contact spends a bounce only if it sends the card back up.** A floor with no
+give — bounciness at zero, which the slider reaches — is not bouncing the card,
+it is holding it, and a card that spent a bounce per frame lying there would be
+through the table in a tenth of a second. So the card rests where it landed with
+its budget intact, which is what a dead floor has always looked like.
+
 ### Launching
 
 One card per `launchMs`, the first on the very first step — waiting an interval
@@ -97,22 +113,31 @@ be a *direction* (which is the aim's business) and a bounciness over 1 is a card
 that gains energy off the floor and never comes down. A spread of zero is 52
 identical cards, which is the setting that shows what the spread was doing.
 
-Bounciness rides on the `flyer`, not on the knobs, so a card keeps the character
-it launched with instead of picking a new one off every floor.
+A count is the exception to *uniform*, not to the shape: `numBounces ±
+numBouncesVariance` is drawn from the whole numbers in the band, each equally
+likely (`Cascade.scatterCount`). Rounding a scattered float instead would hand
+the two ends half the weight of every number between them, which at `5 ± 3` is a
+sixth of the deck landing on the wrong count.
+
+Bounciness and the bounce budget ride on the `flyer`, not on the knobs, so a card
+keeps the character it launched with instead of picking a new one off every
+floor.
 
 ### Retiring
 
-A card is done when the *whole* of it is past a side — it would otherwise blink
-out with an edge showing. Nothing retires downwards: the floor is a floor. The
-run `isDone` when the deck has launched and the last card has left.
+A card is done when the *whole* of it is past an edge — it would otherwise blink
+out with an edge showing. Downwards counts, because that is how a card out of
+bounces leaves. The run `isDone` when the deck has launched and the last card has
+left.
 
 ## Determinism
 
 Randomness is `Cards.xorshift` threaded through the run as `rng` (`Math.random`
 is banned on pure paths here), so a seed replays a cascade exactly. Each launch
-takes three draws in this order — speed, side, bounce — and changing the order
-changes every cascade, which is harmless but worth knowing before reordering
-`spawn`.
+takes four draws in this order — speed, side, bounce, bounce count — and changing
+the order or the number of them changes every cascade, which is harmless but
+worth knowing before reordering `spawn` or giving a card one more thing of its
+own.
 
 A *live* run is not pixel-identical between loads, because the frame clock isn't:
 what repeats exactly is the simulation for a given number of steps. That is what
@@ -186,6 +211,7 @@ chosen.
 |---|---|---|
 | gravity | 4 m/s² | 0.41 g — this is slow motion, deliberately. Earth is `fromMetric(9.81)`, ~154 card-widths/s² |
 | bounciness | 0.8 ± 0.15 | the share of falling speed a bounce keeps |
+| numBounces | 5 ± 3 | landings before the floor lets the card through. At the throw above, most cards are over a side long before they reach five |
 | speed | 0.4 ± 0.1 m/s | the sideways throw |
 | launchInterval | 750 ms | so a 52-card deck takes ~39s |
 | trail | 16 ms | of simulated time between stamps |
@@ -219,7 +245,7 @@ already scaled to its stage.
 
 | | |
 |---|---|
-| `Cascade_test.res` | the arithmetic: framerate independence, the clamp, the floor, energy loss, the aim, the spreads, seeded replay |
+| `Cascade_test.res` | the arithmetic: framerate independence, the clamp, the floor, energy loss, the bounce budget, the aim, the spreads, seeded replay |
 | `CascadePlayer_test.res` | the mechanics a jsdom can reach |
 | `CascadeScene_test.res` | the chrome: which knobs exist, what they read out |
 | `browser-tests/cascade.spec.mjs` | the pixels: the store, the trail, the snap, a seeded pose repeating to the byte, the resize policy |
@@ -281,3 +307,7 @@ and forty seconds of cascade is forty seconds for it to be wrong in.
   card in flight is flatter than a resting one.
 - Cards leave over the sides rather than bouncing off them; a wall bounce is
   filed as an idea, not a plan.
+- The sides have no budget, so the only thing the bounce count changes at the
+  defaults is the tail of a run — the throw carries most cards off a side inside
+  two landings. It is the knob that makes a slower, heavier cascade watchable,
+  which is the setting it was added for.

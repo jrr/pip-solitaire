@@ -14,6 +14,7 @@ let dropping = {
   speed: 0.,
   speedVariance: 0.,
   bouncinessVariance: 0.,
+  numBouncesVariance: 0,
 }
 
 let runFor = (~knobs, ~stage, ~seed=1, ~seconds, ~dt) => {
@@ -89,16 +90,95 @@ describe("the bounce", () => {
     expect(apexes->Array.getUnsafe(1) < apexes->Array.getUnsafe(2))->toBe(true)
   })
 
-  test("keeps nothing at all at zero bounciness — the card just lands", () => {
-    let dead = {...dropping, bounciness: 0.}
-    let run = runFor(~knobs=dead, ~stage, ~seconds=3., ~dt=1. /. 120.)
-    expect(first(run).y)->toBe(Cascade.floorOf(stage))
-    // `Math.abs` because negating a positive speed gives a signed zero.
-    expect(Math.abs(first(run).vy))->toBe(0.)
-  })
+  test(
+    "keeps nothing at all at zero bounciness — the card lands, and a landing is not a bounce",
+    () => {
+      let dead = {...dropping, bounciness: 0.}
+      let run = runFor(~knobs=dead, ~stage, ~seconds=3., ~dt=1. /. 120.)
+      expect(first(run).y)->toBe(Cascade.floorOf(stage))
+      // `Math.abs` because negating a positive speed gives a signed zero.
+      expect(Math.abs(first(run).vy))->toBe(0.)
+      // Three seconds of resting on a floor with no give, with the budget untouched: a card
+      // spending one a frame here would be through the table in a tenth of a second.
+      expect(first(run).bounces)->toBe(dead.numBounces)
+    },
+  )
 
   test("puts the floor at the top of a stage too short to hold a card", () => {
     expect(Cascade.floorOf({width: 10., height: 1., seats: []}))->toBe(0.)
+  })
+})
+
+describe("a card's bounce budget", () => {
+  // One card, thrown at nothing sideways: the only way off this stage is downwards, so
+  // whether a card leaves at all is the budget's doing and nothing else's.
+  let stage: Cascade.stage = {width: 40., height: 8., seats: [(20., 0.)]}
+  let card: Deck.card = {suit: Deck.Spades, rank: Deck.Ace}
+
+  // Landings counted the way the floor sees them: a step that turned the fall round.
+  let drop = (~numBounces) => {
+    let knobs = {...dropping, numBounces}
+    let run = ref(Cascade.make(~seed=2, ~cards=[card]))
+    let landings = ref(0)
+    for _ in 1 to 1200 {
+      let before = run.contents.flying->Array.get(0)->Option.map(flyer => flyer.vy)
+      run := Cascade.step(run.contents, ~knobs, ~stage, ~dt=1. /. 120.)
+      run.contents.flying
+      ->Array.get(0)
+      ->Option.forEach(flyer =>
+        if before->Option.getOr(0.) > 0. && flyer.vy < 0. {
+          landings := landings.contents + 1
+        }
+      )
+    }
+    (run.contents, landings.contents)
+  }
+
+  test("is spent a bounce at a time, and then the floor stops catching the card", () => {
+    let (run, landings) = drop(~numBounces=2)
+    expect(landings)->toBe(2)
+    // Off the bottom of the stage, rather than resting on the floor of it forever.
+    expect(Cascade.isDone(run))->toBe(true)
+    expect(run.retired)->toBe(1)
+  })
+
+  test("and a card with none at all falls straight through", () => {
+    let (run, landings) = drop(~numBounces=0)
+    expect(landings)->toBe(0)
+    expect(run.retired)->toBe(1)
+  })
+
+  test("is a whole number drawn from the band, which never reaches below zero", () => {
+    // A ± wider than its value, which the sliders reach: two minus five is a card the
+    // floor never catches, not one it throws downwards.
+    let knobs = {...Cascade.defaults, numBounces: 2, numBouncesVariance: 5}
+    let rng = ref(Cards.seedState(4))
+    let counts = Array.fromInitializer(
+      ~length=200,
+      _ => {
+        let (next, flyer) = Cascade.spawn(rng.contents, ~knobs, ~stage, ~card, ~seat=(20., 0.))
+        rng := next
+        flyer.bounces
+      },
+    )
+    expect(counts->Array.every(count => count >= 0 && count <= 7))->toBe(true)
+    // Both ends come up, so what fills the band is the draw and not the clamp.
+    expect(counts->Array.some(count => count == 0))->toBe(true)
+    expect(counts->Array.some(count => count == 7))->toBe(true)
+  })
+
+  test("is the same count for every card at a spread of zero", () => {
+    let knobs = {...Cascade.defaults, numBounces: 4, numBouncesVariance: 0}
+    let rng = ref(Cards.seedState(4))
+    let counts = Array.fromInitializer(
+      ~length=52,
+      _ => {
+        let (next, flyer) = Cascade.spawn(rng.contents, ~knobs, ~stage, ~card, ~seat=(20., 0.))
+        rng := next
+        flyer.bounces
+      },
+    )
+    expect(counts->Array.every(count => count == 4))->toBe(true)
   })
 })
 
@@ -220,9 +300,11 @@ describe("a knob and its ±", () => {
     let (slowest, fastest) = deal(knobs)->Array.map(flyer => Math.abs(flyer.vx))->span
     expect(slowest >= 4.)->toBe(true)
     expect(fastest <= 6.)->toBe(true)
-    // …and uses the band rather than hugging its middle.
-    expect(slowest < 4.1)->toBe(true)
-    expect(fastest > 5.9)->toBe(true)
+    // …and uses the band rather than hugging its middle. A tenth of the band at each end
+    // is the slack 52 draws are worth: closer than that is a claim about one seed, and
+    // fails the day the draw order moves under it.
+    expect(slowest < 4.2)->toBe(true)
+    expect(fastest > 5.8)->toBe(true)
   })
 
   test("is 52 identical cards at a spread of zero, which is what the spread is against", () => {
@@ -244,14 +326,22 @@ describe("a knob and its ±", () => {
 
   test("and a card keeps the bounciness it launched with, floor after floor", () => {
     // One card, thrown at nothing sideways, on a stage it never leaves: it bounces in
-    // place for seven seconds and is the same card throughout. A deck would not answer
-    // this — the card at the front of `flying` changes as cards retire.
+    // place for two and a half seconds and is the same card throughout. A deck would not
+    // answer this — the card at the front of `flying` changes as cards retire. The bounce
+    // budget is set past what it can spend in that time, because what is under test here
+    // is what a card carries, not what it runs out of.
     let stage: Cascade.stage = {width: 40., height: 8., seats: [(20., 0.)]}
-    let knobs = {...Cascade.defaults, speed: 0., speedVariance: 0.}
+    let knobs = {
+      ...Cascade.defaults,
+      speed: 0.,
+      speedVariance: 0.,
+      numBounces: 12,
+      numBouncesVariance: 0,
+    }
     let run = ref(Cascade.make(~seed=2, ~cards=[card]))
     let bouncinesses = []
     let landings = ref(0)
-    for _ in 1 to 900 {
+    for _ in 1 to 300 {
       let before = run.contents.flying->Array.get(0)->Option.map(flyer => flyer.vy)
       run := Cascade.step(run.contents, ~knobs, ~stage, ~dt=1. /. 120.)
       run.contents.flying
@@ -265,7 +355,7 @@ describe("a knob and its ±", () => {
         },
       )
     }
-    expect(Array.length(bouncinesses))->toBe(900)
+    expect(Array.length(bouncinesses))->toBe(300)
     expect(landings.contents >= 3)->toBe(true) // it really did bounce, several times
     let (lowest, highest) = span(bouncinesses)
     expect(lowest)->toBe(highest)
@@ -371,11 +461,27 @@ describe("leaving the stage", () => {
       vx: -1.,
       vy: 0.,
       bounciness: 0.5,
+      bounces: 3,
     }
     // Still half on stage, so still drawn.
     expect(Cascade.hasLeft(flyer, ~stage))->toBe(false)
     expect(Cascade.hasLeft({...flyer, x: -1.5}, ~stage))->toBe(true)
     expect(Cascade.hasLeft({...flyer, x: 10.5}, ~stage))->toBe(true)
+  })
+
+  test("and downwards too, once the floor has stopped catching it", () => {
+    let flyer: Cascade.flyer = {
+      card: {suit: Deck.Spades, rank: Deck.Ace},
+      x: 5.,
+      y: 5.5,
+      vx: 0.,
+      vy: 4.,
+      bounciness: 0.5,
+      bounces: 0,
+    }
+    // `y` is the card's top, so at the stage's own height the last of it has just gone.
+    expect(Cascade.hasLeft(flyer, ~stage))->toBe(false)
+    expect(Cascade.hasLeft({...flyer, y: 6.5}, ~stage))->toBe(true)
   })
 
   test("is done once the last card has gone, and counts what left", () => {

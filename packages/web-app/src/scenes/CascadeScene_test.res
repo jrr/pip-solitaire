@@ -55,6 +55,8 @@ describe("the cascade scene, on an engine that can't draw", () => {
       "gravity",
       "bounciness",
       "bouncinessVariance",
+      "numBounces",
+      "numBouncesVariance",
       "speed",
       "speedVariance",
       "launchInterval",
@@ -84,6 +86,17 @@ describe("the cascade scene, on an engine that can't draw", () => {
     let (host, _) = mount()
     expect(readout(host, "speedVariance"))->toBe("± 0.1 · 0.3–0.5 m/s")
     expect(readout(host, "bouncinessVariance"))->toBe("± 0.15 · 0.65–0.95")
+    // A count's band is the whole numbers in it: there is no half a bounce.
+    expect(readout(host, "numBouncesVariance"))->toBe("± 3 · 2–8")
+  })
+
+  test("won't offer a card a negative number of bounces, however wide the ± is dragged", () => {
+    // The readout is the band the run draws from, clamp and all — `Cascade.scatterCount`
+    // stops at none, and a readout saying −5 would be describing a different animation.
+    let (host, _) = mount()
+    let variance = TestDom.find(host, `input[data-knob="numBouncesVariance"]`)->Option.getOrThrow
+    TestDom.typeInto(variance, "10")
+    expect(readout(host, "numBouncesVariance"))->toBe("± 10 · 0–15")
   })
 
   test("and moves that band when the value under it moves, not only when ± does", () => {
