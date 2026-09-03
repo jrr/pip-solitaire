@@ -56,7 +56,6 @@
 type image
 type response
 type buffer
-type bytes
 
 @new external makeImage: unit => image = "Image"
 @set external setSrc: (image, string) => unit = "src"
@@ -66,11 +65,8 @@ type bytes
 @send external arrayBuffer: response => promise<buffer> = "arrayBuffer"
 @get external responseOk: response => bool = "ok"
 @get external responseStatus: response => int = "status"
-@new external bytesOf: buffer => bytes = "Uint8Array"
-@get external byteCount: bytes => int = "length"
-@get_index external byteAt: (bytes, int) => int = ""
-@val external charOf: int => string = "String.fromCharCode"
-@val external btoa: string => string = "btoa"
+@new external bytesOf: buffer => Compression.uint8Array = "Uint8Array"
+@get external byteCount: Compression.uint8Array => int = "length"
 @val external encodeURIComponent: string => string = "encodeURIComponent"
 
 // Resolve a font URL the way `styles/fonts.css`'s `@font-face` rules do — relative to
@@ -127,18 +123,6 @@ let faces = [
 
 // --- The self-contained SVG -------------------------------------------------
 
-// `btoa` wants a binary string, so walk the bytes. 16KB a face, twice, once per
-// page — small enough that a plain loop is the honest implementation.
-let base64 = (buf: buffer) => {
-  let bytes = bytesOf(buf)
-  let count = byteCount(bytes)
-  let binary = ref("")
-  for i in 0 to count - 1 {
-    binary := binary.contents ++ charOf(byteAt(bytes, i))
-  }
-  btoa(binary.contents)
-}
-
 let fontUrl = file => makeUrl("./fonts/" ++ file, baseUri)->urlHref
 
 // Fetch every face and render it as `@font-face` rules with the bytes inline.
@@ -152,6 +136,12 @@ let fontUrl = file => makeUrl("./fonts/" ++ file, baseUri)->urlHref
 // the `sans-serif` in the card art's font stack and every rank quietly renders
 // in the wrong typeface. The cards still look like cards. Raising here instead
 // puts it on the scene's error line, which is what that line is for.
+//
+// The bytes go through `Compression.base64OfBytes` rather than a loop here. A
+// byte-at-a-time `btoa` string is the obvious way to write it, and it costs ~6ms
+// on the one cold call a page makes (16KB a face, before the JIT has seen the loop),
+// against ~0.5ms chunked — the largest single item left in a ~60ms build. The
+// chunk size and its reasoning live with the encoder.
 let buildFontCss = async () => {
   let rules = await faces
   ->Array.map(async ((family, weight, file)) => {
@@ -160,11 +150,11 @@ let buildFontCss = async () => {
     if !(response->responseOk) {
       panic(`couldn't fetch ${file} (HTTP ${response->responseStatus->Int.toString})`)
     }
-    let bytes = await response->arrayBuffer
-    if byteCount(bytesOf(bytes)) == 0 {
+    let bytes = bytesOf(await response->arrayBuffer)
+    if byteCount(bytes) == 0 {
       panic(`${file} fetched empty`)
     }
-    let encoded = base64(bytes)
+    let encoded = Compression.base64OfBytes(bytes)
     `@font-face{font-family:"${family}";font-style:normal;font-weight:${weight};` ++
     `src:url(data:font/woff2;base64,${encoded}) format("woff2");}`
   })
