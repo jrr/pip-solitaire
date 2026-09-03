@@ -232,9 +232,10 @@ let make = (~mode=Live, ~seed as initialSeed=1): Scene.t => {
       ~format=variance => spread(~centre=knobs.contents.bounciness, ~variance, ~unit=""),
       ~onChange=value => knobs := {...knobs.contents, bouncinessVariance: value},
     )
-    // How many times the floor catches a card before letting it through. Reaches well past
-    // where a card would still be on the stage to reach it, because that is where you find
-    // out what the cascade looks like with the count taken out of it.
+    // How many times the floor and the walls between them catch a card before letting it
+    // through. Reaches well past where a card would still be on the stage to reach it,
+    // because that is where you find out what the cascade looks like with the count taken
+    // out of it.
     knob(
       ~label="numBounces",
       ~min=0.,

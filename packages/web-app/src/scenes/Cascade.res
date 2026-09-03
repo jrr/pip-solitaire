@@ -15,8 +15,8 @@ let fromMetric = value => value /. metresPerCardWidth
 let earthGravity = 9.80665
 
 // `bounciness` and `bounces` are the card's own, drawn at launch, so it keeps what it left
-// with. `bounces` is what the floor has left to give this card: at zero the floor stops
-// catching it and it drops out of the bottom of the stage.
+// with. `bounces` is what the table has left to give this card, floor and sides out of the
+// one purse: at zero nothing catches it any more and it leaves whichever way it was going.
 type flyer = {
   card: Deck.card,
   x: float,
@@ -37,7 +37,7 @@ type knobs = {
   gravity: float, // card-widths / s²
   bounciness: float, // the share of falling speed a bounce keeps
   bouncinessVariance: float,
-  numBounces: int, // how many times the floor catches a card before letting it through
+  numBounces: int, // how many times the table catches a card before letting it through
   numBouncesVariance: int,
   speed: float, // horizontal launch speed, card-widths / s
   speedVariance: float,
@@ -104,9 +104,14 @@ let make = (~seed: int, ~cards: option<array<Deck.card>>=?) => {
 // stage shorter than a card still has a floor a card can be put on.
 let floorOf = (stage: stage) => Math.max(stage.height -. cardHeight, 0.)
 
+// The card's *left* when it rests against the right-hand wall; the left-hand one is 0. Never
+// left of that, so a stage narrower than a card still has two walls a card can be between.
+let rightWallOf = (stage: stage) => Math.max(stage.width -. 1., 0.)
+
 // How hard a card is aimed away from the wall it is nearest; at 1 the chance is exactly
-// the share of the room each way. A constant rather than a slider because a card ducking
-// out early is worth seeing sometimes, just not half the time.
+// the share of the room each way. A constant rather than a slider because a card thrown at
+// the wall beside it — which spends a bounce a card-width from its seat and crosses nothing
+// to do it — is worth seeing sometimes, just not half the time.
 let inwardBias = 1.
 
 // The chance a card launched from `seatX` goes right. The clamp is for a bias over 1, or a
@@ -167,27 +172,52 @@ let spawn = (rng, ~knobs, ~stage, ~card, ~seat) => {
 // A contact spends a bounce only if it sends the card back up. A floor with no give holds
 // the card where it landed instead of jittering it a bounce a frame into the cellar — which
 // is what a bounciness of zero has to keep looking like.
-let advance = (flyer, ~knobs, ~stage, ~dt) => {
-  let vy = flyer.vy +. knobs.gravity *. dt
-  let y = flyer.y +. vy *. dt
-  let x = flyer.x +. flyer.vx *. dt
+let offFloor = (flyer, ~stage) => {
   let floor = floorOf(stage)
-  if y >= floor && vy > 0. && flyer.bounces > 0 {
-    let rebound = -.vy *. flyer.bounciness
+  if flyer.y >= floor && flyer.vy > 0. && flyer.bounces > 0 {
+    let rebound = -.flyer.vy *. flyer.bounciness
     {
       ...flyer,
-      x,
       y: floor,
       vy: rebound,
       bounces: rebound < 0. ? flyer.bounces - 1 : flyer.bounces,
     }
   } else {
-    {...flyer, x, y, vy}
+    flyer
   }
 }
 
+// The sides, caught the same way and spent out of the same purse: a card is turned back while
+// it has a bounce to spend and goes over the side once it hasn't, which is what leaves a way
+// out of a box with walls on it.
+//
+// What a wall does *not* do is hold a card it can't turn back. The floor can, because gravity
+// is what put the card there; a card held by a dead wall is resting on a floor that won't drop
+// it with no speed left to carry it anywhere, and a cascade whose last card never leaves never
+// ends. So at zero bounciness the card slides straight out over the side.
+let offWalls = (flyer, ~stage) => {
+  let rebound = -.flyer.vx *. flyer.bounciness
+  let right = rightWallOf(stage)
+  if flyer.bounces <= 0 {
+    flyer
+  } else if flyer.x <= 0. && flyer.vx < 0. && rebound > 0. {
+    {...flyer, x: 0., vx: rebound, bounces: flyer.bounces - 1}
+  } else if flyer.x >= right && flyer.vx > 0. && rebound < 0. {
+    {...flyer, x: right, vx: rebound, bounces: flyer.bounces - 1}
+  } else {
+    flyer
+  }
+}
+
+let advance = (flyer, ~knobs, ~stage, ~dt) => {
+  let vy = flyer.vy +. knobs.gravity *. dt
+  {...flyer, x: flyer.x +. flyer.vx *. dt, y: flyer.y +. vy *. dt, vy}
+  ->offFloor(~stage)
+  ->offWalls(~stage)
+}
+
 // The whole card, so it doesn't blink out with an edge still showing — downwards as well as
-// sideways, because a card the floor has stopped catching leaves that way.
+// sideways, because a card out of bounces leaves whichever way it was already going.
 let hasLeft = (flyer, ~stage: stage) =>
   flyer.x +. 1. < 0. || flyer.x > stage.width || flyer.y > stage.height
 

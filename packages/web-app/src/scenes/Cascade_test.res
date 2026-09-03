@@ -109,6 +109,83 @@ describe("the bounce", () => {
   })
 })
 
+describe("the walls", () => {
+  // Six card-widths across, which a card at the default speed crosses in under a second: a
+  // stage where a wall is a thing a card meets rather than a thing it never reaches.
+  let stage: Cascade.stage = {width: 6., height: 8., seats: [(2.5, Cascade.seatTop)]}
+  let card: Deck.card = {suit: Deck.Spades, rank: Deck.Ace}
+  let thrown = (~x, ~vx, ~bounces, ~bounciness=0.5): Cascade.flyer => {
+    card,
+    x,
+    y: 1.,
+    vx,
+    vy: 0.,
+    bounciness,
+    bounces,
+  }
+
+  test("catch a card by position, so no step size can tunnel through one", () => {
+    // Across the whole stage and out the far side in a single clamped step.
+    let fast = Cascade.advance(
+      thrown(~x=3., ~vx=400., ~bounces=3),
+      ~knobs=dropping,
+      ~stage,
+      ~dt=Cascade.maxStep,
+    )
+    expect(fast.x)->toBe(Cascade.rightWallOf(stage))
+  })
+
+  test("send a card back at the bounciness it launched with, and spend a bounce doing it", () => {
+    let hit = Cascade.offWalls(thrown(~x=5.2, ~vx=4., ~bounces=3), ~stage)
+    expect(hit.x)->toBe(Cascade.rightWallOf(stage))
+    expect(hit.vx)->toBe(-2.)
+    // Out of the floor's purse, which is what leaves a way out of a closed box.
+    expect(hit.bounces)->toBe(2)
+  })
+
+  test("turn back a card thrown at the one beside its seat, which has crossed nothing", () => {
+    let flyer = ref(thrown(~x=0.3, ~vx=-6., ~bounces=5))
+    for _ in 1 to 30 {
+      flyer := Cascade.advance(flyer.contents, ~knobs=Cascade.defaults, ~stage, ~dt=1. /. 120.)
+    }
+    // A quarter of a second in, it is on the stage and heading back over the table.
+    expect(flyer.contents.vx > 0.)->toBe(true)
+    expect(Cascade.hasLeft(flyer.contents, ~stage))->toBe(false)
+  })
+
+  test(
+    "stop catching a card that has spent its last bounce, which then leaves over the side",
+    () => {
+      let spent = Cascade.offWalls(thrown(~x=5.2, ~vx=4., ~bounces=0), ~stage)
+      expect(spent.x)->toBe(5.2)
+      expect(spent.vx)->toBe(4.)
+    },
+  )
+
+  test("and pass a card straight through when there is no give in them to turn it back", () => {
+    // The floor holds a card it can't rebound, because gravity put it there and keeps it
+    // there. A wall doing the same would hold it for good — resting on a floor that won't
+    // drop it, with no speed left to carry it anywhere — so a dead wall is not a wall.
+    let dead = Cascade.offWalls(thrown(~x=5.2, ~vx=4., ~bounces=3, ~bounciness=0.), ~stage)
+    expect(dead.x)->toBe(5.2)
+    expect(dead.vx)->toBe(4.)
+    expect(dead.bounces)->toBe(3)
+  })
+
+  test("and empty the stage even so: a walled-in deck still leaves, one way or the other", () => {
+    let empties = knobs => {
+      let run = runFor(~knobs, ~stage, ~seed=5, ~seconds=40., ~dt=1. /. 120.)
+      (Cascade.isDone(run), run.retired)
+    }
+    expect(empties({...Cascade.defaults, launchMs: 100.}))->toEqual((true, 52))
+    // And the setting the walls could strand a deck at: nothing to turn a card back, and a
+    // floor that holds every card it lands on.
+    expect(
+      empties({...Cascade.defaults, launchMs: 100., bounciness: 0., bouncinessVariance: 0.}),
+    )->toEqual((true, 52))
+  })
+})
+
 describe("a card's bounce budget", () => {
   // One card, thrown at nothing sideways: the only way off this stage is downwards, so
   // whether a card leaves at all is the budget's doing and nothing else's.
@@ -134,7 +211,7 @@ describe("a card's bounce budget", () => {
     (run.contents, landings.contents)
   }
 
-  test("is spent a bounce at a time, and then the floor stops catching the card", () => {
+  test("is spent a bounce at a time, and then nothing catches the card", () => {
     let (run, landings) = drop(~numBounces=2)
     expect(landings)->toBe(2)
     // Off the bottom of the stage, rather than resting on the floor of it forever.
@@ -388,7 +465,7 @@ describe("which way a card is thrown", () => {
     expect(Cascade.rightwardChance(~seatX=stage.width +. 4., ~stage))->toBe(0.)
   })
 
-  test("so about a fifth of the left seat's deck leaves over the near wall, not half", () => {
+  test("so about a fifth of the left seat's deck is thrown at the near wall, not half", () => {
     // Counted rather than reasoned about, through the real PRNG. The chain is seeded, so
     // the slack is for the sampling, not for flake.
     let seat = (seatX(0), Cascade.seatTop)

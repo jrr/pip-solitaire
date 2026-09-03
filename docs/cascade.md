@@ -54,25 +54,41 @@ floor and past every bounce it should have taken. Clamped (`maxStep`, 50ms), a
 returning tab resumes where it left off and the run loses the time — which is
 the right thing to lose.
 
-**The floor is caught by position, not by reflecting the overshoot.** A bounce
-sets `y` to the floor and negates `vy`, so no step size can tunnel a card
-through it however fast it falls.
+**A surface is caught by position, not by reflecting the overshoot.** A bounce
+sets `y` to the floor (or `x` to the wall) and negates the speed across it, so no
+step size can tunnel a card through however fast it is going.
 
-### A floor with a budget
+### A table with a budget
 
 **A card is caught a fixed number of times and then it isn't.** Each card draws
-its own `numBounces ± numBouncesVariance` at launch, spends one per landing, and
-once it has none left the floor simply stops catching *that* card: it drops
-through and out of the bottom of the stage. Without a budget the floor is
-forever and the last of a card's energy goes into a Zeno tail of hops too small
-to see — which reads as a card stuck to the table while the rest of the deck
-goes past it.
+its own `numBounces ± numBouncesVariance` at launch, spends one per landing and
+one per wall, and once it has none left the table simply stops catching *that*
+card: it goes on through whichever surface it meets next and off the stage.
+Without a budget the floor is forever and the last of a card's energy goes into a
+Zeno tail of hops too small to see — which reads as a card stuck to the table
+while the rest of the deck goes past it.
 
-**A contact spends a bounce only if it sends the card back up.** A floor with no
+**One budget for the floor and the sides**, because it is the only way out of a
+box with walls on it. The card that runs out mid-stage drops through the floor,
+the card that runs out at a wall carries on through it, and there is no
+combination of knobs that leaves a card with a way to spend energy and no way to
+leave. At the defaults a card takes about two walls and two landings on a desktop
+stage, which makes the count the knob that decides how long the deck ricochets
+around rather than one that only shapes the tail of a run.
+
+**A contact spends a bounce only if it sends the card back.** A floor with no
 give — bounciness at zero, which the slider reaches — is not bouncing the card,
 it is holding it, and a card that spent a bounce per frame lying there would be
 through the table in a tenth of a second. So the card rests where it landed with
 its budget intact, which is what a dead floor has always looked like.
+
+**A wall with no give is not a wall: it lets the card past.** The floor can hold
+a card it cannot rebound, because gravity is what put the card there and what
+keeps it there. A wall holding one would be holding it *for good* — resting on a
+floor that has refused to drop it, with no sideways speed left to carry it
+anywhere — and a cascade whose last card never leaves is a run that never ends.
+So at zero bounciness a card slides straight out over the side, and a table with
+no give in it anywhere still empties.
 
 ### Launching
 
@@ -88,20 +104,19 @@ because that is the only thing a finished game varies.
 
 ### Which way a card is thrown
 
-A fair coin sends half the cards from an outer seat over the near wall a
-card-width later — spent without crossing anything. So the coin is weighted by
-the room each way, which is the pair of distances `hasLeft` retires a card at,
-read forwards:
+A fair coin sends half the cards from an outer seat into the near wall a
+card-width later — a bounce spent without crossing anything. So the coin is
+weighted by the room each way:
 
 ```
 p(right) = 0.5 + inwardBias × (roomRight / (roomLeft + roomRight) − 0.5)
 ```
 
 `inwardBias` is 1, so the chance *is* the share of the room. A seat with equal
-room stays a fair coin at any bias; the leftmost of four seats sends about one
-card in five over the near wall instead of one in two. It is a constant rather
-than a slider because an early exit is worth seeing sometimes — it's where the
-cascade looks least mechanical — just not half the time.
+room stays a fair coin at any bias; the leftmost of four seats throws about one
+card in five at the near wall instead of one in two. It is a constant rather than
+a slider because that slap off the wall beside the seat is worth seeing sometimes
+— it's where the cascade looks least mechanical — just not half the time.
 
 ### A value and a ±
 
@@ -121,14 +136,14 @@ sixth of the deck landing on the wrong count.
 
 Bounciness and the bounce budget ride on the `flyer`, not on the knobs, so a card
 keeps the character it launched with instead of picking a new one off every
-floor.
+surface it meets.
 
 ### Retiring
 
 A card is done when the *whole* of it is past an edge — it would otherwise blink
 out with an edge showing. Downwards counts, because that is how a card out of
-bounces leaves. The run `isDone` when the deck has launched and the last card has
-left.
+bounces mid-stage leaves. The run `isDone` when the deck has launched and the
+last card has left.
 
 ## Determinism
 
@@ -210,8 +225,8 @@ chosen.
 | knob | default | |
 |---|---|---|
 | gravity | 4 m/s² | 0.41 g — this is slow motion, deliberately. Earth is `fromMetric(9.81)`, ~154 card-widths/s² |
-| bounciness | 0.8 ± 0.15 | the share of falling speed a bounce keeps |
-| numBounces | 5 ± 3 | landings before the floor lets the card through. At the throw above, most cards are over a side long before they reach five |
+| bounciness | 0.8 ± 0.15 | the share of its speed a bounce keeps, off the floor and off a wall alike |
+| numBounces | 5 ± 3 | contacts — landings and walls together — before the table lets the card through |
 | speed | 0.4 ± 0.1 m/s | the sideways throw |
 | launchInterval | 750 ms | so a 52-card deck takes ~39s |
 | trail | 16 ms | of simulated time between stamps |
@@ -245,7 +260,7 @@ already scaled to its stage.
 
 | | |
 |---|---|
-| `Cascade_test.res` | the arithmetic: framerate independence, the clamp, the floor, energy loss, the bounce budget, the aim, the spreads, seeded replay |
+| `Cascade_test.res` | the arithmetic: framerate independence, the clamp, the floor, the walls, energy loss, the bounce budget, the aim, the spreads, seeded replay |
 | `CascadePlayer_test.res` | the mechanics a jsdom can reach |
 | `CascadeScene_test.res` | the chrome: which knobs exist, what they read out |
 | `browser-tests/cascade.spec.mjs` | the pixels: the store, the trail, the snap, a seeded pose repeating to the byte, the resize policy |
@@ -305,9 +320,6 @@ and forty seconds of cascade is forty seconds for it to be wrong in.
 
 - A sprite carries no drop shadow (`.stacking-card`'s `filter` is the DOM's), so a
   card in flight is flatter than a resting one.
-- Cards leave over the sides rather than bouncing off them; a wall bounce is
-  filed as an idea, not a plan.
-- The sides have no budget, so the only thing the bounce count changes at the
-  defaults is the tail of a run — the throw carries most cards off a side inside
-  two landings. It is the knob that makes a slower, heavier cascade watchable,
-  which is the setting it was added for.
+- There is no ceiling, and nothing needs one: nothing is thrown upwards and a
+  bounciness of 1 only returns a card to the height it was dropped from. A card
+  given upward speed would want one.
