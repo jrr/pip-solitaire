@@ -87,10 +87,9 @@ type model = {
   // drives both the switch position and its problem-only subtitle. Settings owns the
   // motion grant; the board only listens when this is `On`.
   wiggle: Motion.state,
-  // "Victory animation": the second hidden setting, and a plain persisted bool
-  // rather than a state machine. Nothing reads it yet — the switch is here so the
-  // intent has somewhere to live (and to survive a reload) before there's an
-  // animation to play off it.
+  // "Victory animation": the second hidden setting, and a plain persisted bool rather
+  // than a state machine. The board reads the `victoryAnimation` ref, not this — the
+  // mirror is here so the switch renders in the right position.
   victoryAnimation: bool,
   // "Display content around screen notch": on (default) lets the landscape
   // rail ride out into the corner wings beside the notch; off clamps every control
@@ -288,6 +287,10 @@ let reportScene: ref<string => unit> = ref(_ => ())
 
 let options: ref<Options.t> = ref(Preferences.load())
 let tiltEnabled: ref<bool> = ref(Preferences.loadCardTilt())
+// The hidden "Victory animation" flag. A ref for the same reason as the two above: the
+// board asks at the moment a game is won, so a flip mid-game decides what that win does
+// rather than waiting for the next deal.
+let victoryAnimation: ref<bool> = ref(Preferences.loadVictoryAnimation())
 
 // Not a ref, because the board never reads it: this one reaches the page as a
 // document-root attribute and is consumed entirely by the CSS (`NotchDisplay`).
@@ -553,12 +556,16 @@ let update = (msg, model) =>
       },
     )
   | ToggleVictoryAnimation =>
-    let victoryAnimation = !model.victoryAnimation
+    let enabled = !model.victoryAnimation
     (
-      {...model, victoryAnimation},
-      // Persist and nothing else: no board reads this flag yet, so the flip has
-      // nowhere to land beyond storage. A win animation would start here.
-      () => Preferences.saveVictoryAnimation(victoryAnimation),
+      {...model, victoryAnimation: enabled},
+      // Flip the shared ref the board consults on a win, and persist it. Nothing to ask
+      // of the board itself: this changes what the *next* victory does, and there is no
+      // victory on the table to redecorate.
+      () => {
+        victoryAnimation := enabled
+        Preferences.saveVictoryAnimation(enabled)
+      },
     )
   | ToggleNotchDisplay =>
     let notchDisplay = !model.notchDisplay
@@ -783,6 +790,7 @@ let gameScene = (game: Game.t) => {
     },
     ~options,
     ~tiltEnabled,
+    ~victoryAnimation,
     // Skip the opening-deal fly-in when the URL asks for `?animate=off`, so the
     // board is shown already dealt (the same instant placement reduced-motion gives).
     // A shared board skips the fly-in too: the cards it deals are about to be
@@ -1268,10 +1276,9 @@ let dispatch = Html.mount(
     // intent, or an `Unavailable` reason on a device/origin that can't do motion. The
     // real grant is deferred to the first board tap (wired at the foot of the file).
     wiggle: wiggleInit,
-    // Mirror the persisted victory-animation flag so its switch opens in the right
-    // position. Read here at mount rather than through a module-level ref like
-    // `tiltEnabled`, because nothing outside this loop consumes it yet.
-    victoryAnimation: Preferences.loadVictoryAnimation(),
+    // Mirror the shared ref the board reads, so the switch opens in the position the
+    // board is already acting on.
+    victoryAnimation: victoryAnimation.contents,
     // Mirror the persisted notch-display preference so the switch opens in the
     // right position; the layout itself is driven by the root attribute applied
     // above (see `NotchDisplay`).

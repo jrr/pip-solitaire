@@ -1,11 +1,11 @@
 // The cascade on a surface: the backing store, the sprite sheet, the frame loop, and what
 // a resize does to a run in flight. `Cascade` is the motion and knows nothing else; this is
 // everything between those numbers and a canvas, owned once rather than once per caller —
-// the victory overlay (#228) needs all of it and the demo scene is only the first caller.
+// the board's victory needs all of it and the demo scene is only one of the two.
 //
 // The caller owns the surface and the settings, the player owns the mechanics: hand over a
-// canvas and an `options`, hear back through `~onChange`. Nothing here reads a control or
-// writes a status line.
+// canvas and an `options`, hear back through `~onChange` (where the run is up to) and
+// `~onLaunch` (a card, as it leaves). Nothing here reads a control or writes a status line.
 //
 // `docs/cascade.md` has the model, the ratio rule and the resize policy.
 
@@ -91,6 +91,12 @@ type intent =
 type t = {
   canvas: Canvas.t,
   onChange: status => unit,
+  // Called once per card as the run puts it in the air, in launch order. Separate from
+  // `onChange` because it has to be exact: `onChange` is a half-second heartbeat, and a
+  // caller with real cards under the sprites — a board emptying its foundations — would
+  // leave each one sitting on the table for up to half a second after its copy had left
+  // it. The player still knows nothing about what a caller does with the card.
+  onLaunch: Deck.card => unit,
   mutable options: options,
   mutable intent: intent,
   mutable run: Cascade.t,
@@ -224,7 +230,13 @@ let stop = player => {
 // Step and stamp are counted separately, so the trail's spacing is a distance a card has
 // travelled rather than a number of steps the machine happened to take.
 let advance = (player, ~stage) => {
+  let launchedBefore = player.run.launched
   player.run = Cascade.step(player.run, ~knobs=player.options.knobs, ~stage, ~dt=stepSeconds)
+  // A step can launch more than one card — a launch interval shorter than the step, or a
+  // frame that owed several steps — so this is a range rather than a comparison.
+  for i in launchedBefore to player.run.launched - 1 {
+    player.run.cards->Array.get(i)->Option.forEach(player.onLaunch)
+  }
   player.sinceStamp = player.sinceStamp +. stepMs
   if player.sinceStamp >= player.options.stampMs {
     draw(player)
@@ -447,10 +459,16 @@ let resized = player => {
 // Nothing is drawn or rasterized until a caller asks for a run: a scene mounts detached,
 // and the card size worth building at is often a question about a box that doesn't exist
 // yet.
-let attach = (~canvas, ~options=defaults, ~onChange=(_: status) => ()) => {
+let attach = (
+  ~canvas,
+  ~options=defaults,
+  ~onChange=(_: status) => (),
+  ~onLaunch=(_: Deck.card) => (),
+) => {
   let player = {
     canvas,
     onChange,
+    onLaunch,
     options,
     intent: Idle,
     run: Cascade.make(~seed=options.seed, ~cards=?options.cards),

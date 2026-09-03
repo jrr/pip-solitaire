@@ -9,8 +9,8 @@
      `isolation: isolate` makes it a **stacking context**, which keeps the
      board's layering to itself. The board stacks in the large: the
      cards carry an imperative counter (TableScene.res), the finish sweep flies
-     at 100000, the Finish button sits at 900 and the win overlay at 1000 —
-     numbers chosen relative to *each other*. Without a stacking context here
+     at 100000, the Finish button sits at 900, the victory cascade's canvas at
+     950 and the win overlay at 1000 — numbers chosen relative to *each other*. Without a stacking context here
      they were all siblings of the app chrome in the root context, where the
      slide-over menu sits at a modest z-index: 20, so the Finish button floated
      over an open menu. Isolating means those numbers only ever order the board
@@ -534,5 +534,53 @@
      it doesn't offer the grab affordance. */
   .stacking-card--buried {
     cursor: default;
+  }
+
+  /* A card the victory cascade has launched: its sprite is now on the canvas, so the
+     node it came off stops being drawn. `visibility` rather than `display`, so the card
+     keeps its box and the foundation under it doesn't reflow one card at a time — and
+     so putting every card back (an undo out of a cascade) is one class removal with no
+     layout behind it. */
+  .stacking-card--flown {
+    visibility: hidden;
+  }
+
+  /* While the cascade is running the win panel is a **peek, not a modal**: the scrim
+     stops hit-testing, so a tap on it falls straight through to the canvas underneath —
+     which is the thing that toggles the panel back off. The panel keeps its own events,
+     so New Game and Share still work with cards falling behind them.
+
+     The scrim also lightens, because the whole point of putting the message over a
+     running cascade is being able to see both. It goes back to the full dim the moment
+     the cards stop, when there is nothing behind it worth seeing. */
+  .table-board--cascading .win-overlay {
+    pointer-events: none;
+    background: rgba(11, 18, 32, 0.35);
+  }
+
+  .table-board--cascading .win-panel {
+    pointer-events: auto;
+  }
+
+  /* The victory cascade's surface (TableScene.res). It covers the *playfield* rather
+     than the board host, so a card's flight starts at the very pixel its node was
+     resting on — the canvas and the cards share one origin.
+
+     Layered above the cards' own counter and below the win panel it ends with, in the
+     `.table-board` stacking context those numbers are chosen within (see the top of
+     this file).
+
+     Unlike the demo scene's overlay this one **takes pointer events**: a tap anywhere
+     toggles the win panel over the still-falling cards. `width`/`height` are spelled out
+     because a canvas is a replaced element — with `width: auto` it lays out at its
+     intrinsic 300x150 store size and ignores the insets. */
+  .table-cascade {
+    position: absolute;
+    inset: 0;
+    z-index: 950;
+    display: block;
+    width: 100%;
+    height: 100%;
+    touch-action: none;
   }
 }

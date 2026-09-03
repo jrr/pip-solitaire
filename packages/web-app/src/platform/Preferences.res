@@ -80,7 +80,8 @@ let saveDebugLog = (enabled: bool) => saveFlag(debugLogKey, enabled)
 
 // "Victory animation": one of the hidden settings, so it is only reachable once the
 // ten-tap gesture has been performed — but the flip itself is persisted like any other
-// preference, so a device left with it on comes back with it on. Off by default.
+// preference, so a device left with it on comes back with it on. Off by default, which
+// is what keeps the cascade off every player's screen while it is still being tried out.
 let loadVictoryAnimation = (): bool => loadFlag(victoryAnimationKey, ~fallback=false)
 let saveVictoryAnimation = (enabled: bool) => saveFlag(victoryAnimationKey, enabled)
 

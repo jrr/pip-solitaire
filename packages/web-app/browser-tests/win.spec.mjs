@@ -134,3 +134,93 @@ for (const input of inputs) {
     })
   })
 }
+
+// The victory cascade, wired into the win flow behind its hidden flag. What only a
+// browser can show is the part that isn't a decision: sprites really rasterize, cards
+// really come off the foundations, and a real tap really ends it. The motion is
+// `Cascade_test`'s, the surface `browser-tests/cascade.spec.mjs`'s, and which wins take
+// this path at all is `TableScene_test`'s.
+test.describe("with the victory animation on", () => {
+  test.use({ viewport: { width: 800, height: 1000 } })
+
+  // A sprite sheet is built at the moment of victory, and CI runners are slow at the
+  // 52-card decode; the default 30s leaves little room around it.
+  test.setTimeout(90_000)
+
+  test("the win cascades the foundations, and a tap peeks at the panel", async ({ page }) => {
+    // The flag is a stored preference with no URL of its own — it's hidden behind ten
+    // taps on the Settings title precisely so it isn't reachable by accident — so seed
+    // storage before the app boots rather than driving the menu.
+    await page.addInitScript(() => {
+      window.localStorage.setItem("pip.victoryAnimation", "true")
+    })
+    // `state=finish` opens one press of Finish away from a win, and `animate=off` puts
+    // the board at its resting positions with the sweep collapsed to an instant — so
+    // the press wins the game immediately and what follows is the cascade alone.
+    await page.goto("/?game=freecell&state=finish&animate=off")
+    await expect(page.locator(".finish-button")).toBeVisible()
+    await settleBoard(page)
+
+    await page.locator(".finish-button").click()
+
+    // The canvas is up with the win, and the panel is waiting behind it.
+    const cascade = page.locator(".table-cascade")
+    const overlay = page.locator(".win-overlay")
+    await expect(cascade).toHaveCount(1)
+    await expect(overlay).toHaveCount(0)
+
+    // The foundations empty a card at a time: each node stops being drawn as its sprite
+    // takes over, which is the half of the effect that isn't on the canvas at all.
+    await expect
+      .poll(() => page.locator(".stacking-card--flown").count(), { timeout: 30_000 })
+      .toBeGreaterThan(0)
+
+    // …and the board never offers to finish a game it is already celebrating, though
+    // draining an already-won board would win it again.
+    await expect(page.locator(".finish-button")).toHaveCount(0)
+
+    // A tap anywhere brings the panel forward over the still-falling cards, and another
+    // puts it away again. Neither ends the run: this is a peek, not a skip.
+    //
+    // `page.mouse` rather than `locator.click()`, and it has to be: the second tap lands
+    // on a scrim the cascade has made click-through, and a locator click waits for its
+    // own element to receive pointer events — which this one, by design, never will. The
+    // point is the same one a finger hits either way.
+    const tap = () => page.mouse.click(400, 800)
+
+    await tap()
+    await expect(overlay).toHaveCount(1)
+    await expect(cascade).toHaveCount(1)
+
+    await tap()
+    await expect(overlay).toHaveCount(0)
+    await expect(cascade).toHaveCount(1)
+
+    // The run really is still going: more cards have left the foundations since.
+    const flownBefore = await page.locator(".stacking-card--flown").count()
+    await expect
+      .poll(() => page.locator(".stacking-card--flown").count(), { timeout: 30_000 })
+      .toBeGreaterThan(flownBefore)
+  })
+
+  test("the panel's own buttons still work with cards falling behind them", async ({ page }) => {
+    // The other half of a click-through scrim: the panel keeps its own pointer events,
+    // or peeking would put an unusable New Game in front of a forty-second cascade.
+    await page.addInitScript(() => {
+      window.localStorage.setItem("pip.victoryAnimation", "true")
+    })
+    await page.goto("/?game=freecell&state=finish&animate=off")
+    await expect(page.locator(".finish-button")).toBeVisible()
+    await settleBoard(page)
+    await page.locator(".finish-button").click()
+
+    await page.mouse.click(400, 800) // peek at the panel, cards still falling
+    await page.getByRole("button", { name: "New Game" }).click()
+
+    // A fresh board, and the celebration it interrupted gone with the one it was for.
+    await expect(page.locator(".win-overlay")).toHaveCount(0)
+    await expect(page.locator(".table-cascade")).toHaveCount(0)
+    await expect(page.locator(".stacking-card--flown")).toHaveCount(0)
+    await expect(page.locator(".stacking-card").first()).toBeVisible()
+  })
+})

@@ -11,12 +11,11 @@ Three modules, in `web-app/src/scenes/`:
 | `CascadePlayer.res` | the surface. Backing store, sprite sheet, frame loop, what a resize costs |
 | `CascadeScene.res` | the `?scene=cascade` demo: the chrome, and every number on a slider |
 
-The split is what keeps the demo from being the animation. `CascadePlayer` is
-what the victory overlay will attach to (#228); the scene is one caller of it,
-and the only thing it has that the overlay won't is controls. A second copy of
-the player's mechanics is how the two would drift — a store sized at one ratio
-here and a sheet built at another there draws perfectly good cards, softer by
-the ratio between them, with nothing anywhere saying so.
+The split is what keeps the demo from being the animation. `TableScene` attaches
+to `CascadePlayer` too, and the only thing the demo has that the board doesn't is
+controls. A second copy of the player's mechanics is how the two would drift — a
+store sized at one ratio here and a sheet built at another there draws perfectly
+good cards, softer by the ratio between them, with nothing anywhere saying so.
 
 This page is the model. The code keeps the numbers.
 
@@ -121,6 +120,12 @@ the pose is for.
 
 ## The surface
 
+**A card is handed back as it launches** (`~onLaunch`), which is the second half
+of the effect on a real board: the foundation under the canvas empties a card at
+a time as its sprites take over. It can't ride on `~onChange`, which is a
+half-second heartbeat — a node left on the table that long after its copy has
+flown off it is a card in two places.
+
 **Nothing is ever cleared.** The trail *is* the effect, and it's why this is a
 canvas rather than DOM nodes: per-frame cost tracks the cards in flight, not the
 length of the trail behind them. With retained nodes it would be one to two
@@ -218,6 +223,8 @@ already scaled to its stage.
 | `CascadePlayer_test.res` | the mechanics a jsdom can reach |
 | `CascadeScene_test.res` | the chrome: which knobs exist, what they read out |
 | `browser-tests/cascade.spec.mjs` | the pixels: the store, the trail, the snap, a seeded pose repeating to the byte, the resize policy |
+| `TableScene_test.res` | which wins play one, and that every way out of a run still ends at the panel |
+| `browser-tests/win.spec.mjs` | the board's own: real sprites, foundations emptying, a real tap ending it |
 
 ## Before you retune
 
@@ -233,11 +240,43 @@ already scaled to its stage.
    destination; a cascading card doesn't, so its interval is a plain interval on
    the clock. See that page's own note.
 
+## On the board
+
+`TableScene` is the second caller, behind the hidden **Victory animation** flag
+(off by default). The board's half is which cards fall and from where: the
+foundations' own resting spots become the seats, the piles are taken King-first
+in the same round-robin `Cascade` seats by — which is what makes a card fall from
+the pile it was on — and each `.stacking-card` is hidden as its sprite leaves.
+
+**Only a win as it happens plays one.** A victory restored from storage, and a
+redo back into the winning move, raise the panel alone: the cascade is what a
+game being won looks like, not what a won position looks like.
+
+**A tap is a peek, not a skip.** It toggles the win panel over the still-falling
+cards and nothing else; the run is unaffected either way. That costs the panel its
+hit-testing for the length of the run — the scrim goes click-through so the tap
+that puts it away can reach the canvas underneath, and only the panel itself keeps
+its own events (`.table-board--cascading`). The canvas takes pointer events from
+the moment the win lands rather than from the first card, so the peek covers the
+~60ms the first sheet takes to build — otherwise a slow build reads as a hang on
+the most emotionally loaded screen in the app.
+
+Four things end a run, and all four end with the panel up: the last card leaves,
+an undo steps out of the victory, a resize wipes the surface, or the sprite sheet
+fails to build. That last one is the one worth stating: **a won game is never held
+up by its celebration failing to load.**
+
+The whole run is 52 cards at the launch interval, so a victory is a ~40-second
+celebration. That is the number the sliders were dragged to; retune it there, not
+here.
+
+**The victory takes the board over when the cascade starts, not when the panel
+goes up.** An already-won board is still `Reducer.canFinish` — draining it wins it
+again — so the Finish button is held off by that flag rather than by the position,
+and forty seconds of cascade is forty seconds for it to be wrong in.
+
 ## Still open
 
-- #228 wires this into `TableScene`: the board's foundations become the seats, the
-  cards come off in the order the piles give them up, and a failed sprite build
-  has to degrade rather than leave the overlay empty.
 - A sprite carries no drop shadow (`.stacking-card`'s `filter` is the DOM's), so a
   card in flight is flatter than a resting one.
 - Cards leave over the sides rather than bouncing off them; a wall bounce is
