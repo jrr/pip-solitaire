@@ -233,7 +233,7 @@ describe("a card's bounce budget", () => {
     let counts = Array.fromInitializer(
       ~length=200,
       _ => {
-        let (next, flyer) = Cascade.spawn(rng.contents, ~knobs, ~stage, ~card, ~seat=(20., 0.))
+        let (next, flyer) = Cascade.spawn(rng.contents, ~knobs, ~card, ~seat=(20., 0.))
         rng := next
         flyer.bounces
       },
@@ -250,7 +250,7 @@ describe("a card's bounce budget", () => {
     let counts = Array.fromInitializer(
       ~length=52,
       _ => {
-        let (next, flyer) = Cascade.spawn(rng.contents, ~knobs, ~stage, ~card, ~seat=(20., 0.))
+        let (next, flyer) = Cascade.spawn(rng.contents, ~knobs, ~card, ~seat=(20., 0.))
         rng := next
         flyer.bounces
       },
@@ -333,7 +333,6 @@ describe("the launch", () => {
     let (_, flyer) = Cascade.spawn(
       Cards.seedState(9),
       ~knobs=Cascade.defaults,
-      ~stage,
       ~card={suit: Deck.Spades, rank: Deck.Ace},
       ~seat=(3.5, Cascade.seatTop),
     )
@@ -358,7 +357,6 @@ describe("a knob and its ±", () => {
       let (next, flyer) = Cascade.spawn(
         rng.contents,
         ~knobs,
-        ~stage,
         ~card,
         ~seat=(stage.width /. 2., Cascade.seatTop),
       )
@@ -443,43 +441,41 @@ describe("which way a card is thrown", () => {
   // Eleven and a bit card-widths across, which is a desktop stage at a 90px card.
   let stage = Cascade.stageOf(~cssWidth=1056., ~cssHeight=560., ~cardWidth=90.)
   let seatX = index => stage.seats->Array.getUnsafe(index)->fst
+  let card: Deck.card = {suit: Deck.Spades, rank: Deck.Ace}
 
-  test("is an even coin from a seat with the same room either way", () => {
-    // The middle, and the two inner seats, which are near enough symmetric.
-    expect(Cascade.rightwardChance(~seatX=stage.width /. 2. -. 0.5, ~stage))->toBeCloseTo(0.5)
-    expect(Cascade.rightwardChance(~seatX=seatX(1), ~stage))->toBeCloseToWithin(0.6, 1)
-    expect(Cascade.rightwardChance(~seatX=seatX(2), ~stage))->toBeCloseToWithin(0.4, 1)
-  })
-
-  test("leans away from the wall it is near, by the room it has each way", () => {
-    // At `inwardBias` 1 the chance *is* the share of the room, and the left seat has
-    // about a fifth of the table to its left.
-    expect(Cascade.rightwardChance(~seatX=seatX(0), ~stage))->toBeCloseToWithin(0.78, 2)
-    expect(Cascade.rightwardChance(~seatX=seatX(3), ~stage))->toBeCloseToWithin(0.22, 2)
-  })
-
-  test("never asks for a chance it can't have, from a seat off the edge", () => {
-    // Not reachable from `spreadSeats`, but a board hands over seats of its own and a
-    // foundation can sit anywhere.
-    expect(Cascade.rightwardChance(~seatX=-4., ~stage))->toBe(1.)
-    expect(Cascade.rightwardChance(~seatX=stage.width +. 4., ~stage))->toBe(0.)
-  })
-
-  test("so about a fifth of the left seat's deck is thrown at the near wall, not half", () => {
-    // Counted rather than reasoned about, through the real PRNG. The chain is seeded, so
-    // the slack is for the sampling, not for flake.
-    let seat = (seatX(0), Cascade.seatTop)
-    let card: Deck.card = {suit: Deck.Spades, rank: Deck.Ace}
+  // Counted rather than reasoned about, through the real PRNG. The chain is seeded, so the
+  // slack is for the sampling, not for flake.
+  let leftwardOf = (~seat) => {
     let rng = ref(Cards.seedState(11))
     let leftward = ref(0)
     for _ in 1 to 200 {
-      let (next, flyer) = Cascade.spawn(rng.contents, ~knobs=Cascade.defaults, ~stage, ~card, ~seat)
+      let (next, flyer) = Cascade.spawn(rng.contents, ~knobs=Cascade.defaults, ~card, ~seat)
       rng := next
       if flyer.vx < 0. {
         leftward := leftward.contents + 1
       }
     }
-    expect(leftward.contents > 25 && leftward.contents < 65)->toBe(true)
+    leftward.contents
+  }
+
+  test("is an even coin, even from the outer seat with a wall a card-width away", () => {
+    // Half of the leftmost seat's deck goes into that wall and comes back off it, which is
+    // the ricochet the sides are for rather than a card leaving with nothing to show.
+    let leftward = leftwardOf(~seat=(seatX(0), Cascade.seatTop))
+    expect(leftward > 80 && leftward < 120)->toBe(true)
+  })
+
+  test("and the same coin from every seat, because the room each way isn't in it", () => {
+    let vxAt = x => {
+      let (_, flyer) = Cascade.spawn(
+        Cards.seedState(11),
+        ~knobs=Cascade.defaults,
+        ~card,
+        ~seat=(x, Cascade.seatTop),
+      )
+      flyer.vx
+    }
+    expect(vxAt(seatX(0)))->toBe(vxAt(seatX(3)))
   })
 })
 

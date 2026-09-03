@@ -104,19 +104,12 @@ because that is the only thing a finished game varies.
 
 ### Which way a card is thrown
 
-A fair coin sends half the cards from an outer seat into the near wall a
-card-width later — a bounce spent without crossing anything. So the coin is
-weighted by the room each way:
-
-```
-p(right) = 0.5 + inwardBias × (roomRight / (roomLeft + roomRight) − 0.5)
-```
-
-`inwardBias` is 1, so the chance *is* the share of the room. A seat with equal
-room stays a fair coin at any bias; the leftmost of four seats throws about one
-card in five at the near wall instead of one in two. It is a constant rather than
-a slider because that slap off the wall beside the seat is worth seeing sometimes
-— it's where the cascade looks least mechanical — just not half the time.
+A fair coin, from every seat. The seat's room each way is not in it: the card
+thrown at the wall beside it meets that wall a card-width later and comes back,
+so half of an outer seat's deck going into the near wall is the ricochet the
+walls are for rather than a card leaving with nothing to show. A seat's side is
+still drawn from the run's own chain, so it stays one of the four draws a launch
+takes and a seed replays a throw exactly.
 
 ### A value and a ±
 
@@ -231,7 +224,7 @@ chosen.
 | launchInterval | 750 ms | so a 52-card deck takes ~39s |
 | trail | 16 ms | of simulated time between stamps |
 
-Not on a slider: `inwardBias` (1), the simulation step (1/120s), `maxStep`
+Not on a slider: the simulation step (1/120s), `maxStep`
 (50ms), `maxCatchUpMs` (100ms), the pose length (16 cards), and the scene's three
 card sizes (40/90/140px).
 

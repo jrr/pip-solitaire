@@ -108,22 +108,6 @@ let floorOf = (stage: stage) => Math.max(stage.height -. cardHeight, 0.)
 // left of that, so a stage narrower than a card still has two walls a card can be between.
 let rightWallOf = (stage: stage) => Math.max(stage.width -. 1., 0.)
 
-// How hard a card is aimed away from the wall it is nearest; at 1 the chance is exactly
-// the share of the room each way. A constant rather than a slider because a card thrown at
-// the wall beside it — which spends a bounce a card-width from its seat and crosses nothing
-// to do it — is worth seeing sometimes, just not half the time.
-let inwardBias = 1.
-
-// The chance a card launched from `seatX` goes right. The clamp is for a bias over 1, or a
-// seat already off the edge.
-let rightwardChance = (~seatX, ~stage: stage) => {
-  let roomLeft = Math.max(seatX +. 1., 0.)
-  let roomRight = Math.max(stage.width -. seatX, 0.)
-  let room = roomLeft +. roomRight
-  let share = room > 0. ? roomRight /. room : 0.5
-  Math.min(Math.max(0.5 +. inwardBias *. (share -. 0.5), 0.), 1.)
-}
-
 // `value ± variance`, uniform, one draw. Clamped because a spread can be wider than its
 // value: a negative speed would be a direction, and a bounciness over 1 never comes down.
 let scatter = (~value, ~variance, ~low, ~high, unit) =>
@@ -139,8 +123,10 @@ let scatterCount = (~value, ~variance, unit) => {
 }
 
 // Nothing is thrown upwards, so every card traces the same parabola family and the picture
-// reads as one cascade rather than 52 throws.
-let spawn = (rng, ~knobs, ~stage, ~card, ~seat) => {
+// reads as one cascade rather than 52 throws. Which way is a fair coin, whatever room the
+// seat has each way: the near wall a card is thrown at turns it back rather than taking it
+// off the table a card-width from its seat.
+let spawn = (rng, ~knobs, ~card, ~seat) => {
   let (rng, speedDraw) = draw(rng)
   let (rng, sideDraw) = draw(rng)
   let (rng, bounceDraw) = draw(rng)
@@ -161,7 +147,7 @@ let spawn = (rng, ~knobs, ~stage, ~card, ~seat) => {
     bounceDraw,
   )
   let bounces = scatterCount(~value=knobs.numBounces, ~variance=knobs.numBouncesVariance, countDraw)
-  let rightward = sideDraw < rightwardChance(~seatX, ~stage)
+  let rightward = sideDraw < 0.5
   (rng, {card, x: seatX, y: seatY, vx: rightward ? speed : -.speed, vy: 0., bounciness, bounces})
 }
 
@@ -248,7 +234,7 @@ let step = (run, ~knobs, ~stage, ~dt) => {
   while launched.contents < total && (launched.contents == 0 || sinceLaunch.contents >= interval) {
     let card = run.cards->Array.getUnsafe(launched.contents)
     let seat = seats == 0 ? (0., 0.) : stage.seats->Array.getUnsafe(mod(launched.contents, seats))
-    let (next, flyer) = spawn(rng.contents, ~knobs, ~stage, ~card, ~seat)
+    let (next, flyer) = spawn(rng.contents, ~knobs, ~card, ~seat)
     rng := next
     flying->Array.push(flyer)
     launched := launched.contents + 1
