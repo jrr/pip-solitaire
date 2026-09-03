@@ -55,7 +55,6 @@ type response
 @new external bytesOfCodes: array<int> => uint8Array = "Uint8Array"
 @get external byteLength: uint8Array => int = "length"
 @send external subarray: (uint8Array, int, int) => uint8Array = "subarray"
-@val @scope("Array") external codesOfBytes: uint8Array => array<int> = "from"
 
 type textEncoder
 @new external makeTextEncoder: unit => textEncoder = "TextEncoder"
@@ -68,9 +67,12 @@ type textDecoder
 @val external btoa: string => string = "btoa"
 @val external atob: string => string = "atob"
 @send external charCodeAt: (string, int) => int = "charCodeAt"
-// `@variadic` spreads the array into arguments, which is what makes this
-// `String.fromCharCode(...codes)` rather than a call with one array argument.
-@val @scope("String") @variadic external fromCharCodes: array<int> => string = "fromCharCode"
+// `String.fromCharCode.apply(null, bytes)`: one argument per byte, straight off the
+// typed array. `apply` only needs an array-like, where a spread would first copy
+// the chunk into a real `array` — and on the one cold call a page makes, that copy
+// is most of the cost.
+@val @scope(("String", "fromCharCode"))
+external charsOfBytes: (@as(json`null`) _, uint8Array) => string = "apply"
 
 // The DEFLATE flavour, named once. See `docs/save-and-share.md` for why it's the bare
 // stream and not gzip.
@@ -79,14 +81,15 @@ let format = "deflate-raw"
 // --- base64url ---------------------------------------------------------------
 
 // How many bytes to turn into characters per `String.fromCharCode` call. The
-// spread in `fromCharCodes` becomes one JS argument *per byte*, and engines cap
+// `apply` in `charsOfBytes` becomes one JS argument *per byte*, and engines cap
 // argument counts somewhere in the tens of thousands — so handing it a whole
-// multi-kilobyte game at once is a `RangeError` waiting for the first player with a
-// long enough history. Chunking keeps every call far below the limit, at no
-// meaningful cost.
+// multi-kilobyte game, or a 16KB font face, at once is a `RangeError` waiting for
+// the first payload long enough. Chunking keeps every call far below the limit, at
+// no meaningful cost.
 let chunkSize = 8192
 
-// Bytes → the standard base64 alphabet, via the binary string `btoa` wants.
+// Bytes → the standard base64 alphabet, via the binary string `btoa` wants. This is
+// the app's one encoder: `CardRaster` runs the embedded font faces through it too.
 let base64OfBytes = (bytes: uint8Array): string => {
   let length = byteLength(bytes)
   let binary = ref("")
@@ -94,7 +97,7 @@ let base64OfBytes = (bytes: uint8Array): string => {
   while offset.contents < length {
     let end = offset.contents + chunkSize
     let stop = end > length ? length : end
-    binary := binary.contents ++ fromCharCodes(codesOfBytes(subarray(bytes, offset.contents, stop)))
+    binary := binary.contents ++ charsOfBytes(subarray(bytes, offset.contents, stop))
     offset := stop
   }
   btoa(binary.contents)
