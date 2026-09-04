@@ -5,8 +5,31 @@
 // for card *presentation*; that one re-exports these values, so both layers share one
 // deck. The shuffle is driven by an explicit PRNG rather than `Math.random` (banned on
 // pure paths here), because a deal number must reproduce a board exactly.
+//
+// ⚠️ **Changing anything between the `frozen` markers changes every deal number.**
+//
+// A seed shared out of this app is a promise that `?seed=N` lays out this exact board,
+// in this build and in every build after it. The suit and rank order, the pack's
+// construction order, the PRNG constants, the direction Fisher–Yates walks and the
+// draw it takes, and the round-robin deal are all inputs to that promise — so are the
+// cascade count and the pile order `Game.freecellDeal` adds on top. Change one and
+// every link anyone has ever shared points somewhere else, silently, because the link
+// still opens a perfectly playable board. `Core_test`'s golden deal is the tripwire:
+// when it goes red, that is what happened, and the fix is not to update the expected
+// board.
+//
+// The way out, when the shuffle genuinely has to change, is to **version the seed**
+// rather than mutate it in place: a new parameter (`?seed2=`) or a prefix on the
+// value, with the old form still routed to this algorithm. Old links keep opening the
+// board they were shared for; new links get the better shuffle.
+//
+// Not in the contract: the constructor order in `Card.res`. `suits` and `ranks` are
+// explicit arrays, so the type may grow or reorder freely — it is the arrays below
+// that are frozen.
 
 open Card
+
+// --- frozen: the deal-number contract ------------------------------------------
 
 // Enumeration order: suits grouped, ranks ascending within each — also the order the
 // web-app's gallery renders an unshuffled deck in.
@@ -95,3 +118,5 @@ let deal = (~piles: int, cards: array<card>): array<array<card>> => {
     columns
   }
 }
+
+// --- end frozen ------------------------------------------------------------------

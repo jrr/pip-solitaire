@@ -85,6 +85,11 @@ The deal link is the legible one. It survives being read off one screen and type
 into another, which is half the point of a deal number — so `?game=` is omitted when
 the game is `Game.default`, and `?seed=7` stays short.
 
+It is also the one that outlives the build that made it. A number typed into next
+year's app has to deal the same board, which freezes the shuffle behind it; the
+banner in `core/src/Cards.res` says exactly what that freezes and how to change the
+shuffle without breaking a link.
+
 The win overlay's Share button is a *deal* link with a message wrapped around it
 (`victoryMessage`), never a `#g=` link. Sharing the position from a won board would
 ship the solution.

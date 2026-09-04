@@ -132,6 +132,9 @@ let rec freecellShaped = (
   }
 }
 
+// The tail of the deal-number contract: `~cascades=8` here, and the pile order
+// `freecellShaped` fixes above, decide where a shuffled card lands on screen. The
+// frozen banner in `Cards.res` says what changing either costs.
 let freecellDeal = (~seed: int): t =>
   freecellShaped(
     ~id="freecell",

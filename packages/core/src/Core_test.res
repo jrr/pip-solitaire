@@ -2368,6 +2368,52 @@ describe("Cards", () => {
     expect(Cards.all)->toEqual(before)
   })
 
+  // What a shared deal number is a promise of. Every other test here compares the
+  // shuffle with itself, which any pure function passes — rewrite the PRNG and they
+  // all stay green. These compare it with the boards already out in the world, so a
+  // rewrite goes red here and nowhere else. That is the signal the frozen banner in
+  // `Cards.res` describes: read it before touching an expected value.
+  describe("the deal-number contract", () => {
+    let codes = (cards: array<card>) => cards->Array.map(CardText.format)->Array.join(" ")
+
+    test(
+      "deal 1 shuffles to the order it always has",
+      () => {
+        expect(codes(Cards.shuffle(~seed=1)))->toBe(
+          "JS KH 6D 2D TD 8S TC 9C 5H JC QS AD TS 6H 3C AC 5S JD 8H 6S 9S 9D 4D 4C 6C 3H " ++ "5D 7D 5C QH 4H 2S 8D 9H 7H 2C KD 4S 8C 3S QC KS AS AH 7C TH 3D 2H 7S KC QD JH",
+        )
+      },
+    )
+
+    test(
+      "deal 1 lays out the board it always has",
+      () => {
+        // Pinned at the board rather than the shuffle, because the board is what a
+        // `?seed=` link names: this one assertion also covers the eight cascades and
+        // the cells–foundations–cascades pile order. When both goldens fail the
+        // permutation changed; when only this one does, the deal's shape did.
+        expect(Game.freecellDeal(~seed=1).piles->Array.map(p => codes(p.cards)))->toEqual([
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "JS 5H 5S 6C 8D QC 7S",
+          "KH JC JD 3H 9H KS KC",
+          "6D QS 8H 5D 7H AS QD",
+          "2D AD 6S 7D 2C AH JH",
+          "TD TS 9S 5C KD 7C",
+          "8S 6H 9D QH 4S TH",
+          "TC 3C 4D 4H 8C 3D",
+          "9C AC 4C 2S 3S 2H",
+        ])
+      },
+    )
+  })
+
   // The deck as a *parameter*: a subset of one pack, with `standard` the
   // four × thirteen everything plays with today. The same two properties the full
   // pack is pinned by — a shuffle is a permutation, and a seed reproduces it —
