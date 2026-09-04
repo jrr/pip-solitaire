@@ -2,7 +2,9 @@
 // cards render with. It regenerates every font file the app ships,
 // so the faces are reproducible from their upstream `@fontsource` sources rather
 // than opaque binaries checked in by hand — the same task-interface convention
-// as `mise run icons`. Run it with `mise run fonts`.
+// as `mise run icons`. Run it with `mise run fonts`. The outputs are
+// byte-reproducible: a re-run against the same sources leaves `git status`
+// clean, so a diff in a font file means the face itself changed.
 //
 // Two faces, both SIL Open Font License:
 //
@@ -57,6 +59,50 @@ const suits = [
 
 const toArrayBuffer = (buf) => buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
 
+// The sfnt checksum: the big-endian uint32 sum over a byte range, zero-padded to
+// a multiple of four. Font-file length and table offsets are already 4-aligned.
+function checkSum(buf, start, length) {
+  let sum = 0;
+  for (let i = start; i < start + length; i += 4) {
+    let word = 0;
+    for (let j = 0; j < 4; j++) {
+      word = (word << 8) | (i + j < start + length ? buf[i + j] : 0);
+    }
+    sum = (sum + (word >>> 0)) >>> 0;
+  }
+  return sum;
+}
+
+// opentype.js stamps `head.created` and `head.modified` with the wall clock on
+// every write, and only `created` can be overridden at construction. So the
+// merged face — and the woff2 packed from it — would differ on every run even
+// when nothing about the face had changed, and `git status` after `mise run
+// fonts` could never answer "did the font actually change?". This rewrites both
+// dates in place and re-derives the two checksums that cover them: the `head`
+// record in the table directory, and `head.checkSumAdjustment`, which is
+// computed over the whole file with itself set to zero. `ttf` is a Node Buffer.
+function pinHeadDates(ttf, createdSeconds, modifiedSeconds) {
+  const numTables = ttf.readUInt16BE(4);
+  let head;
+  for (let i = 0; i < numTables; i++) {
+    const record = 12 + 16 * i;
+    if (ttf.toString("latin1", record, record + 4) === "head") {
+      head = {
+        record,
+        offset: ttf.readUInt32BE(record + 8),
+        length: ttf.readUInt32BE(record + 12),
+      };
+    }
+  }
+  // LONGDATETIME counts seconds from 1904-01-01, not the Unix epoch.
+  const macEpoch = 2082844800n;
+  ttf.writeBigInt64BE(BigInt(createdSeconds) + macEpoch, head.offset + 20);
+  ttf.writeBigInt64BE(BigInt(modifiedSeconds) + macEpoch, head.offset + 28);
+  ttf.writeUInt32BE(0, head.offset + 8);
+  ttf.writeUInt32BE(checkSum(ttf, head.offset, head.length), head.record + 4);
+  ttf.writeUInt32BE((0xb1b0afba - checkSum(ttf, 0, ttf.length)) >>> 0, head.offset + 8);
+}
+
 async function main() {
   mkdirSync(publicFonts, { recursive: true });
   mkdirSync(srcFonts, { recursive: true });
@@ -96,10 +142,15 @@ async function main() {
     );
     const sfnt = await subsetFont(src, ch, { targetFormat: "sfnt" });
     const font = opentype.parse(toArrayBuffer(sfnt));
+    // The vertical metrics and the head dates both carry over from the parent
+    // face: the outlines are IBM Plex Sans JP's, so its dates are the honest
+    // ones — and, unlike the clock, they only move when the upstream package does.
     metrics ??= {
       unitsPerEm: font.unitsPerEm,
       ascender: font.ascender,
       descender: font.descender,
+      created: font.tables.head.created,
+      modified: font.tables.head.modified,
     };
     const glyph = font.charToGlyph(ch);
     glyphs.push(
@@ -121,6 +172,7 @@ async function main() {
     glyphs,
   });
   const suitTtf = Buffer.from(suitFont.toArrayBuffer());
+  pinHeadDates(suitTtf, metrics.created, metrics.modified);
   writeFileSync(join(srcFonts, "pip-suits.ttf"), suitTtf);
   // Repackage the merged TTF as woff2 for the browser, keeping the renamed
   // name records (harfbuzz drops most name ids unless asked to preserve them).
