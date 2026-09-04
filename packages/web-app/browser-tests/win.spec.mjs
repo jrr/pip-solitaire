@@ -202,9 +202,11 @@ test.describe("with the victory animation on", () => {
       .poll(() => page.locator(".stacking-card--flown").count(), { timeout: 30_000 })
       .toBeGreaterThan(flownBefore)
 
-    // Left alone, the panel comes up by itself ten seconds into the run — the same peek
-    // a tap raises, so a tap puts it away again and the cards keep falling.
+    // Left alone, the panel comes up by itself six seconds into the run, easing in rather
+    // than snapping — the same peek a tap raises, so a tap puts it away again and the
+    // cards keep falling.
     await expect(overlay).toHaveCount(1, { timeout: 15_000 })
+    await expect(overlay).toHaveClass(/win-overlay--gradual/)
     await expect(cascade).toHaveCount(1)
     await tap()
     await expect(overlay).toHaveCount(0)

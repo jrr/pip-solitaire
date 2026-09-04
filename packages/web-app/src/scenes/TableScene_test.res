@@ -67,7 +67,7 @@ let nextTick = (): promise<unit> =>
   Promise.make((resolve, _) => setTimeout(() => resolve(), 0)->ignore)
 
 // The one wait a test can't simply sit through: the victory cascade raises the win
-// panel ten seconds in, on a `setTimeout` of its own. For the length of one body the
+// panel six seconds in, on a `setTimeout` of its own. For the length of one body the
 // scheduler is a clock the test turns by hand — `advance` runs everything due by then,
 // in order — and the real one is back before vitest needs it. Nothing else in a
 // synchronous body sets a timer, which is what makes the swap safe here and not worth
@@ -987,8 +987,8 @@ describe("TableScene victory animation", () => {
   test("never offers to finish a game the cascade is already celebrating", () => {
     // An already-won board is still `Reducer.canFinish` — draining it wins it again —
     // so the Finish button is held off by the victory having taken the board over, not
-    // by the position. A cascade takes it over ten seconds before the panel appears,
-    // which is ten seconds for the button to be wrong in.
+    // by the position. A cascade takes it over six seconds before the panel appears,
+    // which is six seconds for the button to be wrong in.
     let container = host("div")
     let teardown = winnable(container)
     expect(hasFinishButton(container))->toBe(true)
@@ -1085,9 +1085,9 @@ describe("TableScene victory animation", () => {
     teardown()
   })
 
-  test("raises the panel on its own ten seconds in, and a tap still puts it away", () => {
+  test("raises the panel on its own six seconds in, and a tap still puts it away", () => {
     // Nobody should have to wait out the whole run to be told they won. The panel comes
-    // up at ten seconds with the cards still falling behind it, and it is the same peek
+    // up at six seconds with the cards still falling behind it, and it is the same peek
     // a tap raises: a tap puts it away again, and the run is unaffected either way.
     let container = host("div")
     withHeldTimers(
@@ -1101,10 +1101,17 @@ describe("TableScene victory animation", () => {
         timers.advance(1)
         expect(hasWinOverlay(container))->toBe(true)
         expect(hasCascade(container))->toBe(true)
+        // Unasked-for, so it eases in (`.win-overlay--gradual`); the tap below is
+        // answered at once, and the panel it raises carries no such mark.
+        expect(container->find(".win-overlay--gradual")->Option.isSome)->toBe(true)
 
-        container->find(".table-cascade")->Option.getOrThrow->tap
+        let canvas = container->find(".table-cascade")->Option.getOrThrow
+        canvas->tap
         expect(hasWinOverlay(container))->toBe(false)
         expect(hasCascade(container))->toBe(true)
+        canvas->tap
+        expect(hasWinOverlay(container))->toBe(true)
+        expect(container->find(".win-overlay--gradual")->Option.isSome)->toBe(false)
         teardown()
       },
     )
@@ -1112,7 +1119,7 @@ describe("TableScene victory animation", () => {
 
   testAsync("raises the panel again at the end of a run it was tapped away from", async () => {
     // Sitting through the whole animation still ends on the message, even for someone
-    // who saw it at ten seconds and put it away. The run's end here is the failed sprite
+    // who saw it at six seconds and put it away. The run's end here is the failed sprite
     // sheet the file's stubs guarantee, which lands a tick after the timers are real
     // again — and takes the same exit the last card leaving does.
     let container = host("div")

@@ -278,7 +278,7 @@ type winShare = {
 //
 // `panelTimer` is the run raising the win panel on its own part-way through
 // (`winPanelDelayMs`). It rides with the run so that ending one anywhere also stops the
-// timer — left ticking, an undo out of the victory would be followed ten seconds later
+// timer — left ticking, an undo out of the victory would be followed six seconds later
 // by a win panel over a board that is being played again.
 type cascadeRun = {
   player: CascadePlayer.t,
@@ -290,7 +290,7 @@ type cascadeRun = {
 // How long a victory cascade plays before the win panel comes up on its own. A tap can
 // put the panel away again after this, and the run's own end raises it once more; the
 // delay only decides how long someone who does nothing waits to be told they won.
-let winPanelDelayMs = 10_000
+let winPanelDelayMs = 6_000
 
 // The design footprints, the fits they feed, and the hit-test that compares the
 // rects — all of it arithmetic over rects and counts, and all of it in
@@ -1096,7 +1096,7 @@ let make = (
       // It **reports** the clock and the tally but doesn't take either: both were
       // settled by the move that won, which is why raising a panel saves nothing.
       // **Whether the victory has taken over the board**, which is not the same question
-      // as whether the panel is on screen: a cascade takes the board over for ten
+      // as whether the panel is on screen: a cascade takes the board over for six
       // seconds before raising anything, and a tap can put the panel away again while
       // the cards are still falling. `updateFinishButton` is why the distinction has
       // teeth — an already-won board is still `canFinish` (draining it wins it again),
@@ -1114,7 +1114,11 @@ let make = (
           winShown := true
         }
 
-      let raiseWin = () =>
+      // `~gradual` is the difference between a panel someone asked for and one that
+      // arrives on its own: a tap gets its answer at once, while the cascade's timer
+      // and its last card ease the message in over the falling cards
+      // (`.win-overlay--gradual` in `TableScene.css`).
+      let raiseWin = (~gradual=false, ()) =>
         if winOverlay.contents->Option.isNone {
           // **The clock stopped when the board was won, not here** — the session stamps
           // it as it records the winning move, so the number is how long the game took
@@ -1148,17 +1152,20 @@ let make = (
               },
             }),
           )
+          if gradual {
+            classList(overlay)->addClass("win-overlay--gradual")
+          }
           boardHost->WebDom.appendChild(overlay)->ignore
           winOverlay := Some(overlay)
         }
 
       // The victory, announced and shown. Idempotent in both halves and separately so:
-      // a cascade announces the win when it starts and raises the panel ten seconds
+      // a cascade announces the win when it starts and raises the panel six seconds
       // later, then again when the last card leaves, and before either a tap may have
       // raised it already.
-      let showWin = () => {
+      let showWin = (~gradual=false, ()) => {
         announceWin()
-        raiseWin()
+        raiseWin(~gradual, ())
       }
 
       // The panel off the screen, without conceding that the game is still on. That is
@@ -1200,12 +1207,13 @@ let make = (
       // foundations, an undo stepped out of the victory, a resize wiped the surface, the
       // sprites never arrived. The panel is the point; the cascade plays in front of it,
       // and a tap can bring it forward without ending anything. **Raising the panel here
-      // is not redundant with the run's own timer**: the panel may have come up at ten
+      // is not redundant with the run's own timer**: the panel may have come up at six
       // seconds and been tapped away since, and a run watched to its last card still
-      // ends on the message.
-      let finishCascade = () => {
+      // ends on the message. Only the last card leaving earns the slow fade — a surface
+      // wiped or a sheet that never arrived is a win being handed over, not a finale.
+      let finishCascade = (~gradual, ()) => {
         endCascade()
-        showWin()
+        showWin(~gradual, ())
       }
 
       // Each foundation as the cascade needs it: where its cards fall from, in
@@ -1308,7 +1316,8 @@ let make = (
             // trail isn't worth it), or the sprite sheet never arrived. **A failed
             // build degrades rather than throwing** — a won game must never be held up
             // by its celebration failing to load.
-            | CascadePlayer.Settled | Interrupted | Failed(_) => finishCascade()
+            | CascadePlayer.Settled => finishCascade(~gradual=true, ())
+            | Interrupted | Failed(_) => finishCascade(~gradual=false, ())
             | Building | Running | Posed => ()
             },
         )
@@ -1318,7 +1327,7 @@ let make = (
         // `showWin` rather than `raiseWin` for the same reason the cascade's own end
         // says it — it is the announced-and-shown pair, and a no-op on a panel a tap
         // has already put up.
-        let panelTimer = setTimeout(showWin, winPanelDelayMs)
+        let panelTimer = setTimeout(() => showWin(~gradual=true, ()), winPanelDelayMs)
         cascade := Some({player, canvas: canvasEl, reveal, panelTimer})
         CascadePlayer.start(player)
       }

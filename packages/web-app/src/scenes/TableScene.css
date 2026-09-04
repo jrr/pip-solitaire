@@ -52,6 +52,14 @@
     }
   }
 
+  /* A panel nobody asked for — the victory cascade's timer, or its last card — eases
+     in rather than snapping, so it reads as the celebration arriving at the message
+     instead of an interruption. The mark is the scene's (`raiseWin` in TableScene.res);
+     a tap gets the quick version above, because a tap wants its answer at once. */
+  .win-overlay--gradual {
+    animation-duration: 1.5s;
+  }
+
   .win-panel {
     display: flex;
     flex-direction: column;
