@@ -52,6 +52,10 @@
     }
   }
 
+  .win-overlay--gradual {
+    animation-duration: 0.5s;
+  }
+
   .win-panel {
     display: flex;
     flex-direction: column;
