@@ -20,8 +20,8 @@
 // `<MenuSettingsScreen>` decides.
 type props = {
   state: Motion.state,
-  // Asks for motion permission on the flip; see `Main`'s handler for why that has
-  // to happen under the real click.
+  // Asks for motion permission on the flip; see `<MenuSettingsScreen>`'s `askMotion`
+  // for why that has to happen under the real click.
   onToggle: unit => unit,
 }
 
