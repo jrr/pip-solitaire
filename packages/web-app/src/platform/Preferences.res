@@ -55,7 +55,12 @@ let load = (): Options.t => {
   {autoCollect, allowColumnReorder: Options.default.allowColumnReorder}
 }
 
-let save = (options: Options.t) => saveFlag(autoCollectKey, options.autoCollect)
+// Auto-collect is one field of the driver's `Options.t` and the only one stored, so
+// there are two ways in: the whole record, for a caller that holds one, and the flag
+// alone, for the settings switch that holds only its own mirror.
+let saveAutoCollect = (enabled: bool) => saveFlag(autoCollectKey, enabled)
+
+let save = (options: Options.t) => saveAutoCollect(options.autoCollect)
 
 let loadCardTilt = (): bool => loadFlag(cardTiltKey, ~fallback=true)
 let saveCardTilt = (enabled: bool) => saveFlag(cardTiltKey, enabled)
