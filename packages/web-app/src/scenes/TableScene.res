@@ -42,7 +42,10 @@ external onPointer: (WebDom.element, string, pointerEvent => unit) => unit = "ad
 // An autoplay run starts on the *next* tick rather than inside the command that asked
 // for it, so the console's reply — the one sentence that describes the whole run — is
 // printed above the play-by-play instead of one move down it. See `autoplay` below.
+// The victory cascade's own timer — the panel raising itself part-way through the
+// run — is the other holder, and the one that has to be cleared (`endCascade`).
 @val external setTimeout: (unit => unit, int) => int = "setTimeout"
+@val external clearTimeout: int => unit = "clearTimeout"
 
 // The card layout is pixel-positioned in JS from the stage's live size, so unlike
 // the pure-CSS drop zones it doesn't reflow itself when the stage resizes.
@@ -272,11 +275,22 @@ type winShare = {
 //
 // `reveal` closes over the build's own card nodes, which is why the run carries it rather
 // than the mount re-deriving it from a board that may since have been replaced.
+//
+// `panelTimer` is the run raising the win panel on its own part-way through
+// (`winPanelDelayMs`). It rides with the run so that ending one anywhere also stops the
+// timer — left ticking, an undo out of the victory would be followed ten seconds later
+// by a win panel over a board that is being played again.
 type cascadeRun = {
   player: CascadePlayer.t,
   canvas: WebDom.element,
   reveal: unit => unit,
+  panelTimer: int,
 }
+
+// How long a victory cascade plays before the win panel comes up on its own. A tap can
+// put the panel away again after this, and the run's own end raises it once more; the
+// delay only decides how long someone who does nothing waits to be told they won.
+let winPanelDelayMs = 10_000
 
 // The design footprints, the fits they feed, and the hit-test that compares the
 // rects — all of it arithmetic over rects and counts, and all of it in
@@ -549,6 +563,7 @@ let make = (
       switch cascade.contents {
       | Some(run) =>
         cascade := None
+        clearTimeout(run.panelTimer)
         CascadePlayer.detach(run.player)
         WebDom.remove(run.canvas)
         run.reveal()
@@ -1081,7 +1096,7 @@ let make = (
       // It **reports** the clock and the tally but doesn't take either: both were
       // settled by the move that won, which is why raising a panel saves nothing.
       // **Whether the victory has taken over the board**, which is not the same question
-      // as whether the panel is on screen: a cascade takes the board over for forty
+      // as whether the panel is on screen: a cascade takes the board over for ten
       // seconds before raising anything, and a tap can put the panel away again while
       // the cards are still falling. `updateFinishButton` is why the distinction has
       // teeth — an already-won board is still `canFinish` (draining it wins it again),
@@ -1138,8 +1153,9 @@ let make = (
         }
 
       // The victory, announced and shown. Idempotent in both halves and separately so:
-      // a cascade announces the win when it starts and raises the panel forty seconds
-      // later, and between those two a tap may have raised it already.
+      // a cascade announces the win when it starts and raises the panel ten seconds
+      // later, then again when the last card leaves, and before either a tap may have
+      // raised it already.
       let showWin = () => {
         announceWin()
         raiseWin()
@@ -1183,7 +1199,10 @@ let make = (
       // The one exit every cascade takes, however it got there — it emptied the
       // foundations, an undo stepped out of the victory, a resize wiped the surface, the
       // sprites never arrived. The panel is the point; the cascade plays in front of it,
-      // and a tap can bring it forward without ending anything.
+      // and a tap can bring it forward without ending anything. **Raising the panel here
+      // is not redundant with the run's own timer**: the panel may have come up at ten
+      // seconds and been tapped away since, and a run watched to its last card still
+      // ends on the message.
       let finishCascade = () => {
         endCascade()
         showWin()
@@ -1294,7 +1313,13 @@ let make = (
             },
         )
         canvasEl->WebDom.addEventListener("pointerdown", toggleWin)
-        cascade := Some({player, canvas: canvasEl, reveal})
+        // Counted from the win landing rather than from the first card, like the tap:
+        // the sprite build is part of the wait as far as the player is concerned.
+        // `showWin` rather than `raiseWin` for the same reason the cascade's own end
+        // says it — it is the announced-and-shown pair, and a no-op on a panel a tap
+        // has already put up.
+        let panelTimer = setTimeout(showWin, winPanelDelayMs)
+        cascade := Some({player, canvas: canvasEl, reveal, panelTimer})
         CascadePlayer.start(player)
       }
 

@@ -66,6 +66,43 @@ let flushFrames: unit => unit = %raw(`() => {
 let nextTick = (): promise<unit> =>
   Promise.make((resolve, _) => setTimeout(() => resolve(), 0)->ignore)
 
+// The one wait a test can't simply sit through: the victory cascade raises the win
+// panel ten seconds in, on a `setTimeout` of its own. For the length of one body the
+// scheduler is a clock the test turns by hand — `advance` runs everything due by then,
+// in order — and the real one is back before vitest needs it. Nothing else in a
+// synchronous body sets a timer, which is what makes the swap safe here and not worth
+// it for `nextTick` above.
+type heldTimers = {advance: int => unit}
+let withHeldTimers: (heldTimers => unit) => unit = %raw(`(body) => {
+  const real = { set: globalThis.setTimeout, clear: globalThis.clearTimeout }
+  let pending = []
+  let now = 0
+  let nextId = 1
+  globalThis.setTimeout = (cb, ms) => {
+    const id = nextId++
+    pending.push({ id, cb, at: now + (ms || 0) })
+    return id
+  }
+  globalThis.clearTimeout = (id) => {
+    pending = pending.filter((t) => t.id !== id)
+  }
+  const advance = (ms) => {
+    now += ms
+    for (;;) {
+      const due = pending.filter((t) => t.at <= now).sort((a, b) => a.at - b.at)[0]
+      if (!due) break
+      pending = pending.filter((t) => t !== due)
+      due.cb()
+    }
+  }
+  try {
+    body({ advance })
+  } finally {
+    globalThis.setTimeout = real.set
+    globalThis.clearTimeout = real.clear
+  }
+}`)
+
 open Vitest
 open TestDom
 
@@ -950,8 +987,8 @@ describe("TableScene victory animation", () => {
   test("never offers to finish a game the cascade is already celebrating", () => {
     // An already-won board is still `Reducer.canFinish` — draining it wins it again —
     // so the Finish button is held off by the victory having taken the board over, not
-    // by the position. A cascade takes it over forty seconds before the panel appears,
-    // which is forty seconds for the button to be wrong in.
+    // by the position. A cascade takes it over ten seconds before the panel appears,
+    // which is ten seconds for the button to be wrong in.
     let container = host("div")
     let teardown = winnable(container)
     expect(hasFinishButton(container))->toBe(true)
@@ -1046,5 +1083,74 @@ describe("TableScene victory animation", () => {
     expect(hasCascade(container))->toBe(false)
     expect(hasWinOverlay(container))->toBe(true)
     teardown()
+  })
+
+  test("raises the panel on its own ten seconds in, and a tap still puts it away", () => {
+    // Nobody should have to wait out the whole run to be told they won. The panel comes
+    // up at ten seconds with the cards still falling behind it, and it is the same peek
+    // a tap raises: a tap puts it away again, and the run is unaffected either way.
+    let container = host("div")
+    withHeldTimers(
+      timers => {
+        let teardown = winnable(container)
+        playWin(container)
+        expect(hasWinOverlay(container))->toBe(false)
+
+        timers.advance(TableScene.winPanelDelayMs - 1)
+        expect(hasWinOverlay(container))->toBe(false)
+        timers.advance(1)
+        expect(hasWinOverlay(container))->toBe(true)
+        expect(hasCascade(container))->toBe(true)
+
+        container->find(".table-cascade")->Option.getOrThrow->tap
+        expect(hasWinOverlay(container))->toBe(false)
+        expect(hasCascade(container))->toBe(true)
+        teardown()
+      },
+    )
+  })
+
+  testAsync("raises the panel again at the end of a run it was tapped away from", async () => {
+    // Sitting through the whole animation still ends on the message, even for someone
+    // who saw it at ten seconds and put it away. The run's end here is the failed sprite
+    // sheet the file's stubs guarantee, which lands a tick after the timers are real
+    // again — and takes the same exit the last card leaving does.
+    let container = host("div")
+    let teardown = ref(() => ())
+    withHeldTimers(
+      timers => {
+        teardown := winnable(container)
+        playWin(container)
+        timers.advance(TableScene.winPanelDelayMs)
+        expect(hasWinOverlay(container))->toBe(true)
+        container->find(".table-cascade")->Option.getOrThrow->tap
+        expect(hasWinOverlay(container))->toBe(false)
+      },
+    )
+    await nextTick()
+    expect(hasCascade(container))->toBe(false)
+    expect(hasWinOverlay(container))->toBe(true)
+    teardown.contents()
+  })
+
+  test("ending the run early takes its timer with it", () => {
+    // An undo out of the victory returns a board that is being played again, and ten
+    // seconds later nothing may land on it. The timer rides with the run, so every exit
+    // that ends one — undo, New Game, teardown — stops it too; this pins the one that
+    // leaves a live board behind.
+    let container = host("div")
+    withHeldTimers(
+      timers => {
+        let board = ref(None)
+        let teardown = winnable(~board, container)
+        playWin(container)
+        live(board).undo()
+        expect(hasCascade(container))->toBe(false)
+
+        timers.advance(TableScene.winPanelDelayMs)
+        expect(hasWinOverlay(container))->toBe(false)
+        teardown()
+      },
+    )
   })
 })

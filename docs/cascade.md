@@ -295,10 +295,18 @@ the moment the win lands rather than from the first card, so the peek covers the
 ~60ms the first sheet takes to build — otherwise a slow build reads as a hang on
 the most emotionally loaded screen in the app.
 
-Four things end a run, and all four end with the panel up: the last card leaves,
-an undo steps out of the victory, a resize wipes the surface, or the sprite sheet
-fails to build. That last one is the one worth stating: **a won game is never held
-up by its celebration failing to load.**
+**The panel also comes up on its own, ten seconds in** (`winPanelDelayMs` in
+`TableScene.res`), so nobody has to tap or wait out the run to be told they won.
+It is the same peek: a tap puts it away again and the cards go on falling. The
+timer is counted from the win landing, like the tap, and it rides with the run —
+every way of ending one clears it, or an undo out of the victory would be followed
+ten seconds later by a win panel over a board being played again.
+
+Four things end a run, and all four end with the panel up — again, if it was up at
+ten seconds and tapped away since: the last card leaves, an undo steps out of the
+victory, a resize wipes the surface, or the sprite sheet fails to build. That last
+one is the one worth stating: **a won game is never held up by its celebration
+failing to load.**
 
 The whole run is 52 cards at the launch interval, so a victory is a ~40-second
 celebration. That is the number the sliders were dragged to; retune it there, not

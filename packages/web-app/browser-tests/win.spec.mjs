@@ -201,6 +201,18 @@ test.describe("with the victory animation on", () => {
     await expect
       .poll(() => page.locator(".stacking-card--flown").count(), { timeout: 30_000 })
       .toBeGreaterThan(flownBefore)
+
+    // Left alone, the panel comes up by itself ten seconds into the run — the same peek
+    // a tap raises, so a tap puts it away again and the cards keep falling.
+    await expect(overlay).toHaveCount(1, { timeout: 15_000 })
+    await expect(cascade).toHaveCount(1)
+    await tap()
+    await expect(overlay).toHaveCount(0)
+    await expect(cascade).toHaveCount(1)
+    const flownAtTen = await page.locator(".stacking-card--flown").count()
+    await expect
+      .poll(() => page.locator(".stacking-card--flown").count(), { timeout: 30_000 })
+      .toBeGreaterThan(flownAtTen)
   })
 
   test("the panel's own buttons still work with cards falling behind them", async ({ page }) => {
