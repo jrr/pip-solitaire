@@ -46,9 +46,10 @@ card is laid out, and at the moment a game is won.
 
 The alternative is rebuilding the board when a preference flips, and a rebuild
 throws the game away. Auto-collect turned on mid-game has to take effect on the
-very next move, not on the next deal. `Main` owns all three refs, the menu's
-switches write them, and the model keeps a mirror only so the switch itself
-renders in the right position.
+very next move, not on the next deal. `Main` owns all three refs because they
+belong to the board rather than to any one screen; the Settings screen holds the
+mirror its switches render from and writes the refs through on every flip (see
+`MenuSettingsScreen.liveEnv`).
 
 `tiltEnabled`'s companion is `controls.relayout`: a tilt change has nothing to
 wait for, so the driver asks the board to re-lay the resting cards in place.
@@ -57,9 +58,9 @@ companion for the opposite reason: it decides what the *next* victory does, and
 there is never a victory on the table to redecorate.
 
 The rule the refs imply: **a preference the board consults belongs in a ref, a
-preference only the CSS consults does not.** `notchDisplayEnabled` is a plain
-value for exactly that reason — it reaches the page as a document-root attribute
-and the board never reads it.
+preference only the CSS consults does not.** "Display content around notch" has
+no ref here for exactly that reason — it reaches the page as a document-root
+attribute and the board never reads it.
 
 ## Why the reverse channels are refs *in the driver*
 

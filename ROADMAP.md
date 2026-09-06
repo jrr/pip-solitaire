@@ -35,6 +35,7 @@ Everything the project wants falls out of this one decision:
 |---|---|
 | Rendering | **ReScript JSX in preserve mode over Preact** (no rescript-react). See below. |
 | Child diffing | **Preact's**, reached through `Html.res`'s bindings. Was ours; see below. |
+| Component state | **Child Elm composition** — a screen owns `model`/`msg`/`update`; the parent embeds the model and maps the messages. Not hooks; see below. |
 | Service worker tooling | **`vite-plugin-pwa`** — manifest, precache, build hash, and the update hook. |
 | Card rendering | **SVG** cards for full visual control. |
 | State ownership | **100% in `core`**, reduxey: immutable state + action variant + pure reducer. |
@@ -70,6 +71,31 @@ escape hatch, and stale comments about a reconciler we no longer own.
 have to agree (build, dev-server scan, Vitest) because preserve mode leaves JSX
 in the compiled output for the bundler to lower. `mise run dev-smoke` exists
 because nothing else checks the second one.
+
+### Why a screen's state is a child loop, not a hook
+
+A screen with several controls of its own — the Settings screen is the worked
+example (#330) — holds its `model`, `msg` and `update` in its own file, and the
+parent embeds the model as one field and maps the messages up through a single
+constructor. `Html.mount`'s update already returns `(model, effect)`, so the
+parent threads the child's effect straight out and the composition costs a
+four-line branch.
+
+Preact's hooks would be the obvious alternative and are ruled out by a constraint
+of this app rather than a dislike of them: a component reached through
+`Html.create` renders exactly once and its host is thrown away, so `useState`
+holds state nothing can read back and a `useEffect` cleanup never runs — both
+failing silently (`runtime/Html.res`). Every component test in the web app renders
+through `create`, so a `useState` screen would work in the app and be untestable
+in the shape every other component test uses.
+
+What it costs: the screen's model is a *mirror* — of storage, of the refs the
+board reads, of a document-root attribute — so its `update` has to write every
+flip through, and a setting's value is still read from its real home rather than
+from the screen. That write-through is the half that can stop working with
+nothing on screen to show it, which is why the reach is an injected `env` of four
+capabilities (unit-testable with a recording stand-in) and why a browser spec pins
+each switch to storage, to the board and to the document root.
 
 ## How to read this
 

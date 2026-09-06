@@ -12,21 +12,19 @@ open TestDom
 // The two screens this file never shows, and the footer under all three. Scenery:
 // held fixed across every case, and never placed while `screen` is `Main`.
 let settings: MenuSettingsScreen.props = {
+  model: {
+    autoCollect: true,
+    cardTilt: true,
+    wiggle: Motion.Off,
+    wantsShake: false,
+    victoryAnimation: false,
+    notchDisplay: true,
+    hidden: {revealed: false, taps: 0},
+  },
+  dispatch: _ => (),
   onClose: () => (),
   onBackToMenu: () => (),
   onOpenDebug: () => (),
-  onTapSettingsTitle: () => (),
-  autoCollect: true,
-  onToggleAutoCollect: () => (),
-  cardTilt: true,
-  onToggleCardTilt: () => (),
-  wiggle: Motion.Off,
-  onToggleWiggle: () => (),
-  victoryAnimation: false,
-  onToggleVictoryAnimation: () => (),
-  revealHidden: false,
-  notchDisplay: true,
-  onToggleNotchDisplay: () => (),
 }
 
 let debug: MenuDebugScreen.props = {

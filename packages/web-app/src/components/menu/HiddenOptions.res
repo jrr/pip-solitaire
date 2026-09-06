@@ -9,14 +9,14 @@
 // The target is the big green `menu-title` at the head of the **Settings** screen.
 // The other two screens (the main menu's "Pip", the Debug screen's "Debug") render
 // that same element, so "only Settings unlocks" is an invariant this module can't
-// enforce on its own — the caller decides which taps to feed in. See `Main`'s
-// `SettingsTitleTapped`, which drops any tap arriving while another screen shows.
+// enforce on its own — the caller decides which taps to feed in. `Main` drops any tap
+// arriving while another screen shows, on its way into the Settings screen's `update`.
 //
 // The gesture is a *toggle*: every run of ten flips the reveal, so ten more taps
 // put the rows away again. The reveal is persisted like any other preference —
 // nobody wants to tap ten times a day — and the tap count itself is session state,
-// held in the chrome model and reset on the way out of Settings, so a half-finished
-// run doesn't lie in wait to be completed hours later.
+// held in the Settings screen's own model and reset on the way out of that screen, so
+// a half-finished run doesn't lie in wait to be completed hours later.
 //
 // Re-hiding deliberately does *not* turn the hidden settings off: whatever was
 // switched on stays on and keeps running. So a device can sit with Wiggle Waggle
