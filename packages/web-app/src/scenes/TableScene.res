@@ -32,10 +32,9 @@ type pointerEvent
 @send external releasePointerCapture: (WebDom.element, int) => unit = "releasePointerCapture"
 @send
 external onPointer: (WebDom.element, string, pointerEvent => unit) => unit = "addEventListener"
-// The board's stop gesture listens on the way *down* rather than on the way up, which
-// is the whole reason it can be a press that means nothing else: an event stopped in
-// the capture phase never reaches the card under the finger, so no card is lifted and
-// no press is banked toward a double-tap (see the stop below).
+// A listener on the way *down*, for the one press this board takes before its cards do:
+// an event stopped in the capture phase never reaches the card under the finger at all
+// (see the stop gesture below).
 @send
 external onPointerCapturing: (
   WebDom.element,
@@ -610,9 +609,10 @@ let make = (
     }
 
     // **The stop gesture**: a press anywhere on the board ends a running line, and is
-    // only ever that. The board takes it rather than each card because it has to land on
-    // a card *in flight* as readily as on bare table — and a flying card is over
-    // whichever square its flight happens to have reached.
+    // only ever that — no card is lifted, and nothing is banked toward a send-home
+    // double-tap. The board takes it rather than each card because it has to land on a
+    // card *in flight* as readily as on bare table, and a flying card is over whichever
+    // square its flight happens to have reached.
     boardHost->onPointerCapturing(
       "pointerdown",
       ev =>
