@@ -208,6 +208,26 @@ describe("Session house rules", () => {
     expect(sent)->toEqual([{suit: Spades, rank: Ace}])
   })
 
+  test(
+    "a completed Spider run is lifted with auto-collect off: it's the game, not a house rule",
+    () => {
+      // Simple Simon's foundations are filled by collection alone, so a board that
+      // honoured the option here could never be won. Board order: 4 foundations, 10
+      // cascades; the first cascade holds a finished ♠K→A run.
+      let off = Options.apply(Options.default, ~setting=Options.AutoCollect, ~on=false)
+      let board = Game.simpleSimon
+      let run = Cards.ranks->Array.toReversed->Array.map(rank => {suit: Spades, rank})
+      let state = {
+        GameState.piles: board.piles->Array.mapWithIndex((_, i) => i == 4 ? run : []),
+        loose: [],
+      }
+      let (settled, swept) = Session.settle(~game=board, ~options=off, state)
+      expect(swept)->toEqual(run)
+      expect(GameState.cardsInPile(settled, 0))->toEqual(run)
+      expect(GameState.cardsInPile(settled, 4))->toEqual([])
+    },
+  )
+
   test("a restart is the same board under the same rules", () => {
     let off = Options.apply(Options.default, ~setting=Options.AutoCollect, ~on=false)
     let (again, outcome) = Session.redeal(~clock=stopped, fresh(~options=off, ()))

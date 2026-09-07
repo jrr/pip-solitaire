@@ -119,4 +119,20 @@ let deal = (~piles: int, cards: array<card>): array<array<card>> => {
   }
 }
 
+// Dealt by **counts** rather than round-robin — `counts[0]` cards to the first
+// column, the next `counts[1]` to the second, and so on, each column bottom-first —
+// the way a tableau with uneven columns is laid out (Simple Simon's 8/8/8/7/6/5/4/3/2/1).
+// A second deal shape rather than a change to `deal`, because `deal` is inside
+// FreeCell's deal-number promise and this is inside Simple Simon's.
+//
+// The counts are expected to cover the pack: whatever they don't reach isn't dealt.
+let dealByCounts = (~counts: array<int>, cards: array<card>): array<array<card>> => {
+  let next = ref(0)
+  counts->Array.map(count => {
+    let column = cards->Array.slice(~start=next.contents, ~end=next.contents + count)
+    next := next.contents + count
+    column
+  })
+}
+
 // --- end frozen ------------------------------------------------------------------

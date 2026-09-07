@@ -598,6 +598,7 @@ let reason = (err: Reducer.moveError): string =>
   | Reducer.NotAColumn => "that pile isn't a cascade column"
   | Reducer.CardBuried => "that card is buried — only the card on top of a pile can be moved"
   | Reducer.NotASpan => "those cards aren't lying together at the top of one pile"
+  | Reducer.CardHome => "that card is home — a collected run never comes back to the table"
   }
 
 // The same, as a sentence that stands on its own — the phrase prefixed, and naming

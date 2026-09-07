@@ -20,10 +20,11 @@ open Card
 // and because a second destination kind would join it here.
 type target = ToPile(int)
 
-// The moves the current games allow. A `Move` is one card; a `MoveRun` is the
-// FreeCell **supermove** — an ordered run of `cards` (bottom-first, the way
-// a pile holds them) lifted and dropped as one gesture, as if each had been
-// shuffled through the free cells and empty columns.
+// The moves the current games allow. A `Move` is one card; a `MoveRun` is an
+// ordered run of `cards` (bottom-first, the way a pile holds them) lifted and
+// dropped as one gesture — in FreeCell the **supermove**, as if each had been
+// shuffled through the free cells and empty columns; in Spider a same-suit run
+// moved whole. Which, and how long, is the board's `Game.runLimit`.
 type action =
   | Move({card: card, to: target})
   | MoveRun({cards: array<card>, to: target})
@@ -48,10 +49,11 @@ type moveError =
   | NoSuchPile // the target pile index is out of range
   | CardNotFound // the card isn't anywhere in this state
   | NotARun // a `MoveRun`'s cards aren't a legal ordered run
-  | RunTooLong // a `MoveRun`'s run exceeds the supermove limit
+  | RunTooLong // a `MoveRun`'s run exceeds the board's run limit (the supermove)
   | NotAColumn // a `MoveColumn` addressed a pile that isn't a `Cascade`
   | CardBuried // a `Move`'s card has other cards resting on it (see `isFree`)
   | NotASpan // a `MoveRun`'s cards aren't one liftable span (see `isSpan`)
+  | CardHome // the card rests on a `Sealed` pile, which nothing leaves (see `isHome`)
 
 // --- What a hand can lift ------------------------------------------------------
 // The half of legality that isn't about the *destination* at all: a move can only
@@ -90,6 +92,20 @@ let isSpan = (state: GameState.t, cards: array<card>): bool =>
         tail->Array.everyWithIndex((c, k) => GameState.sameCard(c, cards->Array.getUnsafe(k)))
     | _ => false
     }
+  }
+
+// Does `card` rest on a `Sealed` pile — a Spider foundation, holding a run the game
+// itself collected? Nothing on such a pile is the hand's: not liftable one card at a
+// time (`Move`) nor as a span (`MoveRun`), whatever `isFree`/`isSpan` say about its
+// position. A card that isn't in a pile at all is not home.
+let isHome = (~game: Game.t, state: GameState.t, card: card): bool =>
+  switch GameState.locationOf(state, card) {
+  | Some(InPile(i, _)) =>
+    switch game.piles->Array.get(i) {
+    | Some({rule: Rules.Sealed}) => true
+    | _ => false
+    }
+  | _ => false
   }
 
 // Is pile `onto` already full — holding as many cards as its `capacity` allows
@@ -171,7 +187,7 @@ let validMoves = (~game: Game.t, state: GameState.t, card: card): array<move> =>
   | None => [] // not in play
   // A buried card (something resting on it) can't move at all — the same `isFree`
   // the reducer refuses one with, so what's listed is what `reduce` will accept.
-  | Some(_) if !isFree(state, card) => []
+  | Some(_) if !isFree(state, card) || isHome(~game, state, card) => []
   | Some(location) =>
     // The card's own pile — excluded below, since re-dropping where it rests isn't a
     // move. A loose card has no such pile, so nothing is excluded for it.
@@ -208,25 +224,34 @@ let maxSupermove = (~game: Game.t, state: GameState.t, ~ignoring: option<int>=?)
   (1 + emptyFreeCells) * doublings
 }
 
-// May the ordered run `cards` (bottom-first) legally supermove onto pile `onto`
+// May a run of `count` cards move as one onto pile `onto`, under the board's
+// `runLimit`? FreeCell caps it at the supermove; a Spider board moves any run whole.
+let withinRunLimit = (~game: Game.t, state: GameState.t, ~count: int, ~onto: int): bool =>
+  switch game.runLimit {
+  | Game.Supermove => count <= maxSupermove(~game, state, ~ignoring=onto)
+  | Game.Unlimited => true
+  }
+
+// May the ordered run `cards` (bottom-first) legally move as one onto pile `onto`
 // given the current state? The shared legality query the reducer's
 // `MoveRun` and the view's span hover both consult — so the "valid" outline and
 // the accepted drop can never disagree, the same property `canDrop` gives
 // single-card moves. A run moves only when it's a genuine run under the pile's
-// rule, its bottom card `accepts` onto the pile's current top, the pile has room
-// for the whole run under its `capacity` (so a run can't land on a free
-// cell), and it's within the supermove limit (the destination excluded from
-// the empty tally).
+// rule, it's the hand's to lift (a span, and not home), its bottom card `accepts`
+// onto the pile's current top, the pile has room for the whole run under its
+// `capacity` (so a run can't land on a free cell), and it's within the board's run
+// limit (for a supermove, the destination excluded from the empty tally).
 let canMoveRun = (~game: Game.t, state: GameState.t, cards: array<card>, ~onto: int): bool =>
   switch game.piles->Array.get(onto) {
   | None => false
   | Some(pile) =>
     Array.length(cards) > 0 &&
     isSpan(state, cards) &&
+    !isHome(~game, state, cards->Array.getUnsafe(0)) &&
     Rules.isRun(pile.rule, cards) &&
     Rules.accepts(pile.rule, cards->Array.getUnsafe(0), GameState.topOf(state, onto)) &&
     hasRoomFor(~game, state, ~onto, ~adding=Array.length(cards)) &&
-    Array.length(cards) <= maxSupermove(~game, state, ~ignoring=onto)
+    withinRunLimit(~game, state, ~count=Array.length(cards), ~onto)
   }
 
 // A fresh snapshot with `card` lifted from wherever it rests — every pile and
@@ -295,6 +320,8 @@ let reduce = (~game: Game.t, state: GameState.t, action: action): result<GameSta
     // pull it out from under them and leave them behind. Refused before the
     // destination is weighed at all, since no pile makes a buried card liftable.
     | Some(_) if !isFree(state, card) => Error(CardBuried)
+    // A card the game collected onto a sealed foundation isn't the player's either.
+    | Some(_) if isHome(~game, state, card) => Error(CardHome)
     | Some(_) =>
       switch GameState.topOf(state, i) {
       // Re-dropping a card onto the pile it already tops is an identity `Ok`
@@ -337,6 +364,8 @@ let reduce = (~game: Game.t, state: GameState.t, action: action): result<GameSta
         // relays a span a hand could take hold of, so this is refused as a move
         // rather than performed as a teleport.
         Error(NotASpan)
+      } else if isHome(~game, state, cards->Array.getUnsafe(0)) {
+        Error(CardHome)
       } else if !Rules.accepts(pile.rule, cards->Array.getUnsafe(0), GameState.topOf(state, i)) {
         Error(Rejected)
       } else if !hasRoomFor(~game, state, ~onto=i, ~adding=Array.length(cards)) {
@@ -344,7 +373,7 @@ let reduce = (~game: Game.t, state: GameState.t, action: action): result<GameSta
         // check a run lands on a one-card cell. `PileFull` is the same "no room"
         // refusal a second single card gets on a full cell.
         Error(PileFull)
-      } else if Array.length(cards) > maxSupermove(~game, state, ~ignoring=i) {
+      } else if !withinRunLimit(~game, state, ~count=Array.length(cards), ~onto=i) {
         Error(RunTooLong)
       } else {
         Ok(placeRun(state, cards, i))
@@ -427,15 +456,13 @@ let isSafeToCollect = (~game: Game.t, state: GameState.t, card: card): bool =>
       oppositeColorSuits(~game, card)->Array.every(s => foundationRank(~game, state, s) >= r - 1)
   }
 
-// Auto-collect: repeatedly send every *safe* card home until none remain —
+// `SafeCards` collection: repeatedly send every *safe* card home until none remain —
 // a fixpoint, since collecting one card can make the next one safe (its own
 // follow-up, or a card of the other colour once this colour advances). Returns the
-// settled state and, in the order they were collected, the cards it moved; the
-// moved list lets a view animate the cascade later and lets undo group
-// a move and the collection it triggered as one unit. When nothing is safe — and
-// in particular on a board with no foundations — it returns the state unchanged
-// and an empty list, so a driver can adopt the result unconditionally.
-let autoCollect = (~game: Game.t, state: GameState.t): (GameState.t, array<card>) => {
+// settled state and, in the order they were collected, the cards it moved. When
+// nothing is safe — and in particular on a board with no foundations — it returns
+// the state unchanged and an empty list.
+let collectSafeCards = (~game: Game.t, state: GameState.t): (GameState.t, array<card>) => {
   let moved = []
   let current = ref(state)
   let progressed = ref(true)
@@ -477,6 +504,65 @@ let autoCollect = (~game: Game.t, state: GameState.t): (GameState.t, array<card>
   }
   (current.contents, moved)
 }
+
+// `CompleteRuns` collection: a cascade whose top run spans every rank of the deck in
+// one suit (`Rules.isCompleteRun`) has that run lifted whole onto the first empty
+// foundation, cascades taken in board order; then the board is rescanned, since a
+// deal can complete two at once. The run goes over by `placeRun` rather than a
+// `MoveRun`, because the foundation is `Sealed` — that this is the *only* way onto
+// one is the point of sealing it. The lifted cards come back bottom-first, King
+// first, so a view flies them in the order they leave.
+//
+// No foundation free means the run stays where it is — a board with fewer
+// foundations than suits would have to live with that, and none here does.
+let collectRuns = (~game: Game.t, state: GameState.t): (GameState.t, array<card>) => {
+  let moved = []
+  let current = ref(state)
+  let progressed = ref(true)
+  let span = Array.length(game.deck.ranks)
+  while progressed.contents {
+    progressed := false
+    let cur: GameState.t = current.contents
+    let emptyFoundation =
+      Game.pileIndices(game, Game.Foundation)->Array.find(i =>
+        Array.length(GameState.cardsInPile(cur, i)) == 0
+      )
+    switch emptyFoundation {
+    | None => ()
+    | Some(target) =>
+      let completed = Game.pileIndices(game, Game.Cascade)->Array.findMap(i => {
+        let cards = GameState.cardsInPile(cur, i)
+        let count = Array.length(cards)
+        if count < span {
+          None
+        } else {
+          let tail = cards->Array.slice(~start=count - span, ~end=count)
+          Rules.isCompleteRun(~deck=game.deck, tail) ? Some(tail) : None
+        }
+      })
+      switch completed {
+      | Some(run) =>
+        current := placeRun(cur, run, target)
+        run->Array.forEach(c => moved->Array.push(c))
+        progressed := true
+      | None => ()
+      }
+    }
+  }
+  (current.contents, moved)
+}
+
+// Auto-collect: what leaves the tableau for a foundation on its own after a move,
+// by the board's `collect` policy. Returns the settled state and, in the order they
+// were collected, the cards it moved; the moved list lets a view animate the
+// collection and lets undo group a move and the collection it triggered as one
+// unit. When there is nothing to collect it returns the state unchanged and an
+// empty list, so a driver can adopt the result unconditionally.
+let autoCollect = (~game: Game.t, state: GameState.t): (GameState.t, array<card>) =>
+  switch game.collect {
+  | Game.SafeCards => collectSafeCards(~game, state)
+  | Game.CompleteRuns => collectRuns(~game, state)
+  }
 
 // --- End-game finish sweep --------------------------------------------
 // The user-triggered finish: no automatic end-game sweep, but a "Finish" button

@@ -163,11 +163,20 @@ let save = (s: t): SaveState.t => {
 // Settles a *state*, not a session: the caller records the result as one undoable step,
 // so a move and the collection it triggered undo together. The swept cards come back
 // because the caller that animates flies them with the move, as one gesture.
+//
+// The house rule gates only the collection that *is* a house rule. Lifting a
+// completed Spider run is the game, not a convenience, so it happens with
+// auto-collect off too — and nothing on such a board is ever finishable by
+// foundation moves, so there is no `finish` to stand aside for.
 let settle = (~game: Game.t, ~options: Options.t, state: GameState.t): (GameState.t, array<card>) =>
-  if options.autoCollect && !Reducer.canFinish(~game, state) {
-    Reducer.autoCollect(~game, state)
-  } else {
-    (state, [])
+  switch game.collect {
+  | Game.CompleteRuns => Reducer.autoCollect(~game, state)
+  | Game.SafeCards =>
+    if options.autoCollect && !Reducer.canFinish(~game, state) {
+      Reducer.autoCollect(~game, state)
+    } else {
+      (state, [])
+    }
   }
 
 // **One recorded step is one move made**, counted here rather than at each verb, so
