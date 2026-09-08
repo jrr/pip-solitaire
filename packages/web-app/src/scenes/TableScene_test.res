@@ -103,6 +103,46 @@ let withHeldTimers: (heldTimers => unit) => unit = %raw(`(body) => {
   }
 }`)
 
+// Flights held in the air, which is the only way a test can catch a run *mid-line*.
+// The reduced-motion stub above collapses every flight to an instant placement, so a
+// solver's line chains from first move to last inside one tick and leaves no moment to
+// interrupt. Between these two calls movement is welcome instead, and `Element.animate`
+// — which jsdom hasn't got — is a recorded stub that never finishes, so a run plays its
+// first move and then waits exactly as it does on a real board.
+let holdFlights: unit => unit = %raw(`() => {
+  globalThis.__reducedMotion = globalThis.matchMedia
+  globalThis.matchMedia = () => ({ matches: false })
+  globalThis.__flights = []
+  globalThis.__realAnimate = Element.prototype.animate
+  Element.prototype.animate = function () {
+    const flight = { onfinish: null, cancelled: false, cancel() { this.cancelled = true } }
+    globalThis.__flights.push(flight)
+    return flight
+  }
+}`)
+let releaseFlights: unit => unit = %raw(`() => {
+  globalThis.matchMedia = globalThis.__reducedMotion
+  Element.prototype.animate = globalThis.__realAnimate
+}`)
+// Held for the length of one body, and released however that body ends: a failed
+// assertion must not leave the rest of the file running in a world where movement is
+// welcome and no animation ever finishes.
+let withFlightsHeld = (body: unit => promise<unit>): promise<unit> => {
+  holdFlights()
+  body()->Promise.finally(releaseFlights)
+}
+// Land the batch the way the browser would have if it had been left alone: a batch's
+// completion hangs off the last card's `onfinish`, and that is what carries a run to its
+// next step. Called *after* an interruption, it asks the question the interrupt is for —
+// does the rest of the plan play anyway?
+let landLastFlight: unit => unit = %raw(`() => {
+  const landing = globalThis.__flights.filter((f) => f.onfinish).pop()
+  if (landing) landing.onfinish()
+}`)
+// Whether every flight started so far has been cancelled — the board carrying no raised
+// flight layers into the position it stopped on.
+let allFlightsCancelled: unit => bool = %raw(`() => globalThis.__flights.every((f) => f.cancelled)`)
+
 open Vitest
 open TestDom
 
@@ -122,6 +162,12 @@ let countOf = (container, selector) => container->findAll(selector)->Array.lengt
 let live = (board: ref<option<TableScene.controls>>) => board.contents->Option.getOrThrow
 
 let hasFinishButton = (container): bool => container->find(".finish-button")->Option.isSome
+
+// A press as a finger delivers it. The board's two gestures — the cascade's peek, the
+// stop that ends a running line — are both `pointerdown` listeners rather than clicks,
+// so each lands on the press.
+let tap = el =>
+  el->dispatchEvent(makeEvent("pointerdown", {"bubbles": true, "cancelable": true}))->ignore
 
 // The end-game "Finish" button is the driver's to place: it is built at mount exactly
 // when the position is drainable to a win by foundation moves alone
@@ -869,6 +915,141 @@ describe("TableScene autoplay", () => {
     expect(container->find(".win-panel__button--share")->Option.isSome)->toBe(false)
   })
 
+  // A board with a line to walk, rather than one the solver hands straight to the
+  // sweep: the finishable scenario with its ♥4 parked in a cell and its ♥5 stacked onto
+  // the ♠6 that is holding the ♥3 down. Nothing drains past the Fives until those two
+  // come off again. Built by *playing* the two moves, so it stays a position a game can
+  // actually reach — and by the reducer rather than the session, so it arrives as a
+  // starting board with no history behind it.
+  let stalled = (game: Game.t): GameState.t => {
+    let onto = (state, card, pile) =>
+      Reducer.reduce(
+        ~game,
+        state,
+        Reducer.Move({card, to: Reducer.ToPile(pile)}),
+      )->Result.getOrThrow
+    // Four cells, then four foundations, then the cascades (`Game.freecellShaped`), so
+    // the scenario's trapped tail is pile 8.
+    let cell = 0
+    let trapped = 8
+    Scenario.freecellFinish(game)
+    ->onto({suit: Hearts, rank: Four}, cell)
+    ->onto({suit: Hearts, rank: Five}, trapped)
+  }
+
+  // What the run said as it went, for the assertions about the log. Subscribing is also
+  // what turns logging on — with nobody listening every call short-circuits.
+  let recordingLog = body => {
+    let lines = []
+    let unsubscribe = DebugLog.subscribe(entry => lines->Array.push(entry.label))
+    let done = body(lines)
+    done->Promise.finally(unsubscribe)
+  }
+  let saidThat = (lines, phrase) => lines->Array.some(line => line->String.includes(phrase))
+
+  testAsync("a tap on the board stops a line before it has played anything", async () =>
+    await recordingLog(
+      async lines => {
+        // The run starts on the tick *after* the command that asked for it, so this is a
+        // press in the gap: the line is stopped before its first move reaches the board.
+        let game = Game.freecell
+        let board = ref(None)
+        let container = host("div")
+        let scene = TableScene.make(
+          ~initial=Scenario.freecellFinish(game),
+          ~publish=published => board := Some(published),
+          game,
+        )
+        let _teardown = scene.mount(container)
+        live(board).runCommand(Command.Autoplay)->ignore
+        container->find(".table-board")->Option.getOrThrow->tap
+        await nextTick()
+        // Never played, so never finished — and the board is left on the position it
+        // stopped on, which here is the one it opened with. The button tells the truth
+        // about that position rather than about where the line was heading.
+        expect(hasWinOverlay(container))->toBe(false)
+        expect(hasFinishButton(container))->toBe(true)
+        expect(lines->saidThat("autoplay stopped after 0 of 0 moves"))->toBe(true)
+      },
+    )
+  )
+
+  testAsync("a tap mid-flight keeps the position the last move produced", async () =>
+    await recordingLog(
+      async lines => {
+        let game = Game.freecell
+        let saved = ref(None)
+        let board = ref(None)
+        let container = host("div")
+        let scene = TableScene.make(
+          ~initial=stalled(game),
+          ~persist=s => saved := Some(s),
+          ~publish=published => board := Some(published),
+          game,
+        )
+        let _teardown = scene.mount(container)
+        flushFrames() // the opening deal, so there are card nodes for a line to move
+        await withFlightsHeld(
+          async () => {
+            live(board).runCommand(Command.Autoplay)->ignore
+            await nextTick()
+            // One move committed and its cards in the air, which is the moment the gesture
+            // exists for.
+            let playedSoFar = saved.contents->Option.mapOr(0, s => s.stats.moves)
+            expect(playedSoFar > 0)->toBe(true)
+
+            container->find(".table-board")->Option.getOrThrow->tap
+            // The settle a cancelled flight would otherwise skip: nothing is left in the
+            // air, so no card is holding a flight layer over the board it stopped on.
+            expect(allFlightsCancelled())->toBe(true)
+            // …and the rest of the plan is abandoned. A flight that lands anyway — the
+            // batch's completion is what carries a run to its next step — must not restart
+            // it.
+            landLastFlight()
+            expect(saved.contents->Option.mapOr(0, s => s.stats.moves))->toBe(playedSoFar)
+            expect(hasWinOverlay(container))->toBe(false)
+            expect(lines->saidThat("autoplay stopped after"))->toBe(true)
+          },
+        )
+      },
+    )
+  )
+
+  testAsync("the stopping press is the whole gesture — no card ever sees it", async () => {
+    // A press that reached a card would lift it, or bank itself as the first half of a
+    // send-home double-tap. It doesn't reach one: the board takes the press on the way
+    // *down* and stops it there, which is also what lets the gesture land on a card in
+    // flight as readily as on bare table. With no line to stop the board is deaf to it
+    // and the same press goes through as usual.
+    let game = Game.freecell
+    let board = ref(None)
+    let container = host("div")
+    let scene = TableScene.make(
+      ~initial=stalled(game),
+      ~publish=published => board := Some(published),
+      game,
+    )
+    let _teardown = scene.mount(container)
+    flushFrames()
+    let card = container->find(".stacking-card")->Option.getOrThrow
+    let seen = ref(0)
+    card->WebDom.addEventListener("pointerdown", () => seen := seen.contents + 1)
+
+    await withFlightsHeld(
+      async () => {
+        live(board).runCommand(Command.Autoplay)->ignore
+        await nextTick()
+        card->tap
+        expect(seen.contents)->toBe(0)
+
+        // The press that stopped the line was spent stopping it; this one is a fresh
+        // gesture, and the card is the board's again.
+        card->tap
+        expect(seen.contents)->toBe(1)
+      },
+    )
+  })
+
   test("a board the solver doesn't understand is told so", () => {
     // A board without FreeCell's cells and foundations isn't four cells, four
     // foundations and eight columns, so there's no position to pack it into — an
@@ -1028,11 +1209,6 @@ describe("TableScene victory animation", () => {
   // preference is read at the moment the game is won.
   let playWin = container =>
     withMotionAllowed(() => container->find(".finish-button")->Option.getOrThrow->click)
-
-  // A tap on the canvas, as a finger delivers it: the skip is a `pointerdown` listener
-  // rather than a click, so the celebration ends on the press.
-  let tap = el =>
-    el->dispatchEvent(makeEvent("pointerdown", {"bubbles": true, "cancelable": true}))->ignore
 
   test("wins quietly when the flag is off", () => {
     // The default, and so what every other suite in this file is testing against: the
