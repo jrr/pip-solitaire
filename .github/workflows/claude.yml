@@ -67,7 +67,7 @@ jobs:
           # task or a specific WebFetch domain here rather than widening these.
           claude_args: |
             --model claude-opus-5
-            --append-system-prompt "When your change is implemented on a branch and mise run ci is green, open the pull request yourself with gh pr create (link the issue it closes). Opening the PR is part of finishing the task — do not stop at a summary comment or a 'Create PR' link, and do not wait to be asked. Only skip this if the requirements are genuinely ambiguous or CI can't go green, and then say what's blocking on the issue."
+            --append-system-prompt "When your change is implemented on a branch and mise run ci is green, open the pull request yourself with gh pr create (link the issue it closes). Opening the PR is part of finishing the task — do not stop at a summary comment or a 'Create PR' link, and do not wait to be asked. Only skip this if the requirements are genuinely ambiguous or CI can't go green, and then say what's blocking on the issue. gh pr create --body bypasses the repository's PR template, so read .github/pull_request_template.md and write the body in its shape: the issue owns what and why, the PR owns the decisions made while building and where to look."
             --allowedTools "Bash(mise run:*)" "Bash(mise tasks:*)" "Bash(mise install)" "Bash(gh pr create:*)" "WebFetch(domain:rescript-lang.org)" "WebFetch(domain:pnpm.io)" "WebFetch(domain:mise.jdx.dev)" "WebFetch(domain:jrr.github.io)"
 
       # Capture the full JSON session log (all messages, incl. the result

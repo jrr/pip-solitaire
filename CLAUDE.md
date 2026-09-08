@@ -101,6 +101,14 @@ back on the issue. Don't wait to be asked a second time.
 - If the requirements are genuinely ambiguous or CI can't be made green, say so
   on the issue instead of opening a PR, and explain what's blocking.
 
+**Issues and PR bodies follow the templates in `.github/`.** GitHub applies
+them only in its web editor, so an issue or PR written from a session or with
+`gh` has to reach for them by hand: `.github/ISSUE_TEMPLATE/` (change, bug,
+umbrella) and `.github/pull_request_template.md`. The short version of what
+they ask: an issue gives a direction and a finish line and trusts the
+implementer to rediscover the code; a PR gives the decisions made while
+building and where to look, and never restates the issue.
+
 ## Playing the game
 
 The app can be played by an agent, in a real browser, with pointer drags —
