@@ -43,8 +43,13 @@ jobs:
         # Previews are pruned + rebuilt each push, so a precaching SW would pin a
         # stale shell that 404s and survives reloads; this keeps previews on plain
         # static hosting and cleans up any SW already installed from an earlier build.
+        #
+        # `PIP_PR_NUMBER` names the build after this PR ("Pip PR 123") in the tab
+        # title and the install metadata, so a reviewer who also has the real app
+        # installed can tell the two apart on a Home Screen.
         env:
           PIP_PREVIEW: "1"
+          PIP_PR_NUMBER: ${{ github.event.pull_request.number }}
 
       # Deploys the built site to `pr-preview/pr-<N>/` on open/sync and removes
       # it on close, commenting the preview URL on the PR. `source-dir` is
