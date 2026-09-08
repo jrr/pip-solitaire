@@ -83,10 +83,13 @@ let fits = (s: t, ~game: Game.t): bool => {
 }
 
 // --- Card codes --------------------------------------------------------------
-// A card is two characters: its rank then its suit. Compact, human-legible in a
-// stored blob, and trivially reversible. The rank/suit vocabularies are closed,
-// so the char maps below are total in one direction and partial (returning
-// `None` on any stray character) in the other.
+// A card is two characters, its rank then its suit, and a third for a copy other than
+// the first (`Card.copy`): `TS` is the Ten of Spades and `TS1` the second Ten of
+// Spades on a two-pack board. Compact, human-legible in a stored blob, and trivially
+// reversible. The rank/suit vocabularies are closed, so the char maps below are total
+// in one direction and partial (returning `None` on any stray character) in the
+// other; the copy is a digit from 1 up, and never a written 0 — the first copy is the
+// bare two characters, as every card was before there were copies.
 
 let rankChar = (rank: rank): string =>
   switch rank {
@@ -140,17 +143,32 @@ let suitOfChar = (ch: string): option<suit> =>
   | _ => None
   }
 
-let encodeCard = (c: card): string => rankChar(c.rank) ++ suitChar(c.suit)
+let encodeCard = (c: card): string =>
+  rankChar(c.rank) ++
+  suitChar(c.suit) ++
+  switch Card.copyOf(c) {
+  | 0 => ""
+  | k => Int.toString(k)
+  }
 
-// A card code is exactly two known characters; anything else (wrong length, a
-// stray glyph) is `None`, so a corrupt blob can't smuggle a bogus card through.
-let decodeCard = (s: string): option<card> =>
-  String.length(s) == 2
-    ? switch (rankOfChar(String.charAt(s, 0)), suitOfChar(String.charAt(s, 1))) {
-      | (Some(rank), Some(suit)) => Some({suit, rank})
-      | _ => None
-      }
-    : None
+// A card code is two known characters, and at most one more that is a digit 1–9;
+// anything else (wrong length, a stray glyph, a `0`) is `None`, so a corrupt blob can't
+// smuggle a bogus card through.
+let decodeCard = (s: string): option<card> => {
+  let copy = switch String.length(s) {
+  | 2 => Some(0)
+  | 3 =>
+    switch String.charAt(s, 2) {
+    | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" => Int.fromString(String.charAt(s, 2))
+    | _ => None
+    }
+  | _ => None
+  }
+  switch (copy, rankOfChar(String.charAt(s, 0)), suitOfChar(String.charAt(s, 1))) {
+  | (Some(k), Some(rank), Some(suit)) => Some(Card.nth({suit, rank}, k))
+  | _ => None
+  }
+}
 
 // --- Small decode helpers ----------------------------------------------------
 // `allSome` collapses an array of optional results into an optional array: it's
@@ -168,12 +186,24 @@ let encodeCards = (cards: array<card>): JSON.t => JSON.Array(
   cards->Array.map(c => JSON.String(encodeCard(c))),
 )
 
-let encodeState = (s: GameState.t): JSON.t => JSON.Object(
-  Dict.fromArray([
-    ("piles", JSON.Array(s.piles->Array.map(encodeCards))),
-    ("loose", encodeCards(s.loose)),
-  ]),
-)
+// The face-down counts ride as `"down"`, one whole number per pile, and only when some
+// pile has a card face down: a board dealt entirely face up writes the state it always
+// wrote, and a blob without the field reads as one — which is every save that predates
+// it, and the truthful reading of each.
+let encodeState = (s: GameState.t): JSON.t => {
+  let down =
+    s.faceDown->Array.some(n => n > 0)
+      ? [("down", JSON.Array(s.faceDown->Array.map(n => JSON.Number(Int.toFloat(n)))))]
+      : []
+  JSON.Object(
+    Dict.fromArray(
+      [
+        ("piles", JSON.Array(s.piles->Array.map(encodeCards))),
+        ("loose", encodeCards(s.loose)),
+      ]->Array.concat(down),
+    ),
+  )
+}
 
 let encodeStats = (s: Stats.t): JSON.t => JSON.Object(
   Dict.fromArray([
@@ -219,6 +249,33 @@ let decodePiles = (json: JSON.t): option<array<array<card>>> =>
   | _ => None
   }
 
+// A counter is a whole number and nothing else — a JSON string, a float, a missing
+// field all read as `None`, which fails the object it's in and so the whole save.
+// Present-and-malformed means this isn't a blob we wrote, and half-reading a stranger's
+// JSON is how a broken board gets built.
+let decodeCount = (json: JSON.t): option<int> =>
+  switch json {
+  | JSON.Number(n) if n >= 0.0 && n == Math.trunc(n) => Some(Int.fromFloat(n))
+  | _ => None
+  }
+
+// The face-down counts for `piles`: none written reads as every card face up; written,
+// there has to be exactly one whole number per pile and none may exceed its pile, or
+// the board they describe isn't the one the cards lay out.
+let decodeFaceDown = (dict: Dict.t<JSON.t>, piles: array<array<card>>): option<array<int>> =>
+  switch dict->Dict.get("down") {
+  | None => Some(piles->Array.map(_ => 0))
+  | Some(JSON.Array(items)) =>
+    items
+    ->Array.map(decodeCount)
+    ->allSome
+    ->Option.filter(counts =>
+      Array.length(counts) == Array.length(piles) &&
+        counts->Array.everyWithIndex((n, i) => n <= Array.length(piles->Array.getUnsafe(i)))
+    )
+  | Some(_) => None
+  }
+
 let decodeState = (json: JSON.t): option<GameState.t> =>
   switch json {
   | JSON.Object(dict) =>
@@ -226,7 +283,8 @@ let decodeState = (json: JSON.t): option<GameState.t> =>
       dict->Dict.get("piles")->Option.flatMap(decodePiles),
       dict->Dict.get("loose")->Option.flatMap(decodeCards),
     ) {
-    | (Some(piles), Some(loose)) => Some({GameState.piles, loose})
+    | (Some(piles), Some(loose)) =>
+      decodeFaceDown(dict, piles)->Option.map(faceDown => {GameState.piles, loose, faceDown})
     | _ => None
     }
   | _ => None
@@ -235,16 +293,6 @@ let decodeState = (json: JSON.t): option<GameState.t> =>
 let decodeStates = (json: JSON.t): option<array<GameState.t>> =>
   switch json {
   | JSON.Array(items) => items->Array.map(decodeState)->allSome
-  | _ => None
-  }
-
-// A counter is a whole number and nothing else — a JSON string, a float, a missing
-// field all read as `None`, which fails the `stats` object and so the whole save.
-// Present-and-malformed means this isn't a blob we wrote, and half-reading a stranger's
-// JSON is how a broken board gets built.
-let decodeCount = (json: JSON.t): option<int> =>
-  switch json {
-  | JSON.Number(n) if n >= 0.0 && n == Math.trunc(n) => Some(Int.fromFloat(n))
   | _ => None
   }
 

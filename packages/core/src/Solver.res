@@ -331,7 +331,7 @@ let namedCards = (action: Reducer.action): array<Card.card> =>
   switch action {
   | Reducer.Move({card}) => [card]
   | Reducer.MoveRun({cards}) => cards
-  | Reducer.MoveColumn(_) => []
+  | Reducer.MoveColumn(_) | Reducer.Deal => []
   }
 
 let autoplay = (~game: Game.t, state: GameState.t): autoplayed =>

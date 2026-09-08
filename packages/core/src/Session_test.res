@@ -197,12 +197,9 @@ describe("Session house rules", () => {
     // — showing the finish guard, not a disabled option, is what held the sweep back
     // above. A lone Ace atop the first cascade, foundations empty, is safe and homeable
     // but nowhere near a win.
-    let lone = {
-      GameState.piles: freecell.piles->Array.mapWithIndex(
-        (_, i) => i == 8 ? [{suit: Spades, rank: Ace}] : [],
-      ),
-      loose: [],
-    }
+    let lone = GameState.faceUp(
+      freecell.piles->Array.mapWithIndex((_, i) => i == 8 ? [{suit: Spades, rank: Ace}] : []),
+    )
     let (collected, sent) = Session.settle(~game=freecell, ~options=Options.default, lone)
     expect(GameState.equal(collected, lone))->toBe(false)
     expect(sent)->toEqual([{suit: Spades, rank: Ace}])
@@ -217,10 +214,7 @@ describe("Session house rules", () => {
       let off = Options.apply(Options.default, ~setting=Options.AutoCollect, ~on=false)
       let board = Game.simpleSimon
       let run = Cards.ranks->Array.toReversed->Array.map(rank => {suit: Spades, rank})
-      let state = {
-        GameState.piles: board.piles->Array.mapWithIndex((_, i) => i == 4 ? run : []),
-        loose: [],
-      }
+      let state = GameState.faceUp(board.piles->Array.mapWithIndex((_, i) => i == 4 ? run : []))
       let (settled, swept) = Session.settle(~game=board, ~options=off, state)
       expect(swept)->toEqual(run)
       expect(GameState.cardsInPile(settled, 0))->toEqual(run)

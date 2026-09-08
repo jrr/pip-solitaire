@@ -38,6 +38,12 @@ type action =
   // defs, this only permutes `GameState.piles`; the board `Game.piles` is untouched,
   // so it's a pure state transition recording as one clean undo step.
   | MoveColumn({from: int, to: int})
+  // Spider's deal: one card from the top of the stock onto every cascade, left to
+  // right, face up, until the stock runs out — so a stock holding fewer cards than
+  // there are cascades fills from the left and stops. Refused while any cascade is
+  // empty, as the standard game refuses it. One step, so one undo takes the whole row
+  // back. Names no card: which cards it drops is the stock's to say (`nextDeal`).
+  | Deal
 
 // Why a move was rejected. Distinguishing these lets a driver react precisely —
 // a rule refusal flashes red, a too-long run says so — and keeps `Ok`/`Error`
@@ -54,6 +60,10 @@ type moveError =
   | CardBuried // a `Move`'s card has other cards resting on it (see `isFree`)
   | NotASpan // a `MoveRun`'s cards aren't one liftable span (see `isSpan`)
   | CardHome // the card rests on a `Sealed` pile, which nothing leaves (see `isHome`)
+  | CardFaceDown // the card lies face down, and a hand lifts only what it can see
+  | NoStock // a `Deal` on a board with no stock to deal from
+  | StockEmpty // a `Deal` with nothing left in the stock
+  | CascadeEmpty // a `Deal` while a cascade stands empty, which the game refuses
 
 // --- What a hand can lift ------------------------------------------------------
 // The half of legality that isn't about the *destination* at all: a move can only
@@ -80,6 +90,9 @@ let isFree = (state: GameState.t, card: card): bool =>
 // move claims to lift it. A run gathered from two piles, or one taken out of the
 // middle of a pile, is not a supermove — it's a stack of cards being teleported.
 // (Loose cards are never a span: a run only ever moves between piles.)
+//
+// A span stops at the face-down cards too: they may happen to continue the run by
+// rank and suit, but a hand can't see that, so it can't take hold of them.
 let isSpan = (state: GameState.t, cards: array<card>): bool =>
   switch cards->Array.get(0) {
   | None => false
@@ -88,8 +101,9 @@ let isSpan = (state: GameState.t, cards: array<card>): bool =>
     | Some(InPile(i, slot)) =>
       let pile = GameState.cardsInPile(state, i)
       let tail = pile->Array.slice(~start=slot, ~end=Array.length(pile))
+      slot >= GameState.faceDownIn(state, i) &&
       Array.length(tail) == Array.length(cards) &&
-        tail->Array.everyWithIndex((c, k) => GameState.sameCard(c, cards->Array.getUnsafe(k)))
+      tail->Array.everyWithIndex((c, k) => GameState.sameCard(c, cards->Array.getUnsafe(k)))
     | _ => false
     }
   }
@@ -257,9 +271,27 @@ let canMoveRun = (~game: Game.t, state: GameState.t, cards: array<card>, ~onto: 
 // A fresh snapshot with `card` lifted from wherever it rests — every pile and
 // the loose table. `filter`/`map` allocate new arrays, so the input is never
 // mutated: the result is a value of its own.
+//
+// **This is where a card turns face up.** When the card that leaves was the last one
+// covering a pile's face-down cards, the newly exposed top is turned over as part of
+// the same transition — a Klondike flip is never a move of its own, and never undone
+// on its own. A run lifted card by card (`placeRun`) flips nothing until its last
+// card goes, because until then the pile still holds more than its face-down count.
 let liftCard = (state: GameState.t, card: card): GameState.t => {
-  piles: state.piles->Array.map(cards => cards->Array.filter(c => !GameState.sameCard(c, card))),
-  loose: state.loose->Array.filter(c => !GameState.sameCard(c, card)),
+  let source = switch GameState.locationOf(state, card) {
+  | Some(InPile(i, _)) => Some(i)
+  | Some(Loose) | None => None
+  }
+  let piles =
+    state.piles->Array.map(cards => cards->Array.filter(c => !GameState.sameCard(c, card)))
+  {
+    piles,
+    loose: state.loose->Array.filter(c => !GameState.sameCard(c, card)),
+    faceDown: state.faceDown->Array.mapWithIndex((down, i) => {
+      let left = piles->Array.get(i)->Option.mapOr(0, Array.length)
+      Some(i) == source && down > 0 && down >= left ? left - 1 : down
+    }),
+  }
 }
 
 // `state` with `card` moved to the top of pile `i` (removed from its old home
@@ -288,22 +320,104 @@ let placeRun = (state: GameState.t, cards: array<card>, i: int): GameState.t =>
 // the same order — an exact no-op. Callers guarantee both indices are in range and
 // address `Cascade` piles, so only cascade columns are ever permuted; every other
 // pile keeps its position and contents.
-let reorderPile = (state: GameState.t, ~from: int, ~to: int): GameState.t => {
-  let moved = state.piles->Array.getUnsafe(from)
-  let without = state.piles->Array.filterWithIndex((_, i) => i != from)
+let reorderItems = (items: array<'a>, ~from: int, ~to: int): array<'a> => {
+  let moved = items->Array.getUnsafe(from)
+  let without = items->Array.filterWithIndex((_, i) => i != from)
   let reordered = []
-  without->Array.forEachWithIndex((cards, i) => {
+  without->Array.forEachWithIndex((item, i) => {
     if i == to {
       reordered->Array.push(moved)
     }
-    reordered->Array.push(cards)
+    reordered->Array.push(item)
   })
 
   // `to` at or past the shortened array's end drops the column on the far end.
   if to >= Array.length(without) {
     reordered->Array.push(moved)
   }
-  {...state, piles: reordered}
+  reordered
+}
+
+// The face-down counts travel with their columns, or a reorder would turn cards over.
+let reorderPile = (state: GameState.t, ~from: int, ~to: int): GameState.t => {
+  ...state,
+  piles: reorderItems(state.piles, ~from, ~to),
+  faceDown: reorderItems(state.faceDown, ~from, ~to),
+}
+
+// --- The deal ------------------------------------------------------------------
+// The stock a board deals from: the first `Stock` pile, and `None` on a board with
+// none. A board has at most one; the first is taken rather than the list so a caller
+// holds an index to deal from.
+let stockOf = (game: Game.t): option<int> => Game.pileIndices(game, Game.Stock)->Array.get(0)
+
+// Why a `Deal` would be refused from here, or `None` when one may be dealt: no stock on
+// this board, nothing left in it, or a cascade standing empty.
+let dealRefusal = (~game: Game.t, state: GameState.t): option<moveError> =>
+  switch stockOf(game) {
+  | None => Some(NoStock)
+  | Some(stock) =>
+    if Array.length(GameState.cardsInPile(state, stock)) == 0 {
+      Some(StockEmpty)
+    } else if (
+      Game.pileIndices(game, Game.Cascade)->Array.some(i =>
+        Array.length(GameState.cardsInPile(state, i)) == 0
+      )
+    ) {
+      Some(CascadeEmpty)
+    } else {
+      None
+    }
+  }
+
+// The cards the next `Deal` drops, in the order they land — the stock's top first, one
+// per cascade left to right, as many as the stock still holds. Empty when the deal
+// would be refused. What a driver flies, since the action itself names no card.
+let nextDeal = (~game: Game.t, state: GameState.t): array<card> =>
+  switch (dealRefusal(~game, state), stockOf(game)) {
+  | (None, Some(stock)) =>
+    let cards = GameState.cardsInPile(state, stock)
+    let count = Math.Int.min(
+      Array.length(cards),
+      Game.pileIndices(game, Game.Cascade)->Array.length,
+    )
+    cards
+    ->Array.slice(~start=Array.length(cards) - count, ~end=Array.length(cards))
+    ->Array.toReversed
+  | _ => []
+  }
+
+// `state` with the row dealt: the stock shortened from its top, each dealt card on
+// top of its cascade face up. The cascades' face-down counts don't move (a dealt
+// card lands above them), and the stock's stays its whole length — every card left
+// in it is still face down.
+let dealRow = (~game: Game.t, state: GameState.t, ~stock: int): GameState.t => {
+  let dealt = nextDeal(~game, state)
+  let cascades = Game.pileIndices(game, Game.Cascade)
+  let remaining = {
+    let cards = GameState.cardsInPile(state, stock)
+    cards->Array.slice(~start=0, ~end=Array.length(cards) - Array.length(dealt))
+  }
+  let landing = i => {
+    let k = cascades->Array.findIndex(c => c == i)
+    k < 0 ? None : dealt->Array.get(k)
+  }
+  {
+    ...state,
+    piles: state.piles->Array.mapWithIndex((cards, i) =>
+      if i == stock {
+        remaining
+      } else {
+        switch landing(i) {
+        | Some(card) => Array.concat(cards, [card])
+        | None => cards
+        }
+      }
+    ),
+    faceDown: state.faceDown->Array.mapWithIndex((down, i) =>
+      i == stock ? Math.Int.min(down, Array.length(remaining)) : down
+    ),
+  }
 }
 
 // The pure transition. Closes over the board (`~game`) for each pile's `rule`
@@ -316,6 +430,10 @@ let reduce = (~game: Game.t, state: GameState.t, action: action): result<GameSta
   | Move({card, to: ToPile(i)}) =>
     switch GameState.locationOf(state, card) {
     | None => Error(CardNotFound)
+    // A face-down card isn't the player's to move either, whatever rests on it: they
+    // can't see it, so they can't name it. Said before "buried", which is also true
+    // of every face-down card, because it's the more useful of the two.
+    | Some(_) if GameState.isFaceDown(state, card) => Error(CardFaceDown)
     // A card with others resting on it isn't the player's to move: lifting it would
     // pull it out from under them and leave them behind. Refused before the
     // destination is weighed at all, since no pile makes a buried card liftable.
@@ -356,6 +474,8 @@ let reduce = (~game: Game.t, state: GameState.t, action: action): result<GameSta
     | Some(pile) =>
       if cards->Array.some(c => GameState.locationOf(state, c)->Option.isNone) {
         Error(CardNotFound)
+      } else if cards->Array.some(c => GameState.isFaceDown(state, c)) {
+        Error(CardFaceDown)
       } else if Array.length(cards) == 0 || !Rules.isRun(pile.rule, cards) {
         Error(NotARun)
       } else if !isSpan(state, cards) {
@@ -398,6 +518,14 @@ let reduce = (~game: Game.t, state: GameState.t, action: action): result<GameSta
       } else {
         Ok(reorderPile(state, ~from, ~to))
       }
+    }
+  // The next row off the stock. Every refusal is the board's: `dealRefusal` says which,
+  // and `dealRow` only ever runs on a board it said nothing about.
+  | Deal =>
+    switch (dealRefusal(~game, state), stockOf(game)) {
+    | (Some(error), _) => Error(error)
+    | (None, Some(stock)) => Ok(dealRow(~game, state, ~stock))
+    | (None, None) => Error(NoStock) // unreachable: no stock is a refusal
     }
   }
 
@@ -474,7 +602,7 @@ let collectSafeCards = (~game: Game.t, state: GameState.t): (GameState.t, array<
     let candidates = []
     game.piles->Array.forEachWithIndex((pile: Game.pile, i) =>
       switch pile.role {
-      | Game.Foundation => ()
+      | Game.Foundation | Game.Stock => ()
       | _ =>
         switch GameState.topOf(cur, i) {
         | Some(c) => candidates->Array.push(c)
@@ -601,7 +729,7 @@ let finishSequence = (~game: Game.t, state: GameState.t): (GameState.t, array<ca
     let candidates = []
     game.piles->Array.forEachWithIndex((pile: Game.pile, i) =>
       switch pile.role {
-      | Game.Foundation => ()
+      | Game.Foundation | Game.Stock => ()
       | _ =>
         switch GameState.topOf(cur, i) {
         | Some(c) => candidates->Array.push(c)

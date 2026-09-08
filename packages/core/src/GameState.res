@@ -16,16 +16,29 @@ type location =
   | InPile(int, int)
   | Loose
 
-// Identity is structural `{suit, rank}`, which is unique within a single deck, and it
-// is compared field-by-field rather than by whole-record `==` so the decision stays
-// explicit and deck-scoped — a fuller multi-deck identity would grow from here.
-let sameCard = (a: card, b: card): bool => a.suit == b.suit && a.rank == b.rank
+// Identity is structural — suit, rank and which copy (`Card.copy`) — compared
+// field-by-field rather than by whole-record `==` so the decision stays explicit. Two
+// copies of one face are two cards here: lifting one leaves the other where it lay.
+let sameCard = (a: card, b: card): bool =>
+  a.suit == b.suit && a.rank == b.rank && Card.copyOf(a) == Card.copyOf(b)
+
+// The same face, whichever copy: what a typed name (`7S`) says, and what a board with
+// more than one pack has to resolve to a card (`Command.resolveCard`).
+let sameFace = (a: card, b: card): bool => a.suit == b.suit && a.rank == b.rank
 
 // Piles run bottom-first, so a card's slot is its index and the last element is the
 // pile's top card.
+//
+// `faceDown` is one count per pile: how many of its cards, from the bottom up, lie
+// face down. A count rather than a flag on each card, so a card's identity stays the
+// bare `{suit, rank}` everything else keys on — and *in the snapshot* rather than
+// beside it, so a move that turned a card over is undone by restoring the position
+// before it, with no driver remembering a flip. The reducer keeps every count at or
+// below its pile's length; `faceDown` is always exactly as long as `piles`.
 type t = {
   piles: array<array<card>>,
   loose: array<card>,
+  faceDown: array<int>,
 }
 
 // Inner arrays are copied so the snapshot never shares mutable storage with the
@@ -33,7 +46,20 @@ type t = {
 let initial = (game: Game.t): t => {
   piles: game.piles->Array.map(p => p.cards->Array.copy),
   loose: [],
+  faceDown: game.piles->Array.map(p => p.faceDown),
 }
+
+// A position posed from its piles alone: every card face up, nothing loose. What a
+// scenario or a test builds when the face-down count has nothing to say.
+let faceUp = (piles: array<array<card>>): t => {
+  piles,
+  loose: [],
+  faceDown: piles->Array.map(_ => 0),
+}
+
+// How many of pile `i`'s cards lie face down, from the bottom; 0 for a pile out of
+// range. A card at a slot below this number is face down.
+let faceDownIn = (state: t, i: int): int => state.faceDown->Array.get(i)->Option.getOr(0)
 
 // A copy, so a caller can't reach back through it and mutate the snapshot.
 let cardsInPile = (state: t, i: int): array<card> =>
@@ -68,6 +94,14 @@ let locationOf = (state: t, card: card): option<location> => {
   }
 }
 
+// Does `card` lie face down — in a pile, at a slot below that pile's `faceDown` count?
+// A loose card, or one not in play, is not face down.
+let isFaceDown = (state: t, card: card): bool =>
+  switch locationOf(state, card) {
+  | Some(InPile(i, slot)) => slot < faceDownIn(state, i)
+  | Some(Loose) | None => false
+  }
+
 // Lets a driver ask "did this move actually change the board?", so a lawful no-op —
 // an identity re-drop, a `MoveColumn` with `from == to` — is un-undoable rather than
 // a fresh step.
@@ -79,7 +113,11 @@ let equal = (a: t, b: t): bool => {
   a.piles
   ->Array.mapWithIndex((cards, i) => sameCards(cards, b.piles->Array.getUnsafe(i)))
   ->Array.every(x => x) &&
-  sameCards(a.loose, b.loose)
+  sameCards(a.loose, b.loose) &&
+  // The same cards lying the same way is one position; one of them turned over is
+  // another — a flip is a change, and undoing it is what restoring the earlier
+  // snapshot is for.
+  a.piles->Array.everyWithIndex((_, i) => faceDownIn(a, i) == faceDownIn(b, i))
 }
 
 // Every foundation holding a complete run of the board's own deck. Purely an

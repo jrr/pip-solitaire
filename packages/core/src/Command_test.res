@@ -282,6 +282,16 @@ describe("Command.parse", () => {
         expect(Command.parse("restart"))->toEqual(Command.Redeal)
       },
     )
+
+    // The stock's verb. Not `deal`, which lays out a game; and the name it has costs
+    // `d` its meaning — see the ambiguity test below.
+    test(
+      "draw, down to dr",
+      () => {
+        expect(Command.parse("draw"))->toEqual(Command.Draw)
+        expect(Command.parse("dr"))->toEqual(Command.Draw)
+      },
+    )
   })
 
   describe("malformed input answers rather than failing", () => {
@@ -632,6 +642,11 @@ describe("Command.parse, abbreviated", () => {
       expect(matches)->toEqual(["help", "home"])
     | _ => expect("not ambiguous")->toBe("ambiguous")
     }
+    // `d` fits `deal` and `draw` alike; `de` and `dr` still say which.
+    switch Command.parse("d") {
+    | Command.Ambiguous({matches}) => expect(matches)->toEqual(["deal", "draw"])
+    | _ => expect("not ambiguous")->toBe("ambiguous")
+    }
     // …and the refusal says both, so the next keystroke is obvious.
     switch Command.parse("r") {
     | Command.Ambiguous({verb, matches}) =>
@@ -770,10 +785,9 @@ describe("Command.resolveWhere", () => {
   // by hand — the rule is about the model, not about FreeCell.
   test("a card showing on more than one pile is ambiguous, and says which", () => {
     let twice = {suit: Clubs, rank: Three}
-    let doubled: GameState.t = {
-      piles: cellsOnly.piles->Array.mapWithIndex((_, i) => i < 2 ? [twice] : []),
-      loose: [],
-    }
+    let doubled = GameState.faceUp(
+      cellsOnly.piles->Array.mapWithIndex((_, i) => i < 2 ? [twice] : []),
+    )
     switch Command.resolveWhere(~game=cellsOnly, doubled, Command.Onto(twice)) {
     | Ok(_) => expect(true)->toBe(false)
     | Error(message) =>
@@ -921,7 +935,7 @@ describe("Command.resolveFrom", () => {
       "a lone card is a run of one",
       () => {
         let lone = Reducer.placeOnPile(
-          {piles: game.piles->Array.map(_ => []), loose: []},
+          GameState.faceUp(game.piles->Array.map(_ => [])),
           ace(Spades),
           firstCascade,
         )
@@ -967,6 +981,19 @@ describe("Command.reason", () => {
     )
   })
 
+  // A deal names no card, so its refusals are said about the board alone.
+  test("a refused deal is described on its own terms", () => {
+    expect(Command.describeRejection(Reducer.StockEmpty, ~action=Reducer.Deal))->toBe(
+      "Rejected: the stock is empty.",
+    )
+    expect(Command.describeRejection(Reducer.CascadeEmpty, ~action=Reducer.Deal))->toBe(
+      "Rejected: every column needs a card before the next row is dealt.",
+    )
+    expect(Command.describeRejection(Reducer.NoStock, ~action=Reducer.Deal))->toBe(
+      "Rejected: this game has no stock to deal from.",
+    )
+  })
+
   // Every error answers both ways — a phrase that reads as one, and a sentence that ends.
   test("every rejection has both shapes", () =>
     [
@@ -979,6 +1006,11 @@ describe("Command.reason", () => {
       Reducer.NotAColumn,
       Reducer.CardBuried,
       Reducer.NotASpan,
+      Reducer.CardHome,
+      Reducer.CardFaceDown,
+      Reducer.NoStock,
+      Reducer.StockEmpty,
+      Reducer.CascadeEmpty,
     ]->Array.forEach(
       err => {
         let phrase = Command.reason(err)

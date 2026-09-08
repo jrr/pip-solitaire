@@ -35,6 +35,22 @@ describe("SaveState", () => {
     )
   })
 
+  // A second copy of a card is a third character; the first copy is the bare code it
+  // always was, so a single-pack save is byte for byte what it was.
+  test("a card's copy rides as a digit, and only from the second copy", () => {
+    let seven = {suit: Spades, rank: Seven}
+    expect(SaveState.encodeCard(seven))->toBe("7S")
+    expect(SaveState.encodeCard(Card.nth(seven, 1)))->toBe("7S1")
+    expect(SaveState.decodeCard("7S1"))->toEqual(Some(Card.nth(seven, 1)))
+    Cards.cardsOf(Game.spiderette.deck)->Array.forEach(
+      card => expect(SaveState.decodeCard(SaveState.encodeCard(card)))->toEqual(Some(card)),
+    )
+    // A written 0 is not a spelling of the first copy, and a letter is nothing at all.
+    expect(SaveState.decodeCard("7S0"))->toEqual(None)
+    expect(SaveState.decodeCard("7SX"))->toEqual(None)
+    expect(SaveState.decodeCard("7S12"))->toEqual(None)
+  })
+
   test("encode then decode restores the whole saved game exactly", () => {
     switch SaveState.decode(SaveState.encode(saved)) {
     | Some(restored) => expect(restored)->toEqual(saved)
@@ -340,6 +356,69 @@ describe("SaveState", () => {
           },
         }
         expect(mismatched->SaveState.fits(~game=Game.mini))->toBe(false)
+      },
+    )
+  })
+
+  // The face-down counts arrived after the format did, on the same additive terms as
+  // every field before them: written only when a card lies face down, so a FreeCell
+  // save is byte for byte what it was, and absent reads as all face up — the truthful
+  // reading of every save that predates the field.
+  describe("the face-down counts", () => {
+    let spiderette = Game.spiderette
+    let dealt: SaveState.t = {
+      ...saved,
+      history: History.make(GameState.initial(spiderette)),
+      gameId: Some(spiderette.id),
+    }
+
+    test(
+      "ride in the state and come back",
+      () => {
+        let blob = SaveState.encode(dealt)
+        expect(blob->String.includes(`"down"`))->toBe(true)
+        switch SaveState.decode(blob) {
+        | Some(restored) =>
+          expect(restored)->toEqual(dealt)
+          expect(History.present(restored.history).faceDown)->toEqual(
+            GameState.initial(spiderette).faceDown,
+          )
+        | None => expect("decoded")->toBe("but got None")
+        }
+      },
+    )
+
+    test(
+      "a board with every card face up writes no field, and reads back as one",
+      () => {
+        let blob = SaveState.encode(saved)
+        expect(blob->String.includes(`"down"`))->toBe(false)
+        switch SaveState.decode(blob) {
+        | Some(restored) =>
+          expect(History.present(restored.history).faceDown)->toEqual(
+            opening.piles->Array.map(_ => 0),
+          )
+        | None => expect("decoded")->toBe("but got None")
+        }
+      },
+    )
+
+    test(
+      "a present-but-malformed count is rejected like any other bad field",
+      () => {
+        let state = down => `{"piles":[["AS","2S"],["3S"]],"loose":[]${down}}`
+        let blob = down => `{"v":1,"past":[],"present":${state(down)},"future":[]}`
+        // The shape without it decodes, so it's the field that fails each of these.
+        expect(SaveState.decode(blob(""))->Option.isSome)->toBe(true)
+        expect(SaveState.decode(blob(`,"down":[1,0]`))->Option.isSome)->toBe(true)
+        // Not a list, not whole numbers, the wrong length, or more cards than the pile
+        // holds: each describes a board the cards don't lay out.
+        expect(SaveState.decode(blob(`,"down":"lots"`)))->toEqual(None)
+        expect(SaveState.decode(blob(`,"down":[1.5,0]`)))->toEqual(None)
+        expect(SaveState.decode(blob(`,"down":[-1,0]`)))->toEqual(None)
+        expect(SaveState.decode(blob(`,"down":[1]`)))->toEqual(None)
+        expect(SaveState.decode(blob(`,"down":[3,0]`)))->toEqual(None)
+        expect(SaveState.decode(blob(`,"down":[null,0]`)))->toEqual(None)
       },
     )
   })

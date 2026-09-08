@@ -66,9 +66,10 @@ let freecellMidgame = (game: Game.t, ~seed: int): GameState.t => {
     | Game.Foundation => next(foundationPiles, foundationIdx)
     | Game.FreeCell => next(cellPiles, cellIdx)
     | Game.Cascade => next(cascadePiles, cascadeIdx)
+    | Game.Stock => []
     }
   )
-  {GameState.piles, loose: []}
+  GameState.faceUp(piles)
 }
 
 // A **near-won FreeCell**: three suits fully assembled on their foundations and
@@ -114,7 +115,7 @@ let freecellAlmostWon = (game: Game.t): GameState.t => {
     | _ => []
     }
   )
-  {GameState.piles, loose: []}
+  GameState.faceUp(piles)
 }
 
 // A **supermove FreeCell**: a ready-to-lift ordered run sitting atop the
@@ -157,10 +158,10 @@ let freecellSupermove = (game: Game.t): GameState.t => {
       let value = cascadePiles->Array.get(cascadeIdx.contents)->Option.getOr([])
       cascadeIdx := cascadeIdx.contents + 1
       value
-    | Game.FreeCell | Game.Foundation => []
+    | Game.FreeCell | Game.Foundation | Game.Stock => []
     }
   )
-  {GameState.piles, loose: []}
+  GameState.faceUp(piles)
 }
 
 // A **send-home FreeCell**: each suit's foundation part-built to the Two,
@@ -206,9 +207,10 @@ let freecellSendHome = (game: Game.t): GameState.t => {
     | Game.Foundation => next(foundationPiles, foundationIdx)
     | Game.FreeCell => next(cellPiles, cellIdx)
     | Game.Cascade => next(cascadePiles, cascadeIdx)
+    | Game.Stock => []
     }
   )
-  {GameState.piles, loose: []}
+  GameState.faceUp(piles)
 }
 
 // A **finishable FreeCell**: the trapped-tail endgame safe auto-collect
@@ -273,10 +275,63 @@ let freecellFinish = (game: Game.t): GameState.t => {
     switch pile.role {
     | Game.Foundation => next(foundationRuns, foundationIdx)
     | Game.Cascade => next(cascadePiles, cascadeIdx)
-    | Game.FreeCell => []
+    | Game.FreeCell | Game.Stock => []
     }
   )
-  {GameState.piles, loose: []}
+  GameState.faceUp(piles)
+}
+
+// --- Spiderette -----------------------------------------------------------------
+
+// The **stock dealt out**: the opening deal with every row the stock holds dealt onto
+// the cascades and nothing else played — four deals on the standard board, the last
+// one three cards short. Reached by playing the reducer's own `Deal` until it refuses,
+// so it is the position a player who only ever tapped the stock would be looking at:
+// face-down cards under each column's dealt row, which is what the screenshot report
+// wants to see and what a flip needs to be tried against.
+let spideretteDealtOut = (game: Game.t): GameState.t => {
+  let rec dealAll = (state: GameState.t): GameState.t =>
+    switch Reducer.reduce(~game, state, Reducer.Deal) {
+    | Ok(next) => dealAll(next)
+    | Error(_) => state
+    }
+  dealAll(GameState.initial(game))
+}
+
+// A **near-won Spiderette**: three of the four runs already collected, the last one's
+// King→Two on the first cascade and its Ace alone on the second — one drag completes
+// the run, and lifting it is the win. Stock empty, everything face up. Built straight
+// from the board's own pack, like the FreeCell positions, so every card appears
+// exactly once: the runs are one per suit per copy, four on the two-suit pack.
+let spideretteAlmostWon = (game: Game.t): GameState.t => {
+  let kingToAce = (suit, copy) =>
+    game.deck.ranks->Array.toReversed->Array.map(rank => Card.nth({suit, rank}, copy))
+  let runs =
+    Array.fromInitializer(~length=game.deck.copies, k => k)->Array.flatMap(copy =>
+      game.deck.suits->Array.map(suit => kingToAce(suit, copy))
+    )
+  let last = Array.length(runs) - 1
+  let collected = runs->Array.slice(~start=0, ~end=last)->Array.concat([[]])
+  let pending = runs->Array.getUnsafe(last)
+  let cascadePiles = [
+    pending->Array.slice(~start=0, ~end=Array.length(pending) - 1),
+    pending->Array.slice(~start=Array.length(pending) - 1, ~end=Array.length(pending)),
+  ]
+  let foundationIdx = ref(0)
+  let cascadeIdx = ref(0)
+  let next = (queue, cursor) => {
+    let value = queue->Array.get(cursor.contents)->Option.getOr([])
+    cursor := cursor.contents + 1
+    value
+  }
+  let piles = game.piles->Array.map((pile: Game.pile) =>
+    switch pile.role {
+    | Game.Foundation => next(collected, foundationIdx)
+    | Game.Cascade => next(cascadePiles, cascadeIdx)
+    | Game.FreeCell | Game.Stock => []
+    }
+  )
+  GameState.faceUp(piles)
 }
 
 // A named scenario as *data*: the `name` the URL/CLI address it by, a human
@@ -333,11 +388,21 @@ let freecellScenarios: array<named> = [
   {name: "finish", label: "Finishable", build: freecellFinish, seed: None},
 ]
 
+// Spiderette's, addressed the same way (`?game=spiderette&state=dealt`, `deal
+// spiderette dealt`). Neither claims a deal: `dealt` is reachable from *whatever* deal
+// the board it's built on was dealt from, which a fixed number can't say, and the
+// near-won position is posed from the pack.
+let spideretteScenarios: array<named> = [
+  {name: "dealt", label: "Stock dealt out", build: spideretteDealtOut, seed: None},
+  {name: "almost-won", label: "Almost won", build: spideretteAlmostWon, seed: None},
+]
+
 // The named scenarios that apply to `game`, in menu order — empty for a board
-// with none (every demo but FreeCell today). This is what a picker enumerates.
+// with none. This is what a picker enumerates.
 let scenariosFor = (game: Game.t): array<named> =>
   switch game.id {
   | "freecell" => freecellScenarios
+  | "spiderette" => spideretteScenarios
   | _ => []
   }
 

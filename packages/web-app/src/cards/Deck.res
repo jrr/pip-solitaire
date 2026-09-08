@@ -27,7 +27,7 @@ type rank = Card.rank =
   | Queen
   | King
 
-type card = Card.card = {suit: suit, rank: rank}
+type card = Card.card = {suit: suit, rank: rank, copy?: int}
 
 // The full 52-card deck is owned by `core` now (`Cards.all`), so a shuffled deal
 // and the gallery draw from the *same* deck. Re-exported here so the presentation

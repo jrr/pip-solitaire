@@ -106,6 +106,7 @@ move <what> <where>      move a card   (e.g. move AS T3, mv 2H 3C, m C1 F1)
 moverun <what> <where>   supermove an ordered run: its cards bottom-first, or
                          the column it's showing in (moverun T6 T2)
 home <card>              send a card to its foundation, if one will take it
+draw                     deal the next row from the stock (Spiderette)
 movecol <from> <to>      reorder cascade columns: pull <from>, drop it at <to>
 finish                   sweep every card home to win, when the board is drainable
 autoplay                 let the solver play the rest of the game (and finish it)
@@ -134,7 +135,8 @@ is [`docs/command-grammar.md`](../../docs/command-grammar.md):
   `moverun T6 T2` lifts the whole run showing on T6. Anything ambiguous — a buried
   card, an empty cell — is refused by name rather than guessed at.
 - **Any verb may be shortened to an unambiguous prefix.** `p` prints, `u` undoes,
-  `de 12345` deals. `h` is refused, because it could be `help` or `home`.
+  `de 12345` deals. `h` is refused, because it could be `help` or `home`; so is
+  `d`, which could be `deal` or `draw`.
 
 A few things that are the terminal's own:
 

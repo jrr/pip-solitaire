@@ -65,6 +65,11 @@ type t =
   | MoveTo({from: from, where: where})
   // `home <card>` names a card but no destination — see the module note above.
   | Home({card: card})
+  // `draw`: the next row off the stock, on a board that deals from one (Spider). Not
+  // `deal`, which lays out a whole game and is taken; and a name of its own costs
+  // `d` its meaning — `d` fitted `deal` alone and now fits both, so it's refused
+  // and `de`/`dr` say which.
+  | Draw
   | Finish
   // `autoplay`: hand the board to the solver and let it play the thinking part
   // of the game out (`Solver.autoplay`, docs/solver.md).
@@ -165,6 +170,7 @@ let verbs = [
   "finish",
   "autoplay",
   "deal",
+  "draw",
   "move",
   "moverun",
   "movecol",
@@ -243,6 +249,7 @@ let parse = (line: string): t => {
       | "finish" => Finish
       | "autoplay" => Autoplay
       | "deal" => Deal({game: arg(1), scenario: arg(2)})
+      | "draw" => Draw
       // Key a message off the canonical verb, never off what was typed: everything
       // downstream of the table says `move`, whichever spelling arrived.
       | "move" =>
@@ -384,12 +391,14 @@ let describeAmbiguous = (~verb: string, ~matches: array<string>): string =>
 // Every pile currently *showing* `card` — holding it as its top card, the card a
 // newcomer would land on. A buried card shows nothing: landing "on" it would really
 // land on whatever covers it, which is a different move from the one that was typed.
+// By face, not identity: a typed name is a face, and a board with two packs may show
+// it twice — which is the ambiguity `resolveWhere` refuses by name.
 let showing = (~game: Game.t, state: GameState.t, card: card): array<int> =>
   game.piles
   ->Array.mapWithIndex((_, i) => i)
   ->Array.filter(i =>
     switch GameState.topOf(state, i) {
-    | Some(top) => GameState.sameCard(top, card)
+    | Some(top) => GameState.sameFace(top, card)
     | None => false
     }
   )
@@ -498,20 +507,108 @@ let runShowing = (~game: Game.t, state: GameState.t, i: int): array<card> =>
   | Some(pile) =>
     let cards = GameState.cardsInPile(state, i)
     let count = Array.length(cards)
+    // Never into the face-down cards: they may continue the run by rank and suit,
+    // but a hand can't see that, so the run stops above them.
+    let floor = GameState.faceDownIn(state, i)
     let rec longest = (start: int): array<card> =>
-      if start <= 0 {
-        cards
+      if start <= floor {
+        cards->Array.slice(~start=floor, ~end=count)
       } else if Rules.isRun(pile.rule, cards->Array.slice(~start=start - 1, ~end=count)) {
         longest(start - 1)
       } else {
         cards->Array.slice(~start, ~end=count)
       }
-    count == 0 ? [] : longest(count - 1)
+    count == 0 || floor >= count ? [] : longest(count - 1)
+  }
+
+// --- Which card a name means ----------------------------------------------------
+// A typed name is a *face*: `7S` says a rank and a suit, and on a board played with
+// one pack that is one card. On a board with more than one (`Cards.deck.copies`) the
+// same face lies on the table twice, and the board has to say which was meant — the
+// copy a hand could lift, when only one could be. Both liftable is refused by name,
+// the way a destination showing twice is, rather than guessed at.
+
+// Every card in play with this face, wherever it rests.
+let facesOf = (state: GameState.t, card: card): array<card> =>
+  state.piles
+  ->Array.concat([state.loose])
+  ->Array.flat
+  ->Array.filter(c => GameState.sameFace(c, card))
+
+// Could a hand take hold of this card as it lies — face up, not home, heading a run
+// (the top card being a run of one)? What a typed `move`/`moverun` means to lift.
+let liftable = (~game: Game.t, state: GameState.t, card: card): bool =>
+  switch GameState.locationOf(state, card) {
+  | Some(GameState.Loose) => true
+  | Some(GameState.InPile(i, slot)) =>
+    let pile = GameState.cardsInPile(state, i)
+    !GameState.isFaceDown(state, card) &&
+    !Reducer.isHome(~game, state, card) &&
+    game.piles
+    ->Array.get(i)
+    ->Option.mapOr(false, p =>
+      Rules.isRun(p.rule, pile->Array.slice(~start=slot, ~end=Array.length(pile)))
+    )
+  | None => false
+  }
+
+// The card a typed name means on this board. A face in play once is that card; not
+// in play at all is handed back as typed, so the reducer refuses it in its own words
+// (`CardNotFound`). A face in play twice is the copy a hand could lift, or a refusal
+// naming where both are.
+let resolveCard = (~game: Game.t, state: GameState.t, card: card): result<card, string> =>
+  switch facesOf(state, card) {
+  | [] => Ok(card)
+  | [only] => Ok(only)
+  | copies =>
+    switch copies->Array.filter(c => liftable(~game, state, c)) {
+    | [only] => Ok(only)
+    | [] => Ok(copies->Array.getUnsafe(0))
+    | both =>
+      let places = both->Array.filterMap(c =>
+        switch GameState.locationOf(state, c) {
+        | Some(GameState.InPile(i, _)) => Slot.labelAt(~game, i)
+        | _ => None
+        }
+      )
+      Error(
+        `Ambiguous: ${CardText.format(card)} is on the table twice (${places->Array.join(
+            ", ",
+          )}). Name the column instead.`,
+      )
+    }
+  }
+
+// The same for every card of a run, the first refusal winning.
+let resolveCards = (~game: Game.t, state: GameState.t, cards: array<card>): result<
+  array<card>,
+  string,
+> =>
+  cards->Array.reduce(Ok([]), (acc, card) =>
+    switch (acc, resolveCard(~game, state, card)) {
+    | (Ok(done), Ok(c)) => Ok(Array.concat(done, [c]))
+    | (Error(m), _) | (_, Error(m)) => Error(m)
+    }
+  )
+
+// A parsed action's named cards, resolved the same way — what `Session.step` does
+// with a `Dispatch` before the reducer sees it, so `move 7S 12` lifts the Seven a hand
+// could, not the first copy the pack happened to list.
+let resolveAction = (~game: Game.t, state: GameState.t, action: Reducer.action): result<
+  Reducer.action,
+  string,
+> =>
+  switch action {
+  | Reducer.Move({card, to}) =>
+    resolveCard(~game, state, card)->Result.map(card => Reducer.Move({card, to}))
+  | Reducer.MoveRun({cards, to}) =>
+    resolveCards(~game, state, cards)->Result.map(cards => Reducer.MoveRun({cards, to}))
+  | Reducer.MoveColumn(_) | Reducer.Deal => Ok(action)
   }
 
 // Turn a `from` into the cards a move lifts, or say why this board offers none there.
-// Cards named outright are handed straight back — the board has no say in what `8H`
-// means — which is what keeps the original grammar exactly as it was.
+// Cards named outright are resolved by face (`resolveCards`) and otherwise handed
+// straight back — the board has no say in what `8H` means beyond which copy it is.
 let resolveFrom = (~game: Game.t, state: GameState.t, from: from): result<array<card>, string> => {
   let lift = (place, pick) =>
     switch resolvePlace(~game, place) {
@@ -523,7 +620,7 @@ let resolveFrom = (~game: Game.t, state: GameState.t, from: from): result<array<
       }
     }
   switch from {
-  | Cards(cards) => Ok(cards)
+  | Cards(cards) => resolveCards(~game, state, cards)
   | Top(place) => lift(place, i => GameState.topOf(state, i)->Option.mapOr([], card => [card]))
   | Run(place) => lift(place, i => runShowing(~game, state, i))
   }
@@ -599,6 +696,10 @@ let reason = (err: Reducer.moveError): string =>
   | Reducer.CardBuried => "that card is buried — only the card on top of a pile can be moved"
   | Reducer.NotASpan => "those cards aren't lying together at the top of one pile"
   | Reducer.CardHome => "that card is home — a collected run never comes back to the table"
+  | Reducer.CardFaceDown => "that card is face down — only a card you can see can be moved"
+  | Reducer.NoStock => "this game has no stock to deal from"
+  | Reducer.StockEmpty => "the stock is empty"
+  | Reducer.CascadeEmpty => "every column needs a card before the next row is dealt"
   }
 
 // The same, as a sentence that stands on its own — the phrase prefixed, and naming
@@ -623,6 +724,8 @@ let describeRejection = (err: Reducer.moveError, ~action: Reducer.action): strin
   switch (action, err) {
   | (Reducer.MoveColumn(_), Reducer.NotAColumn) => "Rejected: that pile isn't a cascade column."
   | (Reducer.MoveColumn(_), _) => "Rejected: no such pile."
+  // A deal carries no card either, and every one of its refusals is about the board.
+  | (Reducer.Deal, _) => `Rejected: ${reason(err)}.`
   | (Reducer.Move({card}), _) => describeError(err, card)
   | (Reducer.MoveRun({cards}), _) =>
     switch cards->Array.get(0) {
@@ -706,6 +809,7 @@ let boardHelp: array<helpRow> = [
     "supermove an ordered run: its cards bottom-first, or the column it's showing in (moverun T6 T2)",
   ),
   ("home <card>", "send a card to its foundation, if one will take it (e.g. home AS)"),
+  ("draw", "deal the next row from the stock, on a board that has one (Spiderette)"),
   (
     "movecol <from> <to>",
     "reorder cascade columns: pull column <from> and drop it at <to> (e.g. movecol 8 15)",

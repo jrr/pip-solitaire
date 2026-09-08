@@ -12,6 +12,7 @@
 //   T1…T8   the tableau columns (this model's `Cascade` piles)
 //   C1…C4   the free cells
 //   F1…F4   the foundations
+//   S1      the stock, on a board that deals from one
 //
 // Letter first, deliberately. A card is named rank-then-suit (`3C` is the Three of
 // Clubs — see `CardText`), so a digit-first `3C` would be two different things in the
@@ -29,6 +30,7 @@ let letter = (role: Game.role): string =>
   | Game.Cascade => "T"
   | Game.FreeCell => "C"
   | Game.Foundation => "F"
+  | Game.Stock => "S"
   }
 
 // The role a letter stands for, case-insensitively — the inverse of `letter`.
@@ -37,6 +39,7 @@ let roleFor = (s: string): option<Game.role> =>
   | "T" => Some(Game.Cascade)
   | "C" => Some(Game.FreeCell)
   | "F" => Some(Game.Foundation)
+  | "S" => Some(Game.Stock)
   | _ => None
   }
 
@@ -47,6 +50,7 @@ let roleName = (role: Game.role): string =>
   | Game.Cascade => "tableau column"
   | Game.FreeCell => "free cell"
   | Game.Foundation => "foundation"
+  | Game.Stock => "stock"
   }
 
 let roleNamePlural = (role: Game.role): string =>
@@ -54,6 +58,7 @@ let roleNamePlural = (role: Game.role): string =>
   | Game.Cascade => "tableau columns"
   | Game.FreeCell => "free cells"
   | Game.Foundation => "foundations"
+  | Game.Stock => "stock piles"
   }
 
 // A label from its parts: `T` + `3`.

@@ -161,6 +161,26 @@ describe("Render layout", () => {
     )
   )
 
+  // A face-down card shows its back and nothing else: the board must not tell a
+  // reader what lies under a column, and the stock is all backs by definition.
+  test("a face-down card is drawn as a back, never as its face", () => {
+    let game = Game.spiderette
+    let state = GameState.initial(game)
+    let drawn = Render.stateBoard(~game, state)
+    let count = (s, sub) => s->String.split(sub)->Array.length - 1
+    // Twenty-one backs peek out of the columns, one line each, and the stock's top
+    // shows a whole back: two lines. Nothing else is hatched.
+    expect(count(drawn, `▒▒▒▒`))->toBe(23)
+    // Exactly the seven face-up cards print a face — one pip each — and no card under
+    // them or in the stock does.
+    expect(count(drawn, `♠`) + count(drawn, `♥`))->toBe(7)
+    // The stock is headed by its own name, in the top row with the foundations.
+    let sections = drawn->String.split("\n\n")
+    expect(has(sections->Array.getUnsafe(1), "S1"))->toBe(true)
+    expect(has(sections->Array.getUnsafe(1), "F4"))->toBe(true)
+    expect(has(sections->Array.getUnsafe(2), "T7"))->toBe(true)
+  })
+
   // The label a board prints and the pile it's printed over are one fact (`Slot`), so
   // a player reading `T3` off the screen addresses the third cascade — pile 10 here.
   test("the printed labels are the ones the model answers to", () => {
@@ -373,6 +393,10 @@ describe("Render.action", () => {
         }),
       ),
     )->toBe("moverun 9♠ 8♥ → T8")
+  )
+
+  test("a deal is its verb, since it names no card", () =>
+    expect(Render.toPlain([Render.action(~game, Reducer.Deal)]))->toBe("draw")
   )
 
   test("a column reorder names both columns", () =>
