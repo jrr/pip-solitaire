@@ -228,6 +228,8 @@ let action = (~game: Game.t, action: Reducer.action): line =>
   | Reducer.MoveColumn({from, to}) => [
       plain(`movecol ${pileName(~game, from)} → ${pileName(~game, to)}`),
     ]
+  // The deal names no card of its own: what it dropped is the board's to show.
+  | Reducer.Deal => [plain("draw")]
   }
 
 // --- Cards --------------------------------------------------------------------
@@ -255,6 +257,14 @@ let fullCard = (f, card): array<line> => [
   bottomBorder(f),
 ]
 
+// A card lying face down shows its back: the same frame, a hatched face. It carries
+// no rank or suit and no ink, because a reader of the board isn't meant to know what
+// it is — the one line a card contributes to a fan is its back too, so a face-down
+// card in a column reads as a card and nothing more.
+let backLine = f => [plain(`${f.vertical}${repeat(`▒`, cellWidth)}${f.vertical}`)]
+
+let fullBack = (f): array<line> => [topBorder(f), backLine(f), backLine(f), bottomBorder(f)]
+
 // A double-framed empty slot, so an empty pile still shows where its cards land.
 let emptySlot = (): array<line> => [
   topBorder(empty),
@@ -265,24 +275,31 @@ let emptySlot = (): array<line> => [
 
 // A fanned pile as an overlapping vertical column: every card contributes its
 // top border and one face line, and the top of the pile (last in bottom-first
-// order) closes the fan with its full body. An empty pile shows a slot.
-let fannedColumn = (cards: array<card>): array<line> =>
+// order) closes the fan with its full body. An empty pile shows a slot. The first
+// `faceDown` cards show their backs.
+let fannedColumn = (~faceDown: int, cards: array<card>): array<line> =>
   if Array.length(cards) == 0 {
     emptySlot()
   } else {
     let lastIndex = Array.length(cards) - 1
     cards
     ->Array.mapWithIndex((card, i) =>
-      i == lastIndex ? fullCard(placed, card) : [topBorder(placed), faceLine(placed, card)]
+      switch (i < faceDown, i == lastIndex) {
+      | (true, true) => fullBack(placed)
+      | (true, false) => [topBorder(placed), backLine(placed)]
+      | (false, true) => fullCard(placed, card)
+      | (false, false) => [topBorder(placed), faceLine(placed, card)]
+      }
     )
     ->Array.flat
   }
 
 // A squared pile keeps a single card's footprint, so only its top card shows;
-// an empty pile shows a slot.
-let squaredColumn = (cards: array<card>): array<line> =>
+// an empty pile shows a slot. A top card that lies face down — the stock's, always —
+// shows its back.
+let squaredColumn = (~faceDown: int, cards: array<card>): array<line> =>
   switch cards[Array.length(cards) - 1] {
-  | Some(card) => fullCard(placed, card)
+  | Some(card) => Array.length(cards) <= faceDown ? fullBack(placed) : fullCard(placed, card)
   | None => emptySlot()
   }
 
@@ -290,13 +307,14 @@ let squaredColumn = (cards: array<card>): array<line> =>
 // cards come from wherever the caller has them — the board's opening deal
 // (`board`) or a live snapshot (`stateBoard`) — so the two renderers share one
 // notion of how a pile looks.
-let columnFor = (stacking: Game.stacking, cards: array<card>): array<line> =>
+let columnFor = (stacking: Game.stacking, ~faceDown: int, cards: array<card>): array<line> =>
   switch stacking {
-  | Game.Fanned => fannedColumn(cards)
-  | Game.Squared => squaredColumn(cards)
+  | Game.Fanned => fannedColumn(~faceDown, cards)
+  | Game.Squared => squaredColumn(~faceDown, cards)
   }
 
-let pileColumn = (pile: Game.pile): array<line> => columnFor(pile.stacking, pile.cards)
+let pileColumn = (pile: Game.pile): array<line> =>
+  columnFor(pile.stacking, ~faceDown=pile.faceDown, pile.cards)
 
 // --- Layout -------------------------------------------------------------------
 
@@ -458,7 +476,11 @@ let stateLines = (~game: Game.t, ~deal: option<int>=?, state: GameState.t): arra
       headedColumns(
         ~game,
         game.piles->Array.mapWithIndex((pile, i) =>
-          columnFor(pile.stacking, GameState.cardsInPile(state, i))
+          columnFor(
+            pile.stacking,
+            ~faceDown=GameState.faceDownIn(state, i),
+            GameState.cardsInPile(state, i),
+          )
         ),
       ),
     ),

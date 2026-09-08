@@ -30,13 +30,23 @@ const RANK_WORDS = {
 }
 const SUIT_LETTERS = { clubs: "C", diamonds: "D", hearts: "H", spades: "S" }
 
-/** `Deck.cardName`'s prose, back to a short code: "ace of spades" -> "AS". */
-export function parseCardName(name) {
+/**
+ * `Deck.cardName`'s prose, back to a short code: "ace of spades" -> "AS" — or `null`
+ * for a name that isn't a card's, which is what a face-down card announces itself as
+ * (`TableScene.faceDownLabel`): the board deliberately doesn't say what it is.
+ */
+export function cardCodeOf(name) {
   const m = /^(\w+) of (\w+)$/.exec(String(name).trim().toLowerCase())
   const rank = m && RANK_WORDS[m[1]]
   const suit = m && SUIT_LETTERS[m[2]]
-  if (!rank || !suit) throw new Error(`unparseable card name: ${name}`)
-  return RANKS[rank - 1] + suit
+  return rank && suit ? RANKS[rank - 1] + suit : null
+}
+
+/** The same, for a card that has to be one: FreeCell shows every face. */
+export function parseCardName(name) {
+  const code = cardCodeOf(name)
+  if (!code) throw new Error(`unparseable card name: ${name}`)
+  return code
 }
 
 /** A code as the card number `Position` packs it into (`Position.idOfCode`). */

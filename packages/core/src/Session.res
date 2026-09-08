@@ -225,6 +225,9 @@ let dispatch = (~clock: unit => float, s: t, action: Reducer.action): (t, change
       // A reorder moves whole columns rather than named cards, so there's nothing to
       // fly: a caller re-lays the board instead.
       | Reducer.MoveColumn(_) => []
+      // A deal names no card; the row it dropped is read off the board it was dealt
+      // from — `present(s)` is still that board here.
+      | Reducer.Deal => Reducer.nextDeal(~game=s.game, present(s))
       }
       (commit(~clock, s, settled), Settled({action, moved, collected}))
     | Error(error) => (s, Rejected({action, error}))
@@ -442,6 +445,7 @@ let step = (~clock: unit => float, s: t, command: Command.t): (t, outcome) =>
   | Command.Finish => finish(~clock, s)
   | Command.Autoplay => autoplay(~clock, s)
   | Command.Home({card}) => home(~clock, s, card)
+  | Command.Draw => dispatched(~clock, s, Reducer.Deal)
   | Command.Dispatch(action) => dispatched(~clock, s, action)
   // A move with a half only a board can read — `move 8H 9S`, `move C1 F1`. `Command`'s
   // readers answer each against this session's board, and what comes back is dispatched

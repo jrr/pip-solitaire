@@ -8,9 +8,15 @@ test("greeting returns the expected message", () => {
 // The modelled games: assert the rules the presentation layer reads back.
 describe("Game", () => {
   test("every game is listed with a stable id and a non-empty name", () => {
-    // FreeCell, its two short-deck siblings and Simple Simon — the list the scene
-    // picker and the CLI's `games`/`deal <id>` enumerate, in picker order.
-    expect(Game.all->Array.map(g => g.id))->toEqual(["freecell", "mini", "micro", "simplesimon"])
+    // FreeCell, its two short-deck siblings and the two Spider boards — the list the
+    // scene picker and the CLI's `games`/`deal <id>` enumerate, in picker order.
+    expect(Game.all->Array.map(g => g.id))->toEqual([
+      "freecell",
+      "mini",
+      "micro",
+      "simplesimon",
+      "spiderette",
+    ])
     expect(Game.all->Array.every(g => g.name != ""))->toBe(true)
   })
 
@@ -468,19 +474,16 @@ describe("Game", () => {
         // refuse every card above a Two for the rest of the game.
         //
         // Board order on `micro` is 2 cells, 2 foundations, 4 cascades.
-        let posed: GameState.t = {
-          piles: [
-            [],
-            [],
-            [{suit: Spades, rank: Ace}, {suit: Spades, rank: Two}],
-            [{suit: Hearts, rank: Ace}, {suit: Hearts, rank: Two}],
-            [{suit: Spades, rank: Three}],
-            [{suit: Spades, rank: Four}],
-            [],
-            [],
-          ],
-          loose: [],
-        }
+        let posed = GameState.faceUp([
+          [],
+          [],
+          [{suit: Spades, rank: Ace}, {suit: Spades, rank: Two}],
+          [{suit: Hearts, rank: Ace}, {suit: Hearts, rank: Two}],
+          [{suit: Spades, rank: Three}],
+          [{suit: Spades, rank: Four}],
+          [],
+          [],
+        ])
         expect(Reducer.isSafeToCollect(~game=Game.micro, posed, {suit: Spades, rank: Three}))->toBe(
           true,
         )
@@ -569,15 +572,15 @@ describe("Game", () => {
     let spades = ranks => ranks->Array.map(rank => {suit: Spades, rank})
     // A posed position from its cascades alone (foundations empty, missing cascades
     // empty), so a test states only the columns it's about.
-    let posed = (~foundationCards=[], columns: array<array<card>>): GameState.t => {
-      piles: foundations
-      ->Array.map(_ => [])
-      ->Array.concat(
-        cascades->Array.mapWithIndex((_, i) => columns->Array.get(i)->Option.getOr([])),
+    let posed = (~foundationCards=[], columns: array<array<card>>): GameState.t =>
+      GameState.faceUp(
+        foundations
+        ->Array.map(_ => [])
+        ->Array.concat(
+          cascades->Array.mapWithIndex((_, i) => columns->Array.get(i)->Option.getOr([])),
+        )
+        ->Array.mapWithIndex((cards, i) => i == 0 ? foundationCards : cards),
       )
-      ->Array.mapWithIndex((cards, i) => i == 0 ? foundationCards : cards),
-      loose: [],
-    }
     // The full King→Ace run of a suit, bottom-first as a cascade holds it.
     let kingToAce = suit => Cards.ranks->Array.toReversed->Array.map(rank => {suit, rank})
 
@@ -806,8 +809,8 @@ describe("Game", () => {
     test(
       "is won when every foundation holds its run, and not before",
       () => {
-        let three = {
-          GameState.piles: board.piles->Array.mapWithIndex(
+        let three = GameState.faceUp(
+          board.piles->Array.mapWithIndex(
             (_, i) =>
               switch i {
               | 0 => kingToAce(Spades)
@@ -817,8 +820,7 @@ describe("Game", () => {
               | _ => []
               },
           ),
-          loose: [],
-        }
+        )
         expect(GameState.hasWon(board, three))->toBe(false)
         // The last run is still on a cascade; collecting it is the win.
         let (settled, moved) = Reducer.autoCollect(~game=board, three)
@@ -920,6 +922,359 @@ describe("Game", () => {
     )
   })
 
+  // Spider's stock and its face-down cards, on the board that needs no second pack.
+  // Board order: the stock, four sealed foundations, then seven cascades. What's
+  // asserted is that a face-down card is a *count on the snapshot* — turned over by
+  // the move that exposes it and put back by undo, never a flag a driver remembers —
+  // and that the deal is one more action the reducer takes, refused on the board's own
+  // terms rather than a branch on its id.
+  describe("spiderette", () => {
+    let board = Game.spiderette
+    let stock = Reducer.stockOf(board)->Option.getOrThrow
+    let foundations = Game.pileIndices(board, Game.Foundation)
+    let cascades = Game.pileIndices(board, Game.Cascade)
+    let cascade = k => cascades->Array.getUnsafe(k)
+    let opening = GameState.initial(board)
+    let deal = state =>
+      switch Reducer.reduce(~game=board, state, Reducer.Deal) {
+      | Ok(next) => next
+      | Error(_) => state
+      }
+    let spades = ranks => ranks->Array.map(rank => {suit: Spades, rank})
+    let kingToAce = suit => Cards.ranks->Array.toReversed->Array.map(rank => {suit, rank})
+    // A posed position from its columns and stock alone, everything face up unless
+    // `~down` says otherwise: a count per column, matched by position.
+    let posed = (~stockCards=[], ~down=[], columns: array<array<card>>): GameState.t => {
+      let piles = board.piles->Array.mapWithIndex(
+        (pile: Game.pile, i) =>
+          switch pile.role {
+          | Game.Stock => stockCards
+          | Game.Foundation => []
+          | Game.Cascade | Game.FreeCell =>
+            columns->Array.get(cascades->Array.indexOf(i))->Option.getOr([])
+          },
+      )
+      let state = GameState.faceUp(piles)
+      {
+        ...state,
+        faceDown: state.faceDown->Array.mapWithIndex(
+          (n, i) =>
+            i == stock
+              ? Array.length(stockCards)
+              : down->Array.get(cascades->Array.indexOf(i))->Option.getOr(n),
+        ),
+      }
+    }
+
+    test(
+      "is twelve piles: a sealed stock, four sealed foundations, then seven cascades under Spider's law",
+      () => {
+        expect(Array.length(board.piles))->toBe(12)
+        expect(stock)->toBe(0)
+        expect(foundations)->toEqual([1, 2, 3, 4])
+        expect(cascades)->toEqual([5, 6, 7, 8, 9, 10, 11])
+        expect(Game.pileIndices(board, Game.FreeCell))->toEqual([])
+        Game.pilesOf(board, Game.Stock)->Array.forEach(
+          p => {
+            expect(p.rule)->toEqual(Rules.Sealed)
+            expect(p.stacking)->toEqual(Game.Squared)
+          },
+        )
+        Game.pilesOf(board, Game.Foundation)->Array.forEach(
+          p => expect(p.rule)->toEqual(Rules.Sealed),
+        )
+        Game.pilesOf(board, Game.Cascade)->Array.forEach(
+          p => {
+            expect(p.rule)->toEqual(Rules.spiderCascade)
+            expect(p.stacking)->toEqual(Game.Fanned)
+          },
+        )
+        expect(board.runLimit)->toEqual(Game.Unlimited)
+        expect(board.collect)->toEqual(Game.CompleteRuns)
+        expect(board.deck)->toEqual(Cards.standard)
+      },
+    )
+
+    test(
+      "deals 1/2/3/4/5/6/7 with only each column's top card face up, and the other 24 into the stock face down",
+      () => {
+        let columns = Game.pilesOf(board, Game.Cascade)
+        expect(columns->Array.map(p => Array.length(p.cards)))->toEqual([1, 2, 3, 4, 5, 6, 7])
+        expect(columns->Array.map(p => p.faceDown))->toEqual([0, 1, 2, 3, 4, 5, 6])
+        let stockPile = board.piles->Array.getUnsafe(stock)
+        expect(Array.length(stockPile.cards))->toBe(24)
+        expect(stockPile.faceDown)->toBe(24)
+        // Every card exactly once, between the columns and the stock.
+        let dealt = columns->Array.flatMap(p => p.cards)->Array.concat(stockPile.cards)
+        expect(Array.length(dealt))->toBe(52)
+        expect(
+          Cards.all->Array.every(card => dealt->Array.some(c => GameState.sameCard(c, card))),
+        )->toBe(true)
+        // The snapshot carries the counts, and reads them per card.
+        expect(opening.faceDown)->toEqual([24, 0, 0, 0, 0, 0, 1, 2, 3, 4, 5, 6])
+        let second = GameState.cardsInPile(opening, cascade(1))
+        expect(GameState.isFaceDown(opening, second->Array.getUnsafe(0)))->toBe(true)
+        expect(GameState.isFaceDown(opening, second->Array.getUnsafe(1)))->toBe(false)
+        // The stock's top is the card the shuffle would have dealt next.
+        let shuffled = Cards.shuffle(~seed=Game.freecellSeed)
+        expect(GameState.topOf(opening, stock))->toEqual(shuffled->Array.get(28))
+      },
+    )
+
+    test(
+      "is re-dealable under its own id, reproducibly",
+      () => {
+        let cards = (game: Game.t) => game.piles->Array.map(p => p.cards)
+        let another = board.deal->Option.getOrThrow
+        let dealt = another(4242)
+        expect(dealt.id)->toBe(board.id)
+        expect(dealt.seed)->toEqual(Some(4242))
+        let again = dealt.deal->Option.getOrThrow
+        expect(cards(again(4242)))->toEqual(cards(dealt))
+        expect(cards(again(9)) == cards(dealt))->toBe(false)
+      },
+    )
+
+    test(
+      "a deal drops the stock's top card face up on every column, left to right, as one step",
+      () => {
+        let row = Reducer.nextDeal(~game=board, opening)
+        let stockCards = GameState.cardsInPile(opening, stock)
+        expect(row)->toEqual(stockCards->Array.slice(~start=17, ~end=24)->Array.toReversed)
+        let next = deal(opening)
+        expect(GameState.equal(next, opening))->toBe(false)
+        expect(Array.length(GameState.cardsInPile(next, stock)))->toBe(17)
+        cascades->Array.forEachWithIndex(
+          (i, k) => {
+            expect(GameState.topOf(next, i))->toEqual(row->Array.get(k))
+            expect(Array.length(GameState.cardsInPile(next, i)))->toBe(k + 2)
+            expect(GameState.isFaceDown(next, row->Array.getUnsafe(k)))->toBe(false)
+          },
+        )
+        // The columns' face-down cards are untouched, and the stock is still all backs.
+        expect(next.faceDown)->toEqual([17, 0, 0, 0, 0, 0, 1, 2, 3, 4, 5, 6])
+      },
+    )
+
+    test(
+      "the last deal is three cards onto the first three columns, and then there is nothing to deal",
+      () => {
+        let three = opening->deal->deal->deal
+        expect(Array.length(GameState.cardsInPile(three, stock)))->toBe(3)
+        let row = Reducer.nextDeal(~game=board, three)
+        expect(Array.length(row))->toBe(3)
+        let last = deal(three)
+        expect(Array.length(GameState.cardsInPile(last, stock)))->toBe(0)
+        expect(cascades->Array.map(i => Array.length(GameState.cardsInPile(last, i))))->toEqual([
+          5,
+          6,
+          7,
+          7,
+          8,
+          9,
+          10,
+        ])
+        expect(Reducer.reduce(~game=board, last, Reducer.Deal))->toEqual(Error(Reducer.StockEmpty))
+        expect(Reducer.nextDeal(~game=board, last))->toEqual([])
+      },
+    )
+
+    test(
+      "a deal is refused while a column stands empty, and on a board with no stock",
+      () => {
+        let gap = posed(~stockCards=spades([Ace, Two]), [spades([King]), [], spades([Queen])])
+        expect(Reducer.reduce(~game=board, gap, Reducer.Deal))->toEqual(Error(Reducer.CascadeEmpty))
+        expect(Reducer.nextDeal(~game=board, gap))->toEqual([])
+        let simon = Game.simpleSimon
+        expect(Reducer.reduce(~game=simon, GameState.initial(simon), Reducer.Deal))->toEqual(
+          Error(Reducer.NoStock),
+        )
+        expect(Reducer.nextDeal(~game=simon, GameState.initial(simon)))->toEqual([])
+      },
+    )
+
+    test(
+      "a face-down card is nobody's to lift, alone or under a run it happens to continue",
+      () => {
+        // ♠8 face down under ♠7: by rank and suit the pair is a run, and it isn't one.
+        let state = posed(~down=[1], [spades([Eight, Seven]), [{suit: Hearts, rank: Eight}]])
+        let eight = {suit: Spades, rank: Eight}
+        let seven = {suit: Spades, rank: Seven}
+        let to = Reducer.ToPile(cascade(1))
+        expect(Reducer.reduce(~game=board, state, Move({card: eight, to})))->toEqual(
+          Error(Reducer.CardFaceDown),
+        )
+        expect(Reducer.reduce(~game=board, state, MoveRun({cards: [eight, seven], to})))->toEqual(
+          Error(Reducer.CardFaceDown),
+        )
+        expect(Reducer.canMoveRun(~game=board, state, [eight, seven], ~onto=cascade(1)))->toBe(
+          false,
+        )
+        expect(Reducer.validMoves(~game=board, state, eight))->toEqual([])
+        // The run showing in the column stops above the face-down card.
+        expect(Command.runShowing(~game=board, state, cascade(0)))->toEqual([seven])
+        // …and the seven itself is still the hand's.
+        expect(Reducer.reduce(~game=board, state, Move({card: seven, to}))->Result.isOk)->toBe(true)
+      },
+    )
+
+    test(
+      "the move that exposes a face-down card turns it over, and undo turns it back",
+      () => {
+        let state = posed(~down=[1], [spades([Eight, Seven]), [{suit: Hearts, rank: Eight}]])
+        let eight = {suit: Spades, rank: Eight}
+        let seven = {suit: Spades, rank: Seven}
+        let session = Session.open_(
+          ~clock=() => 0.,
+          ~options=Options.default,
+          ~seed=None,
+          board,
+          state,
+        )
+        let (moved, change) = Session.dispatch(
+          ~clock=() => 0.,
+          session,
+          Move({card: seven, to: ToPile(cascade(1))}),
+        )
+        switch change {
+        | Session.Settled(_) => ()
+        | _ => expect("a settled move")->toBe("something else")
+        }
+        let after = Session.present(moved)
+        expect(GameState.cardsInPile(after, cascade(0)))->toEqual([eight])
+        expect(GameState.isFaceDown(after, eight))->toBe(false)
+        expect(GameState.faceDownIn(after, cascade(0)))->toBe(0)
+        // Now the eight is the hand's.
+        expect(Reducer.validMoves(~game=board, after, eight)->Array.length > 0)->toBe(true)
+        // One step back restores the position *as it lay*, back included.
+        let (undone, _) = Session.undo(~clock=() => 0., moved)
+        expect(GameState.equal(Session.present(undone), state))->toBe(true)
+        expect(GameState.isFaceDown(Session.present(undone), eight))->toBe(true)
+      },
+    )
+
+    test(
+      "a run lifted whole, or collected, turns over the card it was resting on — and only then",
+      () => {
+        // ♣K face down under a three-card spade run: lifting the run exposes it.
+        let run = spades([Nine, Eight, Seven])
+        let state = posed(
+          ~down=[1],
+          [[{suit: Clubs, rank: King}]->Array.concat(run), [{suit: Hearts, rank: Ten}]],
+        )
+        switch Reducer.reduce(~game=board, state, MoveRun({cards: run, to: ToPile(cascade(1))})) {
+        | Ok(next) =>
+          expect(GameState.cardsInPile(next, cascade(0)))->toEqual([{suit: Clubs, rank: King}])
+          expect(next.faceDown->Array.getUnsafe(cascade(0)))->toBe(0)
+        | Error(e) => expect(Ok(e))->toEqual(Error(Reducer.NotARun))
+        }
+        // A face-down ♦2 under a complete run: collecting the run turns it over.
+        let done = posed(
+          ~down=[1],
+          [[{suit: Diamonds, rank: Two}]->Array.concat(kingToAce(Spades))],
+        )
+        let (settled, moved) = Reducer.autoCollect(~game=board, done)
+        expect(moved)->toEqual(kingToAce(Spades))
+        expect(GameState.cardsInPile(settled, cascade(0)))->toEqual([{suit: Diamonds, rank: Two}])
+        expect(GameState.isFaceDown(settled, {suit: Diamonds, rank: Two}))->toBe(false)
+        expect(GameState.cardsInPile(settled, foundations->Array.getUnsafe(0)))->toEqual(
+          kingToAce(Spades),
+        )
+      },
+    )
+
+    test(
+      "a deal that completes a run has it collected, in the same settled step",
+      () => {
+        // The stock's top is ♠A and the first column is ♠K→2: the deal completes the
+        // run, and settling lifts it. The other six dealt cards land where they fall.
+        let filler = [Two, Three, Four, Five, Six, Seven]->Array.map(rank => {suit: Hearts, rank})
+        let stockCards = filler->Array.concat(spades([Ace]))
+        let state = posed(
+          ~stockCards,
+          [
+            kingToAce(Spades)->Array.slice(~start=0, ~end=12),
+            spades([Two])->Array.map(_ => {suit: Clubs, rank: Nine}),
+            [{suit: Clubs, rank: Eight}],
+            [{suit: Clubs, rank: Seven}],
+            [{suit: Clubs, rank: Six}],
+            [{suit: Clubs, rank: Five}],
+            [{suit: Clubs, rank: Four}],
+          ],
+        )
+        let session = Session.open_(
+          ~clock=() => 0.,
+          ~options=Options.default,
+          ~seed=None,
+          board,
+          state,
+        )
+        let (next, change) = Session.dispatch(~clock=() => 0., session, Reducer.Deal)
+        switch change {
+        | Session.Settled({moved, collected}) =>
+          expect(moved)->toEqual(spades([Ace])->Array.concat(filler->Array.toReversed))
+          expect(collected)->toEqual(kingToAce(Spades))
+        | _ => expect("a settled deal")->toBe("something else")
+        }
+        let after = Session.present(next)
+        expect(GameState.cardsInPile(after, foundations->Array.getUnsafe(0)))->toEqual(
+          kingToAce(Spades),
+        )
+        expect(GameState.cardsInPile(after, cascade(0)))->toEqual([])
+        expect(GameState.cardsInPile(after, stock))->toEqual([])
+        expect(next.stats.moves)->toBe(1)
+        expect(Session.canUndo(next))->toBe(true)
+      },
+    )
+
+    test(
+      "a column reorder carries its face-down count with it",
+      () => {
+        let state = posed(~down=[1, 0], [spades([Eight, Seven]), spades([Six])])
+        switch Reducer.reduce(~game=board, state, MoveColumn({from: cascade(0), to: cascade(1)})) {
+        | Ok(next) =>
+          expect(GameState.cardsInPile(next, cascade(1)))->toEqual(spades([Eight, Seven]))
+          expect(GameState.faceDownIn(next, cascade(1)))->toBe(1)
+          expect(GameState.faceDownIn(next, cascade(0)))->toBe(0)
+        | Error(_) => expect("reordered")->toBe("refused")
+        }
+      },
+    )
+
+    test(
+      "the slot labels name the stock too",
+      () => {
+        expect(Slot.labels(~game=board))->toEqual([
+          "S1",
+          "F1",
+          "F2",
+          "F3",
+          "F4",
+          "T1",
+          "T2",
+          "T3",
+          "T4",
+          "T5",
+          "T6",
+          "T7",
+        ])
+        expect(Slot.parse("S1"))->toEqual(Some((Game.Stock, 1)))
+        expect(Slot.indexOf(~game=board, ~role=Game.Stock, ~ordinal=1))->toEqual(Some(stock))
+      },
+    )
+
+    test(
+      "the solver declines it rather than mis-reading a board it can't model",
+      () => {
+        expect(Position.ofGameState(~game=board, opening)->Option.isNone)->toBe(true)
+        expect(Solver.autoplay(~game=board, opening))->toEqual(Solver.NotFreeCell)
+        // Nothing on it is ever finishable by foundation moves: the foundations take
+        // only what the game collects.
+        expect(Reducer.canFinish(~game=board, opening))->toBe(false)
+      },
+    )
+  })
+
   // Addressing piles by role: the two helpers every group-targeted query is
   // built on — the deal, auto-to-foundation, win detection, the supermove limit.
   // A little three-role board makes the ordering and the absent-role case legible
@@ -931,10 +1286,38 @@ describe("Game", () => {
       deck: Cards.standard,
       name: "Roles",
       piles: [
-        {role: Foundation, stacking: Squared, rule: Rules.foundation, capacity: None, cards: []},
-        {role: FreeCell, stacking: Squared, rule: Rules.Free, capacity: Some(1), cards: []},
-        {role: FreeCell, stacking: Squared, rule: Rules.Free, capacity: Some(1), cards: []},
-        {role: Cascade, stacking: Fanned, rule: Rules.cascade, capacity: None, cards: []},
+        {
+          role: Foundation,
+          stacking: Squared,
+          rule: Rules.foundation,
+          capacity: None,
+          cards: [],
+          faceDown: 0,
+        },
+        {
+          role: FreeCell,
+          stacking: Squared,
+          rule: Rules.Free,
+          capacity: Some(1),
+          cards: [],
+          faceDown: 0,
+        },
+        {
+          role: FreeCell,
+          stacking: Squared,
+          rule: Rules.Free,
+          capacity: Some(1),
+          cards: [],
+          faceDown: 0,
+        },
+        {
+          role: Cascade,
+          stacking: Fanned,
+          rule: Rules.cascade,
+          capacity: None,
+          cards: [],
+          faceDown: 0,
+        },
       ],
       seed: None,
       deal: None,
@@ -944,7 +1327,16 @@ describe("Game", () => {
     // A board with only cascades, for the absent-role case.
     let cascadesOnly: Game.t = {
       ...rolesGame,
-      piles: [{role: Cascade, stacking: Fanned, rule: Rules.cascade, capacity: None, cards: []}],
+      piles: [
+        {
+          role: Cascade,
+          stacking: Fanned,
+          rule: Rules.cascade,
+          capacity: None,
+          cards: [],
+          faceDown: 0,
+        },
+      ],
     }
 
     test(
@@ -984,14 +1376,29 @@ describe("GameState", () => {
     deck: Cards.standard,
     name: "Dealt",
     piles: [
-      {role: FreeCell, stacking: Squared, rule: Rules.Free, capacity: Some(1), cards: []},
-      {role: FreeCell, stacking: Squared, rule: Rules.Free, capacity: Some(1), cards: []},
+      {
+        role: FreeCell,
+        stacking: Squared,
+        rule: Rules.Free,
+        capacity: Some(1),
+        cards: [],
+        faceDown: 0,
+      },
+      {
+        role: FreeCell,
+        stacking: Squared,
+        rule: Rules.Free,
+        capacity: Some(1),
+        cards: [],
+        faceDown: 0,
+      },
       {
         role: Cascade,
         stacking: Fanned,
         rule: Rules.cascade,
         capacity: None,
         cards: [{suit: Spades, rank: Six}, {suit: Diamonds, rank: Five}],
+        faceDown: 0,
       },
       {
         role: Cascade,
@@ -999,6 +1406,7 @@ describe("GameState", () => {
         rule: Rules.cascade,
         capacity: None,
         cards: [{suit: Hearts, rank: Nine}, {suit: Spades, rank: Eight}],
+        faceDown: 0,
       },
     ],
     seed: None,
@@ -1447,9 +1855,17 @@ describe("Reducer", () => {
           rule: Rules.foundation,
           capacity: None,
           cards: [],
+          faceDown: 0,
         }: Game.pile
       ),
-      {role: Cascade, stacking: Fanned, rule: Rules.cascade, capacity: None, cards: []},
+      {
+        role: Cascade,
+        stacking: Fanned,
+        rule: Rules.cascade,
+        capacity: None,
+        cards: [],
+        faceDown: 0,
+      },
     ]->Array.concat(
       staged->Array.map((card): Game.pile => {
         role: Cascade,
@@ -1457,6 +1873,7 @@ describe("Reducer", () => {
         rule: Rules.Free,
         capacity: None,
         cards: [card],
+        faceDown: 0,
       }),
     ),
     seed: None,
@@ -1607,6 +2024,7 @@ describe("Reducer", () => {
             rule: Rules.foundation,
             capacity: None,
             cards: [],
+            faceDown: 0,
           }: Game.pile
         ),
       ]->Array.concat(
@@ -1617,6 +2035,7 @@ describe("Reducer", () => {
             rule: Rules.Free,
             capacity: None,
             cards: [card],
+            faceDown: 0,
           },
         ),
       ),
@@ -1659,14 +2078,29 @@ describe("Reducer", () => {
       deck: Cards.standard,
       name: "Cap",
       piles: [
-        {role: FreeCell, stacking: Squared, rule: Rules.Free, capacity: Some(1), cards: []},
-        {role: Cascade, stacking: Squared, rule: Rules.Free, capacity: None, cards: []},
+        {
+          role: FreeCell,
+          stacking: Squared,
+          rule: Rules.Free,
+          capacity: Some(1),
+          cards: [],
+          faceDown: 0,
+        },
+        {
+          role: Cascade,
+          stacking: Squared,
+          rule: Rules.Free,
+          capacity: None,
+          cards: [],
+          faceDown: 0,
+        },
         {
           role: Cascade,
           stacking: Squared,
           rule: Rules.Free,
           capacity: None,
           cards: [{suit: Spades, rank: Ace}],
+          faceDown: 0,
         },
         {
           role: Cascade,
@@ -1674,6 +2108,7 @@ describe("Reducer", () => {
           rule: Rules.Free,
           capacity: None,
           cards: [{suit: Hearts, rank: King}],
+          faceDown: 0,
         },
       ],
       seed: None,
@@ -1842,6 +2277,7 @@ describe("Reducer", () => {
               rule: Rules.cascade,
               capacity: None,
               cards: [{suit: Spades, rank: Ace}],
+              faceDown: 0,
             },
           ],
         }
@@ -1891,10 +2327,38 @@ describe("Reducer", () => {
       deck: Cards.standard,
       name: "VM",
       piles: [
-        {role: Foundation, stacking: Squared, rule: Rules.foundation, capacity: None, cards: []},
-        {role: FreeCell, stacking: Squared, rule: Rules.Free, capacity: Some(1), cards: []},
-        {role: Cascade, stacking: Fanned, rule: Rules.cascade, capacity: None, cards: []},
-        {role: Cascade, stacking: Fanned, rule: Rules.cascade, capacity: None, cards: []},
+        {
+          role: Foundation,
+          stacking: Squared,
+          rule: Rules.foundation,
+          capacity: None,
+          cards: [],
+          faceDown: 0,
+        },
+        {
+          role: FreeCell,
+          stacking: Squared,
+          rule: Rules.Free,
+          capacity: Some(1),
+          cards: [],
+          faceDown: 0,
+        },
+        {
+          role: Cascade,
+          stacking: Fanned,
+          rule: Rules.cascade,
+          capacity: None,
+          cards: [],
+          faceDown: 0,
+        },
+        {
+          role: Cascade,
+          stacking: Fanned,
+          rule: Rules.cascade,
+          capacity: None,
+          cards: [],
+          faceDown: 0,
+        },
       ],
       seed: None,
       deal: None,
@@ -1903,7 +2367,7 @@ describe("Reducer", () => {
     }
     // A hand-built snapshot from the four piles' contents, so a test can pose any
     // board it likes.
-    let stateOf = (piles): GameState.t => {GameState.piles, loose: []}
+    let stateOf = (piles): GameState.t => GameState.faceUp(piles)
 
     test(
       "a buried card has no moves",
@@ -1981,6 +2445,7 @@ describe("Reducer", () => {
               rule: Rules.foundation,
               capacity: None,
               cards: [],
+              faceDown: 0,
             },
             {
               role: Foundation,
@@ -1988,6 +2453,7 @@ describe("Reducer", () => {
               rule: Rules.foundation,
               capacity: None,
               cards: [],
+              faceDown: 0,
             },
             {
               role: Cascade,
@@ -1995,6 +2461,7 @@ describe("Reducer", () => {
               rule: Rules.cascade,
               capacity: None,
               cards: [{suit: Spades, rank: Ace}],
+              faceDown: 0,
             },
           ],
           seed: None,
@@ -2032,12 +2499,40 @@ describe("Reducer", () => {
       deck: Cards.standard,
       name: "AC",
       piles: [
-        {role: Foundation, stacking: Squared, rule: Rules.foundation, capacity: None, cards: []},
-        {role: Foundation, stacking: Squared, rule: Rules.foundation, capacity: None, cards: []},
-        {role: Foundation, stacking: Squared, rule: Rules.foundation, capacity: None, cards: []},
-        {role: Foundation, stacking: Squared, rule: Rules.foundation, capacity: None, cards: []},
-        {role: Cascade, stacking: Fanned, rule: Rules.Free, capacity: None, cards: []},
-        {role: Cascade, stacking: Fanned, rule: Rules.Free, capacity: None, cards: []},
+        {
+          role: Foundation,
+          stacking: Squared,
+          rule: Rules.foundation,
+          capacity: None,
+          cards: [],
+          faceDown: 0,
+        },
+        {
+          role: Foundation,
+          stacking: Squared,
+          rule: Rules.foundation,
+          capacity: None,
+          cards: [],
+          faceDown: 0,
+        },
+        {
+          role: Foundation,
+          stacking: Squared,
+          rule: Rules.foundation,
+          capacity: None,
+          cards: [],
+          faceDown: 0,
+        },
+        {
+          role: Foundation,
+          stacking: Squared,
+          rule: Rules.foundation,
+          capacity: None,
+          cards: [],
+          faceDown: 0,
+        },
+        {role: Cascade, stacking: Fanned, rule: Rules.Free, capacity: None, cards: [], faceDown: 0},
+        {role: Cascade, stacking: Fanned, rule: Rules.Free, capacity: None, cards: [], faceDown: 0},
       ],
       seed: None,
       deal: None,
@@ -2046,7 +2541,7 @@ describe("Reducer", () => {
     }
     // A hand-built snapshot from the six piles' contents (foundations 0–3, then two
     // Free cascades 4–5), so a test can pose any foundation heights it likes.
-    let stateOf = (piles): GameState.t => {GameState.piles, loose: []}
+    let stateOf = (piles): GameState.t => GameState.faceUp(piles)
 
     describe(
       "isSafeToCollect",
@@ -2212,6 +2707,7 @@ describe("Reducer", () => {
           rule: Rules.foundation,
           capacity: None,
           cards: [],
+          faceDown: 0,
         },
       )
       ->Array.concat(
@@ -2222,6 +2718,7 @@ describe("Reducer", () => {
             rule: Rules.cascade,
             capacity: None,
             cards: [],
+            faceDown: 0,
           },
         ),
       ),
@@ -2237,7 +2734,7 @@ describe("Reducer", () => {
       while Array.length(cs) < 8 {
         cs->Array.push([])
       }
-      {GameState.piles: foundations->Array.concat(cs), loose: []}
+      GameState.faceUp(foundations->Array.concat(cs))
     }
     // A whole suit as a descending cascade King→Ace (bottom-first), so its top is
     // the Ace — a column that drains completely by foundation moves alone.
@@ -2304,10 +2801,7 @@ describe("Reducer", () => {
           ...finGame,
           piles: finGame.piles->Array.filter(p => p.role != Game.Foundation),
         }
-        let state: GameState.t = {
-          piles: Cards.suits->Array.map(fullSuit),
-          loose: [],
-        }
+        let state = GameState.faceUp(Cards.suits->Array.map(fullSuit))
         expect(Reducer.canFinish(~game=noFoundations, state))->toBe(false)
       },
     )
@@ -2323,12 +2817,54 @@ describe("Reducer", () => {
       deck: Cards.standard,
       name: "SM",
       piles: [
-        {role: FreeCell, stacking: Squared, rule: Rules.Free, capacity: Some(1), cards: []},
-        {role: FreeCell, stacking: Squared, rule: Rules.Free, capacity: Some(1), cards: []},
-        {role: Cascade, stacking: Fanned, rule: Rules.cascade, capacity: None, cards: []},
-        {role: Cascade, stacking: Fanned, rule: Rules.cascade, capacity: None, cards: []},
-        {role: Cascade, stacking: Fanned, rule: Rules.cascade, capacity: None, cards: []},
-        {role: Cascade, stacking: Fanned, rule: Rules.cascade, capacity: None, cards: []},
+        {
+          role: FreeCell,
+          stacking: Squared,
+          rule: Rules.Free,
+          capacity: Some(1),
+          cards: [],
+          faceDown: 0,
+        },
+        {
+          role: FreeCell,
+          stacking: Squared,
+          rule: Rules.Free,
+          capacity: Some(1),
+          cards: [],
+          faceDown: 0,
+        },
+        {
+          role: Cascade,
+          stacking: Fanned,
+          rule: Rules.cascade,
+          capacity: None,
+          cards: [],
+          faceDown: 0,
+        },
+        {
+          role: Cascade,
+          stacking: Fanned,
+          rule: Rules.cascade,
+          capacity: None,
+          cards: [],
+          faceDown: 0,
+        },
+        {
+          role: Cascade,
+          stacking: Fanned,
+          rule: Rules.cascade,
+          capacity: None,
+          cards: [],
+          faceDown: 0,
+        },
+        {
+          role: Cascade,
+          stacking: Fanned,
+          rule: Rules.cascade,
+          capacity: None,
+          cards: [],
+          faceDown: 0,
+        },
       ],
       seed: None,
       deal: None,
@@ -2338,7 +2874,7 @@ describe("Reducer", () => {
     // A distinct single-card filler, so "occupied" piles hold real, unique cards.
     let f = i => [Cards.all->Array.getUnsafe(i)]
     // A hand-built snapshot from the six piles' contents (cells 0–1, cascades 2–5).
-    let stateOf = (piles): GameState.t => {GameState.piles, loose: []}
+    let stateOf = (piles): GameState.t => GameState.faceUp(piles)
 
     // A legal descending-alternating run, bottom-first — the tail a supermove lifts.
     let run4 = [
@@ -2551,19 +3087,61 @@ describe("Reducer", () => {
       deck: Cards.standard,
       name: "Lift",
       piles: [
-        {role: FreeCell, stacking: Squared, rule: Rules.Free, capacity: Some(1), cards: []},
-        {role: FreeCell, stacking: Squared, rule: Rules.Free, capacity: Some(1), cards: []},
-        {role: Cascade, stacking: Fanned, rule: Rules.cascade, capacity: None, cards: []},
-        {role: Cascade, stacking: Fanned, rule: Rules.cascade, capacity: None, cards: []},
-        {role: Cascade, stacking: Fanned, rule: Rules.cascade, capacity: None, cards: []},
-        {role: Cascade, stacking: Fanned, rule: Rules.cascade, capacity: None, cards: []},
+        {
+          role: FreeCell,
+          stacking: Squared,
+          rule: Rules.Free,
+          capacity: Some(1),
+          cards: [],
+          faceDown: 0,
+        },
+        {
+          role: FreeCell,
+          stacking: Squared,
+          rule: Rules.Free,
+          capacity: Some(1),
+          cards: [],
+          faceDown: 0,
+        },
+        {
+          role: Cascade,
+          stacking: Fanned,
+          rule: Rules.cascade,
+          capacity: None,
+          cards: [],
+          faceDown: 0,
+        },
+        {
+          role: Cascade,
+          stacking: Fanned,
+          rule: Rules.cascade,
+          capacity: None,
+          cards: [],
+          faceDown: 0,
+        },
+        {
+          role: Cascade,
+          stacking: Fanned,
+          rule: Rules.cascade,
+          capacity: None,
+          cards: [],
+          faceDown: 0,
+        },
+        {
+          role: Cascade,
+          stacking: Fanned,
+          rule: Rules.cascade,
+          capacity: None,
+          cards: [],
+          faceDown: 0,
+        },
       ],
       seed: None,
       deal: None,
       runLimit: Game.Supermove,
       collect: Game.SafeCards,
     }
-    let stateOf = (piles): GameState.t => {GameState.piles, loose: []}
+    let stateOf = (piles): GameState.t => GameState.faceUp(piles)
 
     test(
       "a buried card is refused — the cards on it hold it down",
@@ -2678,6 +3256,7 @@ describe("Reducer", () => {
           rule: Rules.Free,
           capacity: Some(1),
           cards: [],
+          faceDown: 0,
         },
       )
       ->Array.concat(
@@ -2688,6 +3267,7 @@ describe("Reducer", () => {
             rule: Rules.foundation,
             capacity: None,
             cards: [],
+            faceDown: 0,
           },
         ),
       )
@@ -2700,6 +3280,7 @@ describe("Reducer", () => {
             rule: Rules.cascade,
             capacity: None,
             cards,
+            faceDown: 0,
           },
         ),
       ),

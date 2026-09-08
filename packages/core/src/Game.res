@@ -24,6 +24,10 @@ type role =
   | Cascade
   | FreeCell
   | Foundation
+  // Spider's stock: the undealt remainder of the pack, face down, that a `Reducer.Deal`
+  // drops a row from onto the cascades. The hand never touches it — its rule is
+  // `Sealed` — so it is addressed only by the deal, and by the view's tap on it.
+  | Stock
 
 // One drop zone. `rule` is the stackability law as data — may a card land here given
 // the current top card? — weighed by the pure `Rules.accepts` and shared by the
@@ -34,13 +38,17 @@ type role =
 // depends on the pile's *current count*, which `Rules.accepts` deliberately never
 // sees, so it is enforced one layer up in `Reducer.canDrop`/`reduce`.
 //
-// `cards` is bottom-first, so the last is the top of the pile.
+// `cards` is bottom-first, so the last is the top of the pile. `faceDown` is how many
+// of them, counted from the bottom, the opening deal turns face down — the initial
+// value of `GameState.faceDown` for this pile, and 0 on every board that deals
+// everything face up.
 type pile = {
   role: role,
   stacking: stacking,
   rule: Rules.rule,
   capacity: option<int>,
   cards: array<card>,
+  faceDown: int,
 }
 
 // How long a run may move as one gesture — the second question a run raises after
@@ -125,6 +133,7 @@ let rec freecellShaped = (
       rule: Rules.cascade,
       capacity: None,
       cards: column,
+      faceDown: 0,
     })
   // From an initializer, so each pile gets its own fresh `cards` array rather than
   // every one of them sharing a single array.
@@ -134,6 +143,7 @@ let rec freecellShaped = (
     rule: Rules.Free,
     capacity: Some(1),
     cards: [],
+    faceDown: 0,
   })
   let foundationPiles = Array.fromInitializer(~length=foundations, _ => {
     role: Foundation,
@@ -141,6 +151,7 @@ let rec freecellShaped = (
     rule: Rules.foundation,
     capacity: None,
     cards: [],
+    faceDown: 0,
   })
   {
     id,
@@ -241,6 +252,7 @@ let rec simpleSimonDeal = (~seed: int): t => {
       rule: Rules.spiderCascade,
       capacity: None,
       cards: column,
+      faceDown: 0,
     })
   let foundationPiles = Array.fromInitializer(~length=4, _ => {
     role: Foundation,
@@ -248,6 +260,7 @@ let rec simpleSimonDeal = (~seed: int): t => {
     rule: Rules.Sealed,
     capacity: None,
     cards: [],
+    faceDown: 0,
   })
   {
     id: "simplesimon",
@@ -263,9 +276,66 @@ let rec simpleSimonDeal = (~seed: int): t => {
 
 let simpleSimon = simpleSimonDeal(~seed=freecellSeed)
 
+// --- Spiderette ------------------------------------------------------------------
+// Spider on one pack: Simple Simon's laws (`Rules.spiderCascade`, `Unlimited`,
+// `CompleteRuns`) over a Klondike layout. Seven cascades dealt 1/2/3/4/5/6/7 with only
+// the top card of each face up, and the other 24 cards a face-down **stock** that a
+// `Reducer.Deal` drops one card from onto every cascade — three deals of seven, then
+// the last three cards onto the first three columns.
+//
+// The stock is dealt from its top, and its top is the card the shuffle would have
+// dealt next: the remainder is stacked in reverse so that dealing carries on through
+// the pack in shuffle order. That order is part of this game's deal-number promise, as
+// the counts are.
+let spideretteCounts = [1, 2, 3, 4, 5, 6, 7]
+
+let rec spideretteDeal = (~seed: int): t => {
+  let shuffled = Cards.shuffle(~deck=Cards.standard, ~seed)
+  let dealt = spideretteCounts->Array.reduce(0, (a, b) => a + b)
+  let cascadePiles = Cards.dealByCounts(~counts=spideretteCounts, shuffled)->Array.map(column => {
+    role: Cascade,
+    stacking: Fanned,
+    rule: Rules.spiderCascade,
+    capacity: None,
+    cards: column,
+    faceDown: Array.length(column) - 1,
+  })
+  let stockCards =
+    shuffled->Array.slice(~start=dealt, ~end=Array.length(shuffled))->Array.toReversed
+  let stockPile = {
+    role: Stock,
+    stacking: Squared,
+    rule: Rules.Sealed,
+    capacity: None,
+    cards: stockCards,
+    faceDown: Array.length(stockCards),
+  }
+  let foundationPiles = Array.fromInitializer(~length=4, _ => {
+    role: Foundation,
+    stacking: Squared,
+    rule: Rules.Sealed,
+    capacity: None,
+    cards: [],
+    faceDown: 0,
+  })
+  {
+    id: "spiderette",
+    name: "Spiderette",
+    // The stock leads the top row, the foundations beside it, the cascades below.
+    piles: [stockPile]->Array.concat(foundationPiles)->Array.concat(cascadePiles),
+    deck: Cards.standard,
+    seed: Some(seed),
+    deal: Some(seed => spideretteDeal(~seed)),
+    runLimit: Unlimited,
+    collect: CompleteRuns,
+  }
+}
+
+let spiderette = spideretteDeal(~seed=freecellSeed)
+
 // In picker order; a further game joins it here. The scene picker and the CLI's
 // `games`/`deal <id>` both enumerate it.
-let all = [freecell, mini, micro, simpleSimon]
+let all = [freecell, mini, micro, simpleSimon, spiderette]
 
 // The game a bare `deal`/`new`, or a bare deal *number*, lays out. Named here so each
 // front end asks for "the default game" rather than deciding for itself that a number

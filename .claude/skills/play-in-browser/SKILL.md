@@ -97,7 +97,10 @@ hand-run script doesn't.)
 
 Query parameters, all documented in `src/platform/AppUrl.res`:
 
-- `?game=freecell` — open a game by id (`freecell`, `mini`, `micro`).
+- `?game=freecell` — open a game by id (`freecell`, `mini`, `micro`, `simplesimon`,
+  `spiderette`). The solver and `playGame()` are FreeCell's; the Spider boards are
+  played by hand — `browser-tests/lib/play-line.mjs` drags a recorded line, and a
+  tap on Spiderette's stock deals the next row.
 - `?scene=gallery` — mount a non-game scene (`gallery`, `raster`, `trail`,
   `cascade`, `motion`).
 - `?seed=N` — open deal N of whichever game is mounted. Deterministic: the same N
@@ -105,9 +108,10 @@ Query parameters, all documented in `src/platform/AppUrl.res`:
 - `?animate=off` — skip the opening fly-in, so the board is at its resting
   positions as soon as the cards exist. **Use this**, or your first grab races
   the deal.
-- `?state=<name>` — a named scenario from `core`'s `Scenario`: `midgame`,
-  `almost-won`, `supermove`, `sendhome`, `finish`. Much faster than playing into
-  a position when you only need to be *in* one.
+- `?state=<name>` — a named scenario from `core`'s `Scenario`: FreeCell's
+  `midgame`, `almost-won`, `supermove`, `sendhome`, `finish`; Spiderette's `dealt`
+  (the stock dealt out) and `almost-won`. Much faster than playing into a position
+  when you only need to be *in* one.
 
 ## What you need to know about the board
 

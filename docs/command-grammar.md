@@ -152,7 +152,7 @@ prints, `u` undoes, `de 12345` deals.
 
 ```
 help  games  print  clear  quit  undo  redo  redeal
-finish  autoplay  deal  move  moverun  movecol  home  set
+finish  autoplay  deal  draw  move  moverun  movecol  home  set
 ```
 
 Two rules keep the prefix rule honest:
@@ -180,7 +180,9 @@ to. Canonical names having first say is what keeps `s` on `set` rather than on
 `show`.
 
 **Adding a name to `verbs` changes what every existing prefix means.** A second
-`re…` verb makes `re` ambiguous for everyone who had been typing it.
+`re…` verb makes `re` ambiguous for everyone who had been typing it — and `draw`
+is what took `d` away from `deal`: `d` is now refused by name, and `de`/`dr` say
+which.
 
 Downstream of the table, everything says the canonical verb — the `Usage`
 complaints and the front ends' "deal a game first" hint all key off it, so a
@@ -209,6 +211,12 @@ would aim it at pile 4 instead of the Four of Diamonds.
 
 Read a `deal` argument through `resolveDeal`, never in a front end. One resolver
 is what lets the panel deal the games its own `games` command has always listed.
+
+**`deal` lays out a game; `draw` deals a row.** Spider's stock drops one card onto
+every column at a time, and the verb for that is `draw` (`Command.Draw`,
+`Reducer.Deal`), a board verb `Session.step` plays like `move`: no argument, since
+what it drops is the stock's to say. On a board with no stock it is refused with
+"this game has no stock to deal from", not reported as an unknown command.
 
 ## Nothing fails; things are refused
 

@@ -379,6 +379,16 @@
     color: rgba(148, 163, 184, 0.6);
   }
 
+  /* The stock's slot, seen only once the stock has been dealt out: the same plate a
+     free cell rests on, with no mark inside it — there is nothing an empty stock
+     accepts, and nothing left to say about it. While the stock holds cards its slot is
+     under them, like any other. */
+  .drop-zone__slot--stock {
+    border-style: solid;
+    border-color: rgba(148, 163, 184, 0.3);
+    background: rgba(148, 163, 184, 0.06);
+  }
+
   /* A card outline at just under half size: any one card fits here, which is the
      whole of a free cell's rule. */
   .drop-zone__slot--cell::after {
@@ -538,6 +548,88 @@
      it doesn't offer the grab affordance. */
   .stacking-card--buried {
     cursor: default;
+  }
+
+  /* The stock is tapped, not dragged: a tap deals the next row (TableScene.res's
+     `playDeal`), and the pointer says so over every card in it. After `--buried`, so
+     it wins for the stock's covered cards too. */
+  .stacking-card--stock {
+    cursor: pointer;
+  }
+
+  /* The back of a card, for one lying face down. A plain element behind the face
+     rather than a second piece of card art, shown by `.stacking-card--down` (set each
+     reflow from `GameState.faceDown`, see TableScene.res). It traces the face exactly —
+     the same box, the same corner radius, the same hand-placed tilt through the same
+     custom property, and the same shadow — so a face-down card sits in a fan exactly
+     where its face would. The face underneath is hidden rather than removed: it keeps
+     the wrapper's height (`.card-art` is what sizes it) and comes straight back when
+     the card turns over.
+
+     The design is a white margin round a hatched blue field, the classic back, drawn
+     with a border and a repeating gradient so nothing is fetched and nothing is
+     rasterized. */
+  .card-back {
+    position: absolute;
+    inset: 0;
+    box-sizing: border-box;
+    border: calc(var(--card-w) * 0.06) solid #f7f7f7;
+    border-radius: var(--card-radius);
+    background:
+      repeating-linear-gradient(
+        45deg,
+        rgba(255, 255, 255, 0.14) 0 calc(var(--card-w) * 0.03),
+        transparent calc(var(--card-w) * 0.03) calc(var(--card-w) * 0.09)
+      ),
+      repeating-linear-gradient(
+        -45deg,
+        rgba(255, 255, 255, 0.14) 0 calc(var(--card-w) * 0.03),
+        transparent calc(var(--card-w) * 0.03) calc(var(--card-w) * 0.09)
+      ),
+      #1e3a8a;
+    box-shadow: 0 0 1px rgba(15, 23, 42, 0.55), 0 1px 2px rgba(15, 23, 42, 0.4);
+    transform: rotate(var(--card-rot, 0deg));
+    transform-origin: 50% 50%;
+    transition: transform var(--card-rot-dur, 0.18s) ease var(--card-rot-delay, 0s),
+      opacity 0.12s ease;
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  .stacking-card--down .card-back {
+    opacity: 1;
+  }
+
+  .stacking-card--down .card-art {
+    visibility: hidden;
+  }
+
+  /* A card turning face up: the face grows out of its own centre line as the back
+     fades — a flip seen from the table, not a 3D one, so it needs no perspective and
+     nothing the wrapper's own transform (the drag lift, the flights) could fight with.
+     The class lasts one animation (`animationend`, TableScene.res). Reduced motion
+     keeps the swap and drops the turn. */
+  .stacking-card--turning .card-art {
+    animation: card-turn 0.24s ease-out;
+  }
+
+  @keyframes card-turn {
+    from {
+      transform: rotate(var(--card-rot, 0deg)) scaleX(0);
+    }
+    to {
+      transform: rotate(var(--card-rot, 0deg)) scaleX(1);
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .stacking-card--turning .card-art {
+      animation: none;
+    }
+
+    .card-back {
+      transition-property: transform;
+    }
   }
 
   /* A card the victory cascade has launched: its sprite is now on the canvas, so the

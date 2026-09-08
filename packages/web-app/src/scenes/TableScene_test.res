@@ -887,6 +887,111 @@ describe("TableScene autoplay", () => {
   })
 })
 
+// A press and its release at one spot, as a tap on the stock arrives. jsdom has no
+// `PointerEvent`; the scene reads only `clientX`/`clientY` off the event on this path,
+// which a `MouseEvent` carries, and never captures the pointer for it.
+let tapAt: (WebDom.element, float, float) => unit = %raw(`(el, x, y) => {
+  for (const type of ["pointerdown", "pointerup"]) {
+    el.dispatchEvent(new MouseEvent(type, { bubbles: true, cancelable: true, clientX: x, clientY: y }))
+  }
+}`)
+
+// The stock and the face-down cards, as the board draws them: a back per card the
+// snapshot says lies face down, the stock dealt by a tap through the same dispatch a
+// drop takes, and a card turned over by the move that exposes it. The rules are
+// `core`'s (`Core_test`); what only a mounted board can show is that the classes and
+// the accessible names follow the snapshot.
+describe("TableScene face-down cards", () => {
+  let game = Game.spiderette
+  let facesDown = container => container->countOf(".stacking-card--down")
+  let announcedDown = container => container->countOf(`.card-art[aria-label="face-down card"]`)
+  let tallyOf = (saved: ref<option<SaveState.t>>) =>
+    saved.contents->Option.map((s: SaveState.t) => (s.stats.moves, s.stats.undos))
+
+  test("a tap on the stock deals the next row as one undoable step, and undo puts it back", () => {
+    let saved = ref(None)
+    let board = ref(None)
+    let container = host("div")
+    let scene = TableScene.make(
+      ~persist=s => saved := Some(s),
+      ~publish=published => board := Some(published),
+      game,
+    )
+    let _teardown = scene.mount(container)
+    flushFrames()
+    // Six face-down cards under the columns' tops plus the whole stock: forty-five backs,
+    // and not one of them announces the card it hides.
+    expect(facesDown(container))->toBe(45)
+    expect(announcedDown(container))->toBe(45)
+    expect(countOf(container, ".stacking-card--stock"))->toBe(24)
+    expect(countOf(container, `.card-art[aria-label="face-down card"]`))->toBe(45)
+
+    let stockCard = container->find(".stacking-card--stock")->Option.getOrThrow
+    tapAt(stockCard, 10., 10.)
+    // Reduced motion collapses the flight, so the row is already on the columns.
+    expect(countOf(container, ".stacking-card--stock"))->toBe(17)
+    expect(facesDown(container))->toBe(38)
+    expect(tallyOf(saved))->toEqual(Some((1, 0)))
+
+    live(board).undo()
+    expect(countOf(container, ".stacking-card--stock"))->toBe(24)
+    expect(facesDown(container))->toBe(45)
+    expect(tallyOf(saved))->toEqual(Some((1, 1)))
+  })
+
+  test(
+    "the move that exposes a face-down card turns it over, and it announces itself again",
+    () => {
+      // ♦2 face down under ♠7 in the first column, ♥8 alone in the second, everything
+      // else face up across the rest — the whole pack, so every card has its node.
+      let two: Deck.card = {suit: Diamonds, rank: Two}
+      let seven: Deck.card = {suit: Spades, rank: Seven}
+      let eight: Deck.card = {suit: Hearts, rank: Eight}
+      let named = card => [two, seven, eight]->Array.some(c => GameState.sameCard(c, card))
+      let rest = Cards.all->Array.filter(card => !named(card))->Cards.deal(~piles=5)
+      let cascades = Game.pileIndices(game, Game.Cascade)
+      let first = cascades->Array.getUnsafe(0)
+      let second = cascades->Array.getUnsafe(1)
+      let piles = game.piles->Array.mapWithIndex(
+        (_, i) =>
+          switch cascades->Array.indexOf(i) {
+          | 0 => [two, seven]
+          | 1 => [eight]
+          | k if k >= 2 => rest->Array.get(k - 2)->Option.getOr([])
+          | _ => []
+          },
+      )
+      let posed = GameState.faceUp(piles)
+      let initial = {
+        ...posed,
+        faceDown: posed.faceDown->Array.mapWithIndex((n, i) => i == first ? 1 : n),
+      }
+      let board = ref(None)
+      let container = host("div")
+      let scene = TableScene.make(~initial, ~publish=published => board := Some(published), game)
+      let _teardown = scene.mount(container)
+      flushFrames()
+      expect(facesDown(container))->toBe(1)
+      expect(announcedDown(container))->toBe(1)
+      expect(countOf(container, `.card-art[aria-label="two of diamonds"]`))->toBe(0)
+
+      live(board).runCommand(
+        Command.Dispatch(Reducer.Move({card: seven, to: Reducer.ToPile(second)})),
+      )->ignore
+      expect(facesDown(container))->toBe(0)
+      let art = container->find(`.card-art[aria-label="two of diamonds"]`)->Option.getOrThrow
+      let wrapper = container->find(".stacking-card--turning")->Option.getOrThrow
+      expect(wrapper->contains(art))->toBe(true)
+      // Face up, it heads a run of one and may be picked up.
+      expect(wrapper->classes->String.includes("stacking-card--buried"))->toBe(false)
+
+      live(board).runCommand(Command.Undo)->ignore
+      expect(facesDown(container))->toBe(1)
+      expect(countOf(container, `.card-art[aria-label="two of diamonds"]`))->toBe(0)
+    },
+  )
+})
+
 // The victory cascade's wiring. The motion is `Cascade_test`'s, the mechanics
 // `CascadePlayer_test`'s and the pixels `browser-tests/cascade.spec.mjs`'s; what only
 // this file can show is **which wins play one** — the split between a game being won and

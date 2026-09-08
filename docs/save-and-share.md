@@ -32,6 +32,9 @@ The undo/redo history — not just the current board — plus the numbers beside
 
 A state `S` is `{"piles":[[C,…],…],"loose":[C,…]}`. A card `C` is two characters,
 rank then suit: `TS`, `AH`. Small, legible in a stored blob, trivially reversible.
+A state with cards lying face down carries `"down":[n,…]` too, one count per pile —
+how many of its cards, from the bottom, show their backs — and a state without any
+carries no such field.
 
 Saving the whole history means a restored game has the Undo stack the player left,
 not just the position.
@@ -41,8 +44,9 @@ not just the position.
 `v` is a compatibility gate: `decode` rejects any other version, and the caller
 treats that as "no saved game" and deals fresh.
 
-Four fields have been added since v1 shipped — `stats`, `autoplays`, `timing`,
-`game` — and **none of them bumped it**. Each is optional in both directions:
+Five fields have been added since v1 shipped — `stats`, `autoplays`, `timing`,
+`game`, and a state's `down` — and **none of them bumped it**. Each is optional in
+both directions:
 
 - a blob written before the field existed decodes here, with a sensible stand-in
 - a blob written *with* it decodes in an older build, which ignores what it doesn't
@@ -65,6 +69,7 @@ What each absent field means:
 | `timing` | a game nobody clocked (`Timing.unknown`) |
 | `wonAt` alone | a game still being played |
 | `game` | "this save doesn't say" — the *reader* resolves it to `Game.default` |
+| a state's `down` | every card in it face up, which every save written before the field is |
 
 That last one is deliberately not filled in by `SaveState`. Which game a nameless
 save belongs to is a question about the app's list of games; `SaveState` is the wire

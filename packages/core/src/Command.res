@@ -65,6 +65,11 @@ type t =
   | MoveTo({from: from, where: where})
   // `home <card>` names a card but no destination — see the module note above.
   | Home({card: card})
+  // `draw`: the next row off the stock, on a board that deals from one (Spider). Not
+  // `deal`, which lays out a whole game and is taken; and a name of its own costs
+  // `d` its meaning — `d` fitted `deal` alone and now fits both, so it's refused
+  // and `de`/`dr` say which.
+  | Draw
   | Finish
   // `autoplay`: hand the board to the solver and let it play the thinking part
   // of the game out (`Solver.autoplay`, docs/solver.md).
@@ -165,6 +170,7 @@ let verbs = [
   "finish",
   "autoplay",
   "deal",
+  "draw",
   "move",
   "moverun",
   "movecol",
@@ -243,6 +249,7 @@ let parse = (line: string): t => {
       | "finish" => Finish
       | "autoplay" => Autoplay
       | "deal" => Deal({game: arg(1), scenario: arg(2)})
+      | "draw" => Draw
       // Key a message off the canonical verb, never off what was typed: everything
       // downstream of the table says `move`, whichever spelling arrived.
       | "move" =>
@@ -498,15 +505,18 @@ let runShowing = (~game: Game.t, state: GameState.t, i: int): array<card> =>
   | Some(pile) =>
     let cards = GameState.cardsInPile(state, i)
     let count = Array.length(cards)
+    // Never into the face-down cards: they may continue the run by rank and suit,
+    // but a hand can't see that, so the run stops above them.
+    let floor = GameState.faceDownIn(state, i)
     let rec longest = (start: int): array<card> =>
-      if start <= 0 {
-        cards
+      if start <= floor {
+        cards->Array.slice(~start=floor, ~end=count)
       } else if Rules.isRun(pile.rule, cards->Array.slice(~start=start - 1, ~end=count)) {
         longest(start - 1)
       } else {
         cards->Array.slice(~start, ~end=count)
       }
-    count == 0 ? [] : longest(count - 1)
+    count == 0 || floor >= count ? [] : longest(count - 1)
   }
 
 // Turn a `from` into the cards a move lifts, or say why this board offers none there.
@@ -599,6 +609,10 @@ let reason = (err: Reducer.moveError): string =>
   | Reducer.CardBuried => "that card is buried — only the card on top of a pile can be moved"
   | Reducer.NotASpan => "those cards aren't lying together at the top of one pile"
   | Reducer.CardHome => "that card is home — a collected run never comes back to the table"
+  | Reducer.CardFaceDown => "that card is face down — only a card you can see can be moved"
+  | Reducer.NoStock => "this game has no stock to deal from"
+  | Reducer.StockEmpty => "the stock is empty"
+  | Reducer.CascadeEmpty => "every column needs a card before the next row is dealt"
   }
 
 // The same, as a sentence that stands on its own — the phrase prefixed, and naming
@@ -623,6 +637,8 @@ let describeRejection = (err: Reducer.moveError, ~action: Reducer.action): strin
   switch (action, err) {
   | (Reducer.MoveColumn(_), Reducer.NotAColumn) => "Rejected: that pile isn't a cascade column."
   | (Reducer.MoveColumn(_), _) => "Rejected: no such pile."
+  // A deal carries no card either, and every one of its refusals is about the board.
+  | (Reducer.Deal, _) => `Rejected: ${reason(err)}.`
   | (Reducer.Move({card}), _) => describeError(err, card)
   | (Reducer.MoveRun({cards}), _) =>
     switch cards->Array.get(0) {
@@ -706,6 +722,7 @@ let boardHelp: array<helpRow> = [
     "supermove an ordered run: its cards bottom-first, or the column it's showing in (moverun T6 T2)",
   ),
   ("home <card>", "send a card to its foundation, if one will take it (e.g. home AS)"),
+  ("draw", "deal the next row from the stock, on a board that has one (Spiderette)"),
   (
     "movecol <from> <to>",
     "reorder cascade columns: pull column <from> and drop it at <to> (e.g. movecol 8 15)",

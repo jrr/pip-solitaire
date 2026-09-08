@@ -344,6 +344,69 @@ describe("SaveState", () => {
     )
   })
 
+  // The face-down counts arrived after the format did, on the same additive terms as
+  // every field before them: written only when a card lies face down, so a FreeCell
+  // save is byte for byte what it was, and absent reads as all face up — the truthful
+  // reading of every save that predates the field.
+  describe("the face-down counts", () => {
+    let spiderette = Game.spiderette
+    let dealt: SaveState.t = {
+      ...saved,
+      history: History.make(GameState.initial(spiderette)),
+      gameId: Some(spiderette.id),
+    }
+
+    test(
+      "ride in the state and come back",
+      () => {
+        let blob = SaveState.encode(dealt)
+        expect(blob->String.includes(`"down"`))->toBe(true)
+        switch SaveState.decode(blob) {
+        | Some(restored) =>
+          expect(restored)->toEqual(dealt)
+          expect(History.present(restored.history).faceDown)->toEqual(
+            GameState.initial(spiderette).faceDown,
+          )
+        | None => expect("decoded")->toBe("but got None")
+        }
+      },
+    )
+
+    test(
+      "a board with every card face up writes no field, and reads back as one",
+      () => {
+        let blob = SaveState.encode(saved)
+        expect(blob->String.includes(`"down"`))->toBe(false)
+        switch SaveState.decode(blob) {
+        | Some(restored) =>
+          expect(History.present(restored.history).faceDown)->toEqual(
+            opening.piles->Array.map(_ => 0),
+          )
+        | None => expect("decoded")->toBe("but got None")
+        }
+      },
+    )
+
+    test(
+      "a present-but-malformed count is rejected like any other bad field",
+      () => {
+        let state = down => `{"piles":[["AS","2S"],["3S"]],"loose":[]${down}}`
+        let blob = down => `{"v":1,"past":[],"present":${state(down)},"future":[]}`
+        // The shape without it decodes, so it's the field that fails each of these.
+        expect(SaveState.decode(blob(""))->Option.isSome)->toBe(true)
+        expect(SaveState.decode(blob(`,"down":[1,0]`))->Option.isSome)->toBe(true)
+        // Not a list, not whole numbers, the wrong length, or more cards than the pile
+        // holds: each describes a board the cards don't lay out.
+        expect(SaveState.decode(blob(`,"down":"lots"`)))->toEqual(None)
+        expect(SaveState.decode(blob(`,"down":[1.5,0]`)))->toEqual(None)
+        expect(SaveState.decode(blob(`,"down":[-1,0]`)))->toEqual(None)
+        expect(SaveState.decode(blob(`,"down":[1]`)))->toEqual(None)
+        expect(SaveState.decode(blob(`,"down":[3,0]`)))->toEqual(None)
+        expect(SaveState.decode(blob(`,"down":[null,0]`)))->toEqual(None)
+      },
+    )
+  })
+
   test("a present-but-malformed tally is rejected like any other bad field", () => {
     // Absent `stats` is a shape we support (above); `stats` of the wrong shape means
     // this isn't a blob we wrote, and half-reading a stranger's JSON is how a broken

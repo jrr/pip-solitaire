@@ -239,6 +239,73 @@ describe("Scenario", () => {
       },
     )
   })
+
+  // Spiderette's two positions: the one a player reaches by tapping the stock until it
+  // is empty, and a posed near-win. Both are addressed the way FreeCell's are.
+  describe("spiderette", () => {
+    let game = Game.spiderette
+    let cascades = Game.pileIndices(game, Game.Cascade)
+
+    test(
+      "the stock dealt out is the opening deal after every deal the stock allows",
+      () => {
+        let state = Scenario.forName(game, "dealt")->Option.getOrThrow
+        expect(Array.length(state.piles->Array.flat))->toBe(52)
+        expect(GameState.cardsInPile(state, Reducer.stockOf(game)->Option.getOrThrow))->toEqual([])
+        // Three rows of seven and one of three: 1..7 plus four each on the first three
+        // columns, three on the rest — with the opening's face-down cards still under.
+        expect(cascades->Array.map(i => Array.length(GameState.cardsInPile(state, i))))->toEqual([
+          5,
+          6,
+          7,
+          7,
+          8,
+          9,
+          10,
+        ])
+        expect(cascades->Array.map(i => GameState.faceDownIn(state, i)))->toEqual([
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+        ])
+        expect(Reducer.reduce(~game, state, Reducer.Deal))->toEqual(Error(Reducer.StockEmpty))
+      },
+    )
+
+    test(
+      "the near-won position is one drag from the win",
+      () => {
+        let state = Scenario.forName(game, "almost-won")->Option.getOrThrow
+        expect(Array.length(state.piles->Array.flat))->toBe(52)
+        expect(GameState.hasWon(game, state))->toBe(false)
+        let ace = {suit: Clubs, rank: Ace}
+        let first = cascades->Array.getUnsafe(0)
+        switch Reducer.reduce(~game, state, Move({card: ace, to: ToPile(first)})) {
+        | Ok(next) =>
+          let (settled, collected) = Reducer.autoCollect(~game, next)
+          expect(Array.length(collected))->toBe(13)
+          expect(GameState.hasWon(game, settled))->toBe(true)
+        | Error(_) => expect("the ace lands")->toBe("refused")
+        }
+      },
+    )
+
+    test(
+      "every listed name resolves, and none claims a deal",
+      () => {
+        Scenario.scenariosFor(game)->Array.forEach(
+          s => {
+            expect(Scenario.forName(game, s.name))->toEqual(Some(s.build(game)))
+            expect(s.seed)->toEqual(None)
+          },
+        )
+      },
+    )
+  })
 })
 
 // Win detection: every foundation complete is a win. Exercised through the

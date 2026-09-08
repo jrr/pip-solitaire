@@ -6,7 +6,7 @@
 // so a line found once is the same line every run, and the test stays a check on the
 // app rather than a second solver.
 
-import { assignPiles, parseCardName, readGeometry, settle } from "../../scripts/autoplay/read-board.mjs"
+import { assignPiles, cardCodeOf, readGeometry, settle } from "../../scripts/autoplay/read-board.mjs"
 import * as Slot from "core/src/Slot.res.mjs"
 
 /**
@@ -32,7 +32,8 @@ export function moveOf(game, text) {
  */
 export function grabPoint(piles, wanted) {
   for (const pile of piles) {
-    const idx = pile.findIndex((c) => parseCardName(c.name) === wanted)
+    // A face-down card has no code to match (`cardCodeOf`), and is never the one wanted.
+    const idx = pile.findIndex((c) => cardCodeOf(c.name) === wanted)
     if (idx < 0) continue
     const card = pile[idx]
     const next = pile[idx + 1]

@@ -195,9 +195,38 @@ type card = {
   // structural `{suit, rank}` cards — and this DOM node (see `nodeFor`).
   data: Deck.card,
   wrapper: WebDom.element,
+  // The face itself, kept to hand because turning a card over rewrites its accessible
+  // name: a face-down card must not announce what it is.
+  art: WebDom.element,
   x: ref<float>,
   y: ref<float>,
   draggable: ref<bool>,
+  // Whether the node shows its back. Read at reflow to tell a card *turning over*
+  // from one that was face up already, which is the only moment the flip animates.
+  down: ref<bool>,
+}
+
+// Turn a node face down or face up. The back is a sibling of the face inside the
+// wrapper and the stylesheet shows one or the other off the class; what has to be done
+// here is the accessible name, since the face's own `aria-label` (`CardArt`) would
+// otherwise read a hidden card out loud. A card going from down to up gets the turning
+// class for the length of one animation (`.stacking-card--turning`), dropped by the
+// `animationend` listener `makeCard` installs.
+let faceDownLabel = "face-down card"
+
+let setFaceDown = (c: card, ~down: bool) => {
+  let cls = classList(c.wrapper)
+  if down {
+    cls->addClass("stacking-card--down")
+    c.art->WebDom.setAttribute("aria-label", faceDownLabel)
+  } else {
+    if c.down.contents {
+      cls->addClass("stacking-card--turning")
+    }
+    cls->removeClass("stacking-card--down")
+    c.art->WebDom.setAttribute("aria-label", Deck.cardName(c.data))
+  }
+  c.down := down
 }
 
 // The two shake operations a built board exposes to the persistent shake
@@ -396,6 +425,7 @@ let slotRoleClass = (role: Game.role) =>
   | Game.FreeCell => "drop-zone__slot--cell"
   | Game.Foundation => "drop-zone__slot--foundation"
   | Game.Cascade => "drop-zone__slot--tableau"
+  | Game.Stock => "drop-zone__slot--stock"
   }
 
 // The whole span of the hand-placed tilt, not a variance. **Keep it small** or cards
@@ -925,11 +955,14 @@ let make = (
         // mapped back onto their nodes by identity — the card's slot is its index.
         let cards = GameState.cardsInPile(state(), zone.index)
         let count = Array.length(cards)
+        // How many of them, from the bottom, lie face down: shown as backs, never
+        // liftable, and the boundary a run can't reach past.
+        let down = GameState.faceDownIn(state(), zone.index)
         // The pile's stacking rule, consulted to decide which cards head a
         // legal run and so may be lifted as a supermove span.
-        let rule = switch game.piles->Array.get(zone.index) {
-        | Some(p) => p.rule
-        | None => Rules.Free
+        let (rule, role) = switch game.piles->Array.get(zone.index) {
+        | Some(p) => (p.rule, p.role)
+        | None => (Rules.Free, Game.Cascade)
         }
         cards->Array.forEachWithIndex((data, i) =>
           switch nodeFor(data) {
@@ -968,12 +1001,18 @@ let make = (
             // real top card. `bringToFront` still lifts a card above these while it's
             // dragged; the next reflow settles the pile back to slot order.
             style(c.wrapper)->setZIndex(Int.toString(i))
+            setFaceDown(c, ~down=i < down)
+            // The stock's cards are tapped rather than dragged, and the cursor says so.
+            role == Game.Stock
+              ? classList(c.wrapper)->addClass("stacking-card--stock")
+              : classList(c.wrapper)->removeClass("stacking-card--stock")
             // A card is grabbable when it *heads a legal run*: the tail from
             // its slot to the top of the pile must itself be a run under the pile's
             // rule. The top card is the length-1 case (a run of one), so single-card
             // play is unchanged; a deeper run-head lifts its whole span as a
-            // supermove. Every other buried card stays pinned.
-            let headsRun = Rules.isRun(rule, cards->Array.slice(~start=i, ~end=count))
+            // supermove. Every other buried card stays pinned — and so does a face-down
+            // one, whatever the cards above it happen to make with it.
+            let headsRun = i >= down && Rules.isRun(rule, cards->Array.slice(~start=i, ~end=count))
             c.draggable := headsRun
             headsRun
               ? classList(c.wrapper)->removeClass("stacking-card--buried")
@@ -1227,7 +1266,7 @@ let make = (
         ->Array.mapWithIndex((pile: Game.pile, index) => (pile.role, index))
         ->Array.filterMap(((role, index)) =>
           switch role {
-          | Game.Cascade | Game.FreeCell => None
+          | Game.Cascade | Game.FreeCell | Game.Stock => None
           | Game.Foundation =>
             let cards = GameState.cardsInPile(state(), index)
             // An empty foundation has nothing to give up, and no node to read a seat
@@ -1811,7 +1850,20 @@ let make = (
       let makeCard = (cardData: Deck.card) => {
         let wrapper = WebDom.createElement("div")
         wrapper->WebDom.setAttribute("class", "stacking-card")
-        wrapper->WebDom.appendChild(Html.create(CardArt.svg(cardData)))->ignore
+        let art = Html.create(CardArt.svg(cardData))
+        wrapper->WebDom.appendChild(art)->ignore
+        // The back, drawn by the stylesheet and shown only while the card lies face
+        // down (`setFaceDown`). A plain element rather than a second piece of card art:
+        // it carries no identity, and one per card is cheap where another SVG isn't.
+        let back = WebDom.createElement("div")
+        back->WebDom.setAttribute("class", "card-back")
+        back->WebDom.setAttribute("aria-hidden", "true")
+        wrapper->WebDom.appendChild(back)->ignore
+        // The turning class lasts one animation. Only a CSS animation on this node
+        // ends here — the flights are Web Animations and don't dispatch this.
+        wrapper->WebDom.addEventListener("animationend", () =>
+          classList(wrapper)->removeClass("stacking-card--turning")
+        )
 
         // The card's transient view state: position (kept here rather than parsed
         // back out of the style each move) and whether it's on top and so pickable.
@@ -1820,9 +1872,11 @@ let make = (
         let self = {
           data: cardData,
           wrapper,
+          art,
           x: ref(0.),
           y: ref(0.),
           draggable: ref(true),
+          down: ref(false),
         }
         // Register the node so a pile derived from `state` can be laid out onto it.
         nodes->Array.push(self)
@@ -1850,6 +1904,29 @@ let make = (
         // tap after load can never read as the second half of a double-tap.
         let movedFar = ref(false)
         let lastTapAt = ref(-1000.)
+
+        // A press on the stock, while it lasts: where it started, so a release that
+        // hasn't travelled reads as a tap and deals the next row. The stock's cards are
+        // never draggable, so this is the only thing a press on one can mean.
+        let stockPress = ref(None)
+        let inStock = () =>
+          switch GameState.locationOf(state(), self.data) {
+          | Some(GameState.InPile(i, _)) =>
+            game.piles->Array.get(i)->Option.mapOr(false, (p: Game.pile) => p.role == Game.Stock)
+          | _ => false
+          }
+
+        // Deal the next row: the same `Session.dispatch` a drop goes through, so the
+        // deal is one undoable step, settled by auto-collect like any move (a dealt card
+        // can complete a run), and then flown from the stock to the columns. A refusal
+        // — a column standing empty — is already in the log with its reason.
+        let playDeal = () => {
+          let before = state()
+          switch dispatch(Reducer.Deal) {
+          | Session.Settled({moved, collected}) => flySettled(~before, ~moved, ~collected)
+          | _ => ()
+          }
+        }
 
         // May the span `spanCards` (bottom-first) land on `zone`? The hover
         // highlight and the drop below both funnel through `core`'s shared
@@ -1897,8 +1974,11 @@ let make = (
 
         wrapper->onPointer("pointerdown", ev =>
           // Only a card that heads a legal run can be picked up; every other buried
-          // card ignores the pointer (its `draggable` is false, set each reflow).
-          if self.draggable.contents {
+          // card ignores the pointer (its `draggable` is false, set each reflow) —
+          // except the stock's, whose press is the start of a tap.
+          if !self.draggable.contents && inStock() {
+            stockPress := Some((clientX(ev), clientY(ev)))
+          } else if self.draggable.contents {
             // A fresh press: assume a tap until the pointer travels far enough
             // (below) to be a drag, which is what tells the double-tap apart.
             movedFar := false
@@ -2048,6 +2128,17 @@ let make = (
 
         let endDrag = ev =>
           switch grab.contents {
+          // A press on the stock that stayed put is a tap: deal. One that wandered off
+          // is nothing — there is no drag to bounce back.
+          | None =>
+            switch stockPress.contents {
+            | Some((sx, sy)) =>
+              stockPress := None
+              if Math.abs(clientX(ev) -. sx) +. Math.abs(clientY(ev) -. sy) <= doubleTapMoveTol {
+                playDeal()
+              }
+            | None => ()
+            }
           | Some((_, _, spanStarts)) =>
             wrapper->releasePointerCapture(pointerId(ev))
             grab := None
@@ -2116,7 +2207,6 @@ let make = (
                 lastTapAt := now
               }
             }
-          | None => ()
           }
 
         wrapper->onPointer("pointerup", endDrag)
