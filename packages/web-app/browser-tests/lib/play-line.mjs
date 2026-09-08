@@ -31,16 +31,25 @@ export function moveOf(game, text) {
  * comments them at length).
  */
 export function grabPoint(piles, wanted) {
-  for (const pile of piles) {
-    // A face-down card has no code to match (`cardCodeOf`), and is never the one wanted.
-    const idx = pile.findIndex((c) => cardCodeOf(c.name) === wanted)
-    if (idx < 0) continue
-    const card = pile[idx]
-    const next = pile[idx + 1]
-    const y = next ? card.y + Math.min((next.y - card.y) / 2, card.h / 2) : card.cy
-    return { x: card.cx, y, offsetY: card.cy - y }
-  }
-  throw new Error(`no card named ${wanted} on the board`)
+  // Every card of that face — a face-down card has no code to match (`cardCodeOf`),
+  // and a two-pack board holds the same face twice. Of two, take the one a hand
+  // could lift: the board marks the other buried (`liftable`), and a covered card
+  // in a squared pile isn't even announced.
+  const found = []
+  piles.forEach((pile) =>
+    pile.forEach((card, idx) => {
+      if (cardCodeOf(card.name) === wanted) found.push({ pile, idx, card })
+    }),
+  )
+  const pick =
+    found.find(({ card }) => card.announced && card.liftable) ??
+    found.find(({ card }) => card.announced) ??
+    found[0]
+  if (!pick) throw new Error(`no card named ${wanted} on the board`)
+  const { pile, idx, card } = pick
+  const next = pile[idx + 1]
+  const y = next ? card.y + Math.min((next.y - card.y) / 2, card.h / 2) : card.cy
+  return { x: card.cx, y, offsetY: card.cy - y }
 }
 
 /** One move, as a real pointer drag onto the zone at `to`. */

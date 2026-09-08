@@ -36,23 +36,29 @@ open Card
 let suits = [Spades, Hearts, Diamonds, Clubs]
 let ranks = [Ace, Two, Three, Four, Five, Six, Seven, Eight, Nine, Ten, Jack, Queen, King]
 
-// Which cards a board is played with, as a **subset of one pack**. A value rather
-// than the ambient 52, because a downstream rule that assumes the pack silently
-// mis-decides on any board that isn't the full one — "complete" as thirteen cards
-// ending on a King, or "safe to auto-collect" naming four suits by hand.
+// Which cards a board is played with: a subset of one pack, `copies` times over. A
+// value rather than the ambient 52, because a downstream rule that assumes the pack
+// silently mis-decides on any board that isn't the full one — "complete" as thirteen
+// cards ending on a King, or "safe to auto-collect" naming four suits by hand.
 //
-// Deliberately **not** multi-deck: two copies of one card would break
-// `GameState.sameCard`'s structural identity. A subset keeps every `{suit, rank}`
-// appearing at most once.
+// `copies` is how many of each card there are — 1 for every FreeCell board, 2 for
+// two-suit Spiderette, where the same 52 cards are two suits taken twice. Each copy is
+// its own card (`Card.nth`), so `GameState.sameCard` still tells every card on the
+// table from every other; what two copies share is their *face*, which is what a
+// typed name says and what `Command` resolves against the board.
 //
 // Order is meaningful: `ranks` runs low to high, the run a foundation climbs.
-type deck = {suits: array<suit>, ranks: array<rank>}
+type deck = {suits: array<suit>, ranks: array<rank>, copies: int}
 
-let standard: deck = {suits, ranks}
+let standard: deck = {suits, ranks, copies: 1}
 
 // A fresh array each call, so a caller may shuffle or otherwise mutate what it gets.
+// The copies come whole, one after another — the first copy of every card, then the
+// second — which on a single pack is the order it always had.
 let cardsOf = (deck: deck): array<card> =>
-  deck.suits->Array.flatMap(suit => deck.ranks->Array.map(rank => {suit, rank}))
+  Array.fromInitializer(~length=deck.copies, k => k)->Array.flatMap(k =>
+    deck.suits->Array.flatMap(suit => deck.ranks->Array.map(rank => Card.nth({suit, rank}, k)))
+  )
 
 // The whole pack, named as such — the card gallery and the `Scenario` builders want
 // *the pack* and should keep saying so.

@@ -16,10 +16,15 @@ type location =
   | InPile(int, int)
   | Loose
 
-// Identity is structural `{suit, rank}`, which is unique within a single deck, and it
-// is compared field-by-field rather than by whole-record `==` so the decision stays
-// explicit and deck-scoped — a fuller multi-deck identity would grow from here.
-let sameCard = (a: card, b: card): bool => a.suit == b.suit && a.rank == b.rank
+// Identity is structural — suit, rank and which copy (`Card.copy`) — compared
+// field-by-field rather than by whole-record `==` so the decision stays explicit. Two
+// copies of one face are two cards here: lifting one leaves the other where it lay.
+let sameCard = (a: card, b: card): bool =>
+  a.suit == b.suit && a.rank == b.rank && Card.copyOf(a) == Card.copyOf(b)
+
+// The same face, whichever copy: what a typed name (`7S`) says, and what a board with
+// more than one pack has to resolve to a card (`Command.resolveCard`).
+let sameFace = (a: card, b: card): bool => a.suit == b.suit && a.rank == b.rank
 
 // Piles run bottom-first, so a card's slot is its index and the last element is the
 // pile's top card.

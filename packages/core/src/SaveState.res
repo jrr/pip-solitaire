@@ -83,10 +83,13 @@ let fits = (s: t, ~game: Game.t): bool => {
 }
 
 // --- Card codes --------------------------------------------------------------
-// A card is two characters: its rank then its suit. Compact, human-legible in a
-// stored blob, and trivially reversible. The rank/suit vocabularies are closed,
-// so the char maps below are total in one direction and partial (returning
-// `None` on any stray character) in the other.
+// A card is two characters, its rank then its suit, and a third for a copy other than
+// the first (`Card.copy`): `TS` is the Ten of Spades and `TS1` the second Ten of
+// Spades on a two-pack board. Compact, human-legible in a stored blob, and trivially
+// reversible. The rank/suit vocabularies are closed, so the char maps below are total
+// in one direction and partial (returning `None` on any stray character) in the
+// other; the copy is a digit from 1 up, and never a written 0 — the first copy is the
+// bare two characters, as every card was before there were copies.
 
 let rankChar = (rank: rank): string =>
   switch rank {
@@ -140,17 +143,32 @@ let suitOfChar = (ch: string): option<suit> =>
   | _ => None
   }
 
-let encodeCard = (c: card): string => rankChar(c.rank) ++ suitChar(c.suit)
+let encodeCard = (c: card): string =>
+  rankChar(c.rank) ++
+  suitChar(c.suit) ++
+  switch Card.copyOf(c) {
+  | 0 => ""
+  | k => Int.toString(k)
+  }
 
-// A card code is exactly two known characters; anything else (wrong length, a
-// stray glyph) is `None`, so a corrupt blob can't smuggle a bogus card through.
-let decodeCard = (s: string): option<card> =>
-  String.length(s) == 2
-    ? switch (rankOfChar(String.charAt(s, 0)), suitOfChar(String.charAt(s, 1))) {
-      | (Some(rank), Some(suit)) => Some({suit, rank})
-      | _ => None
-      }
-    : None
+// A card code is two known characters, and at most one more that is a digit 1–9;
+// anything else (wrong length, a stray glyph, a `0`) is `None`, so a corrupt blob can't
+// smuggle a bogus card through.
+let decodeCard = (s: string): option<card> => {
+  let copy = switch String.length(s) {
+  | 2 => Some(0)
+  | 3 =>
+    switch String.charAt(s, 2) {
+    | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" => Int.fromString(String.charAt(s, 2))
+    | _ => None
+    }
+  | _ => None
+  }
+  switch (copy, rankOfChar(String.charAt(s, 0)), suitOfChar(String.charAt(s, 1))) {
+  | (Some(k), Some(rank), Some(suit)) => Some(Card.nth({suit, rank}, k))
+  | _ => None
+  }
+}
 
 // --- Small decode helpers ----------------------------------------------------
 // `allSome` collapses an array of optional results into an optional array: it's

@@ -79,7 +79,9 @@ let draw = (state: int) => {
 // Which suit ended up on which foundation — the one thing a finished game varies, so the
 // one thing the seed picks. A one-rank deck shuffled is exactly a permutation of the four.
 let foundationSuits = (~seed) =>
-  Cards.shuffle(~deck={suits: Cards.suits, ranks: [Deck.Ace]}, ~seed)->Array.map(card => card.suit)
+  Cards.shuffle(~deck={suits: Cards.suits, ranks: [Deck.Ace], copies: 1}, ~seed)->Array.map(card =>
+    card.suit
+  )
 
 // The deck in the order a won game gives it up: four A→K foundations taken from the top,
 // one pile at a time, so the aces go last. Same round-robin `step` seats a card by, which

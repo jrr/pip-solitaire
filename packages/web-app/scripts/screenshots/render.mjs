@@ -48,7 +48,7 @@ const outDir = path.join(webAppRoot, "screenshots");
 //     opening layout rather than a frame mid-deal (see AppUrl's seed/animate knobs).
 //   - Mid-game — a representative in-progress FreeCell layout.
 //   - Finish — the finishable endgame, shot to show the "Finish" button.
-//   - Spiderette — the one-pack Spider board with its stock dealt out: seven columns
+//   - Spiderette — the two-suit Spider board with its stock dealt out: seven columns
 //     at their tallest, face-down cards under each, the stock's slot empty. The
 //     phone stage is the one this is for — it is the tallest fan the app deals.
 //   - Card raster — not a board at all: the sprite-fidelity sheet, all 52

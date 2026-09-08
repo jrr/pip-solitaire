@@ -942,13 +942,15 @@ describe("TableScene face-down cards", () => {
   test(
     "the move that exposes a face-down card turns it over, and it announces itself again",
     () => {
-      // ♦2 face down under ♠7 in the first column, ♥8 alone in the second, everything
-      // else face up across the rest — the whole pack, so every card has its node.
-      let two: Deck.card = {suit: Diamonds, rank: Two}
+      // The second ♥2 face down under ♠7 in the first column, ♥8 alone in the second,
+      // everything else face up across the rest — the board's whole two-suit pack, so
+      // every card has its node. The first ♥2 is among the rest, face up: the pack has
+      // two of every face, and the flip adds a second card of that name to the tree.
+      let two: Deck.card = Card.nth({suit: Hearts, rank: Two}, 1)
       let seven: Deck.card = {suit: Spades, rank: Seven}
       let eight: Deck.card = {suit: Hearts, rank: Eight}
       let named = card => [two, seven, eight]->Array.some(c => GameState.sameCard(c, card))
-      let rest = Cards.all->Array.filter(card => !named(card))->Cards.deal(~piles=5)
+      let rest = Cards.cardsOf(game.deck)->Array.filter(card => !named(card))->Cards.deal(~piles=5)
       let cascades = Game.pileIndices(game, Game.Cascade)
       let first = cascades->Array.getUnsafe(0)
       let second = cascades->Array.getUnsafe(1)
@@ -973,21 +975,22 @@ describe("TableScene face-down cards", () => {
       flushFrames()
       expect(facesDown(container))->toBe(1)
       expect(announcedDown(container))->toBe(1)
-      expect(countOf(container, `.card-art[aria-label="two of diamonds"]`))->toBe(0)
+      expect(countOf(container, `.card-art[aria-label="two of hearts"]`))->toBe(1)
 
       live(board).runCommand(
         Command.Dispatch(Reducer.Move({card: seven, to: Reducer.ToPile(second)})),
       )->ignore
       expect(facesDown(container))->toBe(0)
-      let art = container->find(`.card-art[aria-label="two of diamonds"]`)->Option.getOrThrow
+      expect(countOf(container, `.card-art[aria-label="two of hearts"]`))->toBe(2)
       let wrapper = container->find(".stacking-card--turning")->Option.getOrThrow
+      let art = wrapper->find(`.card-art[aria-label="two of hearts"]`)->Option.getOrThrow
       expect(wrapper->contains(art))->toBe(true)
       // Face up, it heads a run of one and may be picked up.
       expect(wrapper->classes->String.includes("stacking-card--buried"))->toBe(false)
 
       live(board).runCommand(Command.Undo)->ignore
       expect(facesDown(container))->toBe(1)
-      expect(countOf(container, `.card-art[aria-label="two of diamonds"]`))->toBe(0)
+      expect(countOf(container, `.card-art[aria-label="two of hearts"]`))->toBe(1)
     },
   )
 })

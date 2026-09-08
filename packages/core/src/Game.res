@@ -196,7 +196,7 @@ let freecell = freecellDeal(~seed=freecellSeed)
 
 // Ace through Five in all four suits: 20 cards, and a foundation complete at the
 // Five, which `Rules.isCompleteRun` reads off the deck rather than assuming a King.
-let miniDeck: Cards.deck = {suits: Cards.suits, ranks: [Ace, Two, Three, Four, Five]}
+let miniDeck: Cards.deck = {suits: Cards.suits, ranks: [Ace, Two, Three, Four, Five], copies: 1}
 
 let miniDeal = (~seed: int): t =>
   freecellShaped(
@@ -215,6 +215,7 @@ let miniDeal = (~seed: int): t =>
 let microDeck: Cards.deck = {
   suits: [Spades, Hearts],
   ranks: [Ace, Two, Three, Four, Five, Six, Seven, Eight],
+  copies: 1,
 }
 
 let microDeal = (~seed: int): t =>
@@ -277,20 +278,27 @@ let rec simpleSimonDeal = (~seed: int): t => {
 let simpleSimon = simpleSimonDeal(~seed=freecellSeed)
 
 // --- Spiderette ------------------------------------------------------------------
-// Spider on one pack: Simple Simon's laws (`Rules.spiderCascade`, `Unlimited`,
-// `CompleteRuns`) over a Klondike layout. Seven cascades dealt 1/2/3/4/5/6/7 with only
-// the top card of each face up, and the other 24 cards a face-down **stock** that a
-// `Reducer.Deal` drops one card from onto every cascade — three deals of seven, then
-// the last three cards onto the first three columns.
+// Two-suit Spider on fifty-two cards: Simple Simon's laws (`Rules.spiderCascade`,
+// `Unlimited`, `CompleteRuns`) over a Klondike layout. Seven cascades dealt
+// 1/2/3/4/5/6/7 with only the top card of each face up, and the other 24 cards a
+// face-down **stock** that a `Reducer.Deal` drops one card from onto every cascade —
+// three deals of seven, then the last three cards onto the first three columns.
+//
+// The pack is spades and hearts, twice over: 52 cards, four runs to collect, one
+// foundation each. The first board here with two of a card, which is what `Card.copy`
+// is for — the two Sevens of Spades are two cards to the reducer and one face to a
+// typed name.
 //
 // The stock is dealt from its top, and its top is the card the shuffle would have
 // dealt next: the remainder is stacked in reverse so that dealing carries on through
-// the pack in shuffle order. That order is part of this game's deal-number promise, as
-// the counts are.
+// the pack in shuffle order. That order, the counts, and the pack's own order
+// (`Cards.cardsOf`) are this game's deal-number promise.
+let spideretteDeck: Cards.deck = {suits: [Spades, Hearts], ranks: Cards.ranks, copies: 2}
+
 let spideretteCounts = [1, 2, 3, 4, 5, 6, 7]
 
 let rec spideretteDeal = (~seed: int): t => {
-  let shuffled = Cards.shuffle(~deck=Cards.standard, ~seed)
+  let shuffled = Cards.shuffle(~deck=spideretteDeck, ~seed)
   let dealt = spideretteCounts->Array.reduce(0, (a, b) => a + b)
   let cascadePiles = Cards.dealByCounts(~counts=spideretteCounts, shuffled)->Array.map(column => {
     role: Cascade,
@@ -323,7 +331,7 @@ let rec spideretteDeal = (~seed: int): t => {
     name: "Spiderette",
     // The stock leads the top row, the foundations beside it, the cascades below.
     piles: [stockPile]->Array.concat(foundationPiles)->Array.concat(cascadePiles),
-    deck: Cards.standard,
+    deck: spideretteDeck,
     seed: Some(seed),
     deal: Some(seed => spideretteDeal(~seed)),
     runLimit: Unlimited,

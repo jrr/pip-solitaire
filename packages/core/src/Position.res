@@ -467,6 +467,8 @@ let ofGameState = (~game: Game.t, state: GameState.t): option<t> => {
     Array.length(cellPiles) != cellCount ||
     Array.length(foundationPiles) != foundationCount ||
     Array.length(cascadePiles) != columnCount ||
+    // A second copy of a card would pack to the same int as the first.
+    game.deck.copies != 1 ||
     Array.length(state.loose) > 0
   ) {
     None

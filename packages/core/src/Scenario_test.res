@@ -282,7 +282,9 @@ describe("Scenario", () => {
         let state = Scenario.forName(game, "almost-won")->Option.getOrThrow
         expect(Array.length(state.piles->Array.flat))->toBe(52)
         expect(GameState.hasWon(game, state))->toBe(false)
-        let ace = {suit: Clubs, rank: Ace}
+        // The lone card on the second column is the Ace the run is waiting for.
+        let ace = GameState.topOf(state, cascades->Array.getUnsafe(1))->Option.getOrThrow
+        expect(ace.rank)->toEqual(Ace)
         let first = cascades->Array.getUnsafe(0)
         switch Reducer.reduce(~game, state, Move({card: ace, to: ToPile(first)})) {
         | Ok(next) =>

@@ -35,6 +35,22 @@ describe("SaveState", () => {
     )
   })
 
+  // A second copy of a card is a third character; the first copy is the bare code it
+  // always was, so a single-pack save is byte for byte what it was.
+  test("a card's copy rides as a digit, and only from the second copy", () => {
+    let seven = {suit: Spades, rank: Seven}
+    expect(SaveState.encodeCard(seven))->toBe("7S")
+    expect(SaveState.encodeCard(Card.nth(seven, 1)))->toBe("7S1")
+    expect(SaveState.decodeCard("7S1"))->toEqual(Some(Card.nth(seven, 1)))
+    Cards.cardsOf(Game.spiderette.deck)->Array.forEach(
+      card => expect(SaveState.decodeCard(SaveState.encodeCard(card)))->toEqual(Some(card)),
+    )
+    // A written 0 is not a spelling of the first copy, and a letter is nothing at all.
+    expect(SaveState.decodeCard("7S0"))->toEqual(None)
+    expect(SaveState.decodeCard("7SX"))->toEqual(None)
+    expect(SaveState.decodeCard("7S12"))->toEqual(None)
+  })
+
   test("encode then decode restores the whole saved game exactly", () => {
     switch SaveState.decode(SaveState.encode(saved)) {
     | Some(restored) => expect(restored)->toEqual(saved)

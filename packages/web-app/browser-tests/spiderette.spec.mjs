@@ -16,6 +16,7 @@ import * as Game from "core/src/Game.res.mjs"
 import * as GameState from "core/src/GameState.res.mjs"
 import * as Reducer from "core/src/Reducer.res.mjs"
 import * as CardText from "core/src/CardText.res.mjs"
+import * as Scenario from "core/src/Scenario.res.mjs"
 
 test.use({ viewport: { width: 900, height: 1100 } })
 
@@ -57,13 +58,20 @@ test("spiderette turns a card over when it is exposed, and deals its stock by ta
 
   // At the opening every column shows one card, so a top card another column will
   // take is lying on a face-down one: dragging it turns the card beneath over, and the
-  // board says so by name. Found against core's reducer from the same deal.
+  // board says so by name. Found against core's reducer from the same deal. The pack
+  // is two suits taken twice, so a name can be on the table twice: the dragged card is
+  // one whose twin still lies face down, so the drag names one card.
   let state = GameState.initial(game)
+  const faceUpTwin = (card) =>
+    state.piles.flat().some(
+      (c) => GameState.sameFace(c, card) && !GameState.sameCard(c, card) && !GameState.isFaceDown(state, c),
+    )
   let move = null
   for (const from of cascades) {
     const cards = GameState.cardsInPile(state, from)
     if (cards.length < 2 || GameState.faceDownIn(state, from) !== cards.length - 1) continue
     const top = cards[cards.length - 1]
+    if (faceUpTwin(top)) continue
     const to = cascades.find((i) => i !== from && Reducer.canDrop(game, state, top, i))
     if (to !== undefined) {
       move = { card: top, to, exposed: cards[cards.length - 2] }
@@ -71,13 +79,15 @@ test("spiderette turns a card over when it is exposed, and deals its stock by ta
     }
   }
   expect(move, "deal #1 opens with a move that turns a card over").not.toBeNull()
-  await expect(page.locator(`.card-art[aria-label="${nameOf(move.exposed)}"]`)).toHaveCount(0)
+  // The exposed card's twin may already be showing; what the flip adds is one more.
+  const named = page.locator(`.card-art[aria-label="${nameOf(move.exposed)}"]`)
+  const twinsShowing = faceUpTwin(move.exposed) ? 1 : 0
+  await expect(named).toHaveCount(twinsShowing)
   await drag(page, { card: CardText.format(move.card), to: move.to })
   await settle(page)
   await expect(backs(page)).toHaveCount(44)
-  const turned = page.locator(`.card-art[aria-label="${nameOf(move.exposed)}"]`)
-  await expect(turned).toHaveCount(1)
-  await expect(turned.locator("..")).not.toHaveClass(/stacking-card--down/)
+  await expect(named).toHaveCount(twinsShowing + 1)
+  await expect(page.locator(`.stacking-card:not(.stacking-card--down) .card-art[aria-label="${nameOf(move.exposed)}"]`)).toHaveCount(twinsShowing + 1)
   state = Reducer.reduce(game, state, { TAG: "Move", card: move.card, to: { TAG: "ToPile", _0: move.to } })._0
 
   // Four taps: seven, seven, seven, then the last three onto the first three columns.
@@ -99,7 +109,10 @@ test("a drag that completes the last run flies it home and wins", async ({ page 
   await page.goto("/?game=spiderette&state=almost-won&animate=off")
   await settle(page)
   await expect(page.locator(".win-overlay")).toHaveCount(0)
-  await drag(page, moveOf(Game.spiderette, "AC T1"))
+  // The Ace alone on the second column: the last run's, whose face is also on top of a
+  // collected run — the drag takes the copy a hand can lift.
+  const ace = GameState.topOf(Scenario.spideretteAlmostWon(Game.spiderette), Game.pileIndices(Game.spiderette, "Cascade")[1])
+  await drag(page, moveOf(Game.spiderette, `${CardText.format(ace)} T1`))
   await settle(page)
   // The run is collected on its own — nothing to finish — and the overlay rises.
   await expect(page.locator(".win-overlay")).toBeVisible()

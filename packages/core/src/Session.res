@@ -444,9 +444,19 @@ let step = (~clock: unit => float, s: t, command: Command.t): (t, outcome) =>
   | Command.Redeal => redeal(~clock, s)
   | Command.Finish => finish(~clock, s)
   | Command.Autoplay => autoplay(~clock, s)
-  | Command.Home({card}) => home(~clock, s, card)
+  // A typed name is a face, and a board with two packs has two cards of it: the
+  // readers say which (`Command.resolveCard`), and only then does the reducer see it.
+  | Command.Home({card}) =>
+    switch Command.resolveCard(~game=s.game, present(s), card) {
+    | Ok(card) => home(~clock, s, card)
+    | Error(message) => (s, {change: Unchanged, reply: Render.text(message)})
+    }
   | Command.Draw => dispatched(~clock, s, Reducer.Deal)
-  | Command.Dispatch(action) => dispatched(~clock, s, action)
+  | Command.Dispatch(action) =>
+    switch Command.resolveAction(~game=s.game, present(s), action) {
+    | Ok(action) => dispatched(~clock, s, action)
+    | Error(message) => (s, {change: Unchanged, reply: Render.text(message)})
+    }
   // A move with a half only a board can read — `move 8H 9S`, `move C1 F1`. `Command`'s
   // readers answer each against this session's board, and what comes back is dispatched
   // through the very path a hand-typed index takes, so every way of saying a move is

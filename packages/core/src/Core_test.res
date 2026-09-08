@@ -991,7 +991,9 @@ describe("Game", () => {
         )
         expect(board.runLimit)->toEqual(Game.Unlimited)
         expect(board.collect)->toEqual(Game.CompleteRuns)
-        expect(board.deck)->toEqual(Cards.standard)
+        // Two suits, twice over: 52 cards and four runs, one per foundation.
+        expect(board.deck)->toEqual({suits: [Spades, Hearts], ranks: Cards.ranks, copies: 2})
+        expect(Array.length(Cards.cardsOf(board.deck)))->toBe(52)
       },
     )
 
@@ -1004,11 +1006,14 @@ describe("Game", () => {
         let stockPile = board.piles->Array.getUnsafe(stock)
         expect(Array.length(stockPile.cards))->toBe(24)
         expect(stockPile.faceDown)->toBe(24)
-        // Every card exactly once, between the columns and the stock.
+        // Every card of the pack exactly once, between the columns and the stock —
+        // both copies of each face, as two cards.
         let dealt = columns->Array.flatMap(p => p.cards)->Array.concat(stockPile.cards)
         expect(Array.length(dealt))->toBe(52)
         expect(
-          Cards.all->Array.every(card => dealt->Array.some(c => GameState.sameCard(c, card))),
+          Cards.cardsOf(board.deck)->Array.every(
+            card => dealt->Array.filter(c => GameState.sameCard(c, card))->Array.length == 1,
+          ),
         )->toBe(true)
         // The snapshot carries the counts, and reads them per card.
         expect(opening.faceDown)->toEqual([24, 0, 0, 0, 0, 0, 1, 2, 3, 4, 5, 6])
@@ -1016,7 +1021,7 @@ describe("Game", () => {
         expect(GameState.isFaceDown(opening, second->Array.getUnsafe(0)))->toBe(true)
         expect(GameState.isFaceDown(opening, second->Array.getUnsafe(1)))->toBe(false)
         // The stock's top is the card the shuffle would have dealt next.
-        let shuffled = Cards.shuffle(~seed=Game.freecellSeed)
+        let shuffled = Cards.shuffle(~deck=board.deck, ~seed=Game.freecellSeed)
         expect(GameState.topOf(opening, stock))->toEqual(shuffled->Array.get(28))
       },
     )
@@ -1238,6 +1243,58 @@ describe("Game", () => {
           expect(GameState.faceDownIn(next, cascade(0)))->toBe(0)
         | Error(_) => expect("reordered")->toBe("refused")
         }
+      },
+    )
+
+    test(
+      "two copies of a face are two cards: lifting one leaves the other, and a name resolves to the one a hand could lift",
+      () => {
+        let seven = {suit: Spades, rank: Seven}
+        let other = Card.nth(seven, 1)
+        expect(GameState.sameCard(seven, other))->toBe(false)
+        expect(GameState.sameFace(seven, other))->toBe(true)
+        // One Seven face up atop the first column, the other face down under a Nine.
+        let state = posed(
+          ~down=[0, 1],
+          [[seven], [other, {suit: Hearts, rank: Nine}], [{suit: Hearts, rank: Eight}]],
+        )
+        let to = Reducer.ToPile(cascade(2))
+        switch Reducer.reduce(~game=board, state, Move({card: seven, to})) {
+        | Ok(next) =>
+          expect(GameState.cardsInPile(next, cascade(0)))->toEqual([])
+          expect(GameState.cardsInPile(next, cascade(1)))->toEqual([
+            other,
+            {suit: Hearts, rank: Nine},
+          ])
+          expect(GameState.isFaceDown(next, other))->toBe(true)
+        | Error(_) => expect("moved")->toBe("refused")
+        }
+        // A typed `7S` is a face; the board says which copy, and it's the liftable one.
+        expect(Command.resolveCard(~game=board, state, seven))->toEqual(Ok(seven))
+        // Both liftable is refused by name rather than guessed at.
+        let both = posed([[seven], [other], [{suit: Hearts, rank: Eight}]])
+        switch Command.resolveCard(~game=board, both, seven) {
+        | Error(message) => expect(message->String.includes("T1, T2"))->toBe(true)
+        | Ok(_) => expect("refused")->toBe("resolved")
+        }
+        // …and the typed move goes through the session the same way.
+        let session = Session.open_(
+          ~clock=() => 0.,
+          ~options=Options.default,
+          ~seed=None,
+          board,
+          state,
+        )
+        let (next, outcome) = Session.step(
+          ~clock=() => 0.,
+          session,
+          Command.Dispatch(Move({card: Card.nth(seven, 1), to})),
+        )
+        switch outcome.change {
+        | Session.Settled({moved}) => expect(moved)->toEqual([seven])
+        | _ => expect("a settled move")->toBe("something else")
+        }
+        expect(GameState.cardsInPile(Session.present(next), cascade(0)))->toEqual([])
       },
     )
 
@@ -1676,6 +1733,7 @@ describe("Rules", () => {
         let short: Cards.deck = {
           suits: [Spades, Hearts],
           ranks: [Ace, Two, Three, Four, Five],
+          copies: 1,
         }
         let shortRun = short.ranks->Array.map(rank => {suit: Hearts, rank})
 
@@ -3491,13 +3549,17 @@ describe("Cards", () => {
     )
   })
 
-  // The deck as a *parameter*: a subset of one pack, with `standard` the
+  // The deck as a *parameter*: a subset of one pack, taken `copies` times, with `standard` the
   // four × thirteen everything plays with today. The same two properties the full
   // pack is pinned by — a shuffle is a permutation, and a seed reproduces it —
   // hold for a short deck too.
   describe("deck", () => {
     // Ace→Five in two suits: ten cards, half the ranks, half the suits.
-    let short: Cards.deck = {suits: [Spades, Hearts], ranks: [Ace, Two, Three, Four, Five]}
+    let short: Cards.deck = {
+      suits: [Spades, Hearts],
+      ranks: [Ace, Two, Three, Four, Five],
+      copies: 1,
+    }
 
     test(
       "standard is the full pack, and cardsOf(standard) is `all`",
@@ -3633,6 +3695,33 @@ describe("Cards", () => {
           [Ace, Two],
           [Three, Four],
         ])
+      },
+    )
+
+    test(
+      "a deck taken twice is every card twice, each copy a card of its own",
+      () => {
+        let twice: Cards.deck = {suits: [Spades, Hearts], ranks: Cards.ranks, copies: 2}
+        let cards = Cards.cardsOf(twice)
+        expect(Array.length(cards))->toBe(52)
+        // The first copy of every card comes first, spelled as the plain card, and the
+        // second after it, spelled as the copy — so a single-pack deck's order is
+        // unchanged, and `==` tells the two apart while `sameFace` doesn't.
+        expect(cards->Array.slice(~start=0, ~end=26))->toEqual(Cards.cardsOf({...twice, copies: 1}))
+        expect(cards->Array.getUnsafe(26))->toEqual(Card.nth({suit: Spades, rank: Ace}, 1))
+        expect(Card.copyOf(cards->Array.getUnsafe(0)))->toBe(0)
+        expect(Card.copyOf(cards->Array.getUnsafe(26)))->toBe(1)
+        expect(cards->Array.getUnsafe(0) == cards->Array.getUnsafe(26))->toBe(false)
+        expect(GameState.sameFace(cards->Array.getUnsafe(0), cards->Array.getUnsafe(26)))->toBe(
+          true,
+        )
+        // A shuffle of it is still a permutation: every card once.
+        let shuffled = Cards.shuffle(~deck=twice, ~seed=7)
+        expect(
+          cards->Array.every(
+            card => shuffled->Array.filter(c => GameState.sameCard(c, card))->Array.length == 1,
+          ),
+        )->toBe(true)
       },
     )
 

@@ -167,16 +167,13 @@ describe("Render layout", () => {
     let game = Game.spiderette
     let state = GameState.initial(game)
     let drawn = Render.stateBoard(~game, state)
-    expect(has(drawn, `▒▒▒▒`))->toBe(true)
-    // The second column: its bottom card is face down and its top is not.
-    let second = Game.pileIndices(game, Game.Cascade)->Array.getUnsafe(1)
-    let cards = GameState.cardsInPile(state, second)
-    let face = card => Render.toPlain([Render.cardSpans([card])])
-    expect(has(drawn, face(cards->Array.getUnsafe(1))))->toBe(true)
-    expect(has(drawn, face(cards->Array.getUnsafe(0))))->toBe(false)
-    // …nor the stock's top, though it is the card a squared pile would show.
-    let stock = Reducer.stockOf(game)->Option.getOrThrow
-    expect(has(drawn, face(GameState.topOf(state, stock)->Option.getOrThrow)))->toBe(false)
+    let count = (s, sub) => s->String.split(sub)->Array.length - 1
+    // Twenty-one backs peek out of the columns, one line each, and the stock's top
+    // shows a whole back: two lines. Nothing else is hatched.
+    expect(count(drawn, `▒▒▒▒`))->toBe(23)
+    // Exactly the seven face-up cards print a face — one pip each — and no card under
+    // them or in the stock does.
+    expect(count(drawn, `♠`) + count(drawn, `♥`))->toBe(7)
     // The stock is headed by its own name, in the top row with the foundations.
     let sections = drawn->String.split("\n\n")
     expect(has(sections->Array.getUnsafe(1), "S1"))->toBe(true)

@@ -76,6 +76,10 @@ export async function readGeometry(page) {
         // which of its cards is the live one. `closest`, not the card's own
         // attribute, so a card hidden by an ancestor counts as hidden too.
         announced: el.closest('[aria-hidden="true"]') === null,
+        // Could a hand pick it up? Reflow marks every card that doesn't head a legal
+        // run `--buried`, sealed piles' cards included — so on a two-pack board this
+        // is what tells the copy a drag can take from the one it can't.
+        liftable: !el.classList.contains("stacking-card--buried"),
         ...box(el),
       })),
     }

@@ -391,12 +391,14 @@ let describeAmbiguous = (~verb: string, ~matches: array<string>): string =>
 // Every pile currently *showing* `card` — holding it as its top card, the card a
 // newcomer would land on. A buried card shows nothing: landing "on" it would really
 // land on whatever covers it, which is a different move from the one that was typed.
+// By face, not identity: a typed name is a face, and a board with two packs may show
+// it twice — which is the ambiguity `resolveWhere` refuses by name.
 let showing = (~game: Game.t, state: GameState.t, card: card): array<int> =>
   game.piles
   ->Array.mapWithIndex((_, i) => i)
   ->Array.filter(i =>
     switch GameState.topOf(state, i) {
-    | Some(top) => GameState.sameCard(top, card)
+    | Some(top) => GameState.sameFace(top, card)
     | None => false
     }
   )
@@ -519,9 +521,94 @@ let runShowing = (~game: Game.t, state: GameState.t, i: int): array<card> =>
     count == 0 || floor >= count ? [] : longest(count - 1)
   }
 
+// --- Which card a name means ----------------------------------------------------
+// A typed name is a *face*: `7S` says a rank and a suit, and on a board played with
+// one pack that is one card. On a board with more than one (`Cards.deck.copies`) the
+// same face lies on the table twice, and the board has to say which was meant — the
+// copy a hand could lift, when only one could be. Both liftable is refused by name,
+// the way a destination showing twice is, rather than guessed at.
+
+// Every card in play with this face, wherever it rests.
+let facesOf = (state: GameState.t, card: card): array<card> =>
+  state.piles
+  ->Array.concat([state.loose])
+  ->Array.flat
+  ->Array.filter(c => GameState.sameFace(c, card))
+
+// Could a hand take hold of this card as it lies — face up, not home, heading a run
+// (the top card being a run of one)? What a typed `move`/`moverun` means to lift.
+let liftable = (~game: Game.t, state: GameState.t, card: card): bool =>
+  switch GameState.locationOf(state, card) {
+  | Some(GameState.Loose) => true
+  | Some(GameState.InPile(i, slot)) =>
+    let pile = GameState.cardsInPile(state, i)
+    !GameState.isFaceDown(state, card) &&
+    !Reducer.isHome(~game, state, card) &&
+    game.piles
+    ->Array.get(i)
+    ->Option.mapOr(false, p =>
+      Rules.isRun(p.rule, pile->Array.slice(~start=slot, ~end=Array.length(pile)))
+    )
+  | None => false
+  }
+
+// The card a typed name means on this board. A face in play once is that card; not
+// in play at all is handed back as typed, so the reducer refuses it in its own words
+// (`CardNotFound`). A face in play twice is the copy a hand could lift, or a refusal
+// naming where both are.
+let resolveCard = (~game: Game.t, state: GameState.t, card: card): result<card, string> =>
+  switch facesOf(state, card) {
+  | [] => Ok(card)
+  | [only] => Ok(only)
+  | copies =>
+    switch copies->Array.filter(c => liftable(~game, state, c)) {
+    | [only] => Ok(only)
+    | [] => Ok(copies->Array.getUnsafe(0))
+    | both =>
+      let places = both->Array.filterMap(c =>
+        switch GameState.locationOf(state, c) {
+        | Some(GameState.InPile(i, _)) => Slot.labelAt(~game, i)
+        | _ => None
+        }
+      )
+      Error(
+        `Ambiguous: ${CardText.format(card)} is on the table twice (${places->Array.join(
+            ", ",
+          )}). Name the column instead.`,
+      )
+    }
+  }
+
+// The same for every card of a run, the first refusal winning.
+let resolveCards = (~game: Game.t, state: GameState.t, cards: array<card>): result<
+  array<card>,
+  string,
+> =>
+  cards->Array.reduce(Ok([]), (acc, card) =>
+    switch (acc, resolveCard(~game, state, card)) {
+    | (Ok(done), Ok(c)) => Ok(Array.concat(done, [c]))
+    | (Error(m), _) | (_, Error(m)) => Error(m)
+    }
+  )
+
+// A parsed action's named cards, resolved the same way — what `Session.step` does
+// with a `Dispatch` before the reducer sees it, so `move 7S 12` lifts the Seven a hand
+// could, not the first copy the pack happened to list.
+let resolveAction = (~game: Game.t, state: GameState.t, action: Reducer.action): result<
+  Reducer.action,
+  string,
+> =>
+  switch action {
+  | Reducer.Move({card, to}) =>
+    resolveCard(~game, state, card)->Result.map(card => Reducer.Move({card, to}))
+  | Reducer.MoveRun({cards, to}) =>
+    resolveCards(~game, state, cards)->Result.map(cards => Reducer.MoveRun({cards, to}))
+  | Reducer.MoveColumn(_) | Reducer.Deal => Ok(action)
+  }
+
 // Turn a `from` into the cards a move lifts, or say why this board offers none there.
-// Cards named outright are handed straight back — the board has no say in what `8H`
-// means — which is what keeps the original grammar exactly as it was.
+// Cards named outright are resolved by face (`resolveCards`) and otherwise handed
+// straight back — the board has no say in what `8H` means beyond which copy it is.
 let resolveFrom = (~game: Game.t, state: GameState.t, from: from): result<array<card>, string> => {
   let lift = (place, pick) =>
     switch resolvePlace(~game, place) {
@@ -533,7 +620,7 @@ let resolveFrom = (~game: Game.t, state: GameState.t, from: from): result<array<
       }
     }
   switch from {
-  | Cards(cards) => Ok(cards)
+  | Cards(cards) => resolveCards(~game, state, cards)
   | Top(place) => lift(place, i => GameState.topOf(state, i)->Option.mapOr([], card => [card]))
   | Run(place) => lift(place, i => runShowing(~game, state, i))
   }

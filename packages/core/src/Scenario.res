@@ -298,16 +298,21 @@ let spideretteDealtOut = (game: Game.t): GameState.t => {
   dealAll(GameState.initial(game))
 }
 
-// A **near-won Spiderette**: three suits already collected, the fourth's King→Two run
-// on the first cascade and its Ace alone on the second — one drag completes the run,
-// and lifting it is the win. Stock empty, everything face up. Built straight from the
-// pack, like the FreeCell positions, so every card appears exactly once.
+// A **near-won Spiderette**: three of the four runs already collected, the last one's
+// King→Two on the first cascade and its Ace alone on the second — one drag completes
+// the run, and lifting it is the win. Stock empty, everything face up. Built straight
+// from the board's own pack, like the FreeCell positions, so every card appears
+// exactly once: the runs are one per suit per copy, four on the two-suit pack.
 let spideretteAlmostWon = (game: Game.t): GameState.t => {
-  let kingToAce = suit => Cards.ranks->Array.toReversed->Array.map(rank => {suit, rank})
-  let lastSuit = Array.length(Cards.suits) - 1
-  let collected =
-    Cards.suits->Array.slice(~start=0, ~end=lastSuit)->Array.map(kingToAce)->Array.concat([[]])
-  let pending = kingToAce(Cards.suits->Array.getUnsafe(lastSuit))
+  let kingToAce = (suit, copy) =>
+    game.deck.ranks->Array.toReversed->Array.map(rank => Card.nth({suit, rank}, copy))
+  let runs =
+    Array.fromInitializer(~length=game.deck.copies, k => k)->Array.flatMap(copy =>
+      game.deck.suits->Array.map(suit => kingToAce(suit, copy))
+    )
+  let last = Array.length(runs) - 1
+  let collected = runs->Array.slice(~start=0, ~end=last)->Array.concat([[]])
+  let pending = runs->Array.getUnsafe(last)
   let cascadePiles = [
     pending->Array.slice(~start=0, ~end=Array.length(pending) - 1),
     pending->Array.slice(~start=Array.length(pending) - 1, ~end=Array.length(pending)),
