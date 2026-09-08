@@ -9,7 +9,12 @@
          permitting pinch. Flipping pinch off later would be a one-line change
          here. -->
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <title>Pip</title>
+    <!-- The APP_NAME placeholder below — and in `apple-mobile-web-app-title`
+         further down — is substituted at build time; vite.config.js decides the
+         name, and a PR preview takes a distinguished one. Spelling a literal
+         name into either tag leaves previews named after prod, and nothing
+         says so. -->
+    <title>%APP_NAME%</title>
 
     <!-- PWA. vite-plugin-pwa injects the <link rel="manifest"> at build time.
          The tags below are the bits the manifest can't cover: theme color for
@@ -25,7 +30,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-    <meta name="apple-mobile-web-app-title" content="Pip" />
+    <meta name="apple-mobile-web-app-title" content="%APP_NAME%" />
 
     <!-- Link-preview (Open Graph + Twitter) tags: what Slack/iMessage/Discord/
          Twitter show when the game's URL is pasted. The image is a

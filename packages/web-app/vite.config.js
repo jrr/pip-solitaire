@@ -27,6 +27,29 @@ const buildTime = new Date().toISOString();
 // PWA. The pr-preview workflow sets PIP_PREVIEW=1 for its `mise run bundle`.
 const isPreview = process.env.PIP_PREVIEW === "1";
 
+// A preview build names itself after its PR — "Pip PR 123" rather than "Pip" —
+// in the tab, on the iOS Home Screen and in the Android install prompt, so a
+// reviewer with the real app installed can tell which one they opened. The
+// number comes from the workflow (`PIP_PR_NUMBER`, set alongside `PIP_PREVIEW`
+// in pr-preview.yml); a build without it is prod-named, which is what a local
+// `mise run bundle` wants. Both names a user sees are fed from here: index.html
+// substitutes `%APP_NAME%` into the tab title and iOS's install title, and the
+// manifest below reads `appName`. The link-preview (og/twitter) titles are
+// deliberately left prod-named — a preview URL isn't unfurled.
+const previewPr = process.env.PIP_PR_NUMBER?.trim();
+const appName = previewPr ? `Pip PR ${previewPr}` : "Pip";
+
+// Substitutes `%APP_NAME%` into the HTML head. `pre` puts it ahead of every
+// other transform of the document — Vite's own `%KEY%` env substitution among
+// them — so no later hook sees the raw token.
+const appNamePlugin = {
+  name: "pip-app-name",
+  transformIndexHtml: {
+    order: "pre",
+    handler: (html) => html.replaceAll("%APP_NAME%", appName),
+  },
+};
+
 // `base: "./"` makes emitted asset URLs relative, so the built site works when
 // GitHub Pages serves it from a project subpath (https://<user>.github.io/<repo>/)
 // rather than a domain root. Vite resolves the bare `core/…` specifier that the
@@ -76,6 +99,7 @@ export default defineConfig({
     __BUILD_TIME__: JSON.stringify(buildTime),
   },
   plugins: [
+    appNamePlugin,
     VitePWA({
       // On preview builds this replaces the whole PWA below with a self-
       // destroying worker (see `isPreview` above); everything else here is the
@@ -100,8 +124,8 @@ export default defineConfig({
         "apple-touch-icon.png",
       ],
       manifest: {
-        name: "Pip",
-        short_name: "Pip",
+        name: appName,
+        short_name: appName,
         description: "An installable, offline-capable FreeCell solitaire.",
         // Relative so they resolve against the manifest URL and inherit the
         // GitHub Pages subpath.
