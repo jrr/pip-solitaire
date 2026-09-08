@@ -90,6 +90,51 @@ anywhere — and a cascade whose last card never leaves is a run that never ends
 So at zero bounciness a card slides straight out over the side, and a table with
 no give in it anywhere still empties.
 
+### Cards meeting
+
+The deck catches its own, the way the table catches it. Two cards that overlap
+are resolved along the axis they overlap *least* — a card landing on another
+overlaps it the whole width and a sliver of height, and the sliver is what says
+which way the contact points — and only while they are closing on that axis.
+The overlap is undone, half each, and the speed across it is traded: an elastic
+exchange between equal masses, keeping `collisions`'s share of the closing
+speed. A pair already parting is left to part, which is what a launch faster
+than a card clears its seat produces: the next card is put down on top of the
+last, and throwing those two apart would be a kick nobody threw.
+
+Every pair in flight is looked at once a step, in launch order, each contact
+settled before the next pair is looked at. One sweep is enough at a 1/120s step
+— a card moves a fraction of its width in one, and what a sweep leaves
+overlapping the next puts right — and the fixed order is what keeps a seed
+replaying.
+
+**Three rules keep every run ending**, and each is the table's own rule again:
+
+- **A contact spends a bounce only if it turns the card round**, out of the
+  same purse the floor and the walls draw on. A card resting on another creeps
+  into it a hair every step, and a bounce a step for that would be a card
+  through the table in a tenth of a second — the floor's rule, for the floor's
+  reason.
+- **A card out of bounces passes through the deck** as it passes through the
+  floor. Catching it would be holding it, and only the floor may hold a card.
+- **No give is no contact.** At zero the deck passes through itself, which is
+  the knob's *off*. Two cards stopped dead against each other, on a floor with
+  no give that never drops them, would be the walls' stranded card again one
+  card removed — so a contact with nothing to give is not a contact.
+
+With those, a card can only be held up by the floor or by a card the floor is
+holding. A card resting on a card that is bouncing is hit on every hop, which
+spends from both until the one beneath is out and drops through; a card resting
+on a card the floor is holding still is resting on a dead floor, one card
+removed, and leaves the way that card leaves.
+
+**The top stays open.** A contact hands out no more vertical speed than the
+pair brought, and every card's speed came from falling off a seat, so at the
+defaults nothing rises past the seats (`Cascade_test` pins that over a whole
+run). What the fastest launch can still do is pile cards on the floor taller
+than the stage, and a card that pokes out of the top that way is simply not
+drawn until gravity brings it back — the top is not an edge a card leaves by.
+
 ### Launching
 
 One card per `launchMs`, the first on the very first step — waiting an interval
@@ -219,7 +264,8 @@ chosen.
 |---|---|---|
 | gravity | 4 m/s² | 0.41 g — this is slow motion, deliberately. Earth is `fromMetric(9.81)`, ~154 card-widths/s² |
 | bounciness | 0.8 ± 0.15 | the share of its speed a bounce keeps, off the floor and off a wall alike |
-| numBounces | 3 ± 2 | contacts — landings and walls together — before the table lets the card through |
+| numBounces | 3 ± 2 | contacts — landings, walls and other cards together — before the table lets the card through |
+| collisions | 0.6 | the share of closing speed two cards keep when they meet; 0 is the deck passing through itself |
 | speed | 0.4 ± 0.1 m/s | the sideways throw |
 | launchInterval | 750 ms | so a 52-card deck takes ~39s |
 | trail | 16 ms | of simulated time between stamps |
@@ -253,7 +299,7 @@ already scaled to its stage.
 
 | | |
 |---|---|
-| `Cascade_test.res` | the arithmetic: framerate independence, the clamp, the floor, the walls, energy loss, the bounce budget, the aim, the spreads, seeded replay |
+| `Cascade_test.res` | the arithmetic: framerate independence, the clamp, the floor, the walls, cards meeting, energy loss, the bounce budget, the aim, the spreads, seeded replay |
 | `CascadePlayer_test.res` | the mechanics a jsdom can reach |
 | `CascadeScene_test.res` | the chrome: which knobs exist, what they read out |
 | `browser-tests/cascade.spec.mjs` | the pixels: the store, the trail, the snap, a seeded pose repeating to the byte, the resize policy |
@@ -325,6 +371,10 @@ and forty seconds of cascade is forty seconds for it to be wrong in.
 
 - A sprite carries no drop shadow (`.stacking-card`'s `filter` is the DOM's), so a
   card in flight is flatter than a resting one.
-- There is no ceiling, and nothing needs one: nothing is thrown upwards and a
-  bounciness of 1 only returns a card to the height it was dropped from. A card
-  given upward speed would want one.
+- There is no ceiling. Nothing is thrown upwards, a bounciness of 1 only
+  returns a card to the height it was dropped from, and a contact hands out no
+  more speed than the pair brought (*Cards meeting*, above). A pile taller than
+  the stage is the one way past the top, and it comes back down.
+- Cards never turn: a contact trades speed along one axis and leaves every
+  card upright, because a sprite is an unrotated bitmap blitted pixel for
+  pixel. Spin would reach the blit, the snap and the trail.

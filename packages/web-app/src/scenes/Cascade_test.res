@@ -8,13 +8,15 @@ open Vitest
 let openStage: Cascade.stage = {width: 1000., height: 1000., seats: [(0., 0.)]}
 
 // Straight down, and 52 identical cards: no horizontal draw, and no spread, so every card
-// is the one the knobs describe.
+// is the one the knobs describe. Through each other too: dropped on one spot they would
+// otherwise land on one another, and these are the cases that want gravity and nothing else.
 let dropping = {
   ...Cascade.defaults,
   speed: 0.,
   speedVariance: 0.,
   bouncinessVariance: 0.,
   numBouncesVariance: 0,
+  collisions: 0.,
 }
 
 let runFor = (~knobs, ~stage, ~seed=1, ~seconds, ~dt) => {
@@ -179,11 +181,153 @@ describe("the walls", () => {
     }
     expect(empties({...Cascade.defaults, launchMs: 100.}))->toEqual((true, 52))
     // And the setting the walls could strand a deck at: nothing to turn a card back, and a
-    // floor that holds every card it lands on.
+    // floor that holds every card it lands on — with the deck meeting itself on it.
     expect(
       empties({...Cascade.defaults, launchMs: 100., bounciness: 0., bouncinessVariance: 0.}),
     )->toEqual((true, 52))
   })
+})
+
+describe("cards meeting", () => {
+  let card: Deck.card = {suit: Deck.Spades, rank: Deck.Ace}
+  let at = (~x, ~y, ~vx=0., ~vy=0., ~bounces=3): Cascade.flyer => {
+    card,
+    x,
+    y,
+    vx,
+    vy,
+    bounciness: 0.8,
+    bounces,
+  }
+  let restitution = 0.5
+
+  test("trade their speeds head on, keeping the knob's share, and are pushed apart", () => {
+    // Overlapping by a tenth, closing at four card-widths a second.
+    let (a, b) =
+      Cascade.meet(
+        at(~x=0., ~y=0., ~vx=2.),
+        at(~x=0.9, ~y=0., ~vx=-2.),
+        ~restitution,
+      )->Option.getOrThrow
+    expect(a.vx)->toBe(-1.)
+    expect(b.vx)->toBe(1.)
+    expect(a.x)->toBeCloseToWithin(-0.05, 10)
+    expect(b.x)->toBeCloseToWithin(0.95, 10)
+    // Both turned round, so both paid — out of the purse the floor and the walls draw on.
+    expect(a.bounces)->toBe(2)
+    expect(b.bounces)->toBe(2)
+  })
+
+  test("turn a card falling onto one rising off the floor, along the height, not the width", () => {
+    // The whole width in common and a sliver of height: a landing, whichever is wider.
+    let above = at(~x=0.3, ~y=0., ~vy=4.)
+    let below = at(~x=0., ~y=Cascade.cardHeight -. 0.1, ~vy=-4.)
+    let (a, b) = Cascade.meet(above, below, ~restitution)->Option.getOrThrow
+    expect(a.vy)->toBe(-2.)
+    expect(b.vy)->toBe(2.)
+    expect(a.y)->toBeCloseToWithin(-0.05, 10)
+    expect(b.y)->toBeCloseToWithin(Cascade.cardHeight -. 0.05, 10)
+    expect((a.x, a.vx, b.x, b.vx))->toEqual((0.3, 0., 0., 0.))
+  })
+
+  test(
+    "spend nothing on a contact that only slows a card, which is how a card rests on one",
+    () => {
+      // Landing on a card at rest: the upper keeps falling, slower; the lower is pushed on.
+      let (a, b) =
+        Cascade.meet(
+          at(~x=0., ~y=0., ~vy=4.),
+          at(~x=0., ~y=Cascade.cardHeight -. 0.1),
+          ~restitution,
+        )->Option.getOrThrow
+      expect(a.vy)->toBe(1.)
+      expect(b.vy)->toBe(3.)
+      expect(a.bounces)->toBe(3)
+      expect(b.bounces)->toBe(3)
+    },
+  )
+
+  test(
+    "hand out no more speed than the pair brought, so the top of the stage can stay open",
+    () => {
+      let (a, b) =
+        Cascade.meet(
+          at(~x=0., ~y=0., ~vy=4.),
+          at(~x=0., ~y=1., ~vy=-1.),
+          ~restitution=0.95,
+        )->Option.getOrThrow
+      expect(a.vy >= -1. && a.vy <= 4.)->toBe(true)
+      expect(b.vy >= -1. && b.vy <= 4.)->toBe(true)
+    },
+  )
+
+  test("leave a pair that is already parting to part", () => {
+    expect(Cascade.meet(at(~x=0., ~y=0., ~vx=-1.), at(~x=0.5, ~y=0., ~vx=1.), ~restitution))->toBe(
+      None,
+    )
+    // Or keeping pace: the card launched onto the last one from the same seat.
+    expect(Cascade.meet(at(~x=0., ~y=0., ~vx=1.), at(~x=0.5, ~y=0., ~vx=1.), ~restitution))->toBe(
+      None,
+    )
+  })
+
+  test("and a pair that isn't touching", () => {
+    expect(Cascade.meet(at(~x=0., ~y=0., ~vx=1.), at(~x=1., ~y=0., ~vx=-1.), ~restitution))->toBe(
+      None,
+    )
+  })
+
+  test("pass a card out of bounces straight through, as the floor does", () => {
+    let spent = at(~x=0.9, ~y=0., ~vx=-2., ~bounces=0)
+    expect(Cascade.meet(at(~x=0., ~y=0., ~vx=2.), spent, ~restitution))->toBe(None)
+  })
+
+  test("and every card through every other at no give, which is the knob's off", () => {
+    expect(
+      Cascade.meet(at(~x=0., ~y=0., ~vx=2.), at(~x=0.9, ~y=0., ~vx=-2.), ~restitution=0.),
+    )->toBe(None)
+    let flying = [at(~x=0., ~y=0., ~vx=2.), at(~x=0.9, ~y=0., ~vx=-2.)]
+    expect(Cascade.meetAll(flying, ~restitution=0.))->toBe(flying)
+  })
+
+  test("settle each pair before the next, in launch order, so a seed still replays", () => {
+    // Three in a row, the middle one hit from both sides: the second contact meets the
+    // middle card at the speed the first one left it with, not the one it started at.
+    let flying = [at(~x=0., ~y=0., ~vx=2.), at(~x=0.9, ~y=0., ~vx=0.), at(~x=1.8, ~y=0., ~vx=-2.)]
+    let once = Cascade.meetAll(flying, ~restitution)
+    expect(once)->toEqual(Cascade.meetAll(flying, ~restitution))
+    expect(once->Array.map(flyer => flyer.vx))->toEqual([0.5, -1.125, 0.625])
+  })
+
+  test("still empty a stage they are all dropped onto one spot of", () => {
+    // Every card lands on the one before it. A card can't rest on a card that can't rest:
+    // the one beneath spends a bounce on each of its own landings until nothing catches
+    // it, and then the one above falls through it to the same floor.
+    let stage: Cascade.stage = {width: 40., height: 8., seats: [(20., 0.)]}
+    let piled = {...dropping, collisions: 0.6, launchMs: 100.}
+    let run = runFor(~knobs=piled, ~stage, ~seed=5, ~seconds=40., ~dt=1. /. 120.)
+    expect(Cascade.isDone(run))->toBe(true)
+    expect(run.retired)->toBe(52)
+  })
+
+  test(
+    "never rise past the seats they fell from, at the defaults, so the top can stay open",
+    () => {
+      // A whole run on a desktop stage. A contact hands out no more speed than the pair
+      // brought, and every card's speed came from falling off a seat — so what a pile-up
+      // at the fastest launch can still do is stand taller than the stage, and a card that
+      // pokes out of the top that way comes back down under gravity.
+      let stage = Cascade.stageOf(~cssWidth=1056., ~cssHeight=560., ~cardWidth=90.)
+      let run = ref(Cascade.make(~seed=3, ~cards=Deck.allCards))
+      let highest = ref(Float.Constants.positiveInfinity)
+      for _ in 1 to 6000 {
+        run := Cascade.step(run.contents, ~knobs=Cascade.defaults, ~stage, ~dt=1. /. 120.)
+        run.contents.flying->Array.forEach(flyer => highest := Math.min(highest.contents, flyer.y))
+      }
+      expect(Cascade.isDone(run.contents))->toBe(true)
+      expect(highest.contents)->toBe(Cascade.seatTop)
+    },
+  )
 })
 
 describe("a card's bounce budget", () => {
