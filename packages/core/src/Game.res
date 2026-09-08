@@ -2,7 +2,8 @@
 // seam that makes "several supported games" possible — a board described
 // declaratively so the view interprets it rather than hard-coding zones and a deal.
 // A new game is a new value here and nothing else: no view code, no reducer branch,
-// no new rule. `mini` and `micro` below are the proof.
+// no new rule. `mini` and `micro` below are the proof, and `simpleSimon` is the
+// harder one: a different family of game, still nothing but data.
 //
 // The view (`TableScene`) reads all of this and lays the board out on its own terms —
 // "piles hang from the top of the stage and grow downward".
@@ -42,6 +43,27 @@ type pile = {
   cards: array<card>,
 }
 
+// How long a run may move as one gesture — the second question a run raises after
+// "is it a run?" (`Rules.isRun`), and the one that depends on the *board* rather than
+// the pile. `Supermove` is FreeCell's: as many cards as a hand could relay one at a
+// time through the empty cells and columns (`Reducer.maxSupermove`). `Unlimited` is
+// Spider's: a run moves whole, however long, and nothing is relayed.
+type runLimit =
+  | Supermove
+  | Unlimited
+
+// How cards leave the tableau for a foundation on their own. `SafeCards` is
+// FreeCell's: after a move, each card a foundation accepts and no cascade can still
+// want goes home, one at a time (`Reducer.isSafeToCollect`). `CompleteRuns` is
+// Spider's: a cascade's top run spanning every rank of the deck is lifted whole onto
+// an empty foundation. The two are different kinds of thing — the first a
+// convenience the player may switch off (`Options.autoCollect`), the second a rule
+// of the game, since a Spider run is never played to a foundation by hand and a
+// board that didn't lift it could never be won.
+type collect =
+  | SafeCards
+  | CompleteRuns
+
 // `type rec` because a board carries its own `deal` (below), which hands back another
 // board: the one place this type refers to itself.
 type rec t = {
@@ -68,6 +90,8 @@ type rec t = {
   // asks it of one game instead and would cost an edit in both `Main` and `Session`
   // the day a second seeded game lands.
   deal: option<int => t>,
+  runLimit: runLimit,
+  collect: collect,
 }
 
 // --- The FreeCell family ------------------------------------------------------
@@ -129,6 +153,8 @@ let rec freecellShaped = (
     // `?seed=` open re-deals this game with this number and gets this board back.
     seed: Some(seed),
     deal: Some(seed => freecellShaped(~id, ~name, ~deck, ~cascades, ~cells, ~foundations, ~seed)),
+    runLimit: Supermove,
+    collect: SafeCards,
   }
 }
 
@@ -194,9 +220,52 @@ let microDeal = (~seed: int): t =>
 let mini = miniDeal(~seed=freecellSeed)
 let micro = microDeal(~seed=freecellSeed)
 
+// --- Simple Simon ----------------------------------------------------------------
+// The Spider family's one-pack, everything-face-up member, and the first board here
+// whose piles don't all answer FreeCell's questions: ten cascades under Spider's law
+// (`Rules.spiderCascade`), no cells, and four foundations the hand never touches. A
+// run moves whole (`Unlimited`), and a cascade that builds a same-suit King-to-Ace
+// run has it lifted off onto a foundation (`CompleteRuns`); four of those win.
+//
+// The pack is dealt by counts, 8/8/8/7/6/5/4/3/2/1 left to right — the shape the
+// game is defined by, and (with `Cards.shuffle`) the whole of its deal-number promise.
+let simpleSimonCounts = [8, 8, 8, 7, 6, 5, 4, 3, 2, 1]
+
+let rec simpleSimonDeal = (~seed: int): t => {
+  let cascadePiles =
+    Cards.shuffle(~deck=Cards.standard, ~seed)
+    ->Cards.dealByCounts(~counts=simpleSimonCounts, _)
+    ->Array.map(column => {
+      role: Cascade,
+      stacking: Fanned,
+      rule: Rules.spiderCascade,
+      capacity: None,
+      cards: column,
+    })
+  let foundationPiles = Array.fromInitializer(~length=4, _ => {
+    role: Foundation,
+    stacking: Squared,
+    rule: Rules.Sealed,
+    capacity: None,
+    cards: [],
+  })
+  {
+    id: "simplesimon",
+    name: "Simple Simon",
+    piles: foundationPiles->Array.concat(cascadePiles),
+    deck: Cards.standard,
+    seed: Some(seed),
+    deal: Some(seed => simpleSimonDeal(~seed)),
+    runLimit: Unlimited,
+    collect: CompleteRuns,
+  }
+}
+
+let simpleSimon = simpleSimonDeal(~seed=freecellSeed)
+
 // In picker order; a further game joins it here. The scene picker and the CLI's
 // `games`/`deal <id>` both enumerate it.
-let all = [freecell, mini, micro]
+let all = [freecell, mini, micro, simpleSimon]
 
 // The game a bare `deal`/`new`, or a bare deal *number*, lays out. Named here so each
 // front end asks for "the default game" rather than deciding for itself that a number

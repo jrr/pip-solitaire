@@ -8,9 +8,9 @@ test("greeting returns the expected message", () => {
 // The modelled games: assert the rules the presentation layer reads back.
 describe("Game", () => {
   test("every game is listed with a stable id and a non-empty name", () => {
-    // FreeCell and its two short-deck siblings — the list the scene picker and
-    // the CLI's `games`/`deal <id>` enumerate, in picker order.
-    expect(Game.all->Array.map(g => g.id))->toEqual(["freecell", "mini", "micro"])
+    // FreeCell, its two short-deck siblings and Simple Simon — the list the scene
+    // picker and the CLI's `games`/`deal <id>` enumerate, in picker order.
+    expect(Game.all->Array.map(g => g.id))->toEqual(["freecell", "mini", "micro", "simplesimon"])
     expect(Game.all->Array.every(g => g.name != ""))->toBe(true)
   })
 
@@ -368,6 +368,10 @@ describe("Game", () => {
                 expect(p.stacking)->toEqual(Game.Fanned)
               },
             )
+            // …and the board-level laws are FreeCell's: runs move by the supermove,
+            // and safe cards go home on their own.
+            expect((label, board.runLimit))->toEqual((label, Game.Supermove))
+            expect((label, board.collect))->toEqual((label, Game.SafeCards))
           },
         ),
     )
@@ -553,6 +557,369 @@ describe("Game", () => {
     )
   })
 
+  // The first board from another family. Where `mini`/`micro` prove a board can vary
+  // in deck and counts, this one varies in *law* — Spider's cascades, sealed
+  // foundations, runs that move whole, a completed run lifted off the table — and
+  // what's asserted is that every one of those is data the reducer already reads,
+  // not a branch on the game's id. Board order is 4 foundations, then 10 cascades.
+  describe("simple simon", () => {
+    let board = Game.simpleSimon
+    let foundations = Game.pileIndices(board, Game.Foundation)
+    let cascades = Game.pileIndices(board, Game.Cascade)
+    let spades = ranks => ranks->Array.map(rank => {suit: Spades, rank})
+    // A posed position from its cascades alone (foundations empty, missing cascades
+    // empty), so a test states only the columns it's about.
+    let posed = (~foundationCards=[], columns: array<array<card>>): GameState.t => {
+      piles: foundations
+      ->Array.map(_ => [])
+      ->Array.concat(
+        cascades->Array.mapWithIndex((_, i) => columns->Array.get(i)->Option.getOr([])),
+      )
+      ->Array.mapWithIndex((cards, i) => i == 0 ? foundationCards : cards),
+      loose: [],
+    }
+    // The full King→Ace run of a suit, bottom-first as a cascade holds it.
+    let kingToAce = suit => Cards.ranks->Array.toReversed->Array.map(rank => {suit, rank})
+
+    test(
+      "is fourteen piles: four sealed foundations, then ten cascades under Spider's law, no cells",
+      () => {
+        expect(Array.length(board.piles))->toBe(14)
+        expect(foundations)->toEqual([0, 1, 2, 3])
+        expect(cascades)->toEqual([4, 5, 6, 7, 8, 9, 10, 11, 12, 13])
+        expect(Game.pileIndices(board, Game.FreeCell))->toEqual([])
+        // The hand never plays a card to a foundation: it is filled by collection alone.
+        Game.pilesOf(board, Game.Foundation)->Array.forEach(
+          p => {
+            expect(p.rule)->toEqual(Rules.Sealed)
+            expect(p.stacking)->toEqual(Game.Squared)
+            expect(p.capacity)->toEqual(None)
+          },
+        )
+        Game.pilesOf(board, Game.Cascade)->Array.forEach(
+          p => {
+            expect(p.rule)->toEqual(Rules.spiderCascade)
+            expect(p.stacking)->toEqual(Game.Fanned)
+            expect(p.capacity)->toEqual(None)
+          },
+        )
+        // The two board-level laws that make it Spider rather than FreeCell.
+        expect(board.runLimit)->toEqual(Game.Unlimited)
+        expect(board.collect)->toEqual(Game.CompleteRuns)
+        expect(board.deck)->toEqual(Cards.standard)
+      },
+    )
+
+    test(
+      "deals the whole pack by counts, 8/8/8/7/6/5/4/3/2/1, foundations empty",
+      () => {
+        expect(Game.pilesOf(board, Game.Cascade)->Array.map(p => Array.length(p.cards)))->toEqual([
+          8,
+          8,
+          8,
+          7,
+          6,
+          5,
+          4,
+          3,
+          2,
+          1,
+        ])
+        let dealt = Game.pilesOf(board, Game.Cascade)->Array.flatMap(p => p.cards)
+        expect(Array.length(dealt))->toBe(52)
+        expect(
+          Cards.all->Array.every(card => dealt->Array.some(c => GameState.sameCard(c, card))),
+        )->toBe(true)
+        expect(
+          Game.pilesOf(board, Game.Foundation)->Array.every(p => Array.length(p.cards) == 0),
+        )->toBe(true)
+      },
+    )
+
+    test(
+      "is re-dealable under its own id, reproducibly",
+      () => {
+        let cards = (game: Game.t) => game.piles->Array.map(p => p.cards)
+        let another = board.deal->Option.getOrThrow
+        let dealt = another(4242)
+        expect(dealt.id)->toBe(board.id)
+        expect(dealt.seed)->toEqual(Some(4242))
+        expect(dealt.runLimit)->toEqual(Game.Unlimited)
+        expect(dealt.collect)->toEqual(Game.CompleteRuns)
+        let again = dealt.deal->Option.getOrThrow
+        expect(cards(again(4242)))->toEqual(cards(dealt))
+        expect(cards(again(9)) == cards(dealt))->toBe(false)
+      },
+    )
+
+    test(
+      "any card one rank lower may land on a cascade, whatever its suit",
+      () => {
+        // ♠8 tops the first cascade; the candidates each sit alone on their own.
+        let state = posed([
+          spades([Eight]),
+          [{suit: Hearts, rank: Seven}],
+          spades([Seven]),
+          spades([Nine]),
+          spades([Six]),
+        ])
+        let onto = cascades->Array.getUnsafe(0)
+        expect(Reducer.canDrop(~game=board, state, {suit: Hearts, rank: Seven}, ~onto))->toBe(true)
+        expect(Reducer.canDrop(~game=board, state, {suit: Spades, rank: Seven}, ~onto))->toBe(true)
+        // Still descending by one: neither a higher card nor a gap.
+        expect(Reducer.canDrop(~game=board, state, {suit: Spades, rank: Nine}, ~onto))->toBe(false)
+        expect(Reducer.canDrop(~game=board, state, {suit: Spades, rank: Six}, ~onto))->toBe(false)
+        // …and never onto a foundation, empty or not.
+        expect(Reducer.canDrop(~game=board, state, {suit: Spades, rank: Ace}, ~onto=0))->toBe(false)
+        expect(Reducer.foundationTarget(~game=board, state, {suit: Spades, rank: Ace}))->toEqual(
+          None,
+        )
+      },
+    )
+
+    test(
+      "only a same-suit run moves as one: a lawful drop can head no run",
+      () => {
+        // ♥7 on ♠8 was a lawful drop; ♥6 on ♥7 continues a run. The hand may lift
+        // ♥7 ♥6 together, but not ♠8 ♥7 ♥6 — the suit change is where the run ends.
+        let column = [
+          {suit: Spades, rank: Eight},
+          {suit: Hearts, rank: Seven},
+          {suit: Hearts, rank: Six},
+        ]
+        let state = posed([column, [{suit: Clubs, rank: Eight}]])
+        let to = Reducer.ToPile(cascades->Array.getUnsafe(1))
+        let hearts = column->Array.slice(~start=1, ~end=3)
+        expect(Reducer.reduce(~game=board, state, MoveRun({cards: hearts, to}))->Result.isOk)->toBe(
+          true,
+        )
+        expect(Reducer.reduce(~game=board, state, MoveRun({cards: column, to})))->toEqual(
+          Error(Reducer.NotARun),
+        )
+        // The same verdicts from the shared queries the view and `moverun` read.
+        expect(
+          Reducer.canMoveRun(~game=board, state, hearts, ~onto=cascades->Array.getUnsafe(1)),
+        )->toBe(true)
+        expect(
+          Reducer.canMoveRun(~game=board, state, column, ~onto=cascades->Array.getUnsafe(1)),
+        )->toBe(false)
+        expect(Command.runShowing(~game=board, state, cascades->Array.getUnsafe(0)))->toEqual(
+          hearts,
+        )
+      },
+    )
+
+    test(
+      "a same-suit run of any length moves whole, with nothing to relay it through",
+      () => {
+        // Nine cascades occupied, no cells at all: FreeCell's supermove would allow one
+        // card. Simple Simon lifts the six-card run regardless.
+        let run = spades([Nine, Eight, Seven, Six, Five, Four])
+        let state = posed([
+          run,
+          [{suit: Hearts, rank: Ten}],
+          spades([King]),
+          spades([Queen]),
+          spades([Jack]),
+          spades([Ten]),
+          spades([Three]),
+          spades([Two]),
+          spades([Ace]),
+          [{suit: Hearts, rank: King}],
+        ])
+        let onto = cascades->Array.getUnsafe(1)
+        expect(Reducer.maxSupermove(~game=board, state, ~ignoring=onto))->toBe(1)
+        expect(Reducer.canMoveRun(~game=board, state, run, ~onto))->toBe(true)
+        switch Reducer.reduce(~game=board, state, MoveRun({cards: run, to: ToPile(onto)})) {
+        | Ok(next) =>
+          expect(GameState.cardsInPile(next, onto))->toEqual(
+            [{suit: Hearts, rank: Ten}]->Array.concat(run),
+          )
+        | Error(e) => expect(Ok(e))->toEqual(Error(Reducer.RunTooLong))
+        }
+      },
+    )
+
+    test(
+      "a completed King→Ace run is lifted off its cascade onto an empty foundation",
+      () => {
+        // The run sits on a ♣3 it was built over; the ♣3 stays, the run goes home,
+        // King first as the pile held it. A run one short stays where it is.
+        let done = [{suit: Clubs, rank: Three}]->Array.concat(kingToAce(Spades))
+        let nearly = kingToAce(Hearts)->Array.slice(~start=0, ~end=12)
+        let state = posed([done, nearly])
+        let (settled, moved) = Reducer.autoCollect(~game=board, state)
+        expect(moved)->toEqual(kingToAce(Spades))
+        expect(GameState.cardsInPile(settled, 0))->toEqual(kingToAce(Spades))
+        expect(GameState.cardsInPile(settled, cascades->Array.getUnsafe(0)))->toEqual([
+          {suit: Clubs, rank: Three},
+        ])
+        expect(GameState.cardsInPile(settled, cascades->Array.getUnsafe(1)))->toEqual(nearly)
+        // Nothing to collect answers with the board unchanged, as the drivers rely on.
+        let (again, more) = Reducer.autoCollect(~game=board, settled)
+        expect(GameState.equal(again, settled))->toBe(true)
+        expect(more)->toEqual([])
+      },
+    )
+
+    test(
+      "two runs completed at once both go home, each to its own foundation",
+      () => {
+        let state = posed([kingToAce(Spades), kingToAce(Hearts)])
+        let (settled, moved) = Reducer.autoCollect(~game=board, state)
+        expect(Array.length(moved))->toBe(26)
+        expect(GameState.cardsInPile(settled, 0))->toEqual(kingToAce(Spades))
+        expect(GameState.cardsInPile(settled, 1))->toEqual(kingToAce(Hearts))
+        expect(
+          cascades->Array.every(i => Array.length(GameState.cardsInPile(settled, i)) == 0),
+        )->toBe(true)
+      },
+    )
+
+    test(
+      "a collected run is home for good: nothing on a foundation is the hand's",
+      () => {
+        let state = posed(~foundationCards=kingToAce(Spades), [[{suit: Hearts, rank: Two}]])
+        let ace = {suit: Spades, rank: Ace}
+        let empty = Reducer.ToPile(cascades->Array.getUnsafe(1))
+        // The foundation's Ace tops its pile and an empty cascade would take any card —
+        // and it still can't move, alone or as the run it heads.
+        expect(Reducer.isFree(state, ace))->toBe(true)
+        expect(Reducer.isHome(~game=board, state, ace))->toBe(true)
+        expect(Reducer.reduce(~game=board, state, Move({card: ace, to: empty})))->toEqual(
+          Error(Reducer.CardHome),
+        )
+        expect(Reducer.reduce(~game=board, state, MoveRun({cards: [ace], to: empty})))->toEqual(
+          Error(Reducer.CardHome),
+        )
+        expect(Reducer.validMoves(~game=board, state, ace))->toEqual([])
+        expect(
+          Reducer.canMoveRun(~game=board, state, [ace], ~onto=cascades->Array.getUnsafe(1)),
+        )->toBe(false)
+        // The view reads the same answer off the rule: not even the top card heads a run.
+        expect(Rules.isRun(Rules.Sealed, [ace]))->toBe(false)
+        // A card on the table is still the hand's, so the rule is about the pile.
+        expect(Reducer.isHome(~game=board, state, {suit: Hearts, rank: Two}))->toBe(false)
+      },
+    )
+
+    test(
+      "is won when every foundation holds its run, and not before",
+      () => {
+        let three = {
+          GameState.piles: board.piles->Array.mapWithIndex(
+            (_, i) =>
+              switch i {
+              | 0 => kingToAce(Spades)
+              | 1 => kingToAce(Hearts)
+              | 2 => kingToAce(Diamonds)
+              | 4 => kingToAce(Clubs)
+              | _ => []
+              },
+          ),
+          loose: [],
+        }
+        expect(GameState.hasWon(board, three))->toBe(false)
+        // The last run is still on a cascade; collecting it is the win.
+        let (settled, moved) = Reducer.autoCollect(~game=board, three)
+        expect(Array.length(moved))->toBe(13)
+        expect(GameState.hasWon(board, settled))->toBe(true)
+        // A Spider board is never finishable by foundation moves — there are none —
+        // so the finish sweep has nothing to offer it short of the win itself.
+        expect(Reducer.canFinish(~game=board, three))->toBe(false)
+        expect(Reducer.canFinish(~game=board, settled))->toBe(true)
+      },
+    )
+
+    test(
+      "the slot labels count ten columns and no cells",
+      () => {
+        expect(Slot.labels(~game=board))->toEqual([
+          "F1",
+          "F2",
+          "F3",
+          "F4",
+          "T1",
+          "T2",
+          "T3",
+          "T4",
+          "T5",
+          "T6",
+          "T7",
+          "T8",
+          "T9",
+          "T10",
+        ])
+        expect(Slot.parse("T10"))->toEqual(Some((Game.Cascade, 10)))
+      },
+    )
+
+    test(
+      "the solver declines it rather than mis-reading a board it can't model",
+      () => {
+        expect(Position.ofGameState(~game=board, GameState.initial(board))->Option.isNone)->toBe(
+          true,
+        )
+      },
+    )
+
+    // A `<card> <slot>` move against the board in play: the run the named card heads,
+    // lifted to the slot — `Move` for one card, `MoveRun` for more. The same vocabulary
+    // the browser suite drags by, so one recorded line serves both.
+    let actionOf = (game: Game.t, state: GameState.t, text: string): Reducer.action => {
+      let parts = text->String.trim->String.split(" ")
+      let card = parts->Array.get(0)->Option.flatMap(CardText.parse)->Option.getOrThrow
+      let (role, ordinal) = parts->Array.get(1)->Option.flatMap(Slot.parse)->Option.getOrThrow
+      let to = Reducer.ToPile(Slot.indexOf(~game, ~role, ~ordinal)->Option.getOrThrow)
+      switch GameState.locationOf(state, card) {
+      | Some(InPile(i, slot)) =>
+        let pile = GameState.cardsInPile(state, i)
+        Command.moveAction(~cards=pile->Array.slice(~start=slot, ~end=Array.length(pile)), ~to)
+      | _ => Reducer.Move({card, to}) // not in play: the reducer will say so
+      }
+    }
+
+    test(
+      "deal #1 plays to the win: a recorded line, every move settled through the session",
+      () => {
+        // Found by search over this very reducer, then kept as a fixed script: the deal
+        // is deterministic, so this proves the canonical board is winnable and that the
+        // rules above compose into a game — runs lifted, four collections, the win
+        // tripped by the last of them.
+        let line = "JH T9, TC T9, 7S T1, 8S T9, AC T8, 3C T3, 6H T9, 4H T10, QH T5, 5C T9, 4H T9, QH T6, KD T10, AC T5, 2H T3, 3D T9, 2H T9, 2C T3, TS T8, AD T9, QS T10, JC T6, TS T6, 4C T2, 4D T8, 9D T1, 9S T6, 6S T4, 7H T3, 8H T5, 9H T7, 8D T1, TD T3, AD T1, JD T10, 5S T4, 4D T4, TH T3, 7C T10, AH T9, AS T5, 2H T7, 3D T4, 2S T4, 4H T5, 4C T9, 4H T2, 2D T5, 6D T10, 5H T10, KH T2, TS T1, TH T6, 5C T3, 6H T6, 8S T1, 5H T6, 5C T10, TH T3, TC T6, TH T9, JC T3, JH T6, JS T9, QH T2, KS T1, JC T6, QC T1, 3S T2, 8C T1, 3S T6, 2S T6, 2D T4, 4D T3, 4S T4, 6S T9, 7D T1, 4D T4, 5D T3, 2H T4, 3H T2, 6C T1, 5C T1, 5D T10, 6C T2, 6D T1, 6C T10, 7D T2, 7C T1, 7D T10, JS T2, JD T9, JS T10, QC T2, QS T1, QD T10, QC T9"
+        let start = Session.open_(
+          ~clock=() => 0.,
+          ~options=Options.default,
+          ~seed=board.seed,
+          board,
+          GameState.initial(board),
+        )
+        let collected = ref(0)
+        let final =
+          line
+          ->String.split(",")
+          ->Array.reduce(
+            start,
+            (s, text) => {
+              let (next, change) = Session.dispatch(
+                ~clock=() => 0.,
+                s,
+                actionOf(board, Session.present(s), text),
+              )
+              switch change {
+              | Session.Settled({collected: home}) =>
+                collected := collected.contents + Array.length(home)
+              | _ => expect(text)->toBe("a settled move")
+              }
+              next
+            },
+          )
+        expect(Session.hasWon(final))->toBe(true)
+        expect(collected.contents)->toBe(52)
+      },
+    )
+  })
+
   // Addressing piles by role: the two helpers every group-targeted query is
   // built on — the deal, auto-to-foundation, win detection, the supermove limit.
   // A little three-role board makes the ordering and the absent-role case legible
@@ -571,6 +938,8 @@ describe("Game", () => {
       ],
       seed: None,
       deal: None,
+      runLimit: Game.Supermove,
+      collect: Game.SafeCards,
     }
     // A board with only cascades, for the absent-role case.
     let cascadesOnly: Game.t = {
@@ -634,6 +1003,8 @@ describe("GameState", () => {
     ],
     seed: None,
     deal: None,
+    runLimit: Game.Supermove,
+    collect: Game.SafeCards,
   }
 
   test("initial places each pile's dealt cards, and nothing rests loose", () => {
@@ -935,6 +1306,113 @@ describe("Rules", () => {
         )
       },
     )
+
+    // Either way up: a Spider foundation holds the run a cascade built downward.
+    test(
+      "a King→Ace run is complete too — a collected Spider run is the same run, upside down",
+      () => {
+        expect(Rules.isCompleteRun(~deck=Cards.standard, fullRun->Array.toReversed))->toBe(true)
+        expect(
+          Rules.isCompleteRun(
+            ~deck=Cards.standard,
+            fullRun->Array.toReversed->Array.slice(~start=0, ~end=12),
+          ),
+        )->toBe(false)
+      },
+    )
+
+    test(
+      "thirteen cards of two suits are not complete, however they're ordered",
+      () => {
+        // One suit is part of what "a complete run" means, and the only thing that
+        // separates it from "thirteen cards ending on a King".
+        let mixed = fullRun->Array.mapWithIndex((c, i) => i == 5 ? {...c, suit: Spades} : c)
+        expect(Rules.isCompleteRun(~deck=Cards.standard, mixed))->toBe(false)
+      },
+    )
+  })
+
+  // Spider's two laws in one rule: any suit may land, only one suit holds together.
+  describe("spiderCascade (any suit, descending)", () => {
+    let eight = {suit: Spades, rank: Eight}
+
+    test(
+      "any card founds an empty pile",
+      () => {
+        expect(Rules.accepts(Rules.spiderCascade, {suit: Hearts, rank: Two}, None))->toBe(true)
+      },
+    )
+
+    test(
+      "one rank lower stacks, whatever the suit or colour",
+      () => {
+        expect(Rules.accepts(Rules.spiderCascade, {suit: Hearts, rank: Seven}, Some(eight)))->toBe(
+          true,
+        )
+        expect(Rules.accepts(Rules.spiderCascade, {suit: Clubs, rank: Seven}, Some(eight)))->toBe(
+          true,
+        )
+        expect(Rules.accepts(Rules.spiderCascade, {suit: Spades, rank: Seven}, Some(eight)))->toBe(
+          true,
+        )
+      },
+    )
+
+    test(
+      "a gap, an equal rank or an ascending one is rejected",
+      () => {
+        expect(Rules.accepts(Rules.spiderCascade, {suit: Hearts, rank: Six}, Some(eight)))->toBe(
+          false,
+        )
+        expect(Rules.accepts(Rules.spiderCascade, {suit: Hearts, rank: Eight}, Some(eight)))->toBe(
+          false,
+        )
+        expect(Rules.accepts(Rules.spiderCascade, {suit: Hearts, rank: Nine}, Some(eight)))->toBe(
+          false,
+        )
+      },
+    )
+
+    test(
+      "a run is a run only within one suit — a lawful drop of another suit ends it",
+      () => {
+        let spades = [Eight, Seven, Six]->Array.map(rank => {suit: Spades, rank})
+        expect(Rules.isRun(Rules.spiderCascade, spades))->toBe(true)
+        // ♥7 may land on ♠8 (`accepts`), and the pair is still not a run (`isRun`): the
+        // two questions a rule answers, answered differently.
+        let mixed = [eight, {suit: Hearts, rank: Seven}]
+        expect(Rules.accepts(Rules.spiderCascade, {suit: Hearts, rank: Seven}, Some(eight)))->toBe(
+          true,
+        )
+        expect(Rules.isRun(Rules.spiderCascade, mixed))->toBe(false)
+        // The step still has to be one rank: a same-suit gap is no run either.
+        expect(Rules.isRun(Rules.spiderCascade, [eight, {suit: Spades, rank: Six}]))->toBe(false)
+      },
+    )
+  })
+
+  describe("Sealed", () => {
+    test(
+      "accepts nothing, empty or not",
+      () => {
+        expect(Rules.accepts(Rules.Sealed, {suit: Spades, rank: King}, None))->toBe(false)
+        expect(
+          Rules.accepts(
+            Rules.Sealed,
+            {suit: Spades, rank: Queen},
+            Some({suit: Spades, rank: King}),
+          ),
+        )->toBe(false)
+      },
+    )
+
+    test(
+      "holds no run the hand may lift, not even a single card",
+      () => {
+        expect(Rules.isRun(Rules.Sealed, [{suit: Spades, rank: Ace}]))->toBe(false)
+        expect(Rules.isRun(Rules.Sealed, []))->toBe(false)
+      },
+    )
   })
 })
 
@@ -983,6 +1461,8 @@ describe("Reducer", () => {
     ),
     seed: None,
     deal: None,
+    runLimit: Game.Supermove,
+    collect: Game.SafeCards,
   }
   // The staging column a card opens on, so a test can name where it started.
   let stagedAt = (card: Card.card) => 2 + staged->Array.findIndex(c => GameState.sameCard(c, card))
@@ -1198,6 +1678,8 @@ describe("Reducer", () => {
       ],
       seed: None,
       deal: None,
+      runLimit: Game.Supermove,
+      collect: Game.SafeCards,
     }
     let fresh = () => GameState.initial(capGame)
 
@@ -1416,6 +1898,8 @@ describe("Reducer", () => {
       ],
       seed: None,
       deal: None,
+      runLimit: Game.Supermove,
+      collect: Game.SafeCards,
     }
     // A hand-built snapshot from the four piles' contents, so a test can pose any
     // board it likes.
@@ -1515,6 +1999,8 @@ describe("Reducer", () => {
           ],
           seed: None,
           deal: None,
+          runLimit: Game.Supermove,
+          collect: Game.SafeCards,
         }
         let state = GameState.initial(twoFoundations)
         // Both empty foundations accept the Ace, so there are two foundation moves…
@@ -1555,6 +2041,8 @@ describe("Reducer", () => {
       ],
       seed: None,
       deal: None,
+      runLimit: Game.Supermove,
+      collect: Game.SafeCards,
     }
     // A hand-built snapshot from the six piles' contents (foundations 0–3, then two
     // Free cascades 4–5), so a test can pose any foundation heights it likes.
@@ -1739,6 +2227,8 @@ describe("Reducer", () => {
       ),
       seed: None,
       deal: None,
+      runLimit: Game.Supermove,
+      collect: Game.SafeCards,
     }
     // A snapshot from four foundation runs then the cascade contents, padded to the
     // board's eight cascades so the pile count always lines up.
@@ -1842,6 +2332,8 @@ describe("Reducer", () => {
       ],
       seed: None,
       deal: None,
+      runLimit: Game.Supermove,
+      collect: Game.SafeCards,
     }
     // A distinct single-card filler, so "occupied" piles hold real, unique cards.
     let f = i => [Cards.all->Array.getUnsafe(i)]
@@ -2068,6 +2560,8 @@ describe("Reducer", () => {
       ],
       seed: None,
       deal: None,
+      runLimit: Game.Supermove,
+      collect: Game.SafeCards,
     }
     let stateOf = (piles): GameState.t => {GameState.piles, loose: []}
 
@@ -2211,6 +2705,8 @@ describe("Reducer", () => {
       ),
       seed: None,
       deal: None,
+      runLimit: Game.Supermove,
+      collect: Game.SafeCards,
     }
     let fresh = () => GameState.initial(mcGame)
 
@@ -2526,6 +3022,45 @@ describe("Cards", () => {
       "no piles yields no columns",
       () => {
         expect(Cards.deal(~piles=0, Cards.all))->toEqual([])
+      },
+    )
+  })
+
+  describe("dealByCounts", () => {
+    test(
+      "deals each column its count of cards, in order, bottom-first",
+      () => {
+        // Seven cards by [3, 2, 2] → the first three, the next two, the last two.
+        let seven =
+          [Ace, Two, Three, Four, Five, Six, Seven]->Array.map(rank => {suit: Spades, rank})
+        let columns = Cards.dealByCounts(~counts=[3, 2, 2], seven)
+        expect(columns->Array.map(col => col->Array.map(c => c.rank)))->toEqual([
+          [Ace, Two, Three],
+          [Four, Five],
+          [Six, Seven],
+        ])
+      },
+    )
+
+    test(
+      "counts that don't reach the pack leave the rest undealt",
+      () => {
+        let seven =
+          [Ace, Two, Three, Four, Five, Six, Seven]->Array.map(rank => {suit: Spades, rank})
+        let columns = Cards.dealByCounts(~counts=[2, 2], seven)
+        expect(columns->Array.map(col => col->Array.map(c => c.rank)))->toEqual([
+          [Ace, Two],
+          [Three, Four],
+        ])
+      },
+    )
+
+    test(
+      "Simple Simon's counts cover the pack exactly",
+      () => {
+        expect(Game.simpleSimonCounts->Array.reduce(0, (a, b) => a + b))->toBe(52)
+        let columns = Cards.dealByCounts(~counts=Game.simpleSimonCounts, Cards.shuffle(~seed=1))
+        expect(columns->Array.map(Array.length))->toEqual(Game.simpleSimonCounts)
       },
     )
   })
