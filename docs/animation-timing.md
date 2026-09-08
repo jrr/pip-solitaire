@@ -138,6 +138,21 @@ The model is already committed before any of this runs — a flight is a purely
 it is always safe, and undo and persistence stay correct however a sequence is
 interrupted.
 
+## Stopping one mid-air
+
+A flight can be cut short — a press on the board stops a solver's line where it
+stands, an undo steps out from under a sweep — and the model never minds: the
+position was committed before anything moved, and `reflowAll` had already put
+every node on its true resting slot before the flight animated it *back*. Cancel
+it and the card is already home.
+
+**What a cancelled flight skips is the settle.** A batch's tidy-up hangs off the
+last card's `onfinish`, and cancelling an animation doesn't fire one — so
+whatever cancels owns that tidy-up instead: drop the raised flight layers, clear
+the deferred tilt timings, and reflow. Leave it out and the board keeps a dead
+flight's z-layers and a rotation schedule for a movement that is no longer
+coming.
+
 ## What this model is not for
 
 The victory cascade (`scenes/Cascade`) launches cards one at a time too, and it is
