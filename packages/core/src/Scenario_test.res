@@ -247,6 +247,29 @@ describe("Scenario", () => {
     let cascades = Game.pileIndices(game, Game.Cascade)
 
     test(
+      "both positions apply to every pack, and the near-win is posed from that pack",
+      () => {
+        [Game.spiderette1, Game.spiderette4]->Array.forEach(
+          variant => {
+            expect(Scenario.scenariosFor(variant)->Array.map(s => s.name))->toEqual([
+              "dealt",
+              "almost-won",
+            ])
+            let state = Scenario.forName(variant, "almost-won")->Option.getOrThrow
+            let onTable = state.piles->Array.flat
+            expect(Array.length(onTable))->toBe(52)
+            expect(
+              onTable->Array.every(
+                c => Cards.cardsOf(variant.deck)->Array.some(d => GameState.sameCard(c, d)),
+              ),
+            )->toBe(true)
+            expect(GameState.hasWon(variant, state))->toBe(false)
+          },
+        )
+      },
+    )
+
+    test(
       "the stock dealt out is the opening deal after every deal the stock allows",
       () => {
         let state = Scenario.forName(game, "dealt")->Option.getOrThrow

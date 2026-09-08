@@ -8,14 +8,17 @@ test("greeting returns the expected message", () => {
 // The modelled games: assert the rules the presentation layer reads back.
 describe("Game", () => {
   test("every game is listed with a stable id and a non-empty name", () => {
-    // FreeCell, its two short-deck siblings and the two Spider boards — the list the
-    // scene picker and the CLI's `games`/`deal <id>` enumerate, in picker order.
+    // FreeCell, its two short-deck siblings, Simple Simon and the three Spiderette
+    // packs — the list the scene picker and the CLI's `games`/`deal <id>` enumerate,
+    // in picker order.
     expect(Game.all->Array.map(g => g.id))->toEqual([
       "freecell",
       "mini",
       "micro",
       "simplesimon",
+      "spiderette1",
       "spiderette",
+      "spiderette4",
     ])
     expect(Game.all->Array.every(g => g.name != ""))->toBe(true)
   })
@@ -1328,6 +1331,59 @@ describe("Game", () => {
         // Nothing on it is ever finishable by foundation moves: the foundations take
         // only what the game collects.
         expect(Reducer.canFinish(~game=board, opening))->toBe(false)
+      },
+    )
+  })
+
+  // The one- and four-suit packs are the same twelve-pile board with a different
+  // deck: still 52 cards and still four runs, so the same four foundations. The
+  // two-suit board keeps the bare `spiderette` id, so a save or link written for it
+  // opens it and not a sibling.
+  describe("spiderette's other packs", () => {
+    test(
+      "one suit is spades four times over, four suits is the standard pack, and each is 52 cards in twelve piles",
+      () => {
+        expect(Game.spiderette1.deck)->toEqual({suits: [Spades], ranks: Cards.ranks, copies: 4})
+        expect(Game.spiderette4.deck)->toEqual(Cards.standard)
+        [Game.spiderette1, Game.spiderette, Game.spiderette4]->Array.forEach(
+          board => {
+            expect(Array.length(Cards.cardsOf(board.deck)))->toBe(52)
+            expect(Array.length(board.piles))->toBe(12)
+            expect(Game.pileIndices(board, Game.Foundation))->toEqual([1, 2, 3, 4])
+            expect(Array.length(GameState.initial(board).piles->Array.flat))->toBe(52)
+          },
+        )
+      },
+    )
+
+    test(
+      "each pack re-deals as itself, so a New Game on the one-suit board stays one-suit",
+      () => {
+        let again = Game.dealt(Game.spiderette1, ~seed=7)
+        expect(again.id)->toBe("spiderette1")
+        expect(again.deck)->toEqual(Game.spiderette1.deck)
+        expect(again.seed)->toEqual(Some(7))
+        expect(Game.dealt(Game.spiderette4, ~seed=7).deck)->toEqual(Cards.standard)
+      },
+    )
+
+    test(
+      "a one-suit run is complete on any four copies, so the win needs all four foundations",
+      () => {
+        let board = Game.spiderette1
+        let foundations = Game.pileIndices(board, Game.Foundation)
+        let run = k =>
+          Cards.ranks->Array.toReversed->Array.map(rank => Card.nth({suit: Spades, rank}, k))
+        let piles = board.piles->Array.mapWithIndex(
+          (_, i) =>
+            switch foundations->Array.indexOf(i) {
+            | -1 => []
+            | k => run(k)
+            },
+        )
+        expect(GameState.hasWon(board, GameState.faceUp(piles)))->toBe(true)
+        let threeOnly = piles->Array.mapWithIndex((cards, i) => i == 4 ? [] : cards)
+        expect(GameState.hasWon(board, GameState.faceUp(threeOnly)))->toBe(false)
       },
     )
   })

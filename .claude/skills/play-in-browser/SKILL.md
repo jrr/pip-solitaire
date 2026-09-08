@@ -98,7 +98,7 @@ hand-run script doesn't.)
 Query parameters, all documented in `src/platform/AppUrl.res`:
 
 - `?game=freecell` — open a game by id (`freecell`, `mini`, `micro`, `simplesimon`,
-  `spiderette`). The solver and `playGame()` are FreeCell's; the Spider boards are
+  `spiderette1`, `spiderette`, `spiderette4`). The solver and `playGame()` are FreeCell's; the Spider boards are
   played by hand — `browser-tests/lib/play-line.mjs` drags a recorded line, and a
   tap on Spiderette's stock deals the next row.
 - `?scene=gallery` — mount a non-game scene (`gallery`, `raster`, `trail`,

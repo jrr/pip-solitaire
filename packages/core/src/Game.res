@@ -278,27 +278,35 @@ let rec simpleSimonDeal = (~seed: int): t => {
 let simpleSimon = simpleSimonDeal(~seed=freecellSeed)
 
 // --- Spiderette ------------------------------------------------------------------
-// Two-suit Spider on fifty-two cards: Simple Simon's laws (`Rules.spiderCascade`,
-// `Unlimited`, `CompleteRuns`) over a Klondike layout. Seven cascades dealt
-// 1/2/3/4/5/6/7 with only the top card of each face up, and the other 24 cards a
-// face-down **stock** that a `Reducer.Deal` drops one card from onto every cascade —
-// three deals of seven, then the last three cards onto the first three columns.
+// Spider on fifty-two cards: Simple Simon's laws (`Rules.spiderCascade`, `Unlimited`,
+// `CompleteRuns`) over a Klondike layout. Seven cascades dealt 1/2/3/4/5/6/7 with only
+// the top card of each face up, and the other 24 cards a face-down **stock** that a
+// `Reducer.Deal` drops one card from onto every cascade — three deals of seven, then
+// the last three cards onto the first three columns.
 //
-// The pack is spades and hearts, twice over: 52 cards, four runs to collect, one
-// foundation each. The first board here with two of a card, which is what `Card.copy`
-// is for — the two Sevens of Spades are two cards to the reducer and one face to a
-// typed name.
+// **The pack is the variant.** Three boards share this shape and differ in nothing
+// but the deck: one suit taken four times, two taken twice, or the standard pack once.
+// Each is 52 cards and four runs to collect, one foundation each — the number of
+// foundations is the number of runs, `suits × copies`, which every variant keeps at
+// four. Nothing else here depends on which pack it got: a run is complete by the
+// deck's own ranks (`Rules.isCompleteRun`), and the near-won scenario poses its runs
+// from `deck.suits` and `deck.copies` rather than assuming two of each.
+//
+// Repeated cards are what `Card.copy` is for — the two Sevens of Spades are two cards
+// to the reducer and one face to a typed name.
 //
 // The stock is dealt from its top, and its top is the card the shuffle would have
 // dealt next: the remainder is stacked in reverse so that dealing carries on through
 // the pack in shuffle order. That order, the counts, and the pack's own order
-// (`Cards.cardsOf`) are this game's deal-number promise.
-let spideretteDeck: Cards.deck = {suits: [Spades, Hearts], ranks: Cards.ranks, copies: 2}
-
+// (`Cards.cardsOf`) are each variant's deal-number promise — a promise per variant,
+// since the same number shuffles a different pack on each.
 let spideretteCounts = [1, 2, 3, 4, 5, 6, 7]
 
-let rec spideretteDeal = (~seed: int): t => {
-  let shuffled = Cards.shuffle(~deck=spideretteDeck, ~seed)
+// The seams that differ per variant, so the shape below can be written once. `id`
+// stays the storage key and `?game=` value, so the two-suit board keeps the bare
+// `spiderette` it has always had: a save or link written for it still opens it.
+let rec spideretteShaped = (~id: string, ~name: string, ~deck: Cards.deck, ~seed: int): t => {
+  let shuffled = Cards.shuffle(~deck, ~seed)
   let dealt = spideretteCounts->Array.reduce(0, (a, b) => a + b)
   let cascadePiles = Cards.dealByCounts(~counts=spideretteCounts, shuffled)->Array.map(column => {
     role: Cascade,
@@ -318,7 +326,7 @@ let rec spideretteDeal = (~seed: int): t => {
     cards: stockCards,
     faceDown: Array.length(stockCards),
   }
-  let foundationPiles = Array.fromInitializer(~length=4, _ => {
+  let foundationPiles = Array.fromInitializer(~length=Array.length(deck.suits) * deck.copies, _ => {
     role: Foundation,
     stacking: Squared,
     rule: Rules.Sealed,
@@ -327,23 +335,43 @@ let rec spideretteDeal = (~seed: int): t => {
     faceDown: 0,
   })
   {
-    id: "spiderette",
-    name: "Spiderette",
+    id,
+    name,
     // The stock leads the top row, the foundations beside it, the cascades below.
     piles: [stockPile]->Array.concat(foundationPiles)->Array.concat(cascadePiles),
-    deck: spideretteDeck,
+    deck,
     seed: Some(seed),
-    deal: Some(seed => spideretteDeal(~seed)),
+    deal: Some(seed => spideretteShaped(~id, ~name, ~deck, ~seed)),
     runLimit: Unlimited,
     collect: CompleteRuns,
   }
 }
 
+// One suit, four times over: every card builds on every card, so a run only ever
+// needs assembling, never untangling.
+let spiderette1Deck: Cards.deck = {suits: [Spades], ranks: Cards.ranks, copies: 4}
+
+let spiderette1Deal = (~seed: int): t =>
+  spideretteShaped(~id="spiderette1", ~name="Spiderette · 1 suit", ~deck=spiderette1Deck, ~seed)
+
+// Spades and hearts, twice over — the variant the game is usually meant by.
+let spideretteDeck: Cards.deck = {suits: [Spades, Hearts], ranks: Cards.ranks, copies: 2}
+
+let spideretteDeal = (~seed: int): t =>
+  spideretteShaped(~id="spiderette", ~name="Spiderette · 2 suits", ~deck=spideretteDeck, ~seed)
+
+// The standard pack: the hard one, where a lawful drop across suits is most often a
+// card in the way.
+let spiderette4Deal = (~seed: int): t =>
+  spideretteShaped(~id="spiderette4", ~name="Spiderette · 4 suits", ~deck=Cards.standard, ~seed)
+
+let spiderette1 = spiderette1Deal(~seed=freecellSeed)
 let spiderette = spideretteDeal(~seed=freecellSeed)
+let spiderette4 = spiderette4Deal(~seed=freecellSeed)
 
 // In picker order; a further game joins it here. The scene picker and the CLI's
 // `games`/`deal <id>` both enumerate it.
-let all = [freecell, mini, micro, simpleSimon, spiderette]
+let all = [freecell, mini, micro, simpleSimon, spiderette1, spiderette, spiderette4]
 
 // The game a bare `deal`/`new`, or a bare deal *number*, lays out. Named here so each
 // front end asks for "the default game" rather than deciding for itself that a number
