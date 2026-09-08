@@ -302,7 +302,7 @@ let spideretteDealtOut = (game: Game.t): GameState.t => {
 // King→Two on the first cascade and its Ace alone on the second — one drag completes
 // the run, and lifting it is the win. Stock empty, everything face up. Built straight
 // from the board's own pack, like the FreeCell positions, so every card appears
-// exactly once: the runs are one per suit per copy, four on the two-suit pack.
+// exactly once: the runs are one per suit per copy, which is four on every variant.
 let spideretteAlmostWon = (game: Game.t): GameState.t => {
   let kingToAce = (suit, copy) =>
     game.deck.ranks->Array.toReversed->Array.map(rank => Card.nth({suit, rank}, copy))
@@ -389,8 +389,9 @@ let freecellScenarios: array<named> = [
 ]
 
 // Spiderette's, addressed the same way (`?game=spiderette&state=dealt`, `deal
-// spiderette dealt`). Neither claims a deal: `dealt` is reachable from *whatever* deal
-// the board it's built on was dealt from, which a fixed number can't say, and the
+// spiderette dealt`), and shared by its three variants since both build from whatever
+// pack the board carries. Neither claims a deal: `dealt` is reachable from *whatever*
+// deal the board it's built on was dealt from, which a fixed number can't say, and the
 // near-won position is posed from the pack.
 let spideretteScenarios: array<named> = [
   {name: "dealt", label: "Stock dealt out", build: spideretteDealtOut, seed: None},
@@ -402,7 +403,7 @@ let spideretteScenarios: array<named> = [
 let scenariosFor = (game: Game.t): array<named> =>
   switch game.id {
   | "freecell" => freecellScenarios
-  | "spiderette" => spideretteScenarios
+  | "spiderette1" | "spiderette" | "spiderette4" => spideretteScenarios
   | _ => []
   }
 
