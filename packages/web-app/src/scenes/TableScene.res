@@ -32,6 +32,17 @@ type pointerEvent
 @send external releasePointerCapture: (WebDom.element, int) => unit = "releasePointerCapture"
 @send
 external onPointer: (WebDom.element, string, pointerEvent => unit) => unit = "addEventListener"
+// A listener on the way *down*, for the one press this board takes before its cards do:
+// an event stopped in the capture phase never reaches the card under the finger at all
+// (see the stop gesture below).
+@send
+external onPointerCapturing: (
+  WebDom.element,
+  string,
+  pointerEvent => unit,
+  {"capture": bool},
+) => unit = "addEventListener"
+@send external stopPropagation: pointerEvent => unit = "stopPropagation"
 
 // The initial deal is centred on the stage's live size, which isn't known until
 // the stage is in the document and laid out. On first load the scene mounts while
@@ -615,7 +626,34 @@ let make = (
     // a run started on the board a New Game replaced must not keep playing into the
     // torn-down build's `state` (and its `persist`).
     let playToken = ref(0)
-    let interruptPlay = () => playToken := playToken.contents + 1
+    // How a run in the air is stopped *by hand*: `Some` exactly while a line has steps
+    // left to play, holding the thunk that ends it where it stands (see `playLine`).
+    // Every interruption clears it, so a run already stopped by a move, an undo or a
+    // rebuild leaves nothing behind for a later press to stop a second time — and a board
+    // with no line on it is deaf to the gesture, which is what lets the press through to
+    // the cards as usual.
+    let stopPlay: ref<option<unit => unit>> = ref(None)
+    let interruptPlay = () => {
+      playToken := playToken.contents + 1
+      stopPlay := None
+    }
+
+    // **The stop gesture**: a press anywhere on the board ends a running line, and is
+    // only ever that — no card is lifted, and nothing is banked toward a send-home
+    // double-tap. The board takes it rather than each card because it has to land on a
+    // card *in flight* as readily as on bare table, and a flying card is over whichever
+    // square its flight happens to have reached.
+    boardHost->onPointerCapturing(
+      "pointerdown",
+      ev =>
+        switch stopPlay.contents {
+        | Some(stop) =>
+          stopPropagation(ev)
+          stop()
+        | None => ()
+        },
+      {"capture": true},
+    )
 
     // --- The mount-scope refs -------------------------------------------------
     // Everything below belongs to a *build* but is held at *mount* scope, because
@@ -1738,11 +1776,40 @@ let make = (
         interruptPlay()
         let token = playToken.contents
 
+        // How far the line has got, so a stop can say where it stopped. Counted in
+        // *committed* moves — a step is adopted before it flies, so a move being flown
+        // when the run stops is one the board has already made.
+        let played = ref(0)
+
+        // Ending the line where it stands, which is what the board's stop gesture asks
+        // for. **The model needs nothing**: every step so far was committed as its own
+        // session, so the position is already the one the last step produced and the rest
+        // of the plan is simply not played. What is left is the tidy-up the batch's own
+        // `onfinish` would have done — a cancelled animation never fires one (see
+        // `cancel`) — and then the truth about wherever this turned out to be: the
+        // stopping position may or may not be finishable.
+        let stopHere = () => {
+          interruptPlay()
+          cancelOutstanding()
+          clearTiltTimings()
+          reflowAll()
+          updateFinishButton()
+          DebugLog.message(
+            `autoplay stopped after ${Int.toString(played.contents)} of ${Int.toString(
+                Array.length(trail),
+              )} moves`,
+          )
+        }
+        stopPlay := Some(stopHere)
+
         // Where the line ends: the solver stops where the Finish button lights up, so
         // finishing is that button's own sweep — same flight, same win overlay, one
         // further undoable step. A board it couldn't get all the way there stays where
         // the line left it, with the reply saying how far that was.
         let handOver = () => {
+          // Nothing left to stop. The sweep this may hand over to is one already-won
+          // step rather than a line, and takes its own gesture (#404).
+          stopPlay := None
           updateFinishButton()
           if Session.canFinish(session.contents) {
             playFinish()->ignore
@@ -1771,6 +1838,7 @@ let make = (
               // Adopted *before* the flight, as every other move here is, so an
               // interruption mid-air leaves the model settled.
               session := step.session
+              played := i + 1
               afterChange()
               animateAutoplayStep(step.moved, ~onDone=() => playFrom(i + 1))
             }
