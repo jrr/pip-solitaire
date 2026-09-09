@@ -132,7 +132,7 @@ test("ten taps on the title reveal the hidden settings, and the reveal is rememb
   await expect(toggle(page, "Wiggle Waggle")).toHaveCount(0)
 
   await revealHidden(page)
-  await expect(toggle(page, "Victory animation")).toBeVisible()
+  await expect(toggle(page, "Wiggle Waggle")).toBeVisible()
   expect(await stored(page, "pip.revealHidden")).toBe("true")
 
   // Persisted so the gesture is performed once per device, not once per launch.
@@ -145,10 +145,6 @@ test("ten taps on the title reveal the hidden settings, and the reveal is rememb
 test("the hidden switches write through like any other", async ({ page }) => {
   await openBoardAndSettings(page)
   await revealHidden(page)
-
-  await toggle(page, "Victory animation").click()
-  await expect(toggle(page, "Victory animation")).toHaveAttribute("aria-checked", "true")
-  expect(await stored(page, "pip.victoryAnimation")).toBe("true")
 
   // Wiggle Waggle asks the OS as it goes on, and the grant at the top of this file is
   // what lets that resolve listening. The *intent* — not the grant — is what's stored.

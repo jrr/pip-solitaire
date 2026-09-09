@@ -12,6 +12,7 @@
 import { expect, test } from "@playwright/test"
 import { assignPiles, readGeometry, settle } from "../scripts/autoplay/read-board.mjs"
 import { drag, moveOf } from "./lib/play-line.mjs"
+import { quietWin } from "./lib/board.mjs"
 import * as Game from "core/src/Game.res.mjs"
 import * as GameState from "core/src/GameState.res.mjs"
 import * as Reducer from "core/src/Reducer.res.mjs"
@@ -19,6 +20,7 @@ import * as CardText from "core/src/CardText.res.mjs"
 import * as Scenario from "core/src/Scenario.res.mjs"
 
 test.use({ viewport: { width: 900, height: 1100 } })
+test.use(quietWin)
 
 const RANK_WORDS = ["ace", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "jack", "queen", "king"]
 const SUIT_WORDS = { Spades: "spades", Hearts: "hearts", Diamonds: "diamonds", Clubs: "clubs" }

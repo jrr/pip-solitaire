@@ -8,10 +8,11 @@
 // `elementFromPoint` over a stacking context, which jsdom has neither of.
 
 import { expect, test } from "@playwright/test"
-import { settleBoard } from "./lib/board.mjs"
+import { quietWin, settleBoard } from "./lib/board.mjs"
 import { menuSeed } from "./lib/menu.mjs"
 
 test.use({ viewport: { width: 800, height: 1000 } })
+test.use(quietWin)
 
 const FREECELL = "/?game=freecell&animate=off"
 // The one-move-from-won position (`Scenario.freecellAlmostWon`), the cheapest real

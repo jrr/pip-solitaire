@@ -552,13 +552,9 @@ let make = (
   ~currentDeal: unit => option<int>=() => None,
   // Omitted, the win overlay is the New Game button alone.
   ~winShare: option<winShare>=?,
-  // All three read *live*, so a menu toggle lands without rebuilding the board.
+  // Both read *live*, so a menu toggle lands without rebuilding the board.
   ~options: ref<Options.t>=ref(Options.default),
   ~tiltEnabled: ref<bool>=ref(true),
-  // The hidden "Victory animation" flag. Read at the moment a game is won, so flipping
-  // it mid-game decides what *this* win does — and a board built by a test or a demo
-  // wins quietly, which is what keeps every other suite here free of a sprite build.
-  ~victoryAnimation: ref<bool>=ref(false),
   // Drops the cards straight into their resting places — the URL's `?animate=off`, for
   // a shot of the already-dealt board. The layout is identical either way; only the
   // cosmetic flight is suppressed, as "reduce motion" already does. **Its name is
@@ -1410,21 +1406,16 @@ let make = (
       }
 
       // **A win as it happens**, as against one restored from storage — which is the
-      // whole distinction between this and the bare `showWin` below it. Three things
-      // send a live win down the quiet path anyway: the hidden flag is off, the OS asks
-      // for reduced motion, or a panel is already up. All three land on the same
-      // `showWin` the cascade itself ends with.
+      // whole distinction between this and the bare `showWin` below it. Two things send a
+      // live win down the quiet path anyway: the OS asks for reduced motion, or a panel
+      // is already up. Both land on the same `showWin` the cascade itself ends with.
       let celebrate = () =>
         switch cascade.contents {
         // Already celebrating. Every call site guards on `Session.hasWon`, so this only
         // catches a second ask about the *same* win — which is one cascade, not two.
         | Some(_) => ()
         | None =>
-          if (
-            winShown.contents ||
-            !victoryAnimation.contents ||
-            matchMedia("(prefers-reduced-motion: reduce)")["matches"]
-          ) {
+          if winShown.contents || matchMedia("(prefers-reduced-motion: reduce)")["matches"] {
             showWin()
           } else {
             // Announced up front rather than when the panel finally goes up: the game is

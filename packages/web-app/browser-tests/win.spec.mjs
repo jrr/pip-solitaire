@@ -13,7 +13,7 @@
 // once from a finger on an emulated iPhone, has to reach the same overlay.
 
 import { devices, expect, test } from "@playwright/test"
-import { settleBoard } from "./lib/board.mjs"
+import { quietWin, settleBoard } from "./lib/board.mjs"
 import { contextOptions } from "../scripts/lib/devices.mjs"
 import { touchDrag } from "../scripts/lib/touch.mjs"
 
@@ -57,6 +57,9 @@ const inputs = [
 for (const input of inputs) {
   test.describe(`by ${input.name}`, () => {
     test.use(input.context)
+    // These two are about the drag reaching the panel, not about the celebration in
+    // front of it — the cascade has its own describe at the foot of this file.
+    test.use(quietWin)
 
     test("the winning move raises the overlay, and New Game tears it down", async ({ page }) => {
       // `animate=off` skips the opening fly-in (see AppUrl), so the board is at its
@@ -135,12 +138,12 @@ for (const input of inputs) {
   })
 }
 
-// The victory cascade, wired into the win flow behind its hidden flag. What only a
-// browser can show is the part that isn't a decision: sprites really rasterize, cards
-// really come off the foundations, and a real tap really ends it. The motion is
-// `Cascade_test`'s, the surface `browser-tests/cascade.spec.mjs`'s, and which wins take
-// this path at all is `TableScene_test`'s.
-test.describe("with the victory animation on", () => {
+// The victory cascade, as every won game now plays it. What only a browser can show is
+// the part that isn't a decision: sprites really rasterize, cards really come off the
+// foundations, and a real tap really ends it. The motion is `Cascade_test`'s, the surface
+// `browser-tests/cascade.spec.mjs`'s, and which wins take this path at all is
+// `TableScene_test`'s.
+test.describe("the victory cascade", () => {
   test.use({ viewport: { width: 800, height: 1000 } })
 
   // A sprite sheet is built at the moment of victory, and CI runners are slow at the
@@ -148,12 +151,6 @@ test.describe("with the victory animation on", () => {
   test.setTimeout(90_000)
 
   test("the win cascades the foundations, and a tap peeks at the panel", async ({ page }) => {
-    // The flag is a stored preference with no URL of its own — it's hidden behind ten
-    // taps on the Settings title precisely so it isn't reachable by accident — so seed
-    // storage before the app boots rather than driving the menu.
-    await page.addInitScript(() => {
-      window.localStorage.setItem("pip.victoryAnimation", "true")
-    })
     // `state=finish` opens one press of Finish away from a win, and `animate=off` puts
     // the board at its resting positions with the sweep collapsed to an instant — so
     // the press wins the game immediately and what follows is the cascade alone.
@@ -220,9 +217,6 @@ test.describe("with the victory animation on", () => {
   test("the panel's own buttons still work with cards falling behind them", async ({ page }) => {
     // The other half of a click-through scrim: the panel keeps its own pointer events,
     // or peeking would put an unusable New Game in front of a forty-second cascade.
-    await page.addInitScript(() => {
-      window.localStorage.setItem("pip.victoryAnimation", "true")
-    })
     await page.goto("/?game=freecell&state=finish&animate=off")
     await expect(page.locator(".finish-button")).toBeVisible()
     await settleBoard(page)

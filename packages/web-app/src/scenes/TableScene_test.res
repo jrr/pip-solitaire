@@ -24,10 +24,10 @@
 `)
 
 // The stub above reports reduced motion for the whole file, which is what keeps every
-// flight within jsdom's reach — and it is also what sends a win straight to the panel.
-// The cascade tests borrow the other answer for the length of one board; they pass
-// `~skipDealAnimation` instead, which collapses the same flights without touching the
-// preference the cascade actually reads.
+// flight within jsdom's reach — and it is also what sends a win straight to the panel,
+// so no other suite here pays for a sprite build. The cascade tests borrow the other
+// answer for the length of one board; they pass `~skipDealAnimation` instead, which
+// collapses the same flights without silencing the celebration they are about.
 let withMotionAllowed: (unit => unit) => unit = %raw(`(body) => {
   const reduced = globalThis.matchMedia
   globalThis.matchMedia = () => ({ matches: false })
@@ -1185,15 +1185,14 @@ describe("TableScene victory animation", () => {
   let hasCascade = (container): bool => container->find(".table-cascade")->Option.isSome
   let hasWinOverlay = (container): bool => container->find(".win-overlay")->Option.isSome
 
-  // A board one press of Finish away from a win, with the flag on and every flight
-  // collapsed to an instant placement — so the press wins the game without reaching an
-  // `Element.animate` jsdom hasn't got, and the cascade decides on its own merits.
-  let winnable = (~victoryAnimation=true, ~board=ref(None), container) => {
+  // A board one press of Finish away from a win, with every flight collapsed to an
+  // instant placement — so the press wins the game without reaching an `Element.animate`
+  // jsdom hasn't got, and the cascade decides on its own merits.
+  let winnable = (~board=ref(None), container) => {
     let scene = TableScene.make(
       ~initial=Scenario.freecellFinish(game),
       ~newDeal=() => Game.freecellDeal(~seed=7),
       ~publish=published => board := Some(published),
-      ~victoryAnimation=ref(victoryAnimation),
       ~skipDealAnimation=true,
       game,
     )
@@ -1204,26 +1203,16 @@ describe("TableScene victory animation", () => {
     teardown
   }
 
-  // Win the board, with the OS answering that movement is welcome — which is the state
-  // the flag is a question about. It has to wrap the press rather than the mount: the
-  // preference is read at the moment the game is won.
+  // Win the board, with the OS answering that movement is welcome. It has to wrap the
+  // press rather than the mount: reduced motion is asked at the moment the game is won,
+  // and the file's own stub answers yes for every other suite here — which is what keeps
+  // them free of a sprite build.
   let playWin = container =>
     withMotionAllowed(() => container->find(".finish-button")->Option.getOrThrow->click)
 
-  test("wins quietly when the flag is off", () => {
-    // The default, and so what every other suite in this file is testing against: the
-    // panel goes up on the winning move with nothing in front of it.
-    let container = host("div")
-    let teardown = winnable(~victoryAnimation=false, container)
-    playWin(container)
-    expect(hasCascade(container))->toBe(false)
-    expect(hasWinOverlay(container))->toBe(true)
-    teardown()
-  })
-
-  test("plays the cascade in front of the panel when the flag is on", () => {
-    // The whole point of the flag: the win is real and recorded, but the panel waits
-    // behind a canvas full of falling cards.
+  test("plays the cascade in front of the panel", () => {
+    // The win is real and recorded, but the panel waits behind a canvas full of falling
+    // cards.
     let container = host("div")
     let teardown = winnable(container)
     playWin(container)
@@ -1284,8 +1273,8 @@ describe("TableScene victory animation", () => {
 
   test("skips straight to the panel under reduced motion", () => {
     // Winning without `withMotionAllowed`, so the file's own stub answers: the OS is
-    // asking for less movement, and a cascade is nothing but movement. The same answer
-    // the flag being off gives, reached by a different route.
+    // asking for less movement, and a cascade is nothing but movement. The one way a
+    // win still reaches the panel with nothing in front of it.
     let container = host("div")
     let teardown = winnable(container)
     container->find(".finish-button")->Option.getOrThrow->click
@@ -1304,7 +1293,6 @@ describe("TableScene victory animation", () => {
       () => {
         let scene = TableScene.make(
           ~loadHistory=() => Some(SaveState.ofHistory(History.make(won))),
-          ~victoryAnimation=ref(true),
           ~skipDealAnimation=true,
           game,
         )

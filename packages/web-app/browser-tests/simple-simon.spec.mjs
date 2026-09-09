@@ -15,9 +15,11 @@
 import { expect, test } from "@playwright/test"
 import { settle } from "../scripts/autoplay/read-board.mjs"
 import { playLine } from "./lib/play-line.mjs"
+import { quietWin } from "./lib/board.mjs"
 import * as Game from "core/src/Game.res.mjs"
 
 test.use({ viewport: { width: 1000, height: 1100 } })
+test.use(quietWin)
 
 // Each move is the card that heads the run to lift, and the column it lands in.
 const LINE =

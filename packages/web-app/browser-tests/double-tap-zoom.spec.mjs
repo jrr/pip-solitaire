@@ -21,7 +21,7 @@
 // Needs a real browser: jsdom has no touch input and no layout to aim it at.
 
 import { devices, expect, test } from "@playwright/test"
-import { settleBoard } from "./lib/board.mjs"
+import { quietWin, settleBoard } from "./lib/board.mjs"
 import { contextOptions } from "../scripts/lib/devices.mjs"
 
 // A real device descriptor rather than a phone-sized desktop window, so the page
@@ -29,6 +29,7 @@ import { contextOptions } from "../scripts/lib/devices.mjs"
 // it there are no `touchend`s to refuse. `contextOptions` drops the descriptor's
 // `defaultBrowserType`; the suite is Chromium whatever the device implies.
 test.use(contextOptions(devices["iPhone 13 Mini"]))
+test.use(quietWin)
 
 // `suppressMs` / `suppressMoveTol` in TapZoom.res. Two taps closer together than
 // this in time *and* space are one gesture aimed at one spot — the pair WebKit

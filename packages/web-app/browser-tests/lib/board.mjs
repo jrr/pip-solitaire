@@ -1,9 +1,25 @@
-// Shared "the board has stopped moving" wait for the browser suite.
+// Shared "the board has stopped moving" waits for the browser suite.
 //
 // Not a spec file — Playwright only collects `*.spec.mjs` from browser-tests/,
 // so helpers live here beside them.
 
 import { expect } from "@playwright/test"
+
+/**
+ * Context options for a spec that wins a game but isn't about the win.
+ *
+ * Every victory now plays a ~40-second cascade before the panel goes up
+ * (`docs/cascade.md`), and `prefers-reduced-motion` is the one thing that skips
+ * it. A spec asking about the panel, the stats, the share button or the
+ * accessibility tree of a won board would otherwise be waiting six seconds for a
+ * peek and then reading a table whose cards are being hidden underneath it — so
+ * it says here, in one line, that this browser wants less movement.
+ *
+ * `test.use(quietWin)` alongside whatever else the file already uses. The
+ * celebration itself is pinned by `win.spec.mjs` and `cascade.spec.mjs`, which
+ * deliberately do not.
+ */
+export const quietWin = { reducedMotion: "reduce" }
 
 /**
  * Wait for the board to reach its resting layout: cards present, then every

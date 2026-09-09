@@ -16,9 +16,10 @@
 // repainted alone.
 
 import { expect, test } from "@playwright/test"
-import { settleBoard } from "./lib/board.mjs"
+import { quietWin, settleBoard } from "./lib/board.mjs"
 
 test.use({ viewport: { width: 430, height: 932 } })
+test.use(quietWin)
 
 // The declarations the tokens carry. Not the panels' own dimensions — padding, gap and
 // the title's size are deliberately different in the two — just what they hold in

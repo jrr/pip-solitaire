@@ -1,6 +1,6 @@
 # The board and its driver
 
-`TableScene.make` takes fourteen arguments and publishes a record back. That is a
+`TableScene.make` takes thirteen arguments and publishes a record back. That is a
 wide seam for one call site, and the width is not accidental: the board owns the
 cards and the driver owns everything a card can't answer. This page is the
 contract between them — what each side may know, why an argument is the shape it
@@ -26,7 +26,7 @@ shape:
 value      ~initial ~newDeal ~winShare ~skipDealAnimation
            settled before the board is built, and true for its whole life
 
-live ref   ~options ~tiltEnabled ~victoryAnimation
+live ref   ~options ~tiltEnabled
            read at the moment of use, so a menu toggle lands without a rebuild
 
 channel    ~onHistory ~onDeal          board → driver, after every change
@@ -39,23 +39,20 @@ that could be a value should be one.
 
 ## Why the preferences are refs
 
-`~options` (the shared `Options.t` both front ends read), `~tiltEnabled` (the web
-app's own presentation flag) and `~victoryAnimation` (the hidden victory-cascade
-flag) are `ref`s rather than values, read live at each post-move step, wherever a
-card is laid out, and at the moment a game is won.
+`~options` (the shared `Options.t` both front ends read) and `~tiltEnabled` (the
+web app's own presentation flag) are `ref`s rather than values, read live at each
+post-move step and wherever a card is laid out.
 
 The alternative is rebuilding the board when a preference flips, and a rebuild
 throws the game away. Auto-collect turned on mid-game has to take effect on the
-very next move, not on the next deal. `Main` owns all three refs because they
-belong to the board rather than to any one screen; the Settings screen holds the
-mirror its switches render from and writes the refs through on every flip (see
+very next move, not on the next deal. `Main` owns both refs because they belong
+to the board rather than to any one screen; the Settings screen holds the mirror
+its switches render from and writes the refs through on every flip (see
 `MenuSettingsScreen.liveEnv`).
 
 `tiltEnabled`'s companion is `controls.relayout`: a tilt change has nothing to
 wait for, so the driver asks the board to re-lay the resting cards in place.
-`docs/card-tilt.md` § The preference has that half. `victoryAnimation` needs no
-companion for the opposite reason: it decides what the *next* victory does, and
-there is never a victory on the table to redecorate.
+`docs/card-tilt.md` § The preference has that half.
 
 The rule the refs imply: **a preference the board consults belongs in a ref, a
 preference only the CSS consults does not.** "Display content around notch" has

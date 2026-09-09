@@ -271,10 +271,6 @@ let reportScene: ref<string => unit> = ref(_ => ())
 
 let options: ref<Options.t> = ref(Preferences.load())
 let tiltEnabled: ref<bool> = ref(Preferences.loadCardTilt())
-// The hidden "Victory animation" flag. A ref for the same reason as the two above: the
-// board asks at the moment a game is won, so a flip mid-game decides what that win does
-// rather than waiting for the next deal.
-let victoryAnimation: ref<bool> = ref(Preferences.loadVictoryAnimation())
 
 // The persisted "Console logging" preference (defaults off). Read once at
 // startup to seed both the model's toggle and the shared `DebugLog` gate, and the gate
@@ -331,7 +327,6 @@ let settingsBoard = (request: MenuSettingsScreen.request) =>
 let settingsEnv = MenuSettingsScreen.liveEnv(
   ~options,
   ~tiltEnabled,
-  ~victoryAnimation,
   ~shakeActive,
   ~board=settingsBoard,
 )
@@ -709,7 +704,6 @@ let gameScene = (game: Game.t) => {
     },
     ~options,
     ~tiltEnabled,
-    ~victoryAnimation,
     // Skip the opening-deal fly-in when the URL asks for `?animate=off`, so the
     // board is shown already dealt (the same instant placement reduced-motion gives).
     // A shared board skips the fly-in too: the cards it deals are about to be

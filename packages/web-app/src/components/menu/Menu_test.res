@@ -17,7 +17,6 @@ let settings: MenuSettingsScreen.props = {
     cardTilt: true,
     wiggle: Motion.Off,
     wantsShake: false,
-    victoryAnimation: false,
     notchDisplay: true,
     hidden: {revealed: false, taps: 0},
   },
