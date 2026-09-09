@@ -32,7 +32,7 @@ let render = (
 
 // A section by its accessible name, which is how the two groups of controls are told
 // apart now that there are two.
-let section = (screen, label): element => screen->find(`[aria-label="${label}"]`)->Option.getExn
+let section = (screen, label): element => screen->find(`[aria-label="${label}"]`)->Option.getOrThrow
 
 describe("MenuMainScreen", () => {
   test("splits the controls into a board to open and the board in hand", () => {

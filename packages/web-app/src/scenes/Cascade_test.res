@@ -584,7 +584,7 @@ describe("a knob and its ±", () => {
 describe("which way a card is thrown", () => {
   // Eleven and a bit card-widths across, which is a desktop stage at a 90px card.
   let stage = Cascade.stageOf(~cssWidth=1056., ~cssHeight=560., ~cardWidth=90.)
-  let seatX = index => stage.seats->Array.getUnsafe(index)->fst
+  let seatX = index => stage.seats->Array.getUnsafe(index)->Pair.first
   let card: Deck.card = {suit: Deck.Spades, rank: Deck.Ace}
 
   // Counted rather than reasoned about, through the real PRNG. The chain is seeded, so the
