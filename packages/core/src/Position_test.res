@@ -193,6 +193,10 @@ describe("Position", () => {
                             `column ${Int.toString(cascades->Array.indexOf(dest))}`,
                             alone && Array.length(GameState.cardsInPile(state, dest)) == 0,
                           )
+                        // A stock is sealed, so the reducer never accepts a drop onto one,
+                        // and the model has no word for it. Should either change, this
+                        // is a line the model can't offer, so it lands in `missing`.
+                        | Game.Stock => ("stock", false)
                         }
                         let wanted = `${Position.code(Position.idOf(card))} from ${from} to ${to_}`
                         if !pruned && !(offered->Array.includes(wanted)) {

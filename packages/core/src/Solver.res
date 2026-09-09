@@ -245,7 +245,7 @@ let solveWithEffort = (start: Position.t, ~ladder: array<attempt>=ladder): (
 
 // The line alone, for the callers that only ever wanted that.
 let solve = (start: Position.t, ~ladder: array<attempt>=ladder): option<array<Position.move>> =>
-  fst(solveWithEffort(start, ~ladder))
+  Pair.first(solveWithEffort(start, ~ladder))
 
 // Wanting this faster? It has been profiled, and the answer isn't the one it looks
 // like — read `docs/solver.md` § On making this faster first.

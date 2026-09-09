@@ -94,7 +94,7 @@ let parse = (token: string): option<(Game.role, int)> => {
   if String.length(s) < 2 {
     None
   } else {
-    let digits = s->String.sliceToEnd(~start=1)
+    let digits = s->String.slice(~start=1)
     let allDigits = digits->String.split("")->Array.every(c => c >= "0" && c <= "9")
     switch (roleFor(s->String.slice(~start=0, ~end=1)), allDigits ? Int.fromString(digits) : None) {
     | (Some(role), Some(ordinal)) if ordinal >= 1 => Some((role, ordinal))

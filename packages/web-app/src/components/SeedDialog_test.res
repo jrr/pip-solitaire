@@ -10,8 +10,8 @@ open TestDom
 let render = (~seed="", ~onSeed=_ => (), ~onDeal=_ => (), ~onCancel=() => ()) =>
   Html.create(SeedDialog.make({seed, onSeed, onDeal, onCancel}))
 
-let field = (dialog): element => dialog->find(".seed-dialog__field")->Option.getExn
-let panel = (dialog): element => dialog->find(".seed-dialog__panel")->Option.getExn
+let field = (dialog): element => dialog->find(".seed-dialog__field")->Option.getOrThrow
+let panel = (dialog): element => dialog->find(".seed-dialog__panel")->Option.getOrThrow
 let buttons = (dialog): array<element> => dialog->findAll(".seed-dialog__button")
 
 describe("SeedDialog", () => {
@@ -64,7 +64,7 @@ describe("SeedDialog", () => {
     let cancels = ref(0)
     let dialog = render(~onCancel=() => cancels := cancels.contents + 1)
     dialog->buttons->Array.getUnsafe(0)->click
-    dialog->find(".seed-dialog__backdrop")->Option.getExn->click
+    dialog->find(".seed-dialog__backdrop")->Option.getOrThrow->click
     expect(cancels.contents)->toBe(2)
   })
 
