@@ -39,6 +39,7 @@ type knobs = {
   bouncinessVariance: float,
   numBounces: int, // how many times the table catches a card before letting it through
   numBouncesVariance: int,
+  collisions: float, // the share of closing speed two cards keep when they meet; 0 is none
   speed: float, // horizontal launch speed, card-widths / s
   speedVariance: float,
   launchMs: float, // between one card leaving and the next
@@ -51,6 +52,7 @@ let defaults = {
   bouncinessVariance: 0.15,
   numBounces: 3,
   numBouncesVariance: 2,
+  collisions: 1.,
   speed: fromMetric(0.4),
   speedVariance: fromMetric(0.1),
   launchMs: 750.,
@@ -204,6 +206,103 @@ let advance = (flyer, ~knobs, ~stage, ~dt) => {
   ->offWalls(~stage)
 }
 
+// --- Cards meeting ---------------------------------------------------------------
+// The deck catching its own, the way the floor and the walls catch a card: the overlap is
+// undone and the speed across it is traded. Two rules keep every run ending, and
+// `docs/cascade.md` has the argument: a card out of bounces passes through the deck as it
+// passes through the floor, and no give is no contact at all.
+
+// The elastic trade between two equal cards on one axis, `low` the one nearer the origin
+// (left, or above). Both results lie between the two speeds that went in, so a contact
+// never hands a card more speed than either brought — which is what lets the top of the
+// stage stay open.
+let exchange = (~vLow, ~vHigh, ~restitution) => (
+  ((1. -. restitution) *. vLow +. (1. +. restitution) *. vHigh) /. 2.,
+  ((1. +. restitution) *. vLow +. (1. -. restitution) *. vHigh) /. 2.,
+)
+
+// Spent only if the contact turned the card round — the floor's rule, for the floor's
+// reason: a card resting on another creeps into it a hair every step, and a bounce a step
+// for that is a card through the table in a tenth of a second.
+let spend = (~before, ~after, bounces) => before *. after < 0. ? bounces - 1 : bounces
+
+// One axis of a card: where it is, how fast it is going, and what it has left to spend.
+type edge = {p: float, v: float, bounces: int}
+
+// A pair already parting is left to part: a launch faster than a card clears its seat puts
+// the next card down on top of it, and throwing those two apart would be a kick nobody
+// threw.
+let contact = (low: edge, high: edge, ~overlap, ~restitution) =>
+  if low.v -. high.v <= 0. {
+    None
+  } else {
+    let (vLow, vHigh) = exchange(~vLow=low.v, ~vHigh=high.v, ~restitution)
+    let half = overlap /. 2.
+    Some((
+      {p: low.p -. half, v: vLow, bounces: spend(~before=low.v, ~after=vLow, low.bounces)},
+      {p: high.p +. half, v: vHigh, bounces: spend(~before=high.v, ~after=vHigh, high.bounces)},
+    ))
+  }
+
+// Resolved along the axis the two overlap *least*: a card landing on another overlaps it
+// the whole width and a sliver of height, and the sliver is what says which way the
+// contact points. `None` is a pair that isn't touching, isn't closing, or can't be caught.
+let meet = (a: flyer, b: flyer, ~restitution) => {
+  let overlapX = Math.min(a.x, b.x) +. 1. -. Math.max(a.x, b.x)
+  let overlapY = Math.min(a.y, b.y) +. cardHeight -. Math.max(a.y, b.y)
+  if restitution <= 0. || a.bounces <= 0 || b.bounces <= 0 || overlapX <= 0. || overlapY <= 0. {
+    None
+  } else if overlapX <= overlapY {
+    let (low, high, swapped) = a.x <= b.x ? (a, b, false) : (b, a, true)
+    contact(
+      {p: low.x, v: low.vx, bounces: low.bounces},
+      {p: high.x, v: high.vx, bounces: high.bounces},
+      ~overlap=overlapX,
+      ~restitution,
+    )->Option.map(((l, h)) => {
+      let low = {...low, x: l.p, vx: l.v, bounces: l.bounces}
+      let high = {...high, x: h.p, vx: h.v, bounces: h.bounces}
+      swapped ? (high, low) : (low, high)
+    })
+  } else {
+    let (low, high, swapped) = a.y <= b.y ? (a, b, false) : (b, a, true)
+    contact(
+      {p: low.y, v: low.vy, bounces: low.bounces},
+      {p: high.y, v: high.vy, bounces: high.bounces},
+      ~overlap=overlapY,
+      ~restitution,
+    )->Option.map(((l, h)) => {
+      let low = {...low, y: l.p, vy: l.v, bounces: l.bounces}
+      let high = {...high, y: h.p, vy: h.v, bounces: h.bounces}
+      swapped ? (high, low) : (low, high)
+    })
+  }
+}
+
+// Every pair in flight, once a step, each contact settled before the next pair is looked
+// at so a card in a pile meets each neighbour where the last one left it. One sweep is
+// enough: in a step a card moves a fraction of its width, and what one sweep leaves
+// overlapping the next puts right. Launch order, always, which is what keeps a seed
+// replaying.
+let meetAll = (flying, ~restitution) =>
+  if restitution <= 0. {
+    flying
+  } else {
+    let cards = Array.copy(flying)
+    let last = Array.length(cards) - 1
+    for i in 0 to last - 1 {
+      for j in i + 1 to last {
+        switch meet(cards->Array.getUnsafe(i), cards->Array.getUnsafe(j), ~restitution) {
+        | Some((a, b)) =>
+          cards->Array.setUnsafe(i, a)
+          cards->Array.setUnsafe(j, b)
+        | None => ()
+        }
+      }
+    }
+    cards
+  }
+
 // The whole card, so it doesn't blink out with an edge still showing — downwards as well as
 // sideways, because a card out of bounces leaves whichever way it was already going.
 let hasLeft = (flyer, ~stage: stage) =>
@@ -221,6 +320,7 @@ let step = (run, ~knobs, ~stage, ~dt) => {
   let flying =
     run.flying
     ->Array.map(flyer => advance(flyer, ~knobs, ~stage, ~dt))
+    ->meetAll(~restitution=knobs.collisions)
     ->Array.filter(flyer => !hasLeft(flyer, ~stage))
   let retired = run.retired + (Array.length(run.flying) - Array.length(flying))
 

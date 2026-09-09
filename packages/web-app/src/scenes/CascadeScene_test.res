@@ -55,6 +55,7 @@ describe("the cascade scene, on an engine that can't draw", () => {
       "gravity",
       "bounciness",
       "bouncinessVariance",
+      "collisions",
       "numBounces",
       "numBouncesVariance",
       "speed",
@@ -88,6 +89,14 @@ describe("the cascade scene, on an engine that can't draw", () => {
     expect(readout(host, "bouncinessVariance"))->toBe("± 0.15 · 0.65–0.95")
     // A count's band is the whole numbers in it: there is no half a bounce.
     expect(readout(host, "numBouncesVariance"))->toBe("± 2 · 1–5")
+  })
+
+  test("calls no collisions off, rather than showing a bounciness of nothing", () => {
+    let (host, _) = mount()
+    expect(readout(host, "collisions"))->toBe("1")
+    let collisions = TestDom.find(host, `input[data-knob="collisions"]`)->Option.getOrThrow
+    TestDom.typeInto(collisions, "0")
+    expect(readout(host, "collisions"))->toBe("off")
   })
 
   test("won't offer a card a negative number of bounces, however wide the ± is dragged", () => {

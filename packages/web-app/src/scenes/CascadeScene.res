@@ -232,6 +232,18 @@ let make = (~mode=Live, ~seed as initialSeed=1): Scene.t => {
       ~format=variance => spread(~centre=knobs.contents.bounciness, ~variance, ~unit=""),
       ~onChange=value => knobs := {...knobs.contents, bouncinessVariance: value},
     )
+    // Off at zero — the deck passing through itself, which is the picture the rest of the
+    // slider is against. Reaches 1, unlike `bounciness`: a contact that loses nothing is
+    // a swap, and a run still ends on the budget.
+    knob(
+      ~label="collisions",
+      ~min=0.,
+      ~max=1.,
+      ~step=0.05,
+      ~value=knobs.contents.collisions,
+      ~format=value => value <= 0. ? "off" : hundredth(value),
+      ~onChange=value => knobs := {...knobs.contents, collisions: value},
+    )
     // How many times the floor and the walls between them catch a card before letting it
     // through. Reaches well past where a card would still be on the stage to reach it,
     // because that is where you find out what the cascade looks like with the count taken
