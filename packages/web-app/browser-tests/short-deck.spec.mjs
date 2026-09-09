@@ -19,9 +19,11 @@
 import { expect, test } from "@playwright/test"
 import { settle } from "../scripts/autoplay/read-board.mjs"
 import { playLine } from "./lib/play-line.mjs"
+import { quietWin } from "./lib/board.mjs"
 import * as Game from "core/src/Game.res.mjs"
 
 test.use({ viewport: { width: 900, height: 1100 } })
+test.use(quietWin)
 
 const BOARDS = [
   {

@@ -322,15 +322,20 @@ already scaled to its stage.
 
 ## On the board
 
-`TableScene` is the second caller, behind the hidden **Victory animation** flag
-(off by default). The board's half is which cards fall and from where: the
-foundations' own resting spots become the seats, the piles are taken King-first
-in the same round-robin `Cascade` seats by — which is what makes a card fall from
-the pile it was on — and each `.stacking-card` is hidden as its sprite leaves.
+`TableScene` is the second caller, and every won game plays one. The board's half
+is which cards fall and from where: the foundations' own resting spots become the
+seats, the piles are taken King-first in the same round-robin `Cascade` seats by —
+which is what makes a card fall from the pile it was on — and each
+`.stacking-card` is hidden as its sprite leaves.
 
 **Only a win as it happens plays one.** A victory restored from storage, and a
 redo back into the winning move, raise the panel alone: the cascade is what a
 game being won looks like, not what a won position looks like.
+
+**`prefers-reduced-motion` is the one way out.** A cascade is nothing but
+movement, so an OS asking for less of it gets the panel alone — which is also
+what makes the unit suites cheap, since they run under a stub that reports it and
+so never build a sprite sheet.
 
 **A tap is a peek, not a skip.** It toggles the win panel over the still-falling
 cards and nothing else; the run is unaffected either way. That costs the panel its
@@ -364,8 +369,9 @@ here.
 
 **The victory takes the board over when the cascade starts, not when the panel
 goes up.** An already-won board is still `Reducer.canFinish` — draining it wins it
-again — so the Finish button is held off by that flag rather than by the position,
-and forty seconds of cascade is forty seconds for it to be wrong in.
+again — so the Finish button is held off by the victory having been announced
+rather than by the position, and forty seconds of cascade is forty seconds for it
+to be wrong in.
 
 ## Still open
 

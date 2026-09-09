@@ -9,13 +9,12 @@
 // effect, which is what lets it be unit-tested the way `core`'s `Reducer` is.
 //
 // **None of these fields is the real value.** Auto-collect is read off the shared
-// `Options` ref at each move, the tilt at each relayout, the victory flag at the moment
-// a game is won; the notch preference is a document-root attribute the CSS reads; all
-// of them are persisted. What's held here is the mirror the switch draws itself from,
-// and the write-through in `update` is what keeps it honest — which is the half that
-// can stop working with nothing on screen to show it, so
-// `browser-tests/settings-reach.spec.mjs` pins each switch to storage, to the board and
-// to the document root.
+// `Options` ref at each move and the tilt at each relayout; the notch preference is a
+// document-root attribute the CSS reads; all of them are persisted. What's held here is
+// the mirror the switch draws itself from, and the write-through in `update` is what
+// keeps it honest — which is the half that can stop working with nothing on screen to
+// show it, so `browser-tests/settings-reach.spec.mjs` pins each switch to storage, to
+// the board and to the document root.
 //
 // Its content flows from the *top*: the panel grows the space *below* the sections
 // (the `.menu-screen` wrapper takes the slack), which keeps the footer hugging the foot
@@ -46,17 +45,13 @@ type model = {
   // rather than give up. Holding the intent apart from the live state is what lets the
   // write-through stay a plain snapshot of this record.
   wantsShake: bool,
-  // "Victory animation" — a plain persisted flag, and the second of the hidden
-  // settings. A win with it on plays the cascade before raising the panel; off, or
-  // under reduced motion, the panel goes up alone.
-  victoryAnimation: bool,
   // "Display content around notch" — whether the landscape rail may ride out
   // into the corner wings beside the notch; off clamps every control inside the safe
   // area.
   notchDisplay: bool,
   // The hidden settings and the run of taps that reveals them (`HiddenOptions`). Today
-  // the hidden rows are Wiggle Waggle and Victory animation. A hidden row says nothing
-  // about whether its setting is *on*: hiding leaves it running.
+  // the only hidden row is Wiggle Waggle. A hidden row says nothing about whether its
+  // setting is *on*: hiding leaves it running.
   hidden: HiddenOptions.t,
 }
 
@@ -65,7 +60,6 @@ type msg =
   | ToggleCardTilt
   | WiggleOff // the Wiggle Waggle switch turned off — stop listening, square up
   | WiggleResolved(Motion.state) // a motion-permission request resolved to a new state
-  | ToggleVictoryAnimation
   | ToggleNotchDisplay
   | TitleTapped // a tap on this screen's title — every ten flip the hidden settings
 
@@ -105,14 +99,12 @@ type env = {
 let liveEnv = (
   ~options: ref<Options.t>,
   ~tiltEnabled: ref<bool>,
-  ~victoryAnimation: ref<bool>,
   ~shakeActive: ref<bool>,
   ~board: request => unit,
 ): env => {
   publish: model => {
     options := {...options.contents, autoCollect: model.autoCollect}
     tiltEnabled := model.cardTilt
-    victoryAnimation := model.victoryAnimation
     // Settings is the owner of the app-wide motion state (see `Motion.current`): the
     // debug Motion scene shows it, and the board listens only while `shakeActive`.
     shakeActive := Motion.isOn(model.wiggle)
@@ -124,7 +116,6 @@ let liveEnv = (
     Preferences.saveAutoCollect(model.autoCollect)
     Preferences.saveCardTilt(model.cardTilt)
     Preferences.saveWantsShake(model.wantsShake)
-    Preferences.saveVictoryAnimation(model.victoryAnimation)
     Preferences.saveNotchDisplay(model.notchDisplay)
     Preferences.saveRevealHidden(model.hidden.revealed)
   },
@@ -141,7 +132,6 @@ let init = (): model => {
     cardTilt: Preferences.loadCardTilt(),
     wiggle: Motion.initialState(~wantsShake),
     wantsShake,
-    victoryAnimation: Preferences.loadVictoryAnimation(),
     notchDisplay: Preferences.loadNotchDisplay(),
     hidden: HiddenOptions.initial(~revealed=Preferences.loadRevealHidden()),
   }
@@ -220,17 +210,6 @@ let update = (env: env, msg, model) =>
         | Blocked => env.board(ShakeStop)
         | Unavailable(_) | Off => ()
         }
-      },
-    )
-  // Nothing to ask of the board: this decides what the *next* victory does, and there
-  // is no victory on the table to redecorate.
-  | ToggleVictoryAnimation =>
-    let model = {...model, victoryAnimation: !model.victoryAnimation}
-    (
-      model,
-      () => {
-        env.publish(model)
-        env.persist(model)
       },
     )
   // The one setting the board never reads: it reaches the page as a document-root
@@ -314,21 +293,13 @@ let make = ({model, dispatch, onClose, onBackToMenu, onOpenDebug}) => <>
         // under it — each is an independent setting. They're hidden until the Settings
         // title has been tapped ten times (`HiddenOptions`) — not ready to be found by
         // a player yet, but reachable on a test device. Ten more taps hide the rows
-        // again *without* turning either off, so an absent row here doesn't mean its
+        // again *without* turning any off, so an absent row here doesn't mean its
         // setting is off — Wiggle Waggle can still be jostling a board with no switch
         // on screen to stop it.
         model.hidden.revealed
-          ? <>
-              <MenuWiggleRow
-                state={model.wiggle} onToggle={() => askMotion(model.wiggle, dispatch)}
-              />
-              <MenuToggleRow
-                label="Victory animation"
-                desc="Celebrate a win with an animation."
-                on={model.victoryAnimation}
-                onToggle={() => dispatch(ToggleVictoryAnimation)}
-              />
-            </>
+          ? <MenuWiggleRow
+              state={model.wiggle} onToggle={() => askMotion(model.wiggle, dispatch)}
+            />
           : Html.empty
       }
       <MenuToggleRow

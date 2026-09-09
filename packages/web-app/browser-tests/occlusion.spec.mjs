@@ -11,7 +11,9 @@
 // card that some later change put back in the tree by another route.
 
 import { expect, test } from "@playwright/test"
-import { settleBoard } from "./lib/board.mjs"
+import { quietWin, settleBoard } from "./lib/board.mjs"
+
+test.use(quietWin)
 
 // The cards a screen reader would be read: every `role="img"` inside the board,
 // minus whatever `aria-hidden` takes out of the tree. Scoped to the cards so the

@@ -14,7 +14,7 @@
 // board the position came from — which is the property being checked.
 
 import { expect, test } from "@playwright/test"
-import { settleBoard } from "./lib/board.mjs"
+import { quietWin, settleBoard } from "./lib/board.mjs"
 import { menuSeed } from "./lib/menu.mjs"
 
 // The deal `Scenario`'s almost-won position was played from.
@@ -26,6 +26,7 @@ test.use({
   // the clipboard — the path under test, and reading it back needs the grant.
   permissions: ["clipboard-read", "clipboard-write"],
 })
+test.use(quietWin)
 
 // Play the single winning move: the pending King rests alone in the first free cell
 // (drop zone 0) and its foundation is the last zone (4 cells, then 4 foundations,

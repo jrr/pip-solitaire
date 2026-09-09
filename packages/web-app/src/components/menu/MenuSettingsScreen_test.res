@@ -19,7 +19,6 @@ let model = (
   ~cardTilt=false,
   ~wiggle=Motion.Off,
   ~wantsShake=false,
-  ~victoryAnimation=false,
   ~notchDisplay=false,
   ~revealed=false,
   ~taps=0,
@@ -28,7 +27,6 @@ let model = (
   cardTilt,
   wiggle,
   wantsShake,
-  victoryAnimation,
   notchDisplay,
   hidden: {revealed, taps},
 }
@@ -75,7 +73,6 @@ describe("MenuSettingsScreen", () => {
     // the screen at all.
     let labels = rowLabels(render(~model=model(~revealed=false)))
     expect(labels->Array.includes("Wiggle Waggle"))->toBe(false)
-    expect(labels->Array.includes("Victory animation"))->toBe(false)
   })
 
   test("slots the hidden settings in beside the others once revealed, not under one", () => {
@@ -85,13 +82,12 @@ describe("MenuSettingsScreen", () => {
       "Auto-collect",
       "Sloppy placement",
       "Wiggle Waggle",
-      "Victory animation",
       "Display content around notch",
     ])
   })
 
   test("sends each switch's own message", () => {
-    // Five rows that look alike: a crossed wire here would be invisible. Wiggle Waggle
+    // Four rows that look alike: a crossed wire here would be invisible. Wiggle Waggle
     // is shown listening so that its tap is the one branch that resolves to a message
     // synchronously — turning it *on* asks the OS first (`askMotion`).
     let (screen, sent) = renderRecording(~model=model(~revealed=true, ~wiggle=Motion.On))
@@ -100,7 +96,6 @@ describe("MenuSettingsScreen", () => {
       MenuSettingsScreen.ToggleAutoCollect,
       ToggleCardTilt,
       WiggleOff,
-      ToggleVictoryAnimation,
       ToggleNotchDisplay,
     ])
   })
@@ -112,8 +107,8 @@ describe("MenuSettingsScreen", () => {
       "Sloppy placement",
       "Display content around notch",
     ])
-    expect(onRowLabels(render(~model=model(~revealed=true, ~victoryAnimation=true))))->toEqual([
-      "Victory animation",
+    expect(onRowLabels(render(~model=model(~revealed=true, ~wiggle=Motion.On))))->toEqual([
+      "Wiggle Waggle",
     ])
   })
 
@@ -205,12 +200,6 @@ describe("MenuSettingsScreen.update", () => {
     expect(next.notchDisplay)->toBe(false)
     expect(log)->toEqual(["root", "persist"])
     expect(saved->Option.map(s => s.notchDisplay))->toEqual(Some(false))
-  })
-
-  test("changes only what the next win does when the victory animation flips", () => {
-    let (next, log, _) = run(~model=model(), ToggleVictoryAnimation)
-    expect(next.victoryAnimation)->toBe(true)
-    expect(log)->toEqual(["publish", "persist"])
   })
 
   test("stops the board and drops the intent when Wiggle Waggle is switched off", () => {

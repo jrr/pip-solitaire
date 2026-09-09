@@ -18,12 +18,14 @@
 
 import { expect, test } from "@playwright/test"
 import { playGame } from "../scripts/autoplay/autoplay.mjs"
+import { quietWin } from "./lib/board.mjs"
 
 // Deal 7 — an ordinary winnable board that the solver takes in its stride, so the
 // test spends its time dragging rather than thinking.
 const SEED = 7
 
 test.use({ viewport: { width: 900, height: 1100 } })
+test.use(quietWin)
 
 test("plays deal 7 from the opening layout to the win overlay", async ({ page }) => {
   // ~50 drags, each waiting for the board to settle, plus the finish sweep.
