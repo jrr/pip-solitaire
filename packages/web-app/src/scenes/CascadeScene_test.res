@@ -93,7 +93,7 @@ describe("the cascade scene, on an engine that can't draw", () => {
 
   test("calls no collisions off, rather than showing a bounciness of nothing", () => {
     let (host, _) = mount()
-    expect(readout(host, "collisions"))->toBe("0.6")
+    expect(readout(host, "collisions"))->toBe("1")
     let collisions = TestDom.find(host, `input[data-knob="collisions"]`)->Option.getOrThrow
     TestDom.typeInto(collisions, "0")
     expect(readout(host, "collisions"))->toBe("off")

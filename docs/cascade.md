@@ -265,7 +265,7 @@ chosen.
 | gravity | 4 m/s² | 0.41 g — this is slow motion, deliberately. Earth is `fromMetric(9.81)`, ~154 card-widths/s² |
 | bounciness | 0.8 ± 0.15 | the share of its speed a bounce keeps, off the floor and off a wall alike |
 | numBounces | 3 ± 2 | contacts — landings, walls and other cards together — before the table lets the card through |
-| collisions | 0.6 | the share of closing speed two cards keep when they meet; 0 is the deck passing through itself |
+| collisions | 1 | the share of closing speed two cards keep when they meet — a clean swap; 0 is the deck passing through itself |
 | speed | 0.4 ± 0.1 m/s | the sideways throw |
 | launchInterval | 750 ms | so a 52-card deck takes ~39s |
 | trail | 16 ms | of simulated time between stamps |

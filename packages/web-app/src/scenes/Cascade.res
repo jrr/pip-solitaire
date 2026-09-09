@@ -52,7 +52,7 @@ let defaults = {
   bouncinessVariance: 0.15,
   numBounces: 3,
   numBouncesVariance: 2,
-  collisions: 0.6,
+  collisions: 1.,
   speed: fromMetric(0.4),
   speedVariance: fromMetric(0.1),
   launchMs: 750.,

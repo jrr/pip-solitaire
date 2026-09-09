@@ -233,11 +233,12 @@ let make = (~mode=Live, ~seed as initialSeed=1): Scene.t => {
       ~onChange=value => knobs := {...knobs.contents, bouncinessVariance: value},
     )
     // Off at zero — the deck passing through itself, which is the picture the rest of the
-    // slider is against.
+    // slider is against. Reaches 1, unlike `bounciness`: a contact that loses nothing is
+    // a swap, and a run still ends on the budget.
     knob(
       ~label="collisions",
       ~min=0.,
-      ~max=0.95,
+      ~max=1.,
       ~step=0.05,
       ~value=knobs.contents.collisions,
       ~format=value => value <= 0. ? "off" : hundredth(value),
