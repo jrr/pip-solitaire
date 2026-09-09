@@ -15,7 +15,14 @@
 import { expect, test } from "@playwright/test"
 import { settleBoard } from "./lib/board.mjs"
 
-test.use({ viewport: { width: 800, height: 1000 } })
+test.use({
+  viewport: { width: 800, height: 1000 },
+  // Chromium gates `devicemotion` behind `DeviceMotionEvent.requestPermission`, and an
+  // unprompted context answers no — which is `Motion.Blocked`, the switch snapping back
+  // rather than the write-through this file is about. The sensor grant is what puts the
+  // browser on the granted path; `MenuSettingsScreen_test` covers the refusal.
+  permissions: ["accelerometer", "gyroscope"],
+})
 
 // A switch row by the label it leads with. The accessible name is the label *and* the
 // line under it, so this anchors at the front rather than matching the whole thing.
@@ -143,8 +150,8 @@ test("the hidden switches write through like any other", async ({ page }) => {
   await expect(toggle(page, "Victory animation")).toHaveAttribute("aria-checked", "true")
   expect(await stored(page, "pip.victoryAnimation")).toBe("true")
 
-  // Wiggle Waggle asks the OS as it goes on. Desktop Chromium is ungated, so the
-  // request resolves listening and the *intent* — not the grant — is what's stored.
+  // Wiggle Waggle asks the OS as it goes on, and the grant at the top of this file is
+  // what lets that resolve listening. The *intent* — not the grant — is what's stored.
   await toggle(page, "Wiggle Waggle").click()
   await expect(toggle(page, "Wiggle Waggle")).toHaveAttribute("aria-checked", "true")
   expect(await stored(page, "pip.wantsShake")).toBe("true")
