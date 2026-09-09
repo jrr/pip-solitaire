@@ -57,8 +57,8 @@ const inputs = [
 for (const input of inputs) {
   test.describe(`by ${input.name}`, () => {
     test.use(input.context)
-    // These two are about the drag reaching the panel, not about the celebration in
-    // front of it — the cascade has its own describe at the foot of this file.
+    // The subject here is the drag reaching the panel, not the celebration in front of
+    // it — that has its own describe at the foot of this file.
     test.use(quietWin)
 
     test("the winning move raises the overlay, and New Game tears it down", async ({ page }) => {

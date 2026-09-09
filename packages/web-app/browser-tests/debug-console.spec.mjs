@@ -8,7 +8,7 @@
 // `elementFromPoint` over a stacking context, which jsdom has neither of.
 
 import { expect, test } from "@playwright/test"
-import { quietWin, settleBoard } from "./lib/board.mjs"
+import { allowMotion, quietWin, settleBoard } from "./lib/board.mjs"
 import { menuSeed } from "./lib/menu.mjs"
 
 test.use({ viewport: { width: 800, height: 1000 } })
@@ -315,8 +315,10 @@ test("autoplay plays the deal out and wins it", async ({ page }) => {
   // A named deal rather than whatever a fresh game invents: a solver test that picks
   // its own board can't fail the same way twice. And *with* the animation on, unlike
   // every other test in this file: the planned moves are flown one at a time, which is
-  // the whole behaviour under test here, and `?animate=off` would collapse the line to
-  // a single reflow and prove nothing about it.
+  // the whole behaviour under test here, and either `?animate=off` or the file's
+  // `quietWin` would collapse the line to a single reflow and prove nothing about it.
+  // The victory that ends it cascades, which is what the generous wait below is for.
+  await allowMotion(page)
   await page.goto("/?game=freecell&seed=24680")
   await settleBoard(page)
   await openConsole(page)
@@ -364,6 +366,8 @@ test("taking the board back mid-line stops the solver", async ({ page }) => {
   // The search runs before the first card moves, and it's the slow part here — the
   // rest is a couple of moves and a deliberate wait.
   test.setTimeout(180_000)
+  // Played over time, like the test above and for the same reason.
+  await allowMotion(page)
   await page.goto("/?game=freecell&seed=24680")
   await settleBoard(page)
   await openConsole(page)
@@ -593,8 +597,9 @@ test("the prompt remembers what was typed, and clear empties the log", async ({ 
 // mid-flight: `Element.animate` is patched before the command, so what's checked is
 // what the code asked the compositor for, with no dependence on how fast the sample
 // lands. This is the one console test without `animate=off` — that flag is exactly what
-// suppresses the flight (see `flyCards`).
+// suppresses the flight (see `flyCards`), and so is the file's `quietWin`.
 test("a commanded card flies to its new home, over the fan it leaves", async ({ page }) => {
+  await allowMotion(page)
   await page.goto("/?game=freecell&state=almost-won")
   await settleBoard(page)
   await openConsole(page)

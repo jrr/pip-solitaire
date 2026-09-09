@@ -22,6 +22,17 @@ import { expect } from "@playwright/test"
 export const quietWin = { reducedMotion: "reduce" }
 
 /**
+ * The way back out of `quietWin`, for the case in an otherwise-quiet file whose
+ * subject *is* the movement — a flight recorded as it's asked for, a line played a
+ * move at a time. Reduced motion collapses both to a single reflow, which proves
+ * nothing about either.
+ *
+ * Emulation outlives navigation, so this can go at the head of the test body,
+ * before its `goto`.
+ */
+export const allowMotion = (page) => page.emulateMedia({ reducedMotion: "no-preference" })
+
+/**
  * Wait for the board to reach its resting layout: cards present, then every
  * animation on them finished.
  *
