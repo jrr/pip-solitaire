@@ -51,6 +51,11 @@ const outDir = path.join(webAppRoot, "screenshots");
 //   - Spiderette — the two-suit Spider board with its stock dealt out: seven columns
 //     at their tallest, face-down cards under each, the stock's slot empty. The
 //     phone stage is the one this is for — it is the tallest fan the app deals.
+//   - Deep column — the same board posed with a twenty-card column, six face down
+//     under a run of twelve. It is deeper than the height fit budgets for, so this is
+//     the shot that shows a fan compressing to stay inside the playfield, and the
+//     face-down step beside the face-up one; whether the compressed run still reads
+//     is a question for an eye, per device.
 //   - Card raster — not a board at all: the sprite-fidelity sheet, all 52
 //     of the bitmaps the victory animation will blit. It's here because the failure
 //     mode it guards against — a rasterization that loses the card's fonts — is
@@ -83,6 +88,7 @@ const scenes = [
   { name: "Mid-game", query: "?game=freecell&state=midgame" },
   { name: "Finish", query: "?game=freecell&state=finish" },
   { name: "Spiderette", query: "?game=spiderette&state=dealt&animate=off" },
+  { name: "Deep column", query: "?game=spiderette&state=deep&animate=off" },
   {
     name: "Menu",
     query: "?game=freecell&seed=1&animate=off",
