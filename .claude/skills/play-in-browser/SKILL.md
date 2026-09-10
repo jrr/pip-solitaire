@@ -110,7 +110,8 @@ Query parameters, all documented in `src/platform/AppUrl.res`:
   the deal.
 - `?state=<name>` — a named scenario from `core`'s `Scenario`: FreeCell's
   `midgame`, `almost-won`, `supermove`, `sendhome`, `finish`; Spiderette's `dealt`
-  (the stock dealt out) and `almost-won`. Much faster than playing into a position
+  (the stock dealt out), `deep` (a twenty-card column) and `almost-won`. Much faster
+  than playing into a position
   when you only need to be *in* one.
 
 ## What you need to know about the board

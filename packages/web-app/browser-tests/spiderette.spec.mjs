@@ -120,3 +120,32 @@ test("a drag that completes the last run flies it home and wins", async ({ page 
   await expect(page.locator(".win-overlay")).toBeVisible()
   await expect(page.getByRole("button", { name: "Finish" })).toHaveCount(0)
 })
+
+// The deep column, in a window too short for it: the fan is compressed to stay on the
+// board (`geometry.spec.mjs` measures it), and what has to still hold is that its zone
+// grew with it — a drop on the last card of twenty lands, rather than falling short
+// of a hit-test box that ended where the uncompressed fan would have.
+test.describe("a compressed column", () => {
+  test.use({ viewport: { width: 1280, height: 720 } })
+
+  test("takes a drop on its last card", async ({ page }) => {
+    const game = Game.spiderette
+    const cascades = Game.pileIndices(game, "Cascade")
+    await page.goto("/?game=spiderette&state=deep&animate=off")
+    await settle(page)
+    const before = assignPiles(await readGeometry(page))
+    expect(before[cascades[0]].length).toBe(20)
+    // The Hearts Ace on top of the second column, onto the Spades Two ending the first.
+    const ace = GameState.topOf(Scenario.spideretteDeep(game), cascades[1])
+    expect(ace.rank).toBe("Ace")
+    await drag(page, moveOf(game, `${CardText.format(ace)} T1`))
+    await settle(page)
+    const after = assignPiles(await readGeometry(page))
+    expect(after[cascades[0]].length).toBe(21)
+    expect(after[cascades[0]][20].name).toBe(nameOf(ace))
+    expect(after[cascades[1]].length).toBe(before[cascades[1]].length - 1)
+    // A run of the other suit isn't completed by it: nothing flew home.
+    await expect(page.locator(".stacking-card")).toHaveCount(52)
+    await expect(page.locator(".win-overlay")).toHaveCount(0)
+  })
+})

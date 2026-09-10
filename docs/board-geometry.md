@@ -35,14 +35,15 @@ A new *derivation* belongs in `TableLayout`. A new *measurement* does not.
 | `cardW` | 80 | the card's design width |
 | `cardH` | 112 | `cardW × CardArt.aspect` |
 | `cardRadius` | 8 | `cardW × CardArt.cornerRatio` |
-| `fanStep` | 26 | how far a Fanned card steps off the one beneath it |
+| `fanStep` | 26 | how far a face-up Fanned card steps off the one beneath it |
+| `fanDownStep` | 12 | how far a face-down one does |
 | `zoneInset` | 4 | the gap between the resting card and its highlight frame |
 | `zoneWidth` | 88 | `cardW + 2·zoneInset` |
 | `zoneBaseHeight` | 120 | `cardH + 2·zoneInset` |
 | `zoneRadius` | 12 | `cardRadius + zoneInset` |
 | `maxColumnGap` | 20 | `0.25 × cardW` |
 
-Only the four in the left-hand column are literals. Everything else is derived,
+Only the five in the left-hand column are literals. Everything else is derived,
 and that's deliberate: the 5:7 proportion and the 10%-of-width corner belong to
 the card *art*, so `cardH` and `cardRadius` read them off `CardArt` (a 120×168
 design box with `rx=12`) rather than restating them. A second literal is a second
@@ -125,23 +126,94 @@ arguments:
 
 ```
 fanExtent = hasFanned ? (referenceDepth − 1) · fanStep : 0
-referenceDepth = deepest opening pile + fanHeadroom      (fanHeadroom = 5)
+referenceDepth = deepest Fanned pile of the deal + fanHeadroom      (fanHeadroom = 5)
 ```
 
 The extent is the *gaps* between cards, one fewer than the cards themselves. A
 board with no Fanned pile grows no fan at all, so its extent is zero and the
 height fit is left with only the row boxes to clear.
 
-Two things about `referenceDepth` are worth stating plainly:
+Three things about `referenceDepth` are worth stating plainly:
 
 - It is **not** the deal's actual depth. Sizing to that would overflow the moment
   a cascade grew by one. Fitting the opening depth *plus* five leaves a pile room
-  to take on that many before it reaches the bottom edge.
-- It is **captured once**, from the opening deal, and held for the game. Deriving
+  to take on that many at the full step before it starts to give.
+- It is **captured once**, from the game's deal, and held for the game. Deriving
   it live would resize every card on the table each time a pile grew or shrank.
+  The *deal's*, not the position the board opened onto: a reload, a `?state=` and
+  a debug jump all open onto positions the deal never dealt, and a board sized to
+  one of those would show a player a different card size from the one they'd have
+  reached by play. The deep column (§ The fan below) is the case that matters —
+  posed at twenty on a board dealt at seven, it has to arrive as a pile that has
+  *grown*, or there is nothing to judge.
+- It counts **Fanned piles only**. A squared pile has no fan to budget for, and
+  Spiderette's stock holds twenty-four cards: counted, they sized the whole board
+  for a twenty-nine-card fan that nothing ever grows.
 
-A pile that grows past the headroom still overflows. This is a comfort margin,
-not a guarantee.
+The extent is budgeted at the face-up step whatever lies face down, so a pile
+with backs in it has slack it keeps. And a pile that grows past the headroom
+compresses rather than overflowing. That is the fan's business, not the fit's.
+
+### The fan
+
+A fanned pile is laid out by two numbers, and `fanFor` chooses them per pile:
+
+```
+fan = fanFor(count, down, room, scale)     → {downStep, upStep, extent}
+
+downGaps = min(down, count − 1)             the gaps under a face-down card
+upGaps   = (count − 1) − downGaps
+natural  = downGaps · fanDownStep · scale + upGaps · fanStep · scale
+budget   = room − zoneBaseHeight · scale
+```
+
+`room` is the height the zone may grow to — from its top edge to the playfield's
+bottom, less the margin the rows keep at its top — and `TableScene` measures it
+per reflow off the zone's *top*, which the zone's own growth never moves, so the
+reading is the same every time. Card `slot` of the fan then rests
+`fanOffset(fan, down, slot)` below the first: the steps off every card beneath
+it, backs at the tighter step.
+
+**A face-down card steps by `fanDownStep`**, less than half a face's. A back
+shows nothing but an edge, so it is given no more than an edge, which is also
+what every Spider player expects a column of backs to look like. The card that
+turns over does not move: its offset is the steps off the cards *beneath* it, and
+those are still face down.
+
+**What gives, and when.** While `natural ≤ budget` the pile lays out at its full
+steps and nothing gives — every FreeCell board, and every Spiderette column
+inside the headroom. Past it:
+
+1. **The face-up step gives first**, down to the face-down step:
+   `upStep = (budget − downGaps · downStep) / upGaps`. The backs hold, because
+   they are already as tight as an edge allows; a run compressing from twenty-six
+   to fourteen is still a run of legible ranks.
+2. **Past that, both give together**: `upStep = downStep = budget / (count − 1)`.
+   A face never shows less edge than a back, and the pile always ends inside the
+   room. At this point the ranks are going, but the cards are on the table.
+
+Either way `extent` is the budget exactly, so the last card sits its inset above
+the playfield's margin — the same distance the first card sits below the zone's
+top.
+
+`room` is an `option`, for the same reason `scaleFor` returns one: a playfield
+that measures 0 high before layout is not a playfield with no room in it, and
+`None` lays the pile out at its full steps rather than flat for a frame.
+
+Two things this deliberately doesn't do:
+
+- **Resize the board.** The scale stays captured from the deal; only the pile
+  that outgrew its headroom changes, and only its steps. The columns beside it
+  are laid out exactly as before.
+- **Open the run back out under the hand.** A run lifted from a compressed pile
+  keeps its compressed spacing while it flies — the drag moves every card of the
+  span by the pointer's delta from where it rested. Whether it should open out to
+  the full step in the air is left open (#424); it lands on a reflow either way.
+
+The tilt (`docs/card-tilt.md`) is the constraint on `fanDownStep`: a hand-placed
+card's corner swings a couple of pixels either way at the design scale, and the
+back's step has to leave a clean edge past that. Look at a compressed column with
+the tilt on before retuning either.
 
 ### What the numbers work out to
 
@@ -256,12 +328,15 @@ anywhere).
   `zoneBaseHeight × scale`, *not* the zone's live height. A fanned zone is grown
   downward (next point), and measuring against that growth would feed back and
   shift the cards on the next reflow.
-- **Step Fanned cards down** by `i · fanStep · scale`, so the newest card lands
-  lowest and fully exposed. Squared piles don't step at all.
-- **Grow the zone to cover the fan**: `zoneBaseHeight · scale + (count − 1) ·
-  fanStep · scale`. The outline, the drop highlight *and* the hit-test box all
-  follow, so the whole fanned pile is the drop target rather than just the top
-  card's footprint.
+- **Step Fanned cards down** by `fanOffset(fan, down, i)`, so the newest card
+  lands lowest and fully exposed — backs at the tighter step, and every step
+  shortened when the pile has outgrown its room (§ The fan). Squared piles don't
+  step at all.
+- **Grow the zone to cover the fan**: `zoneBaseHeight · scale + fan.extent`, the
+  same `fan` the cards were just stepped by. The outline, the drop highlight
+  *and* the hit-test box all follow, so the whole fanned pile is the drop target
+  rather than just the top card's footprint — and a compressed pile's zone ends
+  where its last card does, not where the uncompressed fan would have.
 
 ## The hit-test
 
@@ -284,8 +359,9 @@ back, so nothing is converted before comparing. The conversion to playfield-loca
 
 | | |
 |---|---|
-| `TableLayout_test.res` | the fits, the clamp, the `None`, `minStageWidth`'s round trip, the published proportions, the hit-test. Arithmetic only — no browser. `mise run test` |
-| `browser-tests/geometry.spec.mjs` | the *rendered* relationships at three viewports: slot traces card, 5:7 held, corners concentric, inset uniform. `mise run browsertest` |
+| `TableLayout_test.res` | the fits, the clamp, the `None`, `minStageWidth`'s round trip, the published proportions, the fan's two steps and what gives, the hit-test. Arithmetic only — no browser. `mise run test` |
+| `browser-tests/geometry.spec.mjs` | the *rendered* relationships at three viewports: slot traces card, 5:7 held, corners concentric, inset uniform. And the deep column (`?state=deep`) at three more: backs tighter than faces, the fan inside the playfield, the zone enclosing it, and which step gave. `mise run browsertest` |
+| `browser-tests/spiderette.spec.mjs` | a drop on the last card of a compressed column lands. |
 | `ConsoleDock_test.res` | the dock refusal from the chrome's side. |
 
 ## Before you change a footprint
@@ -299,7 +375,9 @@ back, so nothing is converted before comparing. The conversion to playfield-loca
 3. **Add a footprint to `cssVars`, not to the stylesheet.** Anything the CSS
    needs in scaled pixels is published; anything it derives itself can drift.
 4. **Check the short screen, not just the wide one.** The height fit, the fan
-   extent and `rowsCount` only show up on a landscape phone.
+   extent and `rowsCount` only show up on a landscape phone — and so does a
+   compressed fan at its tightest. `?game=spiderette&state=deep` is the column
+   to look at; the screenshot report shoots it.
 5. **Retuning `minScale` or `cardW` moves the dock refusal.** They're the same
    arithmetic; `TableLayout_test`'s round-trip test is what notices.
 6. **Look at it.** `mise run browsertest` and `mise run screenshots` are the

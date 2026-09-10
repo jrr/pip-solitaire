@@ -253,6 +253,7 @@ describe("Scenario", () => {
           variant => {
             expect(Scenario.scenariosFor(variant)->Array.map(s => s.name))->toEqual([
               "dealt",
+              "deep",
               "almost-won",
             ])
             let state = Scenario.forName(variant, "almost-won")->Option.getOrThrow
@@ -296,6 +297,70 @@ describe("Scenario", () => {
           6,
         ])
         expect(Reducer.reduce(~game, state, Reducer.Deal))->toEqual(Error(Reducer.StockEmpty))
+      },
+    )
+
+    test(
+      "the deep column is twenty cards, six face down, under a run of twelve the hand can lift",
+      () => {
+        let state = Scenario.forName(game, "deep")->Option.getOrThrow
+        expect(Array.length(state.piles->Array.flat))->toBe(52)
+        let first = cascades->Array.getUnsafe(0)
+        let deep = GameState.cardsInPile(state, first)
+        expect(Array.length(deep))->toBe(20)
+        expect(GameState.faceDownIn(state, first))->toBe(6)
+        let top = GameState.topOf(state, first)->Option.getOrThrow
+        expect(top.rank)->toEqual(Two)
+        // The King heads the run; the stray beneath it does not.
+        let rule = (game.piles->Array.getUnsafe(first)).rule
+        expect(Rules.isRun(rule, deep->Array.slice(~start=8, ~end=20)))->toBe(true)
+        expect(Rules.isRun(rule, deep->Array.slice(~start=7, ~end=20)))->toBe(false)
+        // The Ace on the second column lands on the Two, and the run stays on the table.
+        let second = cascades->Array.getUnsafe(1)
+        let ace = GameState.topOf(state, second)->Option.getOrThrow
+        expect(ace.rank)->toEqual(Ace)
+        expect(ace.suit == top.suit)->toBe(false)
+        switch Reducer.reduce(~game, state, Move({card: ace, to: ToPile(first)})) {
+        | Ok(next) =>
+          expect(Array.length(GameState.cardsInPile(next, first)))->toBe(21)
+          let (_, collected) = Reducer.autoCollect(~game, next)
+          expect(collected)->toEqual([])
+        | Error(_) => expect("the ace lands")->toBe("refused")
+        }
+      },
+    )
+
+    test(
+      "the deep column poses from every pack, one face down at the foot of each other column",
+      () => {
+        [Game.spiderette1, Game.spiderette, Game.spiderette4]->Array.forEach(
+          variant => {
+            let state = Scenario.forName(variant, "deep")->Option.getOrThrow
+            let onTable = state.piles->Array.flat
+            expect(Array.length(onTable))->toBe(52)
+            let pack = Cards.cardsOf(variant.deck)
+            expect(
+              onTable->Array.every(c => pack->Array.some(d => GameState.sameCard(c, d))),
+            )->toBe(true)
+            expect(
+              pack->Array.every(d => onTable->Array.some(c => GameState.sameCard(c, d))),
+            )->toBe(true)
+            let columns = Game.pileIndices(variant, Game.Cascade)
+            expect(columns->Array.map(i => GameState.faceDownIn(state, i)))->toEqual([
+              6,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+            ])
+            expect(
+              GameState.cardsInPile(state, Reducer.stockOf(variant)->Option.getOrThrow),
+            )->toEqual([])
+            expect(GameState.hasWon(variant, state))->toBe(false)
+          },
+        )
       },
     )
 

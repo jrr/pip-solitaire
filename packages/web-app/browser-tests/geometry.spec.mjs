@@ -20,6 +20,7 @@
 
 import { expect, test } from "@playwright/test"
 import { settleBoard } from "./lib/board.mjs"
+import { assignPiles, readGeometry } from "../scripts/autoplay/read-board.mjs"
 
 // The playing-card proportion the whole design is built on (5:7).
 const EXPECTED_ASPECT = 7 / 5
@@ -134,6 +135,103 @@ for (const viewport of VIEWPORTS) {
       expect
         .soft(m.zoneRadius - m.slotRadius, "zone corner is concentric with the slot's")
         .toBeCloseTo(insetX, PX_DIGITS)
+    })
+  })
+}
+
+// The fan, on the one board that outgrows its headroom: Spiderette posed with a
+// twenty-card column, six of them face down, beside a seven-card column laid out at
+// the full steps (`Scenario.spideretteDeep`). The claims are relationships again —
+// between the deep column and the shallow one, and between the column and the
+// playfield — so retuning either step, or the headroom, moves nothing here.
+//
+// Three viewports, and the deep column is compressed in two of them. On a portrait
+// phone the width fit leaves the cards small enough that twenty of them fit at their
+// full steps, which is the case where nothing gives; the laptop window and
+// the landscape phone are both too short for the column, so there the face-up step
+// gives while the face-down one holds.
+const DEEP_VIEWPORTS = [
+  { width: 1280, height: 720, label: "laptop window", compressed: true },
+  { width: 390, height: 844, label: "portrait phone", compressed: false },
+  { width: 844, height: 390, label: "landscape phone", compressed: true },
+]
+
+// A column's fan, read off the page: the step between consecutive backs, the step
+// between consecutive faces, and where the column and its zone end. `assignPiles`
+// gives the cards top-of-screen first, which in a fan is bottom-of-pile first.
+function fanOf(geom, piles, zoneIndex) {
+  const cards = piles[zoneIndex]
+  const zone = geom.zones[zoneIndex]
+  const isDown = (c) => c.name === "face-down card"
+  const steps = (keep) => {
+    const out = []
+    for (let i = 1; i < cards.length; i++) if (keep(cards[i - 1])) out.push(cards[i].y - cards[i - 1].y)
+    return out
+  }
+  return {
+    count: cards.length,
+    downSteps: steps(isDown),
+    upSteps: steps((c) => !isDown(c)),
+    firstTop: cards[0].y,
+    lastBottom: cards[cards.length - 1].y + cards[cards.length - 1].h,
+    zoneTop: zone.y,
+    zoneBottom: zone.y + zone.h,
+  }
+}
+
+const spread = (xs) => Math.max(...xs) - Math.min(...xs)
+
+for (const viewport of DEEP_VIEWPORTS) {
+  test.describe(`deep column, ${viewport.label} — ${viewport.width}×${viewport.height}`, () => {
+    test.use({ viewport: { width: viewport.width, height: viewport.height } })
+
+    test("backs step tighter than faces, and the fan ends inside the playfield", async ({ page }) => {
+      await page.goto("/?game=spiderette&state=deep&animate=off")
+      await settleBoard(page)
+      await expect(page.locator(".stacking-card")).toHaveCount(52)
+
+      const geom = await readGeometry(page)
+      const piles = assignPiles(geom)
+      const playfield = await page.evaluate(() => {
+        const r = document.querySelector(".stacking-playfield").getBoundingClientRect()
+        return { top: r.top, bottom: r.bottom }
+      })
+      // The board's pile order: the stock, four foundations, then the seven columns.
+      const deep = fanOf(geom, piles, 5)
+      const shallow = fanOf(geom, piles, 6)
+      expect(deep.count).toBe(20)
+      expect(shallow.count).toBe(7)
+      expect(deep.downSteps).toHaveLength(6)
+      expect(deep.upSteps).toHaveLength(13)
+
+      // Every step of a kind is the same step: a fan is laid out by two numbers.
+      expect.soft(spread(deep.downSteps), "the backs share one step").toBeCloseTo(0, PX_DIGITS)
+      expect.soft(spread(deep.upSteps), "the faces share one step").toBeCloseTo(0, PX_DIGITS)
+      const down = deep.downSteps[0]
+      const up = deep.upSteps[0]
+      expect.soft(down, "a back takes less height than a face").toBeLessThan(up)
+      expect.soft(down, "a back still shows an edge").toBeGreaterThan(0)
+
+      // Inside the playfield, whatever the viewport: no card past the bottom edge.
+      expect.soft(deep.lastBottom, "the last card ends above the playfield's bottom").toBeLessThanOrEqual(
+        playfield.bottom,
+      )
+      // The zone grew with the fan: it clears the last card below by the same inset it
+      // clears the first card above, so the outline, the highlight and the hit-test box
+      // all cover the whole column.
+      expect
+        .soft(deep.zoneBottom - deep.lastBottom, "the zone encloses the compressed fan")
+        .toBeCloseTo(deep.firstTop - deep.zoneTop, PX_DIGITS)
+
+      // The shallow column beside it is what a pile with room looks like.
+      if (viewport.compressed) {
+        expect.soft(up, "the deep column's faces gave").toBeLessThan(shallow.upSteps[0])
+        expect.soft(down, "its backs held their step").toBeCloseTo(shallow.downSteps[0], PX_DIGITS)
+        expect.soft(up, "and the faces never gave past the backs").toBeGreaterThanOrEqual(down - 0.05)
+      } else {
+        expect.soft(up, "a column with room keeps the full face-up step").toBeCloseTo(shallow.upSteps[0], PX_DIGITS)
+        expect.soft(down, "and the full face-down step").toBeCloseTo(shallow.downSteps[0], PX_DIGITS)
+      }
     })
   })
 }

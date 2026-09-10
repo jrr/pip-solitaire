@@ -334,6 +334,77 @@ let spideretteAlmostWon = (game: Game.t): GameState.t => {
   GameState.faceUp(piles)
 }
 
+// A **deep Spiderette column**: twenty cards on the first cascade, six of them face
+// down under a run the hand can lift. It is the column the board has to lay out
+// without the last cards running off the bottom of the playfield — face-down cards
+// stepping tighter than faces, and the whole fan compressing once it has outgrown the
+// height fit's headroom — so it is the position that change is judged on, in the
+// screenshot report (`?state=deep`) and in the browser suite.
+//
+// The face-up fourteen are two strays and then a King down to a Two: a same-suit run
+// of twelve, liftable whole, with a Two on top so a card can still land on the pile (an
+// Ace would take nothing). An Ace waits on top of the second column to be that card.
+// The run is the pack's first suit and the strays and the Ace its second, so on the
+// two-suit and four-suit boards the drop lands without completing the run and
+// sweeping it home; the one-suit pack has no second suit, and there they are the same
+// suit's second copy. The pack's remaining thirty-one cards are shuffled across the
+// other six columns, one face down at the foot of each, so the board reads as a game
+// in progress rather than a fixture. Built from the pack, like the other positions,
+// so every card appears exactly once.
+let spideretteDeep = (game: Game.t): GameState.t => {
+  let cascades = Game.pileIndices(game, Game.Cascade)
+  let runSuit = game.deck.suits->Array.getUnsafe(0)
+  let (straySuit, strayCopy) = switch game.deck.suits->Array.get(1) {
+  | Some(other) => (other, 0)
+  | None => (runSuit, 1)
+  }
+  let stray = rank => Card.nth({suit: straySuit, rank}, strayCopy)
+  let strays = [stray(Seven), stray(Six)]
+  let run =
+    game.deck.ranks
+    ->Array.toReversed
+    ->Array.filter(rank => rank != Ace)
+    ->Array.map(rank => {suit: runSuit, rank})
+  let landing = stray(Ace)
+  let posed = strays->Array.concat(run)->Array.concat([landing])
+  let isPosed = card => posed->Array.some(c => GameState.sameCard(c, card))
+  // The rest of the pack, shuffled so the other columns look played rather than sorted;
+  // the first six go face down under the deep column's run.
+  let rest = Cards.shuffle(~deck=game.deck, ~seed=Game.freecellSeed)->Array.filter(c => !isPosed(c))
+  let buried = rest->Array.slice(~start=0, ~end=6)
+  let others =
+    rest
+    ->Array.slice(~start=6, ~end=Array.length(rest))
+    ->Cards.deal(~piles=Array.length(cascades) - 1)
+  let deep = buried->Array.concat(strays)->Array.concat(run)
+  let cascadePiles =
+    [deep]->Array.concat(
+      others->Array.mapWithIndex((column, i) => i == 0 ? column->Array.concat([landing]) : column),
+    )
+  let cascadeIdx = ref(0)
+  let piles = game.piles->Array.map((pile: Game.pile) =>
+    switch pile.role {
+    | Game.Cascade =>
+      let value = cascadePiles->Array.get(cascadeIdx.contents)->Option.getOr([])
+      cascadeIdx := cascadeIdx.contents + 1
+      value
+    | Game.Foundation | Game.FreeCell | Game.Stock => []
+    }
+  )
+  // Six face down under the deep column, one at the foot of every other column.
+  let deepIndex = cascades->Array.get(0)
+  let faceDown = piles->Array.mapWithIndex((cards, i) =>
+    if Some(i) == deepIndex {
+      Array.length(buried)
+    } else if cascades->Array.includes(i) && Array.length(cards) > 1 {
+      1
+    } else {
+      0
+    }
+  )
+  {piles, loose: [], faceDown}
+}
+
 // A named scenario as *data*: the `name` the URL/CLI address it by, a human
 // `label` for a picker (the web-app's debug "states" menu), the pure `build`
 // that produces its `GameState` for a board, and the deal it descends from.
@@ -389,12 +460,13 @@ let freecellScenarios: array<named> = [
 ]
 
 // Spiderette's, addressed the same way (`?game=spiderette&state=dealt`, `deal
-// spiderette dealt`), and shared by its three variants since both build from whatever
-// pack the board carries. Neither claims a deal: `dealt` is reachable from *whatever*
+// spiderette dealt`), and shared by its three variants since all build from whatever
+// pack the board carries. None claims a deal: `dealt` is reachable from *whatever*
 // deal the board it's built on was dealt from, which a fixed number can't say, and the
-// near-won position is posed from the pack.
+// deep column and the near-won position are posed from the pack.
 let spideretteScenarios: array<named> = [
   {name: "dealt", label: "Stock dealt out", build: spideretteDealtOut, seed: None},
+  {name: "deep", label: "Deep column", build: spideretteDeep, seed: None},
   {name: "almost-won", label: "Almost won", build: spideretteAlmostWon, seed: None},
 ]
 

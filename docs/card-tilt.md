@@ -69,7 +69,8 @@ Two rules follow, and both are quiet if broken:
   `−maxCardTilt`.
 - **`maxCardTilt` stays small.** It's the whole span, not a variance: raise it
   and cards stop stacking cleanly, because a fanned pile's overlap is computed
-  from `TableLayout.fanStep` and assumes cards are very nearly square. See
+  from `TableLayout`'s fan steps — `fanDownStep` for a back, and less again once a
+  deep pile compresses — which assume cards are very nearly square. See
   [board-geometry.md](board-geometry.md).
 
 ## How the angle reaches the screen

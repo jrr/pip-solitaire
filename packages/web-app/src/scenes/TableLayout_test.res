@@ -230,6 +230,94 @@ describe("TableLayout — the published footprints", () => {
   })
 })
 
+describe("TableLayout — laying out a fan", () => {
+  let fan = TableLayout.fanFor
+  // A pile within its headroom, with room to spare: full steps, and a face-down card
+  // steps tighter than a face-up one.
+  test("a pile with room lays out at its full steps, backs tighter than faces", () => {
+    let f = fan(~count=7, ~down=6, ~room=Some(10_000.), ~scale=1.)
+    expect(f.downStep)->toBe(TableLayout.fanDownStep)
+    expect(f.upStep)->toBe(TableLayout.fanStep)
+    expect(f.downStep < f.upStep)->toBe(true)
+    // Six gaps, all under a face-down card: the top card steps nothing off itself.
+    expect(f.extent)->toBe(6. *. TableLayout.fanDownStep)
+    expect(TableLayout.fanOffset(f, ~down=6, ~slot=6))->toBe(f.extent)
+  })
+
+  test("a fan of faces alone is what it always was", () => {
+    // FreeCell's cascades: nothing face down, so the extent is the old
+    // `(count − 1) · fanStep`, at whatever scale, and a screenshot of one is unchanged.
+    let f = fan(~count=12, ~down=0, ~room=Some(10_000.), ~scale=0.55)
+    expect(f.extent)->toBeCloseToWithin(11. *. TableLayout.fanStep *. 0.55, 6)
+    expect(TableLayout.fanOffset(f, ~down=0, ~slot=5))->toBeCloseToWithin(
+      5. *. TableLayout.fanStep *. 0.55,
+      6,
+    )
+  })
+
+  test("the offsets step by the card beneath: backs first, then faces", () => {
+    let f = fan(~count=20, ~down=6, ~room=Some(10_000.), ~scale=1.)
+    expect(TableLayout.fanOffset(f, ~down=6, ~slot=0))->toBe(0.)
+    expect(TableLayout.fanOffset(f, ~down=6, ~slot=6))->toBe(6. *. TableLayout.fanDownStep)
+    expect(TableLayout.fanOffset(f, ~down=6, ~slot=19))->toBe(
+      6. *. TableLayout.fanDownStep +. 13. *. TableLayout.fanStep,
+    )
+    expect(TableLayout.fanOffset(f, ~down=6, ~slot=19))->toBe(f.extent)
+  })
+
+  test("a pile that has outgrown its room compresses the face-up step to fit", () => {
+    // Twenty cards, six down, in a room a twelve-card fan would fill: the extent lands
+    // exactly on the budget, the backs keep their step, and the faces give.
+    let room = TableLayout.zoneBaseHeight +. 11. *. TableLayout.fanStep
+    let f = fan(~count=20, ~down=6, ~room=Some(room), ~scale=1.)
+    expect(f.extent)->toBeCloseToWithin(11. *. TableLayout.fanStep, 6)
+    expect(f.downStep)->toBe(TableLayout.fanDownStep)
+    expect(f.upStep < TableLayout.fanStep)->toBe(true)
+    expect(f.upStep >= f.downStep)->toBe(true)
+    expect(TableLayout.fanOffset(f, ~down=6, ~slot=19))->toBeCloseToWithin(f.extent, 6)
+  })
+
+  test("past the face-down step, both steps give together", () => {
+    // Room for barely more than a card: the face-up step would have to fall below
+    // the face-down one, so the two shrink as one and the pile still ends in the room.
+    let room = TableLayout.zoneBaseHeight +. 38.
+    let f = fan(~count=20, ~down=6, ~room=Some(room), ~scale=1.)
+    expect(f.extent)->toBeCloseToWithin(38., 6)
+    expect(f.upStep)->toBeCloseToWithin(f.downStep, 6)
+    expect(f.upStep)->toBeCloseToWithin(2., 6)
+    expect(TableLayout.fanOffset(f, ~down=6, ~slot=19))->toBeCloseToWithin(38., 6)
+  })
+
+  test("a pile that just fits is not compressed", () => {
+    let natural = 6. *. TableLayout.fanDownStep +. 13. *. TableLayout.fanStep
+    let f = fan(~count=20, ~down=6, ~room=Some(TableLayout.zoneBaseHeight +. natural), ~scale=1.)
+    expect(f.upStep)->toBe(TableLayout.fanStep)
+    expect(f.extent)->toBe(natural)
+  })
+
+  test("the room is read at the live scale", () => {
+    // Halving the scale halves the pile, so the same room is twice as generous.
+    let room = TableLayout.zoneBaseHeight +. 11. *. TableLayout.fanStep
+    let f = fan(~count=20, ~down=6, ~room=Some(room), ~scale=0.5)
+    expect(f.upStep)->toBe(TableLayout.fanStep *. 0.5)
+    expect(f.downStep)->toBe(TableLayout.fanDownStep *. 0.5)
+  })
+
+  test("an unmeasured playfield compresses nothing", () => {
+    // Not a fallback number: a stage that reads 0 high before layout is not a stage
+    // with no room in it, and a fan laid flat for that frame would be visible.
+    let f = fan(~count=20, ~down=6, ~room=None, ~scale=1.)
+    expect(f.upStep)->toBe(TableLayout.fanStep)
+    expect(f.downStep)->toBe(TableLayout.fanDownStep)
+  })
+
+  test("a pile of one, or none, has no fan at all", () => {
+    expect(fan(~count=1, ~down=1, ~room=Some(0.), ~scale=1.).extent)->toBe(0.)
+    expect(fan(~count=0, ~down=0, ~room=Some(0.), ~scale=1.).extent)->toBe(0.)
+    expect(fan(~count=1, ~down=0, ~room=None, ~scale=1.).extent)->toBe(0.)
+  })
+})
+
 describe("TableLayout — the drop hit-test", () => {
   let zone: TableLayout.rect = {left: 100., top: 100., width: 88., height: 124.}
   let card = (~left, ~top): TableLayout.rect => {left, top, width: 80., height: 112.}

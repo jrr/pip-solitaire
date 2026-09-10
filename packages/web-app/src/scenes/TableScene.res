@@ -440,8 +440,9 @@ let slotRoleClass = (role: Game.role) =>
   }
 
 // The whole span of the hand-placed tilt, not a variance. **Keep it small** or cards
-// stop stacking cleanly: a fanned pile's overlap comes from `TableLayout.fanStep`,
-// which assumes cards are very nearly square. docs/card-tilt.md is the rest of it.
+// stop stacking cleanly: a fanned pile's overlap comes from `TableLayout`'s fan steps —
+// `fanDownStep`, and less again once a deep pile compresses — which assume cards are
+// very nearly square. docs/card-tilt.md is the rest of it.
 let maxCardTilt = 2.5
 let suitOrdinal = (suit: Deck.suit) =>
   switch suit {
@@ -872,12 +873,16 @@ let make = (
       let clearTiltTimings = () => nodes->Array.forEach(c => clearTiltTiming(c.wrapper))
 
       // The depth the height fit sizes the deepest fan to. **Captured once**, from the
-      // opening state, so cards keep a stable size as piles grow and shrink through
-      // play; a New Game rebuild recomputes it for that deal.
+      // game's *deal*, so cards keep a stable size as piles grow and shrink through
+      // play — and across a reload, a posed `?state=`, or a debug jump, all of which
+      // open onto a position the deal never dealt; a New Game rebuild recomputes it for
+      // that deal. Fanned piles only: a squared pile has no fan to budget for, and
+      // Spiderette's stock holds twenty-four cards that would otherwise size the whole
+      // board for a fan nothing ever grows.
       let hasFanned = game.piles->Array.some((p: Game.pile) => p.stacking == Game.Fanned)
       let openingMaxDepth =
-        zones->Array.reduce(0, (m, z) =>
-          Math.Int.max(m, Array.length(GameState.cardsInPile(state(), z.index)))
+        game.piles->Array.reduce(0, (m, p: Game.pile) =>
+          p.stacking == Game.Fanned ? Math.Int.max(m, Array.length(p.cards)) : m
         )
       let referenceDepth = openingMaxDepth + TableLayout.fanHeadroom
 
@@ -885,6 +890,10 @@ let make = (
       // computes it; this is where it's kept, in a ref because the reflow and the deal
       // both read it.
       let scale = ref(1.)
+      // The rows' `top` offset, kept from the last measure so a compressed fan can end
+      // the same distance above the playfield's bottom edge as the rows sit below its
+      // top — level margins rather than a pile pressed against the edge.
+      let rowsTop = ref(0.)
       // Zero until the first `deal` runs, which is what gates the resize relayout below.
       let lastWidth = ref(0.)
       let applyScale = () => {
@@ -905,7 +914,8 @@ let make = (
         let avail = width -. cutaway
         // The height fit's fixed term: the rows' `top` offset, plus the inter-row gap
         // on a two-row board.
-        let vFixed = parseFloat(cs["top"]) +. (twoRows ? parseFloat(cs["rowGap"]) : 0.)
+        rowsTop := parseFloat(cs["top"])
+        let vFixed = rowsTop.contents +. (twoRows ? parseFloat(cs["rowGap"]) : 0.)
 
         TableLayout.scaleFor(
           ~avail,
@@ -973,7 +983,9 @@ let make = (
 
       // Re-lay a zone's pile from scratch: every card squares up on the zone
       // centre, then Fanned cards step *down* by their slot so the newest lands
-      // lowest and fully exposed. Only the top (last) card stays draggable; the
+      // lowest and fully exposed — a face-down card by the tighter step, and every
+      // step shortened when the pile would otherwise pass the playfield's bottom
+      // (`TableLayout.fanFor`). Only the top (last) card stays draggable; the
       // rest are marked buried, and in a Squared pile — where they're not on
       // screen at all — hidden from the accessible tree too. Reading the
       // rects live keeps the maths correct wherever flexbox placed the zone.
@@ -992,6 +1004,13 @@ let make = (
         // How many of them, from the bottom, lie face down: shown as backs, never
         // liftable, and the boundary a run can't reach past.
         let down = GameState.faceDownIn(state(), zone.index)
+        // The fan's two steps and its extent, from the room between this zone's top and
+        // the playfield's bottom, less the margin the rows keep at its top. Measured off
+        // the zone's *top*, which its own growth never moves, so the reading is the
+        // same on every reflow. `None` while the playfield has no height to measure:
+        // `fanFor` then lays the pile out at its full steps rather than flat.
+        let room = pr.height > 0. ? Some(pr.top +. pr.height -. rowsTop.contents -. zr.top) : None
+        let fan = TableLayout.fanFor(~count, ~down, ~room, ~scale=scale.contents)
         // The pile's stacking rule, consulted to decide which cards head a
         // legal run and so may be lifted as a supermove span.
         let (rule, role) = switch game.piles->Array.get(zone.index) {
@@ -1012,7 +1031,7 @@ let make = (
             c.y :=
               switch zone.stacking {
               | Game.Squared => baseY
-              | Game.Fanned => baseY +. Int.toFloat(i) *. TableLayout.fanStep *. scale.contents
+              | Game.Fanned => baseY +. TableLayout.fanOffset(fan, ~down, ~slot=i)
               }
             place(c)
             // Re-tilt the card for where it now rests: stable while the pile
@@ -1074,11 +1093,12 @@ let make = (
         // Grow a fanned zone so its outline (and the drop highlight) covers the
         // fan that spills below the base box; a squared or empty zone keeps the
         // base height. `zoneAt` hit-tests this same box, so the whole fanned pile
-        // becomes the drop target too, not just the foundation.
+        // becomes the drop target too, not just the foundation. The extent is the
+        // same `fan` the cards were just stepped by — a compressed pile's zone ends
+        // where its last card does.
         let fanExtent = switch zone.stacking {
-        | Game.Fanned if count > 1 =>
-          Int.toFloat(count - 1) *. TableLayout.fanStep *. scale.contents
-        | _ => 0.
+        | Game.Fanned => fan.extent
+        | Game.Squared => 0.
         }
         style(zone.el)->setHeight(
           Float.toString(TableLayout.zoneBaseHeight *. scale.contents +. fanExtent) ++ "px",
