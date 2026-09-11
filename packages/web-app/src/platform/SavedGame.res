@@ -3,12 +3,13 @@
 // undo/redo history and everything beside it to a string and back — lives in `core`'s
 // `SaveState`; this module only owns the impure edges: which `localStorage` key holds a
 // game, and reading/writing it safely. See `docs/save-and-share.md` for the whole
-// pipeline and both keys below.
+// pipeline and the keys below.
 //
 // One saved game per game *type* (the issue's "no named saves or multiple slots"), so
-// the key is namespaced by the game id. Only FreeCell saves today — it's the only
-// re-dealable game — but keying by id lets a second re-dealable game persist alongside
-// it later without collision.
+// the key is namespaced by the game id: every re-dealable game persists alongside every
+// other, and switching games in the menu leaves each board where it was. The third key
+// is the odd one and is not per-game — which game was last on the table, so a launch
+// can come back to it.
 //
 // Every touch of `localStorage` can throw outright (Safari private mode, a sandboxed
 // frame, storage disabled or full), so — exactly as `Preferences` does — a failed read
@@ -72,6 +73,35 @@ let saveSeed = (gameId: string, seed: int): unit =>
 // be read as its own.
 let clearSeed = (gameId: string): unit =>
   try removeItem(seedKey(gameId)) catch {
+  | _ => ()
+  }
+
+// --- Which game was last on the table ------------------------------------
+//
+// One id rather than one per game, unlike both keys above: what a bare launch opens
+// on, so choosing a game is a choice that survives closing the tab. The per-game saves
+// are what make it worth having — each game keeps its own board, so coming back to a
+// remembered game comes back to the board that was on it.
+//
+// **Only a plain open reads this, and only a released game is ever written to it**
+// (both `Main`'s rules, not enforced here). The first is what keeps a bare `?seed=`
+// meaning the default game's deal, since `ShareLink.urlForDeal` omits `?game=` for
+// `Game.default` and a remembered game would otherwise answer a link addressed past
+// it. The second keeps a debug board reached by `?game=` from becoming the one every
+// later launch opens on.
+//
+// The id is handed back raw, unchecked against any game list: a value naming a game
+// this build no longer has is the caller's to fall back from, and `Main` does it by
+// resolving the id against the games it offers.
+let lastGameKey = "pip.lastGame"
+
+let loadLastGame = (): option<string> =>
+  try getItem(lastGameKey)->Nullable.toOption catch {
+  | _ => None
+  }
+
+let saveLastGame = (gameId: string): unit =>
+  try setItem(lastGameKey, gameId) catch {
   | _ => ()
   }
 

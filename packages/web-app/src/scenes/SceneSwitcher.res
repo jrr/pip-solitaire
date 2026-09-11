@@ -14,8 +14,10 @@
 // games-vs-demos only while there is exactly one game, and a further game would land
 // under "scenes" filed as a render demo.
 //
-// Nothing here is persisted: the app launches into `~default`, or into the `~forced`
-// scene the URL named, and a reload does not resume the last one.
+// Nothing is persisted *here*: the app launches into `~default`, or into the `~forced`
+// scene the URL named. Which scene `~default` is can itself be a remembered answer, but
+// that is the driver's to store and to decide when it may be trusted (`Main`'s
+// `launchGame`) — storage is no business of a mount/teardown engine.
 
 // A scene the menu can offer. Not `MenuRow.entry`, deliberately — the chrome pairs
 // these with the active id to decide the highlight and closes over `select` itself, so

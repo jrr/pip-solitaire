@@ -566,14 +566,20 @@ let update = (msg, model) =>
 // the scene band and spliced in with `Html.node`, never re-rendered — plus the menu's
 // scene lists as plain data for the chrome to draw.
 //
-// The app always opens on the FreeCell board: `~default="freecell"` is the launch
-// scene, replacing the old "resume the last scene" behaviour — the game is always
-// home. An explicit `?game=` or `?scene=` still wins (`~forced`), and `?state=` still
-// forces a scenario, so the screenshot report's `?game=freecell&state=midgame` lands
-// exactly where it says. `Game.all` is the source of truth for the game scenes; which
-// of them is re-dealable is the game's own answer (`Game.t.deal`) — FreeCell's seeded
-// shuffle today.
+// A bare launch opens on the game last played, falling back to FreeCell (see
+// `launchGame`). An explicit `?game=` or `?scene=` still wins (`~forced`), and
+// `?state=` still forces a scenario, so the screenshot report's
+// `?game=freecell&state=midgame` lands exactly where it says. `Game.all` is the source
+// of truth for the game scenes; which of them is re-dealable is the game's own answer
+// (`Game.t.deal`).
 let url = AppUrl.parse()
+
+// Whether the URL asks for no particular board — the *plain open* of
+// `docs/board-driver.md` § Which opens touch storage, minus the "re-dealable game"
+// half each scene adds for itself. One spelling, because the same condition decides
+// two things that must not drift apart: which opens touch a game's saved board, and
+// which opens are free to resume the game the player was last on.
+let plainUrl = url.state->Option.isNone && url.seed->Option.isNone && url.shared->Option.isNone
 
 // The seed a *New Deal* gets: six digits, so every re-deal lays out a
 // different board and the number stays short enough to read off the menu's "this game"
@@ -596,8 +602,7 @@ let gameScene = (game: Game.t) => {
   let sharePending = canDeal && url.shared->Option.isSome
   let sharedOpen = () =>
     sharePending && sharedGame.contents->Option.mapOr(false, shared => shared.id == game.id)
-  let plainOpen =
-    canDeal && url.state->Option.isNone && url.seed->Option.isNone && url.shared->Option.isNone
+  let plainOpen = canDeal && plainUrl
   // Read when the scene *mounts*, not here where it's built — § Why the read-backs are
   // thunks.
   let loadHistory = () => plainOpen ? SavedGame.load(game.id) : None
@@ -724,13 +729,34 @@ let gameScene = (game: Game.t) => {
 // first of them.
 let releasedGames = [Game.freecell, Game.simpleSimon]
 
+// A scene id that names a released game, or `None`. Both halves of remembering ask
+// exactly this, so they ask it in one place: a stale id, a garbage value and a game
+// this build has since withdrawn are all the same answer, and all fall back to the
+// default rather than to whatever scene happens to lead the list.
+let releasedById = (id: string): option<Game.t> => releasedGames->Array.find(game => game.id == id)
+
+// The game a bare launch opens on: the one last on the table, else the default. The
+// board waiting on it comes back with it — each game keeps its own save — so this
+// resumes the *game*, and `gameScene`'s `loadHistory` resumes the board.
+//
+// **Only on a plain open.** A URL that names a board at all has to be answered by that
+// URL: `ShareLink.urlForDeal` omits `?game=` for `Game.default`, so a bare `?seed=7` is
+// a link to *FreeCell's* deal 7, and a remembered Simple Simon answering it would open
+// a different board under the same link. The `~forced` ids are safe either way, being
+// resolved ahead of this, but a deal number is not — hence the whole predicate rather
+// than a check for `?game=`.
+let launchGame = plainUrl
+  ? SavedGame.loadLastGame()->Option.flatMap(releasedById)->Option.getOr(Game.default)
+  : Game.default
+
 let switcher = SceneSwitcher.render(
-  // The launch scene, spelled as the game `core` says a nameless deal number belongs to
-  // rather than as the literal `"freecell"`. That's the same fact twice
+  // The launch scene: the remembered game, or the game `core` says a nameless deal
+  // number belongs to. Never the literal `"freecell"` — that's the same fact twice
   // otherwise, and the two halves of one property: `urlForDeal` omits `?scene=` for
   // `Game.default`, so a bare `?seed=7` has to land on `Game.default`'s scene for the
-  // link to mean what it says. Written this way the round trip can't drift.
-  ~default=Game.default.id,
+  // link to mean what it says. `launchGame` is what keeps that true, by declining to
+  // remember on exactly the opens that carry such a link.
+  ~default=launchGame.id,
   ~primary=releasedGames->Array.map(game => game.id),
   // What the URL asked to open, as a scene id. `?game=` is checked first because it is
   // the more specific claim — it names a board, and a board's scene is its id, so it
@@ -758,6 +784,12 @@ let switcher = SceneSwitcher.render(
     // Move the menu's highlight to the scene coming up. The switcher owns no row to
     // mark, so this report *is* the highlight.
     reportScene.contents(scene.id)
+    // …and remember it, so the next bare launch opens here. Every activation counts, a
+    // link's as much as a menu tap: what is stored is the game that was played. A demo
+    // writes nothing, and neither does a game the menu doesn't offer, so the id read
+    // back always names a game the menu leads with — the Gallery can never be what the
+    // app opens on.
+    releasedById(scene.id)->Option.forEach(game => SavedGame.saveLastGame(game.id))
     closeMenu.contents()
   },
   // A tap on the row for the game already showing: nothing mounts, so nothing above

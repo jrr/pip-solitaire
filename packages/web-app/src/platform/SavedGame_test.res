@@ -23,6 +23,10 @@
 
 open Vitest
 
+// Emptying one key, which the module itself has no reason to expose: `clear` is
+// per-game, and nothing in the app forgets which game was last on the table.
+@val @scope("localStorage") external removeItem: string => unit = "removeItem"
+
 describe("SavedGame", () => {
   let game = Game.freecell
   // A history with a move recorded, and a tally that doesn't match its shape (three
@@ -112,5 +116,36 @@ describe("SavedGame", () => {
     SavedGame.clear("other")
     expect(SavedGame.load("other"))->toEqual(None)
     expect(SavedGame.load("freecell")->Option.isSome)->toBe(true)
+  })
+
+  test("the last game read back is the last one written", () => {
+    SavedGame.saveLastGame("freecell")
+    SavedGame.saveLastGame("simplesimon")
+    expect(SavedGame.loadLastGame())->toEqual(Some("simplesimon"))
+  })
+
+  test("nothing stored reads as no last game, the answer a first launch gets", () => {
+    // Emptied through the module's own key rather than a literal, and emptied at all
+    // because `clear` above is per-game and never touches this one: the fresh-device
+    // reading is the case `Main` falls back to the default game from.
+    removeItem(SavedGame.lastGameKey)
+    expect(SavedGame.loadLastGame())->toEqual(None)
+  })
+
+  test("the id comes back unchecked, for the caller to resolve against its own games", () => {
+    // A game this build doesn't have is not this module's to filter — it hands the id
+    // over as stored, and `Main` falls back when it resolves to no released game.
+    SavedGame.saveLastGame("klondike")
+    expect(SavedGame.loadLastGame())->toEqual(Some("klondike"))
+  })
+
+  test("the last game is one id, not one per game type", () => {
+    // Unlike both keys above: writing it for a second game replaces the first rather
+    // than sitting beside it, which is what makes it answer "which game" at all.
+    SavedGame.saveLastGame("freecell")
+    SavedGame.save("simplesimon", saved)
+    expect(SavedGame.loadLastGame())->toEqual(Some("freecell"))
+    SavedGame.saveLastGame("simplesimon")
+    expect(SavedGame.loadLastGame())->toEqual(Some("simplesimon"))
   })
 })
