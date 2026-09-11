@@ -7,13 +7,17 @@
 // for the menu to re-render from. Keep it that way: a highlight written onto a row by
 // hand is the job the diff exists to do, done by a module that must reach outside it.
 //
-// The rows are three groups, not a flat list — the primary game up top, and two
-// disclosures under the menu's "debug" header. **Group on `Scene.kind`, never on "is
-// this the launch default?"**: that reads as games-vs-demos only while there is
-// exactly one game, and a second game would land under "scenes" filed as a render demo.
+// The rows are three groups, not a flat list — the primary games up top, and two
+// disclosures under the menu's "debug" header. Which games are primary is the
+// caller's say (`~primary`), the launch default always among them; the rest are
+// grouped **on `Scene.kind`, never on "is this the launch default?"**: that reads as
+// games-vs-demos only while there is exactly one game, and a further game would land
+// under "scenes" filed as a render demo.
 //
-// Nothing here is persisted: the app launches into `~default`, or into the `~forced`
-// scene the URL named, and a reload does not resume the last one.
+// Nothing is persisted *here*: the app launches into `~default`, or into the `~forced`
+// scene the URL named. Which scene `~default` is can itself be a remembered answer, but
+// that is the driver's to store and to decide when it may be trusted (`Main`'s
+// `launchGame`) — storage is no business of a mount/teardown engine.
 
 // A scene the menu can offer. Not `MenuRow.entry`, deliberately — the chrome pairs
 // these with the active id to decide the highlight and closes over `select` itself, so
@@ -45,6 +49,11 @@ type t = {
 // The initial scene is the first of these that names a real one: the `~forced` id, so
 // a link always lands where it says, then the launch `~default`, then the first scene.
 //
+// `~primary` names the scenes that get a top-level row in the menu, by id, on top of
+// the launch default — which gets one whether named or not, being home. An id that
+// names no scene is ignored. The rows come out in the *scene list's* order, so the
+// menu's order is decided in one place, not here as well.
+//
 // `~onActivate` fires at the *start* of every activation, with the scene about to
 // mount, so the chrome can reset the per-scene actions it tracks — the top bar's New
 // Game hook, which the mounting scene re-publishes if it's re-dealable. `~onReselect`
@@ -53,6 +62,7 @@ type t = {
 // at it.
 let render = (
   ~default: option<string>=?,
+  ~primary: array<string>=[],
   ~forced: option<string>=?,
   ~onActivate: option<Scene.t => unit>=?,
   ~onReselect: option<unit => unit>=?,
@@ -71,13 +81,15 @@ let render = (
     ->Option.orElse(default->Option.flatMap(byId))
     ->Option.orElse(scenes[0])
 
-  // The one scene surfaced at the top of the menu — the game is home.
-  let primaryId =
+  // The scenes surfaced at the top of the menu: the launch scene — the game is home —
+  // and whichever others the caller promoted beside it.
+  let defaultId =
     default->Option.flatMap(byId)->Option.orElse(scenes[0])->Option.map(scene => scene.id)
 
-  let isPrimary = (scene: Scene.t) => primaryId == Some(scene.id)
+  let isPrimary = (scene: Scene.t) =>
+    defaultId == Some(scene.id) || primary->Array.includes(scene.id)
 
-  // The primary keeps its top-level row and appears in neither disclosure — including
+  // A primary keeps its top-level row and appears in neither disclosure — including
   // when `~default` names a demo, where surfacing it up top *and* in the demos group
   // would list it twice.
   let group = (scene: Scene.t) =>
@@ -136,7 +148,7 @@ let render = (
 
   // Open the group the initial scene is in, so a `?scene=gallery` deep link's
   // highlighted row is visible rather than hidden behind a collapsed disclosure. A
-  // scene that got the top-level row opens neither.
+  // scene that got a top-level row opens neither.
   let openedIn = which =>
     switch initial {
     | Some(scene) => group(scene) == which

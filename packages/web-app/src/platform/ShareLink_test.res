@@ -15,7 +15,9 @@
 //
 // The delivery half (`deliver`, the share-sheet/clipboard fork) isn't covered here:
 // it's a thin wrapper over two platform APIs that jsdom doesn't implement, so a test
-// would only be asserting against a stub of our own making.
+// would only be asserting against a stub of our own making. Both its routes are pinned
+// in `browser-tests/share-deal.spec.mjs` instead, where the clipboard is real and only
+// the OS sheet is stood in for.
 
 open Vitest
 
@@ -176,16 +178,9 @@ describe("ShareLink.savedFrom names the game", () => {
 // game unshareable. What's pinned here is the shape `urlForDeal` writes: the game named
 // in `?game=`, and left out for the default one.
 describe("ShareLink.urlForDeal names the game", () => {
-  // A second seeded game, stood up here because `Game.all` has only FreeCell in the
-  // web-app's own scene list. Everything `urlForDeal` reads of a game is its
-  // `id`, so a FreeCell board under another name is a faithful stand-in for the day a
-  // real second game arrives — and it's this test, not that day, that has to catch a
-  // link which quietly means FreeCell.
-  let mini = {...Game.freecell, id: "mini", name: "Mini"}
-
   test("a deal of another game names it with `?game=`", () => {
-    let url = ShareLink.urlForDeal(~game=mini, ~seed=7)
-    expect(url->String.endsWith("?game=mini&seed=7"))->toBe(true)
+    let url = ShareLink.urlForDeal(~game=Game.simpleSimon, ~seed=7)
+    expect(url->String.endsWith("?game=" ++ Game.simpleSimon.id ++ "&seed=7"))->toBe(true)
   })
 
   test("…and the default game leaves it out, for the link to stay legible", () => {
@@ -214,7 +209,9 @@ describe("ShareLink.urlForDeal names the game", () => {
     // link's half, and a rename here that left that prose behind would be silent.
     expect(ShareLink.gameKey)->toBe("game")
     expect(
-      ShareLink.urlForDeal(~game=mini, ~seed=7)->String.includes(ShareLink.gameKey ++ "="),
+      ShareLink.urlForDeal(~game=Game.simpleSimon, ~seed=7)->String.includes(
+        ShareLink.gameKey ++ "=",
+      ),
     )->toBe(true)
   })
 })
@@ -259,6 +256,21 @@ describe("ShareLink.victoryMessage", () => {
     let message = ShareLink.victoryMessage(~game, ~seed=1, ~moves=40, ~undos=1)
     expect(message->String.includes("1 undo"))->toBe(true)
     expect(message->String.includes("undos"))->toBe(false)
+  })
+
+  // The name is the one part of this message that changes with the board, and FreeCell
+  // is the worst game to check it on: it is the default, so a message that had the name
+  // hardcoded would read correctly on it and wrong on everything else. Hence a second
+  // real game, and an assertion that the *other* name is absent.
+  test("names the game it is a win of, not the default one", () => {
+    let message = ShareLink.victoryMessage(
+      ~game=Game.simpleSimon,
+      ~seed=847213,
+      ~moves=94,
+      ~undos=0,
+    )
+    expect(message->String.includes(Game.simpleSimon.name))->toBe(true)
+    expect(message->String.includes(Game.freecell.name))->toBe(false)
   })
 
   test("carries no link of its own — `deliver` owns the URL", () => {

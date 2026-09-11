@@ -9,10 +9,9 @@
 // wired to. Which scene is current is likewise read rather than looked at: `active`
 // for the seed the chrome opens with, `entry.selected` for the group's highlight.
 //
-// The grouping is three-way: the primary row, the `Game` scenes that aren't it,
-// and the `Demo` scenes. It can only be exercised here — the app has one game, so the
-// games group is empty in the real scene list, which is exactly the case that makes
-// this a no-op on the screen.
+// The grouping is three-way: the primary rows, the `Game` scenes that aren't among
+// them, and the `Demo` scenes. Fake scenes stand in for the real list so every group
+// can be populated at once, whichever games a build happens to release.
 
 open Vitest
 
@@ -150,10 +149,9 @@ describe("SceneSwitcher's debug group", () => {
 })
 
 describe("SceneSwitcher's grouping by kind", () => {
-  // Two games and two demos, so the three groups are all distinguishable. The real
-  // scene list can't do this yet — there is one game — which is the point: the
-  // grouping is pinned here so a second game lands where it belongs on the day it
-  // arrives, rather than under "scenes" among the render demos.
+  // Two games and two demos, so the three groups are all distinguishable, and only the
+  // launch default promoted: a game that isn't released lands among the games — not
+  // under "scenes" among the render demos — and stays there until it is.
   let scenes = mounts => [
     game(~id="freecell", ~mounts),
     countingScene(~id="gallery", ~mounts),
@@ -172,8 +170,7 @@ describe("SceneSwitcher's grouping by kind", () => {
   })
 
   test("the games group is empty when the only game is the primary one", () => {
-    // Today's scene list, and the reason this change shows up nowhere on screen:
-    // an empty group is one `MenuDebugScreen` doesn't place.
+    // An empty group is one `MenuDebugScreen` doesn't place.
     let mounts = ref(0)
     let switcher = SceneSwitcher.render(
       ~default="freecell",
@@ -226,5 +223,117 @@ describe("SceneSwitcher's grouping by kind", () => {
     expect(switcher.primaryScenes->Array.map(scene => scene.id))->toEqual(["gallery"])
     expect(switcher.gameScenes()->labels)->toEqual(["freecell", "klondike"])
     expect(switcher.debugScenes()->labels)->toEqual(["motion"])
+  })
+})
+
+describe("SceneSwitcher's promoted games", () => {
+  // The real shape now: two released games up top, a game still in development under
+  // Debug, and the demos. `~primary` is what promotes a game; the launch default is
+  // promoted whether or not it's named, so the way home can't be configured away.
+  let scenes = mounts => [
+    game(~id="freecell", ~mounts),
+    countingScene(~id="gallery", ~mounts),
+    game(~id="simplesimon", ~mounts),
+    game(~id="klondike", ~mounts),
+  ]
+
+  let labels = entries => entries->Array.map((entry: MenuDisclosure.entry) => entry.label)
+
+  test("a promoted game gets a top-level row and leaves the games group", () => {
+    let mounts = ref(0)
+    let switcher = SceneSwitcher.render(
+      ~default="freecell",
+      ~primary=["simplesimon"],
+      scenes(mounts),
+    )
+    expect(switcher.primaryScenes->Array.map(scene => scene.id))->toEqual([
+      "freecell",
+      "simplesimon",
+    ])
+    expect(switcher.gameScenes()->labels)->toEqual(["klondike"])
+    expect(switcher.debugScenes()->labels)->toEqual(["gallery"])
+  })
+
+  test("the rows keep the scene list's order, whatever order they were promoted in", () => {
+    // One place decides the menu's order — the scene list — so naming the ids the
+    // other way round changes nothing.
+    let mounts = ref(0)
+    let switcher = SceneSwitcher.render(
+      ~default="freecell",
+      ~primary=["simplesimon", "freecell"],
+      scenes(mounts),
+    )
+    expect(switcher.primaryScenes->Array.map(scene => scene.id))->toEqual([
+      "freecell",
+      "simplesimon",
+    ])
+  })
+
+  test("the launch default has a row even when it isn't named", () => {
+    let mounts = ref(0)
+    let switcher = SceneSwitcher.render(
+      ~default="freecell",
+      ~primary=["simplesimon"],
+      scenes(mounts),
+    )
+    expect(switcher.primaryScenes->Array.map(scene => scene.id))->toEqual([
+      "freecell",
+      "simplesimon",
+    ])
+    // …and naming it too lists it once, not twice.
+    let named = SceneSwitcher.render(
+      ~default="freecell",
+      ~primary=["freecell", "simplesimon"],
+      scenes(mounts),
+    )
+    expect(named.primaryScenes->Array.map(scene => scene.id))->toEqual(["freecell", "simplesimon"])
+  })
+
+  test("an id that names no scene promotes nothing", () => {
+    let mounts = ref(0)
+    let switcher = SceneSwitcher.render(~default="freecell", ~primary=["spider"], scenes(mounts))
+    expect(switcher.primaryScenes->Array.map(scene => scene.id))->toEqual(["freecell"])
+  })
+
+  test("selecting each promoted game by id mounts it, and the highlight follows", () => {
+    // Navigation between two top-level rows, the way the menu does it: `select` by id
+    // each way, with an activation reported for every real change and the row's
+    // reselect for a tap on the game already showing.
+    let mounts = ref(0)
+    let activated = []
+    let reselects = ref(0)
+    let switcher = SceneSwitcher.render(
+      ~default="freecell",
+      ~primary=["simplesimon"],
+      ~onActivate=(scene: Scene.t) => activated->Array.push(scene.id),
+      ~onReselect=() => reselects := reselects.contents + 1,
+      scenes(mounts),
+    )
+    expect(mounts.contents)->toBe(1)
+    switcher.select("simplesimon")
+    expect(mounts.contents)->toBe(2)
+    switcher.select("simplesimon")
+    expect(mounts.contents)->toBe(2) // already up: acknowledged, not re-dealt
+    expect(reselects.contents)->toBe(1)
+    switcher.select("freecell")
+    expect(mounts.contents)->toBe(3)
+    expect(activated)->toEqual(["freecell", "simplesimon", "freecell"])
+    // Neither promoted game ever shows up in the debug groups on the way.
+    expect(switcher.gameScenes()->labels)->toEqual(["klondike"])
+    expect(switcher.debugScenes()->labels)->toEqual(["gallery"])
+  })
+
+  test("a deep link onto a promoted game opens neither debug group", () => {
+    // `?game=simplesimon` lands on a row that's already visible, so there's nothing
+    // to unfold; the `active` seed still names it for the chrome's highlight.
+    let mounts = ref(0)
+    let switcher = SceneSwitcher.render(
+      ~default="freecell",
+      ~primary=["simplesimon"],
+      ~forced="simplesimon",
+      scenes(mounts),
+    )
+    expect(switcher.active)->toEqual(Some("simplesimon"))
+    expect((switcher.gameScenesOpen, switcher.debugScenesOpen))->toEqual((false, false))
   })
 })

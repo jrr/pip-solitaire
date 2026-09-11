@@ -164,6 +164,12 @@ game** — no `?state=`, no `?seed=`, no `#g=`. An addressed board opens what it
 was addressed to and leaves any saved game strictly alone, neither resumed nor
 overwritten, which is what keeps the screenshot report's shots side-effect-free.
 
+The same three-way condition decides one thing outside this file: whether the
+launch may open on the game the player was last on, rather than on the default.
+`Main` spells it once (`plainUrl`) and both read it, so they cannot drift apart.
+The key that answers it is the one storage an *addressed* open does write, and
+`docs/save-and-share.md` § Storage has the rules it keeps.
+
 A `#g=` link is the one addressed open that *does* write, and it splits the two
 halves apart: it doesn't resume (the link already says which board), but once the
 shared game lands it takes over. That gate is asked twice at two different times,

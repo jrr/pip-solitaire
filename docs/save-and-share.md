@@ -141,12 +141,27 @@ One saved game per *game type*, keyed by game id:
 |---|---|
 | `pip.savedGame.<gameId>` | the `SaveState` JSON, uncompressed |
 | `pip.savedDeal.<gameId>` | the deal number, as a bare integer |
+| `pip.lastGame` | which game was last on the table, as a game id |
 
 The deal number lives *beside* the history rather than in it. The format carries
 positions, which is all replaying needs; the seed isn't part of the game state. But
 a resumed board can't work its own deal number out — the positions are restored, the
 deal that produced them is gone — so without this key the Share button would go dark
 on the most ordinary case there is.
+
+`pip.lastGame` is the one key that is *not* per game, and it is what a bare launch
+opens on: choosing a game from the menu outlives the tab, and the per-game saves above
+mean the board that was on it comes back with it. Two rules fence it, both `Main`'s.
+Only a **plain open** reads it, for the reason in the next section — a bare `?seed=` is
+a link to the *default* game's deal, and a remembered game answering it would open a
+different board under the same link. And only a game the menu offers as a top-level row
+is ever written to it, so neither a demo scene nor a board reachable only from the Debug
+screen becomes what the app opens on. A stored id that no longer names such a game reads
+as nothing, and the default game answers instead.
+
+What it records is the game that was *played*, however it reached the table. A game
+opened from a link is remembered the same as one tapped in the menu; it is the reading
+that an addressed URL is kept out of, not the writing.
 
 A shared game that arrives takes over storage: it becomes the saved game and play
 continues saving as usual, exactly as if it had been dealt here. Its deal number is

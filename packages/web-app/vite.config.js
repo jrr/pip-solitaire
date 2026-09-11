@@ -126,7 +126,9 @@ export default defineConfig({
       manifest: {
         name: appName,
         short_name: appName,
-        description: "An installable, offline-capable FreeCell solitaire.",
+        // Names no game, for the reason index.html's unfurl block gives: one build
+        // serves every game, so a game named here is a claim about all of them.
+        description: "An installable, offline-capable solitaire.",
         // Relative so they resolve against the manifest URL and inherit the
         // GitHub Pages subpath.
         id: "./",

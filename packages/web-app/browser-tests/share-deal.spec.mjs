@@ -14,6 +14,7 @@
 import { expect, test } from "@playwright/test"
 import { settleBoard } from "./lib/board.mjs"
 import { menuSeed } from "./lib/menu.mjs"
+import * as Game from "core/src/Game.res.mjs"
 
 test.use({
   viewport: { width: 800, height: 1000 },
@@ -195,4 +196,51 @@ test("says so on a board with no seed, rather than offering one", async ({ page 
   await expect(menuSeed(page)).toHaveCount(0)
   await expect(shareButton(page)).toBeDisabled()
   await expect(shareLine(page)).toHaveText("No seed for this board.")
+})
+
+// --- What the OS share sheet is handed ------------------------------------------
+//
+// Every test above takes the clipboard fork, because headless Chromium has no
+// `navigator.share` for `deliver` to prefer. The sheet is the other half, and it is the
+// only one with a field that *describes* the link rather than being it — so it is the
+// only one where a wrong claim about the board could reach a player at all.
+//
+// The sheet is installed as a recorder rather than emulated. It is the one thing here
+// that cannot be real, there being no OS behind this browser; everything in front of it
+// is the app's own, including `deliver`'s choice between the two routes, which comes
+// out on this side precisely because installing it makes `canShare` true.
+const recordShareSheet = (page) =>
+  page.addInitScript(() => {
+    window.__shared = []
+    navigator.share = (data) => {
+      window.__shared.push(data)
+      return Promise.resolve()
+    }
+  })
+
+test("the share sheet describes the board by its link, claiming no game of its own", async ({
+  page,
+}) => {
+  // Simple Simon is the board that can catch this. FreeCell is the default game, so a
+  // payload naming a game from nowhere would read correctly on it and wrong here.
+  await recordShareSheet(page)
+  await page.goto("/?game=simplesimon&seed=24680&animate=off")
+  await settleBoard(page)
+
+  await openMenu(page)
+  await shareButton(page).click()
+  await expect(shareLine(page)).toHaveText("Link shared.")
+
+  const shared = await page.evaluate(() => window.__shared)
+  expect(shared).toHaveLength(1)
+  const [payload] = shared
+  // The link names the board, in the one place that survives being opened.
+  expect(new URL(payload.url).searchParams.get("game")).toBe("simplesimon")
+  expect(new URL(payload.url).searchParams.get("seed")).toBe("24680")
+  // …and nothing travelling with it says otherwise. A deal share is an invitation: the
+  // app's name and the link, with no sentence composed underneath them, which is the
+  // whole of what would have been free to be wrong.
+  expect(payload.text).toBeUndefined()
+  expect(payload.title).toBe("Pip")
+  expect(JSON.stringify(payload)).not.toContain(Game.freecell.name)
 })
