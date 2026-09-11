@@ -29,6 +29,13 @@ const gameRow = (page, name) =>
 // it, which is how a test tells a game in progress from a fresh deal of the same seed.
 const undo = (page) => page.getByRole("button", { name: "Undo" })
 
+// The "this game" heading, which names the game on the table in front of its deal
+// number. Only this suite switches games from the menu, so the game half of that
+// heading can only be read moving here — hence a locator of its own rather than one
+// beside `menuSeed` in lib/menu.mjs.
+const menuGameName = (page) =>
+  page.locator('[aria-label="this game"] .menu-section__heading')
+
 // The debug console, for putting a known game on the table by typing at it — the
 // same lines `debug-console.spec.mjs` pins. Deal 24680 opens with the Five of Spades
 // on top of its third cascade, so a cell takes it: one move, and a history to keep.
@@ -171,6 +178,9 @@ test("the games rows walk between FreeCell and Simple Simon, keeping each game",
   await expect(gameRow(page, "FreeCell")).toHaveAttribute("aria-current", "true")
   await expect(gameRow(page, "Simple Simon")).not.toHaveAttribute("aria-current", "true")
   await expect(menuSeed(page)).toHaveText("#24680")
+  // The heading names the game its two buttons act on, which is a live reading now
+  // that the menu can reach a second one.
+  await expect(menuGameName(page)).toContainText("FreeCell")
 
   // Over to Simple Simon: the menu closes on the switch, and the board that comes up
   // is its — ten cascades and four foundations, no cells — freshly dealt, with no
@@ -185,8 +195,10 @@ test("the games rows walk between FreeCell and Simple Simon, keeping each game",
   await openMenu(page)
   await expect(gameRow(page, "Simple Simon")).toHaveAttribute("aria-current", "true")
   await expect(gameRow(page, "FreeCell")).not.toHaveAttribute("aria-current", "true")
-  // Its own deal, not FreeCell's carried across.
+  // Its own deal, not FreeCell's carried across — and a heading that has followed it,
+  // so Restart and Share visibly act on the board in front of you.
   await expect(menuSeed(page)).not.toHaveText("#24680")
+  await expect(menuGameName(page)).toContainText("Simple Simon")
 
   // Tapping the game already showing closes the menu and leaves the board alone.
   await gameRow(page, "Simple Simon").click()
@@ -205,6 +217,7 @@ test("the games rows walk between FreeCell and Simple Simon, keeping each game",
   await expect(gameRow(page, "FreeCell")).toHaveAttribute("aria-current", "true")
   await expect(gameRow(page, "Simple Simon")).not.toHaveAttribute("aria-current", "true")
   await expect(menuSeed(page)).toHaveText("#24680")
+  await expect(menuGameName(page)).toContainText("FreeCell")
 })
 
 // `?game=simplesimon` lands on a row that is already up top, so the menu opens with
