@@ -29,7 +29,7 @@ imports the shared browser boot from `lib/`.
 | `screenshots/render.mjs` | `mise run screenshots` | `screenshots/` — the report: FreeCell scenes (plus the card-raster fidelity sheet and the posed cascade) × emulated devices × orientation, and an `index.html` contact sheet |
 | `screenshots/stage.mjs` | `mise run stage-screenshots -- <dir> <stamp>` | a local staging dir for `peaceiris/actions-gh-pages` to publish |
 | `screenshots/hub.mjs` | `mise run screenshots-hub -- <dir>` | `<dir>/index.html` — the `/screenshots/` hub listing every published report |
-| `autoplay/play.mjs` | `mise run autoplay -- <seed…>` | nothing on disk — a game played to the win overlay, and a play-by-play on stdout (`--shots <dir>` also writes screenshots) |
+| `autoplay/play.mjs` | `mise run autoplay -- <seed…>` | nothing on disk — a game played to the win overlay, and a play-by-play on stdout (`--shots <dir>` also writes screenshots; `--game simplesimon` plays the other game the solver knows) |
 
 The three `generate/` outputs are **committed**, so those tasks only need
 re-running when their inputs change. The `screenshots/` outputs are not — CI
@@ -49,9 +49,9 @@ renders and publishes them per push.
 
 ## autoplay/
 
-Plays FreeCell in a real browser, every move a pointer drag on the rendered
-board — nothing reaches into game state, which is what makes a game played this
-way evidence about the *app*. Three parts:
+Plays a game — FreeCell, or Simple Simon — in a real browser, every move a
+pointer drag on the rendered board — nothing reaches into game state, which is
+what makes a game played this way evidence about the *app*. Three parts:
 
 | module | what it is |
 | --- | --- |

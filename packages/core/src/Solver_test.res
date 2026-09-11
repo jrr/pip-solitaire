@@ -178,8 +178,9 @@ describe("Solver", () => {
       "plays deal #1 out to a board the Finish button wins",
       () =>
         switch Solver.autoplay(~game, opening) {
-        | Solver.NotFreeCell => expect("a FreeCell board")->toBe("but the solver didn't know it")
-        | Solver.NoLine => expect("deal 1 played")->toBe("but the ladder ran out")
+        | Solver.UnknownBoard => expect("a FreeCell board")->toBe("but the solver didn't know it")
+        | Solver.NoLine | Solver.Unwinnable =>
+          expect("deal 1 played")->toBe("but no line was found")
         | Solver.Played({steps, effort}) =>
           expect(Array.length(steps) > 20)->toBe(true) // a real game, not a shortcut
           // …and it says what the thinking cost, which is a fact about the search
@@ -247,7 +248,7 @@ describe("Solver", () => {
         // first pass returns having spent nothing.
         let finishable = Scenario.freecellFinish(game)
         expect(Solver.autoplay(~game, finishable))->toEqual(
-          Solver.Played({steps: [], effort: {positions: 0, moves: 0, passes: 1}}),
+          Solver.Played({steps: [], effort: {positions: 0, moves: 0, passes: 1, exhausted: false}}),
         )
       },
     )
@@ -257,8 +258,111 @@ describe("Solver", () => {
       () => {
         let cascadesOnly: Game.t = {...game, piles: Game.pilesOf(game, Game.Cascade)}
         expect(Solver.autoplay(~game=cascadesOnly, GameState.initial(cascadesOnly)))->toEqual(
-          Solver.NotFreeCell,
+          Solver.UnknownBoard,
         )
+      },
+    )
+  })
+
+  // The other game the solver plays. The line runs to the win itself — there is no
+  // drain and no Finish button under this law — and a deal with no line is common
+  // enough that telling "none exists" from "none found" is part of the answer.
+  describe("Simple Simon", () => {
+    let game = Game.simpleSimonDeal(~seed=1)
+    let opening = GameState.initial(game)
+
+    testWithin(
+      "plays deal #1 to the win, one reducer move at a time",
+      () =>
+        switch Solver.autoplay(~game, opening) {
+        | Solver.UnknownBoard =>
+          expect("a Simple Simon board")->toBe("but the solver didn't know it")
+        | Solver.NoLine | Solver.Unwinnable =>
+          expect("deal 1 played")->toBe("but no line was found")
+        | Solver.Played({steps, effort}) =>
+          expect(Array.length(steps) > 40)->toBe(true) // a real game, not a shortcut
+          expect(effort.positions > 0)->toBe(true)
+          let problems = []
+          let before = ref(opening)
+          steps->Array.forEachWithIndex(
+            (step: Solver.played, i) => {
+              switch Reducer.reduce(~game, before.contents, step.action) {
+              | Error(_) => problems->Array.push(`step ${Int.toString(i)}: the reducer refused it`)
+              | Ok(next) =>
+                if !GameState.equal(settle(~game, next), step.state) {
+                  problems->Array.push(`step ${Int.toString(i)}: the state doesn't follow`)
+                }
+              }
+              before := step.state
+            },
+          )
+          expect(problems)->toEqual([])
+          // …and the last step is the fourth run collected, since nothing finishes a
+          // Simple Simon board short of the win.
+          expect(GameState.hasWon(game, before.contents))->toBe(true)
+        },
+      ~timeout=60_000,
+    )
+
+    test(
+      "a deal with no line is told apart from one the ladder gave up on",
+      () => {
+        // Deal #2 is stuck within a few dozen positions: every one reachable from it is
+        // searched, and none wins. That's a proof, and it reads differently from a
+        // budget running out.
+        let dead = Game.simpleSimonDeal(~seed=2)
+        expect(Solver.autoplay(~game=dead, GameState.initial(dead)))->toEqual(Solver.Unwinnable)
+      },
+    )
+
+    testWithin(
+      "solves a spread of deals or proves them unwinnable — never merely gives up",
+      () => {
+        let problems = []
+        for seed in 1 to 12 {
+          let game = Game.simpleSimonDeal(~seed)
+          switch Solver.autoplay(~game, GameState.initial(game)) {
+          | Solver.UnknownBoard => problems->Array.push(`deal ${Int.toString(seed)}: not read`)
+          | Solver.NoLine => problems->Array.push(`deal ${Int.toString(seed)}: the ladder ran out`)
+          | Solver.Unwinnable => ()
+          | Solver.Played({steps}) =>
+            switch steps->Array.last {
+            | Some(last) if GameState.hasWon(game, last.state) => ()
+            | _ =>
+              problems->Array.push(`deal ${Int.toString(seed)}: the line ended short of the win`)
+            }
+          }
+        }
+        expect(problems)->toEqual([])
+      },
+      ~timeout=120_000,
+    )
+
+    // A few cards are enough to show a direction; the heuristic never needs the
+    // whole pack to be on the board.
+    let position = (columns: array<array<string>>): Position.t => {
+      law: Position.SimpleSimon,
+      cells: [],
+      found: [0, 0, 0, 0],
+      casc: columns->Array.map(
+        column => column->Array.map(code => Position.idOfCode(code)->Option.getOr(-1)),
+      ),
+    }
+    let h = p => Solver.heuristic(p, Solver.simonWeights)
+
+    test(
+      "the heuristic prefers a join made, a column freed, and a wanted card uncovered",
+      () => {
+        // A 7♠ on its own 8♠ is a run; on the 8♥ it's a lawful drop that heads no run.
+        expect(h(position([["8S", "7S"], ["8H"]])) < h(position([["8S"], ["8H", "7S"]])))->toBe(
+          true,
+        )
+        // A column freed is worth the seam it costs to free it: room to manoeuvre.
+        expect(h(position([["8H", "7S"], []])) < h(position([["8H"], ["7S"]])))->toBe(true)
+        // A card sat on the 8♠ the 7♠ is waiting for is a card in the way.
+        expect(
+          h(position([["8S", "3D"], ["7S"], ["4C"]])) > h(position([["8S"], ["7S"], ["4C", "3D"]])),
+        )->toBe(true)
       },
     )
   })
@@ -285,12 +389,12 @@ describe("Solver", () => {
       | None => ()
       }
       expect(
-        Solver.heuristic(ahead, Solver.defaultWeights) <
-        Solver.heuristic(position, Solver.defaultWeights),
+        Solver.heuristic(ahead, Solver.freecellWeights) <
+        Solver.heuristic(position, Solver.freecellWeights),
       )->toBe(true)
       expect(
-        Solver.heuristic(clogged, Solver.defaultWeights) >
-        Solver.heuristic(position, Solver.defaultWeights),
+        Solver.heuristic(clogged, Solver.freecellWeights) >
+        Solver.heuristic(position, Solver.freecellWeights),
       )->toBe(true)
     }
   })

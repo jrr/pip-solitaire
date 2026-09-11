@@ -2,24 +2,43 @@
 // harness (see ./autoplay.mjs).
 //
 // Deliberately no privileged access: the app publishes no game state on `window`,
-// and this doesn't ask for any. It reads what a sighted player reads — the sixteen
-// `.drop-zone` boxes in board order (`Game.freecellDeal`'s pile order: 4 free
-// cells, 4 foundations, 8 cascades) and a `.stacking-card` per card carrying its
-// name as the `aria-label` `Deck.cardName` writes — and works out the rest from
-// where things sit. That's what makes a game played through this harness evidence
-// about the *app* rather than about the harness.
+// and this doesn't ask for any. It reads what a sighted player reads — the
+// `.drop-zone` boxes in board order (the game's pile order: FreeCell's 4 free cells,
+// 4 foundations, 8 cascades; Simple Simon's 4 foundations and 10 cascades) and a
+// `.stacking-card` per card carrying its name as the `aria-label` `Deck.cardName`
+// writes — and works out the rest from where things sit. That's what makes a game
+// played through this harness evidence about the *app* rather than about the
+// harness.
 //
 // The last thing it does is hand what it read to `core` as a `Position` — the
 // board the solver thinks with. Everything about *cards* below therefore
 // speaks core's vocabulary: `CardText`'s two-character codes, and the card numbers
 // `Position` packs them into.
 
+import * as Game from "core/src/Game.res.mjs"
 import * as Position from "core/src/Position.res.mjs"
 
-/** Pile indices by role, matching `Game.freecellDeal`'s board order. */
-export const CELLS = [0, 1, 2, 3]
-export const FOUNDATIONS = [4, 5, 6, 7]
-export const CASCADES = [8, 9, 10, 11, 12, 13, 14, 15]
+/**
+ * Which zone is which, for a game: its pile indices by role, straight from the
+ * `Game.t` the app deals — so the reader and the board can't disagree about where the
+ * cascades start — and the `Position.law` the solver reads that game under.
+ */
+export function layoutOf(gameId) {
+  const game = Game.byId(gameId)
+  if (!game) throw new Error(`no game called ${gameId}`)
+  const law = Position.lawOf(game)
+  if (!law) throw new Error(`${game.name} isn't a board the solver models`)
+  return {
+    id: gameId,
+    law,
+    cells: Game.pileIndices(game, "FreeCell"),
+    foundations: Game.pileIndices(game, "Foundation"),
+    cascades: Game.pileIndices(game, "Cascade"),
+  }
+}
+
+/** The default: FreeCell's 4 cells, 4 foundations, 8 cascades. */
+export const FREECELL = layoutOf("freecell")
 
 // `CardText`'s alphabet, so a code read off the page is one core can parse back
 // (`T` for the Ten, not `10`).
@@ -125,18 +144,19 @@ export function assignPiles(geom) {
  * only the top card of a squared pile in the accessible tree, so
  * exactly one card here is announced, and that one is the top.
  *
- * That's the first reading. The second is the pile's contents, which under
- * `Rules.foundation` must be an ascending same-suit run from the Ace up to that
- * top card. Checking the two readings against each other is the point, and the
- * reason not to shortcut to the simpler one: *inferring* the top as the pile's
- * highest rank is sound only because core's rule says so, so a foundation that
- * had gone wrong would read back as a tidy, plausible, wrong board and the
+ * That's the first reading. The second is the pile's contents, which must be one
+ * suit's run up to that top card: under `Rules.foundation` an ascending run from the
+ * Ace, and under Simple Simon's sealed foundations the whole suit, King to Ace, so
+ * the Ace is what shows. Checking the two readings against each other is the point,
+ * and the reason not to shortcut to the simpler one: *inferring* the top as the
+ * pile's highest rank is sound only because core's rule says so, so a foundation
+ * that had gone wrong would read back as a tidy, plausible, wrong board and the
  * harness would launder the bug into a pass. Taking the app's own claim and
  * checking it makes a disagreement loud instead.
  *
  * Returns the card number, or `-1` for an empty foundation.
  */
-export function foundationTop(pile) {
+export function foundationTop(pile, law = "FreeCell") {
   if (!pile.length) return -1
   const announced = pile.filter((c) => c.announced)
   if (announced.length !== 1) {
@@ -147,8 +167,16 @@ export function foundationTop(pile) {
   }
   const top = cardId(announced[0].code)
   const held = pile.map((c) => cardId(c.code)).sort((a, b) => a - b)
-  const run = Array.from({ length: Position.rankOf(top) }, (_, i) => Position.suitOf(top) * 13 + i)
-  if (held.join() !== run.join()) {
+  const suit = Position.suitOf(top)
+  const run = (length) => Array.from({ length }, (_, i) => suit * 13 + i)
+  if (law === "SimpleSimon") {
+    if (Position.rankOf(top) !== 1 || held.join() !== run(13).join()) {
+      throw new Error(
+        `a foundation shows ${Position.code(top)} but holds ${held.map(Position.code).join(" ")} — ` +
+          `not the whole suit, King to Ace, that a Simple Simon foundation collects`,
+      )
+    }
+  } else if (held.join() !== run(Position.rankOf(top)).join()) {
     throw new Error(
       `a foundation shows ${Position.code(top)} but holds ${held.map(Position.code).join(" ")} — ` +
         `not the ascending same-suit run from the Ace that Rules.foundation builds`,
@@ -158,13 +186,14 @@ export function foundationTop(pile) {
 }
 
 /**
- * Build the `Position` the solver thinks with from the sixteen piles `assignPiles`
- * returns, each a list of `{ code, announced }` bottom-first.
+ * Build the `Position` the solver thinks with from the piles `assignPiles` returns,
+ * each a list of `{ code, announced }` bottom-first, laid out as `layout` says.
  *
- * A `Position` is a plain record of arrays — `cells` (4 slots, `-1` when empty),
- * `found` (the rank each suit's foundation has climbed to, indexed by
- * `Position.suitOf`), `casc` (8 columns, bottom-first like `GameState.cardsInPile`)
- * — so a driver outside ReScript can build one; see `core/src/Position.res`.
+ * A `Position` is a plain record of arrays — `law` (which game's rules), `cells`
+ * (one slot per free cell, `-1` when empty; none under Simple Simon), `found` (how
+ * many of each suit are home, indexed by `Position.suitOf`), `casc` (the columns,
+ * bottom-first like `GameState.cardsInPile`) — so a driver outside ReScript can
+ * build one; see `core/src/Position.res`.
  *
  * Cascades are `Fanned`, so the reader's geometric order is the pile order.
  * Foundations go through `foundationTop` above. Free cells hold one card by
@@ -172,8 +201,8 @@ export function foundationTop(pile) {
  * mean the board had broken its own rule, so say so rather than quietly taking
  * the first.
  */
-export function stateFromPiles(piles) {
-  const cells = CELLS.map((i) => {
+export function stateFromPiles(piles, layout = FREECELL) {
+  const cells = layout.cells.map((i) => {
     const pile = piles[i]
     if (!pile.length) return -1
     if (pile.length > 1)
@@ -181,11 +210,16 @@ export function stateFromPiles(piles) {
     return cardId(pile[0].code)
   })
   const found = [0, 0, 0, 0]
-  for (const i of FOUNDATIONS) {
-    const top = foundationTop(piles[i])
-    if (top >= 0) found[Position.suitOf(top)] = Position.rankOf(top)
+  for (const i of layout.foundations) {
+    const top = foundationTop(piles[i], layout.law)
+    if (top >= 0) found[Position.suitOf(top)] = piles[i].length
   }
-  return { cells, found, casc: CASCADES.map((i) => piles[i].map((c) => cardId(c.code))) }
+  return {
+    law: layout.law,
+    cells,
+    found,
+    casc: layout.cascades.map((i) => piles[i].map((c) => cardId(c.code))),
+  }
 }
 
 /**

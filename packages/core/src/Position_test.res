@@ -36,7 +36,7 @@ describe("Position", () => {
   let packed = (~game, state) =>
     switch Position.ofGameState(~game, state) {
     | Some(position) => position
-    | None => {Position.cells: [], found: [], casc: []} // fails loudly in any test that uses it
+    | None => {Position.law: FreeCell, cells: [], found: [], casc: []} // fails loudly in any test that uses it
     }
 
   test("a card packs into an int and comes back the same card", () => {
@@ -298,5 +298,186 @@ describe("Position", () => {
     let other = {...Position.copy(position), cells: [-1, -1, 3, -1]}
     expect(Position.key(swapped))->toBe(Position.key(other))
     expect(Position.key(position) == Position.key(other))->toBe(false)
+  })
+})
+
+// The same discipline under the other law. What's different is what's worth
+// pinning: a board with no cells and sealed foundations, a run law that isn't the
+// landing law, and a collect that lifts thirteen cards at once — so the mirror is
+// held against the reducer on exactly those.
+describe("Position under Simple Simon", () => {
+  let game = Game.simpleSimonDeal(~seed=1)
+  let opening = GameState.initial(game)
+
+  let settle = (~game, state) =>
+    if Reducer.canFinish(~game, state) {
+      state
+    } else {
+      let (collected, _moved) = Reducer.autoCollect(~game, state)
+      collected
+    }
+
+  let mirrorKey = (~game, state) =>
+    Position.ofGameState(~game, state)->Option.mapOr("(not a board the model reads)", Position.key)
+
+  let packed = (~game, state) =>
+    switch Position.ofGameState(~game, state) {
+    | Some(position) => position
+    | None => {Position.law: SimpleSimon, cells: [], found: [], casc: []} // fails loudly in any test that uses it
+    }
+
+  test("an opening deal packs under Simple Simon's law: no cells, ten columns", () => {
+    let position = packed(~game, opening)
+    expect(position.law)->toEqual(Position.SimpleSimon)
+    expect(position.cells)->toEqual([])
+    expect(position.found)->toEqual([0, 0, 0, 0])
+    expect(position.casc->Array.map(Array.length))->toEqual(Game.simpleSimonCounts)
+  })
+
+  test("the law is read off the rules, and the shape is checked apart from it", () => {
+    // Spiderette plays by Simple Simon's laws, so the law reads the same — but it has
+    // a stock and face-down cards, which the model has no word for, so the board
+    // itself is refused. A short-deck FreeCell is the same story under the other law.
+    expect(Position.lawOf(Game.spiderette))->toEqual(Some(Position.SimpleSimon))
+    expect(
+      Position.ofGameState(~game=Game.spiderette, GameState.initial(Game.spiderette)),
+    )->toEqual(None)
+    expect(Position.lawOf(Game.mini))->toEqual(Some(Position.FreeCell))
+    expect(Position.ofGameState(~game=Game.mini, GameState.initial(Game.mini)))->toEqual(None)
+  })
+
+  test("every move the model offers is a move the reducer accepts", () => {
+    let refusals = []
+    let real = ref(opening)
+    let sampled = ref(0)
+    switch Solver.plan(~game, opening) {
+    | None => refusals->Array.push("deal 1 went unsolved")
+    | Some(moves) =>
+      moves->Array.forEach(
+        move => {
+          let state = real.contents
+          Position.legalMoves(packed(~game, state))->Array.forEach(
+            candidate =>
+              switch Position.toAction(~game, state, candidate) {
+              | None =>
+                refusals->Array.push(Position.describeMove(candidate) ++ " — no such action")
+              | Some(action) =>
+                sampled := sampled.contents + 1
+                switch Reducer.reduce(~game, state, action) {
+                | Ok(_) => ()
+                | Error(_) =>
+                  refusals->Array.push(Position.describeMove(candidate) ++ " — refused")
+                }
+              },
+          )
+          switch Position.toAction(~game, state, move) {
+          | Some(action) =>
+            switch Reducer.reduce(~game, state, action) {
+            | Ok(next) => real := settle(~game, next)
+            | Error(_) => ()
+            }
+          | None => ()
+          }
+        },
+      )
+    }
+    expect(refusals)->toEqual([])
+    expect(sampled.contents > 100)->toBe(true)
+  })
+
+  test("the model offers every run move the reducer would accept", () => {
+    // Completeness under a law where a run is *not* what lands: every tail of every
+    // column that `Reducer.canMoveRun` would take, against every other column. Two
+    // prunings are deliberate and excluded — a run goes only to the *first* empty
+    // column (the others are the same move), and a whole column never moves into one
+    // (that only renames the column).
+    let missing = []
+    let real = ref(opening)
+    switch Solver.plan(~game, opening) {
+    | None => missing->Array.push("deal 1 went unsolved")
+    | Some(moves) =>
+      moves->Array.forEachWithIndex(
+        (move, i) => {
+          let state = real.contents
+          if mod(i, 5) == 0 {
+            let position = packed(~game, state)
+            let offered = Position.legalMoves(position)->Array.map(Position.describeMove)
+            let cascades = Game.pileIndices(game, Game.Cascade)
+            let firstEmptyColumn = position.casc->Array.findIndex(pile => Array.length(pile) == 0)
+            cascades->Array.forEachWithIndex(
+              (pile, src) => {
+                let cards = GameState.cardsInPile(state, pile)
+                for n in 1 to Array.length(cards) {
+                  let run = cards->Array.slice(~start=Array.length(cards) - n)
+                  cascades->Array.forEachWithIndex(
+                    (onto, dest) =>
+                      if dest != src && Reducer.canMoveRun(~game, state, run, ~onto) {
+                        let intoEmpty = Array.length(GameState.cardsInPile(state, onto)) == 0
+                        let pruned =
+                          intoEmpty && (dest != firstEmptyColumn || n == Array.length(cards))
+                        let wanted = Position.describeMove({
+                          n,
+                          source: Position.FromColumn(src),
+                          destination: Position.ToColumn(dest),
+                          card: Position.idOf(run->Array.getUnsafe(0)),
+                        })
+                        if !pruned && !(offered->Array.includes(wanted)) {
+                          missing->Array.push(wanted)
+                        }
+                      },
+                  )
+                }
+              },
+            )
+          }
+          switch Position.toAction(~game, state, move) {
+          | Some(action) =>
+            switch Reducer.reduce(~game, state, action) {
+            | Ok(next) => real := settle(~game, next)
+            | Error(_) => ()
+            }
+          | None => ()
+          }
+        },
+      )
+    }
+    expect(missing)->toEqual([])
+  })
+
+  test("collecting a run, canFinish and the board after a move are the reducer's too", () => {
+    // A whole game played twice, compared after every move — through four runs
+    // lifted off the tableau, since the line runs to the win.
+    let divergences = []
+    switch Solver.plan(~game, opening) {
+    | None => divergences->Array.push("deal 1 went unsolved")
+    | Some(moves) =>
+      let real = ref(opening)
+      let mirrored = ref(packed(~game, opening))
+      moves->Array.forEachWithIndex(
+        (move, i) =>
+          switch Position.toAction(~game, real.contents, move) {
+          | None => divergences->Array.push(`move ${Int.toString(i)}: no action for it`)
+          | Some(action) =>
+            switch Reducer.reduce(~game, real.contents, action) {
+            | Error(_) => divergences->Array.push(`move ${Int.toString(i)}: the reducer refused it`)
+            | Ok(next) =>
+              real := settle(~game, next)
+              mirrored := Position.applyMove(mirrored.contents, move)
+              if mirrorKey(~game, real.contents) != Position.key(mirrored.contents) {
+                divergences->Array.push(
+                  `move ${Int.toString(i)} (${Position.describeMove(move)}): boards differ`,
+                )
+              }
+              if Position.canFinish(mirrored.contents) != Reducer.canFinish(~game, real.contents) {
+                divergences->Array.push(`move ${Int.toString(i)}: canFinish differs`)
+              }
+            }
+          },
+      )
+      // Under this law the finishable board *is* the won one: nothing drains.
+      expect(GameState.hasWon(game, real.contents))->toBe(true)
+      expect(Position.hasWon(mirrored.contents))->toBe(true)
+    }
+    expect(divergences)->toEqual([])
   })
 })

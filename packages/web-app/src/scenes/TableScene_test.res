@@ -1063,7 +1063,7 @@ describe("TableScene autoplay", () => {
     let scene = TableScene.make(~publish=published => board := Some(published), game)
     let _teardown = scene.mount(container)
     expect(Render.toPlain(live(board).runCommand(Command.Autoplay)))->toBe(
-      Command.autoplayNotFreeCell,
+      Command.autoplayUnknownBoard,
     )
   })
 })

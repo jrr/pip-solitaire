@@ -310,8 +310,12 @@ let autoplay = (~clock: unit => float, s: t): (t, outcome) => {
   // positions, so the number describes the thinking.
   let started = clock()
   switch Solver.autoplay(~game=s.game, present(s)) {
-  | Solver.NotFreeCell => (s, {change: Unchanged, reply: Render.text(Command.autoplayNotFreeCell)})
+  | Solver.UnknownBoard => (
+      s,
+      {change: Unchanged, reply: Render.text(Command.autoplayUnknownBoard)},
+    )
   | Solver.NoLine => (s, {change: Unchanged, reply: Render.text(Command.autoplayNoLine)})
+  | Solver.Unwinnable => (s, {change: Unchanged, reply: Render.text(Command.autoplayUnwinnable)})
   | Solver.Played({steps, effort}) =>
     let ms = clock() -. started
     let reached = {...s, stats: Stats.autoplay(s.stats)}

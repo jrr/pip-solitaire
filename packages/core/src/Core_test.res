@@ -550,9 +550,11 @@ describe("Game", () => {
     test(
       "the solver declines them rather than mis-reading a board it can't model",
       () => {
-        // Out of the solver's scope, and deliberately so: `Position` models exactly the
-        // 4/4/8 FreeCell shape, so these two get an honest `None` and autoplay answers
-        // `NotFreeCell` — rather than a position with pieces missing.
+        // Out of the solver's scope, and deliberately so: both play by FreeCell's law,
+        // but `Position` models that law only at FreeCell's shape and over the standard
+        // pack — a short deck would leave its suit tallies counting to a total no suit
+        // reaches — so these two get an honest `None` and autoplay answers
+        // `UnknownBoard`, rather than a position with pieces missing.
         expect(
           Position.ofGameState(~game=Game.mini, GameState.initial(Game.mini))->Option.isNone,
         )->toBe(true)
@@ -860,11 +862,15 @@ describe("Game", () => {
     )
 
     test(
-      "the solver declines it rather than mis-reading a board it can't model",
+      "the solver reads it as a board under Simple Simon's law",
       () => {
-        expect(Position.ofGameState(~game=board, GameState.initial(board))->Option.isNone)->toBe(
-          true,
-        )
+        switch Position.ofGameState(~game=board, GameState.initial(board)) {
+        | None => expect("a position")->toBe("but the solver couldn't read the board")
+        | Some(position) =>
+          expect(position.law)->toEqual(Position.SimpleSimon)
+          expect(position.cells)->toEqual([])
+          expect(Array.length(position.casc))->toBe(10)
+        }
       },
     )
 
@@ -1327,7 +1333,7 @@ describe("Game", () => {
       "the solver declines it rather than mis-reading a board it can't model",
       () => {
         expect(Position.ofGameState(~game=board, opening)->Option.isNone)->toBe(true)
-        expect(Solver.autoplay(~game=board, opening))->toEqual(Solver.NotFreeCell)
+        expect(Solver.autoplay(~game=board, opening))->toEqual(Solver.UnknownBoard)
         // Nothing on it is ever finishable by foundation moves: the foundations take
         // only what the game collects.
         expect(Reducer.canFinish(~game=board, opening))->toBe(false)

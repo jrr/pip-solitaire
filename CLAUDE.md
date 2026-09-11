@@ -112,17 +112,19 @@ building and where to look, and never restates the issue.
 ## Playing the game
 
 The app can be played by an agent, in a real browser, with pointer drags —
-`mise run autoplay -- <deal>` plays a deal to the win overlay. Use it to see a
-change in the actual game rather than only in tests. Driving the board by hand
-(one move, a particular position, a reproduction) is documented as a skill in
+`mise run autoplay -- <deal>` plays a deal to the win overlay, and
+`-- --game simplesimon <deal>` a Simple Simon one. Use it to see a change in the
+actual game rather than only in tests. Driving the board by hand (one move, a
+particular position, a reproduction) is documented as a skill in
 `.claude/skills/play-in-browser/`; the harness itself is
 `packages/web-app/scripts/autoplay/`.
 
-The thinking behind it lives in `core` — `Position.res` (a FreeCell board packed
-for search) and `Solver.res` (the search itself). `mise run solve -- <deal>` runs
-that alone, with no browser: seconds instead of a minute, so it's what you
-measure a solver change with before playing one for real. `docs/solver.md` has
-the contract, the heuristic, and the benchmark record to beat.
+The thinking behind it lives in `core` — `Position.res` (a board packed for
+search, under FreeCell's rules or Simple Simon's) and `Solver.res` (the search
+itself). `mise run solve -- <deal>` runs that alone, with no browser: seconds
+instead of a minute, so it's what you measure a solver change with before playing
+one for real. `docs/solver.md` has the contract, the heuristic, and the benchmark
+record to beat.
 
 The game can also be *typed* — `mise run cli -- play`, or the web app's debug
 console behind `` ` ``. Both take the same lines, because the grammar lives in

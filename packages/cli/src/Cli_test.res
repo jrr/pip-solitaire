@@ -451,7 +451,7 @@ describe("Repl.run", () => {
     )
 
     // A board the solver can't pack is refused rather than searched — the
-    // `Solver.NotFreeCell` arm, in the words this driver would print. Every board the
+    // `Solver.UnknownBoard` arm, in the words this driver would print. Every board the
     // terminal can deal is FreeCell now, so the refusal is exercised against
     // `Solver` directly in `core` and against a hand-shaped board in the web app's
     // `TableScene_test`; what's left here is the wording.

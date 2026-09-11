@@ -1,6 +1,6 @@
 ---
 name: play-in-browser
-description: Play pip's FreeCell in a real browser — drive the built web app with pointer drags to play a deal end to end, try a move by hand, reproduce a board position, or see how the game actually behaves. Use when asked to play the game, to check something in the running app rather than in tests, to reproduce a bug by playing, or to capture what a real game looks like.
+description: Play pip's FreeCell or Simple Simon in a real browser — drive the built web app with pointer drags to play a deal end to end, try a move by hand, reproduce a board position, or see how the game actually behaves. Use when asked to play the game, to check something in the running app rather than in tests, to reproduce a bug by playing, or to capture what a real game looks like.
 ---
 
 # Playing the game in a browser
@@ -15,7 +15,7 @@ The machinery is in three parts. Two of them live in
 | part | where | what it does |
 | --- | --- | --- |
 | eyes | `autoplay/read-board.mjs` | reads the board off the DOM: zone boxes, card `aria-label`s, `settle()`, and the `Position` it all adds up to |
-| brain | `core`'s `Position` + `Solver` | the rules, and a solver that plans to a finishable board — in core, not here (#290) |
+| brain | `core`'s `Position` + `Solver` | the rules, and a solver that plans to a finishable board — in core, not here (#290). Two games: FreeCell, and Simple Simon |
 | hands | `autoplay/autoplay.mjs` | `playGame()` and `dragMove()` — a planned move as a real drag, then look again |
 
 The brain used to be a JavaScript mirror of core's rules kept beside the other
@@ -32,6 +32,7 @@ mise run autoplay -- 24680           # a particular deal
 mise run autoplay -- 1-25            # a range, to soak the harness
 mise run autoplay -- --headed 24680  # watch it play (a human at a desktop)
 mise run autoplay -- --shots out 42  # write deal / mid-game / win screenshots
+mise run autoplay -- --game simplesimon 3   # a Simple Simon deal
 ```
 
 It prints the play-by-play and a summary line per deal, and exits non-zero if any
@@ -62,8 +63,10 @@ const page = await browser.newPage({ baseURL: base, viewport: { width: 900, heig
 await page.goto("/?game=freecell&seed=24680&animate=off")
 await settle(page)
 
-let view = await look(page)                            // { geom, piles, cards, codes, state }
+let view = await look(page)                            // { geom, piles, cards, codes, state, layout }
 console.log(view.codes.slice(8))                       // the eight cascades, bottom-first
+// For Simple Simon, say which board is on screen: `look(page, layoutOf("simplesimon"))`
+// (`layoutOf` is exported by read-board.mjs) — its cascades are zones 4–13.
 
 // `view.state` is a `Position` — the packed board core plans with.
 const moves = Position.legalMoves(view.state)
@@ -98,9 +101,10 @@ hand-run script doesn't.)
 Query parameters, all documented in `src/platform/AppUrl.res`:
 
 - `?game=freecell` — open a game by id (`freecell`, `mini`, `micro`, `simplesimon`,
-  `spiderette1`, `spiderette`, `spiderette4`). The solver and `playGame()` are FreeCell's; the Spider boards are
-  played by hand — `browser-tests/lib/play-line.mjs` drags a recorded line, and a
-  tap on Spiderette's stock deals the next row.
+  `spiderette1`, `spiderette`, `spiderette4`). The solver and `playGame()` know
+  FreeCell and Simple Simon (`playGame(page, { game: "simplesimon", seed })`); the
+  other boards are played by hand — `browser-tests/lib/play-line.mjs` drags a
+  recorded line, and a tap on Spiderette's stock deals the next row.
 - `?scene=gallery` — mount a non-game scene (`gallery`, `raster`, `trail`,
   `cascade`, `motion`).
 - `?seed=N` — open deal N of whichever game is mounted. Deterministic: the same N
@@ -116,8 +120,9 @@ Query parameters, all documented in `src/platform/AppUrl.res`:
 
 ## What you need to know about the board
 
-- **Sixteen `.drop-zone`s in board order**: 0–3 free cells, 4–7 foundations, 8–15
-  cascades (`Game.freecellDeal`'s pile order).
+- **`.drop-zone`s in board order**: FreeCell's sixteen are 0–3 free cells, 4–7
+  foundations, 8–15 cascades; Simple Simon's fourteen are 0–3 foundations, 4–13
+  cascades. `layoutOf(gameId)` reads either off the `Game.t` itself.
 - **Cards are positioned siblings, not children of their zones.** A card belongs
   to the lowest zone above it in its column — that's how `assignPiles` tells a
   cascade card from one in the cell overhead.
@@ -146,8 +151,10 @@ Query parameters, all documented in `src/platform/AppUrl.res`:
 4. **The board moves on its own after a move.** Safe auto-collect
    (`Reducer.autoCollect`, on by `Options.default`) sends cards home after every
    accepted move — until `canFinish` flips true, at which point it stands aside
-   and a **Finish** button appears that plays the rest home. So always `settle()`
-   and re-read; never assume the board is just your move applied.
+   and a **Finish** button appears that plays the rest home. On a Simple Simon
+   board it's a completed run that flies home, and there is never a Finish button:
+   the fourth run collected is the win. So always `settle()` and re-read; never
+   assume the board is just your move applied.
 
 ## House rules to keep
 

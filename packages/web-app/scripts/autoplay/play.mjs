@@ -7,6 +7,7 @@
 //   mise run autoplay -- --headed 24680  # watch it play
 //   mise run autoplay -- --quiet 1-25    # just the summary table
 //   mise run autoplay -- --shots out 42  # write deal/mid-game/win screenshots
+//   mise run autoplay -- --game simplesimon 3   # a Simple Simon deal
 //
 // What it's for: driving the *real* app the way a player does — every move a
 // pointer drag on the bundled site, nothing reaching into game state. That makes
@@ -23,12 +24,13 @@ import { assertBundled, launchChromium, startPreview } from "../lib/preview-app.
 import { playGame } from "./autoplay.mjs"
 
 function parseArgs(argv) {
-  const opts = { seeds: [], headed: false, quiet: false, shots: null }
+  const opts = { seeds: [], headed: false, quiet: false, shots: null, game: "freecell" }
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i]
     if (arg === "--headed") opts.headed = true
     else if (arg === "--quiet") opts.quiet = true
     else if (arg === "--shots") opts.shots = argv[++i]
+    else if (arg === "--game") opts.game = argv[++i]
     else if (/^\d+-\d+$/.test(arg)) {
       const [from, to] = arg.split("-").map(Number)
       for (let s = from; s <= to; s++) opts.seeds.push(s)
@@ -53,13 +55,14 @@ const shotDir = opts.shots ? path.resolve(opts.shots) : null
 const results = []
 try {
   for (const seed of opts.seeds) {
-    console.log(`\n=== deal #${seed} ===`)
-    const dir = shotDir ? path.join(shotDir, `deal-${seed}`) : null
+    console.log(`\n=== ${opts.game} deal #${seed} ===`)
+    const dir = shotDir ? path.join(shotDir, `${opts.game}-deal-${seed}`) : null
     if (dir) fs.mkdirSync(dir, { recursive: true })
 
     let midShot = false
     const result = await playGame(page, {
       seed,
+      game: opts.game,
       log: (line) => console.log(line),
       onMove: async ({ index, description }) => {
         if (!opts.quiet) console.log(`  ${String(index).padStart(3)}. ${description}`)

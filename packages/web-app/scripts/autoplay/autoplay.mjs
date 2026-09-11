@@ -1,4 +1,4 @@
-// Play a full game of FreeCell in a real browser, by hand.
+// Play a full game — FreeCell, or Simple Simon — in a real browser, by hand.
 //
 // The harness has three parts, and the split is the point:
 //   - **eyes** — `read-board.mjs`, which reads the board off the rendered page
@@ -21,8 +21,8 @@
 // the hard way; they're commented at `grabPoint` and `dropPoint` below.
 
 import {
-  CASCADES, CELLS, FOUNDATIONS, assignPiles, cardId, foundationTop, parseCardName, readGeometry,
-  settle, stateFromPiles,
+  FREECELL, assignPiles, cardId, foundationTop, layoutOf, parseCardName, readGeometry, settle,
+  stateFromPiles,
 } from "./read-board.mjs"
 import * as Position from "core/src/Position.res.mjs"
 import * as Solver from "core/src/Solver.res.mjs"
@@ -30,16 +30,24 @@ import * as Solver from "core/src/Solver.res.mjs"
 /**
  * The board as the page currently draws it: `geom` (raw boxes), `piles` (the
  * card elements, for aiming a drag), `cards` (each card's code and whether the
- * board announces it), `codes` (just the names, for reading), and `state` (the
- * position, for planning).
+ * board announces it), `codes` (just the names, for reading), `state` (the
+ * position, for planning), and the `layout` it was all read against — which zone
+ * is which for this game (`layoutOf`), FreeCell's unless told otherwise.
  */
-export async function look(page) {
+export async function look(page, layout = FREECELL) {
   const geom = await readGeometry(page)
   const piles = assignPiles(geom)
   const cards = piles.map((pile) =>
     pile.map((c) => ({ code: parseCardName(c.name), announced: c.announced })),
   )
-  return { geom, piles, cards, codes: cards.map((p) => p.map((c) => c.code)), state: stateFromPiles(cards) }
+  return {
+    geom,
+    piles,
+    cards,
+    codes: cards.map((p) => p.map((c) => c.code)),
+    state: stateFromPiles(cards, layout),
+    layout,
+  }
 }
 
 /**
@@ -77,9 +85,10 @@ const dropPoint = (zone, grab) => ({ x: zone.cx, y: zone.cy - grab.offsetY })
 
 /** The pile a planned step targets, resolved against the board on screen. */
 function targetZone(view, step) {
-  if (step.target === "column") return CASCADES[step.column]
+  const { cells, foundations, cascades, law } = view.layout
+  if (step.target === "column") return cascades[step.column]
   if (step.target === "cell") {
-    const free = CELLS.find((i) => view.codes[i].length === 0)
+    const free = cells.find((i) => view.codes[i].length === 0)
     if (free === undefined) throw new Error("no free cell available on the board")
     return free
   }
@@ -89,8 +98,8 @@ function targetZone(view, step) {
   const card = cardId(step.card)
   const suit = Position.suitOf(card)
   const rank = Position.rankOf(card)
-  const found = FOUNDATIONS.find((i) => {
-    const top = foundationTop(view.cards[i])
+  const found = foundations.find((i) => {
+    const top = foundationTop(view.cards[i], law)
     if (top < 0) return rank === 1 // an empty foundation takes an Ace
     return Position.suitOf(top) === suit && Position.rankOf(top) === rank - 1
   })
@@ -122,31 +131,37 @@ export async function dragMove(page, view, step) {
 }
 
 /**
- * Play deal `seed` through to the win overlay.
+ * Play deal `seed` of `game` (a `Game.t` id; FreeCell unless told otherwise) through
+ * to the win overlay.
  *
  * `page` needs a `baseURL` (the Playwright fixture has one; the CLI sets one on
  * the context). Returns a report: how many drags it took, how many times the
  * screen disagreed with the plan, and whether the app declared a win.
  */
-export async function playGame(page, { seed, log = () => {}, onMove = () => {} } = {}) {
+export async function playGame(
+  page,
+  { seed, game = "freecell", log = () => {}, onMove = () => {} } = {},
+) {
+  const layout = layoutOf(game)
   // `animate=off` skips the opening fly-in (see `AppUrl`), so the board is at its
   // resting positions as soon as the cards exist and the first grab measures the
   // real footprints instead of racing the deal.
-  await page.goto(`/?game=freecell&seed=${seed}&animate=off`)
+  await page.goto(`/?game=${game}&seed=${seed}&animate=off`)
   await settle(page)
 
   const started = Date.now()
   let played = 0
   let replans = 0
   let planned = null
-  let view = await look(page)
+  let view = await look(page, layout)
 
   for (;;) {
-    view = await look(page)
+    view = await look(page, layout)
     if (Position.hasWon(view.state)) break
 
     // From here the game is decided: `Reducer.canFinish` is true, the Finish
-    // button is up, and it plays the rest home.
+    // button is up, and it plays the rest home. (Never under Simple Simon, whose
+    // only finishable board is the won one — caught just above.)
     if (Position.canFinish(view.state)) {
       log(`  finishable after ${played} moves — pressing Finish`)
       await page.getByRole("button", { name: "Finish" }).click()
@@ -159,7 +174,7 @@ export async function playGame(page, { seed, log = () => {}, onMove = () => {} }
     // grab, what that grab should raise, where to drop it, and the board the move
     // should leave behind (`Solver.planSteps`).
     const plan = Solver.planSteps(view.state)
-    if (!plan) throw new Error(`deal ${seed}: no solution from the position on screen`)
+    if (!plan) throw new Error(`${game} deal ${seed}: no solution from the position on screen`)
     if (planned === null) {
       planned = plan.length
       log(`  planned ${plan.length} moves to a finishable board`)
@@ -175,7 +190,7 @@ export async function playGame(page, { seed, log = () => {}, onMove = () => {} }
         log(`  ! grabbed ${lifted.join("+") || "nothing"}, meant to grab ${step.lifts.join("+")}`)
       onMove({ index: played, step, description: step.description })
 
-      view = await look(page)
+      view = await look(page, layout)
       // The check that makes this harness evidence about the app: does the board
       // now look the way core said it would?
       if (Position.key(view.state) !== Position.key(step.after)) {
@@ -189,8 +204,9 @@ export async function playGame(page, { seed, log = () => {}, onMove = () => {} }
 
   const won = (await page.locator(".win-overlay").count()) > 0
   const title = won ? await page.locator(".win-panel__title").textContent() : null
-  const finalState = (await look(page)).state
+  const finalState = (await look(page, layout)).state
   return {
+    game,
     seed,
     planned,
     played,

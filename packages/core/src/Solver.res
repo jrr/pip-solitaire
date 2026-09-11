@@ -1,4 +1,5 @@
-// A best-first FreeCell solver over `Position` — the "brain" a driver plays with.
+// A best-first solver over `Position` — the "brain" a driver plays with, for either
+// of the two games `Position.law` names.
 //
 // **The contract, the benchmark record and the heuristic are in `docs/solver.md`.**
 // Read that before retuning; `mise run solve -- --quiet 1-1000` is how a change
@@ -18,13 +19,58 @@ type weights = {
   emptyColumn: int,
 }
 
-let defaultWeights = {remaining: 2, buried: 2, seam: 1, cell: 3, emptyColumn: 3}
+let freecellWeights = {remaining: 2, buried: 2, seam: 1, cell: 3, emptyColumn: 3}
+
+// The same five terms under Simple Simon, where there are no cells to charge for,
+// a seam is a break in a *same-suit* run — the join the game is really about — and
+// `remaining` has nothing to steer (a run is collected the moment it forms, never
+// by choice), so it is zero rather than a number that measured as no number at all.
+let simonWeights = {remaining: 0, buried: 1, seam: 2, cell: 0, emptyColumn: 4}
+
+let weightsFor = (law: Position.law): weights =>
+  switch law {
+  | Position.FreeCell => freecellWeights
+  | Position.SimpleSimon => simonWeights
+  }
+
+// The cards the game is waiting on, as a flag per card number — scratch for
+// `heuristic`, filled afresh each call rather than allocated each call.
+let wanted = Array.make(~length=52, false)
 
 // Distance-to-go estimate: one term per way a position can be bad, each scaled by
 // its weight. The terms are named in the comments below and tabulated in
-// `docs/solver.md`.
+// `docs/solver.md`; two of them read differently under each law, and the reading
+// is said where it happens.
 let heuristic = (s: Position.t, w: weights): int => {
   let h = ref((52 - Position.foundationTotal(s)) * w.remaining)
+
+  // Which cards are *wanted* — the ones whose burial costs. Under FreeCell, the
+  // next card each foundation needs. Under Simple Simon, for every run on the
+  // tableau, the same-suit card one rank above its bottom: the card the run has to
+  // be carried onto next. (A run founded by a King wants nothing; it is the base.)
+  wanted->Array.fill(false, ~start=0, ~end=52)
+  switch s.law {
+  | Position.FreeCell =>
+    for suit in 0 to 3 {
+      let home = s.found->Array.getUnsafe(suit)
+      if home < 13 {
+        wanted->Array.setUnsafe(suit * 13 + home, true)
+      }
+    }
+  | Position.SimpleSimon =>
+    for col in 0 to Array.length(s.casc) - 1 {
+      let pile = s.casc->Array.getUnsafe(col)
+      for i in 0 to Array.length(pile) - 1 {
+        let card = pile->Array.getUnsafe(i)
+        let founds =
+          i == 0 || !Position.follows(s.law, ~below=pile->Array.getUnsafe(i - 1), ~above=card)
+        if founds && Position.rankOf(card) < 13 {
+          wanted->Array.setUnsafe(card + 1, true) // the same suit, one rank up
+        }
+      }
+    }
+  }
+
   for col in 0 to Array.length(s.casc) - 1 {
     let pile = s.casc->Array.getUnsafe(col)
     let depth = Array.length(pile)
@@ -34,27 +80,19 @@ let heuristic = (s: Position.t, w: weights): int => {
     for i in 0 to depth - 1 {
       let card = pile->Array.getUnsafe(i)
 
-      // Buried where a foundation wants it: every card above it must move first.
-      if s.found->Array.getUnsafe(Position.suitOf(card)) == Position.rankOf(card) - 1 {
+      // Buried where the game wants it: every card above it must move first.
+      if wanted->Array.getUnsafe(card) {
         h := h.contents + (depth - 1 - i) * w.buried
       }
 
-      // A break in the descending alternating run is a seam that has to be undone.
-      if i > 0 {
-        let below = pile->Array.getUnsafe(i - 1)
-        if (
-          !(
-            Position.rankOf(below) == Position.rankOf(card) + 1 &&
-              Position.isRed(below) != Position.isRed(card)
-          )
-        ) {
-          h := h.contents + w.seam
-        }
+      // A break in the run a hand could lift is a seam that has to be undone.
+      if i > 0 && !Position.follows(s.law, ~below=pile->Array.getUnsafe(i - 1), ~above=card) {
+        h := h.contents + w.seam
       }
     }
   }
   // A card parked in a cell is a card in the way.
-  h.contents + (Position.cellCount - Position.emptyCells(s)) * w.cell
+  h.contents + (Array.length(s.cells) - Position.emptyCells(s)) * w.cell
 }
 
 // --- A tiny binary heap, keyed by numeric priority ---------------------------
@@ -136,21 +174,28 @@ module Heap = {
 type attempt = {weight: float, maxNodes: int}
 
 // What a pass came back with: the moves to a finishable board, or `None` if it
-// ran out of budget — and what it cost to get there, which is what makes the
-// weights measurable. `nodes` counts the positions taken off the frontier and grown;
+// ran out — and what it cost to get there, which is what makes the weights
+// measurable. `nodes` counts the positions taken off the frontier and grown;
 // `applied` the moves played out to see where they led, which is the bigger number
 // and the one most of the time goes into (every one of them is an `applyMove`, a
 // `key` and a `canFinish`).
-type outcome = {path: option<array<Position.move>>, nodes: int, applied: int}
+//
+// A `None` comes in two kinds, and `exhausted` tells them apart: the budget ran out
+// with positions still waiting, or the frontier emptied with none left to grow. The
+// second is a proof — every position reachable from `start` was seen and none
+// finishes — and it is not rare: a Simple Simon deal with no line at all is usually
+// found out within a few dozen positions.
+type outcome = {path: option<array<Position.move>>, nodes: int, applied: int, exhausted: bool}
 
 // One node of the open list: a position and the moves that reached it.
 type node = {position: Position.t, path: array<Position.move>}
 
 // Weighted best-first search from `start` to the first position that
 // `Position.canFinish`.
-let search = (start: Position.t, attempt: attempt, ~weights: weights=defaultWeights): outcome =>
+let search = (start: Position.t, attempt: attempt, ~weights: option<weights>=?): outcome => {
+  let weights = weights->Option.getOr(weightsFor(start.law))
   if Position.canFinish(start) {
-    {path: Some([]), nodes: 0, applied: 0}
+    {path: Some([]), nodes: 0, applied: 0, exhausted: false}
   } else {
     let frontier = Heap.make()
     let seen = Map.make()
@@ -196,18 +241,40 @@ let search = (start: Position.t, attempt: attempt, ~weights: weights=defaultWeig
         }
       }
     }
-    {path: found.contents, nodes: nodes.contents, applied: applied.contents}
+    {
+      path: found.contents,
+      nodes: nodes.contents,
+      applied: applied.contents,
+      exhausted: Option.isNone(found.contents) && Heap.size(frontier) == 0,
+    }
   }
+}
 
 // The escalation ladder. **Raising a cap is the obvious knob and mostly buys
 // nothing** — soak it before believing otherwise. Why these four rungs, in this
 // order: `docs/solver.md` § The ladder.
-let ladder = [
+let freecellLadder = [
   {weight: 2., maxNodes: 60_000},
   {weight: 1., maxNodes: 150_000},
   {weight: 4., maxNodes: 150_000},
   {weight: 0.5, maxNodes: 400_000},
 ]
+
+// Simple Simon's. A line there runs to the win rather than to a finishable board,
+// and its first rung is *not* greedy: measured over sixty deals, 1.0 solved more
+// than 2.0 with two thirds of the nodes and shorter lines. What the rungs above
+// it catch, and the five ladders this beat: `docs/solver.md` § The ladder.
+let simonLadder = [
+  {weight: 1., maxNodes: 100_000},
+  {weight: 2., maxNodes: 150_000},
+  {weight: 0.5, maxNodes: 400_000},
+]
+
+let ladderFor = (law: Position.law): array<attempt> =>
+  switch law {
+  | Position.FreeCell => freecellLadder
+  | Position.SimpleSimon => simonLadder
+  }
 
 // What a solve cost, totalled over every rung it climbed — for a front end that
 // wants to say how hard the answer was to find, and not only what it was.
@@ -217,35 +284,52 @@ let ladder = [
 //                 count; several per position, and the bigger number by far).
 //   `passes`    — rungs of the ladder it took. One is an ordinary deal; more than
 //                 one means the greedy pass gave up and a wider search found it.
+//   `exhausted` — a rung ran out of positions rather than budget, so a line that
+//                 wasn't found doesn't exist: no rung above it is climbed, since it
+//                 would only search the same finite space again.
 //
 // **Deliberately no clock**: time a call from outside it, the way `solve.mjs` and
 // both front ends do. What that buys: `docs/solver.md` § The contract.
-type effort = {positions: int, moves: int, passes: int}
+type effort = {positions: int, moves: int, passes: int, exhausted: bool}
 
 // Solve to the finishable position, escalating effort until a rung gives — or
-// `None` when the ladder runs out, which proves nothing about the deal. Reports what
-// the climb cost alongside the line, since a rung that failed still spent its budget.
-let solveWithEffort = (start: Position.t, ~ladder: array<attempt>=ladder): (
+// `None` when the ladder runs out, which proves nothing about the deal unless the
+// effort says `exhausted`. Reports what the climb cost alongside the line, since a
+// rung that failed still spent its budget.
+let solveWithEffort = (start: Position.t, ~ladder: option<array<attempt>>=?): (
   option<array<Position.move>>,
   effort,
 ) => {
+  let ladder = ladder->Option.getOr(ladderFor(start.law))
   let plan = ref(None)
   let rung = ref(0)
   let positions = ref(0)
   let moves = ref(0)
-  while Option.isNone(plan.contents) && rung.contents < Array.length(ladder) {
-    let {path, nodes, applied} = search(start, ladder->Array.getUnsafe(rung.contents))
-    positions := positions.contents + nodes
-    moves := moves.contents + applied
-    plan := path
+  let exhausted = ref(false)
+  while (
+    Option.isNone(plan.contents) && !exhausted.contents && rung.contents < Array.length(ladder)
+  ) {
+    let outcome = search(start, ladder->Array.getUnsafe(rung.contents))
+    positions := positions.contents + outcome.nodes
+    moves := moves.contents + outcome.applied
+    plan := outcome.path
+    exhausted := outcome.exhausted
     rung := rung.contents + 1
   }
-  (plan.contents, {positions: positions.contents, moves: moves.contents, passes: rung.contents})
+  (
+    plan.contents,
+    {
+      positions: positions.contents,
+      moves: moves.contents,
+      passes: rung.contents,
+      exhausted: exhausted.contents,
+    },
+  )
 }
 
 // The line alone, for the callers that only ever wanted that.
-let solve = (start: Position.t, ~ladder: array<attempt>=ladder): option<array<Position.move>> =>
-  Pair.first(solveWithEffort(start, ~ladder))
+let solve = (start: Position.t, ~ladder: option<array<attempt>>=?): option<array<Position.move>> =>
+  Pair.first(solveWithEffort(start, ~ladder?))
 
 // Wanting this faster? It has been profiled, and the answer isn't the one it looks
 // like — read `docs/solver.md` § On making this faster first.
@@ -254,8 +338,8 @@ let solve = (start: Position.t, ~ladder: array<attempt>=ladder): option<array<Po
 
 // The moves to a finishable board from a real `GameState` — the game-facing entry
 // point (a hint button, a demo that plays itself, a test that needs a game played
-// through). `None` when the board isn't a FreeCell one or no rung of the ladder
-// found a line.
+// through). `None` when the board isn't one the solver models or no rung of the
+// ladder found a line.
 //
 // **A plan is a plan for a game played with auto-collect on** — the warning is on
 // `Position.applyMove`, which is where the settling happens.
@@ -299,11 +383,12 @@ type played = {
   moved: array<Card.card>,
 }
 
-// What autoplay found. The two refusals are different questions and read as
-// different sentences (`Command.autoplayNotFreeCell` / `autoplayNoLine`): one board
-// the solver doesn't understand, one it understands and can't win. A `Played` with no
-// steps is neither — it's a board already finishable, where there was nothing left to
-// think about.
+// What autoplay found. The three refusals are different questions and read as
+// different sentences (`Command.autoplayUnknownBoard` / `autoplayNoLine` /
+// `autoplayUnwinnable`): a board the solver doesn't understand, one it understands
+// and couldn't win, and one it understands and has proved can't be won. A `Played`
+// with no steps is none of them — it's a board already finishable, where there was
+// nothing left to think about.
 //
 // `Played` carries what the search cost alongside the line it found (`effort`), so a
 // front end can say how hard the answer was to come by. It travels with the steps
@@ -311,8 +396,9 @@ type played = {
 // ask again and you'd be timing a second search.
 type autoplayed =
   | Played({steps: array<played>, effort: effort})
-  | NotFreeCell // not the four-cell, four-foundation, eight-column board the solver models
+  | UnknownBoard // not a board `Position.ofGameState` can read — neither game, or a shape of one it doesn't model
   | NoLine // the ladder ran out (which proves nothing about the deal — see `solve`)
+  | Unwinnable // every reachable position was searched and none wins (`effort.exhausted`)
 
 // The post-move settle the plan assumes: safe auto-collect, standing aside once the
 // board is finishable — `Position.applyMove`'s own rule, said against a real state.
@@ -336,11 +422,11 @@ let namedCards = (action: Reducer.action): array<Card.card> =>
 
 let autoplay = (~game: Game.t, state: GameState.t): autoplayed =>
   switch Position.ofGameState(~game, state) {
-  | None => NotFreeCell
+  | None => UnknownBoard
   | Some(position) =>
     let (line, effort) = solveWithEffort(position)
     switch line {
-    | None => NoLine
+    | None => effort.exhausted ? Unwinnable : NoLine
     | Some(moves) =>
       let steps = []
       let current = ref(state)
@@ -384,7 +470,7 @@ let autoplay = (~game: Game.t, state: GameState.t): autoplayed =>
 //   `lifts`       — every card that grab should raise, bottom-first, so a driver
 //                   can check that the board lifted what the plan meant.
 //   `target`      — where it lands: "foundation", "cell" or "column".
-//   `column`      — the destination column 0–7, or `-1` for the other targets.
+//   `column`      — the destination column, or `-1` for the other targets.
 //   `description` — the move in words, for a play-by-play.
 //   `after`       — the position this move should leave behind, for a driver that
 //                   re-reads the board and checks (`Position.key`).

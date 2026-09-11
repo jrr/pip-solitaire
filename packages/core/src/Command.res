@@ -735,13 +735,17 @@ let describeRejection = (err: Reducer.moveError, ~action: Reducer.action): strin
   }
 
 // --- What autoplay had to say -----------------------------------------
-// The two ways `Solver.autoplay` can decline, in words. Here rather than in the
+// The three ways `Solver.autoplay` can decline, in words. Here rather than in the
 // solver for the reason every other refusal in this module is: it's what a *front
 // end* says to someone who typed something, and a terminal and a panel saying it
 // differently would be two commands wearing one name.
-let autoplayNotFreeCell = "Autoplay only plays FreeCell — this board isn't one it knows."
+let autoplayUnknownBoard = "Autoplay plays FreeCell and Simple Simon — this board isn't one it knows."
 
 let autoplayNoLine = "Autoplay couldn't find a way to win from here."
+
+// Said only when the search ran out of positions rather than patience: every line
+// from here was tried.
+let autoplayUnwinnable = "There's no way to win from here — every line has been tried."
 
 // An elapsed time in the unit a reader can hold: whole milliseconds while the answer
 // still arrives in a moment, tenths of a second once it doesn't. Rounded rather than

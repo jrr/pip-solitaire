@@ -1,5 +1,5 @@
-// A whole game of FreeCell, played through the UI by the autoplay harness in
-// `scripts/autoplay/`.
+// A whole game — of FreeCell, and of Simple Simon — played through the UI by the
+// autoplay harness in `scripts/autoplay/`.
 //
 // This is the widest end-to-end check in the repo: one fixed deal, played from
 // the opening layout to the win overlay, entirely by pointer drags on the
@@ -51,5 +51,32 @@ test("plays deal 7 from the opening layout to the win overlay", async ({ page })
   // non-zero count is the interesting failure: the *app* is doing something its own core
   // doesn't predict. (The rules themselves are checked against the reducer in `core`'s
   // `Position_test`, which needs no browser.)
+  expect(result.replans).toBe(0)
+})
+
+// The other law the solver plays, on the other shape of board: no cells, sealed
+// foundations, runs moved whole, and a win that arrives by collection rather than
+// by the Finish sweep. Deal 1 — the same board `simple-simon.spec.mjs` plays from a
+// recorded line, here found and played by the solver.
+test("plays Simple Simon deal 1 from the opening layout to the win overlay", async ({ page }) => {
+  // ~90 drags, each waiting for the board to settle: a Simple Simon line runs to
+  // the win itself, and takes a CI runner most of these minutes.
+  test.setTimeout(420_000)
+
+  const result = await playGame(page, {
+    game: "simplesimon",
+    seed: 1,
+    log: (line) => console.log(line),
+  })
+
+  expect(result.won).toBe(true)
+  expect(result.foundations).toBe(52)
+  await expect(page.locator(".win-overlay")).toHaveCount(1)
+  await expect(page.getByRole("button", { name: "Finish" })).toHaveCount(0)
+
+  expect(result.played).toBeGreaterThan(40)
+  expect(result.played).toBe(result.planned)
+  // …and the app never once did something core didn't predict: every run lifted
+  // whole, every completed run collected the moment it formed.
   expect(result.replans).toBe(0)
 })
