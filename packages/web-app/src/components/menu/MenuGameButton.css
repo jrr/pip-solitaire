@@ -1,5 +1,5 @@
 @layer components {
-  /* The "game" action buttons — New, Restart, Share Seed (see MenuGameButton.res).
+  /* The "game" action buttons — Restart, Share, New Deal (see MenuGameButton.res).
      Moved here with the component; the rules are unchanged.
 
      `.menu-button` is the menu's general button look, so it has two borrowers
@@ -7,7 +7,7 @@
      (MenuMainScreen) and the update-check button (RefreshControl). It stays here,
      with the component that defines the shape. */
 
-  /* A section's actions, **two across**: Random · Enter Seed above Restart · Share
+  /* A section's actions, **two across**: Restart · Share above New Deal · Enter
      Seed. Fixed tracks rather than shared-out flex widths, and the same two tracks in
      both sections, so the four buttons read as one grid — each button is half the
      panel and the lower pair's edges land under the upper pair's. Get this from
@@ -23,7 +23,7 @@
   }
 
   /* A game-section action button, styled like the scene rows/toggle but
-     centred, since it's a command rather than a labelled row. Disabled — Share Seed
+     centred, since it's a command rather than a labelled row. Disabled — Share
      on a board with no seed — is muted and inert (the rule for that is in `Menu.css`,
      shared with the disabled menu row). The Settings button at the foot of the main
      menu borrows this class too, and the update-check button; both stand alone in
