@@ -1,7 +1,7 @@
 // The "Enter seed" modal.
 //
-// The far end of Share Seed: what makes a number worth showing on that button is that
-// this deals it. So the cases are about which text counts as a number and what reaches
+// The far end of Share: what makes a number worth showing on the menu's heading is
+// that this deals it. So the cases are about which text counts as a number and what reaches
 // the caller — the parse itself is `Command`'s, and `Command_test` pins it — plus the
 // two ways out of a modal, which is what a dialog owes over a row in a menu.
 open Vitest

@@ -104,7 +104,7 @@ test("a won game shares the deal it came from, and that link deals it", async ({
 
   // …and the link. It has to be the *deal*, not the position: a link to the board as
   // it stands would hand the recipient a solved game, which is the one thing this share
-  // must never do. It's the same link the menu's Share Seed builds, down to leaving
+  // must never do. It's the same link the menu's Share builds, down to leaving
   // `?game=` out for the default game — one function builds both.
   const url = new URL(shared.slice(shared.indexOf("http")))
   expect(url.searchParams.get("seed")).toBe(ALMOST_WON_DEAL)
@@ -144,12 +144,16 @@ test("a scenario with no deal behind it offers no share", async ({ page }) => {
   // Only `almost-won` has had a line to it proved (`Scenario_test`); the rest are posed
   // layouts with no established provenance, and a board with no deal to name offers no
   // Share button rather than guessing at one. `midgame` stands in for all of them — it
-  // can't be won, so this checks the menu's Share Seed, which reads the same number.
+  // can't be won, so this checks the menu's Share, which reads the same number.
   await page.goto("/?game=freecell&state=midgame&animate=off")
   await settleBoard(page)
 
   await page.getByRole("button", { name: "Open menu" }).click()
-  await expect(page.getByRole("button", { name: "Share Seed", exact: true })).toBeDisabled()
+  // Scoped to the section it sits in: the win overlay's own button carries this label
+  // too, and on a board that *could* be won both would answer to the bare name.
+  await expect(
+    page.locator('[aria-label="this game"]').getByRole("button", { name: "Share", exact: true }),
+  ).toBeDisabled()
   await expect(page.locator(".menu-share-line")).toHaveText("No seed for this board.")
 })
 

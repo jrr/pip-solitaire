@@ -8,8 +8,8 @@
 //   - `<TopBar>` — Menu · Undo. Always visible across the top; the Menu
 //     button carries a green pip when a version update is waiting.
 //   - `<Menu>` — the slide-over holding the title ("Pip", moved out of the
-//     retired Home scene), a **new game** section (Random · Enter Seed) and a **this
-//     game** one (Restart · Share Seed), the debug/demo scene list as tappable rows,
+//     retired Home scene), a **this game** section (Restart · Share) and a **new
+//     game** one (New Deal · Enter Seed), the debug/demo scene list as tappable rows,
 //     and the About footer (build/version info plus the conditional "Update" button
 //     beside it).
 //   - `<SeedDialog>` — the modal Enter Seed raises, over the menu and over
@@ -118,7 +118,7 @@ type model = {
   shareUrl: option<string>,
   shareStatus: option<string>,
   // The main menu's "this game" section: the seed of the board on the table, which the
-  // heading names and Share Seed hands over a link to, reported by the scene (`~onDeal`
+  // heading names and Share hands over a link to, reported by the scene (`~onDeal`
   // below) — and the transient line under the buttons
   // reporting where its link went. `None` greys the button out — a demo scene, or a
   // game resumed from a save with no deal number recorded. Unlike `shareUrl` above
@@ -234,7 +234,7 @@ let initialDealSeed: ref<option<int>> = ref(None)
 
 let reportDeal: ref<option<int> => unit> = ref(seed => initialDealSeed := seed)
 
-// The menu's Share Seed renders from the *model*, but the win overlay's Share button
+// The menu's Share renders from the *model*, but the win overlay's Share button
 // is built by the board itself, outside the loop, and asks at the moment the overlay
 // goes up — so it needs the live value rather than a dispatched copy.
 let liveDealSeed: ref<option<int>> = ref(None)
@@ -575,7 +575,7 @@ let update = (msg, model) =>
 // shuffle today.
 let url = AppUrl.parse()
 
-// The seed a *Random* new game gets: six digits, so every re-deal lays out a
+// The seed a *New Deal* gets: six digits, so every re-deal lays out a
 // different board and the number stays short enough to read off the menu's "this game"
 // heading and type back into the seed dialog. A board the player names goes to `deal` directly
 // and never comes through here. `Math.random` is fine — this is the impure view
@@ -931,6 +931,12 @@ let mainScreen = (model, dispatch): MenuMainScreen.props => {
     liveBoard.contents->Option.forEach(board => board.restart())
     dispatch(CloseMenu)
   },
+  // The name the "this game" heading wears. A scene id is a game id (`gameScene` files
+  // each of `Game.all` under its own), so the mounted scene answers which game is on the
+  // table — and a demo, which no game is behind, answers `None` here rather than lending
+  // the heading its own label. Read off the model, not `liveGame`: the heading is drawn
+  // by the render, so it has to move with one.
+  gameName: model.activeScene->Option.flatMap(Game.byId)->Option.map(game => game.name),
   shareDealSeed: model.dealSeed,
   shareDealStatus: model.shareDealStatus,
   onShareDeal: () =>
@@ -986,7 +992,7 @@ let seedDialog = (model, dispatch): SeedDialog.props => {
   // A deal number the player named. `loadDeal` is the board's own — the same hook the
   // console's `deal <n>` reaches, so a typed number and a tapped one open the very same
   // board — and it's absent on a scene with no game to deal, where this is a no-op
-  // exactly as Random and Restart are. `CloseMenu` clears the whole chrome, dialog
+  // exactly as New Deal and Restart are. `CloseMenu` clears the whole chrome, dialog
   // included, so the board it opened is what you're looking at.
   onDeal: seed => {
     liveBoard.contents->Option.flatMap(board => board.loadDeal)->Option.forEach(load => load(seed))

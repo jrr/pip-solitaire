@@ -4,19 +4,21 @@
 //
 // Top to bottom:
 //   - the **title** ("Pip") beside the ✕;
-//   - a **"new game"** section — the two ways to open a board that isn't this one:
-//     **Random** (a seed the driver invents) and **Enter Seed**, which raises the
-//     `<SeedDialog>` modal over the menu for a deal number to be typed into. The
-//     split is which board you get, which is the question a player actually has;
 //   - a **"this game"** section — what can be done with the deal already on the
-//     table: **Restart** (re-deals the *same* seed to replay it) and **Share Seed**
+//     table: **Restart** (re-deals the *same* seed to replay it) and **Share**
 //     (hands over a `?seed=` link to it). Which deal that is, the *heading* names —
-//     "this game 24680" — so the number describes the section rather than one of the
-//     two buttons under it, and both buttons stay the same size on every board;
+//     "FreeCell #24680" — so the game and its number describe the section rather than
+//     one of the two buttons under it, and both buttons stay the same size on every
+//     board. It leads, because the board it is about is the one already on the screen;
+//   - a **"new game"** section — headed with the question it answers, "Don't like
+//     it?" — the two ways to open a board that isn't this one: **New Deal** (a seed
+//     the driver invents) and **Enter Seed**, which raises the `<SeedDialog>` modal
+//     over the menu for a deal number to be typed into. The split is which board you
+//     get, which is the question a player actually has;
 //
-//     Everything that re-deals — Random, Deal, Restart — calls the scene's hook for it
-//     and closes the menu, so the board it opened is what you're looking at; on a scene
-//     with no game (a demo) those hooks are no-ops. Share Seed is the odd one out: it
+//     Everything that re-deals — New Deal, Deal, Restart — calls the scene's hook for
+//     it and closes the menu, so the board it opened is what you're looking at; on a
+//     scene with no game (a demo) those hooks are no-ops. Share is the odd one out: it
 //     *keeps* the menu open, because the line under the buttons reporting where the
 //     link went is the only confirmation there is, and it's the only game button that
 //     ever renders *disabled* — on a board with no seed to name;
@@ -42,8 +44,13 @@ type props = {
   // screen holds of the feature is the button that asks for it.
   onEnterSeed: unit => unit,
   onRestart: unit => unit,
+  // The game the board on the table is a board of — "FreeCell" — which heads the
+  // section whose two buttons act on it, in front of that board's deal number. `None`
+  // on a scene that is no game at all (a demo), where the heading says what the
+  // section is instead of which game it is about.
+  gameName: option<string>,
   // The seed of the board on the table: the "this game" heading names it, and Share
-  // Seed hands over a link to it. `None` is why that button greys out — a demo scene
+  // hands over a link to it. `None` is why that button greys out — a demo scene
   // has no seed, and neither does a game restored from a save written before seeds
   // were kept. The seed is passed rather than a bare bool so the section can *name*
   // it: a share is easier to trust when you can see the number going out.
@@ -79,6 +86,7 @@ let make = ({
   onNewGame,
   onEnterSeed,
   onRestart,
+  gameName,
   shareDealSeed,
   shareDealStatus,
   onShareDeal,
@@ -86,33 +94,38 @@ let make = ({
   onOpenSettings,
 }) => <>
   <MenuHeader title="Pip" back=None onTitleTap=None onClose />
-  <MenuSection label="new game" heading="new game">
-    <div className="menu-buttons">
-      <MenuGameButton label="Random" enabled=true onClick=onNewGame />
-      <MenuGameButton label="Enter Seed" enabled=true onClick=onEnterSeed />
-    </div>
-  </MenuSection>
-  // The heading carries the deal number, so the section says which board its two
-  // buttons act on. A player can read it off (or dictate it) where no link can be
-  // delivered at all — which is the far end of `SeedDialog`. Absent on a board with
-  // no seed, where the line below says why.
+  // The heading carries the game and its deal number, so the section says which board
+  // its two buttons act on. A player can read the number off (or dictate it) where no
+  // link can be delivered at all — which is the far end of `SeedDialog`. Absent on a
+  // board with no seed, where the line below says why.
+  //
+  // The accessible name stays "this game" whichever game that is: it is the group's
+  // standing name — what these controls act on — rather than the changing thing the
+  // visible heading reports.
   <MenuSection
     label="this game"
-    heading="this game"
+    heading={gameName->Option.getOr("this game")}
     headingValue=?{shareDealSeed->Option.map(seed => Int.toString(seed))}
   >
     <div className="menu-buttons">
       <MenuGameButton label="Restart" enabled=true onClick=onRestart />
-      // Share Seed. The only game button that ever goes `disabled` — the
+      // Share. The only game button that ever goes `disabled` — the
       // real attribute, so no click is emitted at all, with the handler guard behind
       // it as belt and braces — because a board with no seed has no link to hand out.
-      <MenuGameButton
-        label="Share Seed" enabled={shareDealSeed->Option.isSome} onClick=onShareDeal
-      />
+      <MenuGameButton label="Share" enabled={shareDealSeed->Option.isSome} onClick=onShareDeal />
     </div>
     <p className="menu-share-line" ariaLive="polite">
       {Html.string(shareLine(~seed=shareDealSeed, ~status=shareDealStatus))}
     </p>
+  </MenuSection>
+  // A question rather than a caption, and the one a player is asking when they reach
+  // for either of these: the typographic apostrophe, since this is prose the menu says
+  // out loud rather than a label naming a control.
+  <MenuSection label="new game" heading="Don’t like it?">
+    <div className="menu-buttons">
+      <MenuGameButton label="New Deal" enabled=true onClick=onNewGame />
+      <MenuGameButton label="Enter Seed" enabled=true onClick=onEnterSeed />
+    </div>
   </MenuSection>
   <MenuSection label="Games" heading="Games" tag=Nav>
     {games

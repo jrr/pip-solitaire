@@ -1,4 +1,4 @@
-// The main menu's **Share Seed** button.
+// The main menu's **Share** button.
 //
 // The button hands over a link to the *deal* on the table — `?seed=N`, which deals
 // the identical board wherever it's opened.
@@ -64,6 +64,7 @@ let render = (~seed, ~status): Html.element =>
         onNewGame: () => (),
         onEnterSeed: () => (),
         onRestart: () => (),
+        gameName: Some("FreeCell"),
         // The three under test.
         shareDealSeed: seed,
         shareDealStatus: status,
@@ -77,7 +78,7 @@ let render = (~seed, ~status): Html.element =>
     }),
   )
 
-// The Share Seed button — the second of the "this game" buttons.
+// The Share button — the second of the "this game" buttons.
 let shareButton = (menu): option<Html.element> =>
   menu->find(`[aria-label="this game"] .menu-buttons button:nth-child(2)`)
 
@@ -97,7 +98,7 @@ let line = (menu): string =>
 // through `line`, and only one of them holds the layout still.
 let hasLine = (menu): bool => menu->find(".menu-share-line")->Option.isSome
 
-describe("Menu Share Seed button", () => {
+describe("Menu Share button", () => {
   test("names the seed on the table, which is what the link carries", () => {
     // Render anything else here — an index, the previous deal's number — and the share
     // sends someone to a different board, which is the one failure this feature can't
@@ -110,7 +111,7 @@ describe("Menu Share Seed button", () => {
     | Some(b) => b->text
     | None => "<no button>"
     }
-    expect(text)->toBe("Share Seed")
+    expect(text)->toBe("Share")
   })
 
   test("says nothing on the line while the seed is simply named above", () => {
@@ -121,7 +122,7 @@ describe("Menu Share Seed button", () => {
   })
 
   test("leaves the heading bare when there's no seed to name", () => {
-    // No trailing element after "this game" — an empty one would read as a gap where a
+    // No trailing element after the game's name — an empty one would read as a gap where a
     // number belongs, and the line below is what actually explains the absence.
     expect(render(~seed=None, ~status=None)->seedNamed)->toBe("<none>")
   })

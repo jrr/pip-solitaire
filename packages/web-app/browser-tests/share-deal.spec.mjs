@@ -1,4 +1,4 @@
-// The menu's "Share Seed" button, end to end.
+// The menu's "Share" button, end to end.
 //
 // The claim the feature makes is a *round trip*: the link this button hands over,
 // opened anywhere, deals the identical board. Every link in that chain has a unit
@@ -39,20 +39,22 @@ async function readBoard(page) {
   )
 }
 
-// Share Seed lives on the main menu, one tap in, beside New and Restart.
+// Share lives on the main menu, one tap in, beside Restart.
 async function openMenu(page) {
   await page.getByRole("button", { name: "Open menu" }).click()
   await expect(page.locator("#menu-overlay")).toBeVisible()
 }
 
-// The Share Seed button. What it would hand out is named on the section heading
-// above it — `menuSeed` — rather than on the button itself.
-const shareButton = (page) => page.getByRole("button", { name: "Share Seed", exact: true })
+// The Share button. What it would hand out is named on the section heading
+// above it — `menuSeed` — rather than on the button itself. Scoped to that section,
+// since the win overlay's own share button answers to the same label.
+const shareButton = (page) =>
+  page.locator('[aria-label="this game"]').getByRole("button", { name: "Share", exact: true })
 
 // The line under the buttons: where a link just went, or why the button is dark.
 const shareLine = (page) => page.locator(".menu-share-line")
 
-// Press Share Seed and hand back the link it put on the clipboard.
+// Press Share and hand back the link it put on the clipboard.
 async function shareDeal(page) {
   await shareButton(page).click()
   await expect(shareLine(page)).toHaveText("Link copied to clipboard.")
@@ -95,7 +97,7 @@ test("shares a link to the deal on the table, and that link reopens it", async (
   expect(await readBoard(page)).toEqual(dealt)
 })
 
-test("offers the fresh deal after a random new game", async ({ page }) => {
+test("offers the fresh deal after a new one is dealt", async ({ page }) => {
   // The regression this guards: the line must track the board actually on the table,
   // not the deal the page opened with. A stale number here would be the worst kind of
   // bug for a share feature — it sends someone to a board you're not playing.
@@ -105,8 +107,8 @@ test("offers the fresh deal after a random new game", async ({ page }) => {
   await openMenu(page)
   await expect(menuSeed(page)).toHaveText("#13579")
 
-  // Random deals a fresh seed and closes the menu; reopen and look again.
-  await page.getByRole("button", { name: "Random", exact: true }).click()
+  // New Deal invents a fresh seed and closes the menu; reopen and look again.
+  await page.getByRole("button", { name: "New Deal", exact: true }).click()
   await settleBoard(page)
   const afterNewGame = await readBoard(page)
 
@@ -160,7 +162,7 @@ test("a bare `?seed=` opens FreeCell — the short form `urlForDeal` writes", as
   expect(await readBoard(page)).toEqual(bare)
 
   // …and it's FreeCell that opened, not merely *a* board: the menu names deal 7, and
-  // Share Seed hands over the short form again.
+  // Share hands over the short form again.
   await openMenu(page)
   await expect(menuSeed(page)).toHaveText("#7")
   const url = new URL(await shareDeal(page))

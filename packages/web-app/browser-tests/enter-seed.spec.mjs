@@ -1,6 +1,6 @@
 // The "Enter seed" dialog, end to end.
 //
-// It is the receiving end of Share Seed: a number that reached the player as digits
+// It is the receiving end of Share: a number that reached the player as digits
 // rather than as a link — read off a screenshot, dictated over a phone, copied out of
 // a message — has to open the identical board. `SeedDialog_test` pins what the control
 // reports, but "typing 24680 puts deal 24680 on the table" runs through a real field, a
@@ -50,7 +50,7 @@ test("deals the number typed in, and it's the same board the link would open", a
   await seedField(page).fill("24680")
   await dealButton(page).click()
 
-  // The whole chrome gets out of the way, as Random and Restart do — the board is the
+  // The whole chrome gets out of the way, as New Deal and Restart do — the board is the
   // answer, and a dialog left standing over it would hide the thing it just dealt.
   await expect(page.locator("#seed-dialog")).toBeHidden()
   await expect(page.locator("#menu-overlay")).toBeHidden()

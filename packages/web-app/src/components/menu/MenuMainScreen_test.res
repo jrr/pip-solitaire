@@ -1,12 +1,13 @@
 // The menu's main screen, exercised in isolation.
 //
-// `Menu_test` pins what **Share Seed** does through the whole pane and
+// `Menu_test` pins what **Share** does through the whole pane and
 // `MenuGameButton_test` pins the button itself; this file pins what's left — the
 // screen's own *arrangement*, the thing a refactor here could quietly change.
 open Vitest
 open TestDom
 
 let render = (
+  ~gameName=Some("FreeCell"),
   ~shareDealSeed=None,
   ~shareDealStatus=None,
   ~onNewGame=() => (),
@@ -22,6 +23,7 @@ let render = (
       onNewGame,
       onEnterSeed,
       onRestart,
+      gameName,
       shareDealSeed,
       shareDealStatus,
       onShareDeal,
@@ -35,40 +37,54 @@ let render = (
 let section = (screen, label): element => screen->find(`[aria-label="${label}"]`)->Option.getOrThrow
 
 describe("MenuMainScreen", () => {
-  test("splits the controls into a board to open and the board in hand", () => {
+  test("splits the controls into the board in hand and a board to open", () => {
     // Which board you get is the question a player has, so it's the one the screen
-    // asks: "new game" offers the two ways to a board that isn't this one, "this
-    // game" what can be done with the one on the table. The share tests below (and
-    // `Menu_test`'s) reach Share Seed positionally within its group, so the order
-    // inside each is load-bearing beyond how it looks.
+    // asks: "this game" is what can be done with the one on the table, "new game" the
+    // two ways to a board that isn't this one. The board in hand leads, being the one
+    // already on the screen behind the menu. The share tests below (and `Menu_test`'s)
+    // reach Share positionally within its group, so the order inside each is
+    // load-bearing beyond how it looks.
     let screen = render(~shareDealSeed=Some(4242))
-    expect(screen->section("new game")->findAll("button")->Array.map(text))->toEqual([
-      "Random",
-      "Enter Seed",
-    ])
     expect(screen->section("this game")->findAll("button")->Array.map(text))->toEqual([
       "Restart",
-      "Share Seed",
+      "Share",
+    ])
+    expect(screen->section("new game")->findAll("button")->Array.map(text))->toEqual([
+      "New Deal",
+      "Enter Seed",
+    ])
+    // …and in that order down the panel, which is what the aria lookups above can't see.
+    expect(screen->findAll(".menu-section__heading")->Array.map(text))->toEqual([
+      "FreeCell #4242",
+      "Don’t like it?",
+      "Games",
     ])
   })
 
-  test("names the deal on the heading of the section that acts on it", () => {
-    // Both buttons under it are about that one board — Restart re-deals it, Share Seed
-    // hands over a link to it — so the number belongs to the group, not to either
-    // control. Keeping it off the buttons is also what lets the four be one grid: a
-    // label that grows by five digits on some boards can't line up with the pair above.
-    let screen = render(~shareDealSeed=Some(4242))
+  test("names the game and its deal on the heading of the section that acts on them", () => {
+    // Both buttons under it are about that one board — Restart re-deals it, Share hands
+    // over a link to it — so the number belongs to the group, not to either control.
+    // Keeping it off the buttons is also what lets the four be one grid: a label that
+    // grows by five digits on some boards can't line up with the pair above.
+    let screen = render(~gameName=Some("Simple Simon"), ~shareDealSeed=Some(4242))
     expect(screen->section("this game")->textIn(".menu-section__heading"))->toBe(
-      "this game – #4242",
+      "Simple Simon #4242",
     )
-    expect(screen->section("new game")->textIn(".menu-section__heading"))->toBe("new game")
+  })
+
+  test("falls back to naming the section on a scene that is no game", () => {
+    // A demo has no game behind it and no seed to name: the heading says what the
+    // group is, and the share line below says why the button is dark.
+    let screen = render(~gameName=None, ~shareDealSeed=None)
+    expect(screen->section("this game")->textIn(".menu-section__heading"))->toBe("this game")
+    expect(screen->find(".menu-section__value")->Option.isSome)->toBe(false)
   })
 
   test("leaves the heading bare on a board with no seed", () => {
-    // A demo scene, or a save from before seeds were kept: there is nothing to name, and
-    // the share line below says why rather than a stray gap after the heading.
+    // A game resumed from a save written before seeds were kept: the game is still
+    // named, and there is simply no number after it rather than a stray gap.
     let screen = render(~shareDealSeed=None)
-    expect(screen->section("this game")->textIn(".menu-section__heading"))->toBe("this game")
+    expect(screen->section("this game")->textIn(".menu-section__heading"))->toBe("FreeCell")
     expect(screen->find(".menu-section__value")->Option.isSome)->toBe(false)
   })
 
@@ -82,7 +98,7 @@ describe("MenuMainScreen", () => {
       ~onShareDeal=() => log->Array.push("share"),
     )
     screen->findAll(".menu-buttons button")->Array.forEach(click)
-    expect(log)->toEqual(["new", "enter seed", "restart", "share"])
+    expect(log)->toEqual(["restart", "share", "new", "enter seed"])
   })
 
   test("asks for the seed dialog rather than holding a field of its own", () => {

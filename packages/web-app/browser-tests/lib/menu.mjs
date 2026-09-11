@@ -6,8 +6,8 @@
 /**
  * The deal number the menu names, which four suites want and none of them owns:
  * the seed of the board on the table. It is the "this game" heading that says it,
- * so that both controls under the heading — Restart and Share Seed — are visibly
- * about the same board. There is no element at all on a board with no seed, which
+ * after the game's own name, so that both controls under the heading — Restart and
+ * Share — are visibly about the same board. There is no element at all on a board with no seed, which
  * is why this is a locator to assert against rather than a string to read.
  *
  * Its text is the number behind a `#` — "#24680", the heading's own spelling (see
