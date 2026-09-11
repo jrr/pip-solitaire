@@ -1,25 +1,35 @@
 @layer components {
   /* The main menu screen (see MenuMainScreen.res). Everything on it is styled by
      the components it composes — the header, the game buttons, the section boxes —
-     except its one own rule, the line under the buttons. Moved here with the
-     component; the rule is unchanged. */
+     except its one own rule, the line under the buttons. */
 
   /* The line under the game section's buttons: where a share link just
      went, or why Share is greyed out — and empty the rest of the time, the
      seed itself riding on the section heading. `min-height` is what makes the empty
      case work: the slot holds its height, so a confirmation appears and clears
-     without shoving the sections below it. */
+     without shoving the sections below it.
+
+     **The slot is the gap it sits in.** Empty, it is indistinguishable from
+     whitespace — and in flow it spends its height *on top of* the two gaps already
+     there, the section's own row gap and the panel's between sections, which leaves
+     the heading under it sitting half again as far down as every other heading on the
+     screen. The negative margins swallow both (0.4rem from `.menu-section`, 1rem from
+     `.menu-panel`, both in Menu.css), so the slot takes exactly the space the panel
+     leaves between any two sections and every heading starts the same distance under
+     whatever is above it. Retune either gap and these two follow it.
+     `.win-panel__status` plays the same trick against the win panel's padding.
+
+     What that leaves the text is one gap and no more, so the line is set to hug the
+     buttons it reports on: `line-height: 1` puts it at the top of the slot, as far as
+     it can be from the heading below. `min-height` has to stay at or above that line
+     height, or the slot grows as the text lands and the sections below it move — the
+     whole reason the line is unconditional. It rides *inside* the `font` shorthand,
+     which resets line-height to `normal` (font-dependent, and unmatchable by a
+     min-height) wherever the shorthand lands after it. */
   .menu-share-line {
-    margin: 0;
-    /* The two have to agree exactly, or the slot still grows a pixel or two as
-       the text lands: `line-height` sets the height of the line box the text
-       makes, `min-height` the height of the box when there's no text to make
-       one. Stated as a ratio and an em of the same font-size so they can't
-       drift apart. `normal` line-height won't do — it's font-dependent, and
-       can't be matched by a min-height. */
-    line-height: 1.35;
-    min-height: 1.35em;
-    font: 12px "Libre Franklin", sans-serif;
+    margin: -0.4rem 0 -1rem;
+    font: 12px/1 "Libre Franklin", sans-serif;
+    min-height: 1rem;
     color: #94a3b8;
   }
 }
