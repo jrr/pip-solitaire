@@ -119,12 +119,16 @@ external makeShareData: (~title: string=?, ~text: string=?, ~url: string=?) => s
 // Composing `~text` and `url` is this function's job, not the caller's, because the
 // two routes want the URL in different places: the sheet takes it as its own field and
 // lets the OS compose, the clipboard needs it appended.
+//
+// **`~text` has no fallback, deliberately.** A share with nothing to say is a bare
+// link, and a sentence invented down here could only name a game — which is the one
+// thing this layer cannot know, holding a URL and no board. That is also the split
+// between the two shares: a victory is a boast and brings `victoryMessage`, a deal is
+// an invitation and brings only the URL its `?game=` already names.
 let deliver = async (~text: option<string>=?, url: string): outcome => {
   let shared = if canShare {
     try {
-      await navigatorShare(
-        makeShareData(~title="Pip", ~text=text->Option.getOr("A game of FreeCell"), ~url),
-      )
+      await navigatorShare(makeShareData(~title="Pip", ~text?, ~url))
       true
     } catch {
     | _ => false
