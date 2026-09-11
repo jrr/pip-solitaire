@@ -18,10 +18,10 @@
 // All three calls differ only in their data — a group that needs its own markup wants
 // a prop on `<MenuDisclosure>`, not a fourth way of drawing a disclosure here.
 //
-// The "games" group is the odd one: it is placed only when it has entries, so
-// with FreeCell the only game this screen shows two groups, scenes then states. It
-// exists so that a *second* game lands among the games rather than under "scenes",
-// between Gallery and Motion, filed as a render demo.
+// The "games" group is the odd one: it is placed only when it has entries, so a
+// build whose every game has a row in the main menu shows two groups, scenes then
+// states. It exists so that a game still in development lands among the games rather
+// than under "scenes", between Gallery and Motion, filed as a render demo.
 type props = {
   onClose: unit => unit,
   onBackToSettings: unit => unit,
@@ -39,8 +39,8 @@ type props = {
   shareStatus: option<string>,
   onShareGame: unit => unit,
   // The games that don't have a row in the main menu, one entry each, with the
-  // mounted one `selected`. Empty while FreeCell is the only game, and an empty group
-  // isn't placed at all.
+  // mounted one `selected`. Empty when every game has one, and an empty group isn't
+  // placed at all.
   gameScenes: array<MenuDisclosure.entry>,
   // Whether that group opens expanded, on the same rule as `debugScenesOpen`.
   gameScenesOpen: bool,

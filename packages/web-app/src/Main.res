@@ -713,6 +713,17 @@ let gameScene = (game: Game.t) => {
     opening,
   )
 }
+// The games the menu offers players, as its top-level Games rows — the *released*
+// games, as against everything `Game.all` knows how to deal. The rest stay a level down,
+// in the Debug screen's "games" group, until they're ready to be played. A game
+// graduates by being added here and nowhere else: the switcher files it, the menu
+// draws it, and `?game=` already reached it.
+//
+// `Game.default` needs no entry — the launch scene has a row regardless, being home —
+// but is listed so the two facts read as one: these are the games, and that is the
+// first of them.
+let releasedGames = [Game.freecell, Game.simpleSimon]
+
 let switcher = SceneSwitcher.render(
   // The launch scene, spelled as the game `core` says a nameless deal number belongs to
   // rather than as the literal `"freecell"`. That's the same fact twice
@@ -720,6 +731,7 @@ let switcher = SceneSwitcher.render(
   // `Game.default`, so a bare `?seed=7` has to land on `Game.default`'s scene for the
   // link to mean what it says. Written this way the round trip can't drift.
   ~default=Game.default.id,
+  ~primary=releasedGames->Array.map(game => game.id),
   // What the URL asked to open, as a scene id. `?game=` is checked first because it is
   // the more specific claim — it names a board, and a board's scene is its id, so it
   // answers "which scene" as a side effect of answering "which game". `?scene=` is what

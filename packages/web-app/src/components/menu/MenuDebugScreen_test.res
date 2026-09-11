@@ -121,8 +121,8 @@ describe("MenuDebugScreen", () => {
   })
 
   test("places the games group above the other two, when there is one", () => {
-    // A second game belongs among the games, not under "scenes" between Gallery and
-    // Motion — which is where the switcher's old primary-vs-rest split put it.
+    // A game that isn't released belongs among the games, not under "scenes" between
+    // Gallery and Motion filed as a render demo.
     let screen = render(~gameScenes=[{label: "Klondike", onSelect: () => ()}])
     expect(screen->findAll(".scene-menu__group > summary")->Array.map(text))->toEqual([
       "games",
@@ -141,9 +141,8 @@ describe("MenuDebugScreen", () => {
   })
 
   test("leaves the games group out entirely when it's empty", () => {
-    // Today's shape: FreeCell is the only game and it already has the main menu's
-    // games row, so this screen shows no games group at all — an empty `<details>`
-    // would be a summary opening onto nothing.
+    // A build whose every game has a main-menu row shows no games group at all — an
+    // empty `<details>` would be a summary opening onto nothing.
     expect(render()->findAll(".scene-menu__group > summary")->Array.map(text))->toEqual([
       "scenes",
       "states",

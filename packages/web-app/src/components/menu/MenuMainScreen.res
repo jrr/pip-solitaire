@@ -21,7 +21,7 @@
 //     link went is the only confirmation there is, and it's the only game button that
 //     ever renders *disabled* — on a board with no seed to name;
 //   - a **"Games"** section — the games this build offers as top-level rows, FreeCell
-//     among them. They arrive as `games`, a list of `MenuRow.entry` the
+//     and Simple Simon today. They arrive as `games`, a list of `MenuRow.entry` the
 //     switcher's scene list is turned into, and are drawn here — data rather than a
 //     node the switcher builds and this screen splices in (see `games` below);
 //   - --- the space between top and bottom grows here (`menu-section--bottom`) ---
