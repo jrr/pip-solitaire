@@ -41,13 +41,23 @@
          resolve them against the page — so they hardcode the canonical GitHub
          Pages URL (the deployed site; PR previews live under a subpath and don't
          need a correct unfurl). `summary_large_image` asks for the big 1.91:1
-         card; the dimensions match the committed PNG. -->
+         card; the dimensions match the committed PNG.
+
+         **The copy names no game, and can't.** One index.html is served for every
+         URL — a static host can't vary a response by query string — so the card an
+         unfurler builds for `?game=simplesimon&seed=7` is this one. Any game named
+         here is therefore a claim about *all* of them, and wrong for every game but
+         the one named. Naming the games instead of the app would also need editing
+         each time one is released, which is the other way this goes stale.
+
+         `og:image:alt` is the exception, and belongs as it is: it describes the
+         picture rather than the app, and the picture really is a FreeCell board. -->
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content="Pip" />
-    <meta property="og:title" content="Pip — FreeCell Solitaire" />
+    <meta property="og:title" content="Pip — Solitaire" />
     <meta
       property="og:description"
-      content="A fast, installable, offline-capable FreeCell solitaire. Play in your browser."
+      content="Fast, installable, offline-capable solitaire. Play in your browser."
     />
     <meta property="og:url" content="https://jrr.github.io/pip-solitaire/" />
     <meta property="og:image" content="https://jrr.github.io/pip-solitaire/og-image.png" />
@@ -56,10 +66,10 @@
     <meta property="og:image:height" content="686" />
     <meta property="og:image:alt" content="A mid-game Pip FreeCell board, cards fanned across the cascades." />
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="Pip — FreeCell Solitaire" />
+    <meta name="twitter:title" content="Pip — Solitaire" />
     <meta
       name="twitter:description"
-      content="A fast, installable, offline-capable FreeCell solitaire. Play in your browser."
+      content="Fast, installable, offline-capable solitaire. Play in your browser."
     />
     <meta name="twitter:image" content="https://jrr.github.io/pip-solitaire/og-image.png" />
 
@@ -78,7 +88,7 @@
          the home indicator. Colors track the PWA manifest (background #0b1220,
          accent green #166534) so the web page, the OS chrome and the installed
          splash all look like one app. -->
-    <script type="module" crossorigin src="./assets/index-DsRtmQ77.js"></script>
+    <script type="module" crossorigin src="./assets/index-DgWOn1yJ.js"></script>
     <link rel="stylesheet" crossorigin href="./assets/index-CgrLolsk.css">
   <link rel="manifest" href="./manifest.webmanifest"></head>
   <body>
