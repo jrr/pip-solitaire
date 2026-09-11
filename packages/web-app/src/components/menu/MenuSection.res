@@ -41,14 +41,14 @@ type props = {
   // carry one; Settings and Debug are labelled but unheaded.
   heading?: string,
   // A number the heading names *as data* rather than prose — the seed of the board
-  // "this game" is about. It rides on the heading rather than on one of the buttons
-  // below because it describes the whole section: every control in the group acts on
-  // that deal, and a number sitting on one of them reads as belonging to it alone.
-  // Rendered as "this game – #24680": a dash so the number reads as a second thing
-  // the heading names rather than as a word in it, and a `#` so it reads as a number
-  // to be quoted — which is what it is for, since the seed dialog is where one comes
-  // back in. Set in mono a step dimmer than the heading (see `.menu-section__value`),
-  // the label/value split the About footer's build string already uses.
+  // the section's controls act on. It rides on the heading rather than on one of the
+  // buttons below because it describes the whole section: every control in the group
+  // acts on that deal, and a number sitting on one of them reads as belonging to it
+  // alone. Rendered a space after the caption — "FREECELL #24680" — with a `#` so the
+  // digits read as a number to be quoted, which is what they are for, since the seed
+  // dialog is where one comes back in. Set in mono a step brighter than the heading
+  // (see `.menu-section__value`), the label/value split the About footer's build
+  // string already uses.
   headingValue?: string,
   tag?: tag,
   // An extra class alongside `menu-section`, for the two that vary:
@@ -71,11 +71,12 @@ let make = (props: props) => {
           {switch props.headingValue {
           | Some(value) =>
             <>
-              // The separator is an element so the sheet can space it (a second literal
-              // space would collapse into the first), and it carries its own spaces so
-              // the words and the digits stay apart when a screen reader concatenates
-              // the heading — "this game–#24680" without them.
-              <span className="menu-section__dash"> {Html.string(" – ")} </span>
+              // A space of its own between the caption and the number, rather than a
+              // margin on the number: the accessible name is the visible text, so
+              // without a character here a screen reader runs the two together —
+              // "FreeCell#24680". It is an expression because JSX drops the literal
+              // whitespace between two children.
+              {Html.string(" ")}
               <span className="menu-section__value"> {Html.string("#" ++ value)} </span>
             </>
           | None => Html.empty

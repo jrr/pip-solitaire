@@ -44,14 +44,14 @@ describe("MenuSection", () => {
     expect(unheaded->find(".menu-section__heading")->Option.isSome)->toBe(false)
   })
 
-  test("lets the heading name a number, dashed and hashed, with the spaces spoken", () => {
-    // The accessible name is the visible text, so the separator's own spaces are all
-    // that stand between the words and the digits when a screen reader runs them
-    // together — "this game–#24680" without them.
+  test("lets the heading name a number, hashed, with the space between spoken", () => {
+    // The accessible name is the visible text, so that one space is all that stands
+    // between the words and the digits when a screen reader runs them together —
+    // "FreeCell#24680" without it.
     let named = Html.create(
-      MenuSection.make({label: "this game", heading: "this game", headingValue: "24680"}),
+      MenuSection.make({label: "this game", heading: "FreeCell", headingValue: "24680"}),
     )
-    expect(named->textIn(".menu-section__heading"))->toBe("this game – #24680")
+    expect(named->textIn(".menu-section__heading"))->toBe("FreeCell #24680")
     // Its own element, so CSS can set the digits in mono rather than in the heading's
     // uppercased sans. The `#` sits inside it, being part of the number as read.
     expect(named->textIn(".menu-section__value"))->toBe("#24680")
@@ -60,10 +60,9 @@ describe("MenuSection", () => {
   test("leaves no empty value element behind when there's no number to name", () => {
     // It would show as a stray gap after the heading, and read as one to a screen
     // reader — a board with no seed has nothing to say here at all.
-    let bare = Html.create(MenuSection.make({label: "this game", heading: "this game"}))
-    expect(bare->textIn(".menu-section__heading"))->toBe("this game")
+    let bare = Html.create(MenuSection.make({label: "this game", heading: "FreeCell"}))
+    expect(bare->textIn(".menu-section__heading"))->toBe("FreeCell")
     expect(bare->find(".menu-section__value")->Option.isSome)->toBe(false)
-    expect(bare->find(".menu-section__dash")->Option.isSome)->toBe(false)
   })
 
   test("holds a single child", () => {

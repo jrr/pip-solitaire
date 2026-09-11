@@ -1,12 +1,12 @@
-// The "game" action button — Random, Enter Seed, Restart, Share Seed — exercised in
+// The "game" action button — Restart, Share, New Deal, Enter Seed — exercised in
 // isolation.
 //
-// `Menu_test` already pins what Share Seed does *through the menu*; what's left to this
+// `Menu_test` already pins what Share does *through the menu*; what's left to this
 // file is the button's own contract, which all four lean on equally.
 open Vitest
 open TestDom
 
-let render = (~label="Share Seed", ~enabled=true, ~onClick=() => ()) =>
+let render = (~label="Share", ~enabled=true, ~onClick=() => ()) =>
   Html.create(MenuGameButton.make({label, enabled, onClick}))
 
 describe("MenuGameButton", () => {
@@ -14,7 +14,7 @@ describe("MenuGameButton", () => {
     // No number on the button, whatever board is up: which deal the section is about is
     // the heading's to say (`MenuSection`'s `headingValue`), which is what keeps all
     // four buttons the same size.
-    expect(render(~label="Random")->text)->toBe("Random")
+    expect(render(~label="New Deal")->text)->toBe("New Deal")
   })
 
   test("acts when tapped", () => {

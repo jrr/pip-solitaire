@@ -1,6 +1,6 @@
 // "Enter seed": the deal number a player types, on a panel raised over everything.
 //
-// The far end of Share Seed. That button puts a number on screen precisely so it can
+// The far end of Share. The menu puts that number on screen precisely so it can
 // be carried somewhere else — read off a screenshot, dictated over a phone — and this
 // is where it comes back in.
 //
