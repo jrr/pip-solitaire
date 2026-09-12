@@ -90,19 +90,19 @@ test("gives the i a target bigger than the mark, without disturbing the row", as
   expect(Math.round(badge.width)).toBe(18)
   expect(Math.round(badge.height)).toBe(18)
 
-  // …and the row is still the height it would be without an "i" in it. The target is
-  // taller than the row it sits in and overhangs into the gaps either side, which is
-  // only invisible for as long as it contributes nothing to layout.
-  expect(info.height).toBeGreaterThan(name.height)
-  expect(Math.round(box.height)).toBe(Math.round(name.height))
+  // The name button meets the same floor, and the target is level with it rather
+  // than standing out of the row — which is what keeps each row's "i" inside its own
+  // row (see the next test).
+  expect(Math.round(name.height)).toBe(44)
+  expect(Math.round(box.height)).toBe(44)
 })
 
 test("keeps one row's i out of the next row's", async ({ page }) => {
-  // The overhang has about a pixel of room in it: the gap between rows is 6px and
-  // each target hangs 2.5px into it. Nothing about that is visible — two targets that
-  // overlapped would look exactly like two that don't, and the only symptom would be
-  // a tap near the boundary opening the wrong game's screen. So it is asserted rather
-  // than left to be noticed.
+  // Neither target may reach into the 6px between rows: two that overlapped would
+  // look exactly like two that don't, since neither paints anything, and the only
+  // symptom would be a tap near the boundary opening the wrong game's screen. The
+  // row height is what holds this, so it is asserted here rather than left to be
+  // noticed the once it breaks.
   await page.goto("/?seed=24680&animate=off")
   await settleBoard(page)
   await openMenu(page)
@@ -130,6 +130,15 @@ test("holds a game's name on one header row at a narrow width", async ({ page })
   const header = await page.locator(".menu-panel__header").boundingBox()
   const title = await page.locator(".menu-title").boundingBox()
   const back = await page.locator(".menu-back").boundingBox()
+  const close = await page.locator(".menu-close").boundingBox()
+
+  // The two flank the title, so any difference between them reads as the title
+  // sitting off centre rather than as the buttons being different — which is how
+  // 32×30 beside 35×26 went unnoticed. Sized, not padded: the glyphs are different
+  // widths and any shared padding gives two different boxes.
+  expect(Math.round(back.width)).toBe(Math.round(close.width))
+  expect(Math.round(back.height)).toBe(Math.round(close.height))
+  expect(Math.round(back.width)).toBe(Math.round(back.height))
 
   // One line of title, and a back button that is still one line of its own: as
   // ordinary flex items the two controls shrink before the title does, so a squeeze

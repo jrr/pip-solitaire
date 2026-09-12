@@ -30,11 +30,11 @@
      inside is what a player sees; this is what a thumb has to hit, and the two are
      different sizes on purpose.
 
-     `margin-block` takes the extra height back out of the flow, so a games row still
-     measures like every other row in the panel instead of standing 5px taller. The
-     target keeps its full 44px and overflows into the gaps above and below — which
-     are 6px, leaving a pixel of clearance between one row's target and the next.
-     Grow this box and that clearance is what goes, invisibly. */
+     It is exactly as tall as the row beside it, which is the same 44px floor
+     `.menu-row` takes (MenuRow.css). That is what keeps the target inside its own
+     row: sized past the row it would have to overhang into the 6px between rows,
+     and two neighbouring targets would start competing for the taps near the
+     boundary — with nothing to see, since neither paints. */
   .menu-game-row__info {
     display: flex;
     flex: 0 0 auto;
@@ -42,7 +42,6 @@
     justify-content: center;
     width: 2.75rem;
     height: 2.75rem;
-    margin-block: -0.16rem;
     padding: 0;
     color: var(--control-ink-muted);
     background: none;

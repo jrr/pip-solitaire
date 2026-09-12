@@ -49,8 +49,9 @@
     flex: 0 0 auto;
     align-items: center;
     justify-content: center;
-    min-width: 2rem;
-    padding: 4px 10px;
+    width: 2rem;
+    height: 2rem;
+    padding: 0;
     font: 16px "Libre Franklin", sans-serif;
     line-height: 1;
     white-space: nowrap;
@@ -61,10 +62,21 @@
     cursor: pointer;
   }
 
+  /* One square, stated once for both. Sized rather than padded because "‹" and "✕"
+     are different widths and different heights at any shared padding — which is what
+     had them at 32×30 and 35×26, a mismatch you see as soon as you look for it. They
+     are a matched pair flanking the title, so the box is the constant and the glyph
+     floats inside it.
+
+     2rem rather than the 44px a touch target wants: what the pair doesn't take, the
+     title gets, and a game's name needs every pixel of it to stay on one line at a
+     narrow width (see MenuHeader.res, and the header test in game-info.spec.mjs).
+     A bigger square is a wrapped title, which is the trade this size is making. */
+
   /* The chevron reads thinner than the ✕ at a matched size, so it is set larger to
      weigh the same beside it. What it means is carried by the button's accessible
      name, not by the glyph (see MenuHeader.res). */
   .menu-back {
-    font-size: 20px;
+    font-size: 22px;
   }
 }
