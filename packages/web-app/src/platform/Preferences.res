@@ -21,6 +21,7 @@ let wantsShakeKey = "pip.wantsShake"
 let notchDisplayKey = "pip.notchDisplay"
 let debugLogKey = "pip.debugLog"
 let revealHiddenKey = "pip.revealHidden"
+let gameInfoKey = "pip.gameInfo"
 let consoleDockKey = "pip.consoleDock"
 
 // An explicit "true"/"false" wins; anything else — missing, garbage, unreadable —
@@ -87,6 +88,13 @@ let saveDebugLog = (enabled: bool) => saveFlag(debugLogKey, enabled)
 // without turning off whatever they switched on.
 let loadRevealHidden = (): bool => loadFlag(revealHiddenKey, ~fallback=false)
 let saveRevealHidden = (revealed: bool) => saveFlag(revealHiddenKey, revealed)
+
+// The game info feature, off until it's finished (#427): the "i" segment beside each
+// game in the menu, and the screen it opens. Persisted like the rest, so a device left
+// with it on keeps it across launches — and reachable only from the hidden settings,
+// which is a second gesture in front of this one.
+let loadGameInfo = (): bool => loadFlag(gameInfoKey, ~fallback=false)
+let saveGameInfo = (enabled: bool) => saveFlag(gameInfoKey, enabled)
 
 // Persisted rather than session state, because the point of a placement you flip by
 // hand — rather than an automatic breakpoint — is that it stays flipped. `Top` is the

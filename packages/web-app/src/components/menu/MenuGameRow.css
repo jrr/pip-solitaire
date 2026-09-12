@@ -1,0 +1,68 @@
+@layer components {
+  /* The segmented game row (see MenuGameRow.res): the game's name, and the "i" that
+     opens its info screen, drawn as one control out of two sibling buttons.
+
+     The segments keep their own `--control-*` box — they *are* a `.menu-row` and a
+     button of the same shape — and all this sheet does is square off the two edges
+     that meet and let one border do duty as the divider between them. So the row still
+     looks and measures like every other row in the panel, including when the flag is
+     off and there is no wrapper at all. */
+
+  .menu-game-row {
+    display: flex;
+    align-items: stretch;
+  }
+
+  /* The name segment takes the width; the "i" takes what it needs. `min-width: 0` lets
+     a long game name shorten inside its half instead of pushing the "i" off the
+     panel's right edge. */
+  .menu-game-row .menu-row {
+    flex: 1 1 auto;
+    min-width: 0;
+    border-top-right-radius: 0;
+    border-bottom-right-radius: 0;
+  }
+
+  /* The "i" segment. Its left border is dropped rather than butting up against the
+     name's right one — two 1px borders side by side draw a 2px seam, and which of the
+     two colours won would depend on the row being selected. What's left is the name
+     segment's own border, doing duty as the divider. */
+  .menu-game-row__info {
+    display: flex;
+    flex: 0 0 auto;
+    align-items: center;
+    justify-content: center;
+    width: 2.75rem;
+    padding: 0;
+    color: var(--control-ink-muted);
+    background: var(--control-bg);
+    border: var(--control-border);
+    border-left: none;
+    border-radius: 0 var(--control-radius) var(--control-radius) 0;
+    cursor: pointer;
+  }
+
+  /* The glyph in its ring: a lowercase "i" in a circle, drawn rather than set as a
+     character (ⓘ) so its weight and size match the row's type instead of the font's
+     idea of a symbol. */
+  .menu-game-row__badge {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+    font: 600 12px "Libre Franklin", sans-serif;
+    line-height: 1;
+    border: 1px solid currentcolor;
+    border-radius: 50%;
+  }
+
+  /* The row for the game on the table. The highlight is the name segment's
+     (`.menu-row--active`, in MenuRow.css); what's left here is to carry its border
+     colour across the "i" so the pair still reads as one control, and to lift the
+     glyph out of the muted grey it would otherwise keep against the green. */
+  .menu-game-row--active .menu-game-row__info {
+    color: #86efac;
+    border-color: #22c55e;
+  }
+}
