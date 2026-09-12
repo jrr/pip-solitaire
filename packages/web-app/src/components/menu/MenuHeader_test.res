@@ -59,6 +59,24 @@ describe("MenuHeader", () => {
     expect(taps.contents)->toBe(1)
   })
 
+  test("draws both of the header's marks, so neither is the odd one out", () => {
+    // A glyph and a drawn path either side of the same title read as coming from
+    // different places however closely their sizes are matched — which is what
+    // drawing only the chevron did. Whichever is changed next, it is the pair that
+    // has to stay a pair.
+    let settings = render(~title="Settings", ~back=Some({label: "Back to menu", onClick: () => ()}))
+    // `attrOr` rather than `classes`: on an SVG element `className` is an
+    // `SVGAnimatedString`, not a string, so `TestDom.classes` hands back an object.
+    expect(settings->findAll("svg")->Array.map(el => el->attrOr("class")))->toEqual([
+      "menu-back__icon",
+      "menu-close__icon",
+    ])
+    expect(settings->find(".menu-close")->Option.mapOr("", text))->toBe("")
+    expect(
+      settings->find(".menu-close__icon")->Option.mapOr("", el => el->attrOr("aria-hidden")),
+    )->toBe("true")
+  })
+
   test("counts taps on the title only where a screen asked for them", () => {
     let taps = ref(0)
     let settings = render(~title="Settings", ~onTitleTap=Some(() => taps := taps.contents + 1))

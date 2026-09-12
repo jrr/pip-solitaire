@@ -28,11 +28,17 @@
 // doesn't choose and can't shorten. `label` is what a screen reader announces either
 // way, so dropping the visible word costs nothing there.
 //
-// **The chevron is drawn, not set.** "‹" is a quotation mark: the font gives it
-// modulation and angled terminals, and about 6×13px of ink in a 32px box, none of
-// which a font size fixes because it is the wrong shape being scaled. A stroked path
-// is a uniform line at whatever weight the button wants — the same trade `TopBar`'s
-// undo icon makes.
+// **Both marks are drawn, not set**, and that is a pair decision rather than two
+// separate ones: a glyph and a stroked path sitting either side of the same title
+// read as coming from different places however closely their sizes are matched. "‹"
+// was the worse of the two — a quotation mark, with modulation, angled terminals and
+// about 6×13px of ink in a 32px box — but drawing only it was what made the ✕ look
+// wrong. They share a viewBox, a stroke weight and `currentColor`; the same trade
+// `TopBar`'s undo icon makes.
+//
+// The ✕ is drawn *smaller* than the chevron, not the same: it fills its square where
+// a chevron fills a tall slice of one, so equal sizes are not equal weights. See
+// MenuHeader.css for the numbers.
 type back = {
   label: string,
   onClick: unit => unit,
@@ -66,6 +72,14 @@ let make = ({title, back, onTitleTap, onClose}) =>
       {Html.string(title)}
     </h1>
     <button className="menu-close" onClick={_ => onClose()} type_="button" ariaLabel="Close menu">
-      {Html.string("✕")}
+      <svg className="menu-close__icon" viewBox="0 0 24 24" ariaHidden="true" focusable="false">
+        <path
+          d="M6 6 L18 18 M18 6 L6 18"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2.5"
+          strokeLinejoin="round"
+        />
+      </svg>
     </button>
   </div>

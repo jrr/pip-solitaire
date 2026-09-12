@@ -52,9 +52,6 @@
     width: 2rem;
     height: 2rem;
     padding: 0;
-    font: 16px "Libre Franklin", sans-serif;
-    line-height: 1;
-    white-space: nowrap;
     color: #cbd5e1;
     background: transparent;
     border: 1px solid #334155;
@@ -73,13 +70,29 @@
      narrow width (see MenuHeader.res, and the header test in game-info.spec.mjs).
      A bigger square is a wrapped title, which is the trade this size is making. */
 
-  /* The chevron, drawn rather than set (see MenuHeader.res). 20px in the 2rem box
-     gives it the presence the ✕ has as type; the 2.5px stroke lands just under the
-     ✕'s apparent weight, which is the right way round for the secondary of the two.
-     What it means is carried by the button's accessible name, not by the mark. */
-  .menu-back__icon {
+  /* The two marks, drawn rather than set (see MenuHeader.res). One stroke weight
+     across both, because a shared weight is most of what makes them read as one set.
+
+     The sizes differ, and deliberately: an ✕ reaches all four corners of its box
+     where a chevron only fills a tall slice of one, so drawing them at a matched
+     20px left the ✕ carrying visibly more ink than the button it answers. 18px is
+     that difference paid back. Match these two numbers to each other and the pair
+     stops looking balanced, which is the trap in "make them the same size".
+
+     Neither button holds any text, which is why there is no type on them above —
+     what the marks mean is carried by the accessible names. */
+  .menu-back__icon,
+  .menu-close__icon {
     display: block;
+  }
+
+  .menu-back__icon {
     width: 20px;
     height: 20px;
+  }
+
+  .menu-close__icon {
+    width: 18px;
+    height: 18px;
   }
 }
