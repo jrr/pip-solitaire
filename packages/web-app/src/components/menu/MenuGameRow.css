@@ -42,6 +42,15 @@
     justify-content: center;
     width: 2.75rem;
     height: 2.75rem;
+    /* Half the difference between the target and the mark inside it, taken back off
+       the right so the *circle* — not the box around it — lands on the same edge
+       Enter Seed and the game buttons sit on. Without it the circle floats 13px
+       inside that edge and the games read as a narrower panel than the rows above.
+
+       The target keeps all 44px and hangs into the panel's 20px of right padding,
+       which is why this costs nothing: what it stops claiming goes to the name
+       button beside it, and the gap between name and circle is unchanged. */
+    margin-right: -13px;
     padding: 0;
     color: var(--control-ink-muted);
     background: none;

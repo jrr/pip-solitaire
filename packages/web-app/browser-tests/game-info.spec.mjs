@@ -79,8 +79,16 @@ test("gives the i a target bigger than the mark, without disturbing the row", as
   // instead. This is what `gap: 0` buys, and it only holds while the button carries
   // its own transparent margin.
   expect(Math.round(name.x + name.width)).toBe(Math.round(info.x))
-  expect(Math.round(info.x + info.width)).toBe(Math.round(box.x + box.width))
   expect(name.width).toBeGreaterThan(info.width * 2)
+
+  // It is the *circle* that lines up with the panel's content edge, where Enter Seed
+  // and the game buttons end — not the box around it, which deliberately overhangs
+  // into the padding to put it there. Asserting the target's edge instead, the
+  // obvious thing to reach for, would pin the bug this fixes.
+  const seed = await page.getByRole("button", { name: /Enter Seed/i }).boundingBox()
+  expect(Math.round(badge.x + badge.width)).toBe(Math.round(box.x + box.width))
+  expect(Math.round(badge.x + badge.width)).toBe(Math.round(seed.x + seed.width))
+  expect(info.x + info.width).toBeGreaterThan(box.x + box.width)
 
   // The target is a 44px square around an 18px circle. Asserting both is the point:
   // a change that sizes the button to fit the mark would look identical and quietly
