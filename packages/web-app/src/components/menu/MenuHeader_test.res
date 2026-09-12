@@ -27,14 +27,19 @@ describe("MenuHeader", () => {
     let settings = render(~title="Settings", ~back=Some({label: "Back to menu", onClick: () => ()}))
     expect(settings->slots)->toEqual(["BUTTON", "H1", "BUTTON"])
     // A bare chevron is the same mark on every screen, so the accessible name is the
-    // only thing that says *where* it goes — and the only thing that says "back" at
-    // all, which is why it is asserted here rather than left to the visible text.
+    // only thing that says *where* it goes — and, the mark being a drawn shape with
+    // no text in it at all, the only thing that says "back" either. Both halves are
+    // asserted: the name carries the meaning, and the icon is hidden from the tree
+    // rather than competing with it.
     expect(
       settings
       ->find(".menu-back")
       ->Option.mapOr("", b => b->attr("aria-label")->Option.getOr("")),
     )->toBe("Back to menu")
-    expect(settings->find(".menu-back")->Option.mapOr("", text))->toBe("‹")
+    expect(settings->find(".menu-back")->Option.mapOr("", text))->toBe("")
+    expect(
+      settings->find(".menu-back__icon")->Option.mapOr("", el => el->attrOr("aria-hidden")),
+    )->toBe("true")
   })
 
   test("goes back when the back button is tapped", () => {

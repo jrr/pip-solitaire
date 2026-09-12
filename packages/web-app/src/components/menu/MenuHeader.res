@@ -21,12 +21,18 @@
 %%raw(`import "./MenuHeader.css"`)
 
 // A back button: `label` names where it returns to (it's the accessible name — the
-// visible mark is always a bare "‹"), `onClick` goes there.
+// visible mark is always a bare chevron), `onClick` goes there.
 //
 // The word is in the label rather than on screen because the header's width is spent
 // on the title, and since #427 the title can be a game's name — text this header
 // doesn't choose and can't shorten. `label` is what a screen reader announces either
 // way, so dropping the visible word costs nothing there.
+//
+// **The chevron is drawn, not set.** "‹" is a quotation mark: the font gives it
+// modulation and angled terminals, and about 6×13px of ink in a 32px box, none of
+// which a font size fixes because it is the wrong shape being scaled. A stroked path
+// is a uniform line at whatever weight the button wants — the same trade `TopBar`'s
+// undo icon makes.
 type back = {
   label: string,
   onClick: unit => unit,
@@ -44,7 +50,15 @@ let make = ({title, back, onTitleTap, onClose}) =>
     {switch back {
     | Some({label, onClick}) =>
       <button className="menu-back" onClick={_ => onClick()} type_="button" ariaLabel={label}>
-        {Html.string("‹")}
+        <svg className="menu-back__icon" viewBox="0 0 24 24" ariaHidden="true" focusable="false">
+          <path
+            d="M15 5 L8 12 L15 19"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2.5"
+            strokeLinejoin="round"
+          />
+        </svg>
       </button>
     | None => Html.empty
     }}

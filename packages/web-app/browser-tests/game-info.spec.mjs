@@ -169,6 +169,26 @@ test("opens the game's info screen from the i, and comes back to the menu", asyn
   // belonged to, which is not the game on the table behind the menu.
   await expect(page.locator(".menu-title")).toHaveText("Simple Simon")
   await expect(page.locator(".game-info__numbers")).toHaveText("10 cascades · 52 cards")
+
+  // Centred, with the link under it. The panel is left-aligned everywhere else, so
+  // this is the sort of exception a later tidy-up "corrects" back — and a ranged-left
+  // line under a centred button is what it looked like before.
+  //
+  // Measured over the text itself, not the element: the <p> is a full-width block, so
+  // its own box is centred on the link whether the text inside it is or not.
+  const offset = await page.evaluate(() => {
+    const p = document.querySelector(".game-info__numbers")
+    const range = document.createRange()
+    range.selectNodeContents(p)
+    const ink = range.getBoundingClientRect()
+    const box = p.getBoundingClientRect()
+    return {
+      left: Math.round(ink.left - box.left),
+      right: Math.round(box.right - ink.right),
+    }
+  })
+  expect(Math.abs(offset.left - offset.right)).toBeLessThanOrEqual(1)
+  expect(offset.left).toBeGreaterThan(1)
   await expect(page.locator(".game-info__link")).toHaveAttribute(
     "href",
     "https://en.wikipedia.org/wiki/Simple_Simon_(solitaire)",

@@ -11,6 +11,10 @@
     margin: 0;
     font: 13px ui-monospace, "SF Mono", Menlo, monospace;
     letter-spacing: 0.02em;
+    /* Centred, like the link under it. The panel is left-aligned throughout, but
+       these two are the screen's whole column, and one line ranged left under a
+       centred button reads as a mistake rather than as alignment. */
+    text-align: center;
     color: var(--control-ink-muted);
   }
 

@@ -73,10 +73,13 @@
      narrow width (see MenuHeader.res, and the header test in game-info.spec.mjs).
      A bigger square is a wrapped title, which is the trade this size is making. */
 
-  /* The chevron reads thinner than the ✕ at a matched size, so it is set larger to
-     weigh the same beside it. What it means is carried by the button's accessible
-     name, not by the glyph (see MenuHeader.res). */
-  .menu-back {
-    font-size: 22px;
+  /* The chevron, drawn rather than set (see MenuHeader.res). 20px in the 2rem box
+     gives it the presence the ✕ has as type; the 2.5px stroke lands just under the
+     ✕'s apparent weight, which is the right way round for the secondary of the two.
+     What it means is carried by the button's accessible name, not by the mark. */
+  .menu-back__icon {
+    display: block;
+    width: 20px;
+    height: 20px;
   }
 }
