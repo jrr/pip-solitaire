@@ -26,13 +26,15 @@ describe("MenuHeader", () => {
   test("puts the back button ahead of the title when there is somewhere to go", () => {
     let settings = render(~title="Settings", ~back=Some({label: "Back to menu", onClick: () => ()}))
     expect(settings->slots)->toEqual(["BUTTON", "H1", "BUTTON"])
-    // "‹ Back" is the same text on every screen, so the accessible name is the only
-    // thing that says *where* it goes.
+    // A bare chevron is the same mark on every screen, so the accessible name is the
+    // only thing that says *where* it goes — and the only thing that says "back" at
+    // all, which is why it is asserted here rather than left to the visible text.
     expect(
       settings
       ->find(".menu-back")
       ->Option.mapOr("", b => b->attr("aria-label")->Option.getOr("")),
     )->toBe("Back to menu")
+    expect(settings->find(".menu-back")->Option.mapOr("", text))->toBe("‹")
   })
 
   test("goes back when the back button is tapped", () => {

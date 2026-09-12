@@ -1,50 +1,61 @@
 @layer components {
-  /* The segmented game row (see MenuGameRow.res): the game's name, and the "i" that
-     opens its info screen, drawn as one control out of two sibling buttons.
+  /* The game row (see MenuGameRow.res): the game's name as a `.menu-row` like any
+     other, and the "i" that opens its info screen as a small circle standing beside
+     it — two separate controls rather than one segmented one.
 
-     The segments keep their own `--control-*` box — they *are* a `.menu-row` and a
-     button of the same shape — and all this sheet does is square off the two edges
-     that meet and let one border do duty as the divider between them. So the row still
-     looks and measures like every other row in the panel, including when the flag is
-     off and there is no wrapper at all. */
+     Separate is what keeps the "i" the same mark on every row. A segmented control
+     would have to decide how much of the selected row's green to carry across the
+     seam, and whatever it decided would make the "i" mean one thing on the game you
+     are playing and another on the games you aren't. Detached, it doesn't participate
+     in the highlight at all. */
 
   .menu-game-row {
     display: flex;
-    align-items: stretch;
+    align-items: center;
+    /* No gap: the "i" button is a 44px target around an 18px circle, so it carries
+       13px of transparent margin either side already. That spacing *is* the gap, and
+       leaving it at zero is what makes the two targets abut exactly rather than the
+       circle's reaching back over the name button's right edge. */
+    gap: 0;
   }
 
-  /* The name segment takes the width; the "i" takes what it needs. `min-width: 0` lets
-     a long game name shorten inside its half instead of pushing the "i" off the
-     panel's right edge. */
+  /* The name takes the width. `min-width: 0` lets a long game name wrap inside its
+     own box rather than pushing the "i" off the panel's right edge. */
   .menu-game-row .menu-row {
     flex: 1 1 auto;
     min-width: 0;
-    border-top-right-radius: 0;
-    border-bottom-right-radius: 0;
   }
 
-  /* The "i" segment. Its left border is dropped rather than butting up against the
-     name's right one — two 1px borders side by side draw a 2px seam, and which of the
-     two colours won would depend on the row being selected. What's left is the name
-     segment's own border, doing duty as the divider. */
+  /* The target, not the mark: 44px square and painting nothing at all. The circle
+     inside is what a player sees; this is what a thumb has to hit, and the two are
+     different sizes on purpose.
+
+     `margin-block` takes the extra height back out of the flow, so a games row still
+     measures like every other row in the panel instead of standing 5px taller. The
+     target keeps its full 44px and overflows into the gaps above and below — which
+     are 6px, leaving a pixel of clearance between one row's target and the next.
+     Grow this box and that clearance is what goes, invisibly. */
   .menu-game-row__info {
     display: flex;
     flex: 0 0 auto;
     align-items: center;
     justify-content: center;
     width: 2.75rem;
+    height: 2.75rem;
+    margin-block: -0.16rem;
     padding: 0;
     color: var(--control-ink-muted);
-    background: var(--control-bg);
-    border: var(--control-border);
-    border-left: none;
-    border-radius: 0 var(--control-radius) var(--control-radius) 0;
+    background: none;
+    border: none;
     cursor: pointer;
   }
 
-  /* The glyph in its ring: a lowercase "i" in a circle, drawn rather than set as a
-     character (ⓘ) so its weight and size match the row's type instead of the font's
-     idea of a symbol. */
+  /* The mark: a lowercase "i" in a circle, drawn rather than set as a character (ⓘ)
+     so its weight and size match the row's type instead of the font's idea of a
+     symbol. It keeps the control background as its fill, which is a shade *lighter*
+     than the panel it now sits on — the faint disc that leaves is the whole effect,
+     and there is no darker fill available: the panel is close enough to black that
+     every shade below it lands within 1.15:1 and reads as nothing. */
   .menu-game-row__badge {
     display: flex;
     align-items: center;
@@ -53,16 +64,21 @@
     height: 18px;
     font: 600 12px "Libre Franklin", sans-serif;
     line-height: 1;
+    color: var(--control-ink-muted);
+    background: var(--control-bg);
     border: 1px solid currentcolor;
     border-radius: 50%;
   }
 
-  /* The row for the game on the table. The highlight is the name segment's
-     (`.menu-row--active`, in MenuRow.css); what's left here is to carry its border
-     colour across the "i" so the pair still reads as one control, and to lift the
-     glyph out of the muted grey it would otherwise keep against the green. */
-  .menu-game-row--active .menu-game-row__info {
-    color: #86efac;
-    border-color: #22c55e;
+  /* The ring belongs on the mark, not on the button. A button that paints nothing
+     still takes the browser's focus ring, and it would draw the 44px box — a hard
+     square around a small circle, which reads as a bug rather than as focus. */
+  .menu-game-row__info:focus-visible {
+    outline: none;
+  }
+
+  .menu-game-row__info:focus-visible .menu-game-row__badge {
+    outline: 2px solid #93c5fd;
+    outline-offset: 2px;
   }
 }

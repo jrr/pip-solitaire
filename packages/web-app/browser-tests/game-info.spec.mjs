@@ -61,7 +61,7 @@ test("hides the info buttons until the flag is found, then puts one beside each 
   await expect(page.getByRole("button", { name: "About FreeCell" })).toBeVisible()
 })
 
-test("draws the two segments as one control, the name taking the width", async ({ page }) => {
+test("gives the i a target bigger than the mark, without disturbing the row", async ({ page }) => {
   await page.goto("/?seed=24680&animate=off")
   await settleBoard(page)
   await openMenu(page)
@@ -71,17 +71,73 @@ test("draws the two segments as one control, the name taking the width", async (
   const box = await row.boundingBox()
   const name = await row.locator(".menu-row").boundingBox()
   const info = await row.locator(".menu-game-row__info").boundingBox()
+  const badge = await row.locator(".menu-game-row__badge").boundingBox()
 
-  // Side by side, not stacked, and with no gap between them: the two segments meet
-  // exactly, which is what makes the seam a divider rather than a crack.
-  expect(Math.round(name.y)).toBe(Math.round(info.y))
+  // The pair sits side by side, and the two targets meet exactly rather than
+  // overlapping: the "i" must not reach back over the name button's right edge, or
+  // the last few pixels of "tap the game" would silently open its info screen
+  // instead. This is what `gap: 0` buys, and it only holds while the button carries
+  // its own transparent margin.
   expect(Math.round(name.x + name.width)).toBe(Math.round(info.x))
   expect(Math.round(info.x + info.width)).toBe(Math.round(box.x + box.width))
-
-  // The name takes what's left; the "i" is a fixed tab on the end and stays tappable.
   expect(name.width).toBeGreaterThan(info.width * 2)
-  expect(info.width).toBeGreaterThan(40)
-  expect(Math.round(info.height)).toBe(Math.round(name.height))
+
+  // The target is a 44px square around an 18px circle. Asserting both is the point:
+  // a change that sizes the button to fit the mark would look identical and quietly
+  // halve what a thumb has to hit.
+  expect(Math.round(info.width)).toBe(44)
+  expect(Math.round(info.height)).toBe(44)
+  expect(Math.round(badge.width)).toBe(18)
+  expect(Math.round(badge.height)).toBe(18)
+
+  // …and the row is still the height it would be without an "i" in it. The target is
+  // taller than the row it sits in and overhangs into the gaps either side, which is
+  // only invisible for as long as it contributes nothing to layout.
+  expect(info.height).toBeGreaterThan(name.height)
+  expect(Math.round(box.height)).toBe(Math.round(name.height))
+})
+
+test("keeps one row's i out of the next row's", async ({ page }) => {
+  // The overhang has about a pixel of room in it: the gap between rows is 6px and
+  // each target hangs 2.5px into it. Nothing about that is visible — two targets that
+  // overlapped would look exactly like two that don't, and the only symptom would be
+  // a tap near the boundary opening the wrong game's screen. So it is asserted rather
+  // than left to be noticed.
+  await page.goto("/?seed=24680&animate=off")
+  await settleBoard(page)
+  await openMenu(page)
+  await enableGameInfo(page)
+
+  const targets = page.locator(".menu-game-row__info")
+  const first = await targets.nth(0).boundingBox()
+  const second = await targets.nth(1).boundingBox()
+  expect(second.y).toBeGreaterThanOrEqual(first.y + first.height)
+})
+
+test("holds a game's name on one header row at a narrow width", async ({ page }) => {
+  // The header is sized for "Pip", "Settings" and "Debug" — one word apiece, chosen
+  // by the app. A game's name is neither, and "Simple Simon" is already wider than
+  // the room a 20rem panel leaves between the back button and the ✕. What buys it
+  // that room is the back button being a bare chevron, so this is really a test that
+  // nobody has put the word back.
+  await page.setViewportSize({ width: 360, height: 800 })
+  await page.goto("/?seed=24680&animate=off")
+  await settleBoard(page)
+  await openMenu(page)
+  await enableGameInfo(page)
+  await page.getByRole("button", { name: "About Simple Simon" }).click()
+
+  const header = await page.locator(".menu-panel__header").boundingBox()
+  const title = await page.locator(".menu-title").boundingBox()
+  const back = await page.locator(".menu-back").boundingBox()
+
+  // One line of title, and a back button that is still one line of its own: as
+  // ordinary flex items the two controls shrink before the title does, so a squeeze
+  // shows up on them first.
+  await expect(page.locator(".menu-title")).toHaveText("Simple Simon")
+  expect(title.height).toBeLessThan(40)
+  expect(back.height).toBeLessThan(40)
+  expect(Math.round(header.height)).toBe(Math.round(Math.max(title.height, back.height)))
 })
 
 test("opens the game's info screen from the i, and comes back to the menu", async ({ page }) => {

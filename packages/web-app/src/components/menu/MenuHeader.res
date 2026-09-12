@@ -21,7 +21,12 @@
 %%raw(`import "./MenuHeader.css"`)
 
 // A back button: `label` names where it returns to (it's the accessible name — the
-// visible text is always "‹ Back"), `onClick` goes there.
+// visible mark is always a bare "‹"), `onClick` goes there.
+//
+// The word is in the label rather than on screen because the header's width is spent
+// on the title, and since #427 the title can be a game's name — text this header
+// doesn't choose and can't shorten. `label` is what a screen reader announces either
+// way, so dropping the visible word costs nothing there.
 type back = {
   label: string,
   onClick: unit => unit,
@@ -39,7 +44,7 @@ let make = ({title, back, onTitleTap, onClose}) =>
     {switch back {
     | Some({label, onClick}) =>
       <button className="menu-back" onClick={_ => onClick()} type_="button" ariaLabel={label}>
-        {Html.string("‹ Back")}
+        {Html.string("‹")}
       </button>
     | None => Html.empty
     }}
