@@ -391,60 +391,90 @@ let dealt = (game: t, ~seed: int): t =>
   }
 
 // --- Games offered as one --------------------------------------------------------
-// **A family is one game to a player and several boards to the app.** The pack is the
-// only thing the three Spiderettes differ in (see above), so a menu listing them
-// separately asks a player to choose the same game three times over: they belong on one
-// row, with the pack a control on it.
+// **A family is one game to a player and several boards to the app.** The three
+// Spiderettes differ in the pack alone (see above) and the three FreeCells in how much
+// of a game they are — so a menu listing each board separately asks a player to choose
+// the same game three times over. They belong on one row, with the choice a control on
+// it.
 //
 // Which boards are the same game is a fact about the boards, so it is settled here
 // rather than in the front end that draws that row — a list of ids hard-coded in a menu
-// is a second place to edit the day a fourth pack lands, and a silent one, since a list
-// that misses a variant still renders.
+// is a second place to edit the day a fourth variant lands, and a silent one, since a
+// list that misses one still renders.
 //
 // Each variant keeps its own id throughout: `?game=` still reaches every one of them, a
-// save is kept per game, and the deal numbers stay a promise per pack (the same number
-// shuffles a different deck on each).
+// save is kept per board, and the deal numbers stay a promise per variant (the same
+// number shuffles a different deck on each).
+
+// How a control offering a family tells its variants apart.
+//
+// `Pack` is **read the board's own deck**: the Spiderettes differ in nothing else, so
+// the mark is the suits in play and how many times each card is in the deck, and no
+// variant is written down twice — a board that changed its pack would say so with no
+// edit here.
+//
+// `Size` is **a word**, because the FreeCells differ in deck, cascades and cells at
+// once — 52 cards over eight columns, 20 over four, 16 over four — and no reading of one
+// board says which of the three it is. What tells those apart is what a player calls
+// them, so that is what is written down.
+type mark =
+  | Pack
+  | Size(string)
+
+// One board of a family, with what tells it apart from its siblings.
+type variant = {game: t, mark: mark}
+
 type family = {
+  // The family's own id, not a game's: what a front end files a remembered choice under.
+  id: string,
   name: string,
-  // In offering order — fewest suits first, the standard pack last, which is also
-  // easiest first — and that is the order a control cycling through them takes.
-  variants: array<t>,
+  // In offering order — easiest or smallest first — which is the order a control cycling
+  // through them takes.
+  variants: array<variant>,
   // What a player who has expressed no preference gets.
-  default: t,
+  default: variant,
 }
+
+// The full game, and the two short-deck boards under the same name. "Standard" is the
+// word for it *beside the other two*; on its own it is FreeCell, which is why this is
+// the family's business and not the board's `name`.
+let freecellStandard: variant = {game: freecell, mark: Size("Standard")}
+
+let freecellFamily: family = {
+  id: "freecell",
+  name: "FreeCell",
+  variants: [
+    freecellStandard,
+    {game: mini, mark: Size("Mini")},
+    {game: micro, mark: Size("Micro")},
+  ],
+  default: freecellStandard,
+}
+
+// The pack the game is usually meant by, and so what a player who hasn't chosen gets.
+let spideretteTwoSuit: variant = {game: spiderette, mark: Pack}
 
 let spideretteFamily: family = {
+  id: "spiderette",
   name: "Spiderette",
-  variants: [spiderette1, spiderette, spiderette4],
-  default: spiderette,
+  variants: [{game: spiderette1, mark: Pack}, spideretteTwoSuit, {game: spiderette4, mark: Pack}],
+  default: spideretteTwoSuit,
 }
 
-// Every family. One today; a second joins here.
-let families: array<family> = [spideretteFamily]
+// Every family. A third joins here.
+let families: array<family> = [freecellFamily, spideretteFamily]
 
 // The family a board belongs to, or `None` for a board that is a game on its own —
-// which is also the question a caller asks before offering a pack control at all.
+// which is also the question a caller asks before offering the choice at all.
 let familyOf = (game: t): option<family> =>
-  families->Array.find(family => family.variants->Array.some(variant => variant.id == game.id))
+  families->Array.find(family => family.variants->Array.some(v => v.game.id == game.id))
 
-// The next pack in the family's cycle, wrapping at the end: what a control offering the
-// whole family from one place advances to. A board in no family stays where it is.
-let nextInFamily = (game: t): t =>
-  switch familyOf(game) {
-  | None => game
-  | Some(family) =>
-    let here = family.variants->Array.findIndex(variant => variant.id == game.id)
-    family.variants->Array.get(mod(here + 1, Array.length(family.variants)))->Option.getOr(game)
-  }
-
-// Whether this board is the one its family's row stands on. A list draws the family
-// once, in its leading variant's place, so the row keeps that place whichever pack the
-// player has it wearing — a row that moved as the pack changed would be a row that
-// walked out from under the thumb about to tap it.
-let leadsFamily = (game: t): bool =>
-  familyOf(game)
-  ->Option.flatMap(family => family.variants->Array.get(0))
-  ->Option.mapOr(false, first => first.id == game.id)
+// …and the board as its family holds it, mark and all. Which variants a menu actually
+// offers is the menu's own business — a build or a feature flag can be showing some of
+// them and not others — so *cycling* through them belongs to whoever draws the control,
+// and what lives here is only which boards are siblings and how each is told apart.
+let variantOf = (game: t): option<variant> =>
+  familyOf(game)->Option.flatMap(family => family.variants->Array.find(v => v.game.id == game.id))
 
 // --- Addressing piles by role ------------------------------------------
 // How a caller targets a *group*: the deal fills only the cascades, auto-collect and

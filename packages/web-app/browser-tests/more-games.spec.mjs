@@ -31,11 +31,11 @@ const reopenMenu = async (page) => {
 }
 
 // The Games section's rows, top-level in the main menu — the name buttons, since what
-// this file asks is which games are *listed*. The Spiderette row carries a second button
-// beside its name (the pack it is played with), which is a control on a row rather than
-// a row: `game-pack.spec.mjs` is where that one is asked about.
+// this file asks is which games are *listed*. A family's row carries a second button
+// beside its name (which of the family it is showing), a control on a row rather than a
+// row: `game-variant.spec.mjs` is where that one is asked about.
 const gameRows = (page) =>
-  page.locator("nav[aria-label='Games'] .menu-row:not(.menu-game-row__pack)")
+  page.locator("nav[aria-label='Games'] .menu-row:not(.menu-game-row__variant)")
 
 // …and the Debug screen's "games" disclosure, which holds the ones that haven't been
 // released into that section. It isn't placed at all when it has no entries.
@@ -72,18 +72,11 @@ const setMoreGames = async (page, on) => {
 }
 
 const RELEASED = ["FreeCell", "Simple Simon"]
-// Every game `Game.all` deals, in the scene list's order — which is the order the menu
-// takes, one place deciding it.
-const EVERY_GAME = [
-  "FreeCell",
-  "Mini FreeCell",
-  "Micro FreeCell",
-  "Simple Simon",
-  // One row for the three Spiderette packs: they are one game with a pack segment on it
-  // (`game-pack.spec.mjs`), and the other two variants are reached by that segment
-  // rather than by a row of their own.
-  "Spiderette",
-]
+// …and what the flag adds, in the scene list's order — which is the order the menu takes,
+// one place deciding it. Not a row per game: a game that belongs to a family joins that
+// family's *segment* (`game-variant.spec.mjs`), so the four short decks and packs arrive
+// as one new row and one new segment on the row that was already there.
+const WITH_MORE_GAMES = ["FreeCell", "Simple Simon", "Spiderette"]
 
 test("lists every game up top once the flag is on, and empties the debug group", async ({
   page,
@@ -100,8 +93,10 @@ test("lists every game up top once the flag is on, and empties the debug group",
   await reopenMenu(page)
   await setMoreGames(page, true)
 
-  // On: every game in the main list, in the scene list's order…
-  await expect(gameRows(page)).toHaveText(EVERY_GAME)
+  // On: every game in the main list — the Spiderettes as a row of their own, the short
+  // FreeCells on a segment beside FreeCell…
+  await expect(gameRows(page)).toHaveText(WITH_MORE_GAMES)
+  await expect(page.locator(".menu-game-row__variant")).toHaveCount(2)
   // …and gone from the Debug screen, which drops the group rather than showing an
   // empty disclosure.
   await openDebugScreen(page)
@@ -112,6 +107,7 @@ test("lists every game up top once the flag is on, and empties the debug group",
   await reopenMenu(page)
   await setMoreGames(page, false)
   await expect(gameRows(page)).toHaveText(RELEASED)
+  await expect(page.locator(".menu-game-row__variant")).toHaveCount(0)
   await openDebugScreen(page)
   await expect(gameGroup(page)).toBeVisible()
 })

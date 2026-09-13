@@ -23,7 +23,6 @@ let debugLogKey = "pip.debugLog"
 let revealHiddenKey = "pip.revealHidden"
 let gameInfoKey = "pip.gameInfo"
 let moreGamesKey = "pip.moreGames"
-let gamePackKey = "pip.gamePack"
 let consoleDockKey = "pip.consoleDock"
 
 // An explicit "true"/"false" wins; anything else — missing, garbage, unreadable —
@@ -106,22 +105,28 @@ let saveGameInfo = (enabled: bool) => saveFlag(gameInfoKey, enabled)
 let loadMoreGames = (): bool => loadFlag(moreGamesKey, ~fallback=false)
 let saveMoreGames = (enabled: bool) => saveFlag(moreGamesKey, enabled)
 
-// Which pack the Games list's Spiderette row is wearing (`Game.familyOf`), as the
-// chosen variant's **game id** — the same string `?game=` and the save keys use, so a
-// pack is remembered as the game it actually is rather than as a suit count something
-// else would have to turn back into one.
+// Which variant of a family the Games list is offering (`Game.familyOf`), as the chosen
+// board's **game id** — the same string `?game=` and the save keys use, so a choice is
+// remembered as the game it actually is rather than as a suit count or a size word that
+// something else would have to turn back into one.
 //
-// Handed back raw, because what counts as a pack is `Game`'s to say and not storage's:
-// the reader resolves the id against the family and falls back to its default, so a
-// stale id, a garbage value and a variant this build has dropped are all one answer —
-// exactly how a remembered last game is read (`Main`'s `menuGameById`).
-let loadGamePack = (): option<string> =>
-  try getItem(gamePackKey)->Nullable.toOption catch {
+// A key per family rather than one key holding several, so a family joining or leaving
+// costs no stored-shape migration; `family` is the family's own id, which is why it is
+// stable across a rename of what a player sees.
+//
+// Handed back raw, because what counts as a variant is `Game`'s to say and not
+// storage's: the reader resolves the id against the family and falls back to its
+// default, so a stale id, a garbage value and a variant this build has dropped are all
+// one answer — exactly how a remembered last game is read (`Main`'s `menuGameById`).
+let variantKey = (~family: string) => "pip.variant." ++ family
+
+let loadVariant = (~family: string): option<string> =>
+  try getItem(variantKey(~family))->Nullable.toOption catch {
   | _ => None
   }
 
-let saveGamePack = (id: string) =>
-  try setItem(gamePackKey, id) catch {
+let saveVariant = (~family: string, id: string) =>
+  try setItem(variantKey(~family), id) catch {
   | _ => ()
   }
 

@@ -2,13 +2,14 @@
 open Vitest
 open TestDom
 
-let render = (~label="FreeCell", ~selected=false, ~onSelect=() => (), ~pack=?, ~onInfo=?) =>
-  Html.create(MenuGameRow.make({label, selected, onSelect, ?pack, ?onInfo}))
+let render = (~label="FreeCell", ~selected=false, ~onSelect=() => (), ~variant=?, ~onInfo=?) =>
+  Html.create(MenuGameRow.make({label, selected, onSelect, ?variant, ?onInfo}))
 
-// A row with a pack on it is a Spiderette row, so the mark is a real one rather than a
-// string invented here — what the segment shows is `GamePack`'s claim, tested there.
-let packOf = (game, ~onCycle=() => ()): MenuGameRow.pack => {
-  mark: GamePack.forDeck(game.Game.deck),
+// A row with a segment on it is a row of a real family, so the mark is a real one rather
+// than a string invented here — what the segment shows is `GameVariant`'s claim, tested
+// there.
+let variantOf = (game, ~onCycle=() => ()): MenuGameRow.variant => {
+  mark: Game.variantOf(game)->Option.getOrThrow->GameVariant.forVariant,
   onCycle,
 }
 
@@ -68,57 +69,69 @@ describe("MenuGameRow", () => {
     )
   })
 
-  test("puts the pack between the name and the i, all three siblings", () => {
+  test("puts the variant between the name and the i, all three siblings", () => {
     // The same reasoning as the "i": a button inside a button is markup the browser
-    // rewrites, and a tap on the pack would switch game on its way to changing it.
-    let row = render(~label="Spiderette", ~pack=packOf(Game.spiderette), ~onInfo=() => ())
+    // rewrites, and a tap on the segment would switch game on its way to changing it.
+    let row = render(~label="Spiderette", ~variant=variantOf(Game.spiderette), ~onInfo=() => ())
     expect(row->children->Array.map(tag))->toEqual(["BUTTON", "BUTTON", "BUTTON"])
     expect(
-      row->children->Array.map(classes)->Array.map(list => list->String.includes("pack")),
+      row->children->Array.map(classes)->Array.map(list => list->String.includes("__variant")),
     )->toEqual([false, true, false])
   })
 
-  test("keeps the tap that changes the pack off the one that opens the game", () => {
+  test("keeps the tap that changes the variant off the one that opens the game", () => {
     let log = []
     let row = render(
       ~label="Spiderette",
       ~onSelect=() => log->Array.push("select"),
-      ~pack=packOf(Game.spiderette, ~onCycle=() => log->Array.push("cycle")),
+      ~variant=variantOf(Game.spiderette, ~onCycle=() => log->Array.push("cycle")),
     )
-    row->find(".menu-game-row__pack")->Option.forEach(click)
-    row->find(".menu-row:not(.menu-game-row__pack)")->Option.forEach(click)
+    row->find(".menu-game-row__variant")->Option.forEach(click)
+    row->find(".menu-row:not(.menu-game-row__variant)")->Option.forEach(click)
     expect(log)->toEqual(["cycle", "select"])
   })
 
-  test("shows the pips, and a multiplier only where there is more than one pack", () => {
-    let row = render(~label="Spiderette", ~pack=packOf(Game.spiderette))
+  test("shows a pack as pips, with a multiplier only where there is more than one", () => {
+    let row = render(~label="Spiderette", ~variant=variantOf(Game.spiderette))
     expect(row->textIn(".menu-game-row__suits"))->toBe("♠♥")
     expect(row->textIn(".menu-game-row__copies"))->toBe("×2")
     // The standard pack, once: four suits and nothing after them.
-    let standard = render(~label="Spiderette", ~pack=packOf(Game.spiderette4))
+    let standard = render(~label="Spiderette", ~variant=variantOf(Game.spiderette4))
     expect(standard->textIn(".menu-game-row__suits"))->toBe("♠♥♦♣")
     expect(standard->findAll(".menu-game-row__copies")->Array.length)->toBe(0)
   })
 
-  test("names the game and the pack it is wearing, the pips being unspeakable", () => {
-    let row = render(~label="Spiderette", ~pack=packOf(Game.spiderette4))
-    let pack = row->find(".menu-game-row__pack")->Option.getOrThrow
-    expect(pack->attrOr("aria-label"))->toBe("Spiderette pack: 4 suits")
-    expect(pack->attrOr("type"))->toBe("button")
+  test("shows a size as the word itself, with no pips in it at all", () => {
+    let row = render(~label="FreeCell", ~variant=variantOf(Game.mini))
+    expect(row->textIn(".menu-game-row__word"))->toBe("Mini")
+    expect(row->findAll(".menu-game-row__suits")->Array.length)->toBe(0)
   })
 
-  test("carries the highlight across the seam, the pack being a state of the game", () => {
-    // The opposite of the "i", which never takes it: the pack is *which* Spiderette
+  test("names the game, what varies, and which one — a mark being no subject at all", () => {
+    let pack = render(~label="Spiderette", ~variant=variantOf(Game.spiderette4))
+    let segment = pack->find(".menu-game-row__variant")->Option.getOrThrow
+    expect(segment->attrOr("aria-label"))->toBe("Spiderette pack: 4 suits")
+    expect(segment->attrOr("type"))->toBe("button")
+    // …and the word case says as much about the other family, so a screen reader hears a
+    // control rather than a bare "Micro".
+    let size = render(~label="FreeCell", ~variant=variantOf(Game.micro))
+    expect(
+      size->find(".menu-game-row__variant")->Option.mapOr("", el => el->attrOr("aria-label")),
+    )->toBe("FreeCell size: Micro")
+  })
+
+  test("carries the highlight across the seam, the variant being a state of the game", () => {
+    // The opposite of the "i", which never takes it: the segment is *which* Spiderette
     // you are playing, so it is lit by the same rule the name is.
-    let row = render(~label="Spiderette", ~selected=true, ~pack=packOf(Game.spiderette))
-    expect(row->classes)->toBe("menu-game-row menu-game-row--packed")
-    expect(row->find(".menu-game-row__pack")->Option.mapOr("", classes))->toBe(
-      "menu-row menu-row--action menu-row--active menu-game-row__pack",
+    let row = render(~label="Spiderette", ~selected=true, ~variant=variantOf(Game.spiderette))
+    expect(row->classes)->toBe("menu-game-row menu-game-row--segmented")
+    expect(row->find(".menu-game-row__variant")->Option.mapOr("", classes))->toBe(
+      "menu-row menu-row--action menu-row--active menu-game-row__variant",
     )
   })
 
-  test("leaves the wrapper unpacked on a game played with one pack", () => {
-    // `--packed` is what the stylesheet joins the two boxes on, so it has to be the
+  test("leaves the wrapper unsegmented on a row with one variant to offer", () => {
+    // `--segmented` is what the stylesheet joins the two boxes on, so it has to be the
     // presence of the segment and nothing else.
     let row = render(~onInfo=() => ())
     expect(row->classes)->toBe("menu-game-row")
