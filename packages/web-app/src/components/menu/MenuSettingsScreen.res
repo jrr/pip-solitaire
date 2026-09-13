@@ -334,7 +334,7 @@ let make = ({model, dispatch, onClose, onBackToMenu, onOpenDebug}) => <>
               />
               <MenuToggleRow
                 label="Beta features"
-                desc="Show what's still in development: the games not yet released, and an 'i' opening what each game is."
+                desc="Turn on the features still in development."
                 on={model.betaFeatures}
                 onToggle={() => dispatch(ToggleBetaFeatures)}
               />
