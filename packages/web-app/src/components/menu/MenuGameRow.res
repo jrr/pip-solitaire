@@ -20,7 +20,7 @@
 // has to look like is how you end up with either a clumsy mark or a thumb-sized miss,
 // and the two spans here are what let each be judged on its own.
 //
-// `onInfo` absent is the flag off (see `MenuSettingsScreen`'s "Game info"), and a game
+// `onInfo` absent is the flag off (see `MenuSettingsScreen`'s "Beta features"), and a game
 // the list offers one of has no `variant`; with neither this renders *exactly* what the
 // list rendered before either existed — a bare `<MenuRow>`, no wrapper — so nothing
 // about the plain row's layout depends on a feature being on.

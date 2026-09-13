@@ -18,6 +18,7 @@
 
 import { expect, test } from "@playwright/test"
 import { settleBoard } from "./lib/board.mjs"
+import { setBetaFeatures } from "./lib/menu.mjs"
 
 test.use({ viewport: { width: 800, height: 1000 } })
 
@@ -26,26 +27,10 @@ const openMenu = async (page) => {
   await expect(page.locator("#menu-overlay")).toBeVisible()
 }
 
-const openSettings = async (page) => {
-  await page.getByRole("button", { name: "Settings", exact: true }).click()
-  await expect(page.getByRole("switch", { name: /^Auto-collect/ })).toBeVisible()
-}
-
 // Both families have boards that aren't released yet, and a family is collapsed only over
-// the boards the list is offering — so every walk here starts by turning More Games on
-// the way a tester would: into Settings, ten taps on the title for the hidden rows
-// (`HiddenOptions`), the switch, then back to the games list.
-const showTheGames = async (page) => {
-  await openSettings(page)
-  for (let i = 0; i < 10; i++) {
-    await page.locator(".menu-title").click()
-  }
-  const moreGames = page.getByRole("switch", { name: /^More Games/ })
-  await expect(moreGames).toBeVisible()
-  await moreGames.click()
-  await expect(moreGames).toHaveAttribute("aria-checked", "true")
-  await page.getByRole("button", { name: "Back to menu" }).click()
-}
+// the boards the list is offering — so every walk here starts by turning **Beta features**
+// on (`lib/menu.mjs`).
+const showTheGames = (page) => setBetaFeatures(page, true)
 
 // The rows' names, and each family's segment. The segments are addressed by their
 // accessible names — what a player's screen reader has, and what changes as the mark does

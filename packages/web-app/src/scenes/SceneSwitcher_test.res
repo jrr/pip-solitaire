@@ -303,7 +303,7 @@ describe("SceneSwitcher's promoted games", () => {
   })
 
   test("a game promoted after launch moves groups without a re-render of the scene", () => {
-    // What the More Games flag does: `~primary` answers differently on the next menu
+    // What the Beta features flag does: `~primary` answers differently on the next menu
     // render, and the game crosses from the debug group to a top-level row with no
     // scene torn down or mounted on the way. The list is asked afresh, so the row a
     // player taps is the one the flag says should be there now — not the one the app

@@ -56,7 +56,7 @@ type t = {
 // `~primary` names the scenes that get a top-level row in the menu, by id, on top of
 // the launch default — which gets one whether named or not, being home. It is a
 // function rather than a list because the answer can change while the app runs: `Main`
-// reads a feature flag in it ("More Games"), and a game promoted by that flag has to
+// reads a feature flag in it ("Beta features"), and a game promoted by that flag has to
 // leave the debug group and join the top-level rows on the very next render. An id
 // that names no scene is ignored. The rows come out in the *scene list's* order, so
 // the menu's order is decided in one place, not here as well.

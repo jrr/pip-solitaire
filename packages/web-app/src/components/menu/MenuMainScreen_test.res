@@ -135,7 +135,7 @@ describe("MenuMainScreen", () => {
     // would list beneath the first, which is what this section is a section for.
     //
     // Neither row is handed an `onInfo`, so these are the class lists of the plain
-    // row — the shape the list keeps while the Game info flag is off.
+    // row — the shape the list keeps while the Beta features flag is off.
     let taps = []
     let screen = render(
       ~games=[
@@ -156,7 +156,7 @@ describe("MenuMainScreen", () => {
   })
 
   test("gives a game an info button only when it was handed somewhere to go", () => {
-    // The Game info flag, as this screen sees it: a game with an `onInfo` gets the "i"
+    // The Beta features flag, as this screen sees it: a game with an `onInfo` gets the "i"
     // beside it, one without gets the plain full-width button it always had. Both
     // shapes in one render, because the flag is a *list*-wide fact everywhere else and
     // this is the only place that could quietly make it a per-row one.

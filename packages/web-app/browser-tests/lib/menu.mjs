@@ -3,6 +3,8 @@
 // Not a spec file — Playwright only collects `*.spec.mjs` from browser-tests/,
 // so helpers live here beside them.
 
+import { expect } from "@playwright/test"
+
 /**
  * The deal number the menu names, which four suites want and none of them owns:
  * the seed of the board on the table. It is the "this game" heading that says it,
@@ -16,3 +18,38 @@
  * wrong reason, and passes just as well against a seed that never changed.
  */
 export const menuSeed = (page) => page.locator('[aria-label="this game"] .menu-section__value')
+
+/**
+ * The Settings screen, from the menu's main one. Waiting on a row rather than on the
+ * title, so a walk that carries on to tap something is looking at a screen that has
+ * finished arriving.
+ */
+export const openSettings = async (page) => {
+  await page.getByRole("button", { name: "Settings", exact: true }).click()
+  await expect(page.getByRole("switch", { name: /^Auto-collect/ })).toBeVisible()
+}
+
+/**
+ * Flip **Beta features** the way a tester would, and come back to the games list: into
+ * Settings, ten taps on the title for the hidden rows (`HiddenOptions`), the switch,
+ * then Back to menu.
+ *
+ * The reveal is itself a *toggle* and it is persisted, so the taps are conditional: ten
+ * more on a screen already showing the rows would put them away again.
+ *
+ * One flag now stands in front of every half-finished feature, which is why this walk is
+ * here rather than copied into each suite that needs one of them on.
+ */
+export const setBetaFeatures = async (page, on) => {
+  await openSettings(page)
+  const beta = page.getByRole("switch", { name: /^Beta features/ })
+  if (!(await beta.isVisible())) {
+    for (let i = 0; i < 10; i++) {
+      await page.locator(".menu-title").click()
+    }
+    await expect(beta).toBeVisible()
+  }
+  await beta.click()
+  await expect(beta).toHaveAttribute("aria-checked", String(on))
+  await page.getByRole("button", { name: "Back to menu" }).click()
+}

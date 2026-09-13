@@ -287,13 +287,16 @@ let reportScene: ref<string => unit> = ref(_ => ())
 let options: ref<Options.t> = ref(Preferences.load())
 let tiltEnabled: ref<bool> = ref(Preferences.loadCardTilt())
 
-// The "More Games" flag, a ref for the same reason as the two above and read in two
+// The "Beta features" flag, a ref for the same reason as the two above and read in two
 // places the Elm model can't reach: the switcher's `~primary`, which files scenes into
 // menu groups afresh on every render, and `launchGame` below, which runs during module
 // init. Seeded from storage here and rewritten by the switch through
 // `settingsEnv.publish`, so a flip lands on the next menu render rather than the next
 // launch.
-let moreGames: ref<bool> = ref(Preferences.loadMoreGames())
+//
+// The rest of what the flag gates is drawn straight from the settings model, this ref
+// being only for the readers outside the chrome.
+let betaFeatures: ref<bool> = ref(Preferences.loadBetaFeatures())
 
 // The persisted "Console logging" preference (defaults off). Read once at
 // startup to seed both the model's toggle and the shared `DebugLog` gate, and the gate
@@ -351,7 +354,7 @@ let settingsEnv = MenuSettingsScreen.liveEnv(
   ~options,
   ~tiltEnabled,
   ~shakeActive,
-  ~moreGames,
+  ~betaFeatures,
   ~board=settingsBoard,
 )
 
@@ -769,7 +772,7 @@ let gameScene = (game: Game.t) => {
 // The games the menu offers players unconditionally, as its top-level Games rows — the
 // *released* games, as against everything `Game.all` knows how to deal. The rest stay a
 // level down, in the Debug screen's "games" group, until they're ready to be played —
-// or until the More Games flag lifts them out of it for a session (`menuGames` below).
+// or until the Beta features flag lifts them out of it for a session (`menuGames` below).
 // A game graduates by being added here and nowhere else: the switcher files it, the
 // menu draws it, and `?game=` already reached it.
 //
@@ -779,19 +782,19 @@ let gameScene = (game: Game.t) => {
 let releasedGames = [Game.freecell, Game.simpleSimon]
 
 // …and the games the menu is listing *right now*, which is the released ones unless
-// **More Games** is on, and then it is every game `Game.all` deals. The flag doesn't
+// **Beta features** is on, and then it is every game `Game.all` deals. The flag doesn't
 // release anything — it lifts the unfinished games out of the Debug screen's "games"
 // group for a session, and the group empties itself as they leave (see
 // `MenuDebugScreen`). A function rather than a value because the switch can flip
 // between two menu renders.
-let menuGames = (): array<Game.t> => moreGames.contents ? Game.all : releasedGames
+let menuGames = (): array<Game.t> => betaFeatures.contents ? Game.all : releasedGames
 
 // A scene id that names a game the menu lists, or `None`. Both halves of remembering
 // ask exactly this, so they ask it in one place: a stale id, a garbage value, a game
 // this build has since withdrawn and one the flag has since put back under Debug are
 // all the same answer, and all fall back to the default rather than to whatever scene
-// happens to lead the list. So a game played under More Games is resumed while the flag
-// is on, and quietly stops being the launch game once it is off.
+// happens to lead the list. So a game played under Beta features is resumed while the
+// flag is on, and quietly stops being the launch game once it is off.
 let menuGameById = (id: string): option<Game.t> => menuGames()->Array.find(game => game.id == id)
 
 // The game a bare launch opens on: the one last on the table, else the default. The
@@ -1053,7 +1056,7 @@ let openNamedDeal = (~game: Game.t, ~position: option<Scenario.named>): string =
 // **The Games list's rows**, from the switcher's primary scenes. The switcher hands over
 // scenes, not rows — which of them is current is the chrome's to know, being what a
 // re-render has to reflect — so the `selected` flag and the tap are joined up here. So is
-// the "i", which the **Game info flag** gates: absent, a row is the plain full-width
+// the "i", which the **Beta features flag** gates: absent, a row is the plain full-width
 // button it has always been. A scene id is a game id, so the facts its screen shows are a
 // lookup away — and a primary scene that names no game (there is none today) simply gets
 // no "i" rather than an info screen about nothing.
@@ -1068,7 +1071,7 @@ let openNamedDeal = (~game: Game.t, ~position: option<Scenario.named>): string =
 //
 // **Offered, not merely existing.** The scenes handed in are the games the menu is
 // listing this render (`menuGames`), and a family is collapsed only over those — so with
-// **More Games** off, FreeCell's family is the one board and the row has no segment at
+// **Beta features** off, FreeCell's family is the one board and the row has no segment at
 // all: Mini and Micro stay exactly as unreachable as they were. That is the whole of what
 // the flag now does to a family — it puts the unreleased boards on the segment instead of
 // into rows of their own.
@@ -1082,7 +1085,7 @@ let gameRows = (model, dispatch, scenes: array<SceneSwitcher.choice>): array<Men
   }
 
   let onInfo = (game: Game.t) =>
-    model.settings.gameInfo ? Some(() => dispatch(OpenGameInfo(GameInfo.forGame(game)))) : None
+    model.settings.betaFeatures ? Some(() => dispatch(OpenGameInfo(GameInfo.forGame(game)))) : None
 
   scenes->Array.filterMap((scene): option<MenuGameRow.props> => {
     let game = Game.byId(scene.id)

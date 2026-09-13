@@ -1,4 +1,5 @@
-// The More Games flag, from the switch that turns it on to the rows it moves.
+// The games the **Beta features** flag lists, from the switch that turns it on to the
+// rows it moves.
 //
 // A *join*, like `game-info.spec.mjs`, between parts each covered on their own: the
 // hidden switch persists a flag (`MenuSettingsScreen`), a ref carries it out of the
@@ -14,6 +15,7 @@
 
 import { expect, test } from "@playwright/test"
 import { settleBoard } from "./lib/board.mjs"
+import { openSettings, setBetaFeatures } from "./lib/menu.mjs"
 
 test.use({ viewport: { width: 800, height: 1000 } })
 
@@ -41,34 +43,9 @@ const gameRows = (page) =>
 // released into that section. It isn't placed at all when it has no entries.
 const gameGroup = (page) => page.locator(".scene-menu__group").filter({ hasText: "games" })
 
-const openSettings = async (page) => {
-  await page.getByRole("button", { name: "Settings", exact: true }).click()
-  await expect(page.getByRole("switch", { name: /^Auto-collect/ })).toBeVisible()
-}
-
 const openDebugScreen = async (page) => {
   await openSettings(page)
   await page.getByRole("button", { name: "Debug" }).click()
-}
-
-// Flip the feature the way a tester would, from the menu's main screen: into Settings,
-// ten taps on the title for the hidden rows (`HiddenOptions`) if they aren't already
-// out, the switch, then back to the games list.
-//
-// The reveal is a *toggle* and it is persisted, so the taps are conditional: ten more
-// on a screen already showing the rows would put them away again.
-const setMoreGames = async (page, on) => {
-  await openSettings(page)
-  const moreGames = page.getByRole("switch", { name: /^More Games/ })
-  if (!(await moreGames.isVisible())) {
-    for (let i = 0; i < 10; i++) {
-      await page.locator(".menu-title").click()
-    }
-    await expect(moreGames).toBeVisible()
-  }
-  await moreGames.click()
-  await expect(moreGames).toHaveAttribute("aria-checked", String(on))
-  await page.getByRole("button", { name: "Back to menu" }).click()
 }
 
 const RELEASED = ["FreeCell", "Simple Simon"]
@@ -76,7 +53,7 @@ const RELEASED = ["FreeCell", "Simple Simon"]
 // one place deciding it. Not a row per game: a game that belongs to a family joins that
 // family's *segment* (`game-variant.spec.mjs`), so the four short decks and packs arrive
 // as one new row and one new segment on the row that was already there.
-const WITH_MORE_GAMES = ["FreeCell", "Simple Simon", "Spiderette"]
+const WITH_BETA = ["FreeCell", "Simple Simon", "Spiderette"]
 
 test("lists every game up top once the flag is on, and empties the debug group", async ({
   page,
@@ -91,11 +68,11 @@ test("lists every game up top once the flag is on, and empties the debug group",
   await expect(gameGroup(page)).toBeVisible()
 
   await reopenMenu(page)
-  await setMoreGames(page, true)
+  await setBetaFeatures(page, true)
 
   // On: every game in the main list — the Spiderettes as a row of their own, the short
   // FreeCells on a segment beside FreeCell…
-  await expect(gameRows(page)).toHaveText(WITH_MORE_GAMES)
+  await expect(gameRows(page)).toHaveText(WITH_BETA)
   await expect(page.locator(".menu-game-row__variant")).toHaveCount(2)
   // …and gone from the Debug screen, which drops the group rather than showing an
   // empty disclosure.
@@ -105,7 +82,7 @@ test("lists every game up top once the flag is on, and empties the debug group",
   // …and back off again, which is the same walk in reverse: the rows the flag lifted
   // return to the group, and the group comes back with them.
   await reopenMenu(page)
-  await setMoreGames(page, false)
+  await setBetaFeatures(page, false)
   await expect(gameRows(page)).toHaveText(RELEASED)
   await expect(page.locator(".menu-game-row__variant")).toHaveCount(0)
   await openDebugScreen(page)
@@ -118,7 +95,7 @@ test("mounts a promoted game from its new row, and resumes it after a reload", a
   await page.goto("/?animate=off")
   await settleBoard(page)
   await openMenu(page)
-  await setMoreGames(page, true)
+  await setBetaFeatures(page, true)
 
   // The row mounts its game exactly as a released one's does — the menu closes, and
   // the board that comes up is Spiderette's: seven cascades over a stock.
@@ -142,7 +119,7 @@ test("mounts a promoted game from its new row, and resumes it after a reload", a
   // …and turning the flag off puts the game back under Debug, so the next bare launch
   // opens on FreeCell rather than on a game with no row to return to.
   await openMenu(page)
-  await setMoreGames(page, false)
+  await setBetaFeatures(page, false)
   await page.goto("/?animate=off")
   await settleBoard(page)
   await expect(page.locator(".drop-zone__slot--stock")).toHaveCount(0)
