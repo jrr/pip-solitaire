@@ -26,13 +26,20 @@ describe("MenuHeader", () => {
   test("puts the back button ahead of the title when there is somewhere to go", () => {
     let settings = render(~title="Settings", ~back=Some({label: "Back to menu", onClick: () => ()}))
     expect(settings->slots)->toEqual(["BUTTON", "H1", "BUTTON"])
-    // "‹ Back" is the same text on every screen, so the accessible name is the only
-    // thing that says *where* it goes.
+    // A bare chevron is the same mark on every screen, so the accessible name is the
+    // only thing that says *where* it goes — and, the mark being a drawn shape with
+    // no text in it at all, the only thing that says "back" either. Both halves are
+    // asserted: the name carries the meaning, and the icon is hidden from the tree
+    // rather than competing with it.
     expect(
       settings
       ->find(".menu-back")
       ->Option.mapOr("", b => b->attr("aria-label")->Option.getOr("")),
     )->toBe("Back to menu")
+    expect(settings->find(".menu-back")->Option.mapOr("", text))->toBe("")
+    expect(
+      settings->find(".menu-back__icon")->Option.mapOr("", el => el->attrOr("aria-hidden")),
+    )->toBe("true")
   })
 
   test("goes back when the back button is tapped", () => {
@@ -50,6 +57,24 @@ describe("MenuHeader", () => {
     let header = render(~title="Pip", ~onClose=() => taps := taps.contents + 1)
     header->find(".menu-close")->Option.forEach(click)
     expect(taps.contents)->toBe(1)
+  })
+
+  test("draws both of the header's marks, so neither is the odd one out", () => {
+    // A glyph and a drawn path either side of the same title read as coming from
+    // different places however closely their sizes are matched — which is what
+    // drawing only the chevron did. Whichever is changed next, it is the pair that
+    // has to stay a pair.
+    let settings = render(~title="Settings", ~back=Some({label: "Back to menu", onClick: () => ()}))
+    // `attrOr` rather than `classes`: on an SVG element `className` is an
+    // `SVGAnimatedString`, not a string, so `TestDom.classes` hands back an object.
+    expect(settings->findAll("svg")->Array.map(el => el->attrOr("class")))->toEqual([
+      "menu-back__icon",
+      "menu-close__icon",
+    ])
+    expect(settings->find(".menu-close")->Option.mapOr("", text))->toBe("")
+    expect(
+      settings->find(".menu-close__icon")->Option.mapOr("", el => el->attrOr("aria-hidden")),
+    )->toBe("true")
   })
 
   test("counts taps on the title only where a screen asked for them", () => {

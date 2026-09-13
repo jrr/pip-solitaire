@@ -21,7 +21,24 @@
 %%raw(`import "./MenuHeader.css"`)
 
 // A back button: `label` names where it returns to (it's the accessible name — the
-// visible text is always "‹ Back"), `onClick` goes there.
+// visible mark is always a bare chevron), `onClick` goes there.
+//
+// The word is in the label rather than on screen because the header's width is spent
+// on the title, and the title can be a game's name — text this header doesn't choose
+// and can't shorten. `label` is what a screen reader announces either way, so dropping
+// the visible word costs nothing there.
+//
+// **Both marks are drawn, not set**, and that is a pair decision rather than two
+// separate ones: a glyph and a stroked path sitting either side of the same title
+// read as coming from different places however closely their sizes are matched. "‹"
+// was the worse of the two — a quotation mark, with modulation, angled terminals and
+// about 6×13px of ink in a 32px box — but drawing only it was what made the ✕ look
+// wrong. They share a viewBox, a stroke weight and `currentColor`; the same trade
+// `TopBar`'s undo icon makes.
+//
+// The ✕ is drawn *smaller* than the chevron, not the same: it fills its square where
+// a chevron fills a tall slice of one, so equal sizes are not equal weights. See
+// MenuHeader.css for the numbers.
 type back = {
   label: string,
   onClick: unit => unit,
@@ -39,7 +56,15 @@ let make = ({title, back, onTitleTap, onClose}) =>
     {switch back {
     | Some({label, onClick}) =>
       <button className="menu-back" onClick={_ => onClick()} type_="button" ariaLabel={label}>
-        {Html.string("‹ Back")}
+        <svg className="menu-back__icon" viewBox="0 0 24 24" ariaHidden="true" focusable="false">
+          <path
+            d="M15 5 L8 12 L15 19"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2.5"
+            strokeLinejoin="round"
+          />
+        </svg>
       </button>
     | None => Html.empty
     }}
@@ -47,6 +72,14 @@ let make = ({title, back, onTitleTap, onClose}) =>
       {Html.string(title)}
     </h1>
     <button className="menu-close" onClick={_ => onClose()} type_="button" ariaLabel="Close menu">
-      {Html.string("✕")}
+      <svg className="menu-close__icon" viewBox="0 0 24 24" ariaHidden="true" focusable="false">
+        <path
+          d="M6 6 L18 18 M18 6 L6 18"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2.5"
+          strokeLinejoin="round"
+        />
+      </svg>
     </button>
   </div>

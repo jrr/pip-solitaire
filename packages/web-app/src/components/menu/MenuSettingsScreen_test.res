@@ -20,6 +20,7 @@ let model = (
   ~wiggle=Motion.Off,
   ~wantsShake=false,
   ~notchDisplay=false,
+  ~gameInfo=false,
   ~revealed=false,
   ~taps=0,
 ): MenuSettingsScreen.model => {
@@ -28,6 +29,7 @@ let model = (
   wiggle,
   wantsShake,
   notchDisplay,
+  gameInfo,
   hidden: {revealed, taps},
 }
 
@@ -73,6 +75,7 @@ describe("MenuSettingsScreen", () => {
     // the screen at all.
     let labels = rowLabels(render(~model=model(~revealed=false)))
     expect(labels->Array.includes("Wiggle Waggle"))->toBe(false)
+    expect(labels->Array.includes("Game info"))->toBe(false)
   })
 
   test("slots the hidden settings in beside the others once revealed, not under one", () => {
@@ -82,12 +85,13 @@ describe("MenuSettingsScreen", () => {
       "Auto-collect",
       "Sloppy placement",
       "Wiggle Waggle",
+      "Game info",
       "Display content around notch",
     ])
   })
 
   test("sends each switch's own message", () => {
-    // Four rows that look alike: a crossed wire here would be invisible. Wiggle Waggle
+    // Five rows that look alike: a crossed wire here would be invisible. Wiggle Waggle
     // is shown listening so that its tap is the one branch that resolves to a message
     // synchronously — turning it *on* asks the OS first (`askMotion`).
     let (screen, sent) = renderRecording(~model=model(~revealed=true, ~wiggle=Motion.On))
@@ -96,6 +100,7 @@ describe("MenuSettingsScreen", () => {
       MenuSettingsScreen.ToggleAutoCollect,
       ToggleCardTilt,
       WiggleOff,
+      ToggleGameInfo,
       ToggleNotchDisplay,
     ])
   })
@@ -109,6 +114,9 @@ describe("MenuSettingsScreen", () => {
     ])
     expect(onRowLabels(render(~model=model(~revealed=true, ~wiggle=Motion.On))))->toEqual([
       "Wiggle Waggle",
+    ])
+    expect(onRowLabels(render(~model=model(~revealed=true, ~gameInfo=true))))->toEqual([
+      "Game info",
     ])
   })
 
@@ -232,6 +240,16 @@ describe("MenuSettingsScreen.update", () => {
     let (next, log, _) = run(~model=model(), WiggleResolved(Motion.Unavailable(NoSensor)))
     expect(next.wiggle)->toEqual(Motion.Unavailable(NoSensor))
     expect(log)->toEqual(["publish", "persist"])
+  })
+
+  test("writes the game-info flag down and asks nothing of the board or the page", () => {
+    // A feature flag: what it gates is drawn by the menu, which renders from this model
+    // anyway. Reaching for `publish` or `root` here would mean something outside the
+    // chrome had started reading it.
+    let (next, log, saved) = run(~model=model(), ToggleGameInfo)
+    expect(next.gameInfo)->toBe(true)
+    expect(log)->toEqual(["persist"])
+    expect(saved->Option.map(s => s.gameInfo))->toEqual(Some(true))
   })
 
   test("counts the first nine title taps quietly and persists the tenth", () => {

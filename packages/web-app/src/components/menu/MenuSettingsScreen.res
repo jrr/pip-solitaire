@@ -49,8 +49,13 @@ type model = {
   // into the corner wings beside the notch; off clamps every control inside the safe
   // area.
   notchDisplay: bool,
+  // "Game info": the "i" beside each game in the menu, and the screen it opens
+  // (`<MenuGameRow>`, `<MenuGameInfoScreen>`). A feature flag rather than a preference —
+  // the screen is a pass short of what it's meant to be — which is why it is
+  // hidden and why it defaults off.
+  gameInfo: bool,
   // The hidden settings and the run of taps that reveals them (`HiddenOptions`). Today
-  // the only hidden row is Wiggle Waggle. A hidden row says nothing about whether its
+  // that is Wiggle Waggle and Game info. A hidden row says nothing about whether its
   // setting is *on*: hiding leaves it running.
   hidden: HiddenOptions.t,
 }
@@ -61,6 +66,7 @@ type msg =
   | WiggleOff // the Wiggle Waggle switch turned off — stop listening, square up
   | WiggleResolved(Motion.state) // a motion-permission request resolved to a new state
   | ToggleNotchDisplay
+  | ToggleGameInfo
   | TitleTapped // a tap on this screen's title — every ten flip the hidden settings
 
 // --- The reach out of the screen ----------------------------------------------
@@ -117,6 +123,7 @@ let liveEnv = (
     Preferences.saveCardTilt(model.cardTilt)
     Preferences.saveWantsShake(model.wantsShake)
     Preferences.saveNotchDisplay(model.notchDisplay)
+    Preferences.saveGameInfo(model.gameInfo)
     Preferences.saveRevealHidden(model.hidden.revealed)
   },
 }
@@ -133,6 +140,7 @@ let init = (): model => {
     wiggle: Motion.initialState(~wantsShake),
     wantsShake,
     notchDisplay: Preferences.loadNotchDisplay(),
+    gameInfo: Preferences.loadGameInfo(),
     hidden: HiddenOptions.initial(~revealed=Preferences.loadRevealHidden()),
   }
 }
@@ -224,6 +232,12 @@ let update = (env: env, msg, model) =>
         env.persist(model)
       },
     )
+  // A feature flag, so there is nothing live to publish and nothing for the board to do:
+  // what it gates is drawn by the *menu*, which re-renders from this model on the very
+  // next pass. Persisting it is the whole effect.
+  | ToggleGameInfo =>
+    let model = {...model, gameInfo: !model.gameInfo}
+    (model, () => env.persist(model))
   // Every tenth tap flips the settings that aren't ready to be found yet into or out of
   // view, and persists that so the gesture is performed once per device rather than once
   // per launch. Hiding them again leaves whatever they switched on running — see
@@ -295,11 +309,20 @@ let make = ({model, dispatch, onClose, onBackToMenu, onOpenDebug}) => <>
         // a player yet, but reachable on a test device. Ten more taps hide the rows
         // again *without* turning any off, so an absent row here doesn't mean its
         // setting is off — Wiggle Waggle can still be jostling a board with no switch
-        // on screen to stop it.
+        // on screen to stop it, and Game info can still be putting an "i" beside every
+        // game in the menu.
         model.hidden.revealed
-          ? <MenuWiggleRow
-              state={model.wiggle} onToggle={() => askMotion(model.wiggle, dispatch)}
-            />
+          ? <>
+              <MenuWiggleRow
+                state={model.wiggle} onToggle={() => askMotion(model.wiggle, dispatch)}
+              />
+              <MenuToggleRow
+                label="Game info"
+                desc="Put an 'i' beside each game, opening what it is and how it's played."
+                on={model.gameInfo}
+                onToggle={() => dispatch(ToggleGameInfo)}
+              />
+            </>
           : Html.empty
       }
       <MenuToggleRow

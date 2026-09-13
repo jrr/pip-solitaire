@@ -23,9 +23,11 @@
 //     link went is the only confirmation there is, and it's the only game button that
 //     ever renders *disabled* — on a board with no seed to name;
 //   - a **"Games"** section — the games this build offers as top-level rows, FreeCell
-//     and Simple Simon today. They arrive as `games`, a list of `MenuRow.entry` the
+//     and Simple Simon today. They arrive as `games`, a list of `MenuGameRow.props` the
 //     switcher's scene list is turned into, and are drawn here — data rather than a
-//     node the switcher builds and this screen splices in (see `games` below);
+//     node the switcher builds and this screen splices in (see `games` below). A row is
+//     the game's name, and — behind the Game info flag — an "i" beside it that opens
+//     what that game is;
 //   - --- the space between top and bottom grows here (`menu-section--bottom`) ---
 //   - a single **Settings** button (`onOpenSettings`) low in the menu, just above the
 //     About footer — it takes over the pane with the Settings screen.
@@ -62,7 +64,11 @@ type props = {
   // rather than the switcher's own DOM: the scene it has mounted is a value
   // the chrome holds, so the highlight moves the way every other row's state does —
   // through the diff, on the next render.
-  games: array<MenuRow.entry>,
+  //
+  // A `<MenuGameRow>`'s own props rather than a `MenuRow.entry`, because a game's row
+  // carries one thing the other lists' rows don't: the "i" that opens its info screen,
+  // absent while the feature flag is off.
+  games: array<MenuGameRow.props>,
   onOpenSettings: unit => unit,
 }
 
@@ -129,9 +135,13 @@ let make = ({
   </MenuSection>
   <MenuSection label="Games" heading="Games" tag=Nav>
     {games
-    ->Array.map(entry =>
-      <MenuRow
-        label={entry.label} selected=?{entry.selected} onClick={entry.onSelect} key={entry.label}
+    ->Array.map(game =>
+      <MenuGameRow
+        label={game.label}
+        selected={game.selected}
+        onSelect={game.onSelect}
+        onInfo=?{game.onInfo}
+        key={game.label}
       />
     )
     ->Html.array}

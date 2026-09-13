@@ -15,7 +15,7 @@ let render = (
   ~onRestart=() => (),
   ~onShareDeal=() => (),
   ~onOpenSettings=() => (),
-  ~games: array<MenuRow.entry>=[],
+  ~games: array<MenuGameRow.props>=[],
 ) =>
   Html.create(
     MenuMainScreen.make({
@@ -133,6 +133,9 @@ describe("MenuMainScreen", () => {
     // — `menu-row--active` plus `aria-current` — on the scene mounted. The switcher
     // builds no DOM of its own, so this is where its rows are pinned. A second game
     // would list beneath the first, which is what this section is a section for.
+    //
+    // Neither row is handed an `onInfo`, so these are the class lists of the plain
+    // row — the shape the list keeps while the Game info flag is off.
     let taps = []
     let screen = render(
       ~games=[
@@ -150,6 +153,33 @@ describe("MenuMainScreen", () => {
     // …and each row runs its own action.
     rows->Array.forEach(click)
     expect(taps)->toEqual(["freecell", "spider"])
+  })
+
+  test("gives a game an info button only when it was handed somewhere to go", () => {
+    // The Game info flag, as this screen sees it: a game with an `onInfo` gets the "i"
+    // beside it, one without gets the plain full-width button it always had. Both
+    // shapes in one render, because the flag is a *list*-wide fact everywhere else and
+    // this is the only place that could quietly make it a per-row one.
+    let opened = []
+    let screen = render(
+      ~games=[
+        {
+          label: "FreeCell",
+          selected: true,
+          onSelect: () => (),
+          onInfo: () => opened->Array.push("FreeCell"),
+        },
+        {label: "Simple Simon", selected: false, onSelect: () => ()},
+      ],
+    )
+    expect(
+      screen->findAll("nav .menu-game-row__info")->Array.map(el => el->attrOr("aria-label")),
+    )->toEqual(["About FreeCell"])
+    screen->findAll("nav .menu-game-row__info")->Array.forEach(click)
+    expect(opened)->toEqual(["FreeCell"])
+    // …and the rows themselves are unchanged: two of them, in order, whichever shape
+    // each took.
+    expect(screen->findAll("nav .menu-row")->Array.map(text))->toEqual(["FreeCell", "Simple Simon"])
   })
 
   test("hangs the Settings button off the bottom group, above the About footer", () => {

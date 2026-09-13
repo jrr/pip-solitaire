@@ -155,6 +155,10 @@ type msg =
   | BackToMenu // the Settings screen's back button — swap back to the main menu
   | OpenDebug // the Settings screen's Debug row — swap to the Debug screen
   | BackToSettings // the Debug screen's back button — swap back to Settings
+  // The "i" beside a game's row — swap to that game's info screen. The *facts* travel,
+  // not the id: `GameInfo.forGame` is what turns a game into them, and the view has
+  // already had to resolve the game to know there is one.
+  | OpenGameInfo(GameInfo.t)
   // Everything the Settings screen does, in one constructor. The screen's own messages
   // travel up inside it and go straight back down to its `update`; what each of them
   // means is that file's business, not this one's.
@@ -475,6 +479,10 @@ let update = (msg, model) =>
       {...model, menuScreen: Menu.Main, settings: MenuSettingsScreen.freshVisit(model.settings)},
       Html.noEffect,
     )
+  // A game's info screen. Its way back is `BackToMenu` above — the main menu is where
+  // the "i" was tapped, and the game it is about need not be the one on the table, so
+  // there is nothing here that Settings' own return doesn't already do.
+  | OpenGameInfo(info) => ({...model, menuScreen: Menu.GameInfo(info)}, Html.noEffect)
   // Opening the Debug screen clears the previous visit's share link rather than
   // leaving it up: the board may well have moved on since, and a stale link is worse
   // than a briefly disabled button. The view kicks off a fresh encode alongside this
@@ -944,11 +952,13 @@ let openNamedDeal = (~game: Game.t, ~position: option<Scenario.named>): string =
   }
 }
 
-// The menu's four prop records. Each is the screen's own contract with this
-// chrome, built here and handed to `<Menu>` whole — the pane places whichever screen
-// `menuScreen` names and never looks inside. Grouping them this way is what lets a
-// new setting be declared once in `Main` and once on the screen that shows it,
-// rather than a third and fourth time on the way through the pane.
+// The menu's prop records, one per screen — and one *builder*, for the info screen,
+// whose subject arrives with the screen rather than from the model's other fields. Each
+// is the screen's own contract with this chrome, built here and handed to `<Menu>`
+// whole — the pane places whichever screen `menuScreen` names and never looks inside.
+// Grouping them this way is what lets a new setting be declared once in `Main` and once
+// on the screen that shows it, rather than a third and fourth time on the way through
+// the pane.
 
 // The main screen: re-deal the board — at random or at a number typed in — share its
 // deal number, pick a game, go on to Settings.
@@ -1002,10 +1012,22 @@ let mainScreen = (model, dispatch): MenuMainScreen.props => {
   // says is mounted. The switcher hands over scenes, not rows — which of them is
   // current is the chrome's to know, being what a re-render has to reflect — so the
   // `selected` flag and the tap are joined up here.
-  games: switcher.primaryScenes->Array.map((scene): MenuRow.entry => {
+  //
+  // …and so is the "i", which the **Game info flag** gates: absent, the row is the plain
+  // full-width button it has always been. A scene id is a game id, so the facts the
+  // screen shows are a lookup away — and a primary scene that names no game (there is
+  // none today) simply gets no "i" rather than an info screen about nothing.
+  games: switcher.primaryScenes->Array.map((scene): MenuGameRow.props => {
     label: scene.label,
     selected: model.activeScene == Some(scene.id),
     onSelect: () => switcher.select(scene.id),
+    onInfo: ?{
+      model.settings.gameInfo
+        ? Game.byId(scene.id)->Option.map(game =>
+            () => dispatch(OpenGameInfo(GameInfo.forGame(game)))
+          )
+        : None
+    },
   }),
   onOpenSettings: () => {
     // Re-detect the service-worker state each time Settings opens, so the button
@@ -1094,6 +1116,15 @@ let debugScreen = (model, dispatch): MenuDebugScreen.props => {
   debugStates,
 }
 
+// A game's info screen, built from the game the pane is showing it for — which is why
+// this is a function where the other three are records: the subject arrives with the
+// screen (`Menu.screen`), not from the model's other fields.
+let gameInfoScreen = (dispatch, info: GameInfo.t): MenuGameInfoScreen.props => {
+  info,
+  onClose: () => dispatch(CloseMenu),
+  onBackToMenu: () => dispatch(BackToMenu),
+}
+
 // The adaptive update-check control, or `None` while the service-worker state
 // is still being detected — and on a browser that has no `serviceWorker` at all,
 // where there is nothing a button could do. `Refresh.mode` is what decides its shape:
@@ -1130,12 +1161,14 @@ let aboutFooter = (model, dispatch): AboutFooter.props => {
   buildTime: model.buildTime,
   updateVisible: model.updateAvailable,
   onReload: () => dispatch(Reload),
-  // Shown on the Settings and Debug screens once a worker state has been detected,
-  // and never on the main menu — which is where the detection is kicked off (see
-  // `mainScreen`'s `onOpenSettings` above). Both halves of that rule are known here,
-  // so the footer takes a ready-made node and stays a dumb layout.
+  // Shown on the Settings and Debug screens once a worker state has been detected, and
+  // never on the two screens a *player* is on — the main menu, which is where the
+  // detection is kicked off (see `mainScreen`'s `onOpenSettings` above), and a game's
+  // info screen, which is about the game rather than about the build. Both halves of
+  // that rule are known here, so the footer takes a ready-made node and stays a dumb
+  // layout.
   refresh: switch (model.menuScreen, refreshControl(model, dispatch)) {
-  | (Menu.Main, _) | (_, None) => Html.empty
+  | (Menu.Main, _) | (Menu.GameInfo(_), _) | (_, None) => Html.empty
   | (_, Some(control)) => RefreshControl.make(control)
   },
 }
@@ -1164,6 +1197,7 @@ let view = (model, dispatch) => <>
     main={mainScreen(model, dispatch)}
     settings={settingsScreen(model, dispatch)}
     debug={debugScreen(model, dispatch)}
+    gameInfo={info => gameInfoScreen(dispatch, info)}
     about={aboutFooter(model, dispatch)}
   />
   // Over the menu rather than inside it, and in the tree only while it's up: the field

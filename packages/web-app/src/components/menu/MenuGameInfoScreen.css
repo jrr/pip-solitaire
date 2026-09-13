@@ -1,0 +1,37 @@
+@layer components {
+  /* The game info screen (see MenuGameInfoScreen.res): the numbers line and the link
+     out. The header, the sections and the footer around them are the components the
+     screen composes, so what's left here is these two. */
+
+  /* "8 cascades · 4 cells · 52 cards". The mono stack — the one the seed value and the
+     board readout already use — is what keeps the digits lined up as the eye runs
+     across the three terms, and `letter-spacing` opens them out so the middots read as
+     separators rather than as part of a number. */
+  .game-info__numbers {
+    margin: 0;
+    font: 13px ui-monospace, "SF Mono", Menlo, monospace;
+    letter-spacing: 0.02em;
+    /* Centred, like the link under it. The panel is left-aligned throughout, but
+       these two are the screen's whole column, and one line ranged left under a
+       centred button reads as a mistake rather than as alignment. */
+    text-align: center;
+    color: var(--control-ink-muted);
+  }
+
+  /* The link out, given the menu's button box so it sits in the panel like every other
+     full-width control. `display: block` and the centred text are what an `<a>` needs
+     to take that shape — an inline element would hug its words and leave the border
+     wrapped around the text rather than around the row. */
+  .game-info__link {
+    display: block;
+    padding: var(--control-pad);
+    font: var(--control-font);
+    font-weight: 600;
+    text-align: center;
+    text-decoration: none;
+    color: var(--control-ink);
+    background: var(--control-bg);
+    border: var(--control-border);
+    border-radius: var(--control-radius);
+  }
+}

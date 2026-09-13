@@ -1,0 +1,92 @@
+@layer components {
+  /* The game row (see MenuGameRow.res): the game's name as a `.menu-row` like any
+     other, and the "i" that opens its info screen as a small circle standing beside
+     it — two separate controls rather than one segmented one.
+
+     Separate is what keeps the "i" the same mark on every row. A segmented control
+     would have to decide how much of the selected row's green to carry across the
+     seam, and whatever it decided would make the "i" mean one thing on the game you
+     are playing and another on the games you aren't. Detached, it doesn't participate
+     in the highlight at all. */
+
+  .menu-game-row {
+    display: flex;
+    align-items: center;
+    /* No gap: the "i" button is a 44px target around an 18px circle, so it carries
+       13px of transparent margin either side already. That spacing *is* the gap, and
+       leaving it at zero is what makes the two targets abut exactly rather than the
+       circle's reaching back over the name button's right edge. */
+    gap: 0;
+  }
+
+  /* The name takes the width. `min-width: 0` lets a long game name wrap inside its
+     own box rather than pushing the "i" off the panel's right edge. */
+  .menu-game-row .menu-row {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+
+  /* The target, not the mark: 44px square and painting nothing at all. The circle
+     inside is what a player sees; this is what a thumb has to hit, and the two are
+     different sizes on purpose.
+
+     It is exactly as tall as the row beside it, which is the same 44px floor
+     `.menu-row` takes (MenuRow.css). That is what keeps the target inside its own
+     row: sized past the row it would have to overhang into the 6px between rows,
+     and two neighbouring targets would start competing for the taps near the
+     boundary — with nothing to see, since neither paints. */
+  .menu-game-row__info {
+    display: flex;
+    flex: 0 0 auto;
+    align-items: center;
+    justify-content: center;
+    width: 2.75rem;
+    height: 2.75rem;
+    /* Half the difference between the target and the mark inside it, taken back off
+       the right so the *circle* — not the box around it — lands on the same edge
+       Enter Seed and the game buttons sit on. Without it the circle floats 13px
+       inside that edge and the games read as a narrower panel than the rows above.
+
+       The target keeps all 44px and hangs into the panel's 20px of right padding,
+       which is why this costs nothing: what it stops claiming goes to the name
+       button beside it, and the gap between name and circle is unchanged. */
+    margin-right: -13px;
+    padding: 0;
+    color: var(--control-ink-muted);
+    background: none;
+    border: none;
+    cursor: pointer;
+  }
+
+  /* The mark: a lowercase "i" in a circle, drawn rather than set as a character (ⓘ)
+     so its weight and size match the row's type instead of the font's idea of a
+     symbol. It keeps the control background as its fill, which is a shade *lighter*
+     than the panel it now sits on — the faint disc that leaves is the whole effect,
+     and there is no darker fill available: the panel is close enough to black that
+     every shade below it lands within 1.15:1 and reads as nothing. */
+  .menu-game-row__badge {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+    font: 600 12px "Libre Franklin", sans-serif;
+    line-height: 1;
+    color: var(--control-ink-muted);
+    background: var(--control-bg);
+    border: 1px solid currentcolor;
+    border-radius: 50%;
+  }
+
+  /* The ring belongs on the mark, not on the button. A button that paints nothing
+     still takes the browser's focus ring, and it would draw the 44px box — a hard
+     square around a small circle, which reads as a bug rather than as focus. */
+  .menu-game-row__info:focus-visible {
+    outline: none;
+  }
+
+  .menu-game-row__info:focus-visible .menu-game-row__badge {
+    outline: 2px solid #93c5fd;
+    outline-offset: 2px;
+  }
+}

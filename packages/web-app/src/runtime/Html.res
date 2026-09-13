@@ -56,6 +56,13 @@ type elementProps = {
   // because the raster scene passes a custom property (`--raster-card-w`).
   style?: string,
   onClick?: domEvent => unit,
+  // --- links out. The game info screen's Wikipedia link is the only `<a>` the app
+  // renders, and all three of these belong to it: `target="_blank"` because following
+  // a link in place would tear the board down mid-play, and `rel` because a page
+  // opened that way can otherwise reach back through `window.opener`.
+  href?: string,
+  target?: string,
+  rel?: string,
   // --- text entry. The seed dialog's field is the only one the diff owns (the debug
   // console's input is live DOM the module holds itself), and it is *controlled*:
   // `value` is written from the model every render and `onInput` reports each

@@ -18,6 +18,7 @@ let settings: MenuSettingsScreen.props = {
     wiggle: Motion.Off,
     wantsShake: false,
     notchDisplay: true,
+    gameInfo: false,
     hidden: {revealed: false, taps: 0},
   },
   dispatch: _ => (),
@@ -74,6 +75,9 @@ let render = (~seed, ~status): Html.element =>
       },
       settings,
       debug,
+      // The info screen's builder — scenery too, since `screen` is `Main` throughout
+      // and the pane never calls it.
+      gameInfo: info => {info, onClose: () => (), onBackToMenu: () => ()},
       about,
     }),
   )
