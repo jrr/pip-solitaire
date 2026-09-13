@@ -34,9 +34,24 @@
     gap: 0.75rem;
   }
 
+  /* The two glyph buttons, sized and spaced as a pair. `flex: 0 0 auto` is the
+     load-bearing half: as ordinary flex items they shrink before the title does, so a
+     title too long for the row breaks *them* first — "‹" and "Back" onto separate
+     lines while the title still had room. Whatever has to give, it is the title.
+
+     A game's name is the first title this header has ever had that it doesn't choose
+     itself, and the panel is only 20rem wide, so the room the pair doesn't take is
+     the room a name gets: the chevron alone rather than "‹ Back" is what lets a
+     two-word game name stay on one line down to a 360px viewport. */
+  .menu-back,
   .menu-close {
-    padding: 4px 10px;
-    font: 16px "Libre Franklin", sans-serif;
+    display: inline-flex;
+    flex: 0 0 auto;
+    align-items: center;
+    justify-content: center;
+    width: 2rem;
+    height: 2rem;
+    padding: 0;
     color: #cbd5e1;
     background: transparent;
     border: 1px solid #334155;
@@ -44,16 +59,40 @@
     cursor: pointer;
   }
 
-  /* The Settings screen's back button: sits on the left of the header
-     opposite the ✕, styled like the close button so the pair reads as a
-     matched set. Returns to the main menu without closing the pane. */
-  .menu-back {
-    padding: 4px 10px;
-    font: 14px "Libre Franklin", sans-serif;
-    color: #cbd5e1;
-    background: transparent;
-    border: 1px solid #334155;
-    border-radius: 8px;
-    cursor: pointer;
+  /* One square, stated once for both. Sized rather than padded because "‹" and "✕"
+     are different widths and different heights at any shared padding — which is what
+     had them at 32×30 and 35×26, a mismatch you see as soon as you look for it. They
+     are a matched pair flanking the title, so the box is the constant and the glyph
+     floats inside it.
+
+     2rem rather than the 44px a touch target wants: what the pair doesn't take, the
+     title gets, and a game's name needs every pixel of it to stay on one line at a
+     narrow width (see MenuHeader.res, and the header test in game-info.spec.mjs).
+     A bigger square is a wrapped title, which is the trade this size is making. */
+
+  /* The two marks, drawn rather than set (see MenuHeader.res). One stroke weight
+     across both, because a shared weight is most of what makes them read as one set.
+
+     The sizes differ, and deliberately: an ✕ reaches all four corners of its box
+     where a chevron only fills a tall slice of one, so drawing them at a matched
+     20px left the ✕ carrying visibly more ink than the button it answers. 18px is
+     that difference paid back. Match these two numbers to each other and the pair
+     stops looking balanced, which is the trap in "make them the same size".
+
+     Neither button holds any text, which is why there is no type on them above —
+     what the marks mean is carried by the accessible names. */
+  .menu-back__icon,
+  .menu-close__icon {
+    display: block;
+  }
+
+  .menu-back__icon {
+    width: 20px;
+    height: 20px;
+  }
+
+  .menu-close__icon {
+    width: 18px;
+    height: 18px;
   }
 }

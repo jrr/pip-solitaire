@@ -22,6 +22,16 @@
     justify-content: space-between;
     gap: 0.75rem;
     width: 100%;
+    /* 44px is the floor a touch target wants, and padding alone left the short rows
+       at 39. It is a floor rather than a height because most rows are already well
+       past it — a switch row carrying a description runs to 90 — so this reaches
+       only the three that were under: the games, and the Debug disclosure.
+
+       On `.menu-row` rather than on the games list, because a games row is a bare
+       `.menu-row` when the game info flag is off (see MenuGameRow.res). Scoped any
+       tighter, how tall a row stands would depend on whether a feature is switched
+       on. */
+    min-height: 2.75rem;
     padding: var(--control-pad);
     font: var(--control-font);
     color: var(--control-ink);
