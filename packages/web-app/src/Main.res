@@ -276,6 +276,14 @@ let reportScene: ref<string => unit> = ref(_ => ())
 let options: ref<Options.t> = ref(Preferences.load())
 let tiltEnabled: ref<bool> = ref(Preferences.loadCardTilt())
 
+// The "More Games" flag, a ref for the same reason as the two above and read in two
+// places the Elm model can't reach: the switcher's `~primary`, which files scenes into
+// menu groups afresh on every render, and `launchGame` below, which runs during module
+// init. Seeded from storage here and rewritten by the switch through
+// `settingsEnv.publish`, so a flip lands on the next menu render rather than the next
+// launch.
+let moreGames: ref<bool> = ref(Preferences.loadMoreGames())
+
 // The persisted "Console logging" preference (defaults off). Read once at
 // startup to seed both the model's toggle and the shared `DebugLog` gate, and the gate
 // is opened straight away — before the first board is built below — so a developer who
@@ -332,6 +340,7 @@ let settingsEnv = MenuSettingsScreen.liveEnv(
   ~options,
   ~tiltEnabled,
   ~shakeActive,
+  ~moreGames,
   ~board=settingsBoard,
 )
 
@@ -726,22 +735,33 @@ let gameScene = (game: Game.t) => {
     opening,
   )
 }
-// The games the menu offers players, as its top-level Games rows — the *released*
-// games, as against everything `Game.all` knows how to deal. The rest stay a level down,
-// in the Debug screen's "games" group, until they're ready to be played. A game
-// graduates by being added here and nowhere else: the switcher files it, the menu
-// draws it, and `?game=` already reached it.
+// The games the menu offers players unconditionally, as its top-level Games rows — the
+// *released* games, as against everything `Game.all` knows how to deal. The rest stay a
+// level down, in the Debug screen's "games" group, until they're ready to be played —
+// or until the More Games flag lifts them out of it for a session (`menuGames` below).
+// A game graduates by being added here and nowhere else: the switcher files it, the
+// menu draws it, and `?game=` already reached it.
 //
 // `Game.default` needs no entry — the launch scene has a row regardless, being home —
 // but is listed so the two facts read as one: these are the games, and that is the
 // first of them.
 let releasedGames = [Game.freecell, Game.simpleSimon]
 
-// A scene id that names a released game, or `None`. Both halves of remembering ask
-// exactly this, so they ask it in one place: a stale id, a garbage value and a game
-// this build has since withdrawn are all the same answer, and all fall back to the
-// default rather than to whatever scene happens to lead the list.
-let releasedById = (id: string): option<Game.t> => releasedGames->Array.find(game => game.id == id)
+// …and the games the menu is listing *right now*, which is the released ones unless
+// **More Games** is on, and then it is every game `Game.all` deals. The flag doesn't
+// release anything — it lifts the unfinished games out of the Debug screen's "games"
+// group for a session, and the group empties itself as they leave (see
+// `MenuDebugScreen`). A function rather than a value because the switch can flip
+// between two menu renders.
+let menuGames = (): array<Game.t> => moreGames.contents ? Game.all : releasedGames
+
+// A scene id that names a game the menu lists, or `None`. Both halves of remembering
+// ask exactly this, so they ask it in one place: a stale id, a garbage value, a game
+// this build has since withdrawn and one the flag has since put back under Debug are
+// all the same answer, and all fall back to the default rather than to whatever scene
+// happens to lead the list. So a game played under More Games is resumed while the flag
+// is on, and quietly stops being the launch game once it is off.
+let menuGameById = (id: string): option<Game.t> => menuGames()->Array.find(game => game.id == id)
 
 // The game a bare launch opens on: the one last on the table, else the default. The
 // board waiting on it comes back with it — each game keeps its own save — so this
@@ -754,7 +774,7 @@ let releasedById = (id: string): option<Game.t> => releasedGames->Array.find(gam
 // resolved ahead of this, but a deal number is not — hence the whole predicate rather
 // than a check for `?game=`.
 let launchGame = plainUrl
-  ? SavedGame.loadLastGame()->Option.flatMap(releasedById)->Option.getOr(Game.default)
+  ? SavedGame.loadLastGame()->Option.flatMap(menuGameById)->Option.getOr(Game.default)
   : Game.default
 
 let switcher = SceneSwitcher.render(
@@ -765,7 +785,7 @@ let switcher = SceneSwitcher.render(
   // link to mean what it says. `launchGame` is what keeps that true, by declining to
   // remember on exactly the opens that carry such a link.
   ~default=launchGame.id,
-  ~primary=releasedGames->Array.map(game => game.id),
+  ~primary=() => menuGames()->Array.map(game => game.id),
   // What the URL asked to open, as a scene id. `?game=` is checked first because it is
   // the more specific claim — it names a board, and a board's scene is its id, so it
   // answers "which scene" as a side effect of answering "which game". `?scene=` is what
@@ -797,7 +817,7 @@ let switcher = SceneSwitcher.render(
     // writes nothing, and neither does a game the menu doesn't offer, so the id read
     // back always names a game the menu leads with — the Gallery can never be what the
     // app opens on.
-    releasedById(scene.id)->Option.forEach(game => SavedGame.saveLastGame(game.id))
+    menuGameById(scene.id)->Option.forEach(game => SavedGame.saveLastGame(game.id))
     closeMenu.contents()
   },
   // A tap on the row for the game already showing: nothing mounts, so nothing above
@@ -1017,7 +1037,7 @@ let mainScreen = (model, dispatch): MenuMainScreen.props => {
   // full-width button it has always been. A scene id is a game id, so the facts the
   // screen shows are a lookup away — and a primary scene that names no game (there is
   // none today) simply gets no "i" rather than an info screen about nothing.
-  games: switcher.primaryScenes->Array.map((scene): MenuGameRow.props => {
+  games: switcher.primaryScenes()->Array.map((scene): MenuGameRow.props => {
     label: scene.label,
     selected: model.activeScene == Some(scene.id),
     onSelect: () => switcher.select(scene.id),

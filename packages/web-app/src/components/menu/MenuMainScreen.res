@@ -22,8 +22,8 @@
 //     *keeps* the menu open, because the line under the buttons reporting where the
 //     link went is the only confirmation there is, and it's the only game button that
 //     ever renders *disabled* — on a board with no seed to name;
-//   - a **"Games"** section — the games this build offers as top-level rows, FreeCell
-//     and Simple Simon today. They arrive as `games`, a list of `MenuGameRow.props` the
+//   - a **"Games"** section — the games this build offers as top-level rows: FreeCell
+//     and Simple Simon, and behind the More Games flag the ones still in development. They arrive as `games`, a list of `MenuGameRow.props` the
 //     switcher's scene list is turned into, and are drawn here — data rather than a
 //     node the switcher builds and this screen splices in (see `games` below). A row is
 //     the game's name, and — behind the Game info flag — an "i" beside it that opens

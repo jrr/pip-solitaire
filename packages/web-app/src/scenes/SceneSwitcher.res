@@ -8,11 +8,12 @@
 // hand is the job the diff exists to do, done by a module that must reach outside it.
 //
 // The rows are three groups, not a flat list — the primary games up top, and two
-// disclosures under the menu's "debug" header. Which games are primary is the
-// caller's say (`~primary`), the launch default always among them; the rest are
-// grouped **on `Scene.kind`, never on "is this the launch default?"**: that reads as
-// games-vs-demos only while there is exactly one game, and a further game would land
-// under "scenes" filed as a render demo.
+// disclosures under the menu's "debug" header. Which games are primary is the caller's
+// say (`~primary`), asked afresh each time rather than settled here, since a feature
+// flag can promote a game between one menu render and the next; the launch default is
+// always among them. The rest are grouped **on `Scene.kind`, never on "is this the
+// launch default?"**: that reads as games-vs-demos only while there is exactly one
+// game, and a further game would land under "scenes" filed as a render demo.
 //
 // Nothing is persisted *here*: the app launches into `~default`, or into the `~forced`
 // scene the URL named. Which scene `~default` is can itself be a remembered answer, but
@@ -28,7 +29,10 @@ type choice = {id: string, label: string}
 // the scene box. `scene` is the one real node here and the only thing that has to be
 // one, a scene mounting a foreign subtree into it.
 type t = {
-  primaryScenes: array<choice>,
+  // A thunk for the same reason the two below are: which scenes are primary is
+  // `~primary`'s answer *now*, and the menu that draws these rows re-renders whenever
+  // the flag behind that answer flips.
+  primaryScenes: unit => array<choice>,
   // The caller's *seed*, not a live reading: the initial activation happens in here
   // during module init, before the chrome's `dispatch` exists, so `Main` reads this
   // into its model and every later change arrives through `~onActivate`. `None` only
@@ -50,9 +54,12 @@ type t = {
 // a link always lands where it says, then the launch `~default`, then the first scene.
 //
 // `~primary` names the scenes that get a top-level row in the menu, by id, on top of
-// the launch default — which gets one whether named or not, being home. An id that
-// names no scene is ignored. The rows come out in the *scene list's* order, so the
-// menu's order is decided in one place, not here as well.
+// the launch default — which gets one whether named or not, being home. It is a
+// function rather than a list because the answer can change while the app runs: `Main`
+// reads a feature flag in it ("More Games"), and a game promoted by that flag has to
+// leave the debug group and join the top-level rows on the very next render. An id
+// that names no scene is ignored. The rows come out in the *scene list's* order, so
+// the menu's order is decided in one place, not here as well.
 //
 // `~onActivate` fires at the *start* of every activation, with the scene about to
 // mount, so the chrome can reset the per-scene actions it tracks — the top bar's New
@@ -62,7 +69,7 @@ type t = {
 // at it.
 let render = (
   ~default: option<string>=?,
-  ~primary: array<string>=[],
+  ~primary: unit => array<string>=() => [],
   ~forced: option<string>=?,
   ~onActivate: option<Scene.t => unit>=?,
   ~onReselect: option<unit => unit>=?,
@@ -87,7 +94,7 @@ let render = (
     default->Option.flatMap(byId)->Option.orElse(scenes[0])->Option.map(scene => scene.id)
 
   let isPrimary = (scene: Scene.t) =>
-    defaultId == Some(scene.id) || primary->Array.includes(scene.id)
+    defaultId == Some(scene.id) || primary()->Array.includes(scene.id)
 
   // A primary keeps its top-level row and appears in neither disclosure — including
   // when `~default` names a demo, where surfacing it up top *and* in the demos group
@@ -102,7 +109,7 @@ let render = (
       }
     }
 
-  let primaryScenes =
+  let primaryScenes = () =>
     scenes
     ->Array.filter(isPrimary)
     ->Array.map((scene): choice => {id: scene.id, label: scene.label})

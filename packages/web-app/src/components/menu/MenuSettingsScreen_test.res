@@ -21,6 +21,7 @@ let model = (
   ~wantsShake=false,
   ~notchDisplay=false,
   ~gameInfo=false,
+  ~moreGames=false,
   ~revealed=false,
   ~taps=0,
 ): MenuSettingsScreen.model => {
@@ -30,6 +31,7 @@ let model = (
   wantsShake,
   notchDisplay,
   gameInfo,
+  moreGames,
   hidden: {revealed, taps},
 }
 
@@ -76,6 +78,7 @@ describe("MenuSettingsScreen", () => {
     let labels = rowLabels(render(~model=model(~revealed=false)))
     expect(labels->Array.includes("Wiggle Waggle"))->toBe(false)
     expect(labels->Array.includes("Game info"))->toBe(false)
+    expect(labels->Array.includes("More Games"))->toBe(false)
   })
 
   test("slots the hidden settings in beside the others once revealed, not under one", () => {
@@ -86,12 +89,13 @@ describe("MenuSettingsScreen", () => {
       "Sloppy placement",
       "Wiggle Waggle",
       "Game info",
+      "More Games",
       "Display content around notch",
     ])
   })
 
   test("sends each switch's own message", () => {
-    // Five rows that look alike: a crossed wire here would be invisible. Wiggle Waggle
+    // Six rows that look alike: a crossed wire here would be invisible. Wiggle Waggle
     // is shown listening so that its tap is the one branch that resolves to a message
     // synchronously — turning it *on* asks the OS first (`askMotion`).
     let (screen, sent) = renderRecording(~model=model(~revealed=true, ~wiggle=Motion.On))
@@ -101,6 +105,7 @@ describe("MenuSettingsScreen", () => {
       ToggleCardTilt,
       WiggleOff,
       ToggleGameInfo,
+      ToggleMoreGames,
       ToggleNotchDisplay,
     ])
   })
@@ -117,6 +122,9 @@ describe("MenuSettingsScreen", () => {
     ])
     expect(onRowLabels(render(~model=model(~revealed=true, ~gameInfo=true))))->toEqual([
       "Game info",
+    ])
+    expect(onRowLabels(render(~model=model(~revealed=true, ~moreGames=true))))->toEqual([
+      "More Games",
     ])
   })
 
@@ -250,6 +258,16 @@ describe("MenuSettingsScreen.update", () => {
     expect(next.gameInfo)->toBe(true)
     expect(log)->toEqual(["persist"])
     expect(saved->Option.map(s => s.gameInfo))->toEqual(Some(true))
+  })
+
+  test("publishes the More Games flag as well as storing it, unlike the one above", () => {
+    // The difference is who reads it: the games the menu lists are filed by the scene
+    // switcher, outside the chrome's render, off a ref `publish` writes. Persist alone
+    // here would leave a flip to take effect on the *next* launch.
+    let (next, log, saved) = run(~model=model(), ToggleMoreGames)
+    expect(next.moreGames)->toBe(true)
+    expect(log)->toEqual(["publish", "persist"])
+    expect(saved->Option.map(s => s.moreGames))->toEqual(Some(true))
   })
 
   test("counts the first nine title taps quietly and persists the tenth", () => {

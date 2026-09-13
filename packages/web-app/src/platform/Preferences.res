@@ -22,6 +22,7 @@ let notchDisplayKey = "pip.notchDisplay"
 let debugLogKey = "pip.debugLog"
 let revealHiddenKey = "pip.revealHidden"
 let gameInfoKey = "pip.gameInfo"
+let moreGamesKey = "pip.moreGames"
 let consoleDockKey = "pip.consoleDock"
 
 // An explicit "true"/"false" wins; anything else — missing, garbage, unreadable —
@@ -95,6 +96,14 @@ let saveRevealHidden = (revealed: bool) => saveFlag(revealHiddenKey, revealed)
 // which is a second gesture in front of this one.
 let loadGameInfo = (): bool => loadFlag(gameInfoKey, ~fallback=false)
 let saveGameInfo = (enabled: bool) => saveFlag(gameInfoKey, enabled)
+
+// "More Games": whether the games that haven't been released into the main menu — the
+// short decks and the Spiderettes — are listed there beside FreeCell and Simple Simon
+// rather than a level down in the Debug screen. A feature flag like the one above, off
+// by default and reachable only from the hidden settings, and read at launch as well as
+// at each menu render: it decides which games a bare open may resume.
+let loadMoreGames = (): bool => loadFlag(moreGamesKey, ~fallback=false)
+let saveMoreGames = (enabled: bool) => saveFlag(moreGamesKey, enabled)
 
 // Persisted rather than session state, because the point of a placement you flip by
 // hand — rather than an automatic breakpoint — is that it stays flipped. `Top` is the
