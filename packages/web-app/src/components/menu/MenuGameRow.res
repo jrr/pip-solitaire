@@ -62,17 +62,7 @@ let variantSegment = (~label: string, ~selected: bool, variant: variant) =>
     ariaLabel={label ++ " " ++ variant.mark.noun ++ ": " ++ variant.mark.name}
     onClick={_ => variant.onCycle()}
   >
-    {switch variant.mark.mark {
-    | GameVariant.Word(word) => <span className="menu-game-row__word"> {Html.string(word)} </span>
-    | GameVariant.Pips({suits, copies}) =>
-      <>
-        <span className="menu-game-row__suits"> {Html.string(suits)} </span>
-        {switch copies {
-        | Some(copies) => <span className="menu-game-row__copies"> {Html.string(copies)} </span>
-        | None => Html.empty
-        }}
-      </>
-    }}
+    <MenuVariantMark mark={variant.mark} />
   </button>
 
 // The label says which game, because "Info" alone is four identical buttons to anyone

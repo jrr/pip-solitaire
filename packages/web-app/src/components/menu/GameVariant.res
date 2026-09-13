@@ -43,3 +43,10 @@ let forVariant = (variant: Game.variant): t =>
   | Game.Pack => pips(variant.game.deck)
   | Game.Size(word) => {mark: Word(word), name: word, noun: "size"}
   }
+
+// The word for what a *family* varies in, asked of the family rather than of one of its
+// boards: a family is one kind of variant throughout — the Spiderettes are packs and the
+// FreeCells sizes — so any of its variants answers for all of them, and the one that
+// always exists is the default. It is what heads the info screen's picker, which has a
+// family in hand and no one board it is about.
+let nounFor = (family: Game.family): string => forVariant(family.default).noun

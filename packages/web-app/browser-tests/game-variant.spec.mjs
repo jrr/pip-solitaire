@@ -14,7 +14,8 @@
 // stands exactly as tall as the name beside it, the pips being a size up from the row's
 // type; and the pips are drawn in the app's own suit face rather than in whatever the
 // platform keeps at U+2660 — which on a phone is the emoji face, and would be red hearts
-// in a monochrome menu.
+// in a monochrome menu. That last is the mark's own (`MenuVariantMark`), and so is taken
+// here for the picker on the info screen too, which wears the same one.
 
 import { expect, test } from "@playwright/test"
 import { settleBoard } from "./lib/board.mjs"
@@ -58,8 +59,8 @@ test("offers a family as one row, and cycles it in place", async ({ page }) => {
   await expect(gameNames(page)).toHaveText(["FreeCell", "Simple Simon", "Spiderette"])
   await expect(packs(page)).toHaveCount(1)
   await expect(packs(page)).toHaveAttribute("aria-label", "Spiderette pack: 2 suits")
-  // Pips and multiplier are separate spans held apart by the segment's own flex gap, so
-  // the text runs together and the *space* a player sees is the layout's.
+  // Pips and multiplier are separate spans held apart by the mark's own margin, so the
+  // text runs together and the *space* a player sees is the layout's.
   await expect(packs(page)).toHaveText("♠♥×2")
 
   // A tap changes the pack and nothing else: the menu is still open, the row is still
@@ -102,7 +103,7 @@ test("draws the pips in the app's own suit face, not the platform's", async ({ p
   await openMenu(page)
   await showTheGames(page)
 
-  const suits = page.locator(".menu-game-row__suits")
+  const suits = page.locator(".menu-variant-mark__suits")
   await expect(suits).toHaveCSS("font-family", /^"Pip Suits"/)
   // …and the face is really there to be used: the same subset the cards are drawn with
   // (`styles/fonts.css`), which carries the four pips and nothing else.

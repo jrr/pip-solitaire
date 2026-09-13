@@ -1,0 +1,54 @@
+@layer components {
+  /* The info screen's variant picker (see MenuVariantPicker.res): a family's boards as
+     one segmented control. The buttons carry `.menu-row`'s box and highlight already, so
+     what is here is the joining — equal shares of the width, and one seam between each
+     pair instead of two edges and a gap. */
+
+  .menu-variant-picker {
+    display: flex;
+    /* `stretch` rather than `center`: a mark that wrapped would otherwise leave its
+       button shorter than the two beside it, and three buttons of different heights read
+       as three controls rather than as one. */
+    align-items: stretch;
+  }
+
+  /* Equal shares — `1 1 0` rather than `1 1 auto`, so the three are sized by the control
+     and not by their marks: "Standard" is twice the width of "Mini", and a picker that
+     let each button fit its own word would put the seams somewhere different on every
+     family. */
+  .menu-variant-picker__choice {
+    flex: 1 1 0;
+    justify-content: center;
+    /* The marks are one line each and centred in their share; a long word is clipped
+       rather than allowed to widen its button past the others. */
+    min-width: 0;
+  }
+
+  /* One seam per pair: each button after the first is pulled back the width of one
+     border, so the two 1px edges land on each other as a single rule rather than a 2px
+     one. */
+  .menu-variant-picker__choice + .menu-variant-picker__choice {
+    margin-left: -1px;
+  }
+
+  /* …and the corners squared where they meet, so the three read as one control with two
+     divisions in it rather than as three controls side by side. */
+  .menu-variant-picker__choice:not(:first-child) {
+    border-top-left-radius: 0;
+    border-bottom-left-radius: 0;
+  }
+
+  .menu-variant-picker__choice:not(:last-child) {
+    border-top-right-radius: 0;
+    border-bottom-right-radius: 0;
+  }
+
+  /* The chosen one's border goes over its neighbours' rather than under. Painting order
+     is document order, so without this the button to the right of the highlighted one
+     covers the green edge they share with its own grey — which looks like the highlight
+     missing an edge, and only on one side of it. */
+  .menu-variant-picker__choice.menu-row--active {
+    position: relative;
+    z-index: 1;
+  }
+}

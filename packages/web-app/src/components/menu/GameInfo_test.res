@@ -58,6 +58,7 @@ describe("GameInfo.numbers", () => {
 
   test("says one cell rather than 1 cells", () => {
     let one: GameInfo.t = {
+      id: "solo",
       name: "Solo",
       cascades: 1,
       cells: 1,

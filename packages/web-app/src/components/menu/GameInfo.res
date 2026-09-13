@@ -13,6 +13,11 @@
 // patience itself, which is wrong about the game but never a dead end.
 
 type t = {
+  // The game this is about, which is also the board's scene id and its storage key.
+  // Carried so a screen showing these facts can find its way back to the `Game.t` they
+  // were read off — the info screen's variant picker asks which family the game belongs
+  // to — without the pane it travels through having to carry a second field beside it.
+  id: string,
   name: string,
   cascades: int,
   // 0 on a game with no free cells (Simple Simon, the Spiderettes), which is why
@@ -41,6 +46,7 @@ let deckSize = (deck: Cards.deck): int =>
   Array.length(deck.suits) * Array.length(deck.ranks) * deck.copies
 
 let forGame = (game: Game.t): t => {
+  id: game.id,
   name: game.name,
   cascades: Game.pilesOf(game, Game.Cascade)->Array.length,
   cells: Game.pilesOf(game, Game.FreeCell)->Array.length,
