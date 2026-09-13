@@ -49,9 +49,9 @@ type model = {
   // into the corner wings beside the notch; off clamps every control inside the safe
   // area.
   notchDisplay: bool,
-  // "Game info": the "i" segment beside each game in the menu, and the screen it opens
+  // "Game info": the "i" beside each game in the menu, and the screen it opens
   // (`<MenuGameRow>`, `<MenuGameInfoScreen>`). A feature flag rather than a preference —
-  // the screen is a pass short of what it's meant to be (#427) — which is why it is
+  // the screen is a pass short of what it's meant to be — which is why it is
   // hidden and why it defaults off.
   gameInfo: bool,
   // The hidden settings and the run of taps that reveals them (`HiddenOptions`). Today

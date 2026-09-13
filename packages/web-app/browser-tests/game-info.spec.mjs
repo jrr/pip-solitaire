@@ -6,9 +6,13 @@
 // (`MenuGameRow`), and the tap swaps the pane to a fourth screen (`Menu`). No single one
 // of those can see the chain, and the chain is what a player has.
 //
-// The segmented row is also a *measured* claim — two buttons that have to read as one
-// control, which is `.menu-game-row`'s flex row and the squared-off corners between the
-// segments (MenuGameRow.css). A stylesheet is only evaluated by a browser.
+// The row is also a set of *measured* claims, and a stylesheet is only evaluated by a
+// browser. Three of them are invisible when they break, which is why they are here at
+// all: the "i" is a 44px target around an 18px mark, so a change that sizes the button
+// to fit the circle would look identical and halve what a thumb has to hit; the target
+// abuts the name button exactly, so it steals none of "tap the game"; and it stays
+// clear of the next row's, so no tap opens the wrong game's screen. The fourth is the
+// circle sitting on the same edge the panel's other controls end on (MenuGameRow.css).
 
 import { expect, test } from "@playwright/test"
 import { settleBoard } from "./lib/board.mjs"

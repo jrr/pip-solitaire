@@ -1,5 +1,5 @@
-// The menu's **game info screen**: what a game *is*, reached from the "i" segment
-// beside its row in the Games list. `Menu` puts the About footer under it.
+// The menu's **game info screen**: what a game *is*, reached from the "i" beside its
+// row in the Games list. `Menu` puts the About footer under it.
 //
 // Its title is the game's name rather than a fixed caption, which is the one thing
 // that tells this screen apart from the other three at a glance — and why the subject
@@ -12,7 +12,7 @@
 //
 // **Scope is deliberately short of the design.** The screenshot of the opening board,
 // the paragraph describing play, and the "this game / Enter Seed" block below it are
-// later passes (#427); what is here is the numbers and the reference, and the layout is
+// later passes; what is here is the numbers and the reference, and the layout is
 // a plain column so that adding them is an insertion rather than a rework.
 
 %%raw(`import "./MenuGameInfoScreen.css"`)

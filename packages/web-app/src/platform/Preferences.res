@@ -89,7 +89,7 @@ let saveDebugLog = (enabled: bool) => saveFlag(debugLogKey, enabled)
 let loadRevealHidden = (): bool => loadFlag(revealHiddenKey, ~fallback=false)
 let saveRevealHidden = (revealed: bool) => saveFlag(revealHiddenKey, revealed)
 
-// The game info feature, off until it's finished (#427): the "i" segment beside each
+// The game info feature, off until it's finished: the "i" beside each
 // game in the menu, and the screen it opens. Persisted like the rest, so a device left
 // with it on keeps it across launches — and reachable only from the hidden settings,
 // which is a second gesture in front of this one.

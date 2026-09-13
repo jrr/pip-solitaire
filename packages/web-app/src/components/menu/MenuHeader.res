@@ -24,9 +24,9 @@
 // visible mark is always a bare chevron), `onClick` goes there.
 //
 // The word is in the label rather than on screen because the header's width is spent
-// on the title, and since #427 the title can be a game's name — text this header
-// doesn't choose and can't shorten. `label` is what a screen reader announces either
-// way, so dropping the visible word costs nothing there.
+// on the title, and the title can be a game's name — text this header doesn't choose
+// and can't shorten. `label` is what a screen reader announces either way, so dropping
+// the visible word costs nothing there.
 //
 // **Both marks are drawn, not set**, and that is a pair decision rather than two
 // separate ones: a glyph and a stroked path sitting either side of the same title

@@ -156,8 +156,8 @@ describe("MenuMainScreen", () => {
   })
 
   test("gives a game an info button only when it was handed somewhere to go", () => {
-    // The Game info flag, as this screen sees it: a game with an `onInfo` gets the
-    // segmented row, one without gets the plain full-width button it always had. Both
+    // The Game info flag, as this screen sees it: a game with an `onInfo` gets the "i"
+    // beside it, one without gets the plain full-width button it always had. Both
     // shapes in one render, because the flag is a *list*-wide fact everywhere else and
     // this is the only place that could quietly make it a per-row one.
     let opened = []
