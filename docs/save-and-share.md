@@ -159,7 +159,7 @@ is ever written to it, so neither a demo scene nor a board reachable only from t
 screen becomes what the app opens on. A stored id that no longer names such a game reads
 as nothing, and the default game answers instead.
 
-Which games those are is itself a live question, since the **More Games** flag
+Which games those are is itself a live question, since the **Beta features** flag
 (`Main`'s `menuGames`) lifts the unfinished ones into that list for as long as it is on.
 So a game played under the flag is resumed while it stays on, and stops being the launch
 game the moment it is off — by the rule above rather than by one of its own: the id is

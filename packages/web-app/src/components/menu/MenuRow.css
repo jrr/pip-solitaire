@@ -28,7 +28,7 @@
        only the three that were under: the games, and the Debug disclosure.
 
        On `.menu-row` rather than on the games list, because a games row is a bare
-       `.menu-row` when the game info flag is off (see MenuGameRow.res). Scoped any
+       `.menu-row` when the beta features flag is off (see MenuGameRow.res). Scoped any
        tighter, how tall a row stands would depend on whether a feature is switched
        on. */
     min-height: 2.75rem;

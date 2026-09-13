@@ -3,7 +3,7 @@
 //
 // **This screen owns its own state.** Its `model`, `msg` and `update` live here, and
 // the driver embeds the model as one field and maps the messages up through a single
-// constructor (`Main`'s `SettingsMsg`) — so a seventh switch is a row, a field, a
+// constructor (`Main`'s `SettingsMsg`) — so a sixth switch is a row, a field, a
 // message and an `update` branch, all in this file, and nothing at all in `Main`.
 // `update` is a pure function of `(env, msg, model)` returning the next model and an
 // effect, which is what lets it be unit-tested the way `core`'s `Reducer` is.
@@ -49,19 +49,17 @@ type model = {
   // into the corner wings beside the notch; off clamps every control inside the safe
   // area.
   notchDisplay: bool,
-  // "Game info": the "i" beside each game in the menu, and the screen it opens
-  // (`<MenuGameRow>`, `<MenuGameInfoScreen>`). A feature flag rather than a preference —
-  // the screen is a pass short of what it's meant to be — which is why it is
-  // hidden and why it defaults off.
-  gameInfo: bool,
-  // "More Games": the games that aren't released into the main menu — the short decks
-  // and the Spiderettes — listed there beside FreeCell and Simple Simon instead of a
-  // level down in the Debug screen. A feature flag like the one above, and hidden for
-  // the same reason: those games are playable but not finished.
-  moreGames: bool,
+  // "Beta features": the one switch in front of what's built but not finished. Today it
+  // gates the "i" beside each game in the menu and the screen it opens (`<MenuGameRow>`,
+  // `<MenuGameInfoScreen>`), and the games not yet released into that menu — the short
+  // decks and the Spiderettes — listed there beside FreeCell and Simple Simon instead of
+  // a level down in the Debug screen. A feature flag rather than a preference, which is
+  // why it is hidden and why it defaults off; graduating a feature takes its gate out
+  // and leaves this field standing for the next one.
+  betaFeatures: bool,
   // The hidden settings and the run of taps that reveals them (`HiddenOptions`). Today
-  // that is Wiggle Waggle, Game info and More Games. A hidden row says nothing about
-  // whether its setting is *on*: hiding leaves it running.
+  // that is Wiggle Waggle and Beta features. A hidden row says nothing about whether its
+  // setting is *on*: hiding leaves it running.
   hidden: HiddenOptions.t,
 }
 
@@ -71,8 +69,7 @@ type msg =
   | WiggleOff // the Wiggle Waggle switch turned off — stop listening, square up
   | WiggleResolved(Motion.state) // a motion-permission request resolved to a new state
   | ToggleNotchDisplay
-  | ToggleGameInfo
-  | ToggleMoreGames
+  | ToggleBetaFeatures
   | TitleTapped // a tap on this screen's title — every ten flip the hidden settings
 
 // --- The reach out of the screen ----------------------------------------------
@@ -85,7 +82,7 @@ type request =
 
 // The handles a component can't reach from the inside. Four entries because they are
 // *kinds* of reach — the shared refs, the live board, the document root, storage — and a
-// seventh switch picks from them rather than adding a fifth. Three of the four take the
+// sixth switch picks from them rather than adding a fifth. Three of the four take the
 // whole model, so what a setting's write-through *is* stays one line in the writer
 // instead of a branch in here.
 type env = {
@@ -113,7 +110,7 @@ let liveEnv = (
   ~options: ref<Options.t>,
   ~tiltEnabled: ref<bool>,
   ~shakeActive: ref<bool>,
-  ~moreGames: ref<bool>,
+  ~betaFeatures: ref<bool>,
   ~board: request => unit,
 ): env => {
   publish: model => {
@@ -125,7 +122,7 @@ let liveEnv = (
     Motion.current := model.wiggle
     // Which games the menu lists, read by the scene switcher rather than by a
     // component: the rows it files are built outside the chrome's render (see `Main`).
-    moreGames := model.moreGames
+    betaFeatures := model.betaFeatures
   },
   board,
   root: model => NotchDisplay.setEnabled(model.notchDisplay),
@@ -134,8 +131,7 @@ let liveEnv = (
     Preferences.saveCardTilt(model.cardTilt)
     Preferences.saveWantsShake(model.wantsShake)
     Preferences.saveNotchDisplay(model.notchDisplay)
-    Preferences.saveGameInfo(model.gameInfo)
-    Preferences.saveMoreGames(model.moreGames)
+    Preferences.saveBetaFeatures(model.betaFeatures)
     Preferences.saveRevealHidden(model.hidden.revealed)
   },
 }
@@ -152,8 +148,7 @@ let init = (): model => {
     wiggle: Motion.initialState(~wantsShake),
     wantsShake,
     notchDisplay: Preferences.loadNotchDisplay(),
-    gameInfo: Preferences.loadGameInfo(),
-    moreGames: Preferences.loadMoreGames(),
+    betaFeatures: Preferences.loadBetaFeatures(),
     hidden: HiddenOptions.initial(~revealed=Preferences.loadRevealHidden()),
   }
 }
@@ -245,18 +240,13 @@ let update = (env: env, msg, model) =>
         env.persist(model)
       },
     )
-  // A feature flag, so there is nothing live to publish and nothing for the board to do:
-  // what it gates is drawn by the *menu*, which re-renders from this model on the very
-  // next pass. Persisting it is the whole effect.
-  | ToggleGameInfo =>
-    let model = {...model, gameInfo: !model.gameInfo}
-    (model, () => env.persist(model))
-  // A feature flag too, but not a menu-only one: which games the switcher files as
-  // top-level rows is read off a ref outside the chrome (`Main`'s `moreGames`), and the
-  // menu renders from that rather than from this model. So this one publishes as well as
-  // persists, or a flip would only land on the launch after it.
-  | ToggleMoreGames =>
-    let model = {...model, moreGames: !model.moreGames}
+  // A feature flag, so there is nothing for the board to do: most of what it gates is
+  // drawn by the *menu*, which re-renders from this model on the very next pass. It
+  // still publishes, because one thing it gates is read outside the chrome — which games
+  // the switcher files as top-level rows comes off a ref (`Main`'s `betaFeatures`), and
+  // persist alone would leave that half of a flip to land on the launch after it.
+  | ToggleBetaFeatures =>
+    let model = {...model, betaFeatures: !model.betaFeatures}
     (
       model,
       () => {
@@ -335,24 +325,18 @@ let make = ({model, dispatch, onClose, onBackToMenu, onOpenDebug}) => <>
         // a player yet, but reachable on a test device. Ten more taps hide the rows
         // again *without* turning any off, so an absent row here doesn't mean its
         // setting is off — Wiggle Waggle can still be jostling a board with no switch
-        // on screen to stop it, Game info can still be putting an "i" beside every
-        // game in the menu, and More Games can still be listing the unfinished ones.
+        // on screen to stop it, and Beta features can still be listing the unfinished
+        // games and putting an "i" beside every game in the menu.
         model.hidden.revealed
           ? <>
               <MenuWiggleRow
                 state={model.wiggle} onToggle={() => askMotion(model.wiggle, dispatch)}
               />
               <MenuToggleRow
-                label="Game info"
-                desc="Put an 'i' beside each game, opening what it is and how it's played."
-                on={model.gameInfo}
-                onToggle={() => dispatch(ToggleGameInfo)}
-              />
-              <MenuToggleRow
-                label="More Games"
-                desc="List the games still in development beside FreeCell and Simple Simon."
-                on={model.moreGames}
-                onToggle={() => dispatch(ToggleMoreGames)}
+                label="Beta features"
+                desc="Turn on the features still in development."
+                on={model.betaFeatures}
+                onToggle={() => dispatch(ToggleBetaFeatures)}
               />
             </>
           : Html.empty

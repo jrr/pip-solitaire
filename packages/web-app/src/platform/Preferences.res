@@ -21,8 +21,7 @@ let wantsShakeKey = "pip.wantsShake"
 let notchDisplayKey = "pip.notchDisplay"
 let debugLogKey = "pip.debugLog"
 let revealHiddenKey = "pip.revealHidden"
-let gameInfoKey = "pip.gameInfo"
-let moreGamesKey = "pip.moreGames"
+let betaFeaturesKey = "pip.betaFeatures"
 let consoleDockKey = "pip.consoleDock"
 
 // An explicit "true"/"false" wins; anything else — missing, garbage, unreadable —
@@ -90,20 +89,19 @@ let saveDebugLog = (enabled: bool) => saveFlag(debugLogKey, enabled)
 let loadRevealHidden = (): bool => loadFlag(revealHiddenKey, ~fallback=false)
 let saveRevealHidden = (revealed: bool) => saveFlag(revealHiddenKey, revealed)
 
-// The game info feature, off until it's finished: the "i" beside each
-// game in the menu, and the screen it opens. Persisted like the rest, so a device left
-// with it on keeps it across launches — and reachable only from the hidden settings,
-// which is a second gesture in front of this one.
-let loadGameInfo = (): bool => loadFlag(gameInfoKey, ~fallback=false)
-let saveGameInfo = (enabled: bool) => saveFlag(gameInfoKey, enabled)
-
-// "More Games": whether the games that haven't been released into the main menu — the
-// short decks and the Spiderettes — are listed there beside FreeCell and Simple Simon
-// rather than a level down in the Debug screen. A feature flag like the one above, off
-// by default and reachable only from the hidden settings, and read at launch as well as
-// at each menu render: it decides which games a bare open may resume.
-let loadMoreGames = (): bool => loadFlag(moreGamesKey, ~fallback=false)
-let saveMoreGames = (enabled: bool) => saveFlag(moreGamesKey, enabled)
+// "Beta features": the one switch in front of everything built but not finished. Today
+// that is the "i" beside each game in the menu and the screen it opens, and the games
+// not yet released into that menu — the short decks and the Spiderettes — listed there
+// rather than a level down in the Debug screen. Off by default and reachable only from
+// the hidden settings, which is a second gesture in front of this one; persisted like
+// the rest, so a device left with it on keeps it across launches.
+//
+// One key for all of it rather than one per feature, so a feature graduating drops its
+// gate and leaves nothing stored behind — the switch outlives whatever is currently
+// behind it. Read at launch as well as at each menu render: it decides which games a
+// bare open may resume.
+let loadBetaFeatures = (): bool => loadFlag(betaFeaturesKey, ~fallback=false)
+let saveBetaFeatures = (enabled: bool) => saveFlag(betaFeaturesKey, enabled)
 
 // Which variant of a family the Games list is offering (`Game.familyOf`), as the chosen
 // board's **game id** — the same string `?game=` and the save keys use, so a choice is

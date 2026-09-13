@@ -23,12 +23,12 @@
 //     link went is the only confirmation there is, and it's the only game button that
 //     ever renders *disabled* — on a board with no seed to name;
 //   - a **"Games"** section — the games this build offers as top-level rows: FreeCell
-//     and Simple Simon, and behind the More Games flag the ones still in development. They arrive as `games`, a list of `MenuGameRow.props` the
+//     and Simple Simon, and behind the Beta features flag the ones still in development. They arrive as `games`, a list of `MenuGameRow.props` the
 //     switcher's scene list is turned into, and are drawn here — data rather than a
 //     node the switcher builds and this screen splices in (see `games` below). A row is
 //     the game's name — with which of it on a segment beside it, where the list offers
-//     more than one (the FreeCell sizes, the Spiderette packs) — and, behind the Game
-//     info flag, an "i" that opens what that game is;
+//     more than one (the FreeCell sizes, the Spiderette packs) — and, behind that same
+//     flag, an "i" that opens what that game is;
 //   - --- the space between top and bottom grows here (`menu-section--bottom`) ---
 //   - a single **Settings** button (`onOpenSettings`) low in the menu, just above the
 //     About footer — it takes over the pane with the Settings screen.

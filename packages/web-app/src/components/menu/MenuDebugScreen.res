@@ -19,7 +19,7 @@
 // a prop on `<MenuDisclosure>`, not a fourth way of drawing a disclosure here.
 //
 // The "games" group is the odd one: it is placed only when it has entries, so a build
-// whose every game has a row in the main menu — which is what the More Games flag makes
+// whose every game has a row in the main menu — which is what the Beta features flag makes
 // of every build — shows two groups, scenes then states. It exists so that a game still
 // in development lands among the games rather than under "scenes", between Gallery and
 // Motion, filed as a render demo.
