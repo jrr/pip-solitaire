@@ -1,13 +1,14 @@
 @layer components {
   /* The game row (see MenuGameRow.res): the game's name as a `.menu-row` like any
-     other, and the "i" that opens its info screen as a small circle standing beside
-     it — two separate controls rather than one segmented one.
+     other, the variant segment joined onto its right edge, and the "i" that opens its
+     info screen as a small circle standing apart from both.
 
-     Separate is what keeps the "i" the same mark on every row. A segmented control
-     would have to decide how much of the selected row's green to carry across the
-     seam, and whatever it decided would make the "i" mean one thing on the game you
-     are playing and another on the games you aren't. Detached, it doesn't participate
-     in the highlight at all. */
+     Detached is what keeps the "i" the same mark on every row. Segmented, it would
+     have to decide how much of the selected row's green to carry across the seam, and
+     whatever it decided would make the "i" mean one thing on the game you are playing
+     and another on the games you aren't. Standing apart, it doesn't participate in the
+     highlight at all — where the variant, being a state of the game named beside it,
+     takes the highlight along with the name. */
 
   .menu-game-row {
     display: flex;
@@ -24,6 +25,82 @@
   .menu-game-row .menu-row {
     flex: 1 1 auto;
     min-width: 0;
+  }
+
+  /* The variant segment: the name button's box carried on past its right edge, the two
+     drawn as one control. It wears `.menu-row`'s own class list (`MenuRow.classesFor`),
+     so the box and the highlight arrive with it and what is left here is the joining —
+     which is why these rules match on two classes, to sit level with the
+     `.menu-game-row .menu-row` rule above rather than under it. */
+  .menu-game-row .menu-game-row__variant {
+    flex: 0 0 auto;
+    justify-content: center;
+    gap: 0.3rem;
+    /* **One width for every mark on every row**, not a box that fits whichever is
+       showing: the control must not move under the thumb between one tap and the next,
+       the name button beside it must not change length as the mark cycles, and the two
+       families' segments must end on the same edge or the list reads as ragged. So the
+       width is declared, wide enough for the widest mark, and the rest are centred in
+       it. The browser test measures them (`game-variant.spec.mjs`), since nothing here
+       can.
+
+       5.75rem is the four-pip mark (♠♥♦♣, 16px with its letter-spacing ≈ 68px) plus the
+       row's own side padding, and it clears "Standard" at the row's 14px with room to
+       spare. Change either and this has to grow with it — the mark would otherwise eat
+       its own margins rather than overflow, which looks like a tighter control instead
+       of a broken one. */
+    width: 5.75rem;
+    /* …and one height, taken from the row beside it rather than from the pips: a 16px
+       glyph in a 14px row would otherwise stand the segment a couple of pixels proud of
+       the name button, which reads as a misalignment rather than as a size. `stretch`
+       is what keeps the two level if the name ever wraps to a second line. */
+    align-self: stretch;
+    /* Square where the two meet, and pulled back the width of one border so the two
+       1px edges land on each other as a single seam rather than a 2px rule. */
+    margin-left: -1px;
+    border-top-left-radius: 0;
+    border-bottom-left-radius: 0;
+  }
+
+  /* …and the other half of that seam, on the name button. Written as "the row that
+     isn't the segment" because both carry `.menu-row`: the segment is the same box,
+     which is the whole point of it. */
+  .menu-game-row--segmented .menu-row:not(.menu-game-row__variant) {
+    border-top-right-radius: 0;
+    border-bottom-right-radius: 0;
+  }
+
+  /* A word mark ("Mini") is the row's own type, one weight down from the name it sits
+     beside: the name is what the row is, and the word only which of them. */
+  .menu-game-row__word {
+    font-weight: 400;
+    line-height: 1;
+  }
+
+  /* The pips, in the app's own suit face — the four flat monochrome pips the cards are
+     drawn with (`styles/fonts.css`). Left to the chrome's font they are whatever the
+     platform has at U+2660-2666, which on a phone is the emoji face: red hearts and
+     diamonds, in a shape that is nobody's card. The face carries those four code points
+     and nothing else, so the fallbacks behind it still serve the "×2".
+
+     A size up from the row's type, because they are this control's content rather than
+     a label on it, and `line-height: 1` so the taller glyph doesn't set the segment's
+     height (see the box above). */
+  .menu-game-row__suits {
+    font-family: "Pip Suits", "Libre Franklin", sans-serif;
+    font-size: 16px;
+    line-height: 1;
+    letter-spacing: 0.06em;
+  }
+
+  /* …and the multiplier a size down and lighter, being the qualifier: "♠♥" is which
+     pack, "×2" only how many times over. Lightened by opacity rather than by the muted
+     token, so it holds the same relation to its background on the highlighted row as
+     on the panel. */
+  .menu-game-row__copies {
+    font-size: 12px;
+    line-height: 1;
+    opacity: 0.75;
   }
 
   /* The target, not the mark: 44px square and painting nothing at all. The circle

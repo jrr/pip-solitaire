@@ -99,6 +99,16 @@ type model = {
   // after that. `option` because a build with no scenes at all would have nothing
   // mounted; in practice there is always one.
   activeScene: option<string>,
+  // Which variant of each family the Games list is offering — a board's game id under
+  // its family's id (`Game.families`). In the model because tapping the segment has to
+  // re-render that row, and because a variant chosen while another game is on the table
+  // changes nothing else: it is remembered, not played. A board of a family mounting
+  // sets its family's entry too, so a row shows the board you are actually playing
+  // however you arrived at it.
+  //
+  // A family with no entry falls back to its default, so this starts out holding only
+  // what storage remembered (`openingVariants`) and never has to be complete.
+  variants: Dict.t<string>,
   canUndo: bool,
   // The adaptive Settings refresh control. `refreshMode` is `None` until
   // `Refresh.detect` resolves (and stays effectively hidden on an unsupported
@@ -166,6 +176,7 @@ type msg =
   | ToggleCutoutDebug // the menu's safe-area overlay switch (debug)
   | ToggleDebugLog // the Debug screen's console-logging switch
   | SceneActivated(string) // the switcher mounted a scene — which one the menu highlights
+  | VariantChosen(string, string) // a family's segment tapped, with no board of it up
   | HistoryChanged(bool) // whether the board can undo after a move
   | RefreshDetected(Refresh.mode) // service-worker presence detected — sets the button's shape
   | RefreshStarted // the refresh button was tapped — start spinning the button
@@ -447,7 +458,27 @@ let update = (msg, model) =>
   // A scene mounted. Only ever a scene *change* — the switcher answers a tap on
   // the row of the scene already showing with `~onReselect` instead, precisely so the
   // live board isn't torn down — so there's no no-change guard here to write.
-  | SceneActivated(id) => ({...model, activeScene: Some(id)}, Html.noEffect)
+  | SceneActivated(id) =>
+    // A board of a family mounted — from its row's segment, from a `?game=` link, or
+    // from a resume — so that family's row is now showing that board: the row shows the
+    // game you are playing, however you got to it. Written through for the same reason
+    // the segment's own choice is; arriving by link is a choice of variant too.
+    switch Game.byId(id)->Option.flatMap(Game.familyOf) {
+    | Some(family) if model.variants->Dict.get(family.id) != Some(id) =>
+      let variants = model.variants->Dict.copy
+      variants->Dict.set(family.id, id)
+      (
+        {...model, activeScene: Some(id), variants},
+        () => Preferences.saveVariant(~family=family.id, id),
+      )
+    | _ => ({...model, activeScene: Some(id)}, Html.noEffect)
+    }
+  // A family's segment tapped while its board *isn't* up: nothing mounts, the row simply
+  // shows the next variant, and the tap on the name beside it is what opens that board.
+  | VariantChosen(family, id) =>
+    let variants = model.variants->Dict.copy
+    variants->Dict.set(family, id)
+    ({...model, variants}, () => Preferences.saveVariant(~family, id))
   | HistoryChanged(canUndo) =>
     canUndo == model.canUndo ? (model, Html.noEffect) : ({...model, canUndo}, Html.noEffect) // no change — don't re-render
   // Closing the menu takes the seed dialog down with it, which is what lets Deal say
@@ -777,6 +808,18 @@ let launchGame = plainUrl
   ? SavedGame.loadLastGame()->Option.flatMap(menuGameById)->Option.getOr(Game.default)
   : Game.default
 
+// **A scene change the menu asked for as a change of state rather than of place.**
+// Cycling a family's pack while that family's board is up swaps the board for the next
+// pack's — a scene change like any other, except that the control doing it is one you
+// watch as you tap it, so the menu has to stay put. Every other activation is a
+// departure (a row tap, a link landing), which is why closing the menu is what
+// `~onActivate` does by default and this is the one thing that asks it not to.
+//
+// A ref rather than an argument because it is read inside the switcher's own callback,
+// one call away from the tap that sets it, and it is lowered again the moment
+// `select` returns — `onActivate` runs synchronously inside it.
+let keepMenuOpen = ref(false)
+
 let switcher = SceneSwitcher.render(
   // The launch scene: the remembered game, or the game `core` says a nameless deal
   // number belongs to. Never the literal `"freecell"` — that's the same fact twice
@@ -818,7 +861,9 @@ let switcher = SceneSwitcher.render(
     // back always names a game the menu leads with — the Gallery can never be what the
     // app opens on.
     menuGameById(scene.id)->Option.forEach(game => SavedGame.saveLastGame(game.id))
-    closeMenu.contents()
+    if !keepMenuOpen.contents {
+      closeMenu.contents()
+    }
   },
   // A tap on the row for the game already showing: nothing mounts, so nothing above
   // may be reset — `liveBoard` still holds the board on screen — and closing the menu
@@ -842,6 +887,29 @@ let switcher = SceneSwitcher.render(
     Game.all->Array.map(gameScene),
   ),
 )
+
+// What each family's row opens showing, keyed by family id: the variant last chosen, if
+// it still names one of that family's boards, and nothing at all otherwise — an absent
+// entry is the family's own default, decided where the row is drawn.
+//
+// The board on the table overrides it if that board is one of a family's — a resumed
+// game, or a `?game=` link — because a row showing a variant other than the one being
+// played would be the row lying about the highlight beside it. The same order
+// `SceneActivated` keeps to from here.
+let openingVariants = {
+  let chosen = Dict.make()
+  Game.families->Array.forEach(family =>
+    Preferences.loadVariant(~family=family.id)
+    ->Option.flatMap(id => family.variants->Array.find(v => v.game.id == id))
+    ->Option.forEach(v => chosen->Dict.set(family.id, v.game.id))
+  )
+  switcher.active
+  ->Option.flatMap(Game.byId)
+  ->Option.forEach(game =>
+    Game.familyOf(game)->Option.forEach(family => chosen->Dict.set(family.id, game.id))
+  )
+  chosen
+}
 
 // Land a shared game on the board (`ShareLink`). The blob came off the `#g=`
 // fragment synchronously, but inflating it is asynchronous — `DecompressionStream`
@@ -982,6 +1050,98 @@ let openNamedDeal = (~game: Game.t, ~position: option<Scenario.named>): string =
 
 // The main screen: re-deal the board — at random or at a number typed in — share its
 // deal number, pick a game, go on to Settings.
+// **The Games list's rows**, from the switcher's primary scenes. The switcher hands over
+// scenes, not rows — which of them is current is the chrome's to know, being what a
+// re-render has to reflect — so the `selected` flag and the tap are joined up here. So is
+// the "i", which the **Game info flag** gates: absent, a row is the plain full-width
+// button it has always been. A scene id is a game id, so the facts its screen shows are a
+// lookup away — and a primary scene that names no game (there is none today) simply gets
+// no "i" rather than an info screen about nothing.
+//
+// **A family arrives as several scenes and leaves as one row** (`Game.familyOf`): the
+// FreeCells are one game in three sizes, the Spiderettes one game with three packs, so
+// the row is the family's name with the choice a segment beside it. It stands where the
+// first of that family's boards stands in the list — not where the chosen one does, so
+// the row keeps its place as the segment cycles — and the family's other scenes are drawn
+// not at all. They keep their scenes regardless, which is what leaves `?game=` reaching
+// them, the Debug screen filing them, and a saved game kept per board.
+//
+// **Offered, not merely existing.** The scenes handed in are the games the menu is
+// listing this render (`menuGames`), and a family is collapsed only over those — so with
+// **More Games** off, FreeCell's family is the one board and the row has no segment at
+// all: Mini and Micro stay exactly as unreachable as they were. That is the whole of what
+// the flag now does to a family — it puts the unreleased boards on the segment instead of
+// into rows of their own.
+let gameRows = (model, dispatch, scenes: array<SceneSwitcher.choice>): array<MenuGameRow.props> => {
+  let offered = (family: Game.family) =>
+    family.variants->Array.filter(v => scenes->Array.some(scene => scene.id == v.game.id))
+
+  let after = (siblings: array<Game.variant>, here: Game.variant) => {
+    let i = siblings->Array.findIndex(v => v.game.id == here.game.id)
+    siblings->Array.get(mod(i + 1, Array.length(siblings)))->Option.getOr(here)
+  }
+
+  let onInfo = (game: Game.t) =>
+    model.settings.gameInfo ? Some(() => dispatch(OpenGameInfo(GameInfo.forGame(game)))) : None
+
+  scenes->Array.filterMap((scene): option<MenuGameRow.props> => {
+    let game = Game.byId(scene.id)
+    switch game->Option.flatMap(Game.familyOf) {
+    | Some(family) if Array.length(offered(family)) > 1 =>
+      let siblings = offered(family)
+      let leader = siblings->Array.get(0)
+      if leader->Option.mapOr(true, first => first.game.id != scene.id) {
+        None
+      } else {
+        // The variant in hand, and the board behind it: everything on this row is that
+        // board's, so the name opens what the segment is showing and the highlight marks
+        // it only when that same board is the one on the table. A remembered choice the
+        // list isn't offering falls through to the family's default, and that to whatever
+        // leads — a row can only offer what is in front of it.
+        let chosen =
+          siblings
+          ->Array.find(v => model.variants->Dict.get(family.id) == Some(v.game.id))
+          ->Option.orElse(siblings->Array.find(v => v.game.id == family.default.game.id))
+          ->Option.orElse(leader)
+          ->Option.getOr(family.default)
+        let playing = model.activeScene == Some(chosen.game.id)
+        Some({
+          label: family.name,
+          selected: playing,
+          onSelect: () => switcher.select(chosen.game.id),
+          variant: {
+            mark: GameVariant.forVariant(chosen),
+            onCycle: () => {
+              let next = after(siblings, chosen)
+              if playing {
+                // This family's board *is* the one on the table, so the choice is a board
+                // change: swap it, and stay in the menu (`keepMenuOpen`) so the segment
+                // can be tapped again. The activation carries the new variant into the
+                // model.
+                keepMenuOpen := true
+                switcher.select(next.game.id)
+                keepMenuOpen := false
+              } else {
+                dispatch(VariantChosen(family.id, next.game.id))
+              }
+            },
+          },
+          onInfo: ?onInfo(chosen.game),
+        })
+      }
+    // A game on its own — or the only board of its family this list is offering: the row
+    // it has always been, under its own name.
+    | _ =>
+      Some({
+        label: scene.label,
+        selected: model.activeScene == Some(scene.id),
+        onSelect: () => switcher.select(scene.id),
+        onInfo: ?(game->Option.flatMap(onInfo)),
+      })
+    }
+  })
+}
+
 let mainScreen = (model, dispatch): MenuMainScreen.props => {
   onClose: () => dispatch(CloseMenu),
   onNewGame: () => {
@@ -1028,27 +1188,8 @@ let mainScreen = (model, dispatch): MenuMainScreen.props => {
       ->ignore
     | _ => ()
     },
-  // The games list: the switcher's primary scenes, paired with the one the model
-  // says is mounted. The switcher hands over scenes, not rows — which of them is
-  // current is the chrome's to know, being what a re-render has to reflect — so the
-  // `selected` flag and the tap are joined up here.
-  //
-  // …and so is the "i", which the **Game info flag** gates: absent, the row is the plain
-  // full-width button it has always been. A scene id is a game id, so the facts the
-  // screen shows are a lookup away — and a primary scene that names no game (there is
-  // none today) simply gets no "i" rather than an info screen about nothing.
-  games: switcher.primaryScenes()->Array.map((scene): MenuGameRow.props => {
-    label: scene.label,
-    selected: model.activeScene == Some(scene.id),
-    onSelect: () => switcher.select(scene.id),
-    onInfo: ?{
-      model.settings.gameInfo
-        ? Game.byId(scene.id)->Option.map(game =>
-            () => dispatch(OpenGameInfo(GameInfo.forGame(game)))
-          )
-        : None
-    },
-  }),
+  // The games list: the switcher's primary scenes, turned into rows (`gameRows` above).
+  games: gameRows(model, dispatch, switcher.primaryScenes()),
   onOpenSettings: () => {
     // Re-detect the service-worker state each time Settings opens, so the button
     // reflects a worker that registered (or self-destructed) since page load.
@@ -1280,6 +1421,9 @@ let dispatch = Html.mount(
     // Unlike `canUndo` and `dealSeed` below this needs no capturing ref: the value is
     // the switcher's own, not something a board reported into a callback.
     activeScene: switcher.active,
+    // …and which variant each family's row opens showing, worked out the same way and at
+    // the same moment, off the scene the switcher mounted (`openingVariants`).
+    variants: openingVariants,
     // Seeded from the board's opening history report: a fresh deal reports
     // `false` (nothing to undo yet), but a resumed game with a restored undo stack
     // reports `true`, and that report already fired during the switcher's initial

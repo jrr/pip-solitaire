@@ -1394,6 +1394,85 @@ describe("Game", () => {
     )
   })
 
+  // The boards a menu offers as **one game** (`Game.family`): what a front end needs in
+  // order to draw one row with a control on it for which board, and the reason it can
+  // draw one without holding a list of the ids itself.
+  describe("families", () => {
+    let ids = family => family.Game.variants->Array.map(variant => variant.Game.game.id)
+
+    test(
+      "gathers each family's boards under one name, in offering order",
+      () => {
+        expect(Game.freecellFamily.name)->toBe("FreeCell")
+        expect(ids(Game.freecellFamily))->toEqual(["freecell", "mini", "micro"])
+        expect(Game.spideretteFamily.name)->toBe("Spiderette")
+        expect(ids(Game.spideretteFamily))->toEqual(["spiderette1", "spiderette", "spiderette4"])
+      },
+    )
+
+    test(
+      "falls back to the board the family is usually meant by",
+      () => {
+        // Not the first variant either time: the full game leads the FreeCells and is also
+        // the default, where the Spiderettes are ordered easiest-first and default to the
+        // two-suit pack in the middle.
+        expect(Game.freecellFamily.default.game.id)->toBe("freecell")
+        expect(Game.spideretteFamily.default.game.id)->toBe("spiderette")
+      },
+    )
+
+    test(
+      "tells the packs apart by the deck and the FreeCells by a word",
+      () => {
+        // The Spiderettes differ in the deck alone, so nothing is written down that the
+        // board doesn't already say. The FreeCells differ in deck, cascades and cells at
+        // once — and `mini` is four suits once over exactly as `freecell` is, so a mark
+        // read off the deck would call two different games the same thing.
+        expect(Game.spideretteFamily.variants->Array.map(v => v.mark))->toEqual([
+          Game.Pack,
+          Game.Pack,
+          Game.Pack,
+        ])
+        expect(Game.freecellFamily.variants->Array.map(v => v.mark))->toEqual([
+          Game.Size("Standard"),
+          Game.Size("Mini"),
+          Game.Size("Micro"),
+        ])
+        expect(Game.mini.deck.suits)->toEqual(Game.freecell.deck.suits)
+      },
+    )
+
+    test(
+      "answers which family a board is in from the board, ids included",
+      () => {
+        expect(Game.familyOf(Game.micro)->Option.map(family => family.name))->toEqual(
+          Some("FreeCell"),
+        )
+        expect(Game.familyOf(Game.spiderette4)->Option.map(family => family.id))->toEqual(
+          Some("spiderette"),
+        )
+        expect(Game.familyOf(Game.simpleSimon))->toEqual(None)
+        // Every variant is still a game in its own right, which is what leaves `?game=`,
+        // the saves and the deal numbers written against a board's own id.
+        expect(
+          Game.families
+          ->Array.flatMap(ids)
+          ->Array.map(id => Game.byId(id)->Option.isSome),
+        )->toEqual([true, true, true, true, true, true])
+      },
+    )
+
+    test(
+      "hands back a board as its family holds it, mark and all",
+      () => {
+        expect(Game.variantOf(Game.mini)->Option.map(variant => variant.mark))->toEqual(
+          Some(Game.Size("Mini")),
+        )
+        expect(Game.variantOf(Game.simpleSimon))->toEqual(None)
+      },
+    )
+  })
+
   // Addressing piles by role: the two helpers every group-targeted query is
   // built on — the deal, auto-to-foundation, win detection, the supermove limit.
   // A little three-role board makes the ordering and the absent-role case legible

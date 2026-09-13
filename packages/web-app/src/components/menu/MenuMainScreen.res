@@ -26,8 +26,9 @@
 //     and Simple Simon, and behind the More Games flag the ones still in development. They arrive as `games`, a list of `MenuGameRow.props` the
 //     switcher's scene list is turned into, and are drawn here — data rather than a
 //     node the switcher builds and this screen splices in (see `games` below). A row is
-//     the game's name, and — behind the Game info flag — an "i" beside it that opens
-//     what that game is;
+//     the game's name — with which of it on a segment beside it, where the list offers
+//     more than one (the FreeCell sizes, the Spiderette packs) — and, behind the Game
+//     info flag, an "i" that opens what that game is;
 //   - --- the space between top and bottom grows here (`menu-section--bottom`) ---
 //   - a single **Settings** button (`onOpenSettings`) low in the menu, just above the
 //     About footer — it takes over the pane with the Settings screen.
@@ -66,8 +67,9 @@ type props = {
   // through the diff, on the next render.
   //
   // A `<MenuGameRow>`'s own props rather than a `MenuRow.entry`, because a game's row
-  // carries one thing the other lists' rows don't: the "i" that opens its info screen,
-  // absent while the feature flag is off.
+  // carries two things the other lists' rows don't: the "i" that opens its info screen,
+  // absent while the feature flag is off, and the variant segment on a game the list
+  // offers more than one of.
   games: array<MenuGameRow.props>,
   onOpenSettings: unit => unit,
 }
@@ -140,6 +142,7 @@ let make = ({
         label={game.label}
         selected={game.selected}
         onSelect={game.onSelect}
+        variant=?{game.variant}
         onInfo=?{game.onInfo}
         key={game.label}
       />
