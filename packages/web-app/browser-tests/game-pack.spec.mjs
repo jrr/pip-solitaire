@@ -7,9 +7,12 @@
 // the pack the segment was showing, that the menu is still there to tap again, and that
 // the choice survives a launch.
 //
-// It also carries one *measured* claim, invisible when it breaks: the segment keeps its
-// width as the pack cycles. A segment sized to its contents would shove the name button
-// sideways between one tap and the next, and every screenshot of it would look right.
+// It also carries the *measured* claims about the segment, each invisible when it breaks
+// and none of them answerable in jsdom: it is one size for all three packs, so nothing
+// moves under the thumb between taps; it stands exactly as tall as the name beside it,
+// the pips being a size up from the row's type; and the pips are drawn in the app's own
+// suit face rather than in whatever the platform keeps at U+2660 — which on a phone is
+// the emoji face, and would be red hearts in a monochrome menu.
 
 import { expect, test } from "@playwright/test"
 import { settleBoard } from "./lib/board.mjs"
@@ -77,7 +80,7 @@ test("offers the three packs as one row, and cycles it in place", async ({ page 
 
   // A tap changes the pack and nothing else: the menu is still open, the row is still
   // where it was, and FreeCell is still the game on the table.
-  const before = await pack(page).boundingBox()
+  const boxes = [await pack(page).boundingBox()]
   await pack(page).click()
   await expect(pack(page)).toHaveAttribute("aria-label", "Spiderette pack: 4 suits")
   await expect(pack(page)).toHaveText("♠♥♦♣")
@@ -85,15 +88,36 @@ test("offers the three packs as one row, and cycles it in place", async ({ page 
   await expect(onTheTable(page)).toContainText("FreeCell")
 
   // …and it wraps, so every pack is reachable from every other.
+  boxes.push(await pack(page).boundingBox())
   await pack(page).click()
   await expect(pack(page)).toHaveText("♠×4")
+  boxes.push(await pack(page).boundingBox())
   await pack(page).click()
   await expect(pack(page)).toHaveText("♠♥×2")
 
-  // The measured claim: the widest pack didn't resize the control the thumb is on.
-  const after = await pack(page).boundingBox()
-  expect(after.width).toBe(before.width)
-  expect(after.x).toBe(before.x)
+  // One box for all three packs — the widest mark neither widened the control nor moved
+  // it, so the name button beside it is the same length throughout…
+  for (const box of boxes) {
+    expect(box).toEqual(boxes[0])
+  }
+  // …and it is level with that name button, which is the segment taking the row's height
+  // rather than the pips' (`MenuGameRow.css`).
+  const name = await gameNames(page).last().boundingBox()
+  expect(boxes[0].height).toBe(name.height)
+  expect(boxes[0].y).toBe(name.y)
+})
+
+test("draws the pips in the app's own suit face, not the platform's", async ({ page }) => {
+  await page.goto("/?animate=off")
+  await settleBoard(page)
+  await page.getByRole("button", { name: "Open menu" }).click()
+  await showTheGames(page)
+
+  const suits = page.locator(".menu-game-row__suits")
+  await expect(suits).toHaveCSS("font-family", /^"Pip Suits"/)
+  // …and the face is really there to be used: the same subset the cards are drawn with
+  // (`styles/fonts.css`), which carries the four pips and nothing else.
+  expect(await page.evaluate(() => document.fonts.check('16px "Pip Suits"', "♠♥♦♣"))).toBe(true)
 })
 
 test("swaps the board under the menu when the game it names is the one being played", async ({

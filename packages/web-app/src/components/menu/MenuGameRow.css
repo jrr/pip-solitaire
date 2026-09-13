@@ -36,12 +36,23 @@
     flex: 0 0 auto;
     justify-content: center;
     gap: 0.3rem;
-    /* Wide enough for the widest pack (♠♥♦♣), so the segment keeps its size as it
-       cycles. A control that changed width under the thumb would shove the name
-       button sideways between one tap and the next — the browser test measures it
-       (`game-pack.spec.mjs`), since nothing here can. */
-    width: auto;
-    min-width: 5.5rem;
+    /* **One width for all three packs**, not a box that fits whichever is showing: the
+       control must not move under the thumb between one tap and the next, and the name
+       button beside it must not change length as the pack cycles. So the width is
+       declared, wide enough for the widest mark (♠♥♦♣), and the narrow packs are
+       centred in it. The browser test measures all three (`game-pack.spec.mjs`), since
+       nothing here can.
+
+       5.75rem is the four-pip mark (♠♥♦♣, 16px with its letter-spacing ≈ 68px) plus the
+       row's own side padding. Change either and this has to grow with it — the mark
+       would otherwise eat its own margins rather than overflow, which looks like a
+       tighter control instead of a broken one. */
+    width: 5.75rem;
+    /* …and one height, taken from the row beside it rather than from the pips: a 16px
+       glyph in a 14px row would otherwise stand the segment a couple of pixels proud of
+       the name button, which reads as a misalignment rather than as a size. `stretch`
+       is what keeps the two level if the name ever wraps to a second line. */
+    align-self: stretch;
     /* Square where the two meet, and pulled back the width of one border so the two
        1px edges land on each other as a single seam rather than a 2px rule. */
     margin-left: -1px;
@@ -57,10 +68,19 @@
     border-bottom-right-radius: 0;
   }
 
-  /* The pips, a size up from the row's type: they are this control's content rather
-     than a label on it, and at the row's 14px a four-suit pack reads as a smudge. */
+  /* The pips, in the app's own suit face — the four flat monochrome pips the cards are
+     drawn with (`styles/fonts.css`). Left to the chrome's font they are whatever the
+     platform has at U+2660-2666, which on a phone is the emoji face: red hearts and
+     diamonds, in a shape that is nobody's card. The face carries those four code points
+     and nothing else, so the fallbacks behind it still serve the "×2".
+
+     A size up from the row's type, because they are this control's content rather than
+     a label on it, and `line-height: 1` so the taller glyph doesn't set the segment's
+     height (see the box above). */
   .menu-game-row__suits {
+    font-family: "Pip Suits", "Libre Franklin", sans-serif;
     font-size: 16px;
+    line-height: 1;
     letter-spacing: 0.06em;
   }
 
@@ -70,6 +90,7 @@
      on the panel. */
   .menu-game-row__copies {
     font-size: 12px;
+    line-height: 1;
     opacity: 0.75;
   }
 
