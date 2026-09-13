@@ -19,6 +19,7 @@ let settings: MenuSettingsScreen.props = {
     wantsShake: false,
     notchDisplay: true,
     gameInfo: false,
+    moreGames: false,
     hidden: {revealed: false, taps: 0},
   },
   dispatch: _ => (),
