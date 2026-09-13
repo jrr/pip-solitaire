@@ -23,6 +23,7 @@ let debugLogKey = "pip.debugLog"
 let revealHiddenKey = "pip.revealHidden"
 let gameInfoKey = "pip.gameInfo"
 let moreGamesKey = "pip.moreGames"
+let gamePackKey = "pip.gamePack"
 let consoleDockKey = "pip.consoleDock"
 
 // An explicit "true"/"false" wins; anything else — missing, garbage, unreadable —
@@ -104,6 +105,25 @@ let saveGameInfo = (enabled: bool) => saveFlag(gameInfoKey, enabled)
 // at each menu render: it decides which games a bare open may resume.
 let loadMoreGames = (): bool => loadFlag(moreGamesKey, ~fallback=false)
 let saveMoreGames = (enabled: bool) => saveFlag(moreGamesKey, enabled)
+
+// Which pack the Games list's Spiderette row is wearing (`Game.familyOf`), as the
+// chosen variant's **game id** — the same string `?game=` and the save keys use, so a
+// pack is remembered as the game it actually is rather than as a suit count something
+// else would have to turn back into one.
+//
+// Handed back raw, because what counts as a pack is `Game`'s to say and not storage's:
+// the reader resolves the id against the family and falls back to its default, so a
+// stale id, a garbage value and a variant this build has dropped are all one answer —
+// exactly how a remembered last game is read (`Main`'s `menuGameById`).
+let loadGamePack = (): option<string> =>
+  try getItem(gamePackKey)->Nullable.toOption catch {
+  | _ => None
+  }
+
+let saveGamePack = (id: string) =>
+  try setItem(gamePackKey, id) catch {
+  | _ => ()
+  }
 
 // Persisted rather than session state, because the point of a placement you flip by
 // hand — rather than an automatic breakpoint — is that it stays flipped. `Top` is the

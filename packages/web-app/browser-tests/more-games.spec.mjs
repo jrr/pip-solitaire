@@ -30,8 +30,12 @@ const reopenMenu = async (page) => {
   await openMenu(page)
 }
 
-// The Games section's rows, top-level in the main menu.
-const gameRows = (page) => page.locator("nav[aria-label='Games']").getByRole("button")
+// The Games section's rows, top-level in the main menu — the name buttons, since what
+// this file asks is which games are *listed*. The Spiderette row carries a second button
+// beside its name (the pack it is played with), which is a control on a row rather than
+// a row: `game-pack.spec.mjs` is where that one is asked about.
+const gameRows = (page) =>
+  page.locator("nav[aria-label='Games'] .menu-row:not(.menu-game-row__pack)")
 
 // …and the Debug screen's "games" disclosure, which holds the ones that haven't been
 // released into that section. It isn't placed at all when it has no entries.
@@ -75,9 +79,10 @@ const EVERY_GAME = [
   "Mini FreeCell",
   "Micro FreeCell",
   "Simple Simon",
-  "Spiderette · 1 suit",
-  "Spiderette · 2 suits",
-  "Spiderette · 4 suits",
+  // One row for the three Spiderette packs: they are one game with a pack segment on it
+  // (`game-pack.spec.mjs`), and the other two variants are reached by that segment
+  // rather than by a row of their own.
+  "Spiderette",
 ]
 
 test("lists every game up top once the flag is on, and empties the debug group", async ({
@@ -121,7 +126,7 @@ test("mounts a promoted game from its new row, and resumes it after a reload", a
 
   // The row mounts its game exactly as a released one's does — the menu closes, and
   // the board that comes up is Spiderette's: seven cascades over a stock.
-  await page.getByRole("button", { name: "Spiderette · 2 suits", exact: true }).click()
+  await page.getByRole("button", { name: "Spiderette", exact: true }).click()
   await expect(page.locator("#menu-overlay")).toBeHidden()
   await settleBoard(page)
   await expect(page.locator(".drop-zone__slot--stock")).toHaveCount(1)
@@ -130,7 +135,7 @@ test("mounts a promoted game from its new row, and resumes it after a reload", a
   await expect(
     page
       .locator("nav[aria-label='Games']")
-      .getByRole("button", { name: "Spiderette · 2 suits", exact: true }),
+      .getByRole("button", { name: "Spiderette", exact: true }),
   ).toHaveAttribute("aria-current", "true")
 
   // A bare launch resumes it, the flag being read before the first scene mounts…

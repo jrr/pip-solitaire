@@ -390,6 +390,62 @@ let dealt = (game: t, ~seed: int): t =>
   | None => game
   }
 
+// --- Games offered as one --------------------------------------------------------
+// **A family is one game to a player and several boards to the app.** The pack is the
+// only thing the three Spiderettes differ in (see above), so a menu listing them
+// separately asks a player to choose the same game three times over: they belong on one
+// row, with the pack a control on it.
+//
+// Which boards are the same game is a fact about the boards, so it is settled here
+// rather than in the front end that draws that row — a list of ids hard-coded in a menu
+// is a second place to edit the day a fourth pack lands, and a silent one, since a list
+// that misses a variant still renders.
+//
+// Each variant keeps its own id throughout: `?game=` still reaches every one of them, a
+// save is kept per game, and the deal numbers stay a promise per pack (the same number
+// shuffles a different deck on each).
+type family = {
+  name: string,
+  // In offering order — fewest suits first, the standard pack last, which is also
+  // easiest first — and that is the order a control cycling through them takes.
+  variants: array<t>,
+  // What a player who has expressed no preference gets.
+  default: t,
+}
+
+let spideretteFamily: family = {
+  name: "Spiderette",
+  variants: [spiderette1, spiderette, spiderette4],
+  default: spiderette,
+}
+
+// Every family. One today; a second joins here.
+let families: array<family> = [spideretteFamily]
+
+// The family a board belongs to, or `None` for a board that is a game on its own —
+// which is also the question a caller asks before offering a pack control at all.
+let familyOf = (game: t): option<family> =>
+  families->Array.find(family => family.variants->Array.some(variant => variant.id == game.id))
+
+// The next pack in the family's cycle, wrapping at the end: what a control offering the
+// whole family from one place advances to. A board in no family stays where it is.
+let nextInFamily = (game: t): t =>
+  switch familyOf(game) {
+  | None => game
+  | Some(family) =>
+    let here = family.variants->Array.findIndex(variant => variant.id == game.id)
+    family.variants->Array.get(mod(here + 1, Array.length(family.variants)))->Option.getOr(game)
+  }
+
+// Whether this board is the one its family's row stands on. A list draws the family
+// once, in its leading variant's place, so the row keeps that place whichever pack the
+// player has it wearing — a row that moved as the pack changed would be a row that
+// walked out from under the thumb about to tap it.
+let leadsFamily = (game: t): bool =>
+  familyOf(game)
+  ->Option.flatMap(family => family.variants->Array.get(0))
+  ->Option.mapOr(false, first => first.id == game.id)
+
 // --- Addressing piles by role ------------------------------------------
 // How a caller targets a *group*: the deal fills only the cascades, auto-collect and
 // win detection look only at the foundations, the layout groups free cells +

@@ -1394,6 +1394,69 @@ describe("Game", () => {
     )
   })
 
+  // The three packs offered as **one game** (`Game.family`): what a front end needs in
+  // order to draw one Spiderette row with the pack a control on it, and the reason it
+  // can draw one without holding a list of the three ids itself.
+  describe("families", () => {
+    test(
+      "gathers the packs under one name, easiest first, and names the usual one",
+      () => {
+        expect(Game.spideretteFamily.name)->toBe("Spiderette")
+        expect(Game.spideretteFamily.variants->Array.map(variant => variant.id))->toEqual([
+          "spiderette1",
+          "spiderette",
+          "spiderette4",
+        ])
+        expect(Game.spideretteFamily.default.id)->toBe("spiderette")
+      },
+    )
+
+    test(
+      "answers which family a board is in from the board, ids included",
+      () => {
+        expect(Game.familyOf(Game.spiderette4)->Option.map(family => family.name))->toEqual(
+          Some("Spiderette"),
+        )
+        expect(Game.familyOf(Game.freecell))->toEqual(None)
+        // Every variant is still a game in its own right, which is what leaves `?game=`,
+        // the saves and the deal numbers written against a pack's own id.
+        expect(
+          Game.spideretteFamily.variants->Array.map(
+            variant => Game.byId(variant.id)->Option.isSome,
+          ),
+        )->toEqual([true, true, true])
+      },
+    )
+
+    test(
+      "cycles the packs in that order, wrapping at the end",
+      () => {
+        expect(Game.nextInFamily(Game.spiderette1).id)->toBe("spiderette")
+        expect(Game.nextInFamily(Game.spiderette).id)->toBe("spiderette4")
+        expect(Game.nextInFamily(Game.spiderette4).id)->toBe("spiderette1")
+      },
+    )
+
+    test(
+      "leaves a game that is a game on its own exactly where it is",
+      () => {
+        expect(Game.nextInFamily(Game.simpleSimon).id)->toBe("simplesimon")
+        expect(Game.leadsFamily(Game.simpleSimon))->toBe(false)
+      },
+    )
+
+    test(
+      "stands the family on one variant, so its row keeps one place in a list",
+      () => {
+        expect(Game.spideretteFamily.variants->Array.map(Game.leadsFamily))->toEqual([
+          true,
+          false,
+          false,
+        ])
+      },
+    )
+  })
+
   // Addressing piles by role: the two helpers every group-targeted query is
   // built on — the deal, auto-to-foundation, win detection, the supermove limit.
   // A little three-role board makes the ordering and the absent-role case legible
