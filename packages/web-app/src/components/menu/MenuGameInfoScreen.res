@@ -4,7 +4,9 @@
 // Its title is the game's name rather than a fixed caption, which is the one thing
 // that tells this screen apart from the other three at a glance — and why the subject
 // travels in `Menu`'s `screen` variant rather than in a props record built on every
-// render (see `Menu.screen`).
+// render (see `Menu.screen`). The name is the one a player calls the game by, so a board
+// of a family is headed by the family (`GameInfo.nameOf`): which of them this is, the
+// picker below says.
 //
 // Top to bottom: a header whose **back** button returns to the main menu — where the
 // "i" was tapped, rather than to the game itself — the board's numbers, the choice of

@@ -246,15 +246,17 @@ test("offers a family's packs on its info screen, and moves the screen to the on
   await expect(heading).toHaveCSS("text-transform", "uppercase")
   await expect(packs(page)).toHaveText(["♠×4", "♠♥×2", "♠♥♦♣"])
   await expect(packs(page).nth(1)).toHaveAttribute("aria-current", "true")
-  await expect(page.locator(".menu-title")).toHaveText("Spiderette · 2 suits")
+  // The family names the screen, not the board: which pack is the picker's to say, and
+  // the title would only be saying it twice.
+  await expect(page.locator(".menu-title")).toHaveText("Spiderette")
 
-  // A pack picked is the screen's new subject: the title is that board's, and the
-  // highlight has moved with it. FreeCell is still the game on the table — reading about
-  // a game is still not choosing to play it.
+  // A pack picked is the screen's new subject, and the highlight moves with it. FreeCell
+  // is still the game on the table — reading about a game is still not choosing to play
+  // it.
   await packs(page).nth(2).click()
-  await expect(page.locator(".menu-title")).toHaveText("Spiderette · 4 suits")
   await expect(packs(page).nth(2)).toHaveAttribute("aria-current", "true")
   await expect(packs(page).nth(1)).not.toHaveAttribute("aria-current", "true")
+  await expect(page.locator(".menu-title")).toHaveText("Spiderette")
   await expect(page.locator("#menu-overlay")).toBeVisible()
 
   // …and it is the *same* choice the Games list's segment offers, not a second one: back
@@ -283,10 +285,12 @@ test("swaps the board under the menu when the picker names the game being played
   await expect(numbers(page)).toHaveText("8 cascades · 4 cells · 52 cards")
 
   await sizes(page).nth(1).click()
-  await expect(page.locator(".menu-title")).toHaveText("Mini FreeCell")
-  // The numbers are the reason the picker sits under them: four cascades and two cells,
-  // on the line immediately above the control that changed them.
+  // The numbers are the reason the picker sits under them, and on this family they are
+  // also what says the screen moved: four cascades and two cells, on the line
+  // immediately above the control that changed them. The title stays "FreeCell"
+  // throughout, all three sizes being that game.
   await expect(numbers(page)).toHaveText("4 cascades · 2 cells · 20 cards")
+  await expect(page.locator(".menu-title")).toHaveText("FreeCell")
   await expect(page.locator("#menu-overlay")).toBeVisible()
 
   // …and the board really did change under the open menu.

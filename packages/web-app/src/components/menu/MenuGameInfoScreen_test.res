@@ -23,11 +23,13 @@ let pickerFor = (family: Game.family, ~on: Game.t): MenuVariantPicker.props => {
 }
 
 describe("MenuGameInfoScreen", () => {
-  test("wears the game's own name as its title", () => {
+  test("wears the game's name as its title", () => {
     // The one thing that tells this screen from the other three at a glance, and the
     // reason its subject travels in `Menu.screen` rather than in a props record built
-    // on every render.
+    // on every render. Which name that is — a board's own, or its family's — is
+    // `GameInfo`'s (`nameOf`), tested there.
     expect(render(~game=Game.simpleSimon)->textIn(".menu-title"))->toBe("Simple Simon")
+    expect(render(~game=Game.spiderette)->textIn(".menu-title"))->toBe("Spiderette")
   })
 
   test("shows the board's numbers", () => {
