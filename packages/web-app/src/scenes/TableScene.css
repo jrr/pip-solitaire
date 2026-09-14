@@ -337,6 +337,9 @@
      occludes its slot. The modifier is hung on it anyway, so marking it later is
      a rule rather than a plumbing change.
 
+     `BoardArt.slot` restates these three in SVG for the info screen's opening board;
+     a change to the paint here is a change there.
+
      Only the paint varies. The footprint stays identical across the three —
      browser-tests/geometry.spec.mjs pins the slot to the card's box, measured on
      whichever slot comes first (a free cell) — so the marks below are sized in

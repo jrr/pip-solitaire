@@ -130,6 +130,11 @@ type elementProps = {
   offset?: string,
   @as("stop-color") stopColor?: string,
   gradientUnits?: string,
+  // `<linearGradient>`'s axis: the inset shade on a foundation's well (`BoardArt`).
+  x1?: string,
+  y1?: string,
+  x2?: string,
+  y2?: string,
   stdDeviation?: string,
   @as("flood-color") floodColor?: string,
   @as("flood-opacity") floodOpacity?: string,

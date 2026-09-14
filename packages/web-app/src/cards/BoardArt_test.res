@@ -21,6 +21,27 @@ describe("BoardArt", () => {
     expect(art->findAll(".board-art__slot")->Array.length)->toBe(8)
   })
 
+  test("draws an empty slot in its pile's role, as the table does", () => {
+    // FreeCell's top row: four cells, a plate with a card outlined inside it, then four
+    // foundations, a well with the four suits in it. Which is which is the table's
+    // `slotRoleClass`; the shapes are `.drop-zone__slot`'s.
+    let art = draw(Game.freecell)
+    expect(art->findAll(".board-art__slot--cell")->Array.length)->toBe(4)
+    expect(art->findAll(".board-art__slot--foundation")->Array.length)->toBe(4)
+    expect(art->findAll(".board-art__slot--cell rect")->Array.length)->toBe(4 * 2)
+    expect(art->find(".board-art__slot--foundation")->Option.getOrThrow->text)->toBe(
+      "♠ ♥♦ ♣",
+    )
+    // An empty column is the bare dashed ghost — the only slot that is.
+    let piles = Game.freecell.piles->Array.filter(p => p.role == Game.Cascade)
+    let column = Html.create(BoardArt.svg(~label="empty", piles->Array.map(p => {...p, cards: []})))
+    expect(
+      column
+      ->findAll(".board-art__slot--tableau .board-art__slot-box[stroke-dasharray]")
+      ->Array.length,
+    )->toBe(8)
+  })
+
   test("turns a face-down card over, and shows a squared pile's top card alone", () => {
     // Spiderette: seven columns of one to seven with only the top card face up — 21
     // backs — and a stock of 24 face down, drawn as the one back on top of it.
@@ -46,7 +67,7 @@ describe("BoardArt", () => {
     // Eight slots across the top row at the `space-evenly` gap: the first sits one gap
     // in, and each is a zone and a gap further on.
     let gap = TableLayout.spreadGap(~width, ~count=8)
-    let slots = xs(art, ".board-art__slot")
+    let slots = xs(art, ".board-art__slot-box")
     expect(slots[0])->toEqual(Some(gap +. TableLayout.zoneInset))
     expect(slots[1])->toEqual(Some(gap +. TableLayout.zoneWidth +. gap +. TableLayout.zoneInset))
     // The first cascade card starts under the top row, a row gap below its base box.

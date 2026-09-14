@@ -9,6 +9,10 @@
 // them either. No DOM is measured. The drawing has a `viewBox` and the stylesheet gives
 // it a width, which is what lets a pure component render it and any panel size it.
 //
+// The three designs it restates — the back (`CardArt.back`), an empty pile's slot in
+// each of its roles (`slot`), and the card's shadow (`defs`) — are drawn by the table in
+// CSS, which an SVG cannot share; each is kept in step with its stylesheet rule by hand.
+//
 // What it leaves to the table: the hand-placed tilt (`docs/card-tilt.md`), the fan's
 // compression when a pile outgrows the playfield (`TableLayout.fanFor`'s `room`, given
 // `None` here, so every fan is drawn at its natural step), and the slot's role cue.
@@ -35,21 +39,96 @@ let widthFor = (piles: array<Game.pile>) =>
     ~widestRow=rows(piles)->Array.reduce(0, (w, row) => Math.Int.max(w, Array.length(row))),
   )
 
-// The card-sized dashed outline an empty pile shows, traced off the same box a resting
-// card fills.
-let slot = (~x, ~y) =>
+// An empty pile's slot, in the pile's role: the same three registers `.drop-zone__slot`
+// paints on the table, restated as SVG. A foundation is a dark well with the four suits
+// in it, a free cell a lighter plate with a card outlined at under half size, an empty
+// column the bare dashed ghost, and the stock the plate with nothing in it. The colours
+// and the proportions — the mark at 0.26 of the card's width, the outline at 0.46 of it
+// — are the stylesheet's, and a change to either is a change to both.
+let slotBox = (~x, ~y, ~fill, ~stroke, ~dashed=false, ()) =>
   <rect
-    className="board-art__slot"
+    className="board-art__slot-box"
     x={n(x)}
     y={n(y)}
     width={n(TableLayout.cardW)}
     height={n(TableLayout.cardH)}
     rx={n(TableLayout.cardRadius)}
-    fill="none"
-    stroke="#334155"
+    fill={fill}
+    stroke={stroke}
     strokeWidth="1"
-    strokeDasharray="4 3"
+    strokeDasharray=?{dashed ? Some("4 3") : None}
   />
+
+let slotInk = "rgba(148,163,184,"
+
+// The suits' quartet, two to a line, set in the pips' own face at the baseline
+// `CardArt` states for it (see `centerGlyphBaseline` there for why a baseline and not
+// `dominant-baseline`).
+let foundationMark = (~cx, ~cy) => {
+  let size = TableLayout.cardW *. 0.26
+  let half = size *. 1.05 /. 2.
+  let line = (~at, glyphs) =>
+    <text
+      x={n(cx)}
+      y={n(at +. size *. 0.31)}
+      textAnchor="middle"
+      fontSize={n(size)}
+      fontFamily="Pip Suits"
+      fill={slotInk ++ "0.6)"}
+    >
+      {Html.string(glyphs)}
+    </text>
+  let s = Deck.suitSymbol
+  <>
+    {line(~at=cy -. half, s(Deck.Spades) ++ " " ++ s(Deck.Hearts))}
+    {line(~at=cy +. half, s(Deck.Diamonds) ++ " " ++ s(Deck.Clubs))}
+  </>
+}
+
+let slot = (~x, ~y, role: Game.role) => {
+  let cx = x +. TableLayout.cardW /. 2.
+  let cy = y +. TableLayout.cardH /. 2.
+  switch role {
+  | Game.Foundation =>
+    <g className="board-art__slot board-art__slot--foundation">
+      {slotBox(~x, ~y, ~fill="rgba(2,6,23,0.42)", ~stroke="#3b4a63", ())}
+      // The well's inset shadow, as a shade falling from its top edge.
+      <rect
+        x={n(x)}
+        y={n(y)}
+        width={n(TableLayout.cardW)}
+        height={n(TableLayout.cardH)}
+        rx={n(TableLayout.cardRadius)}
+        fill="url(#board-art-well)"
+      />
+      {foundationMark(~cx, ~cy)}
+    </g>
+  | Game.FreeCell =>
+    let w = TableLayout.cardW *. 0.46
+    let h = TableLayout.cardH *. 0.46
+    <g className="board-art__slot board-art__slot--cell">
+      {slotBox(~x, ~y, ~fill={slotInk ++ "0.11)"}, ~stroke={slotInk ++ "0.45)"}, ())}
+      <rect
+        x={n(cx -. w /. 2.)}
+        y={n(cy -. h /. 2.)}
+        width={n(w)}
+        height={n(h)}
+        rx={n(TableLayout.cardRadius *. 0.5)}
+        fill="none"
+        stroke={slotInk ++ "0.42)"}
+        strokeWidth="1"
+      />
+    </g>
+  | Game.Stock =>
+    <g className="board-art__slot board-art__slot--stock">
+      {slotBox(~x, ~y, ~fill={slotInk ++ "0.06)"}, ~stroke={slotInk ++ "0.3)"}, ())}
+    </g>
+  | Game.Cascade =>
+    <g className="board-art__slot board-art__slot--tableau">
+      {slotBox(~x, ~y, ~fill="none", ~stroke="#334155", ~dashed=true, ())}
+    </g>
+  }
+}
 
 // One card at a position: the real face, or the back for one lying face down, in a
 // nested `<svg>` scaled from the card's design box to the board's card width.
@@ -73,7 +152,7 @@ let pile = (~x, ~y, p: Game.pile): Html.vnode => {
   let cardY = y +. TableLayout.zoneInset
   let count = Array.length(p.cards)
   if count == 0 {
-    slot(~x=cardX, ~y=cardY)
+    slot(~x=cardX, ~y=cardY, p.role)
   } else {
     switch p.stacking {
     | Game.Squared =>
@@ -116,6 +195,10 @@ let defs = () =>
     <filter id="board-art-shadow" x="-10%" y="-10%" width="120%" height="125%">
       <feDropShadow dx="0" dy="1" stdDeviation="1" floodColor="#0f172a" floodOpacity="0.5" />
     </filter>
+    <linearGradient id="board-art-well" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stopColor="rgba(0,0,0,0.5)" />
+      <stop offset="0.08" stopColor="rgba(0,0,0,0)" />
+    </linearGradient>
     {CardArt.backDefs()}
   </defs>
 
