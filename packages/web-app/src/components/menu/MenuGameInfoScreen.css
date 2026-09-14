@@ -3,6 +3,24 @@
      out. The header, the sections and the footer around them are the components the
      screen composes, so what's left here is these two. */
 
+  /* The opening board: a mat for the picture, in the table's own dark and with the
+     section's corner. The drawing scales to the panel — it is a `viewBox` and a width,
+     nothing measured — so on the 20rem panel a card is about a third of its size on
+     the table, which is a picture of a board rather than a board. `display: block`
+     because an inline `<svg>` sits on a text baseline and leaves a strip of descender
+     space under itself. */
+  .game-info__preview {
+    padding: 0.6rem;
+    background: radial-gradient(130% 120% at 50% 0%, #13233b 0%, #0b1220 60%);
+    border: var(--control-border);
+    border-radius: var(--control-radius);
+  }
+  .game-info__preview .board-art {
+    display: block;
+    width: 100%;
+    height: auto;
+  }
+
   /* "8 cascades · 4 cells · 52 cards". The mono stack — the one the seed value and the
      board readout already use — is what keeps the digits lined up as the eye runs
      across the three terms, and `letter-spacing` opens them out so the middots read as

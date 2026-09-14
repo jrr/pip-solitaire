@@ -9,19 +9,24 @@
 // picker below says.
 //
 // Top to bottom: a header whose **back** button returns to the main menu — where the
-// "i" was tapped, rather than to the game itself — the board's numbers, the choice of
-// which board of its family this is, and the link out to the rules in full. `<GameInfo>`
-// decides the numbers and the link and `<MenuVariantPicker>` the choice; this file only
-// places them.
+// "i" was tapped, rather than to the game itself — a picture of the opening board, the
+// board's numbers, the choice of which board of its family this is, and the link out to
+// the rules in full. `<GameInfo>` decides the numbers and the link, `BoardArt` draws the
+// picture and `<MenuVariantPicker>` the choice; this file only places them.
 //
 // **The picker sits directly under the numbers** because the numbers are what it
 // changes: picking Mini takes eight cascades to four and 52 cards to 20, on the line
 // immediately above it. The link out stays last, being the way off this screen.
 //
-// **Scope is deliberately short of the design.** The screenshot of the opening board,
-// the paragraph describing play, and the "this game / Enter Seed" block below it are
-// later passes; the layout is a plain column so that adding them is an insertion rather
-// than a rework.
+// **The picture comes first**, above the numbers, because it is what the numbers are
+// counting: eight columns and four cells are easier to read off a board than off a
+// line. It is the opening board of deal #1 drawn from the real cards (`BoardArt`), not a
+// screenshot, so it follows the picker's choice and the card design with no asset to
+// regenerate.
+//
+// **Scope is deliberately short of the design.** The paragraph describing play and the
+// "this game / Enter Seed" block are later passes; the layout is a plain column so that
+// adding them is an insertion rather than a rework.
 
 %%raw(`import "./MenuGameInfoScreen.css"`)
 
@@ -44,6 +49,12 @@ let make = ({info, ?variants, onClose, onBackToMenu}) => <>
     onClose
   />
   <div className="menu-screen">
+    // The opening board, on a table of its own: the section box is the mat the cards
+    // sit on. What a reader hears instead is the game's name, the picture being the
+    // board and nothing the numbers below don't say.
+    <MenuSection label="preview" modifier="game-info__preview">
+      {BoardArt.svg(~label={info.name ++ ", as dealt"}, info.opening)}
+    </MenuSection>
     // The board's shape in one line. Labelled but unheaded: the numbers name
     // themselves, and a caption over them would say "numbers" twice.
     <MenuSection label="numbers">

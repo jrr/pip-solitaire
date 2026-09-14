@@ -73,7 +73,21 @@ describe("GameInfo.numbers", () => {
       cells: 1,
       cards: 1,
       reference: "",
+      opening: [],
     }
     expect(GameInfo.numbers(one))->toBe("1 cascade · 1 cell · 1 card")
+  })
+
+  test("carries the board it was read off, as dealt", () => {
+    // The picture on the screen is drawn from these piles, so they are the facts
+    // rather than a lookup the screen makes: 28 of a Spiderette's cards across its
+    // seven columns and 24 in the stock, face down.
+    let info = GameInfo.forGame(Game.spiderette)
+    let dealt =
+      info.opening->Array.map(p => Array.length(p.cards))->Array.reduce(0, (a, b) => a + b)
+    expect(dealt)->toBe(52)
+    expect(
+      info.opening->Array.find(p => p.role == Game.Stock)->Option.map(p => p.faceDown),
+    )->toEqual(Some(24))
   })
 })

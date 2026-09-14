@@ -121,6 +121,10 @@ type elementProps = {
   stroke?: string,
   @as("stroke-width") strokeWidth?: string,
   @as("stroke-linejoin") strokeLinejoin?: string,
+  @as("stroke-dasharray") strokeDasharray?: string,
+  // `<pattern>`: the hatching on a card's back (`CardArt.back`).
+  patternUnits?: string,
+  patternTransform?: string,
   transform?: string,
   filter?: string,
   offset?: string,

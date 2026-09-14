@@ -139,3 +139,65 @@ let svg = (~detail=Full, card: Deck.card) =>
   <svg className="card-art" viewBox={viewBox} role="img" ariaLabel={Deck.cardName(card)}>
     {body(~detail, card)}
   </svg>
+
+// --- The back ------------------------------------------------------------------
+
+// A card lying face down: a white margin round a hatched blue field, the classic back.
+//
+// **The board does not draw this.** A face-down card on the table is `.card-back` in
+// `TableScene.css`, a border and two repeating gradients on a plain element, chosen so
+// nothing is fetched and nothing is rasterized. This is the same design stated as SVG,
+// for the places that compose whole cards into one drawing — the opening-board preview
+// on a game's info screen (`BoardArt`) — and the two are kept in step by hand: the
+// margin is 0.06 of the card's width in both, the stripes 0.03 wide on a 0.09 period.
+// Change one and change the other.
+//
+// The hatching is two `<pattern>`s, one per diagonal, and a pattern needs an `id`,
+// which is document-wide. So the patterns are emitted once by the *composer*
+// (`backDefs`, in its `<defs>`) and only referenced here — a card that carried its own
+// copy would put the same id in the document once per face-down card.
+let backField = "#1e3a8a"
+let backMargin = boxW *. 0.06
+let backStripe = boxW *. 0.03
+let backPeriod = boxW *. 0.09
+let backHatchId = (~diagonal: string) => "card-back-hatch-" ++ diagonal
+
+let backDefs = () => {
+  let hatch = (~diagonal, ~angle) =>
+    <pattern
+      id={backHatchId(~diagonal)}
+      patternUnits="userSpaceOnUse"
+      width={n(backPeriod)}
+      height={n(backPeriod)}
+      patternTransform={`rotate(${angle})`}
+    >
+      <rect
+        x="0" y="0" width={n(backStripe)} height={n(backPeriod)} fill="rgba(255,255,255,0.14)"
+      />
+    </pattern>
+  <>
+    {hatch(~diagonal="rising", ~angle="45")}
+    {hatch(~diagonal="falling", ~angle="-45")}
+  </>
+}
+
+// The back's contents, with no `<svg>` wrapper, like `body`. The field is inset by the
+// margin and rounded by the margin less, which is what a CSS border does to its padding
+// box, so the two backs trace the same curve inside as well as out.
+let back = () => {
+  let field = (~fill) =>
+    <rect
+      x={n(backMargin)}
+      y={n(backMargin)}
+      width={n(boxW -. 2. *. backMargin)}
+      height={n(boxH -. 2. *. backMargin)}
+      rx={n(Math.max(0., cornerR -. backMargin))}
+      fill={fill}
+    />
+  <>
+    <rect x="0" y="0" width={n(boxW)} height={n(boxH)} rx={n(cornerR)} fill={cardFill} />
+    {field(~fill=backField)}
+    {field(~fill=`url(#${backHatchId(~diagonal="rising")})`)}
+    {field(~fill=`url(#${backHatchId(~diagonal="falling")})`)}
+  </>
+}

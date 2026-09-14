@@ -32,6 +32,16 @@ describe("MenuGameInfoScreen", () => {
     expect(render(~game=Game.spiderette)->textIn(".menu-title"))->toBe("Spiderette")
   })
 
+  test("shows the opening board, drawn from the real cards, above the numbers", () => {
+    // A picture of the board and not a board: one drawing, named for a reader, with a
+    // card per card FreeCell deals. What the drawing gets right is `BoardArt_test`'s.
+    let screen = render()
+    let art = screen->find(".game-info__preview .board-art")->Option.getOrThrow
+    expect(art->attrOr("role"))->toBe("img")
+    expect(art->attrOr("aria-label"))->toBe("FreeCell, as dealt")
+    expect(art->findAll(".board-art__card")->Array.length)->toBe(52)
+  })
+
   test("shows the board's numbers", () => {
     expect(render()->textIn(".game-info__numbers"))->toBe("8 cascades · 4 cells · 52 cards")
   })
@@ -64,7 +74,7 @@ describe("MenuGameInfoScreen", () => {
     let screen = render(~game=Game.mini, ~variants=pickerFor(Game.freecellFamily, ~on=Game.mini))
     expect(
       screen->findAll(".menu-screen > *")->Array.map(el => el->attrOr("aria-label")),
-    )->toEqual(["numbers", "size", "reference"])
+    )->toEqual(["preview", "numbers", "size", "reference"])
   })
 
   test("has no such section at all on a game that is a game on its own", () => {
@@ -74,7 +84,7 @@ describe("MenuGameInfoScreen", () => {
     expect(screen->findAll(".menu-variant-picker")->Array.length)->toBe(0)
     expect(
       screen->findAll(".menu-screen > *")->Array.map(el => el->attrOr("aria-label")),
-    )->toEqual(["numbers", "reference"])
+    )->toEqual(["preview", "numbers", "reference"])
   })
 
   test("goes back to the main menu, where the info button was", () => {

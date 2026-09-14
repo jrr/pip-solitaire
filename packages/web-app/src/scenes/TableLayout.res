@@ -99,6 +99,21 @@ let scaleFor = (
 let rowsMaxWidth = (~widestRow: int) =>
   Int.toFloat(widestRow) *. zoneWidth +. Int.toFloat(widestRow + 1) *. maxColumnGap
 
+// --- Spreading a row --------------------------------------------------------------
+
+// The `space-evenly` gap: a row of `count` zones spread across `width`, with the same
+// gap before the first, between each pair and after the last. This is what `.drop-row`'s
+// flexbox does on the board; it is stated here for the drawing that has no flexbox to
+// do it — the opening-board preview (`BoardArt`) — so that a preview's columns fall
+// where the board's do.
+let spreadGap = (~width: float, ~count: int) =>
+  count > 0 ? (width -. Int.toFloat(count) *. zoneWidth) /. Int.toFloat(count + 1) : width
+
+// The gap between the two rows of a two-row board. `.drop-rows` states it too, as its
+// `gap`, in unscaled pixels: the rows keep their distance whatever scale the cards are
+// at, which is why it is not among `cssVars`.
+let rowGap = 16.
+
 // The whole of the JS→CSS interface. **Anything the CSS needs in scaled pixels goes
 // here** — the stylesheet derives nothing, so a `calc()` ratio literal over there is
 // a regression. Pixels, not strings: the `px` goes on at the DOM edge, in

@@ -568,7 +568,9 @@
 
      The design is a white margin round a hatched blue field, the classic back, drawn
      with a border and a repeating gradient so nothing is fetched and nothing is
-     rasterized. */
+     rasterized. `CardArt.back` is the same design as SVG, for the drawings that
+     compose whole cards (the info screen's opening board); the margin and stripe
+     ratios are stated in both, so a change here is a change there. */
   .card-back {
     position: absolute;
     inset: 0;
