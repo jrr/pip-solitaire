@@ -13,6 +13,12 @@
 // abuts the name button exactly, so it steals none of "tap the game"; and it stays
 // clear of the next row's, so no tap opens the wrong game's screen. The fourth is the
 // circle sitting on the same edge the panel's other controls end on (MenuGameRow.css).
+//
+// The **variant picker** on the screen is a second chain of the same kind, and the one
+// place two controls meet: `Main` decides which boards a family is offering and what a
+// tap on one does, `MenuVariantPicker` draws them, and the choice it writes is the one
+// the Games list's segment reads back (`game-variant.spec.mjs`). A walk is the only thing
+// that can see that they are one choice and not two.
 
 import { expect, test } from "@playwright/test"
 import { settleBoard } from "./lib/board.mjs"
@@ -215,4 +221,124 @@ test("leaves the info screen behind when the menu closes", async ({ page }) => {
   await openMenu(page)
   await expect(page.locator(".game-info__numbers")).toHaveCount(0)
   await expect(page.locator(".menu-title")).toHaveText("Pip")
+})
+
+// The picker's buttons, addressed by their accessible names — the same sentence the Games
+// list's segment says, which is what tells the two families' apart.
+const packs = (page) => page.getByRole("button", { name: /^Spiderette pack:/ })
+const sizes = (page) => page.getByRole("button", { name: /^FreeCell size:/ })
+const numbers = (page) => page.locator(".game-info__numbers")
+
+test("offers a family's packs on its info screen, and moves the screen to the one picked", async ({
+  page,
+}) => {
+  await page.goto("/?seed=24680&animate=off")
+  await settleBoard(page)
+  await openMenu(page)
+  await setBetaFeatures(page, true)
+  await page.getByRole("button", { name: "About Spiderette" }).click()
+
+  // All three at once, in the family's own order, with the pack the screen is about lit.
+  // The section is headed with the word for what they vary in — "PACK" on screen, the
+  // uppercasing being the heading's own, which is why the text asserted here is not.
+  const heading = page.locator("[aria-label='pack'] .menu-section__heading")
+  await expect(heading).toHaveText("pack")
+  await expect(heading).toHaveCSS("text-transform", "uppercase")
+  await expect(packs(page)).toHaveText(["♠×4", "♠♥×2", "♠♥♦♣"])
+  await expect(packs(page).nth(1)).toHaveAttribute("aria-current", "true")
+  // The family names the screen, not the board: which pack is the picker's to say, and
+  // the title would only be saying it twice.
+  await expect(page.locator(".menu-title")).toHaveText("Spiderette")
+
+  // A pack picked is the screen's new subject, and the highlight moves with it. FreeCell
+  // is still the game on the table — reading about a game is still not choosing to play
+  // it.
+  await packs(page).nth(2).click()
+  await expect(packs(page).nth(2)).toHaveAttribute("aria-current", "true")
+  await expect(packs(page).nth(1)).not.toHaveAttribute("aria-current", "true")
+  await expect(page.locator(".menu-title")).toHaveText("Spiderette")
+  await expect(page.locator("#menu-overlay")).toBeVisible()
+
+  // …and it is the *same* choice the Games list's segment offers, not a second one: back
+  // on the main menu the segment is showing the pack picked here, and it survives a
+  // launch like every other preference.
+  await page.getByRole("button", { name: "Back to menu" }).click()
+  await expect(packs(page)).toHaveText("♠♥♦♣")
+  await page.reload()
+  await settleBoard(page)
+  await openMenu(page)
+  await expect(packs(page)).toHaveText("♠♥♦♣")
+})
+
+test("swaps the board under the menu when the picker names the game being played", async ({
+  page,
+}) => {
+  // The same rule the Games list's segment follows: a choice about the board on the
+  // table is a board change, and the menu stays put so the control is still there.
+  await page.goto("/?seed=24680&animate=off")
+  await settleBoard(page)
+  await openMenu(page)
+  await setBetaFeatures(page, true)
+  await page.getByRole("button", { name: "About FreeCell" }).click()
+
+  await expect(sizes(page)).toHaveText(["Standard", "Mini", "Micro"])
+  await expect(numbers(page)).toHaveText("8 cascades · 4 cells · 52 cards")
+
+  await sizes(page).nth(1).click()
+  // The numbers are the reason the picker sits under them, and on this family they are
+  // also what says the screen moved: four cascades and two cells, on the line
+  // immediately above the control that changed them. The title stays "FreeCell"
+  // throughout, all three sizes being that game.
+  await expect(numbers(page)).toHaveText("4 cascades · 2 cells · 20 cards")
+  await expect(page.locator(".menu-title")).toHaveText("FreeCell")
+  await expect(page.locator("#menu-overlay")).toBeVisible()
+
+  // …and the board really did change under the open menu.
+  await page.getByRole("button", { name: "Close menu" }).click()
+  await settleBoard(page)
+  await expect(page.locator(".drop-zone__slot--cell")).toHaveCount(2)
+})
+
+test("gives a game with no family no such section at all", async ({ page }) => {
+  // Not an empty band with a heading over it: Simple Simon is a game on its own, so
+  // there is nothing to choose between and nothing to head.
+  await page.goto("/?seed=24680&animate=off")
+  await settleBoard(page)
+  await openMenu(page)
+  await setBetaFeatures(page, true)
+  await page.getByRole("button", { name: "About Simple Simon" }).click()
+
+  await expect(page.locator(".menu-variant-picker")).toHaveCount(0)
+  await expect(page.locator(".menu-screen .menu-section__heading")).toHaveCount(0)
+})
+
+test("draws the picker as one control the width of the panel, not three side by side", async ({
+  page,
+}) => {
+  // Three equal shares, each seam a single 1px rule where two borders land on each
+  // other, and the whole thing ending where the panel's other controls end. None of it
+  // is visible when it breaks: a picker whose buttons fit their own words would put the
+  // seams somewhere different on every family, and doubled borders read as a slightly
+  // heavier line rather than as a bug.
+  await page.goto("/?seed=24680&animate=off")
+  await settleBoard(page)
+  await openMenu(page)
+  await setBetaFeatures(page, true)
+  await page.getByRole("button", { name: "About FreeCell" }).click()
+
+  const boxes = await sizes(page).evaluateAll((els) => els.map((el) => el.getBoundingClientRect()))
+  const link = await page.locator(".game-info__link").boundingBox()
+
+  // "Standard" is twice the width of "Mini", and all three are the same box anyway.
+  for (const box of boxes) {
+    expect(Math.round(box.width)).toBe(Math.round(boxes[0].width))
+    expect(Math.round(box.height)).toBe(Math.round(boxes[0].height))
+  }
+  // One border's overlap at each seam, rather than a gap or a 2px rule.
+  expect(Math.round(boxes[1].left - boxes[0].right)).toBe(-1)
+  expect(Math.round(boxes[2].left - boxes[1].right)).toBe(-1)
+  // …and the control spans the panel's content width, ending on the edge the link under
+  // it ends on.
+  expect(Math.round(boxes[0].left)).toBe(Math.round(link.x))
+  expect(Math.round(boxes[2].right)).toBe(Math.round(link.x + link.width))
 })

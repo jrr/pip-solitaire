@@ -91,20 +91,12 @@ describe("MenuGameRow", () => {
     expect(log)->toEqual(["cycle", "select"])
   })
 
-  test("shows a pack as pips, with a multiplier only where there is more than one", () => {
+  test("wears the mark itself, rather than a spelling of it the row keeps", () => {
+    // What a pack or a size *looks* like is `MenuVariantMark`'s, tested there; what this
+    // row promises is that the segment carries that component and not a copy of it.
     let row = render(~label="Spiderette", ~variant=variantOf(Game.spiderette))
-    expect(row->textIn(".menu-game-row__suits"))->toBe("♠♥")
-    expect(row->textIn(".menu-game-row__copies"))->toBe("×2")
-    // The standard pack, once: four suits and nothing after them.
-    let standard = render(~label="Spiderette", ~variant=variantOf(Game.spiderette4))
-    expect(standard->textIn(".menu-game-row__suits"))->toBe("♠♥♦♣")
-    expect(standard->findAll(".menu-game-row__copies")->Array.length)->toBe(0)
-  })
-
-  test("shows a size as the word itself, with no pips in it at all", () => {
-    let row = render(~label="FreeCell", ~variant=variantOf(Game.mini))
-    expect(row->textIn(".menu-game-row__word"))->toBe("Mini")
-    expect(row->findAll(".menu-game-row__suits")->Array.length)->toBe(0)
+    expect(row->textIn(".menu-game-row__variant"))->toBe("♠♥×2")
+    expect(row->findAll(".menu-variant-mark__suits")->Array.length)->toBe(1)
   })
 
   test("names the game, what varies, and which one — a mark being no subject at all", () => {

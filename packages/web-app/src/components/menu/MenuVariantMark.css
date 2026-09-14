@@ -1,0 +1,45 @@
+@layer components {
+  /* The variant mark (see MenuVariantMark.res): the pips of a pack with the number of
+     times the deck holds each card, or the word for a size. No box of its own — the
+     control wearing it owns that — so what is here is the type alone. */
+
+  /* A word mark ("Mini") is the wearing control's own type, one weight down: on the
+     Games list the row's name is what the row is and the word only which of them, and
+     on the info screen the weight is what keeps three words from reading as three
+     headings. */
+  .menu-variant-mark__word {
+    font-weight: 400;
+    line-height: 1;
+  }
+
+  /* The pips, in the app's own suit face — the four flat monochrome pips the cards are
+     drawn with (`styles/fonts.css`). Left to the chrome's font they are whatever the
+     platform has at U+2660-2666, which on a phone is the emoji face: red hearts and
+     diamonds, in a shape that is nobody's card. The face carries those four code points
+     and nothing else, so the fallbacks behind it still serve the "×2".
+
+     A size up from the menu's type, because they are the control's content rather than
+     a label on it, and `line-height: 1` so the taller glyph doesn't set the height of
+     whatever is wearing it. */
+  .menu-variant-mark__suits {
+    font-family: "Pip Suits", "Libre Franklin", sans-serif;
+    font-size: 16px;
+    line-height: 1;
+    letter-spacing: 0.06em;
+  }
+
+  /* …and the multiplier a size down and lighter, being the qualifier: "♠♥" is which
+     pack, "×2" only how many times over. Lightened by opacity rather than by the muted
+     token, so it holds the same relation to its background on a highlighted control as
+     on the panel.
+
+     The space before it is this margin rather than a flex gap on the control wearing
+     the mark: the mark renders as a fragment, so there is no box of its own to carry a
+     gap, and a gap set by each wearer in turn is the same measurement written twice. */
+  .menu-variant-mark__copies {
+    margin-left: 0.3rem;
+    font-size: 12px;
+    line-height: 1;
+    opacity: 0.75;
+  }
+}

@@ -4,15 +4,32 @@
 open Vitest
 open TestDom
 
-let render = (~game=Game.freecell, ~onClose=() => (), ~onBackToMenu=() => ()) =>
-  Html.create(MenuGameInfoScreen.make({info: GameInfo.forGame(game), onClose, onBackToMenu}))
+let render = (~game=Game.freecell, ~variants=?, ~onClose=() => (), ~onBackToMenu=() => ()) =>
+  Html.create(
+    MenuGameInfoScreen.make({info: GameInfo.forGame(game), ?variants, onClose, onBackToMenu}),
+  )
+
+// The picker as `Main` builds one: every board of a family, with `game` the one the
+// screen is about. What it draws is `MenuVariantPicker`'s claim; what this file asks is
+// where the screen puts it and whether it is there at all.
+let pickerFor = (family: Game.family, ~on: Game.t): MenuVariantPicker.props => {
+  game: family.name,
+  noun: GameVariant.nounFor(family),
+  choices: family.variants->Array.map((v): MenuVariantPicker.choice => {
+    mark: GameVariant.forVariant(v),
+    selected: v.game.id == on.id,
+    onChoose: () => (),
+  }),
+}
 
 describe("MenuGameInfoScreen", () => {
-  test("wears the game's own name as its title", () => {
+  test("wears the game's name as its title", () => {
     // The one thing that tells this screen from the other three at a glance, and the
     // reason its subject travels in `Menu.screen` rather than in a props record built
-    // on every render.
+    // on every render. Which name that is — a board's own, or its family's — is
+    // `GameInfo`'s (`nameOf`), tested there.
     expect(render(~game=Game.simpleSimon)->textIn(".menu-title"))->toBe("Simple Simon")
+    expect(render(~game=Game.spiderette)->textIn(".menu-title"))->toBe("Spiderette")
   })
 
   test("shows the board's numbers", () => {
@@ -28,6 +45,36 @@ describe("MenuGameInfoScreen", () => {
     expect(link->attrOr("href"))->toBe("https://en.wikipedia.org/wiki/FreeCell")
     expect(link->attrOr("target"))->toBe("_blank")
     expect(link->attrOr("rel"))->toBe("noopener noreferrer")
+  })
+
+  test("offers the family's other boards, headed with the word for what they vary in", () => {
+    let screen = render(
+      ~game=Game.spiderette,
+      ~variants=pickerFor(Game.spideretteFamily, ~on=Game.spiderette),
+    )
+    // "PACK" on screen — the heading is uppercased by the stylesheet, so the word here is
+    // the picker's own and nothing on this screen knows which families there are.
+    expect(screen->textIn("[aria-label='pack'] .menu-section__heading"))->toBe("pack")
+    expect(screen->findAll(".menu-variant-picker__choice")->Array.length)->toBe(3)
+  })
+
+  test("puts the choice under the numbers it changes, and the link out last", () => {
+    // Picking Mini takes eight cascades to four on the line immediately above the
+    // picker; the link is the way off this screen, so it stays at the foot of it.
+    let screen = render(~game=Game.mini, ~variants=pickerFor(Game.freecellFamily, ~on=Game.mini))
+    expect(
+      screen->findAll(".menu-screen > *")->Array.map(el => el->attrOr("aria-label")),
+    )->toEqual(["numbers", "size", "reference"])
+  })
+
+  test("has no such section at all on a game that is a game on its own", () => {
+    // Not an empty band: Simple Simon has no family, so there is no choice to offer and
+    // nothing for a heading to head.
+    let screen = render(~game=Game.simpleSimon)
+    expect(screen->findAll(".menu-variant-picker")->Array.length)->toBe(0)
+    expect(
+      screen->findAll(".menu-screen > *")->Array.map(el => el->attrOr("aria-label")),
+    )->toEqual(["numbers", "reference"])
   })
 
   test("goes back to the main menu, where the info button was", () => {

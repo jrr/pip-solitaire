@@ -165,9 +165,10 @@ type msg =
   | BackToMenu // the Settings screen's back button — swap back to the main menu
   | OpenDebug // the Settings screen's Debug row — swap to the Debug screen
   | BackToSettings // the Debug screen's back button — swap back to Settings
-  // The "i" beside a game's row — swap to that game's info screen. The *facts* travel,
-  // not the id: `GameInfo.forGame` is what turns a game into them, and the view has
-  // already had to resolve the game to know there is one.
+  // The "i" beside a game's row, and the info screen's own picker — show that game's
+  // info screen. The *facts* travel rather than a bare id: `GameInfo.forGame` is what
+  // turns a game into them, and the view has already had to resolve the game to know
+  // there is one.
   | OpenGameInfo(GameInfo.t)
   // Everything the Settings screen does, in one constructor. The screen's own messages
   // travel up inside it and go straight back down to its `update`; what each of them
@@ -176,7 +177,7 @@ type msg =
   | ToggleCutoutDebug // the menu's safe-area overlay switch (debug)
   | ToggleDebugLog // the Debug screen's console-logging switch
   | SceneActivated(string) // the switcher mounted a scene — which one the menu highlights
-  | VariantChosen(string, string) // a family's segment tapped, with no board of it up
+  | VariantChosen(string) // a family's segment tapped, with no board of it up
   | HistoryChanged(bool) // whether the board can undo after a move
   | RefreshDetected(Refresh.mode) // service-worker presence detected — sets the button's shape
   | RefreshStarted // the refresh button was tapped — start spinning the button
@@ -366,6 +367,25 @@ let settingsEnv = MenuSettingsScreen.liveEnv(
 settingsEnv.publish(settingsInit)
 settingsEnv.root(settingsInit)
 
+// **A board is now its family's chosen one**, which is the one fact three messages
+// below have to write. A scene mounting says it however the board got there — a row
+// tap, a `?game=` link, a resume — and so does the info screen opening on a board,
+// since the picker there is the tap that opens it. The family is read off the board
+// rather than passed in: a board belongs to at most one (`Game.familyOf`), so naming it
+// again at each call site would be the same fact written a second time.
+//
+// A board of no family, or one its family has already chosen, hands the model straight
+// back — and the physical-equality check in `Html.mount` is what turns that into no
+// re-render at all.
+let rememberVariant = (model, id: string) =>
+  switch Game.byId(id)->Option.flatMap(Game.familyOf) {
+  | Some(family) if model.variants->Dict.get(family.id) != Some(id) =>
+    let variants = model.variants->Dict.copy
+    variants->Dict.set(family.id, id)
+    ({...model, variants}, () => Preferences.saveVariant(~family=family.id, id))
+  | _ => (model, Html.noEffect)
+  }
+
 let update = (msg, model) =>
   switch msg {
   | UpdateAvailable => ({...model, updateAvailable: true}, Html.noEffect)
@@ -466,22 +486,11 @@ let update = (msg, model) =>
     // from a resume — so that family's row is now showing that board: the row shows the
     // game you are playing, however you got to it. Written through for the same reason
     // the segment's own choice is; arriving by link is a choice of variant too.
-    switch Game.byId(id)->Option.flatMap(Game.familyOf) {
-    | Some(family) if model.variants->Dict.get(family.id) != Some(id) =>
-      let variants = model.variants->Dict.copy
-      variants->Dict.set(family.id, id)
-      (
-        {...model, activeScene: Some(id), variants},
-        () => Preferences.saveVariant(~family=family.id, id),
-      )
-    | _ => ({...model, activeScene: Some(id)}, Html.noEffect)
-    }
+    let (model, effect) = rememberVariant(model, id)
+    ({...model, activeScene: Some(id)}, effect)
   // A family's segment tapped while its board *isn't* up: nothing mounts, the row simply
   // shows the next variant, and the tap on the name beside it is what opens that board.
-  | VariantChosen(family, id) =>
-    let variants = model.variants->Dict.copy
-    variants->Dict.set(family, id)
-    ({...model, variants}, () => Preferences.saveVariant(~family, id))
+  | VariantChosen(id) => rememberVariant(model, id)
   | HistoryChanged(canUndo) =>
     canUndo == model.canUndo ? (model, Html.noEffect) : ({...model, canUndo}, Html.noEffect) // no change — don't re-render
   // Closing the menu takes the seed dialog down with it, which is what lets Deal say
@@ -525,7 +534,14 @@ let update = (msg, model) =>
   // A game's info screen. Its way back is `BackToMenu` above — the main menu is where
   // the "i" was tapped, and the game it is about need not be the one on the table, so
   // there is nothing here that Settings' own return doesn't already do.
-  | OpenGameInfo(info) => ({...model, menuScreen: Menu.GameInfo(info)}, Html.noEffect)
+  //
+  // The screen is *about* a variant, and the variant it is about is the one its family
+  // has chosen — which is what makes the picker on it a choice rather than a preview.
+  // Opening from a row's "i" that is already true and this writes nothing; opening from
+  // the picker is how a pack picked there is remembered.
+  | OpenGameInfo(info) =>
+    let (model, effect) = rememberVariant(model, info.id)
+    ({...model, menuScreen: Menu.GameInfo(info)}, effect)
   // Opening the Debug screen clears the previous visit's share link rather than
   // leaving it up: the board may well have moved on since, and a stale link is worse
   // than a briefly disabled button. The view kicks off a fresh encode alongside this
@@ -891,6 +907,27 @@ let switcher = SceneSwitcher.render(
   ),
 )
 
+// **Swapping the board under an open menu**: a control has chosen a different board of
+// the family whose board is on the table, so the new one mounts and the menu stays put
+// (`keepMenuOpen`) — the control a player is looking at as they tap it is still there to
+// tap again. Both controls that offer the choice do this: the Games list's segment and
+// the info screen's picker.
+//
+// Nothing is dispatched here. The activation carries the new board into the model on its
+// own (`SceneActivated`), remembered choice and all.
+let swapBoard = (id: string) => {
+  keepMenuOpen := true
+  switcher.select(id)
+  keepMenuOpen := false
+}
+
+// The boards of a family the menu is offering *this render* — its variants narrowed to
+// the scenes in front of a player, which **Beta features** decides (`menuGames`). Fewer
+// than two of them is no choice to offer at all, and both controls that offer one ask
+// the question this way.
+let offeredVariants = (scenes: array<SceneSwitcher.choice>, family: Game.family) =>
+  family.variants->Array.filter(v => scenes->Array.some(scene => scene.id == v.game.id))
+
 // What each family's row opens showing, keyed by family id: the variant last chosen, if
 // it still names one of that family's boards, and nothing at all otherwise — an absent
 // entry is the family's own default, decided where the row is drawn.
@@ -1076,9 +1113,6 @@ let openNamedDeal = (~game: Game.t, ~position: option<Scenario.named>): string =
 // the flag now does to a family — it puts the unreleased boards on the segment instead of
 // into rows of their own.
 let gameRows = (model, dispatch, scenes: array<SceneSwitcher.choice>): array<MenuGameRow.props> => {
-  let offered = (family: Game.family) =>
-    family.variants->Array.filter(v => scenes->Array.some(scene => scene.id == v.game.id))
-
   let after = (siblings: array<Game.variant>, here: Game.variant) => {
     let i = siblings->Array.findIndex(v => v.game.id == here.game.id)
     siblings->Array.get(mod(i + 1, Array.length(siblings)))->Option.getOr(here)
@@ -1090,8 +1124,8 @@ let gameRows = (model, dispatch, scenes: array<SceneSwitcher.choice>): array<Men
   scenes->Array.filterMap((scene): option<MenuGameRow.props> => {
     let game = Game.byId(scene.id)
     switch game->Option.flatMap(Game.familyOf) {
-    | Some(family) if Array.length(offered(family)) > 1 =>
-      let siblings = offered(family)
+    | Some(family) if Array.length(offeredVariants(scenes, family)) > 1 =>
+      let siblings = offeredVariants(scenes, family)
       let leader = siblings->Array.get(0)
       if leader->Option.mapOr(true, first => first.game.id != scene.id) {
         None
@@ -1116,17 +1150,10 @@ let gameRows = (model, dispatch, scenes: array<SceneSwitcher.choice>): array<Men
             mark: GameVariant.forVariant(chosen),
             onCycle: () => {
               let next = after(siblings, chosen)
-              if playing {
-                // This family's board *is* the one on the table, so the choice is a board
-                // change: swap it, and stay in the menu (`keepMenuOpen`) so the segment
-                // can be tapped again. The activation carries the new variant into the
-                // model.
-                keepMenuOpen := true
-                switcher.select(next.game.id)
-                keepMenuOpen := false
-              } else {
-                dispatch(VariantChosen(family.id, next.game.id))
-              }
+              // This family's board *is* the one on the table, so the choice is a board
+              // change; where it isn't, nothing mounts and the choice is only remembered
+              // — the tap on the name beside the segment is what opens that board.
+              playing ? swapBoard(next.game.id) : dispatch(VariantChosen(next.game.id))
             },
           },
           onInfo: ?onInfo(chosen.game),
@@ -1283,10 +1310,48 @@ let debugScreen = (model, dispatch): MenuDebugScreen.props => {
 // A game's info screen, built from the game the pane is showing it for — which is why
 // this is a function where the other three are records: the subject arrives with the
 // screen (`Menu.screen`), not from the model's other fields.
-let gameInfoScreen = (dispatch, info: GameInfo.t): MenuGameInfoScreen.props => {
-  info,
-  onClose: () => dispatch(CloseMenu),
-  onBackToMenu: () => dispatch(BackToMenu),
+//
+// **The picker is the one thing on it that isn't the subject's own.** Which boards a
+// family has is a fact about the games (`Game.families`); which of them the menu is
+// *offering* is this render's, and so is what a tap on one does. A family the list is
+// offering one board of gets no section at all, exactly as its row gets no segment.
+let gameInfoScreen = (model, dispatch, info: GameInfo.t): MenuGameInfoScreen.props => {
+  // Whether the board this screen is about is the one on the table, which is the same
+  // question the Games list's segment asks — and the only thing that decides whether a
+  // pick is a board change or just a choice remembered.
+  let playing = model.activeScene == Some(info.id)
+
+  let choice = (v: Game.variant): MenuVariantPicker.choice => {
+    mark: GameVariant.forVariant(v),
+    selected: v.game.id == info.id,
+    // Moving the screen to a board is what chooses it (`OpenGameInfo`), so that dispatch
+    // is the whole of the choice — with the board swapped under the menu first, where
+    // this family's board is the one being played.
+    onChoose: () => {
+      if playing && v.game.id != info.id {
+        swapBoard(v.game.id)
+      }
+      dispatch(OpenGameInfo(GameInfo.forGame(v.game)))
+    },
+  }
+
+  let picker = (family: Game.family): option<MenuVariantPicker.props> =>
+    switch offeredVariants(switcher.primaryScenes(), family) {
+    | siblings if Array.length(siblings) > 1 =>
+      Some({
+        game: family.name,
+        noun: GameVariant.nounFor(family),
+        choices: siblings->Array.map(choice),
+      })
+    | _ => None
+    }
+
+  {
+    info,
+    variants: ?(Game.byId(info.id)->Option.flatMap(Game.familyOf)->Option.flatMap(picker)),
+    onClose: () => dispatch(CloseMenu),
+    onBackToMenu: () => dispatch(BackToMenu),
+  }
 }
 
 // The adaptive update-check control, or `None` while the service-worker state
@@ -1361,7 +1426,7 @@ let view = (model, dispatch) => <>
     main={mainScreen(model, dispatch)}
     settings={settingsScreen(model, dispatch)}
     debug={debugScreen(model, dispatch)}
-    gameInfo={info => gameInfoScreen(dispatch, info)}
+    gameInfo={info => gameInfoScreen(model, dispatch, info)}
     about={aboutFooter(model, dispatch)}
   />
   // Over the menu rather than inside it, and in the tree only while it's up: the field

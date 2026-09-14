@@ -9,6 +9,15 @@ describe("GameInfo.forGame", () => {
     expect((info.name, info.cascades, info.cells, info.cards))->toEqual(("FreeCell", 8, 4, 52))
   })
 
+  test("heads a board of a family with the family, the board's own name saying too much", () => {
+    // "Spiderette · 2 suits" over a picker offering the packs is the pack said twice, and
+    // it is not what the row a player tapped called the game either.
+    expect(GameInfo.forGame(Game.spiderette).name)->toBe("Spiderette")
+    expect(GameInfo.forGame(Game.mini).name)->toBe("FreeCell")
+    // A game that is a game on its own has only its own name to go by.
+    expect(GameInfo.forGame(Game.simpleSimon).name)->toBe("Simple Simon")
+  })
+
   test("counts a short-deck sibling by its own deck, not by the standard pack", () => {
     // Micro FreeCell is ♠♥ Ace-to-Eight: sixteen cards, and a screen that said 52 would
     // be describing a game the player isn't playing.
@@ -58,6 +67,7 @@ describe("GameInfo.numbers", () => {
 
   test("says one cell rather than 1 cells", () => {
     let one: GameInfo.t = {
+      id: "solo",
       name: "Solo",
       cascades: 1,
       cells: 1,

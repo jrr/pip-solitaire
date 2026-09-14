@@ -13,6 +13,13 @@
 // patience itself, which is wrong about the game but never a dead end.
 
 type t = {
+  // The game this is about, which is also the board's scene id and its storage key.
+  // Carried so a screen showing these facts can find its way back to the `Game.t` they
+  // were read off — the info screen's variant picker asks which family the game belongs
+  // to — without the pane it travels through having to carry a second field beside it.
+  id: string,
+  // The game as a player *names* it, which is a board's own name only where the board is
+  // a game (see `nameOf`).
   name: string,
   cascades: int,
   // 0 on a game with no free cells (Simple Simon, the Spiderettes), which is why
@@ -34,6 +41,17 @@ let referenceFor = (id: string): string =>
   | _ => wikipedia("Patience_(game)")
   }
 
+// **The family's name where there is one**, so the screen about a Spiderette is headed
+// "Spiderette" rather than "Spiderette · 2 suits". Which pack, or which size, is the
+// picker's to say and the title beside it would only be saying it twice — and it is
+// already the name the Games list's row wears and the name the "i" on it announces, so
+// the screen a player opens is headed with what they tapped.
+//
+// Not a lookup either: which boards are one game is `Game.families`' answer, so a fourth
+// Spiderette pack is headed like the other three without an edit here.
+let nameOf = (game: Game.t): string =>
+  Game.familyOf(game)->Option.mapOr(game.name, family => family.name)
+
 // The pack's size from the deck rather than from the dealt piles: a board with a stock
 // still holds every card it is played with, and counting the tableau alone would say
 // 28 for a Spiderette.
@@ -41,7 +59,8 @@ let deckSize = (deck: Cards.deck): int =>
   Array.length(deck.suits) * Array.length(deck.ranks) * deck.copies
 
 let forGame = (game: Game.t): t => {
-  name: game.name,
+  id: game.id,
+  name: nameOf(game),
   cascades: Game.pilesOf(game, Game.Cascade)->Array.length,
   cells: Game.pilesOf(game, Game.FreeCell)->Array.length,
   cards: deckSize(game.deck),
