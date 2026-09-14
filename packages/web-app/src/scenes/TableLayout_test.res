@@ -345,3 +345,30 @@ describe("TableLayout — the drop hit-test", () => {
     expect(TableLayout.hits(~card=card(~left=104., ~top=225.), ~zone))->toBe(false)
   })
 })
+
+describe("the hand-placed tilt", () => {
+  test("keeps every card inside the span, and a card that hasn't moved at its angle", () => {
+    // The span is the whole of it, not a variance: a fan's overlap is computed as if the
+    // cards were square. And the angle is a hash of the resting place, so laying the
+    // same board out again turns nothing — what keeps a resize from twitching the board.
+    Deck.allCards->Array.forEach(
+      card =>
+        for pile in 0 to 15 {
+          for slot in 0 to 12 {
+            let degrees = TableLayout.cardTilt(~card, ~pile, ~slot)
+            expect(Math.abs(degrees) <= TableLayout.maxCardTilt)->toBe(true)
+            expect(TableLayout.cardTilt(~card, ~pile, ~slot))->toBe(degrees)
+          }
+        },
+    )
+  })
+
+  test("turns the two cards beside each other in a fan by visibly different angles", () => {
+    // Adjacent slots are the cards most obviously next to each other; a step of 11 hash
+    // units is 0.55°, which shows as a difference without either reading as crooked.
+    let card = {Deck.suit: Deck.Spades, rank: Deck.Seven}
+    let a = TableLayout.cardTilt(~card, ~pile=3, ~slot=4)
+    let b = TableLayout.cardTilt(~card, ~pile=3, ~slot=5)
+    expect(Math.abs(a -. b))->toBeCloseToWithin(0.55, 6)
+  })
+})

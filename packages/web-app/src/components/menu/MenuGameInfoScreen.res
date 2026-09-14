@@ -37,11 +37,14 @@ type props = {
   // on its own, and that is a screen with no such section at all rather than a section
   // holding the one choice there is to make.
   variants?: MenuVariantPicker.props,
+  // Sloppy placement, as the player has it set: the picture's cards lie as the table's
+  // do, tilted or square.
+  tilt: bool,
   onClose: unit => unit,
   onBackToMenu: unit => unit,
 }
 
-let make = ({info, ?variants, onClose, onBackToMenu}) => <>
+let make = ({info, ?variants, tilt, onClose, onBackToMenu}) => <>
   <MenuHeader
     title={info.name}
     back={Some({label: "Back to menu", onClick: onBackToMenu})}
@@ -53,7 +56,7 @@ let make = ({info, ?variants, onClose, onBackToMenu}) => <>
     // sit on. What a reader hears instead is the game's name, the picture being the
     // board and nothing the numbers below don't say.
     <MenuSection label="preview" modifier="game-info__preview">
-      {BoardArt.svg(~label={info.name ++ ", as dealt"}, info.opening)}
+      {BoardArt.svg(~label={info.name ++ ", as dealt"}, ~tilt, info.opening)}
     </MenuSection>
     // The board's shape in one line. Labelled but unheaded: the numbers name
     // themselves, and a caption over them would say "numbers" twice.

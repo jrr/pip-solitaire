@@ -4,9 +4,21 @@
 open Vitest
 open TestDom
 
-let render = (~game=Game.freecell, ~variants=?, ~onClose=() => (), ~onBackToMenu=() => ()) =>
+let render = (
+  ~game=Game.freecell,
+  ~variants=?,
+  ~tilt=false,
+  ~onClose=() => (),
+  ~onBackToMenu=() => (),
+) =>
   Html.create(
-    MenuGameInfoScreen.make({info: GameInfo.forGame(game), ?variants, onClose, onBackToMenu}),
+    MenuGameInfoScreen.make({
+      info: GameInfo.forGame(game),
+      ?variants,
+      tilt,
+      onClose,
+      onBackToMenu,
+    }),
   )
 
 // The picker as `Main` builds one: every board of a family, with `game` the one the
@@ -40,6 +52,13 @@ describe("MenuGameInfoScreen", () => {
     expect(art->attrOr("role"))->toBe("img")
     expect(art->attrOr("aria-label"))->toBe("FreeCell, as dealt")
     expect(art->findAll(".board-art__card")->Array.length)->toBe(52)
+  })
+
+  test("lays the picture's cards as the Sloppy placement setting has the table's", () => {
+    // The setting reaches the screen as a prop, so a flip redraws the picture with the
+    // next render — tilted with the table, square with it.
+    expect(render(~tilt=true)->findAll(".board-art__tilt")->Array.length)->toBe(52)
+    expect(render(~tilt=false)->findAll(".board-art__tilt")->Array.length)->toBe(0)
   })
 
   test("shows the board's numbers", () => {

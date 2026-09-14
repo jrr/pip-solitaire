@@ -439,44 +439,6 @@ let slotRoleClass = (role: Game.role) =>
   | Game.Stock => "drop-zone__slot--stock"
   }
 
-// The whole span of the hand-placed tilt, not a variance. **Keep it small** or cards
-// stop stacking cleanly: a fanned pile's overlap comes from `TableLayout`'s fan steps —
-// `fanDownStep`, and less again once a deep pile compresses — which assume cards are
-// very nearly square. docs/card-tilt.md is the rest of it.
-let maxCardTilt = 2.5
-let suitOrdinal = (suit: Deck.suit) =>
-  switch suit {
-  | Spades => 0
-  | Hearts => 1
-  | Diamonds => 2
-  | Clubs => 3
-  }
-let rankOrdinal = (rank: Deck.rank) =>
-  switch rank {
-  | Ace => 0
-  | Two => 1
-  | Three => 2
-  | Four => 3
-  | Five => 4
-  | Six => 5
-  | Seven => 6
-  | Eight => 7
-  | Nine => 8
-  | Ten => 9
-  | Jack => 10
-  | Queen => 11
-  | King => 12
-  }
-// The tilt in degrees for `card` resting at (`pile`, `slot`) — its resting place, as
-// a pile index and a slot within it. **Every input must stay non-negative**: that is
-// what keeps `Int.mod` positive, and a negative `h` would throw the angle past
-// `-maxCardTilt`. Why a hash rather than a random number, and what each multiplier is
-// worth in degrees: docs/card-tilt.md.
-let cardTilt = (~card: Deck.card, ~pile, ~slot) => {
-  let h = suitOrdinal(card.suit) * 17 + rankOrdinal(card.rank) * 5 + pile * 23 + slot * 11
-  let unit = Int.toFloat(Int.mod(h, 100)) /. 100.
-  (unit *. 2. -. 1.) *. maxCardTilt
-}
 // Set (or clear) a card wrapper's tilt, published as the `--card-rot` custom
 // property the `.card-art` child rotates by (see the CSS). Kept on the child, not
 // the wrapper, so it never fights the wrapper's drag/flight `transform`.
@@ -504,7 +466,8 @@ let clearTiltTiming = wrapper => {
 // player wants the hand-placed look at all. "Off" is a dead-square 0° through
 // the same property, not a second code path — so nothing else about the layout
 // varies with the setting.
-let tiltFor = (~enabled, ~card, ~pile, ~slot) => enabled ? cardTilt(~card, ~pile, ~slot) : 0.
+let tiltFor = (~enabled, ~card, ~pile, ~slot) =>
+  enabled ? TableLayout.cardTilt(~card, ~pile, ~slot) : 0.
 
 // The game clock, read where the impurity belongs: `Session` stamps a win with a
 // moment it's handed, and this is the layer that has a wall clock to hand it. The same

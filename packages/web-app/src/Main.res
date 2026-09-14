@@ -1349,6 +1349,7 @@ let gameInfoScreen = (model, dispatch, info: GameInfo.t): MenuGameInfoScreen.pro
   {
     info,
     variants: ?(Game.byId(info.id)->Option.flatMap(Game.familyOf)->Option.flatMap(picker)),
+    tilt: model.settings.cardTilt,
     onClose: () => dispatch(CloseMenu),
     onBackToMenu: () => dispatch(BackToMenu),
   }

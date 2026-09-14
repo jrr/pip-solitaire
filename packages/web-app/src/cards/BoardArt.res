@@ -13,18 +13,23 @@
 // each of its roles (`slot`), and the card's shadow (`defs`) — are drawn by the table in
 // CSS, which an SVG cannot share; each is kept in step with its stylesheet rule by hand.
 //
-// What it leaves to the table: the hand-placed tilt (`docs/card-tilt.md`), the fan's
-// compression when a pile outgrows the playfield (`TableLayout.fanFor`'s `room`, given
-// `None` here, so every fan is drawn at its natural step), and the slot's role cue.
+// What it leaves to the table: the fan's compression when a pile outgrows the playfield
+// (`TableLayout.fanFor`'s `room`, given `None` here, so every fan is drawn at its natural
+// step).
 
 let n = Float.toString
 
 // The two rows, as the table splits them: a cascade lands on the bottom row and every
 // other pile on the top — but only when the board has both kinds. One kind alone is one
 // row.
-let rows = (piles: array<Game.pile>): array<array<Game.pile>> => {
-  let cascades = piles->Array.filter(p => p.role == Game.Cascade)
-  let others = piles->Array.filter(p => p.role != Game.Cascade)
+// A pile keeps its index in the game, which is half of what its cards' tilt is keyed
+// on — the same index the table hands `cardTilt` as `~pile`.
+type placed = (int, Game.pile)
+
+let rows = (piles: array<Game.pile>): array<array<placed>> => {
+  let indexed = piles->Array.mapWithIndex((p, i) => (i, p))
+  let cascades = indexed->Array.filter(((_, p)) => p.role == Game.Cascade)
+  let others = indexed->Array.filter(((_, p)) => p.role != Game.Cascade)
   switch (Array.length(others), Array.length(cascades)) {
   | (0, _) => [cascades]
   | (_, 0) => [others]
@@ -131,50 +136,58 @@ let slot = (~x, ~y, role: Game.role) => {
 }
 
 // One card at a position: the real face, or the back for one lying face down, in a
-// nested `<svg>` scaled from the card's design box to the board's card width.
-let placedCard = (~x, ~y, ~down: bool, card: Deck.card) =>
-  <svg
-    className={down ? "board-art__card board-art__back" : "board-art__card"}
-    x={n(x)}
-    y={n(y)}
-    width={n(TableLayout.cardW)}
-    height={n(TableLayout.cardH)}
-    viewBox={CardArt.viewBox}
-    filter="url(#board-art-shadow)"
-  >
-    {down ? CardArt.back() : CardArt.body(card)}
-  </svg>
+// nested `<svg>` scaled from the card's design box to the board's card width. The
+// tilt, where it is on, is a rotate about the card's centre on a group around it — a
+// nested `<svg>` takes no `transform` of its own in SVG 1.1.
+let placedCard = (~x, ~y, ~down: bool, ~tilt: option<float>, card: Deck.card) => {
+  let art =
+    <svg
+      className={down ? "board-art__card board-art__back" : "board-art__card"}
+      x={n(x)}
+      y={n(y)}
+      width={n(TableLayout.cardW)}
+      height={n(TableLayout.cardH)}
+      viewBox={CardArt.viewBox}
+      filter="url(#board-art-shadow)"
+    >
+      {down ? CardArt.back() : CardArt.body(card)}
+    </svg>
+  switch tilt {
+  | Some(degrees) =>
+    let cx = x +. TableLayout.cardW /. 2.
+    let cy = y +. TableLayout.cardH /. 2.
+    <g className="board-art__tilt" transform={`rotate(${n(degrees)} ${n(cx)} ${n(cy)})`}> {art} </g>
+  | None => art
+  }
+}
 
-// One pile, its zone's top-left corner given. A squared pile shows its top card alone,
-// as the table does; a fanned one shows every card stepped down by `TableLayout`'s fan.
-let pile = (~x, ~y, p: Game.pile): Html.vnode => {
+// One pile, its zone's top-left corner given. Every card is drawn, as on the table: a
+// squared pile's lie on one spot, where the tilt is what lets the edges beneath the top
+// card show; a fanned pile's step down by `TableLayout`'s fan.
+let pile = (~x, ~y, ~tilt: bool, (index, p): placed): Html.vnode => {
   let cardX = x +. TableLayout.zoneInset
   let cardY = y +. TableLayout.zoneInset
   let count = Array.length(p.cards)
   if count == 0 {
     slot(~x=cardX, ~y=cardY, p.role)
   } else {
-    switch p.stacking {
-    | Game.Squared =>
-      let top = count - 1
-      p.cards
-      ->Array.get(top)
-      ->Option.mapOr(Html.empty, card =>
-        placedCard(~x=cardX, ~y=cardY, ~down=top < p.faceDown, card)
-      )
+    let offset = switch p.stacking {
+    | Game.Squared => _ => 0.
     | Game.Fanned =>
       let fan = TableLayout.fanFor(~count, ~down=p.faceDown, ~room=None, ~scale=1.)
-      p.cards
-      ->Array.mapWithIndex((card, slot) =>
-        placedCard(
-          ~x=cardX,
-          ~y=cardY +. TableLayout.fanOffset(fan, ~down=p.faceDown, ~slot),
-          ~down=slot < p.faceDown,
-          card,
-        )
-      )
-      ->Html.array
+      slot => TableLayout.fanOffset(fan, ~down=p.faceDown, ~slot)
     }
+    p.cards
+    ->Array.mapWithIndex((card, slot) =>
+      placedCard(
+        ~x=cardX,
+        ~y=cardY +. offset(slot),
+        ~down=slot < p.faceDown,
+        ~tilt=tilt ? Some(TableLayout.cardTilt(~card, ~pile=index, ~slot)) : None,
+        card,
+      )
+    )
+    ->Html.array
   }
 }
 
@@ -202,16 +215,18 @@ let defs = () =>
     {CardArt.backDefs()}
   </defs>
 
-// The whole board. `~label` is what a reader hears in place of the picture.
-let svg = (~label: string, piles: array<Game.pile>) => {
+// The whole board. `~label` is what a reader hears in place of the picture; `~tilt` is
+// the Sloppy placement setting, so the picture is as square or as hand-placed as the
+// table the player has set up.
+let svg = (~label: string, ~tilt: bool, piles: array<Game.pile>) => {
   let width = widthFor(piles)
   // Each row's zones, spread `space-evenly` across the width; each row's top, the
   // rows stacked with the table's gap between them.
   let (drawn, height) = rows(piles)->Array.reduce(([], 0.), ((acc, top), row) => {
     let gap = TableLayout.spreadGap(~width, ~count=Array.length(row))
-    let zones = row->Array.mapWithIndex((p, i) => {
+    let zones = row->Array.mapWithIndex(((_, p) as placed, i) => {
       let x = gap +. Int.toFloat(i) *. (TableLayout.zoneWidth +. gap)
-      (pile(~x, ~y=top, p), top +. reach(p))
+      (pile(~x, ~y=top, ~tilt, placed), top +. reach(p))
     })
     let bottom = zones->Array.reduce(top, (b, (_, r)) => Math.max(b, r))
     (acc->Array.concat(zones->Array.map(((v, _)) => v)), bottom +. TableLayout.rowGap)

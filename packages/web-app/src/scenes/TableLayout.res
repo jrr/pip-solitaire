@@ -178,6 +178,51 @@ let fanOffset = (fan: fan, ~down: int, ~slot: int) => {
   Int.toFloat(belowDown) *. fan.downStep +. Int.toFloat(slot - belowDown) *. fan.upStep
 }
 
+// --- The hand-placed tilt ---------------------------------------------------------
+// A resting card's slight rotation, keyed on the card and where it rests. Here rather
+// than in `TableScene` because two drawings apply it: the table, through `--card-rot`,
+// and the opening-board preview (`BoardArt`), as an SVG rotate — and a card the preview
+// shows tilted by the table's own hash is a card the player will find at that angle.
+
+// The whole span of the hand-placed tilt, not a variance. **Keep it small** or cards
+// stop stacking cleanly: a fanned pile's overlap comes from `TableLayout`'s fan steps —
+// `fanDownStep`, and less again once a deep pile compresses — which assume cards are
+// very nearly square. docs/card-tilt.md is the rest of it.
+let maxCardTilt = 2.5
+let suitOrdinal = (suit: Deck.suit) =>
+  switch suit {
+  | Spades => 0
+  | Hearts => 1
+  | Diamonds => 2
+  | Clubs => 3
+  }
+let rankOrdinal = (rank: Deck.rank) =>
+  switch rank {
+  | Ace => 0
+  | Two => 1
+  | Three => 2
+  | Four => 3
+  | Five => 4
+  | Six => 5
+  | Seven => 6
+  | Eight => 7
+  | Nine => 8
+  | Ten => 9
+  | Jack => 10
+  | Queen => 11
+  | King => 12
+  }
+// The tilt in degrees for `card` resting at (`pile`, `slot`) — its resting place, as
+// a pile index and a slot within it. **Every input must stay non-negative**: that is
+// what keeps `Int.mod` positive, and a negative `h` would throw the angle past
+// `-maxCardTilt`. Why a hash rather than a random number, and what each multiplier is
+// worth in degrees: docs/card-tilt.md.
+let cardTilt = (~card: Deck.card, ~pile, ~slot) => {
+  let h = suitOrdinal(card.suit) * 17 + rankOrdinal(card.rank) * 5 + pile * 23 + slot * 11
+  let unit = Int.toFloat(Int.mod(h, 100)) /. 100.
+  (unit *. 2. -. 1.) *. maxCardTilt
+}
+
 // --- Hit-testing --------------------------------------------------------------
 
 // One primitive for both the hover highlight and the snap-on-drop decision, so the

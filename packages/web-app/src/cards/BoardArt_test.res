@@ -5,7 +5,8 @@
 open Vitest
 open TestDom
 
-let draw = (game: Game.t) => Html.create(BoardArt.svg(~label=game.name, game.piles))
+let draw = (~tilt=false, game: Game.t) =>
+  Html.create(BoardArt.svg(~label=game.name, ~tilt, game.piles))
 
 let num = (el, name) => el->attrOr(name)->Float.fromString->Option.getOrThrow
 
@@ -34,7 +35,9 @@ describe("BoardArt", () => {
     )
     // An empty column is the bare dashed ghost — the only slot that is.
     let piles = Game.freecell.piles->Array.filter(p => p.role == Game.Cascade)
-    let column = Html.create(BoardArt.svg(~label="empty", piles->Array.map(p => {...p, cards: []})))
+    let column = Html.create(
+      BoardArt.svg(~label="empty", ~tilt=false, piles->Array.map(p => {...p, cards: []})),
+    )
     expect(
       column
       ->findAll(".board-art__slot--tableau .board-art__slot-box[stroke-dasharray]")
@@ -42,13 +45,37 @@ describe("BoardArt", () => {
     )->toBe(8)
   })
 
-  test("turns a face-down card over, and shows a squared pile's top card alone", () => {
+  test("turns a face-down card over, and draws a squared pile whole", () => {
     // Spiderette: seven columns of one to seven with only the top card face up — 21
-    // backs — and a stock of 24 face down, drawn as the one back on top of it.
+    // backs — and a stock of 24 face down, every one of them drawn on the one spot, as
+    // the table has them: with the tilt on, that is what shows the stack's edges.
     let art = draw(Game.spiderette)
-    expect(art->findAll(".board-art__card")->Array.length)->toBe(28 + 1)
-    expect(art->findAll(".board-art__back")->Array.length)->toBe(21 + 1)
+    expect(art->findAll(".board-art__card")->Array.length)->toBe(52)
+    expect(art->findAll(".board-art__back")->Array.length)->toBe(21 + 24)
     expect(art->findAll(".board-art__slot")->Array.length)->toBe(4)
+    // The stock sits on the top row, which is drawn first: its backs lead the list.
+    let stock = art->findAll(".board-art__back")->Array.slice(~start=0, ~end=24)
+    let ys = stock->Array.map(el => num(el, "y"))
+    expect(ys->Array.every(y => Some(y) == ys[0]))->toBe(true)
+  })
+
+  test("tilts each card by the table's own hash, keyed on the card and where it rests", () => {
+    // FreeCell's first cascade, pile 8 of the sixteen (the cells and foundations come
+    // first): the card in slot 0 turns by `TableLayout.cardTilt` for that place, about
+    // its own centre, and the next slot by its own. Square when the setting is off:
+    // no group, no rotate.
+    let art = draw(~tilt=true, Game.freecell)
+    let first = Game.freecell.piles->Array.findIndex(p => p.role == Game.Cascade)
+    let card = (Game.freecell.piles[first]->Option.getOrThrow).cards[0]->Option.getOrThrow
+    let degrees = TableLayout.cardTilt(~card, ~pile=first, ~slot=0)
+    let turned = art->find(".board-art__tilt")->Option.getOrThrow
+    let box = turned->find(".board-art__card")->Option.getOrThrow
+    let cx = num(box, "x") +. TableLayout.cardW /. 2.
+    let cy = num(box, "y") +. TableLayout.cardH /. 2.
+    expect(turned->attrOr("transform"))->toBe(
+      `rotate(${Float.toString(degrees)} ${Float.toString(cx)} ${Float.toString(cy)})`,
+    )
+    expect(draw(Game.freecell)->findAll(".board-art__tilt")->Array.length)->toBe(0)
   })
 
   test("nests the real card art, so the drawing can't drift from the face the game draws", () => {
@@ -95,7 +122,7 @@ describe("BoardArt", () => {
   test("a row of one kind alone is one row, spread on its own", () => {
     // Nothing on the board but cascades: no top row, so the first card is at the top.
     let piles = Game.freecell.piles->Array.filter(p => p.role == Game.Cascade)
-    let art = Html.create(BoardArt.svg(~label="cascades", piles))
+    let art = Html.create(BoardArt.svg(~label="cascades", ~tilt=false, piles))
     let first = art->find(".board-art__card")->Option.getOrThrow
     expect(num(first, "y"))->toBe(TableLayout.zoneInset)
   })

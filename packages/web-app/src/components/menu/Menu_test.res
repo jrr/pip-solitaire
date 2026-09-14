@@ -77,7 +77,7 @@ let render = (~seed, ~status): Html.element =>
       debug,
       // The info screen's builder — scenery too, since `screen` is `Main` throughout
       // and the pane never calls it.
-      gameInfo: info => {info, onClose: () => (), onBackToMenu: () => ()},
+      gameInfo: info => {info, tilt: false, onClose: () => (), onBackToMenu: () => ()},
       about,
     }),
   )
