@@ -1,0 +1,30 @@
+@layer components {
+  /* The still of the opening board (BoardPreview.res): the table's markup, laid out
+     by the table's own rules. Two things are this component's.
+
+     The box is a *container*, so every `cqw` the component writes — the card and
+     zone footprints, the fan steps, a grown zone's height — resolves against its
+     width. That is what fits the board to whatever panel holds it without a
+     measurement, and so what lets a pure component render it.
+
+     `pointer-events: none` is the whole of "not interactive". No pointer loop was
+     wired to this markup and no zone here is a drop target; what the rule does is
+     keep the table's affordances from showing on it — the grab cursor a card wears,
+     the tap cursor on a stock — since nothing under it is ever hit. */
+  .board-preview {
+    container-type: inline-size;
+    width: 100%;
+    pointer-events: none;
+    user-select: none;
+  }
+}
+
+@layer overrides {
+  /* The table pins its rows to the top of a stage it fills; the still has no stage,
+     and is as tall as its rows. One property, and in `overrides` because it reaches
+     into another component's rule (docs/css-layers.md): in `components` it would
+     lose to the `scenes` rule it corrects, whatever its specificity. */
+  .board-preview .drop-rows {
+    position: static;
+  }
+}

@@ -294,28 +294,37 @@
     transition: border-color 0.12s ease, background 0.12s ease;
   }
 
-  /* The static empty-pile indicator: a card-sized dashed placeholder,
-     split off from the zone's old overloaded outline so it can match the card
-     footprint exactly. Centred where a squared card rests — horizontally in the
-     zone, vertically in its *base* box (`--zone-h`, which stays the base height
-     even as a fanned zone grows) — at the card's own width, height and corner
-     radius. All three come straight from the card's design box (`CardArt`'s
-     120×168 viewBox and its `rx`, scaled by TableScene), so the slot traces the
-     card rather than approximating it with its own ratios. A resting card (a
-     sibling `.stacking-card`, layered above) then covers it pixel-for-pixel, so
-     the dashed cue shows only on empty piles. It keys off the card properties,
-     not the zone's, so it tracks the card rather than the larger highlight frame;
-     `pointer-events: none` keeps the `.drop-zone` the drop hit-test box. */
-  .drop-zone__slot {
+  /* The resting place: a card-sized box centred where a squared card rests —
+     horizontally in the zone, vertically in its *base* box (`--zone-h`, which stays
+     the base height even as a fanned zone grows) — at the card's own width and
+     height. Both come straight from the card's design box (`CardArt`'s 120×168
+     viewBox, scaled by TableScene), so the box traces the card rather than
+     approximating it with its own ratios. It keys off the card properties, not the
+     zone's, so it tracks the card rather than the larger highlight frame;
+     `pointer-events: none` keeps the `.drop-zone` the drop hit-test box.
+
+     Two things wear it. The static empty-pile indicator (`.drop-zone__slot`, the
+     dashed placeholder below, its own element rather than a border on the zone so
+     it can match the card footprint exactly): on the table a resting card — a
+     `.stacking-card` on the playfield, layered above — covers it pixel-for-pixel, so
+     the dashed cue shows only on empty piles. And the still of the opening board on a
+     game's info screen (`BoardPreview`), which has no playfield to position cards on
+     and so seats each card in one of these instead, stepped down the fan by a margin.
+     Centred rather than offset from the corner so the zone's own border never enters
+     into it: the two boxes land on the same spot however the zone is drawn. */
+  .drop-zone__rest {
     position: absolute;
     left: 50%;
     top: calc(var(--zone-h) / 2);
     transform: translate(-50%, -50%);
     width: var(--card-w);
     height: var(--card-h);
+    pointer-events: none;
+  }
+
+  .drop-zone__slot {
     border: 1px dashed #334155;
     border-radius: var(--card-radius);
-    pointer-events: none;
   }
 
   /* The slot's role, which until now it didn't show: one dashed rectangle

@@ -345,3 +345,54 @@ describe("TableLayout — the drop hit-test", () => {
     expect(TableLayout.hits(~card=card(~left=104., ~top=225.), ~zone))->toBe(false)
   })
 })
+
+describe("the hand-placed tilt", () => {
+  test("keeps every card inside the span, and a card that hasn't moved at its angle", () => {
+    // The span is the whole of it, not a variance: a fan's overlap is computed as if the
+    // cards were square. And the angle is a hash of the resting place, so laying the
+    // same board out again turns nothing — what keeps a resize from twitching the board.
+    Deck.allCards->Array.forEach(
+      card =>
+        for pile in 0 to 15 {
+          for slot in 0 to 12 {
+            let degrees = TableLayout.cardTilt(~card, ~pile, ~slot)
+            expect(Math.abs(degrees) <= TableLayout.maxCardTilt)->toBe(true)
+            expect(TableLayout.cardTilt(~card, ~pile, ~slot))->toBe(degrees)
+          }
+        },
+    )
+  })
+
+  test("turns the two cards beside each other in a fan by visibly different angles", () => {
+    // Adjacent slots are the cards most obviously next to each other; a step of 11 hash
+    // units is 0.55°, which shows as a difference without either reading as crooked.
+    let card = {Deck.suit: Deck.Spades, rank: Deck.Seven}
+    let a = TableLayout.cardTilt(~card, ~pile=3, ~slot=4)
+    let b = TableLayout.cardTilt(~card, ~pile=3, ~slot=5)
+    expect(Math.abs(a -. b))->toBeCloseToWithin(0.55, 6)
+  })
+})
+
+describe("TableLayout — grouping piles into rows", () => {
+  test("puts the cascades on the bottom row and everything else on the top", () => {
+    // FreeCell: cells and foundations first in the game, cascades after; the rows
+    // keep each pile's index in the game, which its zone and its cards' tilt are keyed on.
+    let rows = TableLayout.rows(Game.freecell.piles)
+    expect(rows->Array.map(Array.length))->toEqual([8, 8])
+    expect(rows->Array.getUnsafe(0)->Array.map(((i, _)) => i))->toEqual([0, 1, 2, 3, 4, 5, 6, 7])
+    expect(rows->Array.getUnsafe(1)->Array.every(((_, p)) => p.role == Game.Cascade))->toBe(true)
+    expect(TableLayout.widestRow(Game.freecell.piles))->toBe(8)
+    // Spiderette: a stock and four foundations above seven columns.
+    expect(TableLayout.rows(Game.spiderette.piles)->Array.map(Array.length))->toEqual([5, 7])
+    expect(TableLayout.widestRow(Game.spiderette.piles))->toBe(7)
+  })
+
+  test("a board of one kind is one row, however many piles it has", () => {
+    let cascades = Game.freecell.piles->Array.filter(p => p.role == Game.Cascade)
+    expect(TableLayout.twoRows(cascades))->toBe(false)
+    expect(TableLayout.rows(cascades)->Array.map(Array.length))->toEqual([8])
+    expect(TableLayout.widestRow(cascades))->toBe(8)
+    let others = Game.freecell.piles->Array.filter(p => p.role != Game.Cascade)
+    expect(TableLayout.rows(others)->Array.map(Array.length))->toEqual([8])
+  })
+})

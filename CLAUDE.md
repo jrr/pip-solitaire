@@ -204,6 +204,12 @@ ref, channel), why the first board mounts before `dispatch` exists and what that
 costs, who resolves the deal number, and which of the four opens touch storage.
 Read it before adding an argument to `TableScene.make`.
 
+The board's *markup* — the rows, zones, slots and cards `TableScene.css` styles —
+is built in one place, `scenes/TableMarkup.res`, by the live table and by the still
+of a game's opening board on its info screen (`components/BoardPreview.res`) alike.
+A class name the stylesheet answers to is written there, not in either renderer;
+how the still lays the same markup out with no stage to measure is its own header.
+
 ## Styling
 
 CSS is **one file per component**, next to the component that renders it —

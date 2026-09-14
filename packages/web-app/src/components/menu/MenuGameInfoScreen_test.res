@@ -4,9 +4,21 @@
 open Vitest
 open TestDom
 
-let render = (~game=Game.freecell, ~variants=?, ~onClose=() => (), ~onBackToMenu=() => ()) =>
+let render = (
+  ~game=Game.freecell,
+  ~variants=?,
+  ~tilt=false,
+  ~onClose=() => (),
+  ~onBackToMenu=() => (),
+) =>
   Html.create(
-    MenuGameInfoScreen.make({info: GameInfo.forGame(game), ?variants, onClose, onBackToMenu}),
+    MenuGameInfoScreen.make({
+      info: GameInfo.forGame(game),
+      ?variants,
+      tilt,
+      onClose,
+      onBackToMenu,
+    }),
   )
 
 // The picker as `Main` builds one: every board of a family, with `game` the one the
@@ -30,6 +42,24 @@ describe("MenuGameInfoScreen", () => {
     // `GameInfo`'s (`nameOf`), tested there.
     expect(render(~game=Game.simpleSimon)->textIn(".menu-title"))->toBe("Simple Simon")
     expect(render(~game=Game.spiderette)->textIn(".menu-title"))->toBe("Spiderette")
+  })
+
+  test("shows the opening board, in the table's own markup, above the numbers", () => {
+    // A still of the board and not a board: one image, named for a reader, with a card
+    // per card FreeCell deals. What the still gets right is `BoardPreview_test`'s.
+    let screen = render()
+    let still = screen->find(".game-info__preview .board-preview")->Option.getOrThrow
+    expect(still->attrOr("role"))->toBe("img")
+    expect(still->attrOr("aria-label"))->toBe("FreeCell, as dealt")
+    expect(still->findAll(".stacking-card")->Array.length)->toBe(52)
+  })
+
+  test("lays the still's cards as the Sloppy placement setting has the table's", () => {
+    // The setting reaches the screen as a prop, so a flip redraws the still with the
+    // next render — tilted with the table, square with it.
+    let tilted = screen => screen->findAll(".stacking-card[style*='--card-rot']")->Array.length
+    expect(tilted(render(~tilt=true)))->toBe(52)
+    expect(tilted(render(~tilt=false)))->toBe(0)
   })
 
   test("shows the board's numbers", () => {
@@ -64,7 +94,7 @@ describe("MenuGameInfoScreen", () => {
     let screen = render(~game=Game.mini, ~variants=pickerFor(Game.freecellFamily, ~on=Game.mini))
     expect(
       screen->findAll(".menu-screen > *")->Array.map(el => el->attrOr("aria-label")),
-    )->toEqual(["numbers", "size", "reference"])
+    )->toEqual(["preview", "numbers", "size", "reference"])
   })
 
   test("has no such section at all on a game that is a game on its own", () => {
@@ -74,7 +104,7 @@ describe("MenuGameInfoScreen", () => {
     expect(screen->findAll(".menu-variant-picker")->Array.length)->toBe(0)
     expect(
       screen->findAll(".menu-screen > *")->Array.map(el => el->attrOr("aria-label")),
-    )->toEqual(["numbers", "reference"])
+    )->toEqual(["preview", "numbers", "reference"])
   })
 
   test("goes back to the main menu, where the info button was", () => {

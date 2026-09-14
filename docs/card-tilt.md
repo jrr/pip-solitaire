@@ -10,9 +10,13 @@ random number, it is published as a custom property rather than applied as a
 style, and the finish sweep has to take the rotation apart and re-time it card by
 card or the whole board twitches before anything moves.
 
-The code is in `web-app/src/scenes/TableScene.res` (`cardTilt`, `applyTilt`,
-`setTiltTiming`, `tiltFor`) and `web-app/src/scenes/TableScene.css`
-(`.stacking-card .card-art`).
+The hash is in `web-app/src/scenes/TableLayout.res` (`cardTilt`, `maxCardTilt`),
+beside the rest of the board's arithmetic; the table applies it from
+`web-app/src/scenes/TableScene.res` (`applyTilt`, `setTiltTiming`, `tiltFor`) and
+`web-app/src/scenes/TableScene.css` (`.stacking-card .card-art`). The still of the
+opening board on a game's info screen (`web-app/src/components/BoardPreview.res`)
+writes the same property from the same hash, so a card it shows tilted is a card
+the player will find at that angle.
 
 ## Deterministic, not random
 
@@ -120,6 +124,9 @@ The tilt is a stored flag, `pip.cardTilt`, defaulting **on**
 Turning it off doesn't take a different code path. `tiltFor` returns a
 dead-square `0.`, the same property is written with the same transition, and
 every card eases back to true. Nothing else about the layout changes.
+
+The info screen's still reads the same setting, as a prop from the settings
+model, so it is drawn as square or as hand-placed as the table.
 
 ## The sweep problem
 
