@@ -12,10 +12,11 @@
 // The table measures its stage, picks a scale and publishes pixels (`applyScale`). A
 // pure component can't measure, so the still publishes the same footprints
 // (`TableLayout.cssVars`) in container-query units instead — `cqw`, hundredths of its
-// own width — at the scale that makes the widest row's capped width (`rowsMaxWidth`)
-// exactly a hundred of them. Every length below is in that unit, so the still fits any
-// panel and no DOM is read. What the table leaves in unscaled pixels — the row gap, the
-// borders, the shadows — stays unscaled here too, because it is the same rule.
+// own width — at the scale that fits the whole board (`TableLayout.boardSize`) into a
+// box a hundred of them wide. Every length below is in that unit, so the still fits any
+// panel and no DOM is read. The borders and the shadows stay in the unscaled pixels the
+// table draws them in, being a card's detail rather than its size; the gap between the
+// rows scales, being the board's own proportion (`boxHeight`, `footprints`).
 //
 // Cards sit *in the zone* rather than on a playfield: each in a `rest` box centred on
 // the resting place, which is the box the empty-pile slot is, stepped down the fan by a
@@ -29,15 +30,35 @@
 
 let cq = (v: float) => Float.toString(v) ++ "cqw"
 
-// The scale at which the board is a hundred `cqw` wide.
-let scaleFor = (piles: array<Game.pile>) =>
-  100. /. TableLayout.rowsMaxWidth(~widestRow=TableLayout.widestRow(piles))
+// The box the board is drawn in, in the still's own unit: a hundred `cqw` wide by
+// definition, and this tall. `~box` is a height a caller is holding the still to, as a
+// ratio of its width; without one it is the board's own shape, and the board fills the
+// box exactly.
+let boxHeight = (~box=?, piles: array<Game.pile>) => {
+  let (w, h) = TableLayout.boardSize(piles)
+  100. *. box->Option.getOr(h /. w)
+}
+
+// The scale at which the board fits that box: the width fit, and the height fit besides
+// where the box given is flatter than the board. A still held to no box is its own box,
+// and there the width fit is the whole of it — written as its own case rather than as a
+// `Math.min` of two expressions that are equal in arithmetic but not to the last bit.
+let scaleFor = (~box=?, piles: array<Game.pile>) => {
+  let (w, h) = TableLayout.boardSize(piles)
+  let widthFit = 100. /. w
+  switch box {
+  | None => widthFit
+  | Some(aspect) => Math.min(widthFit, 100. *. aspect /. h)
+  }
+}
 
 // The JS→CSS interface, as one declaration string: what `applyScale` publishes on the
-// playfield, in the still's unit.
+// playfield, in the still's unit — and the gap between the rows besides, which the
+// table leaves to its stylesheet unscaled and the still scales (`TableLayout.rowGap`).
 let footprints = (~scale, ~widestRow) =>
   TableLayout.cssVars(~scale, ~widestRow)
   ->Array.map(((name, value)) => `${name}: ${cq(value)}`)
+  ->Array.concat([`gap: ${cq(TableLayout.rowGap *. scale)}`])
   ->Array.join("; ")
 
 // One pile's zone with its cards in it: a squared pile's on one spot, where the tilt
@@ -77,13 +98,30 @@ let pile = (~scale, ~tilt: bool, (index, p): (int, Game.pile)) => {
 // under it are hidden from the accessible tree, so the fifty-two cards are not read out
 // one by one — and `~tilt` is the Sloppy placement setting, so the still is as square or
 // as hand-placed as the table the player has set up.
-let make = (~label: string, ~tilt: bool, piles: array<Game.pile>) => {
-  let scale = scaleFor(piles)
+//
+// **`~box` is what holds a screen still under a picture that changes.** The box is
+// declared as a ratio and the board is fitted into it, rather than the box being
+// whatever the board came to — so a caller with several boards to draw in one place
+// (`GameInfo.previewBox`: a family's sizes, a family's packs) hands each of them the
+// same one, and the choice redraws the board without moving a line of the screen below
+// it. A board smaller than the box keeps its proportions and is centred in it, which is
+// also the honest drawing: four columns of five cards are a smaller board, not the same
+// board with bigger cards.
+let make = (~label: string, ~tilt: bool, ~box=?, piles: array<Game.pile>) => {
+  let scale = scaleFor(~box?, piles)
   let rows =
     TableLayout.rows(piles)->Array.map(row =>
       TableMarkup.row(row->Array.map(pile(~scale, ~tilt, ...))->Html.array)
     )
-  <div className="board-preview" role="img" ariaLabel={label}>
+  <div
+    className="board-preview"
+    role="img"
+    ariaLabel={label}
+    // A ratio rather than a length: the box is as wide as whatever holds it, and a
+    // height in the container unit it publishes to its own children would be reading
+    // its own width back.
+    style={`aspect-ratio: 100 / ${Float.toString(boxHeight(~box?, piles))}`}
+  >
     {TableMarkup.rows(
       ~style=footprints(~scale, ~widestRow=TableLayout.widestRow(piles)),
       ~ariaHidden="true",

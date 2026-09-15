@@ -53,8 +53,16 @@ let make = ({info, ?variants, tilt, onClose, onBackToMenu}) => <>
   <div className="menu-screen">
     // The opening board, on a mat of its own. What a reader hears instead is the game's
     // name: the still is the board, and nothing the numbers below don't say.
+    //
+    // The mat is one size for the whole family (`info.previewBox`), so the picker below
+    // redraws the board without moving itself and everything under it down the panel.
     <MenuSection label="preview" modifier="game-info__preview">
-      {BoardPreview.make(~label={info.name ++ ", as dealt"}, ~tilt, info.opening)}
+      {BoardPreview.make(
+        ~label={info.name ++ ", as dealt"},
+        ~tilt,
+        ~box=info.previewBox,
+        info.opening,
+      )}
     </MenuSection>
     // The board's shape in one line. Labelled but unheaded: the numbers name
     // themselves, and a caption over them would say "numbers" twice.

@@ -74,6 +74,7 @@ describe("GameInfo.numbers", () => {
       cards: 1,
       reference: "",
       opening: [],
+      previewBox: 0.5,
     }
     expect(GameInfo.numbers(one))->toBe("1 cascade · 1 cell · 1 card")
   })
@@ -89,5 +90,28 @@ describe("GameInfo.numbers", () => {
     expect(
       info.opening->Array.find(p => p.role == Game.Stock)->Option.map(p => p.faceDown),
     )->toEqual(Some(24))
+  })
+
+  test("gives a whole family one box to draw its boards in", () => {
+    // The reason the field exists: the info screen's picker redraws the still, and a
+    // still that came out whatever height its board ran to would move the numbers, the
+    // picker and the link down the panel every time one was tapped.
+    let box = game => GameInfo.forGame(game).previewBox
+    expect((box(Game.mini), box(Game.micro)))->toEqual((box(Game.freecell), box(Game.freecell)))
+    expect(box(Game.spiderette1))->toBe(box(Game.spiderette4))
+  })
+
+  test("cuts that box for the flattest board of the family, and fits the rest into it", () => {
+    // Standard FreeCell is the flattest of the three sizes, so it is the board that
+    // fills the box on both axes; Micro is taller-shaped and is drawn smaller inside it,
+    // which is also the honest picture of a sixteen-card game.
+    expect(GameInfo.forGame(Game.micro).previewBox)->toBe(GameInfo.aspectOf(Game.freecell))
+    expect(GameInfo.aspectOf(Game.micro) > GameInfo.aspectOf(Game.freecell))->toBe(true)
+  })
+
+  test("gives a game that is a game on its own its own shape", () => {
+    // Nothing to keep still for: Simple Simon has no family, so its still is cut to fit
+    // exactly.
+    expect(GameInfo.forGame(Game.simpleSimon).previewBox)->toBe(GameInfo.aspectOf(Game.simpleSimon))
   })
 })

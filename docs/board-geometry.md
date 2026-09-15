@@ -42,8 +42,18 @@ A new *derivation* belongs in `TableLayout`. A new *measurement* does not.
 | `zoneBaseHeight` | 120 | `cardH + 2·zoneInset` |
 | `zoneRadius` | 12 | `cardRadius + zoneInset` |
 | `maxColumnGap` | 20 | `0.25 × cardW` |
+| `rowGap` | 16 | between the top row and the cascades — see below |
 
-Only the five in the left-hand column are literals. Everything else is derived,
+Every one of these scales on the table except `rowGap`, which is a length in
+`TableScene.css` that `applyScale` measures back off the rows: the space between
+the two rows is a stage's chrome rather than a board's, and it stays put while
+the cards in the rows shrink. The constant here is what a *drawing* of a whole
+board takes it as — the still on a game's info screen scales it with everything
+else, being a picture of a board and not a stage (`BoardPreview`, and `boardSize`
+beside it, which is how a drawing with no stage under it knows the shape it is
+fitting).
+
+Only the six in the left-hand column are literals. Everything else is derived,
 and that's deliberate: the 5:7 proportion and the 10%-of-width corner belong to
 the card *art*, so `cardH` and `cardRadius` read them off `CardArt` (a 120×168
 design box with `rx=12`) rather than restating them. A second literal is a second

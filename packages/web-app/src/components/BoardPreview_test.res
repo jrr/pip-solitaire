@@ -7,8 +7,8 @@
 open Vitest
 open TestDom
 
-let draw = (~tilt=false, piles: array<Game.pile>) =>
-  Html.create(BoardPreview.make(~label="a board", ~tilt, piles))
+let draw = (~tilt=false, ~box=?, piles: array<Game.pile>) =>
+  Html.create(BoardPreview.make(~label="a board", ~tilt, ~box?, piles))
 
 let cq = BoardPreview.cq
 let styleOf = el => el->attrOr("style")
@@ -64,6 +64,44 @@ describe("BoardPreview", () => {
       ((name, value)) => expect(style->String.includes(`${name}: ${cq(value)}`))->toBe(true),
     )
     expect(style->String.includes("--rows-max-w: 100cqw"))->toBe(true)
+    // The gap between the rows goes with them, where the table leaves it to the
+    // stylesheet at a stage's unscaled sixteen pixels: a still is a scaled picture of a
+    // board, the space between its rows included.
+    expect(style->String.includes(`gap: ${cq(TableLayout.rowGap *. scale)}`))->toBe(true)
+  })
+
+  test("is drawn in a box of the board's own shape, where it is held to none", () => {
+    // The still declares its box as a ratio and fits the board into it, rather than
+    // coming out whatever height the board ran to — which is what a caller with more
+    // than one board to draw in one place can hold to (`~box`, below).
+    let (w, h) = TableLayout.boardSize(Game.freecell.piles)
+    expect(
+      draw(Game.freecell.piles)
+      ->styleOf
+      ->String.includes(`aspect-ratio: 100 / ${Float.toString(100. *. h /. w)}`),
+    )->toBe(true)
+  })
+
+  test("fits a board into the box it is held to, and leaves the slack across", () => {
+    // What keeps the info screen still under a picker: every board of a family is drawn
+    // in the flattest one's box (`GameInfo.previewBox`), so the numbers, the picker and
+    // the link below never move. Micro is the taller-shaped board, so the box's height
+    // is what fits it and it is drawn narrower than the mat — centred in the room left
+    // over by `--rows-max-w`, not blown up to the mat's width.
+    let box = GameInfo.previewBoxFor(Game.freecell)
+    let shapeOf = piles => draw(~box, piles)->styleOf
+    expect(shapeOf(Game.micro.piles))->toBe(shapeOf(Game.freecell.piles))
+
+    let spread = piles => {
+      let (w, _) = TableLayout.boardSize(piles)
+      w *. BoardPreview.scaleFor(~box, piles)
+    }
+    expect(
+      BoardPreview.scaleFor(~box, Game.micro.piles) < BoardPreview.scaleFor(Game.micro.piles),
+    )->toBe(true)
+    expect(spread(Game.micro.piles) < 90.)->toBe(true)
+    // …while the board the box was cut for still fills it across.
+    expect(Math.round(spread(Game.freecell.piles)))->toBe(100.)
   })
 
   // The lengths a zone writes, read off the markup rather than the DOM: jsdom's style

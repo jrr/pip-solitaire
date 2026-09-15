@@ -192,6 +192,46 @@ let fanOffset = (fan: fan, ~down: int, ~slot: int) => {
   Int.toFloat(belowDown) *. fan.downStep +. Int.toFloat(slot - belowDown) *. fan.upStep
 }
 
+// --- The whole board's footprint --------------------------------------------------
+// What a board takes at scale 1: the width its widest row spreads to, and the height
+// its rows and their deepest fans stand in. The table never asks — it has a stage, and
+// `scaleFor` shrinks the board into whatever that stage is — but a still of a board has
+// no stage under it and has to know the shape it is drawing before it can pick a scale
+// (`BoardPreview`).
+
+// The gap between the rows, as a *drawing* of a board takes it: scaled, like the cards
+// either side of it. The table's own gap is a length in `TableScene.css` that
+// `applyScale` measures back off the rows, and stays there — it is a stage's chrome,
+// not a board's. So these two are a matching pair rather than one fact written twice,
+// and what they are matched for is proportion: at a still's scale the table's sixteen
+// pixels would stand its rows a third of a card apart.
+let rowGap = 16.
+
+// How far past its zones a row stands: its deepest fan, or nothing where every pile in
+// it is squared.
+let rowExtent = (row: array<(int, Game.pile)>) =>
+  row->Array.reduce(0., (deepest, (_, p)) =>
+    switch p.stacking {
+    | Game.Squared => deepest
+    | Game.Fanned =>
+      Math.max(
+        deepest,
+        fanFor(~count=Array.length(p.cards), ~down=p.faceDown, ~room=None, ~scale=1.).extent,
+      )
+    }
+  )
+
+// The board's width and height, in design units. Multiply both by a scale and you have
+// the box a drawing of it fills.
+let boardSize = (piles: array<Game.pile>): (float, float) => {
+  let laid = rows(piles)
+  (
+    rowsMaxWidth(~widestRow=widestRow(piles)),
+    laid->Array.reduce(0., (h, row) => h +. zoneBaseHeight +. rowExtent(row)) +.
+      Int.toFloat(Array.length(laid) - 1) *. rowGap,
+  )
+}
+
 // --- The hand-placed tilt ---------------------------------------------------------
 // A resting card's slight rotation, keyed on the card and where it rests. Here rather
 // than in `TableScene` because two drawings apply it: the table, through `--card-rot`,

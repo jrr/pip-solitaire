@@ -54,6 +54,16 @@ describe("MenuGameInfoScreen", () => {
     expect(still->findAll(".stacking-card")->Array.length)->toBe(52)
   })
 
+  test("draws every size of a family in one box, so the picker moves nothing below it", () => {
+    // The screen hands the still the family's box (`GameInfo.previewBox`) rather than
+    // letting each board size its own picture: without it, picking Micro grew the mat by
+    // half again and carried the numbers, the picker and the link down the panel with
+    // it. Which box that is, is `GameInfo`'s (`previewBoxFor`), tested there.
+    let shapeOf = game => render(~game)->find(".board-preview")->Option.getOrThrow->attrOr("style")
+    expect(shapeOf(Game.micro))->toBe(shapeOf(Game.freecell))
+    expect(shapeOf(Game.mini))->toBe(shapeOf(Game.freecell))
+  })
+
   test("lays the still's cards as the Sloppy placement setting has the table's", () => {
     // The setting reaches the screen as a prop, so a flip redraws the still with the
     // next render — tilted with the table, square with it.

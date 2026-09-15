@@ -343,6 +343,61 @@ test("draws the picker as one control the width of the panel, not three side by 
   expect(Math.round(boxes[2].right)).toBe(Math.round(link.x + link.width))
 })
 
+test("keeps the screen still while the picker redraws the board", async ({ page }) => {
+  // The still is drawn in a box cut for the whole family (`GameInfo.previewBox`), not
+  // sized to whichever board is in it. Without that, Micro's four short columns were
+  // scaled up to the panel's width, the mat grew by half again, and the numbers, the
+  // picker and the link all slid down the panel under the finger that had just tapped
+  // one of them — a control that moves when you use it.
+  //
+  // Only a browser can see this: the box is an `aspect-ratio` over container units, and
+  // what it holds still is where four other elements land.
+  await page.goto("/?seed=24680&animate=off")
+  await settleBoard(page)
+  await openMenu(page)
+  await setBetaFeatures(page, true)
+  await page.getByRole("button", { name: "About FreeCell" }).click()
+
+  const layout = async () => {
+    const boxes = {}
+    for (const [name, selector] of [
+      ["mat", ".game-info__preview"],
+      ["still", ".board-preview"],
+      ["numbers", ".game-info__numbers"],
+      ["picker", ".menu-variant-picker"],
+      ["link", ".game-info__link"],
+    ]) {
+      const box = await page.locator(selector).boundingBox()
+      boxes[name] = { top: Math.round(box.y), height: Math.round(box.height) }
+    }
+    boxes.board = await page
+      .locator(".board-preview .drop-rows")
+      .boundingBox()
+      .then((box) => Math.round(box.width))
+    return boxes
+  }
+
+  const standard = await layout()
+  for (const size of ["Mini", "Micro", "Standard"]) {
+    await sizes(page).filter({ hasText: size }).click()
+    const next = await layout()
+    expect({ size, ...next, board: standard.board }).toEqual({ size, ...standard })
+  }
+
+  // …and what does change is the board inside the box: a smaller game is drawn smaller
+  // and centred, rather than blown up to the same width as FreeCell's eight columns.
+  await sizes(page).filter({ hasText: "Micro" }).click()
+  const micro = await layout()
+  expect(micro.board).toBeLessThan(standard.board * 0.8)
+  const centred = await page.evaluate(() => {
+    const still = document.querySelector(".board-preview").getBoundingClientRect()
+    const rows = document.querySelector(".board-preview .drop-rows").getBoundingClientRect()
+    return { left: Math.round(rows.left - still.left), right: Math.round(still.right - rows.right) }
+  })
+  expect(Math.abs(centred.left - centred.right)).toBeLessThanOrEqual(1)
+  expect(centred.left).toBeGreaterThan(1)
+})
+
 test("draws the opening board as the table draws it, and takes no pointer input", async ({
   page,
 }) => {
@@ -388,7 +443,9 @@ test("draws the opening board as the table draws it, and takes no pointer input"
     }
   })
 
-  // The board fits the mat and is as tall as its rows: no stage under it.
+  // The board fits the mat, with no stage under it: the three Spiderette packs are one
+  // board in three decks, so this one fills its box on both axes (see the box test
+  // below, where a board that doesn't is the point).
   expect(Math.round(m.rows.width)).toBe(Math.round(m.still.width))
   expect(Math.round(m.rows.height)).toBe(Math.round(m.still.height))
   expect(m.card.width).toBeLessThan(40)

@@ -33,6 +33,10 @@ type t = {
   // Plain data still: piles are cards, counts and rule variants, no closures, which is
   // what `Menu.screen` asks of everything in here.
   opening: array<Game.pile>,
+  // The shape the still is drawn in, as a ratio of its width — **one box for the whole
+  // family**, so that picking another size or another pack redraws the board without
+  // moving the numbers, the picker and the link below it. See `previewBoxFor`.
+  previewBox: float,
 }
 
 let wikipedia = (article: string): string => "https://en.wikipedia.org/wiki/" ++ article
@@ -64,6 +68,26 @@ let nameOf = (game: Game.t): string =>
 let deckSize = (deck: Cards.deck): int =>
   Array.length(deck.suits) * Array.length(deck.ranks) * deck.copies
 
+// The still's box: the *flattest* board in the game's family. It is the one board that
+// fills the box on both axes, and every other one fits inside it with room to spare
+// across — where the tallest-shaped board would leave the rest of the family sitting in
+// a band of empty mat. Picking it off `Game.families` rather than tabulating it is what
+// lets a fourth Spiderette pack arrive without an edit here.
+//
+// A board with no family is its own box, which is a still that fits exactly: there is
+// nothing to keep still for.
+let aspectOf = (game: Game.t): float => {
+  let (w, h) = TableLayout.boardSize(game.piles)
+  h /. w
+}
+
+let previewBoxFor = (game: Game.t): float =>
+  Game.familyOf(game)->Option.mapOr(aspectOf(game), family =>
+    family.variants->Array.reduce(aspectOf(game), (flattest, v) =>
+      Math.min(flattest, aspectOf(v.game))
+    )
+  )
+
 let forGame = (game: Game.t): t => {
   id: game.id,
   name: nameOf(game),
@@ -72,6 +96,7 @@ let forGame = (game: Game.t): t => {
   cards: deckSize(game.deck),
   reference: referenceFor(game.id),
   opening: game.piles,
+  previewBox: previewBoxFor(game),
 }
 
 let count = (n: int, ~singular: string, ~plural: string): string =>
