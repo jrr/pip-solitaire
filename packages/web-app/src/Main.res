@@ -164,7 +164,8 @@ type msg =
   | OpenSettings // the main menu's Settings button — swap to the Settings screen
   | BackToMenu // the Settings screen's back button — swap back to the main menu
   | OpenDebug // the Settings screen's Debug row — swap to the Debug screen
-  | BackToSettings // the Debug screen's back button — swap back to Settings
+  | OpenAbout // the About button in the footer — swap to the About screen
+  | BackToSettings // the Debug and About screens' back button — swap back to Settings
   // The "i" beside a game's row, and the info screen's own picker — show that game's
   // info screen. The *facts* travel rather than a bare id: `GameInfo.forGame` is what
   // turns a game into them, and the view has already had to resolve the game to know
@@ -554,6 +555,12 @@ let update = (msg, model) =>
         shareUrl: None,
         shareStatus: None,
       },
+      Html.noEffect,
+    )
+  // The About screen. Nothing to prepare, unlike Debug above: it reads nothing off the
+  // board and holds no state of its own, so the swap is the whole of it.
+  | OpenAbout => (
+      {...model, menuScreen: Menu.About, settings: MenuSettingsScreen.freshVisit(model.settings)},
       Html.noEffect,
     )
   | BackToSettings => (
@@ -1383,24 +1390,30 @@ let refreshControl = (model, dispatch): option<RefreshControl.props> =>
     })
   }
 
-// The About footer, under all three screens: the build/version line, the Update
-// button when a new build is waiting, and the update-check control tucked
-// under them.
+// The About footer, at the foot of the Settings screen: the two buttons — the update
+// check and the way to the About screen — over the build/version line, with the Update
+// button on it when a new build is waiting.
+//
+// Which *screen* the footer appears under is the pane's (`Menu`), so what is left here
+// is the half only this file knows: whether a service-worker state has been detected
+// yet. Until it has, there is nothing a check could do and the slot stays empty. The
+// detection is kicked off by opening Settings (see `mainScreen`'s `onOpenSettings`
+// above), which is the screen the footer is on, so the button arrives a beat after the
+// screen does.
 let aboutFooter = (model, dispatch): AboutFooter.props => {
   version: model.version,
   buildTime: model.buildTime,
   updateVisible: model.updateAvailable,
   onReload: () => dispatch(Reload),
-  // Shown on the Settings and Debug screens once a worker state has been detected, and
-  // never on the two screens a *player* is on — the main menu, which is where the
-  // detection is kicked off (see `mainScreen`'s `onOpenSettings` above), and a game's
-  // info screen, which is about the game rather than about the build. Both halves of
-  // that rule are known here, so the footer takes a ready-made node and stays a dumb
-  // layout.
-  refresh: switch (model.menuScreen, refreshControl(model, dispatch)) {
-  | (Menu.Main, _) | (Menu.GameInfo(_), _) | (_, None) => Html.empty
-  | (_, Some(control)) => RefreshControl.make(control)
-  },
+  refresh: refreshControl(model, dispatch)->Option.mapOr(Html.empty, RefreshControl.make),
+  onOpenAbout: () => dispatch(OpenAbout),
+}
+
+// The About screen: a level below Settings, where the About button is, and so back to
+// Settings rather than out to the main menu.
+let aboutScreen = (_model, dispatch): MenuAboutScreen.props => {
+  onClose: () => dispatch(CloseMenu),
+  onBackToSettings: () => dispatch(BackToSettings),
 }
 
 let view = (model, dispatch) => <>
@@ -1427,8 +1440,9 @@ let view = (model, dispatch) => <>
     main={mainScreen(model, dispatch)}
     settings={settingsScreen(model, dispatch)}
     debug={debugScreen(model, dispatch)}
+    about={aboutScreen(model, dispatch)}
     gameInfo={info => gameInfoScreen(model, dispatch, info)}
-    about={aboutFooter(model, dispatch)}
+    footer={aboutFooter(model, dispatch)}
   />
   // Over the menu rather than inside it, and in the tree only while it's up: the field
   // takes focus as it mounts, so a dialog that were merely hidden between opens would

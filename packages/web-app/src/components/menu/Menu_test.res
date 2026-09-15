@@ -1,16 +1,15 @@
-// The main menu's **Share** button.
+// The pane's own two jobs, which is all this file covers: the main menu's **Share**
+// button — the button hands over a link to the *deal* on the table, `?seed=N`, which
+// deals the identical board wherever it's opened — and where the About footer goes.
 //
-// The button hands over a link to the *deal* on the table — `?seed=N`, which deals
-// the identical board wherever it's opened.
-//
-// `Menu` takes a props record per screen, so only the main screen's is
-// interesting here — the other two are built because the pane's record wants
-// them, not because anything places them while `screen` is `Main`.
+// `Menu` takes a props record per screen, so only the screen under test has anything
+// interesting in its record; the others are built because the pane's record wants them,
+// not because anything places them.
 open Vitest
 open TestDom
 
-// The two screens this file never shows, and the footer under all three. Scenery:
-// held fixed across every case, and never placed while `screen` is `Main`.
+// The screens this file never shows, and the footer under Settings. Scenery: held fixed
+// across every case, and never placed while `screen` is `Main`.
 let settings: MenuSettingsScreen.props = {
   model: {
     autoCollect: true,
@@ -45,13 +44,16 @@ let debug: MenuDebugScreen.props = {
   debugStates: [],
 }
 
-let about: AboutFooter.props = {
+let footer: AboutFooter.props = {
   version: "1.2.3",
   buildTime: "2026-08-14T04:00:00.000Z",
   updateVisible: false,
   onReload: () => (),
   refresh: Html.empty,
+  onOpenAbout: () => (),
 }
+
+let about: MenuAboutScreen.props = {onClose: () => (), onBackToSettings: () => ()}
 
 // The main menu, opened, with everything but the seed-sharing fields held fixed.
 let render = (~seed, ~status): Html.element =>
@@ -79,8 +81,60 @@ let render = (~seed, ~status): Html.element =>
       // and the pane never calls it.
       gameInfo: info => {info, tilt: false, onClose: () => (), onBackToMenu: () => ()},
       about,
+      footer,
     }),
   )
+
+// The pane with a screen chosen, for the footer-placement cases below.
+let paneOn = (screen): Html.element =>
+  Html.create(
+    Menu.make({
+      open_: true,
+      screen,
+      onClose: () => (),
+      main: {
+        onClose: () => (),
+        onNewGame: () => (),
+        onEnterSeed: () => (),
+        onRestart: () => (),
+        gameName: Some("FreeCell"),
+        shareDealSeed: Some(1),
+        shareDealStatus: None,
+        onShareDeal: () => (),
+        games: [],
+        onOpenSettings: () => (),
+      },
+      settings,
+      debug,
+      gameInfo: info => {info, tilt: false, onClose: () => (), onBackToMenu: () => ()},
+      about,
+      footer,
+    }),
+  )
+
+describe("Menu footer placement", () => {
+  test("puts the About footer under Settings and under no other screen", () => {
+    // The build string and the controls that act on it are what a player goes to
+    // Settings for, and nothing to do with choosing a game or reading about one. The
+    // rule is the pane's because the footer is anchored to the foot of the panel rather
+    // than written into a screen.
+    let hasFooter = screen => paneOn(screen)->find(".menu-footer")->Option.isSome
+    expect(hasFooter(Menu.Settings))->toBe(true)
+    expect(hasFooter(Menu.Main))->toBe(false)
+    expect(hasFooter(Menu.Debug))->toBe(false)
+    expect(hasFooter(Menu.About))->toBe(false)
+    expect(hasFooter(Menu.GameInfo(GameInfo.forGame(Game.freecell))))->toBe(false)
+  })
+
+  test("places the screen the `screen` variant names", () => {
+    // Including the fifth, which is a door and a header for now: a screen that was in
+    // the variant and nowhere in the switch would be a button that does nothing.
+    let titleOn = screen => paneOn(screen)->textIn(".menu-title")
+    expect(titleOn(Menu.About))->toBe("About")
+    expect(titleOn(Menu.Settings))->toBe("Settings")
+    expect(titleOn(Menu.Debug))->toBe("Debug")
+  })
+})
 
 // The Share button — the second of the "this game" buttons.
 let shareButton = (menu): option<Html.element> =>

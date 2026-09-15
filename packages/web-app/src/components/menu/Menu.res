@@ -2,10 +2,11 @@
 // holding everything that isn't day-to-day play.
 //
 // **This file is the pane, and only the pane.** It owns the overlay, the
-// backdrop, the panel, which of the four screens is showing, and the fact that the
-// About footer sits under all of them. Everything inside a screen is a component of
+// backdrop, the panel, which of the five screens is showing, and the fact that the
+// About footer sits under one of them. Everything inside a screen is a component of
 // its own under `components/` — `<MenuMainScreen>`, `<MenuSettingsScreen>`,
-// `<MenuDebugScreen>`, `<MenuGameInfoScreen>`, and the rows they're built from
+// `<MenuDebugScreen>`, `<MenuGameInfoScreen>`, `<MenuAboutScreen>`, and the rows they're
+// built from
 // (`<MenuHeader>`, `<MenuRow>` and its four variants, `<MenuGameRow>`,
 // `<MenuGameButton>`) — each with its own props record and its own test, the shape
 // `<AboutFooter>` established when it was lifted out of here for the same reason. What
@@ -20,13 +21,18 @@
 // one's: this isn't the single boundary between the chrome model and the menu, it's the
 // pane that arranges three of them.
 //
-// The pane has **four screens**: the **main menu**, a dedicated **Settings**
-// screen, a **Debug** screen nested one level below Settings, and a **game info**
-// screen reached from the "i" beside a game's row — which one shows is chosen by the
-// `screen` variant. The **About** footer (version line + update
-// controls) stays put across all four — only the content above it swaps. Reopening
-// the menu always lands on the main screen (the chrome resets `screen` to `Main` when
-// it closes/opens the menu).
+// The pane has **five screens**: the **main menu**, a dedicated **Settings**
+// screen, a **Debug** and an **About** screen nested one level below Settings, and a
+// **game info** screen reached from the "i" beside a game's row — which one shows is
+// chosen by the `screen` variant. Reopening the menu always lands on the main screen
+// (the chrome resets `screen` to `Main` when it closes/opens the menu).
+//
+// **The About footer is Settings' alone.** The build string and the controls that act on
+// it — which version is installed, whether a newer one is waiting — are what a player
+// goes to Settings for and nothing at all to do with choosing a game or reading about
+// one, so the footer is placed with the Settings screen rather than under whatever
+// happens to be showing. It stays a footer rather than a section of that screen because
+// it is anchored to the foot of the panel, which is a fact about the pane.
 //
 // A screen is placed by calling its `make` with the record it was handed, which is
 // exactly what `<MenuSettingsScreen …/>` lowers to — the JSX form builds the record
@@ -47,6 +53,7 @@ type screen =
   | Main
   | Settings
   | Debug
+  | About
   | GameInfo(GameInfo.t)
 
 type props = {
@@ -66,20 +73,21 @@ type props = {
   main: MenuMainScreen.props,
   settings: MenuSettingsScreen.props,
   debug: MenuDebugScreen.props,
+  about: MenuAboutScreen.props,
   // The fourth screen's record, as a *function* of the game it is about — the one
   // field that can't be a ready-made record, since the game arrives in `screen` and
   // there is no game at all while the other three show. Everything else about it is
   // the same bargain as the three above: what's in the record is between `Main` and
   // the screen, and the pane only places it.
   gameInfo: GameInfo.t => MenuGameInfoScreen.props,
-  // The About footer, under every screen. Its `refresh` slot — the adaptive
-  // update-check button, or an empty node — is filled in by `Main`, which is
-  // where both halves of that decision live: whether a service-worker state has been
-  // detected yet, and which screen is showing (it never appears on the main menu).
-  about: AboutFooter.props,
+  // The About footer, under the Settings screen and no other — see the note above. Its
+  // `refresh` slot is the adaptive update-check button, or an empty node where no
+  // service-worker state has been detected yet; that is `Main`'s call, since it is the
+  // one that does the detecting.
+  footer: AboutFooter.props,
 }
 
-let make = ({open_, screen, onClose, main, settings, debug, gameInfo, about}) =>
+let make = ({open_, screen, onClose, main, settings, debug, about, gameInfo, footer}) =>
   <div id="menu-overlay" hidden={!open_}>
     <div className="menu-overlay__backdrop" onClick={_ => onClose()} />
     <aside className="menu-panel" ariaLabel="Menu">
@@ -87,8 +95,9 @@ let make = ({open_, screen, onClose, main, settings, debug, gameInfo, about}) =>
       | Main => MenuMainScreen.make(main)
       | Settings => MenuSettingsScreen.make(settings)
       | Debug => MenuDebugScreen.make(debug)
+      | About => MenuAboutScreen.make(about)
       | GameInfo(info) => MenuGameInfoScreen.make(gameInfo(info))
       }}
-      {AboutFooter.make(about)}
+      {screen == Settings ? AboutFooter.make(footer) : Html.empty}
     </aside>
   </div>

@@ -1,16 +1,33 @@
 @layer components {
-  /* The About footer: the build/version line and, when an update is
-     waiting, the note + Update button below it. It stays put at the foot of the
-     panel on both the main menu and the Settings screen as the last of
-     the bottom group — the bottom group's leading `margin-top: auto` (see
-     `.menu-section--bottom`) already pushes that group and this footer down
-     together, so the footer needs no auto margin of its own (a second one would
-     split the free space and open a gap above About). A small gap keeps its own
-     rows apart. */
+  /* The About footer: the two buttons, and the build/version line under them. It stays
+     put at the foot of the Settings screen as the last of the bottom group — the bottom
+     group's leading `margin-top: auto` (see `.menu-section--bottom`) already pushes that
+     group and this footer down together, so the footer needs no auto margin of its own
+     (a second one would split the free space and open a gap above it). A small gap keeps
+     its own rows apart. */
   .menu-footer {
     display: flex;
     flex-direction: column;
     gap: 0.4rem;
+  }
+
+  /* The footer's controls, side by side: the update check and the About button. Equal
+     shares of the row rather than each button's own width — "Check for updates" is four
+     times the width of "About", and two buttons sized by their words would read as one
+     control and a chip beside it. `flex: 1` on the children is what splits it; they are
+     `.menu-button`s, whose box is the panel's own.
+
+     The check is *absent* on a build where the browser can say nothing about updates, so
+     About takes the whole row on its own. That is deliberate: a lone full-width button
+     is a control, where a half-width one beside a gap looks like something failed to
+     load. */
+  .menu-footer__actions {
+    display: flex;
+    gap: 0.5rem;
+  }
+
+  .menu-footer__actions > * {
+    flex: 1;
   }
 
   /* The About footer's one row: the build/version line on the left, the

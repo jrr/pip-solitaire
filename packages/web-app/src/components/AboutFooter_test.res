@@ -1,8 +1,9 @@
-// Size-stability test for the `AboutFooter` component: the footer has to be
-// the same height whether or not an update is waiting, or it shoves the version
-// line and everything above it the moment an update arrives (see `AboutFooter.res`).
+// The `AboutFooter`: its size stability — the footer has to be the same height whether
+// or not an update is waiting, or it shoves the version line and everything above it the
+// moment an update arrives (see `AboutFooter.res`) — and the order of the two things in
+// it, the controls over the build string they are about.
 //
-// See `RefreshControl_test` for why the assertion is structural rather than
+// See `RefreshControl_test` for why the size assertion is structural rather than
 // pixel-measured.
 open Vitest
 open TestDom
@@ -28,10 +29,57 @@ let render = (~updateVisible): Html.element =>
       // The update-check slot; empty here so the size-stability assertions turn on
       // the update button alone — it's the part whose hiding could reflow the footer.
       refresh: Html.empty,
+      onOpenAbout: () => (),
+    }),
+  )
+
+// The same footer with both halves of the actions row filled, for the order and the
+// wiring below: the update check is a ready-made node in real use, so a stand-in button
+// is as much as this file can hand it.
+let rendered = (~onOpenAbout=() => ()): Html.element =>
+  Html.create(
+    AboutFooter.make({
+      version: "1.2.3",
+      buildTime: "2026-07-23T20:20:00.000Z",
+      updateVisible: false,
+      onReload: () => (),
+      refresh: RefreshControl.make({label: "Check for updates", busy: false, onClick: () => ()}),
+      onOpenAbout,
     }),
   )
 
 let button = (footer): option<Html.element> => footer->find(".menu-update__button")
+
+describe("AboutFooter layout", () => {
+  test("puts the controls over the build string they are about", () => {
+    // A hand comes down here for the two buttons; the version is the caption under them
+    // and the half that grows, since the Update button arrives on its line.
+    expect(rendered()->children->Array.map(classes))->toEqual([
+      "menu-footer__actions",
+      "menu-about__row",
+    ])
+  })
+
+  test("stands the About button beside the update check, and nothing over the pair", () => {
+    // No heading: "About" as a caption over a build string says nothing the build string
+    // doesn't, and the screen this sits on is already titled. The band's `aria-label` is
+    // the half of a heading that was doing work.
+    let footer = rendered()
+    expect(footer->attrOr("aria-label"))->toBe("About")
+    expect(footer->findAll("h2")->Array.length)->toBe(0)
+    expect(footer->findAll(".menu-footer__actions > button")->Array.map(text))->toEqual([
+      "Check for updates",
+      "About",
+    ])
+  })
+
+  test("the About button asks for the About screen", () => {
+    let log = []
+    let footer = rendered(~onOpenAbout=() => log->Array.push("about"))
+    footer->findAll(".menu-footer__actions > button")->Array.get(1)->Option.forEach(click)
+    expect(log)->toEqual(["about"])
+  })
+})
 
 describe("AboutFooter size stability", () => {
   let noUpdate = render(~updateVisible=false)

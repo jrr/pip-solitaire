@@ -168,6 +168,10 @@ test.describe("in the menu", () => {
     // The build string opts back into `user-select: text` so it can be copied, and
     // on iOS double-tap-to-select-word is how a selection starts — refusing the
     // default there would take the selection with the zoom (`selectableSelector`).
+    //
+    // On Settings, which is the one screen the About footer is placed under (`Menu`).
+    await page.getByRole("button", { name: "Settings", exact: true }).click()
+    await resetTouchEnds(page)
     const badge = await page.locator("#version-badge").boundingBox()
     const centre = { x: badge.x + badge.width / 2, y: badge.y + badge.height / 2 }
 
