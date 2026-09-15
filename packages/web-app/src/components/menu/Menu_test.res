@@ -47,13 +47,18 @@ let debug: MenuDebugScreen.props = {
 let footer: AboutFooter.props = {
   version: "1.2.3",
   buildTime: "2026-08-14T04:00:00.000Z",
-  updateVisible: false,
-  onReload: () => (),
-  refresh: Html.empty,
   onOpenAbout: () => (),
 }
 
-let about: MenuAboutScreen.props = {onClose: () => (), onBackToSettings: () => ()}
+let about: MenuAboutScreen.props = {
+  version: "1.2.3",
+  buildTime: "2026-08-14T04:00:00.000Z",
+  updateVisible: false,
+  onReload: () => (),
+  refresh: Html.empty,
+  onClose: () => (),
+  onBackToSettings: () => (),
+}
 
 // The main menu, opened, with everything but the seed-sharing fields held fixed.
 let render = (~seed, ~status): Html.element =>

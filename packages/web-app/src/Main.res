@@ -557,10 +557,16 @@ let update = (msg, model) =>
       },
       Html.noEffect,
     )
-  // The About screen. Nothing to prepare, unlike Debug above: it reads nothing off the
-  // board and holds no state of its own, so the swap is the whole of it.
+  // The About screen, which is where the update check lives: enter it clean, the way
+  // Settings is entered above, so a spinner left behind by a check that was in flight
+  // when the screen was last left doesn't greet the next visit.
   | OpenAbout => (
-      {...model, menuScreen: Menu.About, settings: MenuSettingsScreen.freshVisit(model.settings)},
+      {
+        ...model,
+        menuScreen: Menu.About,
+        refreshBusy: false,
+        settings: MenuSettingsScreen.freshVisit(model.settings),
+      },
       Html.noEffect,
     )
   | BackToSettings => (
@@ -1390,28 +1396,31 @@ let refreshControl = (model, dispatch): option<RefreshControl.props> =>
     })
   }
 
-// The About footer, at the foot of the Settings screen: the two buttons — the update
-// check and the way to the About screen — over the build/version line, with the Update
-// button on it when a new build is waiting.
-//
-// Which *screen* the footer appears under is the pane's (`Menu`), so what is left here
-// is the half only this file knows: whether a service-worker state has been detected
-// yet. Until it has, there is nothing a check could do and the slot stays empty. The
-// detection is kicked off by opening Settings (see `mainScreen`'s `onOpenSettings`
-// above), which is the screen the footer is on, so the button arrives a beat after the
-// screen does.
+// The About footer, at the foot of the Settings screen: the way through to the About
+// screen, and the build string under it. Which *screen* the footer appears under is the
+// pane's business (`Menu`), so nothing about that is decided here.
 let aboutFooter = (model, dispatch): AboutFooter.props => {
+  version: model.version,
+  buildTime: model.buildTime,
+  onOpenAbout: () => dispatch(OpenAbout),
+}
+
+// The About screen: a level below Settings, where the About button is, and so back to
+// Settings rather than out to the main menu. It holds the build string and both update
+// controls — the check, and the ↻ Update that switches to a build already waiting.
+//
+// The check is a ready-made node so the screen stays a dumb layout: whether there is a
+// check to offer at all turns on the one thing only this file knows, which is whether
+// `Refresh.detect` has reported a service-worker state yet. Opening *Settings* is what
+// kicks that detection off (see `mainScreen`'s `onOpenSettings` above), which is the
+// screen this one is reached through — so by the time a player is here the answer has
+// landed.
+let aboutScreen = (model, dispatch): MenuAboutScreen.props => {
   version: model.version,
   buildTime: model.buildTime,
   updateVisible: model.updateAvailable,
   onReload: () => dispatch(Reload),
   refresh: refreshControl(model, dispatch)->Option.mapOr(Html.empty, RefreshControl.make),
-  onOpenAbout: () => dispatch(OpenAbout),
-}
-
-// The About screen: a level below Settings, where the About button is, and so back to
-// Settings rather than out to the main menu.
-let aboutScreen = (_model, dispatch): MenuAboutScreen.props => {
   onClose: () => dispatch(CloseMenu),
   onBackToSettings: () => dispatch(BackToSettings),
 }

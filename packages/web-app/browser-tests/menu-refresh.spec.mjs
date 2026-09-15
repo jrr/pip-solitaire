@@ -1,16 +1,17 @@
-// The About footer — the update check, the About button and the build string — belongs
-// to the Settings screen and to no other.
+// The About footer — the way through to the About screen, and the build string under it
+// — belongs to the Settings screen and to no other. The update controls it used to hold
+// are one screen further in, on About, where the build string is the subject.
 //
-// Why this can't be a unit test. The footer's appearance reads two things at once:
-// whether `Refresh.detect` has reported a service-worker state yet, which is `Main`'s
-// (and `Main` is the entry point — importing it mounts the app, registers a worker and
-// takes over `<body>`, so there is nothing for a Vitest file to call), and which screen
-// is showing, which is the pane's. A walk is the only thing that sees both.
+// Why this can't be a unit test. Which screen the footer appears under is the pane's
+// (`Menu`), and whether there is an update check to offer at all is `Main`'s — it turns
+// on whether `Refresh.detect` has reported a service-worker state yet, and `Main` is the
+// entry point, so importing it mounts the app, registers a worker and takes over
+// `<body>`. A walk is the only thing that sees both.
 //
 // What it pins is the *shape* of the rule rather than a label: the footer is absent on
 // the main menu in both directions (before ever visiting Settings, and again on the way
 // back out), absent a level deeper on Debug, and present on Settings once the detection
-// has landed. Whether the button reads "Refresh" or "Check for updates" is
+// has landed. Whether the check reads "Refresh" or "Check for updates" is
 // `Refresh.mode`'s business and depends on whether this build registered a worker —
 // pinning it here would tie the test to the PWA plugin's behaviour under `vite preview`.
 //
@@ -26,14 +27,12 @@ test("the About footer is the Settings screen's, and no other screen's", async (
   await page.getByRole("button", { name: /Open menu/ }).click()
 
   const footer = page.locator(".menu-footer")
-  const refresh = page.locator(".menu-refresh")
   const version = page.locator("#version-badge")
   await expect(footer).toHaveCount(0)
   await expect(version).toHaveCount(0)
 
   await page.getByRole("button", { name: "Settings", exact: true }).click()
   await expect(footer).toHaveCount(1)
-  await expect(refresh).toHaveCount(1)
   await expect(version).toHaveCount(1)
 
   // One level deeper is a screen about the build's tools, not about the build: the
@@ -49,21 +48,54 @@ test("the About footer is the Settings screen's, and no other screen's", async (
   await expect(footer).toHaveCount(0)
 })
 
-test("the About button opens its screen, and comes back to Settings", async ({ page }) => {
-  // The pair at the foot of Settings: the update check acts in place, and About goes
-  // somewhere — one level down, so its way back is to Settings rather than out to the
-  // menu. The screen it opens is deliberately empty for now; what is pinned here is the
-  // door, which is the part the copy will arrive behind.
+test("the About screen holds the build string and the update check", async ({ page }) => {
+  // The button at the foot of Settings opens one level down, so its way back is to
+  // Settings rather than out to the menu — and what it opens is where the build string
+  // is the subject rather than a caption, with the update check on it.
   await page.goto("/?game=freecell&animate=off")
   await page.getByRole("button", { name: /Open menu/ }).click()
   await page.getByRole("button", { name: "Settings", exact: true }).click()
 
+  // The check is *not* on Settings: it comes and goes with the worker detection, and
+  // nothing in that footer may change height.
+  await expect(page.locator(".menu-refresh")).toHaveCount(0)
+
   await page.getByRole("button", { name: "About", exact: true }).click()
   await expect(page.locator(".menu-title")).toHaveText("About")
-  // Nothing followed it down: the footer it was pressed in is a Settings fixture.
+  await expect(page.locator(".menu-refresh")).toHaveCount(1)
   await expect(page.locator(".menu-footer")).toHaveCount(0)
 
+  // The version, set bigger here than the caption it is in the footer — the claim the
+  // stylesheet makes and only a browser can check.
+  const here = await page.locator(".about-build__version").boundingBox()
   await page.getByRole("button", { name: /Back to settings/ }).click()
+  const caption = await page.locator("#version-badge").boundingBox()
+  expect(here.height).toBeGreaterThan(caption.height)
+
   await expect(page.locator(".menu-title")).toHaveText("Settings")
   await expect(page.locator(".menu-footer")).toHaveCount(1)
+})
+
+test("the source link goes to the repository, in a tab of its own", async ({ page }) => {
+  // Marked with GitHub's own mark, which is drawn rather than fetched: an icon that
+  // renders as a blank box is the failure this catches, and it is invisible to a unit
+  // test — jsdom draws nothing.
+  await page.goto("/?game=freecell&animate=off")
+  await page.getByRole("button", { name: /Open menu/ }).click()
+  await page.getByRole("button", { name: "Settings", exact: true }).click()
+  await page.getByRole("button", { name: "About", exact: true }).click()
+
+  const link = page.locator(".about-link")
+  await expect(link).toHaveAttribute("href", "https://github.com/jrr/pip-solitaire")
+  await expect(link).toHaveAttribute("target", "_blank")
+  await expect(link).toHaveText("jrr/pip-solitaire")
+
+  // The mark is drawn at the size of the line it labels, and the link is held to the
+  // width of its own words rather than stretched across the panel.
+  const mark = await link.locator(".about-link__mark").boundingBox()
+  const box = await link.boundingBox()
+  const panel = await page.locator(".menu-panel").boundingBox()
+  expect(mark.width).toBeGreaterThan(10)
+  expect(mark.width).toBeLessThan(24)
+  expect(box.width).toBeLessThan(panel.width / 2)
 })

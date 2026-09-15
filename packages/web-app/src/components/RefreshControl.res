@@ -17,6 +17,8 @@
 // spinner's own class is under it, and `browser-tests/menu-refresh.spec.mjs` finds the
 // control with it. The label is no good for that: it reads "Refresh" or "Check for
 // updates" depending on what this install turned out to be.
+%%raw(`import "./RefreshControl.css"`)
+
 type props = {
   label: string,
   // An update check / refresh is in flight — spin the on-button indicator and swap

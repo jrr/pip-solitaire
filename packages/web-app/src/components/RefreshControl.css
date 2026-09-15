@@ -1,0 +1,24 @@
+@layer components {
+  /* The on-button progress spinner for the update check (`RefreshControl.res`): a ¾ ring
+     in the button's own text colour, spinning while a check or refresh is in flight.
+     Keep it smaller than the line box it rides in — showing it must not change the
+     button's height, which is the whole of that file's size rule. The button itself is a
+     `.menu-button`, so its box arrives with the class rather than from here. */
+  .menu-refresh__spinner {
+    display: inline-block;
+    width: 0.85em;
+    height: 0.85em;
+    margin-right: 0.5em;
+    vertical-align: -0.12em;
+    border: 2px solid currentColor;
+    border-right-color: transparent;
+    border-radius: 50%;
+    animation: menu-refresh-spin 0.7s linear infinite;
+  }
+
+  @keyframes menu-refresh-spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+}

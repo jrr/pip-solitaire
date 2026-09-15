@@ -1,88 +1,13 @@
 @layer components {
-  /* The About footer: the two buttons, and the build/version line under them. It stays
-     put at the foot of the Settings screen as the last of the bottom group — the bottom
-     group's leading `margin-top: auto` (see `.menu-section--bottom`) already pushes that
-     group and this footer down together, so the footer needs no auto margin of its own
-     (a second one would split the free space and open a gap above it). A small gap keeps
-     its own rows apart. */
+  /* The About footer: the button through to the About screen, and the build string under
+     it. It stays put at the foot of the Settings screen as the last of the bottom group
+     — the bottom group's leading `margin-top: auto` (see `.menu-section--bottom`) already
+     pushes that group and this footer down together, so the footer needs no auto margin
+     of its own (a second one would split the free space and open a gap above it). A
+     small gap keeps its two rows apart. */
   .menu-footer {
     display: flex;
     flex-direction: column;
     gap: 0.4rem;
-  }
-
-  /* The footer's controls, side by side: the update check and the About button. Equal
-     shares of the row rather than each button's own width — "Check for updates" is four
-     times the width of "About", and two buttons sized by their words would read as one
-     control and a chip beside it. `flex: 1` on the children is what splits it; they are
-     `.menu-button`s, whose box is the panel's own.
-
-     The check is *absent* on a build where the browser can say nothing about updates, so
-     About takes the whole row on its own. That is deliberate: a lone full-width button
-     is a control, where a half-width one beside a gap looks like something failed to
-     load. */
-  .menu-footer__actions {
-    display: flex;
-    gap: 0.5rem;
-  }
-
-  .menu-footer__actions > * {
-    flex: 1;
-  }
-
-  /* The About footer's one row: the build/version line on the left, the
-     Update button on the right, vertically centred. The button reserves its box
-     even when hidden (see `.menu-update--hidden`), so the row is the same height
-     whether or not an update is waiting. */
-  .menu-about__row {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 0.75rem;
-  }
-
-  /* Reserve an element's space while hiding it: `visibility` keeps the layout
-     box (unlike `display: none`, which collapses it), so a control can come and
-     go without reflowing its neighbours. Used for the About Update button
-     when no update is waiting. */
-  .menu-update--hidden {
-    visibility: hidden;
-  }
-
-  /* The green call-to-action, keeping the accent fill it wore on the bar:
-     a short button at the end of the About row, sized so the row's height
-     doesn't depend on it. */
-  .menu-update__button {
-    flex: none;
-    white-space: nowrap;
-    padding: 8px 14px;
-    font: 14px "Libre Franklin", sans-serif;
-    color: #f8fafc;
-    background: #166534;
-    border: 1px solid transparent;
-    border-radius: 8px;
-    cursor: pointer;
-  }
-
-  /* The on-button progress spinner for the Settings refresh control:
-     a ¾ ring in the button's own text colour, spinning while a check/refresh is
-     in flight. Keep it smaller than the line box it rides in: showing it must
-     not change the button's or the section's height (see `RefreshControl.res`). */
-  .menu-refresh__spinner {
-    display: inline-block;
-    width: 0.85em;
-    height: 0.85em;
-    margin-right: 0.5em;
-    vertical-align: -0.12em;
-    border: 2px solid currentColor;
-    border-right-color: transparent;
-    border-radius: 50%;
-    animation: menu-refresh-spin 0.7s linear infinite;
-  }
-
-  @keyframes menu-refresh-spin {
-    to {
-      transform: rotate(360deg);
-    }
   }
 }

@@ -1,0 +1,98 @@
+@layer components {
+  /* The About screen (see MenuAboutScreen.res): the build string set as the subject
+     rather than as a caption, and the link out to the source. The header, the sections
+     and the update controls around them are components this screen composes. */
+
+  /* The build, with the ↻ Update button at the end of its row. The button is reserved
+     with `visibility` when there's nothing to update (`.menu-update--hidden`), so it
+     needs a row taller than itself to come and go in without moving anything: the two
+     lines of build string are that row. */
+  .about-build {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+  }
+
+  /* The version, which is the one thing on this screen a player might read out or type
+     into a bug report: mono, so 0/O and 1/l can't be confused, and large enough to read
+     off a phone at arm's length. The build time under it is the same string the Settings
+     footer prints whole (`VersionBadge`) — here it is the second line rather than the
+     tail of a caption, so the version can be the size it needs to be.
+
+     The selection opt-out is the footer badge's, for the same reason: this is a string
+     to copy. Both sit inside the menu overlay, out of any card drag's reach, so
+     re-enabling selection here can't be caught by a stray drag (see `#version-badge`,
+     and <body> for the app-wide lock it opts out of). */
+  .about-build__version {
+    font: 20px/1.2 ui-monospace, "SF Mono", Menlo, monospace;
+    color: var(--control-ink);
+    -webkit-user-select: text;
+    user-select: text;
+    -webkit-touch-callout: default;
+  }
+
+  .about-build__time {
+    margin-top: 0.15rem;
+    font: 12px/1.3 "Libre Franklin", sans-serif;
+    color: var(--control-ink-muted);
+    -webkit-user-select: text;
+    user-select: text;
+    -webkit-touch-callout: default;
+  }
+
+  /* The link to the source, drawn as the game info screen's link out is — underlined
+     quiet ink on no box, held to the width of its own words (see
+     MenuGameInfoScreen.css, and `--link-*` in styles/base.css for the pair of colours
+     they share). What this one adds is the mark: an icon and a repository name read as
+     one thing, so the row is a flex line with the two sitting on a common baseline
+     rather than an image floated beside text. */
+  .about-link {
+    display: inline-flex;
+    align-items: center;
+    align-self: start;
+    gap: 0.45rem;
+    padding-block: 4px;
+    font: 13px "Libre Franklin", sans-serif;
+    color: var(--link-ink);
+    text-decoration: none;
+  }
+
+  /* The underline belongs to the name, not to the row: drawn on the link itself it
+     would run under the mark and the gap as well, which reads as a rule with a logo
+     sitting on it. */
+  .about-link__name {
+    text-decoration: underline;
+    text-decoration-color: var(--link-rule);
+    text-underline-offset: 0.2em;
+  }
+
+  /* Sized in `em` so the mark tracks the text it labels rather than needing a second
+     edit when the line does. `currentColor` in the markup is what colours it. */
+  .about-link__mark {
+    flex: none;
+    width: 1.15em;
+    height: 1.15em;
+  }
+
+  /* The green call-to-action, keeping the accent fill it wears on the top bar: a short
+     button at the end of the build row, sized so the row's height doesn't depend on it. */
+  .menu-update__button {
+    flex: none;
+    white-space: nowrap;
+    padding: 8px 14px;
+    font: 14px "Libre Franklin", sans-serif;
+    color: #f8fafc;
+    background: #166534;
+    border: 1px solid transparent;
+    border-radius: 8px;
+    cursor: pointer;
+  }
+
+  /* Reserve an element's space while hiding it: `visibility` keeps the layout box
+     (unlike `display: none`, which collapses it), so the button can come and go without
+     reflowing what is under it. */
+  .menu-update--hidden {
+    visibility: hidden;
+  }
+}

@@ -34,6 +34,17 @@
        disclosure header, a muted row heading the rows it hides. */
     --control-ink-muted: #94a3b8;
 
+    /* **A link that leaves the app**, of which the chrome has two: the game info
+       screen's rules link and the About screen's repository link. Neither wears a
+       control box — everything that does acts on the game in hand — so the underline
+       is what says "link" and the ink is what separates it from the prose around it.
+       A step brighter than `--control-ink-muted` rather than a colour of its own: the
+       green is the app's accent, spent on the thing in hand, and the one blue in the
+       app is the focus ring. The rule is quieter than the ink because at 13px a
+       full-strength underline closes up the descenders. */
+    --link-ink: #cbd5e1;
+    --link-rule: #64748b;
+
     /* **The raised panel, stated once**. The two moments the app stops the board to
        hold a conversation — the win panel (`.win-panel`, scenes/TableScene.css) and
        the "enter seed" modal (`.seed-dialog__panel`, components/SeedDialog.css) — are
