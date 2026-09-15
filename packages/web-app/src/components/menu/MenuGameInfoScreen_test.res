@@ -72,6 +72,16 @@ describe("MenuGameInfoScreen", () => {
     expect(tilted(render(~tilt=false)))->toBe(0)
   })
 
+  test("says what the game is in a paragraph, the same one for every board of a family", () => {
+    // The copy is generic on purpose: it describes FreeCell, not the size in hand, so
+    // the picker under it changes the board and the numbers and leaves the words alone.
+    // Which words those are is `GameInfo`'s (`descriptionFor`), tested there.
+    let prose = game => render(~game)->textIn(".game-info__prose")
+    expect(prose(Game.freecell)->String.startsWith("Every card is face up"))->toBe(true)
+    expect(prose(Game.micro))->toBe(prose(Game.freecell))
+    expect(prose(Game.spiderette)->String.includes("Spider's rules"))->toBe(true)
+  })
+
   test("shows the board's numbers", () => {
     expect(render()->textIn(".game-info__numbers"))->toBe("8 cascades · 4 cells · 52 cards")
   })
@@ -104,7 +114,7 @@ describe("MenuGameInfoScreen", () => {
     let screen = render(~game=Game.mini, ~variants=pickerFor(Game.freecellFamily, ~on=Game.mini))
     expect(
       screen->findAll(".menu-screen > *")->Array.map(el => el->attrOr("aria-label")),
-    )->toEqual(["preview", "numbers", "size", "reference"])
+    )->toEqual(["how it plays", "preview", "numbers", "size", "reference"])
   })
 
   test("has no such section at all on a game that is a game on its own", () => {
@@ -114,7 +124,7 @@ describe("MenuGameInfoScreen", () => {
     expect(screen->findAll(".menu-variant-picker")->Array.length)->toBe(0)
     expect(
       screen->findAll(".menu-screen > *")->Array.map(el => el->attrOr("aria-label")),
-    )->toEqual(["preview", "numbers", "reference"])
+    )->toEqual(["how it plays", "preview", "numbers", "reference"])
   })
 
   test("goes back to the main menu, where the info button was", () => {

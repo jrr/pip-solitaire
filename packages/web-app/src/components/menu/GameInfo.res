@@ -37,6 +37,10 @@ type t = {
   // family**, so that picking another size or another pack redraws the board without
   // moving the numbers, the picker and the link below it. See `previewBoxFor`.
   previewBox: float,
+  // The game in a paragraph, or `None` for a game this build has and the copy doesn't
+  // — which the screen shows as no paragraph rather than as a sentence about patience
+  // in general. See `descriptionFor`.
+  description: option<string>,
 }
 
 let wikipedia = (article: string): string => "https://en.wikipedia.org/wiki/" ++ article
@@ -49,6 +53,32 @@ let referenceFor = (id: string): string =>
   | "simplesimon" => wikipedia("Simple_Simon_(solitaire)")
   | "spiderette1" | "spiderette" | "spiderette4" => wikipedia("Spider_(solitaire)")
   | _ => wikipedia("Patience_(game)")
+  }
+
+// The game in two or three sentences, written for a reader who has played a solitaire
+// game or two: what is hidden, how a run moves, and the one rule that catches a player
+// coming from another game. Not the rules in full — the link out is for that.
+//
+// **Keyed by family where there is one**, which is what makes the paragraph steady under
+// the picker: the three FreeCell sizes are one game to describe and the three Spiderette
+// packs are another, and a reader who saw the words change would go back looking for a
+// difference that isn't there. The same rule forbids naming anything the picker moves:
+// "the free cells", never "four free cells".
+let descriptionFor = (id: string): option<string> =>
+  switch id {
+  | "freecell" =>
+    Some(
+      "Every card is face up from the deal: nothing is hidden, and almost any board can be solved by thinking it through. Columns build down in alternating colours, and the free cells park one card each — how many stand empty is how long a run you can move at once.",
+    )
+  | "simplesimon" =>
+    Some(
+      "Spider's game with nothing hidden: every card is face up from the start, and there is nowhere to park one you can't place yet. Build down in rank whatever the suit, but only a same-suit run lifts as a block, and a suit gathered King down to Ace leaves the board for good.",
+    )
+  | "spiderette" =>
+    Some(
+      "Spider's rules over a Klondike deal: seven columns, only the top card of each face up. Build down in rank whatever the suit, but only a same-suit run lifts as a block, and a suit gathered King down to Ace leaves the board. The stock deals onto every column at once, and refuses while a column stands empty.",
+    )
+  | _ => None
   }
 
 // **The family's name where there is one**, so the screen about a Spiderette is headed
@@ -97,6 +127,9 @@ let forGame = (game: Game.t): t => {
   reference: referenceFor(game.id),
   opening: game.piles,
   previewBox: previewBoxFor(game),
+  description: Game.familyOf(game)
+  ->Option.mapOr(game.id, family => family.id)
+  ->descriptionFor,
 }
 
 let count = (n: int, ~singular: string, ~plural: string): string =>
