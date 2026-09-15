@@ -55,11 +55,18 @@
     align-self: start;
     padding-block: 4px;
     font: 13px "Libre Franklin", sans-serif;
-    color: #86efac;
+    /* The menu's quiet ink — the header's own chevron and ✕ wear it — a step brighter
+       than the paragraph above rather than a colour of its own. The app's green is its
+       accent, spent on the thing in hand (the chosen pack, the Update button); the one
+       link on the screen is not that. Nor blue: the only blue in the app is the focus
+       ring (`MenuGameRow.css`), and a link that wore it would read as focused. So the
+       underline is what says "link" and the brightness is what separates it from the
+       prose. */
+    color: #cbd5e1;
     text-decoration: underline;
-    /* A quieter rule than the words it sits under: the link reads as a link from the
-       colour, and a full-strength underline at this size closes up the descenders. */
-    text-decoration-color: rgba(134, 239, 172, 0.45);
+    /* A quieter rule than the words above it: at 13px a full-strength underline closes
+       up the descenders. */
+    text-decoration-color: #64748b;
     text-underline-offset: 0.2em;
   }
 }

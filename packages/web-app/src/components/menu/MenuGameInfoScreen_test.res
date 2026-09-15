@@ -108,23 +108,23 @@ describe("MenuGameInfoScreen", () => {
     expect(screen->findAll(".menu-variant-picker__choice")->Array.length)->toBe(3)
   })
 
-  test("puts the choice under the numbers it changes, and the link out last", () => {
-    // Picking Mini takes eight cascades to four on the line immediately above the
-    // picker; the link is the way off this screen, so it stays at the foot of it.
+  test("describes the game first and offers the one control last", () => {
+    // Picture, the numbers counting it, how it plays, the rules in full — and then the
+    // picker, the only control on a screen that is otherwise all description.
     let screen = render(~game=Game.mini, ~variants=pickerFor(Game.freecellFamily, ~on=Game.mini))
     expect(
       screen->findAll(".menu-screen > *")->Array.map(el => el->attrOr("aria-label")),
-    )->toEqual(["how it plays", "preview", "numbers", "size", "reference"])
+    )->toEqual(["preview", "numbers", "how it plays", "reference", "size"])
   })
 
   test("has no such section at all on a game that is a game on its own", () => {
     // Not an empty band: Simple Simon has no family, so there is no choice to offer and
-    // nothing for a heading to head.
+    // nothing for a heading to head — and the screen ends on the link out.
     let screen = render(~game=Game.simpleSimon)
     expect(screen->findAll(".menu-variant-picker")->Array.length)->toBe(0)
     expect(
       screen->findAll(".menu-screen > *")->Array.map(el => el->attrOr("aria-label")),
-    )->toEqual(["how it plays", "preview", "numbers", "reference"])
+    )->toEqual(["preview", "numbers", "how it plays", "reference"])
   })
 
   test("goes back to the main menu, where the info button was", () => {
