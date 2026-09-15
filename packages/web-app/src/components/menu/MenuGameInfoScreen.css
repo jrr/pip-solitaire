@@ -1,7 +1,19 @@
 @layer components {
-  /* The game info screen (see MenuGameInfoScreen.res): the numbers line and the link
-     out. The header, the sections and the footer around them are the components the
-     screen composes, so what's left here is these two. */
+  /* The game info screen (see MenuGameInfoScreen.res): the mat under the opening
+     board, the numbers line and the link out. The header, the sections and the footer
+     around them are the components the screen composes, so what's left here is these
+     three. */
+
+  /* The opening board's mat: the menu's own control box — its dark, its border, its
+     corner — holding the still. The board inside is the table's markup at a third of
+     its size or so, and fits the box on its own (`BoardPreview.css`); the padding is
+     the margin the table keeps around its rows, near enough. */
+  .game-info__preview {
+    padding: 0.6rem;
+    background: var(--control-bg);
+    border: var(--control-border);
+    border-radius: var(--control-radius);
+  }
 
   /* "8 cascades · 4 cells · 52 cards". The mono stack — the one the seed value and the
      board readout already use — is what keeps the digits lined up as the eye runs

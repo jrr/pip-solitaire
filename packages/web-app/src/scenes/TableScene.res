@@ -418,65 +418,6 @@ let doubleTapMoveTol = 12.
 // to be refused in the touch layer, and so can't ride along with the pointer
 // bookkeeping here; the two are independent by necessity, not by preference.
 
-// The modifier the empty-pile indicator wears for its pile's role. The three
-// roles accept quite different things — a foundation only ever opens with an Ace, a
-// free cell takes any one card, a tableau column takes a card or a run — and until
-// now the board drew one dashed rectangle for all three, so a player couldn't tell
-// where the cells ended and the foundations began. That boundary isn't learnable by
-// position either: it moves with the game (`freecell` is 4 cells + 4 foundations,
-// `mini` 2 + 4, `micro` 2 + 2), which is why the cue has to be intrinsic to the slot
-// rather than a gap in the row.
-//
-// Only the *paint* varies. The footprint stays identical across the three — the slot
-// traces the card exactly, and browser-tests/geometry.spec.mjs pins that on whichever
-// slot comes first (a free cell) — so a role may change colour, fill and contents,
-// but never its size or corner radius.
-let slotRoleClass = (role: Game.role) =>
-  switch role {
-  | Game.FreeCell => "drop-zone__slot--cell"
-  | Game.Foundation => "drop-zone__slot--foundation"
-  | Game.Cascade => "drop-zone__slot--tableau"
-  | Game.Stock => "drop-zone__slot--stock"
-  }
-
-// The whole span of the hand-placed tilt, not a variance. **Keep it small** or cards
-// stop stacking cleanly: a fanned pile's overlap comes from `TableLayout`'s fan steps —
-// `fanDownStep`, and less again once a deep pile compresses — which assume cards are
-// very nearly square. docs/card-tilt.md is the rest of it.
-let maxCardTilt = 2.5
-let suitOrdinal = (suit: Deck.suit) =>
-  switch suit {
-  | Spades => 0
-  | Hearts => 1
-  | Diamonds => 2
-  | Clubs => 3
-  }
-let rankOrdinal = (rank: Deck.rank) =>
-  switch rank {
-  | Ace => 0
-  | Two => 1
-  | Three => 2
-  | Four => 3
-  | Five => 4
-  | Six => 5
-  | Seven => 6
-  | Eight => 7
-  | Nine => 8
-  | Ten => 9
-  | Jack => 10
-  | Queen => 11
-  | King => 12
-  }
-// The tilt in degrees for `card` resting at (`pile`, `slot`) — its resting place, as
-// a pile index and a slot within it. **Every input must stay non-negative**: that is
-// what keeps `Int.mod` positive, and a negative `h` would throw the angle past
-// `-maxCardTilt`. Why a hash rather than a random number, and what each multiplier is
-// worth in degrees: docs/card-tilt.md.
-let cardTilt = (~card: Deck.card, ~pile, ~slot) => {
-  let h = suitOrdinal(card.suit) * 17 + rankOrdinal(card.rank) * 5 + pile * 23 + slot * 11
-  let unit = Int.toFloat(Int.mod(h, 100)) /. 100.
-  (unit *. 2. -. 1.) *. maxCardTilt
-}
 // Set (or clear) a card wrapper's tilt, published as the `--card-rot` custom
 // property the `.card-art` child rotates by (see the CSS). Kept on the child, not
 // the wrapper, so it never fights the wrapper's drag/flight `transform`.
@@ -504,7 +445,8 @@ let clearTiltTiming = wrapper => {
 // player wants the hand-placed look at all. "Off" is a dead-square 0° through
 // the same property, not a second code path — so nothing else about the layout
 // varies with the setting.
-let tiltFor = (~enabled, ~card, ~pile, ~slot) => enabled ? cardTilt(~card, ~pile, ~slot) : 0.
+let tiltFor = (~enabled, ~card, ~pile, ~slot) =>
+  enabled ? TableLayout.cardTilt(~card, ~pile, ~slot) : 0.
 
 // The game clock, read where the impurity belongs: `Session` stamps a win with a
 // moment it's handed, and this is the layer that has a wall clock to hand it. The same
@@ -766,56 +708,37 @@ let make = (
       // collapses to a single row. Each row lays itself out with flexbox, so a zone's live
       // rect (read at drop time) reflects wherever the browser placed it — nothing
       // cached up front to go stale on resize.
-      let rows = WebDom.createElement("div")
-      rows->WebDom.setAttribute("class", "drop-rows")
+      let rows = Html.create(TableMarkup.rows(Html.empty))
       playfield->WebDom.appendChild(rows)->ignore
 
-      let makeRow = () => {
-        let row = WebDom.createElement("div")
-        row->WebDom.setAttribute("class", "drop-row")
+      // Which row each pile lands on is `TableLayout.rowIndex`: a cascade on the bottom
+      // row and everything else on the top, one row when the board has one kind.
+      let twoRows = TableLayout.twoRows(game.piles)
+      let rowEls = Array.make(~length=twoRows ? 2 : 1, ())->Array.map(() => {
+        let row = Html.create(TableMarkup.row(Html.empty))
         rows->WebDom.appendChild(row)->ignore
         row
-      }
-
-      // A cascade lands on the bottom row, a free cell or foundation on the top —
-      // but only when the board actually mixes the two groups. With just one group
-      // present, everything shares a single row (`bottomRow` aliases `topRow`).
-      let hasTop = game.piles->Array.some((p: Game.pile) => p.role != Game.Cascade)
-      let hasBottom = game.piles->Array.some((p: Game.pile) => p.role == Game.Cascade)
-      let twoRows = hasTop && hasBottom
-      let topRow = makeRow()
-      let bottomRow = twoRows ? makeRow() : topRow
-      let rowFor = (pile: Game.pile) => twoRows && pile.role == Game.Cascade ? bottomRow : topRow
+      })
+      let rowFor = (pile: Game.pile) =>
+        rowEls->Array.getUnsafe(TableLayout.rowIndex(~twoRows, pile))
 
       // One zone per pile in the game, in model order, each carrying its declared
       // stacking behaviour and dropped into its role's row. The `.drop-row`
       // flexbox (`space-evenly`) spreads a row's zones across the stage, so the
-      // view never counts them.
+      // view never counts them. The zone holds its empty-pile indicator from the
+      // start; a resting card (a `.stacking-card` on the playfield, layered above)
+      // occludes it pixel-for-pixel, so the cue shows only on empty piles, while the
+      // `.drop-zone` around it stays the hit-test box and the larger highlight frame.
       let zones = game.piles->Array.mapWithIndex((pile: Game.pile, index) => {
-        let el = WebDom.createElement("div")
-        el->WebDom.setAttribute("class", "drop-zone")
-        // The static "empty pile" indicator: a purely-visual, card-sized
-        // dashed placeholder, split off from the zone's old overloaded outline. A
-        // resting card (a sibling `.stacking-card` layered above) occludes it
-        // pixel-for-pixel, so the dashed cue shows only on empty piles, while the
-        // `.drop-zone` around it stays the hit-test box and the larger highlight
-        // frame. `pointer-events: none` (in CSS) keeps it out of hit-testing.
-        let slot = WebDom.createElement("div")
-        slot->WebDom.setAttribute("class", "drop-zone__slot " ++ slotRoleClass(pile.role))
-        el->WebDom.appendChild(slot)->ignore
+        let el = Html.create(TableMarkup.zone(TableMarkup.slot(pile.role)))
         rowFor(pile)->WebDom.appendChild(el)->ignore
         {el, index, stacking: pile.stacking}
       })
 
       // The widest row's pile count drives the card scale below: with the piles
       // split across two rows, cards need only shrink to fit the busier row, not
-      // the whole board. A single-row board's widest row is all its piles.
-      let widestRow = if twoRows {
-        let cascades = game.piles->Array.filter((p: Game.pile) => p.role == Game.Cascade)
-        Math.Int.max(Array.length(cascades), Array.length(game.piles) - Array.length(cascades))
-      } else {
-        Array.length(game.piles)
-      }
+      // the whole board.
+      let widestRow = TableLayout.widestRow(game.piles)
 
       // The single source of truth for this board. The view re-derives every pile's
       // layout from its present state and keeps only transient geometry.
@@ -1927,17 +1850,10 @@ let make = (
       // positioned by the initial deal (below); returning `self` lets the caller
       // collect the free cards and lay them out together.
       let makeCard = (cardData: Deck.card) => {
-        let wrapper = WebDom.createElement("div")
-        wrapper->WebDom.setAttribute("class", "stacking-card")
-        let art = Html.create(CardArt.svg(cardData))
-        wrapper->WebDom.appendChild(art)->ignore
-        // The back, drawn by the stylesheet and shown only while the card lies face
-        // down (`setFaceDown`). A plain element rather than a second piece of card art:
-        // it carries no identity, and one per card is cheap where another SVG isn't.
-        let back = WebDom.createElement("div")
-        back->WebDom.setAttribute("class", "card-back")
-        back->WebDom.setAttribute("aria-hidden", "true")
-        wrapper->WebDom.appendChild(back)->ignore
+        let wrapper = Html.create(TableMarkup.card(cardData))
+        // The face is the wrapper's first child; the back behind it is the
+        // stylesheet's to show (`setFaceDown`).
+        let art = wrapper->WebDom.firstChild->Nullable.toOption->Option.getOrThrow
         // The turning class lasts one animation. Only a CSS animation on this node
         // ends here — the flights are Web Animations and don't dispatch this.
         wrapper->WebDom.addEventListener("animationend", () =>

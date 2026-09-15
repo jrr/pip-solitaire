@@ -342,3 +342,67 @@ test("draws the picker as one control the width of the panel, not three side by 
   expect(Math.round(boxes[0].left)).toBe(Math.round(link.x))
   expect(Math.round(boxes[2].right)).toBe(Math.round(link.x + link.width))
 })
+
+test("draws the opening board as the table draws it, and takes no pointer input", async ({
+  page,
+}) => {
+  // The still on the info screen is the table's own markup under the table's own
+  // stylesheet (`BoardPreview`, `TableMarkup`), sized by container-query units the
+  // unit tests can't evaluate — so the measured claims are here. Spiderette, for a
+  // squared pile of backs and a fan that steps under a face-down card.
+  await page.goto("/?seed=24680&animate=off")
+  await settleBoard(page)
+  await openMenu(page)
+  await setBetaFeatures(page, true)
+  await page.getByRole("button", { name: "About Spiderette" }).click()
+  const still = page.locator(".board-preview")
+  await expect(still).toBeVisible()
+
+  const m = await page.evaluate(() => {
+    const still = document.querySelector(".board-preview")
+    const rows = still.querySelector(".drop-rows")
+    const stock = still.querySelector(".drop-zone:has(.drop-zone__slot--stock)")
+    const stockSlot = stock.querySelector(".drop-zone__slot")
+    const stockCard = stock.querySelector(".stacking-card")
+    const column = still.querySelectorAll(".drop-zone:has(.drop-zone__slot--tableau)")
+    const last = column[column.length - 1]
+    const [first, second] = last.querySelectorAll(".stacking-card")
+    const r = (el) => el.getBoundingClientRect()
+    const centre = (el) => {
+      const b = r(el)
+      return [b.x + b.width / 2, b.y + b.height / 2]
+    }
+    const hit = document.elementFromPoint(...centre(stockCard))
+    return {
+      still: r(still),
+      rows: r(rows),
+      slot: r(stockSlot),
+      card: r(stockCard),
+      cardW: parseFloat(getComputedStyle(stockCard).width),
+      backShown: getComputedStyle(stockCard.querySelector(".card-back")).opacity,
+      // A card under a face-down one steps by the down step: the two rects' offset
+      // over the card's width is the design ratio, whatever the scale.
+      downStep: (r(second).y - r(first).y) / r(first).width,
+      hitInsideStill: still.contains(hit),
+      hitIsMat: hit === still.closest(".game-info__preview"),
+    }
+  })
+
+  // The board fits the mat and is as tall as its rows: no stage under it.
+  expect(Math.round(m.rows.width)).toBe(Math.round(m.still.width))
+  expect(Math.round(m.rows.height)).toBe(Math.round(m.still.height))
+  expect(m.card.width).toBeLessThan(40)
+
+  // A resting card sits on its slot's box exactly — the same `rest` box the slot
+  // is — so an empty pile's cue and a card cover the same pixels here as on the table.
+  expect(m.card.x).toBeCloseTo(m.slot.x, 1)
+  expect(m.card.y).toBeCloseTo(m.slot.y, 1)
+  expect(m.card.width).toBeCloseTo(m.slot.width, 1)
+  expect(m.card.height).toBeCloseTo(m.slot.height, 1)
+  expect(m.backShown).toBe("1")
+  expect(m.downStep).toBeCloseTo(12 / 80, 2)
+
+  // Nothing under the still is ever hit: a tap on a card lands on the mat.
+  expect(m.hitInsideStill).toBe(false)
+  expect(m.hitIsMat).toBe(true)
+})

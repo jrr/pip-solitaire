@@ -99,6 +99,35 @@ let scaleFor = (
 let rowsMaxWidth = (~widestRow: int) =>
   Int.toFloat(widestRow) *. zoneWidth +. Int.toFloat(widestRow + 1) *. maxColumnGap
 
+// --- Grouping piles into rows ----------------------------------------------------
+// Which row a pile's zone sits on. A cascade lands on the bottom row and every other
+// pile — a cell, a foundation, the stock — on the top, but only when the board has both
+// kinds: one kind alone is one row. Stated once, here, because two things lay a board
+// out from it: the table (`TableScene`) and the still of the opening board on a game's
+// info screen (`BoardPreview`).
+
+let twoRows = (piles: array<Game.pile>) =>
+  piles->Array.some(p => p.role != Game.Cascade) && piles->Array.some(p => p.role == Game.Cascade)
+
+let rowIndex = (~twoRows: bool, pile: Game.pile) => twoRows && pile.role == Game.Cascade ? 1 : 0
+
+// The rows, top first, each pile with its index in the game — the index its zone
+// carries, and half of what its cards' tilt is keyed on (`cardTilt`).
+let rows = (piles: array<Game.pile>): array<array<(int, Game.pile)>> => {
+  let two = twoRows(piles)
+  let grouped = Array.make(~length=two ? 2 : 1, [])
+  piles->Array.forEachWithIndex((pile, index) => {
+    let r = rowIndex(~twoRows=two, pile)
+    grouped[r] = grouped->Array.getUnsafe(r)->Array.concat([(index, pile)])
+  })
+  grouped
+}
+
+// The busier row's pile count. With the piles split across two rows the cards need
+// only shrink to fit that row, not the whole board.
+let widestRow = (piles: array<Game.pile>) =>
+  rows(piles)->Array.reduce(0, (w, row) => Math.Int.max(w, Array.length(row)))
+
 // The whole of the JS→CSS interface. **Anything the CSS needs in scaled pixels goes
 // here** — the stylesheet derives nothing, so a `calc()` ratio literal over there is
 // a regression. Pixels, not strings: the `px` goes on at the DOM edge, in
@@ -161,6 +190,51 @@ let fanFor = (~count: int, ~down: int, ~room: option<float>, ~scale: float): fan
 let fanOffset = (fan: fan, ~down: int, ~slot: int) => {
   let belowDown = Math.Int.max(0, Math.Int.min(down, slot))
   Int.toFloat(belowDown) *. fan.downStep +. Int.toFloat(slot - belowDown) *. fan.upStep
+}
+
+// --- The hand-placed tilt ---------------------------------------------------------
+// A resting card's slight rotation, keyed on the card and where it rests. Here rather
+// than in `TableScene` because two drawings apply it: the table, through `--card-rot`,
+// and the opening-board still on a game's info screen (`BoardPreview`) — and a card the
+// still shows tilted by the table's own hash is a card the player will find at that angle.
+
+// The whole span of the hand-placed tilt, not a variance. **Keep it small** or cards
+// stop stacking cleanly: a fanned pile's overlap comes from the fan steps above —
+// `fanDownStep`, and less again once a deep pile compresses — which assume cards are
+// very nearly square. docs/card-tilt.md is the rest of it.
+let maxCardTilt = 2.5
+let suitOrdinal = (suit: Deck.suit) =>
+  switch suit {
+  | Spades => 0
+  | Hearts => 1
+  | Diamonds => 2
+  | Clubs => 3
+  }
+let rankOrdinal = (rank: Deck.rank) =>
+  switch rank {
+  | Ace => 0
+  | Two => 1
+  | Three => 2
+  | Four => 3
+  | Five => 4
+  | Six => 5
+  | Seven => 6
+  | Eight => 7
+  | Nine => 8
+  | Ten => 9
+  | Jack => 10
+  | Queen => 11
+  | King => 12
+  }
+// The tilt in degrees for `card` resting at (`pile`, `slot`) — its resting place, as
+// a pile index and a slot within it. **Every input must stay non-negative**: that is
+// what keeps `Int.mod` positive, and a negative `h` would throw the angle past
+// `-maxCardTilt`. Why a hash rather than a random number, and what each multiplier is
+// worth in degrees: docs/card-tilt.md.
+let cardTilt = (~card: Deck.card, ~pile, ~slot) => {
+  let h = suitOrdinal(card.suit) * 17 + rankOrdinal(card.rank) * 5 + pile * 23 + slot * 11
+  let unit = Int.toFloat(Int.mod(h, 100)) /. 100.
+  (unit *. 2. -. 1.) *. maxCardTilt
 }
 
 // --- Hit-testing --------------------------------------------------------------

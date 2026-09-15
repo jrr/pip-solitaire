@@ -27,6 +27,12 @@ type t = {
   cells: int,
   cards: int,
   reference: string,
+  // The board as dealt — every pile with its cards, and how many of them lie face down
+  // — for the still of it the screen shows (`BoardPreview`). Deal #1, the one the games
+  // carry and the screenshots derive from, so the picture is the same board every time.
+  // Plain data still: piles are cards, counts and rule variants, no closures, which is
+  // what `Menu.screen` asks of everything in here.
+  opening: array<Game.pile>,
 }
 
 let wikipedia = (article: string): string => "https://en.wikipedia.org/wiki/" ++ article
@@ -65,6 +71,7 @@ let forGame = (game: Game.t): t => {
   cells: Game.pilesOf(game, Game.FreeCell)->Array.length,
   cards: deckSize(game.deck),
   reference: referenceFor(game.id),
+  opening: game.piles,
 }
 
 let count = (n: int, ~singular: string, ~plural: string): string =>
