@@ -1,41 +1,20 @@
 @layer components {
-  /* The ↻ Update button (UpdateButton.res), in both the shapes it takes. The accent
-     fill is the one the top bar's pip and the selected game row wear — this is the
-     app telling you about itself rather than a control acting on the game in hand, and
-     the two places it appears must read as the same button. */
+  /* The ↻ Update button (UpdateButton.res): a full-width control in the panel's own box,
+     wearing the accent fill the top bar's pip and the selected game row wear — this is
+     the app telling you about itself rather than a control acting on the game in hand.
+     One shape, because the two screens that offer it both have room for a band and both
+     leave it out entirely when there is nothing to update. */
   .menu-update {
+    display: block;
+    width: 100%;
+    padding: var(--control-pad);
     font: var(--control-font);
     font-weight: 600;
+    text-align: center;
     color: #f8fafc;
     background: #166534;
     border: 1px solid transparent;
     border-radius: var(--control-radius);
     cursor: pointer;
-  }
-
-  /* The main menu's: a full-width control at the top of the panel, boxed like the
-     buttons under it so it reads as one of the panel's own rows rather than a banner
-     dropped on top of them. */
-  .menu-update--band {
-    display: block;
-    width: 100%;
-    padding: var(--control-pad);
-    text-align: center;
-  }
-
-  /* The About screen's: a short button at the end of the build row, sized so the row's
-     height doesn't depend on it. */
-  .menu-update--inline {
-    flex: none;
-    white-space: nowrap;
-    padding: 8px 14px;
-  }
-
-  /* Reserve an element's space while hiding it: `visibility` keeps the layout box
-     (unlike `display: none`, which collapses it), so the button can come and go without
-     reflowing what is under it. Only the inline shape is ever reserved — the band is
-     absent instead (see UpdateButton.res). */
-  .menu-update--hidden {
-    visibility: hidden;
   }
 }

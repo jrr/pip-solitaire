@@ -20,12 +20,16 @@
     align-self: center;
   }
 
-  /* The icon, sized here rather than in the art: `IconArt` authors it 512 square and the
-     rasterizer scales it per output, so on screen it is whatever box it is given. The top
-     margin is the "a little lower" — with no title in the bar above it, the block would
-     otherwise start hard against the back button's row. */
+  /* The cards, sized here rather than in the art: `IconArt` authors the icon 512 square
+     and the
+     rasterizer scales it per output, so on screen it is whatever box it is given.
+     `IconArt.cards` frames the fan itself, so this width is very nearly the width of the
+     cards — there is no square of background padding it out.
+
+     The top margin is the "a little lower" — with no title in the bar above it, the block
+     would otherwise start hard against the back button's row. */
   .about-icon {
-    width: 7rem;
+    width: 13rem;
     margin-top: 0.4rem;
   }
 
@@ -52,19 +56,33 @@
      thing on two screens. */
   .about-blurb {
     margin: 0;
+    /* Held well inside the panel so the sentence breaks over two or three short lines
+       under the name rather than running the full width: a line of body type as wide as
+       the panel reads as the start of a paragraph, and this is a caption on a wordmark.
+       Padding rather than a `max-width`, so the centring above still has the whole band
+       to centre in. */
+    padding-inline: 2.5rem;
     font: var(--prose-font);
     color: var(--control-ink-muted);
   }
 
-  /* The build, with the ↻ Update button at the end of its row. The button is reserved
-     with `visibility` when there's nothing to update (`UpdateButton.css`), so it needs a
-     row taller than itself to come and go in without moving anything: the two lines of
-     build string are that row. */
+  /* The build string with the update check beside it, one row. */
   .about-build {
     display: flex;
     align-items: center;
     justify-content: space-between;
     gap: 0.75rem;
+  }
+
+  /* The check, given a column narrow enough that its words set over two lines — which is
+     what keeps it beside the build string rather than under it on a phone. `.menu-button`
+     holds every control in the panel to one line, so the wrap is this rule's to allow;
+     the doubled selector is what carries that, rather than the two sheets' order
+     (docs/css-layers.md). */
+  .about-build > .menu-refresh {
+    flex: 0 0 8.5rem;
+    white-space: normal;
+    line-height: 1.25;
   }
 
   /* The version, which is the one thing on this screen a player might read out or type

@@ -80,29 +80,39 @@ describe("MenuAboutScreen", () => {
     expect(screen->updateButton->Option.isSome)->toBe(true)
   })
 
-  test("takes the reserved shape of the Update button, inside the build row", () => {
-    // The *inline* one, which keeps its box when there's nothing to update — unlike the
-    // main menu's band, which is absent until there is. Reserved in a row two lines of
-    // build string tall, so it comes and goes without moving the check below it.
-    switch render(~refresh=check)->updateButton {
-    | Some(b) =>
-      expect(b->classes->String.includes("menu-update--inline"))->toBe(true)
-      expect(b->classes->String.includes("menu-update--hidden"))->toBe(true)
-    | None => expect("update button")->toBe("missing")
-    }
+  test("leads the build block with the Update band and ends it with the check", () => {
+    // The order is what makes the band's arrival free: the block is anchored to the foot
+    // of the panel, so it grows upward, and the check — the control a hand is on at the
+    // moment an update is found — stays where it was. Under the check instead, that same
+    // hand's second tap would land on a reload.
+    let block =
+      render(~refresh=check, ~updateVisible=true)
+      ->find("[aria-label='build']")
+      ->Option.getOrThrow
+    expect(block->children->Array.map(el => el->classes))->toEqual([
+      "menu-section__heading",
+      "menu-update",
+      "about-build",
+    ])
+    expect(block->find(".about-build > .menu-refresh")->Option.isSome)->toBe(true)
+  })
+
+  test("sits at the foot of the panel, under the masthead's air", () => {
+    // The screen's footnote, and the placement the band above depends on.
     expect(
-      render(~refresh=check)
-      ->find(".about-build > .menu-update")
-      ->Option.isSome,
+      render()
+      ->find("[aria-label='build']")
+      ->Option.mapOr("", classes)
+      ->String.includes("menu-section--bottom"),
     )->toBe(true)
   })
 
   test("offers no check at all where the browser can say nothing about updates", () => {
-    // `Main` hands over an empty node until a service-worker state has been detected.
-    // The Update button is still there, reserved: it is hidden, never absent.
+    // `Main` hands over an empty node until a service-worker state has been detected,
+    // which leaves the build string alone in its row.
     let screen = render()
     expect(screen->find(".menu-refresh")->Option.isSome)->toBe(false)
-    expect(screen->updateButton->Option.isSome)->toBe(true)
+    expect(screen->updateButton->Option.isSome)->toBe(false)
   })
 
   test("links to the repository, marked and in a tab of its own", () => {

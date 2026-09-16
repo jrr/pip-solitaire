@@ -51,19 +51,57 @@ let placedCard = ((card, angle)) => {
   </g>
 }
 
+// The box the fan actually draws into, in icon units: each card's rotated bounding box,
+// unioned, and padded for the drop shadow. Derived from the very constants the cards are
+// placed by, so a change to the splay, the lift or the card scale carries the crop with
+// it — where a viewBox written out by hand would quietly clip a corner off the day one
+// of them moved.
+//
+// The pad is the shadow's reach (`dy` 8, `stdDeviation` 10): an `<svg>` with a viewBox
+// clips to it, and a hard edge through a soft shadow is a straight grey line.
+let shadowPad = 34.
+
+let fanBounds = () => {
+  let w = 120. *. cardScale
+  let h = 168. *. cardScale
+  let corners = fan->Array.map(((_, degrees)) => {
+    let a = degrees *. Math.Constants.pi /. 180.
+    // The card's centre: the pivot, then `lift` away along the splay angle. Its
+    // axis-aligned box is the rotated rectangle's, which is what the two halves are.
+    let cx = pivotX +. lift *. Math.sin(a)
+    let cy = pivotY -. lift *. Math.cos(a)
+    let halfW = (w *. Math.abs(Math.cos(a)) +. h *. Math.abs(Math.sin(a))) /. 2.
+    let halfH = (w *. Math.abs(Math.sin(a)) +. h *. Math.abs(Math.cos(a))) /. 2.
+    (cx -. halfW, cy -. halfH, cx +. halfW, cy +. halfH)
+  })
+  // Seeded at the icon's own edges, the fan being inside them by construction.
+  let left = corners->Array.reduce(size, (m, (x0, _, _, _)) => Math.min(m, x0))
+  let top = corners->Array.reduce(size, (m, (_, y0, _, _)) => Math.min(m, y0))
+  let right = corners->Array.reduce(0., (m, (_, _, x1, _)) => Math.max(m, x1))
+  let bottom = corners->Array.reduce(0., (m, (_, _, _, y1)) => Math.max(m, y1))
+  (
+    left -. shadowPad,
+    top -. shadowPad,
+    right -. left +. 2. *. shadowPad,
+    bottom -. top +. 2. *. shadowPad,
+  )
+}
+
 // Shared <defs>: the background gradient and the card drop-shadow filter. The
 // gradient is anchored top-center like the page's, fading to the darker outer
 // color; the shadow mirrors the board card's `drop-shadow(0 … rgba(…))`,
 // scaled up for the icon so the fan lifts off the background.
-let defs = () => {
+let defs = (~background) => {
   let f = Float.toString
   <defs>
-    <radialGradient
-      id="bg" gradientUnits="userSpaceOnUse" cx={f(size /. 2.)} cy="0" r={f(size *. 1.2)}
-    >
-      <stop offset="0" stopColor={bgInner} />
-      <stop offset="0.6" stopColor={bgOuter} />
-    </radialGradient>
+    {background
+      ? <radialGradient
+          id="bg" gradientUnits="userSpaceOnUse" cx={f(size /. 2.)} cy="0" r={f(size *. 1.2)}
+        >
+          <stop offset="0" stopColor={bgInner} />
+          <stop offset="0.6" stopColor={bgOuter} />
+        </radialGradient>
+      : Html.empty}
     <filter id="cardShadow" x="-30%" y="-30%" width="160%" height="160%">
       <feDropShadow dx="0" dy="8" stdDeviation="10" floodColor="#000000" floodOpacity="0.42" />
     </filter>
@@ -76,23 +114,36 @@ let defs = () => {
 //                  own mask).
 //   ~inset:        scales the whole fan about the icon center; < 1 pulls the
 //                  cards into the maskable "safe zone".
-let svg = (~cornerRadius=0.16, ~inset=1.0) => {
+//   ~background:   the rounded square behind the cards. `false` is the cards alone,
+//                  on whatever they are drawn over.
+//   ~crop:         frame the fan rather than the icon's 512 square (`fanBounds`), so
+//                  there is no dead margin around the cards to centre.
+let svg = (~cornerRadius=0.16, ~inset=1.0, ~background=true, ~crop=false) => {
   let f = Float.toString
+  let (vx, vy, vw, vh) = crop ? fanBounds() : (0., 0., size, size)
   <svg
     xmlns="http://www.w3.org/2000/svg"
-    viewBox={`0 0 ${f(size)} ${f(size)}`}
-    width={f(size)}
-    height={f(size)}
+    viewBox={`${f(vx)} ${f(vy)} ${f(vw)} ${f(vh)}`}
+    width={f(vw)}
+    height={f(vh)}
   >
-    {defs()}
-    <rect
-      x="0" y="0" width={f(size)} height={f(size)} rx={f(size *. cornerRadius)} fill="url(#bg)"
-    />
+    {defs(~background)}
+    {background
+      ? <rect
+          x="0" y="0" width={f(size)} height={f(size)} rx={f(size *. cornerRadius)} fill="url(#bg)"
+        />
+      : Html.empty}
     <g transform={`translate(256 256) scale(${f(inset)}) translate(-256 -256)`}>
       {fan->Array.map(placedCard)->Html.array}
     </g>
   </svg>
 }
+
+// The cards alone, framed to themselves: what the app shows on its About screen, where
+// the icon is a picture rather than an icon — there is already a dark rounded panel
+// behind it, and a second one around the cards would read as a sticker of the app stuck
+// onto the app.
+let cards = () => svg(~background=false, ~crop=true)
 
 // Plain-argument variants for the JS build script (no labeled/optional args to
 // marshal across the interop boundary): each returns finished SVG markup.

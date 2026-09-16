@@ -118,7 +118,7 @@ let make = ({
   // around one control called "Update now" is the same word twice. The section is what
   // gives it the panel's own spacing, so it sits in the column rather than on top of it.
   <MenuSection>
-    <UpdateButton variant=UpdateButton.Band visible={updateVisible} onReload />
+    <UpdateButton visible={updateVisible} onReload />
   </MenuSection>
   // The heading carries the game and its deal number, so the section says which board
   // its two buttons act on. A player can read the number off (or dictate it) where no
