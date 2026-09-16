@@ -1,8 +1,17 @@
 @layer components {
-  /* The game info screen (see MenuGameInfoScreen.res): the mat under the opening
-     board, the numbers line and the link out. The header, the sections and the footer
-     around them are the components the screen composes, so what's left here is these
-     three. */
+  /* The game info screen (see MenuGameInfoScreen.res): the paragraph, the mat under the
+     opening board, the numbers line and the link out. The header, the sections and the
+     footer around them are the components the screen composes, so what's left here is
+     these four. */
+
+  /* The game in a paragraph: the chrome's prose face (`--prose-font`, styles/base.css),
+     muted against the white of the headings because it is the screen's background
+     reading and the picture above it is the subject. */
+  .game-info__prose {
+    margin: 0;
+    font: var(--prose-font);
+    color: var(--control-ink-muted);
+  }
 
   /* The opening board's mat: the menu's own control box — its dark, its border, its
      corner — holding the still. The board inside is the table's markup at a third of
@@ -23,27 +32,32 @@
     margin: 0;
     font: 13px ui-monospace, "SF Mono", Menlo, monospace;
     letter-spacing: 0.02em;
-    /* Centred, like the link under it. The panel is left-aligned throughout, but
-       these two are the screen's whole column, and one line ranged left under a
-       centred button reads as a mistake rather than as alignment. */
+    /* Centred under a centred picture: the line is the still's caption, and the panel
+       being left-aligned everywhere else is the sort of thing that invites a later tidy
+       to range this left and leave it floating under the board's middle. */
     text-align: center;
     color: var(--control-ink-muted);
   }
 
-  /* The link out, given the menu's button box so it sits in the panel like every other
-     full-width control. `display: block` and the centred text are what an `<a>` needs
-     to take that shape — an inline element would hug its words and leave the border
-     wrapped around the text rather than around the row. */
+  /* The link out, drawn as a link: underlined accent text on no box at all. **Keep it
+     off the menu's control box.** Everything in the panel wearing that box acts on the
+     game in hand, and a trip to Wikipedia dressed as Restart or Share is the loudest
+     control on the screen offering the least game.
+
+     `align-self: start` is what holds it to its words. The section is a flex column, so
+     a stretched link would take the panel's whole width and a tap anywhere along that
+     empty line would navigate — invisible, since the underline only ever draws under the
+     text. The block padding is the rest of the target: a 13px line is a small thing to
+     hit, and the padding grows it without widening what is drawn. */
   .game-info__link {
-    display: block;
-    padding: var(--control-pad);
-    font: var(--control-font);
-    font-weight: 600;
-    text-align: center;
-    text-decoration: none;
-    color: var(--control-ink);
-    background: var(--control-bg);
-    border: var(--control-border);
-    border-radius: var(--control-radius);
+    align-self: start;
+    padding-block: 4px;
+    font: 13px "Libre Franklin", sans-serif;
+    /* The ink and the rule a link out of the app wears, which the About screen's
+       repository link wears too — the reasoning is with the tokens, in styles/base.css. */
+    color: var(--link-ink);
+    text-decoration: underline;
+    text-decoration-color: var(--link-rule);
+    text-underline-offset: 0.2em;
   }
 }

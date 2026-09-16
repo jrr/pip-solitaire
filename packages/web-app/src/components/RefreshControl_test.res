@@ -1,18 +1,13 @@
 // Size-stability test for the `RefreshControl` component: the control has
-// to render the same rows idle and busy, because a height change here reflows the
+// to render the same box idle and busy, because a height change here reflows the
 // menu around the About footer (see `RefreshControl.res`).
 //
 // **What "a good size test" means here.** These run under jsdom (see
 // vitest.config.js), which has no layout engine — no pixel measurement. So what's
-// pinned is the size-determining structure instead: the section's stacked **rows**, its
-// direct child boxes.
+// pinned is the size-determining structure instead: that the control is one button in
+// both states, and that everything the busy state adds is *inside* it.
 open Vitest
 open TestDom
-
-// The section's stacked rows: the tag of each direct child element. This is what
-// determines the section's height — each row is a box in the column. Nested
-// content (the spinner inside the button) is deliberately not walked.
-let rows = (el: Html.element): array<string> => el->children->Array.map(tag)
 
 let render = (busy): Html.element =>
   Html.create(RefreshControl.make({label: "Check for updates", busy, onClick: () => ()}))
@@ -23,8 +18,12 @@ describe("RefreshControl size stability", () => {
   let idle = render(false)
   let busy = render(true)
 
-  test("has the identical stack of rows whether idle or busy", () => {
-    expect(rows(busy))->toEqual(rows(idle))
+  test("is one button in both states, with nothing arriving beside it", () => {
+    // The footer stands this next to the About button and sizes the pair (see
+    // `AboutFooter.css`), so a wrapper here is a box inside a box and a second element
+    // is a row the footer never budgeted for.
+    expect((tag(idle), tag(busy)))->toEqual(("BUTTON", "BUTTON"))
+    expect(idle->classes->String.includes("menu-button"))->toBe(true)
   })
 
   test("never renders a status line under the button", () => {
@@ -34,18 +33,16 @@ describe("RefreshControl size stability", () => {
     expect(busy->find(".menu-refresh__status")->Option.isSome)->toBe(false)
   })
 
-  test("shows the spinner only while busy, and inside the button (not as a new row)", () => {
+  test("shows the spinner only while busy, and inside the button rather than beside it", () => {
     expect(hasSpinner(idle))->toBe(false)
     expect(hasSpinner(busy))->toBe(true)
-    // The spinner is a descendant of the button, so it rides the button's line
-    // rather than adding a row that would change the section's height.
-    let button = busy->find(".menu-button")
-    expect(button->Option.mapOr(false, hasSpinner))->toBe(true)
+    // The button's own child, riding its line of text: the one element the busy state
+    // adds is inside the box the idle state already drew.
+    expect(busy->children->Array.map(tag))->toEqual(["SPAN"])
   })
 
-  test("the button reads its label when idle and \"Checking…\" while busy", () => {
-    let buttonText = el => el->find(".menu-button")->Option.mapOr("", text)
-    expect(buttonText(idle))->toBe("Check for updates")
-    expect(buttonText(busy))->toBe("Checking…")
+  test("reads its label when idle and \"Checking…\" while busy", () => {
+    expect(text(idle))->toBe("Check for updates")
+    expect(text(busy))->toBe("Checking…")
   })
 })

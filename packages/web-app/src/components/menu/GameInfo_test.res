@@ -74,6 +74,8 @@ describe("GameInfo.numbers", () => {
       cards: 1,
       reference: "",
       opening: [],
+      previewBox: 0.5,
+      description: None,
     }
     expect(GameInfo.numbers(one))->toBe("1 cascade · 1 cell · 1 card")
   })
@@ -89,5 +91,61 @@ describe("GameInfo.numbers", () => {
     expect(
       info.opening->Array.find(p => p.role == Game.Stock)->Option.map(p => p.faceDown),
     )->toEqual(Some(24))
+  })
+
+  test("gives a whole family one box to draw its boards in", () => {
+    // The reason the field exists: the info screen's picker redraws the still, and a
+    // still that came out whatever height its board ran to would move the numbers, the
+    // picker and the link down the panel every time one was tapped.
+    let box = game => GameInfo.forGame(game).previewBox
+    expect((box(Game.mini), box(Game.micro)))->toEqual((box(Game.freecell), box(Game.freecell)))
+    expect(box(Game.spiderette1))->toBe(box(Game.spiderette4))
+  })
+
+  test("cuts that box for the flattest board of the family, and fits the rest into it", () => {
+    // Standard FreeCell is the flattest of the three sizes, so it is the board that
+    // fills the box on both axes; Micro is taller-shaped and is drawn smaller inside it,
+    // which is also the honest picture of a sixteen-card game.
+    expect(GameInfo.forGame(Game.micro).previewBox)->toBe(GameInfo.aspectOf(Game.freecell))
+    expect(GameInfo.aspectOf(Game.micro) > GameInfo.aspectOf(Game.freecell))->toBe(true)
+  })
+
+  test("describes a family once, so the paragraph is steady under the picker", () => {
+    // Prose keyed by family rather than by board: the three sizes are one game to
+    // describe, and words that changed as the picker was tapped would send a reader
+    // back to look for a difference that isn't there.
+    let about = game => GameInfo.forGame(game).description
+    expect(about(Game.mini))->toEqual(about(Game.freecell))
+    expect(about(Game.micro))->toEqual(about(Game.freecell))
+    expect(about(Game.spiderette1))->toEqual(about(Game.spiderette4))
+    expect(about(Game.freecell))->toEqual(GameInfo.descriptionFor("freecell"))
+  })
+
+  test("names nothing in the copy that the picker moves", () => {
+    // The rule that keeps the paragraph honest as well as steady: it may say "the free
+    // cells" but not "four free cells", since Mini has two. No digit survives that rule
+    // — the one number any of this copy gives is Simple Simon's fifty-two, spelled.
+    let digits = ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"]
+    Game.all->Array.forEach(
+      game =>
+        GameInfo.forGame(game).description->Option.forEach(
+          text =>
+            digits->Array.forEach(
+              d => expect((game.name, text->String.includes(d)))->toEqual((game.name, false)),
+            ),
+        ),
+    )
+  })
+
+  test("has nothing to say about a game the copy has never heard of", () => {
+    // No paragraph beats a paragraph about patience in general, which is the shape the
+    // reference link takes for an unknown game and the wrong shape for this.
+    expect(GameInfo.descriptionFor("klondike"))->toEqual(None)
+  })
+
+  test("gives a game that is a game on its own its own shape", () => {
+    // Nothing to keep still for: Simple Simon has no family, so its still is cut to fit
+    // exactly.
+    expect(GameInfo.forGame(Game.simpleSimon).previewBox)->toBe(GameInfo.aspectOf(Game.simpleSimon))
   })
 })

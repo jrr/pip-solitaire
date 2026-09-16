@@ -164,7 +164,8 @@ type msg =
   | OpenSettings // the main menu's Settings button — swap to the Settings screen
   | BackToMenu // the Settings screen's back button — swap back to the main menu
   | OpenDebug // the Settings screen's Debug row — swap to the Debug screen
-  | BackToSettings // the Debug screen's back button — swap back to Settings
+  | OpenAbout // the About button in the footer — swap to the About screen
+  | BackToSettings // the Debug and About screens' back button — swap back to Settings
   // The "i" beside a game's row, and the info screen's own picker — show that game's
   // info screen. The *facts* travel rather than a bare id: `GameInfo.forGame` is what
   // turns a game into them, and the view has already had to resolve the game to know
@@ -553,6 +554,18 @@ let update = (msg, model) =>
         settings: MenuSettingsScreen.freshVisit(model.settings),
         shareUrl: None,
         shareStatus: None,
+      },
+      Html.noEffect,
+    )
+  // The About screen, which is where the update check lives: enter it clean, the way
+  // Settings is entered above, so a spinner left behind by a check that was in flight
+  // when the screen was last left doesn't greet the next visit.
+  | OpenAbout => (
+      {
+        ...model,
+        menuScreen: Menu.About,
+        refreshBusy: false,
+        settings: MenuSettingsScreen.freshVisit(model.settings),
       },
       Html.noEffect,
     )
@@ -1226,6 +1239,11 @@ let mainScreen = (model, dispatch): MenuMainScreen.props => {
     Refresh.detect(mode => dispatch(RefreshDetected(mode)))
     dispatch(OpenSettings)
   },
+  // The ↻ Update band: this is the screen the top bar's pip opens, so the notification
+  // and the thing it notifies about are one tap apart. The About screen offers the same
+  // button (`<UpdateButton>`) for a player who went looking.
+  updateVisible: model.updateAvailable,
+  onReload: () => dispatch(Reload),
 }
 
 // The "Enter seed" modal, raised over the menu by its Enter Seed button. It is built
@@ -1383,24 +1401,33 @@ let refreshControl = (model, dispatch): option<RefreshControl.props> =>
     })
   }
 
-// The About footer, under all three screens: the build/version line, the Update
-// button when a new build is waiting, and the update-check control tucked
-// under them.
+// The About footer, at the foot of the Settings screen: the way through to the About
+// screen, and the build string under it. Which *screen* the footer appears under is the
+// pane's business (`Menu`), so nothing about that is decided here.
 let aboutFooter = (model, dispatch): AboutFooter.props => {
+  version: model.version,
+  buildTime: model.buildTime,
+  onOpenAbout: () => dispatch(OpenAbout),
+}
+
+// The About screen: a level below Settings, where the About button is, and so back to
+// Settings rather than out to the main menu. It holds the build string and both update
+// controls — the check, and the ↻ Update that switches to a build already waiting.
+//
+// The check is a ready-made node so the screen stays a dumb layout: whether there is a
+// check to offer at all turns on the one thing only this file knows, which is whether
+// `Refresh.detect` has reported a service-worker state yet. Opening *Settings* is what
+// kicks that detection off (see `mainScreen`'s `onOpenSettings` above), which is the
+// screen this one is reached through — so by the time a player is here the answer has
+// landed.
+let aboutScreen = (model, dispatch): MenuAboutScreen.props => {
   version: model.version,
   buildTime: model.buildTime,
   updateVisible: model.updateAvailable,
   onReload: () => dispatch(Reload),
-  // Shown on the Settings and Debug screens once a worker state has been detected, and
-  // never on the two screens a *player* is on — the main menu, which is where the
-  // detection is kicked off (see `mainScreen`'s `onOpenSettings` above), and a game's
-  // info screen, which is about the game rather than about the build. Both halves of
-  // that rule are known here, so the footer takes a ready-made node and stays a dumb
-  // layout.
-  refresh: switch (model.menuScreen, refreshControl(model, dispatch)) {
-  | (Menu.Main, _) | (Menu.GameInfo(_), _) | (_, None) => Html.empty
-  | (_, Some(control)) => RefreshControl.make(control)
-  },
+  refresh: refreshControl(model, dispatch)->Option.mapOr(Html.empty, RefreshControl.make),
+  onClose: () => dispatch(CloseMenu),
+  onBackToSettings: () => dispatch(BackToSettings),
 }
 
 let view = (model, dispatch) => <>
@@ -1427,8 +1454,9 @@ let view = (model, dispatch) => <>
     main={mainScreen(model, dispatch)}
     settings={settingsScreen(model, dispatch)}
     debug={debugScreen(model, dispatch)}
+    about={aboutScreen(model, dispatch)}
     gameInfo={info => gameInfoScreen(model, dispatch, info)}
-    about={aboutFooter(model, dispatch)}
+    footer={aboutFooter(model, dispatch)}
   />
   // Over the menu rather than inside it, and in the tree only while it's up: the field
   // takes focus as it mounts, so a dialog that were merely hidden between opens would

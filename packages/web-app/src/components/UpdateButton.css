@@ -1,0 +1,21 @@
+@layer components {
+  /* The ↻ Update button (UpdateButton.res): a full-width control in the panel's own box,
+     wearing the accent fill the top bar's pip and the selected game row wear — this is
+     the app telling you about itself rather than a control acting on the game in hand.
+     The box is the band the main menu gives it; the About screen sizes it to the slot it
+     shares with the update check there (MenuAboutScreen.css), which is why the width is
+     a plain `100%` rather than anything a flex parent can't overrule. */
+  .menu-update {
+    display: block;
+    width: 100%;
+    padding: var(--control-pad);
+    font: var(--control-font);
+    font-weight: 600;
+    text-align: center;
+    color: #f8fafc;
+    background: #166534;
+    border: 1px solid transparent;
+    border-radius: var(--control-radius);
+    cursor: pointer;
+  }
+}

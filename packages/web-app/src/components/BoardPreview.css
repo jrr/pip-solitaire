@@ -14,17 +14,36 @@
   .board-preview {
     container-type: inline-size;
     width: 100%;
+    /* The box is a *shape*, declared by the component as an `aspect-ratio` and held
+       whatever board is drawn in it (`BoardPreview.res`'s `~box`): the board is fitted
+       into it, so a board that doesn't fill it is centred rather than stretched to it,
+       and picking another board of a family doesn't move the screen below. The
+       automatic minimum height is turned off so that the shape wins outright — a board
+       fitted to a hair inside the box can still round to a hair over it, and a box that
+       grew by that hair would be the wobble this shape is here to stop. */
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 0;
     pointer-events: none;
     user-select: none;
   }
 }
 
 @layer overrides {
-  /* The table pins its rows to the top of a stage it fills; the still has no stage,
-     and is as tall as its rows. One property, and in `overrides` because it reaches
-     into another component's rule (docs/css-layers.md): in `components` it would
-     lose to the `scenes` rule it corrects, whatever its specificity. */
+  /* The table pins its rows to the top of a stage it fills; the still lays them in the
+     middle of its box as an ordinary flex item. `width` is what a flex item needs to
+     take the box's width rather than its own contents' — the row spreads its columns
+     into that width with `space-evenly`, and would have nothing to spread into at
+     max-content. Its own `max-width: var(--rows-max-w)` then holds it to the board's
+     spread, and the auto inline margins the table centres with centre it here too, so a
+     board narrower than the box sits in the middle of it.
+
+     In `overrides` because these reach into another component's rule
+     (docs/css-layers.md): in `components` they would lose to the `scenes` rules they
+     correct, whatever their specificity. */
   .board-preview .drop-rows {
     position: static;
+    width: 100%;
   }
 }

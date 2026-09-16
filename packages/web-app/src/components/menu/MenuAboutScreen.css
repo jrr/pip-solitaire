@@ -1,0 +1,165 @@
+@layer components {
+  /* The About screen (see MenuAboutScreen.res): the app's name and what it is, the link
+     out to the source, and the build string set as a subject rather than as a caption.
+     The header, the sections and the update controls around them are components this
+     screen composes. */
+
+  /* The hero: the icon, the name, the line and the link, centred as one block. The Build
+     section under it stays left-aligned like every other band in the panel — that
+     contrast is what makes this one read as a masthead rather than as the first of two
+     lists. The band is `.menu-section`'s flex column, so centring is `align-items`
+     rather than a margin on each child. */
+  .about-hero {
+    align-items: center;
+    text-align: center;
+    /* Centred in the room it has: the build block below carries `margin-top: auto` too,
+       so the screen's slack is split between the two margins and the masthead sits
+       halfway between the header and the block at the foot. */
+    margin-top: auto;
+  }
+
+  /* The link hugs its own words everywhere (see `.about-link`), which in a centred
+     column means centring that box rather than starting it. */
+  .about-hero .about-link {
+    align-self: center;
+  }
+
+  /* The cards, sized here rather than in the art: `IconArt` authors the icon 512 square
+     and the
+     rasterizer scales it per output, so on screen it is whatever box it is given.
+     `IconArt.cards` frames the fan itself, so this width is very nearly the width of the
+     cards — there is no square of background padding it out.
+
+     The top margin is the "a little lower" — with no title in the bar above it, the block
+     would otherwise start hard against the back button's row. */
+  .about-icon {
+    width: 13rem;
+    margin-top: 0.4rem;
+  }
+
+  .about-icon > svg {
+    display: block;
+    width: 100%;
+    height: auto;
+  }
+
+  /* The app's name, which on this screen is the content rather than the header bar's
+     label: the header's own title one size up, borrowing `.menu-title` for the gradient
+     and the weight so the wordmark can't drift from the one on the main menu
+     (MenuHeader.css). The doubled selector is what wins the size and the margins — a
+     single class would tie with `.menu-title` inside the same layer and fall to source
+     order, which nothing in this app may lean on (docs/css-layers.md). */
+  .menu-title.about-wordmark {
+    margin-top: 0.1rem;
+    margin-bottom: 0.2rem;
+    font-size: 2.6rem;
+  }
+
+  /* What the app is, in the chrome's prose face (`--prose-font`, styles/base.css) — the
+     same one the game info screen's paragraph wears, since they are the same kind of
+     thing on two screens. */
+  .about-blurb {
+    margin: 0;
+    /* Held well inside the panel so the sentence breaks into short lines under the name
+       rather than running the full width: a line of body type as wide as the panel reads
+       as the start of a paragraph, and this is a caption on a wordmark. Padding rather
+       than a `max-width`, so the centring above still has the whole band to centre in.
+
+       `balance` is what makes the break even rather than greedy — without it the first
+       line takes everything it can and the last carries a word or two. It is ignored
+       where it isn't supported, which costs that evenness and nothing else. */
+    padding-inline: 3.25rem;
+    text-wrap: balance;
+    font: var(--prose-font);
+    color: var(--control-ink-muted);
+  }
+
+  /* The build string with the update check beside it, one row. */
+  .about-build {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+  }
+
+  /* The row's one control, whichever of the two it is (`MenuAboutScreen.res`): a *fixed*
+     slot, so swapping the update check for the ↻ Update button changes nothing about the
+     row — the shorter word would otherwise shrink it under the reader's thumb. Narrow
+     enough that "Check for updates" sets over two lines, which is what keeps it beside
+     the build string rather than under it on a phone, and tall enough to hold those two.
+
+     `.menu-button` holds every control in the panel to one line and `.menu-update` is a
+     full-width block, so both of those are this rule's to overrule; the doubled selector
+     is what carries that, rather than the two sheets' order (docs/css-layers.md). */
+  .about-build > .menu-refresh,
+  .about-build > .menu-update {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 8.5rem;
+    min-height: 3.4rem;
+    white-space: normal;
+    line-height: 1.25;
+  }
+
+  /* The version, which is the one thing on this screen a player might read out or type
+     into a bug report: mono, so 0/O and 1/l can't be confused, and large enough to read
+     off a phone at arm's length. The build time under it is the same string the Settings
+     footer prints whole (`VersionBadge`) — here it is the second line rather than the
+     tail of a caption, so the version can be the size it needs to be.
+
+     The selection opt-out is the footer badge's, for the same reason: this is a string
+     to copy. Both sit inside the menu overlay, out of any card drag's reach, so
+     re-enabling selection here can't be caught by a stray drag (see `#version-badge`,
+     and <body> for the app-wide lock it opts out of). */
+  .about-build__version {
+    font: 20px/1.2 ui-monospace, "SF Mono", Menlo, monospace;
+    color: var(--control-ink);
+    -webkit-user-select: text;
+    user-select: text;
+    -webkit-touch-callout: default;
+  }
+
+  .about-build__time {
+    margin-top: 0.15rem;
+    font: 12px/1.3 "Libre Franklin", sans-serif;
+    color: var(--control-ink-muted);
+    -webkit-user-select: text;
+    user-select: text;
+    -webkit-touch-callout: default;
+  }
+
+  /* The link to the source, drawn as the game info screen's link out is — underlined
+     quiet ink on no box, held to the width of its own words (see
+     MenuGameInfoScreen.css, and `--link-*` in styles/base.css for the pair of colours
+     they share). What this one adds is the mark: an icon and a repository name read as
+     one thing, so the row is a flex line with the two sitting on a common baseline
+     rather than an image floated beside text. */
+  .about-link {
+    display: inline-flex;
+    align-items: center;
+    align-self: start;
+    gap: 0.45rem;
+    padding-block: 4px;
+    font: 13px "Libre Franklin", sans-serif;
+    color: var(--link-ink);
+    text-decoration: none;
+  }
+
+  /* The underline belongs to the name, not to the row: drawn on the link itself it
+     would run under the mark and the gap as well, which reads as a rule with a logo
+     sitting on it. */
+  .about-link__name {
+    text-decoration: underline;
+    text-decoration-color: var(--link-rule);
+    text-underline-offset: 0.2em;
+  }
+
+  /* Sized in `em` so the mark tracks the text it labels rather than needing a second
+     edit when the line does. `currentColor` in the markup is what colours it. */
+  .about-link__mark {
+    flex: none;
+    width: 1.15em;
+    height: 1.15em;
+  }
+}

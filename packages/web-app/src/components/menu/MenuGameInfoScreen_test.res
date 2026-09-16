@@ -54,12 +54,32 @@ describe("MenuGameInfoScreen", () => {
     expect(still->findAll(".stacking-card")->Array.length)->toBe(52)
   })
 
+  test("draws every size of a family in one box, so the picker moves nothing below it", () => {
+    // The screen hands the still the family's box (`GameInfo.previewBox`) rather than
+    // letting each board size its own picture: without it, picking Micro grew the mat by
+    // half again and carried the numbers, the picker and the link down the panel with
+    // it. Which box that is, is `GameInfo`'s (`previewBoxFor`), tested there.
+    let shapeOf = game => render(~game)->find(".board-preview")->Option.getOrThrow->attrOr("style")
+    expect(shapeOf(Game.micro))->toBe(shapeOf(Game.freecell))
+    expect(shapeOf(Game.mini))->toBe(shapeOf(Game.freecell))
+  })
+
   test("lays the still's cards as the Sloppy placement setting has the table's", () => {
     // The setting reaches the screen as a prop, so a flip redraws the still with the
     // next render — tilted with the table, square with it.
     let tilted = screen => screen->findAll(".stacking-card[style*='--card-rot']")->Array.length
     expect(tilted(render(~tilt=true)))->toBe(52)
     expect(tilted(render(~tilt=false)))->toBe(0)
+  })
+
+  test("says what the game is in a paragraph, the same one for every board of a family", () => {
+    // The copy is generic on purpose: it describes FreeCell, not the size in hand, so
+    // the picker under it changes the board and the numbers and leaves the words alone.
+    // Which words those are is `GameInfo`'s (`descriptionFor`), tested there.
+    let prose = game => render(~game)->textIn(".game-info__prose")
+    expect(prose(Game.freecell)->String.startsWith("Every card is face up"))->toBe(true)
+    expect(prose(Game.micro))->toBe(prose(Game.freecell))
+    expect(prose(Game.spiderette)->String.includes("Spider's rules"))->toBe(true)
   })
 
   test("shows the board's numbers", () => {
@@ -88,23 +108,23 @@ describe("MenuGameInfoScreen", () => {
     expect(screen->findAll(".menu-variant-picker__choice")->Array.length)->toBe(3)
   })
 
-  test("puts the choice under the numbers it changes, and the link out last", () => {
-    // Picking Mini takes eight cascades to four on the line immediately above the
-    // picker; the link is the way off this screen, so it stays at the foot of it.
+  test("describes the game first and offers the one control last", () => {
+    // Picture, the numbers counting it, how it plays, the rules in full — and then the
+    // picker, the only control on a screen that is otherwise all description.
     let screen = render(~game=Game.mini, ~variants=pickerFor(Game.freecellFamily, ~on=Game.mini))
     expect(
       screen->findAll(".menu-screen > *")->Array.map(el => el->attrOr("aria-label")),
-    )->toEqual(["preview", "numbers", "size", "reference"])
+    )->toEqual(["preview", "numbers", "how it plays", "reference", "size"])
   })
 
   test("has no such section at all on a game that is a game on its own", () => {
     // Not an empty band: Simple Simon has no family, so there is no choice to offer and
-    // nothing for a heading to head.
+    // nothing for a heading to head — and the screen ends on the link out.
     let screen = render(~game=Game.simpleSimon)
     expect(screen->findAll(".menu-variant-picker")->Array.length)->toBe(0)
     expect(
       screen->findAll(".menu-screen > *")->Array.map(el => el->attrOr("aria-label")),
-    )->toEqual(["preview", "numbers", "reference"])
+    )->toEqual(["preview", "numbers", "how it plays", "reference"])
   })
 
   test("goes back to the main menu, where the info button was", () => {

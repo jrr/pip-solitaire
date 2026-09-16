@@ -1,68 +1,35 @@
-// Size-stability test for the `AboutFooter` component: the footer has to be
-// the same height whether or not an update is waiting, or it shoves the version
-// line and everything above it the moment an update arrives (see `AboutFooter.res`).
-//
-// See `RefreshControl_test` for why the assertion is structural rather than
-// pixel-measured.
+// The `AboutFooter`: two elements, in an order, with nothing between them that can
+// change height. It is anchored at the foot of the panel, so anything here that grew
+// would shove the settings above it — which is why the update controls, the two things
+// about a build that come and go, live on the About screen this button opens rather than
+// in here (see `AboutFooter.res`, `MenuAboutScreen_test`).
 open Vitest
 open TestDom
 
-// The size-determining shape of a rendered subtree: tag + children skeleton, with
-// text and attributes stripped. A button hidden with `visibility` keeps its box
-// (so the skeleton is unchanged); one hidden with `display: none` would not — but
-// the browser still reports the element, so the skeleton alone can't catch a
-// regression to `hidden`. The dedicated attribute check below does.
-let rec skeleton = (el: Html.element): string => {
-  let parts = el->children->Array.map(skeleton)
-  let inner = parts->Array.length == 0 ? "" : `(${parts->Array.join(",")})`
-  el->tag ++ inner
-}
-
-let render = (~updateVisible): Html.element =>
+let render = (~onOpenAbout=() => ()): Html.element =>
   Html.create(
-    AboutFooter.make({
-      version: "1.2.3",
-      buildTime: "2026-07-23T20:20:00.000Z",
-      updateVisible,
-      onReload: () => (),
-      // The update-check slot; empty here so the size-stability assertions turn on
-      // the update button alone — it's the part whose hiding could reflow the footer.
-      refresh: Html.empty,
-    }),
+    AboutFooter.make({version: "1.2.3", buildTime: "2026-07-23T20:20:00.000Z", onOpenAbout}),
   )
 
-let button = (footer): option<Html.element> => footer->find(".menu-update__button")
-
-describe("AboutFooter size stability", () => {
-  let noUpdate = render(~updateVisible=false)
-  let updateWaiting = render(~updateVisible=true)
-
-  test("renders the identical box skeleton whether or not an update is waiting", () => {
-    expect(skeleton(updateWaiting))->toBe(skeleton(noUpdate))
+describe("AboutFooter", () => {
+  test("is a button over the build string, and nothing else", () => {
+    // The button is what a hand comes down here for; the version is its caption. No
+    // heading over the pair: "About" said over a build string says it twice, and the
+    // screen this sits on is already titled — the band's `aria-label` is the half of a
+    // heading that was doing work.
+    let footer = render()
+    expect(footer->attrOr("aria-label"))->toBe("About")
+    expect(footer->children->Array.map(tag))->toEqual(["BUTTON", "DIV"])
+    expect(footer->findAll("h2")->Array.length)->toBe(0)
+    expect(footer->find("button")->Option.mapOr("", text))->toBe("About")
+    expect(footer->find("#version-badge")->Option.mapOr("", text))->toBe(
+      "v1.2.3 · " ++ VersionBadge.formatBuildTime("2026-07-23T20:20:00.000Z"),
+    )
   })
 
-  test("keeps the Update button in the DOM when hidden, so its box stays reserved", () => {
-    // Present in both states — reserved with `visibility`, not conjured on arrival.
-    expect(noUpdate->button->Option.isSome)->toBe(true)
-    expect(updateWaiting->button->Option.isSome)->toBe(true)
+  test("the button asks for the About screen", () => {
+    let log = []
+    render(~onOpenAbout=() => log->Array.push("about"))->find("button")->Option.forEach(click)
+    expect(log)->toEqual(["about"])
   })
-
-  test(
-    "hides the button with the visibility class, never the collapsing `hidden` attribute",
-    () => {
-      // The regression guard: `hidden` (⇒ `display: none`) collapses the box and
-      // reflows the footer. The hidden state must reserve with the class instead.
-      switch noUpdate->button {
-      | Some(b) =>
-        expect(b->hasAttr("hidden"))->toBe(false)
-        expect(b->classes->String.includes("menu-update--hidden"))->toBe(true)
-      | None => expect("button present")->toBe("button missing")
-      }
-      // When an update is waiting the button is fully shown (no reserve class).
-      switch updateWaiting->button {
-      | Some(b) => expect(b->classes->String.includes("menu-update--hidden"))->toBe(false)
-      | None => expect("button present")->toBe("button missing")
-      }
-    },
-  )
 })

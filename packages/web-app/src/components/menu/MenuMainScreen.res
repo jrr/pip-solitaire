@@ -4,6 +4,12 @@
 //
 // Top to bottom:
 //   - the **title** ("Pip") beside the ✕;
+//   - the **↻ Update** band, where a new build is waiting and only then
+//     (`<UpdateButton>`). It leads because of where it is reached from: the pip on the
+//     top bar's Menu button is a notification, and this is the screen that button
+//     opens, so the one thing it is notifying about has to be here rather than two
+//     screens in. What that costs, and why the band is absent rather than reserved, is
+//     in `UpdateButton.res`;
 //   - a **"this game"** section — what can be done with the deal already on the
 //     table: **Restart** (re-deals the *same* seed to replay it) and **Share**
 //     (hands over a `?seed=` link to it). Which deal that is, the *heading* names —
@@ -72,6 +78,10 @@ type props = {
   // offers more than one of.
   games: array<MenuGameRow.props>,
   onOpenSettings: unit => unit,
+  // A newer build is installed and waiting: the ↻ Update band at the top of the screen,
+  // and nothing at all while it is false.
+  updateVisible: bool,
+  onReload: unit => unit,
 }
 
 // The line under the "this game" buttons. It reports what became of a share ("Link
@@ -100,8 +110,14 @@ let make = ({
   onShareDeal,
   games,
   onOpenSettings,
+  updateVisible,
+  onReload,
 }) => <>
   <MenuHeader title="Pip" back=None onTitleTap=None onClose />
+  // An unnamed band: the button inside it says what it is, and a group named "update"
+  // around one control called "Update now" is the same word twice. The section is what
+  // gives it the panel's own spacing, so it sits in the column rather than on top of it.
+  <MenuSection> {updateVisible ? <UpdateButton onReload /> : Html.empty} </MenuSection>
   // The heading carries the game and its deal number, so the section says which board
   // its two buttons act on. A player can read the number off (or dictate it) where no
   // link can be delivered at all — which is the far end of `SeedDialog`. Absent on a

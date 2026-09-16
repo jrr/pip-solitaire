@@ -33,6 +33,14 @@ type t = {
   // Plain data still: piles are cards, counts and rule variants, no closures, which is
   // what `Menu.screen` asks of everything in here.
   opening: array<Game.pile>,
+  // The shape the still is drawn in, as a ratio of its width — **one box for the whole
+  // family**, so that picking another size or another pack redraws the board without
+  // moving the numbers, the picker and the link below it. See `previewBoxFor`.
+  previewBox: float,
+  // The game in a paragraph, or `None` for a game this build has and the copy doesn't
+  // — which the screen shows as no paragraph rather than as a sentence about patience
+  // in general. See `descriptionFor`.
+  description: option<string>,
 }
 
 let wikipedia = (article: string): string => "https://en.wikipedia.org/wiki/" ++ article
@@ -45,6 +53,32 @@ let referenceFor = (id: string): string =>
   | "simplesimon" => wikipedia("Simple_Simon_(solitaire)")
   | "spiderette1" | "spiderette" | "spiderette4" => wikipedia("Spider_(solitaire)")
   | _ => wikipedia("Patience_(game)")
+  }
+
+// The game in two or three sentences, written for a reader who has played a solitaire
+// game or two: what is hidden, how a run moves, and the one rule that catches a player
+// coming from another game. Not the rules in full — the link out is for that.
+//
+// **Keyed by family where there is one**, which is what makes the paragraph steady under
+// the picker: the three FreeCell sizes are one game to describe and the three Spiderette
+// packs are another, and a reader who saw the words change would go back looking for a
+// difference that isn't there. The same rule forbids naming anything the picker moves:
+// "the free cells", never "four free cells".
+let descriptionFor = (id: string): option<string> =>
+  switch id {
+  | "freecell" =>
+    Some(
+      "Every card is face up from the deal: nothing is hidden, and almost any board can be solved by thinking it through. Columns build down in alternating colours, and the free cells park one card each — how many stand empty is how long a run you can move at once.",
+    )
+  | "simplesimon" =>
+    Some(
+      "Spider's game with nothing hidden: every card is face up from the start, and there is nowhere to park one you can't place yet. Build down in rank whatever the suit, but only a same-suit run lifts as a block, and a suit gathered King down to Ace leaves the board for good.",
+    )
+  | "spiderette" =>
+    Some(
+      "Spider's rules over a Klondike deal: seven columns, only the top card of each face up. Build down in rank whatever the suit, but only a same-suit run lifts as a block, and a suit gathered King down to Ace leaves the board. The stock deals onto every column at once, and refuses while a column stands empty.",
+    )
+  | _ => None
   }
 
 // **The family's name where there is one**, so the screen about a Spiderette is headed
@@ -64,6 +98,26 @@ let nameOf = (game: Game.t): string =>
 let deckSize = (deck: Cards.deck): int =>
   Array.length(deck.suits) * Array.length(deck.ranks) * deck.copies
 
+// The still's box: the *flattest* board in the game's family. It is the one board that
+// fills the box on both axes, and every other one fits inside it with room to spare
+// across — where the tallest-shaped board would leave the rest of the family sitting in
+// a band of empty mat. Picking it off `Game.families` rather than tabulating it is what
+// lets a fourth Spiderette pack arrive without an edit here.
+//
+// A board with no family is its own box, which is a still that fits exactly: there is
+// nothing to keep still for.
+let aspectOf = (game: Game.t): float => {
+  let (w, h) = TableLayout.boardSize(game.piles)
+  h /. w
+}
+
+let previewBoxFor = (game: Game.t): float =>
+  Game.familyOf(game)->Option.mapOr(aspectOf(game), family =>
+    family.variants->Array.reduce(aspectOf(game), (flattest, v) =>
+      Math.min(flattest, aspectOf(v.game))
+    )
+  )
+
 let forGame = (game: Game.t): t => {
   id: game.id,
   name: nameOf(game),
@@ -72,6 +126,10 @@ let forGame = (game: Game.t): t => {
   cards: deckSize(game.deck),
   reference: referenceFor(game.id),
   opening: game.piles,
+  previewBox: previewBoxFor(game),
+  description: Game.familyOf(game)
+  ->Option.mapOr(game.id, family => family.id)
+  ->descriptionFor,
 }
 
 let count = (n: int, ~singular: string, ~plural: string): string =>
