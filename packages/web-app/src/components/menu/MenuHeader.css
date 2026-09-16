@@ -43,10 +43,12 @@
      makes its arrival cost nothing, and is why the padding here is horizontal only:
      `--control-pad`'s 10px top and bottom would set the height from the type instead.
 
-     **Pushed to the ✕ rather than floating between.** `space-between` would centre it in
-     the gap after the title, where it reads as a third thing adrift; `margin-inline-start:
-     auto` collects it and the ✕ into a pair at the end, one `gap` apart, and leaves the
-     free space where the row already had it.
+     **Left where `space-between` puts it, with air on both sides.** An auto margin would
+     collect it and the ✕ into a pair at the end of the row — and those two want to be far
+     apart, not near: one dismisses the menu and the other reloads the tab, so a thumb
+     going for ✕ that lands a few pixels wide should find nothing rather than an install.
+     The free space either side is what buys that, and it is the reason to leave this rule
+     without a margin rather than an oversight to correct.
 
      The type is a step down from `--control-font` because this is a word riding beside a
      wordmark set at 1.6rem, not a control in a list of them — and because what has to
@@ -56,7 +58,6 @@
     align-items: center;
     flex: 0 0 auto;
     height: 2rem;
-    margin-inline-start: auto;
     padding: 0 0.7rem;
     font-size: 12px;
     letter-spacing: 0.01em;
