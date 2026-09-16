@@ -43,7 +43,8 @@ describe("MenuAboutScreen", () => {
 
   test("reads: the name, what it is, where it came from — then the build", () => {
     // One band a reader takes in as a paragraph, and then the block they may have come
-    // for, which is the one with a heading to find it by.
+    // for, which carries no visible caption: its `aria-label` is the half of a heading
+    // that was doing work.
     let screen = render()
     let bands = screen->findAll(".menu-screen > *")
     expect(bands->Array.map(el => el->attrOr("aria-label")))->toEqual(["<missing>", "build"])
@@ -57,7 +58,7 @@ describe("MenuAboutScreen", () => {
     expect(screen->textIn(".about-blurb"))->toBe(
       "I made this for myself but I hope you like it too.",
     )
-    expect(screen->textIn("[aria-label='build'] .menu-section__heading"))->toBe("Build")
+    expect(screen->find("[aria-label='build'] .menu-section__heading")->Option.isSome)->toBe(false)
   })
 
   test("sets the build string out as the subject, version first", () => {
@@ -71,14 +72,14 @@ describe("MenuAboutScreen", () => {
     )
   })
 
-  test("offers one control beside the build, and installs rather than re-checks", () => {
+  test("offers one control under the build, and installs rather than re-checks", () => {
     // A build already downloaded and waiting is installed, not checked for again — so the
-    // ↻ Update button takes the check's own slot rather than standing over it, and the row
-    // is one row in every state.
-    let row = screen =>
+    // ↻ Update button takes the check's own slot rather than standing over it, and the
+    // block is the string over one control in every state.
+    let block = screen =>
       screen->find(".about-build")->Option.getOrThrow->children->Array.map(classes)
-    expect(row(render(~refresh=check)))->toEqual(["", "menu-button menu-refresh"])
-    expect(row(render(~refresh=check, ~updateVisible=true)))->toEqual(["", "menu-update"])
+    expect(block(render(~refresh=check)))->toEqual(["", "menu-button menu-refresh"])
+    expect(block(render(~refresh=check, ~updateVisible=true)))->toEqual(["", "menu-update"])
   })
 
   test("sits at the foot of the panel, under the masthead's air", () => {

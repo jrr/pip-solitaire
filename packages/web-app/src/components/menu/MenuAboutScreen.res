@@ -9,10 +9,11 @@
 // it twice.
 //
 // Top to bottom: the icon, the wordmark, one line of copy, the link to the source it was
-// built from — those four centred as one block — and, pushed to the foot of the panel,
-// the build this browser is running, left-aligned under a heading like every other band.
-// That block is the one thing here a reader might have come looking for rather than read
-// past, and a heading is what they find it by.
+// built from, and — pushed to the foot of the panel — the build this browser is running
+// with the one control that acts on it. All of it is centred: the screen is a single
+// centred column, art to build string, which is what lets the block at the foot stand
+// with no caption over it and still read as part of this page rather than as a band that
+// lost its label.
 //
 // **The build sits at the foot** rather than under the masthead: it is the screen's
 // footnote, and the masthead reads as one thing with air under it rather than with a
@@ -26,6 +27,13 @@
 // asks whether a newer build exists, and the ↻ Update that switches to one already
 // waiting. They are two halves of one job, and a check made on this screen would
 // otherwise report its find somewhere the player isn't.
+//
+// **It wears no caption.** Every other band in the panel is headed or labelled because it
+// holds rows to pick between; this one is a string and a button at the foot of a short
+// screen, and a "BUILD" caption over a mono number tells a reader nothing the number
+// hasn't. What finds it is the position and the face: it is the only mono type on the
+// screen and the only control. The band keeps its `aria-label`, which is the half of a
+// heading that was doing work.
 //
 // **The block offers one control, and which one is whichever is worth offering.** A build
 // already downloaded and waiting is installed, not checked for again — so the ↻ Update
@@ -117,14 +125,10 @@ let make = ({version, buildTime, updateVisible, onReload, refresh, onClose, onBa
       </a>
     </MenuSection>
     // The build in hand and the two ways to move off it, at the foot of the panel
-    // (`menu-section--bottom`). Headed "Build" rather than "Updates" because the string
-    // under it is what a reader came for — which build this is — and the two controls act
-    // on that; a heading naming them would head the block with the thing you reach for
-    // second.
-    <MenuSection label="build" heading="Build" modifier="menu-section--bottom">
-      // The build string with its one control beside it: two short lines and a button
-      // narrow enough to set its words over two lines of its own, which is what keeps the
-      // pair a single row on a phone.
+    // (`menu-section--bottom`). Named "build" rather than "updates": the string is what a
+    // reader came down here for — which build this is — and both controls act on it.
+    <MenuSection label="build" modifier="menu-section--bottom">
+      // The build string over its one control, the three of them centred on each other.
       <div className="about-build">
         <div>
           <div className="about-build__version"> {Html.string(version)} </div>
