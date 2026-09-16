@@ -86,6 +86,7 @@ let make = ({
   <MenuHeader
     title="Debug"
     back={Some({label: "Back to settings", onClick: onBackToSettings})}
+    action=Html.empty
     onTitleTap=None
     onClose
   />

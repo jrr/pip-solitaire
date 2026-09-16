@@ -98,9 +98,10 @@
      than a width to raise, because a control run out to the panel's edges stops reading
      as the footnote's button and starts reading as the screen's.
 
-     `.menu-update` is a full-width block, so that `100%` is this rule's to overrule; the
-     doubled selector is what carries that, rather than the two sheets' order
-     (docs/css-layers.md). */
+     `.menu-button` holds the check to one line and states no box beyond its padding, and
+     `.menu-update` states no box at all (UpdateButton.css) — so the two controls arrive
+     here shaped differently and leave shaped the same, which is the whole of what this
+     rule is for. */
   .about-build > .menu-refresh,
   .about-build > .menu-update {
     display: flex;

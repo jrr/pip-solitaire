@@ -104,7 +104,12 @@ let markGithub = "M6.766 11.328c-2.063-.25-3.516-1.734-3.516-3.656 0-.781.281-1.
 let icon = <div className="about-icon" ariaHidden="true"> {IconArt.cards()} </div>
 
 let make = ({version, buildTime, updateVisible, onReload, refresh, onClose, onBackToMenu}) => <>
-  <MenuHeader back={Some({label: "Back to menu", onClick: onBackToMenu})} onTitleTap=None onClose />
+  <MenuHeader
+    back={Some({label: "Back to menu", onClick: onBackToMenu})}
+    onTitleTap=None
+    action=Html.empty
+    onClose
+  />
   <div className="menu-screen">
     // The icon, the name, what it is, and where it came from: one band, because a reader
     // takes them in as one thing. Unnamed — the wordmark is the heading inside it, and an

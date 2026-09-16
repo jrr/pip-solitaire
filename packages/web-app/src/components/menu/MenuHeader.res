@@ -1,6 +1,7 @@
 // The header row at the top of every menu screen, lifted out of `Menu` into
 // its own pure component: an optional **back** button on the left, the
-// screen's title in the middle, and the ✕ that closes the whole menu on the right.
+// screen's title in the middle, an optional **action** before the end, and the ✕ that
+// closes the whole menu on the right.
 //
 // The screens differ only in what they put in those slots — "Pip" with no back button
 // on the main menu, "Settings" going back to it, "Debug" going back one step to
@@ -11,6 +12,18 @@
 // in its own body at a size a header bar has no room for — and a heading here as well
 // would be the screen's second, naming it twice. The row is `space-between`, so the two
 // buttons simply take the ends.
+//
+// **The action slot takes one node, and the title is what pays for it.** The row's
+// width is fixed and the title is the only item in it that gives way (see
+// MenuHeader.css), so anything put here comes out of the title's line. That is free on
+// the main menu, whose title is the word "Pip", and would not be on the game info
+// screen, whose title is a game's name — text this header doesn't choose and can't
+// shorten. Fill it there and a two-word name wraps.
+//
+// It is a ready-made node rather than a set of props because what goes in it is the
+// placing screen's business: the main menu puts the ↻ Update button here when a build
+// is waiting, and passes `Html.empty` when none is. Nothing else fills it, and a second
+// caller is a reason to re-read the paragraph above rather than to widen the type.
 //
 // **`onTitleTap` is attached to one screen only.** It's the hidden-options tap
 // target (`HiddenOptions`): every ten taps on the *Settings* screen's title flip
@@ -53,10 +66,14 @@ type props = {
   title?: string,
   back: option<back>,
   onTitleTap: option<unit => unit>,
+  // The screen's own call to action, sat between the title and the ✕ — or `Html.empty`,
+  // which is what every screen but the main menu passes. See the note above before
+  // filling it from a second screen.
+  action: Html.vnode,
   onClose: unit => unit,
 }
 
-let make = ({?title, back, onTitleTap, onClose}) =>
+let make = ({?title, back, onTitleTap, action, onClose}) =>
   <div className="menu-panel__header">
     {switch back {
     | Some({label, onClick}) =>
@@ -80,6 +97,7 @@ let make = ({?title, back, onTitleTap, onClose}) =>
       </h1>
     | None => Html.empty
     }}
+    {action}
     <button className="menu-close" onClick={_ => onClose()} type_="button" ariaLabel="Close menu">
       <svg className="menu-close__icon" viewBox="0 0 24 24" ariaHidden="true" focusable="false">
         <path

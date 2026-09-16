@@ -1,11 +1,11 @@
-// The header shared by all three menu screens, exercised in isolation. What differs
-// between the three is which of its slots are filled, so every case here is one
-// rendering with a different set of them.
+// The header shared by every menu screen, exercised in isolation. What differs between
+// them is which of its slots are filled, so every case here is one rendering with a
+// different set of them.
 open Vitest
 open TestDom
 
-let render = (~title=?, ~back=None, ~onTitleTap=None, ~onClose=() => ()) =>
-  Html.create(MenuHeader.make({?title, back, onTitleTap, onClose}))
+let render = (~title=?, ~back=None, ~onTitleTap=None, ~action=Html.empty, ~onClose=() => ()) =>
+  Html.create(MenuHeader.make({?title, back, onTitleTap, action, onClose}))
 
 // The header's slots, left to right — which is what decides where the title sits.
 let slots = (header: Html.element): array<string> => header->children->Array.map(tag)
@@ -18,7 +18,7 @@ describe("MenuHeader", () => {
   test("leaves the title out entirely on a screen that names itself in its body", () => {
     // The About screen's case: an empty `<h1>` holding the slot would be a heading with
     // nothing in it, and a second heading on a screen whose wordmark is already one.
-    let about = render(~back=Some({label: "Back to settings", onClick: () => ()}))
+    let about = render(~back=Some({label: "Back to menu", onClick: () => ()}))
     expect(about->find(".menu-title")->Option.isSome)->toBe(false)
     expect(about->slots)->toEqual(["BUTTON", "BUTTON"])
   })
@@ -29,6 +29,21 @@ describe("MenuHeader", () => {
     let main = render(~title="Pip")
     expect(main->find(".menu-back")->Option.isSome)->toBe(false)
     expect(main->slots)->toEqual(["H1", "BUTTON"])
+  })
+
+  test("sits the action between the title and the ✕, and leaves the slot out otherwise", () => {
+    // The main menu's case, and the one screen that fills it: the ↻ Update button goes
+    // after the title so the ✕ stays where a hand expects it, and an unfilled slot is
+    // genuinely nothing — an element holding its place would take width from the title,
+    // which is the item this row spends itself on (`MenuHeader.res`).
+    let waiting = render(~title="Pip", ~action=UpdateButton.make({onReload: () => ()}))
+    expect(waiting->slots)->toEqual(["H1", "BUTTON", "BUTTON"])
+    expect(waiting->children->Array.map(classes))->toEqual([
+      "menu-title",
+      "menu-update",
+      "menu-close",
+    ])
+    expect(render(~title="Pip")->slots)->toEqual(["H1", "BUTTON"])
   })
 
   test("puts the back button ahead of the title when there is somewhere to go", () => {

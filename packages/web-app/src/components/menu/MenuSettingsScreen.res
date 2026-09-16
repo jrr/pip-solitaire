@@ -301,6 +301,7 @@ let make = ({model, dispatch, onClose, onBackToMenu, onOpenDebug}) => <>
   <MenuHeader
     title="Settings"
     back={Some({label: "Back to menu", onClick: onBackToMenu})}
+    action=Html.empty
     onTitleTap={Some(() => dispatch(TitleTapped))}
     onClose
   />
