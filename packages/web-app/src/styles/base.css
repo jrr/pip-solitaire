@@ -114,7 +114,7 @@
        and pop the "Copy / Look Up" callout mid-drag. `user-select: none`
        blocks the text grab and `-webkit-touch-callout: none` suppresses the
        long-press menu everywhere; the one place that genuinely wants
-       selection (the build string, #version-badge) opts back in below. */
+       selection (the About screen's build string) opts back in for itself. */
     touch-action: manipulation;
     overscroll-behavior: none;
     -webkit-tap-highlight-color: transparent;

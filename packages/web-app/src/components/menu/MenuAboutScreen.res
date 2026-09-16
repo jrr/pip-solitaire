@@ -1,5 +1,5 @@
-// The menu's **About screen**: what the app is, on its own screen a level below
-// Settings, reached from the About button in that screen's footer.
+// The menu's **About screen**: what the app is, on its own screen one tap below the main
+// menu, beside Settings rather than under it.
 //
 // **It says the app's name in its own body rather than in the header bar.** Every other
 // screen is named for what it holds — Settings, Debug, a game — and its header says so;
@@ -62,7 +62,7 @@ type props = {
   // can tell us nothing about updates.
   refresh: Html.vnode,
   onClose: unit => unit,
-  onBackToSettings: unit => unit,
+  onBackToMenu: unit => unit,
 }
 
 // The screen's one line of copy, and it sets a **tone** rather than describing anything:
@@ -103,10 +103,8 @@ let markGithub = "M6.766 11.328c-2.063-.25-3.516-1.734-3.516-3.656 0-.781.281-1.
 // second inline copy on one screen would not be.
 let icon = <div className="about-icon" ariaHidden="true"> {IconArt.cards()} </div>
 
-let make = ({version, buildTime, updateVisible, onReload, refresh, onClose, onBackToSettings}) => <>
-  <MenuHeader
-    back={Some({label: "Back to settings", onClick: onBackToSettings})} onTitleTap=None onClose
-  />
+let make = ({version, buildTime, updateVisible, onReload, refresh, onClose, onBackToMenu}) => <>
+  <MenuHeader back={Some({label: "Back to menu", onClick: onBackToMenu})} onTitleTap=None onClose />
   <div className="menu-screen">
     // The icon, the name, what it is, and where it came from: one band, because a reader
     // takes them in as one thing. Unnamed — the wordmark is the heading inside it, and an
@@ -132,9 +130,7 @@ let make = ({version, buildTime, updateVisible, onReload, refresh, onClose, onBa
       <div className="about-build">
         <div>
           <div className="about-build__version"> {Html.string(version)} </div>
-          <div className="about-build__time">
-            {Html.string(VersionBadge.formatBuildTime(buildTime))}
-          </div>
+          <div className="about-build__time"> {Html.string(BuildStamp.format(buildTime))} </div>
         </div>
         {updateVisible ? <UpdateButton onReload /> : refresh}
       </div>

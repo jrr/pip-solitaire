@@ -11,7 +11,7 @@ let render = (
   ~refresh=Html.empty,
   ~onReload=() => (),
   ~onClose=() => (),
-  ~onBackToSettings=() => (),
+  ~onBackToMenu=() => (),
 ) =>
   Html.create(
     MenuAboutScreen.make({
@@ -21,7 +21,7 @@ let render = (
       onReload,
       refresh,
       onClose,
-      onBackToSettings,
+      onBackToMenu,
     }),
   )
 
@@ -62,13 +62,12 @@ describe("MenuAboutScreen", () => {
   })
 
   test("sets the build string out as the subject, version first", () => {
-    // The screen the Settings footer's caption is a caption *of*: the version on its own
-    // line, and the build time — the same string `VersionBadge` formats for that footer
-    // — under it.
+    // The build id on its own line, and the time it was built — as `BuildStamp` spells a
+    // timestamp — under it.
     let screen = render()
     expect(screen->textIn(".about-build__version"))->toBe("01e8f5f")
     expect(screen->textIn(".about-build__time"))->toBe(
-      VersionBadge.formatBuildTime("2026-07-23T20:20:00.000Z"),
+      BuildStamp.format("2026-07-23T20:20:00.000Z"),
     )
   })
 
@@ -115,12 +114,12 @@ describe("MenuAboutScreen", () => {
     )->toBe("true")
   })
 
-  test("goes back to Settings, where the button was, and closes from the ✕", () => {
-    // A level below Settings, like Debug: back is one step up rather than all the way
-    // out, and the ✕ beside it still closes the whole menu.
+  test("goes back to the menu, where the button was, and closes from the ✕", () => {
+    // One tap below the main menu, like Settings: back is that one step, and the ✕
+    // beside it still closes the whole menu.
     let log = []
     let screen = render(
-      ~onBackToSettings=() => log->Array.push("back"),
+      ~onBackToMenu=() => log->Array.push("back"),
       ~onClose=() => log->Array.push("close"),
     )
     screen->find(".menu-back")->Option.forEach(click)

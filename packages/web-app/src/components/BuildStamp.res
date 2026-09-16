@@ -1,19 +1,11 @@
-// The build-version badge tucked into the corner of the chrome: version and
-// build time. Keep it to one short line: the About footer sits the Update button
-// beside it, and the footer has to stay the same height in every state.
+// The build timestamp, formatted for a human to read off a screen and quote back. One
+// function and no component: the only thing that prints a build stamp is the About
+// screen's colophon (`MenuAboutScreen`), which sets it as the line under the build id.
 //
-// A component is just a `props => vnode` function. The JSX transform lowers
-// `<VersionBadge .../>` to `Html.jsx(VersionBadge.make, props)` and fills this
-// record from the attributes. (The `@jsx.component` sugar that would auto-derive
-// `props` isn't usable here — it types `make` as the runtime's `element`, i.e. a
-// real DOM node, but on this diffing runtime a view is a `vnode` description — so
-// we spell the record out, which is all that sugar expands to anyway.) Layout and
-// colors for `#version-badge` live in VersionBadge.css; here we build
-// only structure and state-dependent text.
-
-%%raw(`import "./VersionBadge.css"`)
-
-type props = {version: string, buildTime: string}
+// It lives out here rather than in that screen because what it does is a date
+// calculation with a wrong answer available — a zero-based month, a local/UTC mix-up,
+// an unpaddable field — and those are worth a test file of their own (`BuildStamp_test`)
+// rather than a few assertions wedged in beside a screen's markup.
 
 // Zero-pad a date or clock field to two digits (`6` → `"06"`), so the stamp
 // reads `2026.07.06 · 06:03` rather than `2026.7.6 · 6:3`.
@@ -27,7 +19,7 @@ let pad2 = n => n < 10 ? `0${n->Int.toString}` : n->Int.toString
 // differently depending on where it's opened — no "UTC" suffix, because it's no
 // longer UTC. `getMonth` is zero-based, hence the `+ 1`. An unparseable string
 // (it shouldn't happen — `getTime` is `NaN`) falls back to itself.
-let formatBuildTime = iso => {
+let format = iso => {
   let date = Date.fromString(iso)
   if date->Date.getTime->Float.isNaN {
     iso
@@ -37,9 +29,4 @@ let formatBuildTime = iso => {
     let hourMinute = `${date->Date.getHours->pad2}:${date->Date.getMinutes->pad2}`
     `${year}.${day} · ${hourMinute}`
   }
-}
-
-let make = ({version, buildTime}) => {
-  let built = formatBuildTime(buildTime)
-  <div id="version-badge"> {Html.string(`v${version} · ${built}`)} </div>
 }

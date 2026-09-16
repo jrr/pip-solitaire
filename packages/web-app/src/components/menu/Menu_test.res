@@ -1,6 +1,7 @@
 // The pane's own two jobs, which is all this file covers: the main menu's **Share**
 // button — the button hands over a link to the *deal* on the table, `?seed=N`, which
-// deals the identical board wherever it's opened — and where the About footer goes.
+// deals the identical board wherever it's opened — and placing the screen the `screen`
+// variant names.
 //
 // `Menu` takes a props record per screen, so only the screen under test has anything
 // interesting in its record; the others are built because the pane's record wants them,
@@ -8,8 +9,8 @@
 open Vitest
 open TestDom
 
-// The screens this file never shows, and the footer under Settings. Scenery: held fixed
-// across every case, and never placed while `screen` is `Main`.
+// The screens this file never shows. Scenery: held fixed across every case, and never
+// placed while `screen` is `Main`.
 let settings: MenuSettingsScreen.props = {
   model: {
     autoCollect: true,
@@ -44,12 +45,6 @@ let debug: MenuDebugScreen.props = {
   debugStates: [],
 }
 
-let footer: AboutFooter.props = {
-  version: "1.2.3",
-  buildTime: "2026-08-14T04:00:00.000Z",
-  onOpenAbout: () => (),
-}
-
 let about: MenuAboutScreen.props = {
   version: "1.2.3",
   buildTime: "2026-08-14T04:00:00.000Z",
@@ -57,7 +52,7 @@ let about: MenuAboutScreen.props = {
   onReload: () => (),
   refresh: Html.empty,
   onClose: () => (),
-  onBackToSettings: () => (),
+  onBackToMenu: () => (),
 }
 
 // The main menu, opened, with everything but the seed-sharing fields held fixed.
@@ -79,6 +74,7 @@ let render = (~seed, ~status): Html.element =>
         onShareDeal: () => (),
         games: [],
         onOpenSettings: () => (),
+        onOpenAbout: () => (),
         updateVisible: false,
         onReload: () => (),
       },
@@ -88,11 +84,10 @@ let render = (~seed, ~status): Html.element =>
       // and the pane never calls it.
       gameInfo: info => {info, tilt: false, onClose: () => (), onBackToMenu: () => ()},
       about,
-      footer,
     }),
   )
 
-// The pane with a screen chosen, for the footer-placement cases below.
+// The pane with a screen chosen, for the placement cases below.
 let paneOn = (screen): Html.element =>
   Html.create(
     Menu.make({
@@ -110,6 +105,7 @@ let paneOn = (screen): Html.element =>
         onShareDeal: () => (),
         games: [],
         onOpenSettings: () => (),
+        onOpenAbout: () => (),
         updateVisible: false,
         onReload: () => (),
       },
@@ -117,24 +113,10 @@ let paneOn = (screen): Html.element =>
       debug,
       gameInfo: info => {info, tilt: false, onClose: () => (), onBackToMenu: () => ()},
       about,
-      footer,
     }),
   )
 
-describe("Menu footer placement", () => {
-  test("puts the About footer under Settings and under no other screen", () => {
-    // The build string and the controls that act on it are what a player goes to
-    // Settings for, and nothing to do with choosing a game or reading about one. The
-    // rule is the pane's because the footer is anchored to the foot of the panel rather
-    // than written into a screen.
-    let hasFooter = screen => paneOn(screen)->find(".menu-footer")->Option.isSome
-    expect(hasFooter(Menu.Settings))->toBe(true)
-    expect(hasFooter(Menu.Main))->toBe(false)
-    expect(hasFooter(Menu.Debug))->toBe(false)
-    expect(hasFooter(Menu.About))->toBe(false)
-    expect(hasFooter(Menu.GameInfo(GameInfo.forGame(Game.freecell))))->toBe(false)
-  })
-
+describe("Menu screen placement", () => {
   test("places the screen the `screen` variant names", () => {
     // A screen that was in the variant and nowhere in the switch would be a button that
     // does nothing. About answers with the app's name rather than its own: it is the one

@@ -49,7 +49,7 @@ external registerSW: registerSWOptions => bool => promise<unit> = "registerSW"
 
 // --- Chrome components -------------------------------------------------------
 // The capitalized components used by the view below — `<TopBar/>`, `<Menu/>`,
-// and (nested inside the menu) `<VersionBadge/>` — live under
+// `<DebugConsole/>` and `<SeedDialog/>` — live under
 // `src/components/` (the menu's own under `components/menu/`). Each is a
 // `props => vnode` function; capitalized JSX lowers
 // `<TopBar .../>` to `Html.jsx(TopBar.make, props)`, filling the module's `props`
@@ -164,8 +164,8 @@ type msg =
   | OpenSettings // the main menu's Settings button — swap to the Settings screen
   | BackToMenu // the Settings screen's back button — swap back to the main menu
   | OpenDebug // the Settings screen's Debug row — swap to the Debug screen
-  | OpenAbout // the About button in the footer — swap to the About screen
-  | BackToSettings // the Debug and About screens' back button — swap back to Settings
+  | OpenAbout // the main menu's About button — swap to the About screen
+  | BackToSettings // the Debug screen's back button — swap back to Settings
   // The "i" beside a game's row, and the info screen's own picker — show that game's
   // info screen. The *facts* travel rather than a bare id: `GameInfo.forGame` is what
   // turns a game into them, and the view has already had to resolve the game to know
@@ -1239,9 +1239,18 @@ let mainScreen = (model, dispatch): MenuMainScreen.props => {
     Refresh.detect(mode => dispatch(RefreshDetected(mode)))
     dispatch(OpenSettings)
   },
+  // About is the screen the update check is *on*, so its own tap is what has to kick
+  // the detection off: the check is absent until a service-worker state has been
+  // reported, and this button is a player's only way in. The same detect as Settings'
+  // above, which is cheap and idempotent — `Refresh.detect` reads the browser and
+  // dispatches, and the two screens are never opened at once.
+  onOpenAbout: () => {
+    Refresh.detect(mode => dispatch(RefreshDetected(mode)))
+    dispatch(OpenAbout)
+  },
   // The ↻ Update band: this is the screen the top bar's pip opens, so the notification
   // and the thing it notifies about are one tap apart. The About screen offers the same
-  // button (`<UpdateButton>`) for a player who went looking.
+  // button (`<UpdateButton>`) for a player who went looking, one tap further on.
   updateVisible: model.updateAvailable,
   onReload: () => dispatch(Reload),
 }
@@ -1401,25 +1410,16 @@ let refreshControl = (model, dispatch): option<RefreshControl.props> =>
     })
   }
 
-// The About footer, at the foot of the Settings screen: the way through to the About
-// screen, and the build string under it. Which *screen* the footer appears under is the
-// pane's business (`Menu`), so nothing about that is decided here.
-let aboutFooter = (model, dispatch): AboutFooter.props => {
-  version: model.version,
-  buildTime: model.buildTime,
-  onOpenAbout: () => dispatch(OpenAbout),
-}
-
-// The About screen: a level below Settings, where the About button is, and so back to
-// Settings rather than out to the main menu. It holds the build string and both update
-// controls — the check, and the ↻ Update that switches to a build already waiting.
+// The About screen: one tap below the main menu, where its button is, and so back out
+// to that menu rather than sideways into Settings. It holds the build string and both
+// update controls — the check, and the ↻ Update that switches to a build already
+// waiting.
 //
 // The check is a ready-made node so the screen stays a dumb layout: whether there is a
 // check to offer at all turns on the one thing only this file knows, which is whether
-// `Refresh.detect` has reported a service-worker state yet. Opening *Settings* is what
-// kicks that detection off (see `mainScreen`'s `onOpenSettings` above), which is the
-// screen this one is reached through — so by the time a player is here the answer has
-// landed.
+// `Refresh.detect` has reported a service-worker state yet. The tap that opens this
+// screen is what kicks that detection off (see `mainScreen`'s `onOpenAbout` above), so
+// by the time a player is here the answer has landed.
 let aboutScreen = (model, dispatch): MenuAboutScreen.props => {
   version: model.version,
   buildTime: model.buildTime,
@@ -1427,7 +1427,7 @@ let aboutScreen = (model, dispatch): MenuAboutScreen.props => {
   onReload: () => dispatch(Reload),
   refresh: refreshControl(model, dispatch)->Option.mapOr(Html.empty, RefreshControl.make),
   onClose: () => dispatch(CloseMenu),
-  onBackToSettings: () => dispatch(BackToSettings),
+  onBackToMenu: () => dispatch(BackToMenu),
 }
 
 let view = (model, dispatch) => <>
@@ -1456,7 +1456,6 @@ let view = (model, dispatch) => <>
     debug={debugScreen(model, dispatch)}
     about={aboutScreen(model, dispatch)}
     gameInfo={info => gameInfoScreen(model, dispatch, info)}
-    footer={aboutFooter(model, dispatch)}
   />
   // Over the menu rather than inside it, and in the tree only while it's up: the field
   // takes focus as it mounts, so a dialog that were merely hidden between opens would

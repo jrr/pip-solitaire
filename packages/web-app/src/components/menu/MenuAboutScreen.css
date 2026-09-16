@@ -113,14 +113,14 @@
 
   /* The version, which is the one thing on this screen a player might read out or type
      into a bug report: mono, so 0/O and 1/l can't be confused, and large enough to read
-     off a phone at arm's length. The build time under it is the same string the Settings
-     footer prints whole (`VersionBadge`) — here it is the second line rather than the
-     tail of a caption, so the version can be the size it needs to be.
+     off a phone at arm's length. The build time under it is the second line rather than
+     a tail on the same one, which is what lets the version be the size it needs to be.
 
-     The selection opt-out is the footer badge's, for the same reason: this is a string
-     to copy. Both sit inside the menu overlay, out of any card drag's reach, so
-     re-enabling selection here can't be caught by a stray drag (see `#version-badge`,
-     and <body> for the app-wide lock it opts out of). */
+     These two lines are the app's only opt-out from the app-wide `user-select: none`
+     (see <body> in styles/base.css for that lock and why it is there): this is a string
+     to copy. They sit inside the menu overlay, out of any card drag's reach, so
+     re-enabling selection here can't be caught by a stray drag — and `TapZoom` names
+     them so an iOS double-tap-to-select isn't eaten along with the zoom. */
   .about-build__version {
     font: 20px/1.2 ui-monospace, "SF Mono", Menlo, monospace;
     color: var(--control-ink);

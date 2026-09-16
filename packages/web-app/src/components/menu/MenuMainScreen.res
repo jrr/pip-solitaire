@@ -1,6 +1,5 @@
 // The menu's **main screen**, lifted out of `Menu` into its own pure
-// component. What the pane shows when the menu opens; `Menu` puts the About
-// footer under it.
+// component. What the pane shows when the menu opens.
 //
 // Top to bottom:
 //   - the **title** ("Pip") beside the ✕;
@@ -36,12 +35,17 @@
 //     more than one (the FreeCell sizes, the Spiderette packs) — and, behind that same
 //     flag, an "i" that opens what that game is;
 //   - --- the space between top and bottom grows here (`menu-section--bottom`) ---
-//   - a single **Settings** button (`onOpenSettings`) low in the menu, just above the
-//     About footer — it takes over the pane with the Settings screen.
+//   - **Settings** and **About**, two across at the foot: the pair that leaves the game
+//     in hand behind, each taking over the pane with its own screen. They are siblings
+//     because they are a tap apart in worth — one holds the preferences a player came to
+//     change, the other the build string they came to quote — and burying either under
+//     the other makes it a thing you have to already know is there. They borrow the
+//     game buttons' grid (`.menu-buttons`), so the foot of the menu lands on the same
+//     two tracks as the rest of it.
 //
 // The screen renders as a fragment (header + sections, no wrapper), so the panel's
 // flex column still sees the sections directly and `--bottom`'s `margin-top: auto`
-// keeps pushing the Settings button to the foot.
+// keeps pushing that pair to the foot.
 
 %%raw(`import "./MenuMainScreen.css"`)
 
@@ -78,6 +82,7 @@ type props = {
   // offers more than one of.
   games: array<MenuGameRow.props>,
   onOpenSettings: unit => unit,
+  onOpenAbout: unit => unit,
   // A newer build is installed and waiting: the ↻ Update band at the top of the screen,
   // and nothing at all while it is false.
   updateVisible: bool,
@@ -110,6 +115,7 @@ let make = ({
   onShareDeal,
   games,
   onOpenSettings,
+  onOpenAbout,
   updateVisible,
   onReload,
 }) => <>
@@ -165,9 +171,16 @@ let make = ({
     )
     ->Html.array}
   </MenuSection>
+  // Unnamed: the two buttons in it say what they are, and a group named for the pair
+  // would have to be named for where they sit rather than for what they hold.
   <MenuSection modifier="menu-section--bottom">
-    <button className="menu-button" onClick={_ => onOpenSettings()} type_="button">
-      {Html.string("Settings")}
-    </button>
+    <div className="menu-buttons">
+      <button className="menu-button" onClick={_ => onOpenSettings()} type_="button">
+        {Html.string("Settings")}
+      </button>
+      <button className="menu-button" onClick={_ => onOpenAbout()} type_="button">
+        {Html.string("About")}
+      </button>
+    </div>
   </MenuSection>
 </>

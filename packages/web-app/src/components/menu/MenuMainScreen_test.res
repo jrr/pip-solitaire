@@ -15,6 +15,7 @@ let render = (
   ~onRestart=() => (),
   ~onShareDeal=() => (),
   ~onOpenSettings=() => (),
+  ~onOpenAbout=() => (),
   ~games: array<MenuGameRow.props>=[],
   ~updateVisible=false,
   ~onReload=() => (),
@@ -31,6 +32,7 @@ let render = (
       onShareDeal,
       games,
       onOpenSettings,
+      onOpenAbout,
       updateVisible,
       onReload,
     }),
@@ -211,14 +213,19 @@ describe("MenuMainScreen", () => {
     expect(screen->findAll("nav .menu-row")->Array.map(text))->toEqual(["FreeCell", "Simple Simon"])
   })
 
-  test("hangs the Settings button off the bottom group, above the About footer", () => {
-    // `menu-section--bottom` is what pushes it to the foot of the panel; without the
-    // class it drifts up under Games.
-    let taps = ref(0)
-    let screen = render(~onOpenSettings=() => taps := taps.contents + 1)
-    let button = screen->find(".menu-section--bottom .menu-button")
-    expect(button->Option.mapOr("<missing>", text))->toBe("Settings")
-    button->Option.forEach(click)
-    expect(taps.contents)->toBe(1)
+  test("hangs Settings and About off the bottom group, two across", () => {
+    // `menu-section--bottom` is what pushes the pair to the foot of the panel; without
+    // the class they drift up under Games. The grid they sit in is the game buttons'
+    // (`.menu-buttons`), which is what lands them on the same two tracks as the rest of
+    // the menu rather than at whatever width their words come to.
+    let log = []
+    let screen = render(
+      ~onOpenSettings=() => log->Array.push("settings"),
+      ~onOpenAbout=() => log->Array.push("about"),
+    )
+    let buttons = screen->findAll(".menu-section--bottom .menu-buttons > .menu-button")
+    expect(buttons->Array.map(text))->toEqual(["Settings", "About"])
+    buttons->Array.forEach(click)
+    expect(log)->toEqual(["settings", "about"])
   })
 })
