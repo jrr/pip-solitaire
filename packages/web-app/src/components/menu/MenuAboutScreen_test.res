@@ -1,7 +1,8 @@
-// The About screen: the build string set as the subject, the two update controls, and
-// the link to the source. What the ↻ Update button *is* in either of its shapes is
-// `UpdateButton_test`'s; what's left here is that this screen places the reserved one,
-// and that the link out carries the three attributes that make it safe to follow.
+// The About screen: the app's name and what it is, the link to the source, and the
+// build with its two update controls. What the ↻ Update button *is* in either of its
+// shapes is `UpdateButton_test`'s; what's left here is that this screen places the
+// reserved one, that the link out carries the three attributes that make it safe to
+// follow, and that the name is the screen's own heading rather than the header bar's.
 open Vitest
 open TestDom
 
@@ -28,12 +29,34 @@ let check = RefreshControl.make({label: "Check for updates", busy: false, onClic
 let updateButton = screen => screen->find(".menu-update")
 
 describe("MenuAboutScreen", () => {
+  test("says the app's name in its own body, with no title in the header bar", () => {
+    // Every other screen is named for what it holds and its header says so; this one is
+    // about the app, so the name is the content — and a heading in the bar as well would
+    // be the screen's second, naming it twice.
+    let screen = render()
+    expect(screen->textIn(".menu-title"))->toBe("Pip")
+    expect(screen->find(".menu-panel__header .menu-title")->Option.isSome)->toBe(false)
+    expect(screen->find(".about-wordmark")->Option.isSome)->toBe(true)
+    // …and the way back is still in the bar it left.
+    expect(screen->find(".menu-panel__header .menu-back")->Option.isSome)->toBe(true)
+  })
+
+  test("reads: the name, what it is, where it came from — then the build", () => {
+    // One band a reader takes in as a paragraph, and then the block they may have come
+    // for, which is the one with a heading to find it by.
+    let screen = render()
+    let bands = screen->findAll(".menu-screen > *")
+    expect(bands->Array.map(el => el->attrOr("aria-label")))->toEqual(["<missing>", "updates"])
+    expect(bands->Array.getUnsafe(0)->children->Array.map(tag))->toEqual(["H1", "P", "A"])
+    expect(screen->textIn(".about-blurb")->String.startsWith("Pip deals FreeCell"))->toBe(true)
+    expect(screen->textIn("[aria-label='updates'] .menu-section__heading"))->toBe("Updates")
+  })
+
   test("sets the build string out as the subject, version first", () => {
     // The screen the Settings footer's caption is a caption *of*: the version on its own
     // line, and the build time — the same string `VersionBadge` formats for that footer
     // — under it.
     let screen = render()
-    expect(screen->textIn(".menu-title"))->toBe("About")
     expect(screen->textIn(".about-build__version"))->toBe("v01e8f5f")
     expect(screen->textIn(".about-build__time"))->toBe(
       VersionBadge.formatBuildTime("2026-07-23T20:20:00.000Z"),

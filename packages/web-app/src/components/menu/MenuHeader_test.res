@@ -4,8 +4,8 @@
 open Vitest
 open TestDom
 
-let render = (~title, ~back=None, ~onTitleTap=None, ~onClose=() => ()) =>
-  Html.create(MenuHeader.make({title, back, onTitleTap, onClose}))
+let render = (~title=?, ~back=None, ~onTitleTap=None, ~onClose=() => ()) =>
+  Html.create(MenuHeader.make({?title, back, onTitleTap, onClose}))
 
 // The header's slots, left to right — which is what decides where the title sits.
 let slots = (header: Html.element): array<string> => header->children->Array.map(tag)
@@ -13,6 +13,14 @@ let slots = (header: Html.element): array<string> => header->children->Array.map
 describe("MenuHeader", () => {
   test("shows the screen's title", () => {
     expect(render(~title="Settings")->find(".menu-title")->Option.mapOr("", text))->toBe("Settings")
+  })
+
+  test("leaves the title out entirely on a screen that names itself in its body", () => {
+    // The About screen's case: an empty `<h1>` holding the slot would be a heading with
+    // nothing in it, and a second heading on a screen whose wordmark is already one.
+    let about = render(~back=Some({label: "Back to settings", onClick: () => ()}))
+    expect(about->find(".menu-title")->Option.isSome)->toBe(false)
+    expect(about->slots)->toEqual(["BUTTON", "BUTTON"])
   })
 
   test("leaves the back slot genuinely empty on a screen with nowhere to go back to", () => {

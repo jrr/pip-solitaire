@@ -1,7 +1,32 @@
 @layer components {
-  /* The About screen (see MenuAboutScreen.res): the build string set as the subject
-     rather than as a caption, and the link out to the source. The header, the sections
-     and the update controls around them are components this screen composes. */
+  /* The About screen (see MenuAboutScreen.res): the app's name and what it is, the link
+     out to the source, and the build string set as a subject rather than as a caption.
+     The header, the sections and the update controls around them are components this
+     screen composes. */
+
+  /* The app's name, which on this screen is the content rather than the header bar's
+     label: the header's own title one size up, borrowing `.menu-title` for the gradient
+     and the weight so the wordmark can't drift from the one on the main menu
+     (MenuHeader.css). The doubled selector is what wins the size and the margin — a
+     single class would tie with `.menu-title` inside the same layer and fall to source
+     order, which nothing in this app may lean on (docs/css-layers.md).
+
+     The top margin is the "a little lower" — with no title in the bar above it, the name
+     would otherwise start hard against the back button's row. */
+  .menu-title.about-wordmark {
+    margin-top: 0.6rem;
+    margin-bottom: 0.2rem;
+    font-size: 2.6rem;
+  }
+
+  /* What the app is, in the chrome's prose face (`--prose-font`, styles/base.css) — the
+     same one the game info screen's paragraph wears, since they are the same kind of
+     thing on two screens. */
+  .about-blurb {
+    margin: 0;
+    font: var(--prose-font);
+    color: var(--control-ink-muted);
+  }
 
   /* The build, with the ↻ Update button at the end of its row. The button is reserved
      with `visibility` when there's nothing to update (`UpdateButton.css`), so it needs a

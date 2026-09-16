@@ -67,7 +67,10 @@ test("the About screen holds the build string and the update check", async ({ pa
   await expect(page.locator(".menu-refresh")).toHaveCount(0)
 
   await page.getByRole("button", { name: "About", exact: true }).click()
-  await expect(page.locator(".menu-title")).toHaveText("About")
+  // The screen names the app rather than itself, in its own body — so the header bar is
+  // two buttons and nothing between them.
+  await expect(page.locator(".menu-title")).toHaveText("Pip")
+  await expect(page.locator(".menu-panel__header .menu-title")).toHaveCount(0)
   await expect(page.locator(".menu-refresh")).toHaveCount(1)
   await expect(page.locator(".menu-footer")).toHaveCount(0)
 

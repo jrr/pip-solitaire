@@ -1,13 +1,25 @@
-// The menu's **About screen**: what this build *is*, on its own screen a level below
+// The menu's **About screen**: what the app is, on its own screen a level below
 // Settings, reached from the About button in that screen's footer.
 //
-// **It is the build's screen.** The version and build time the footer prints as a quiet
-// caption are the subject here, set large enough to read off a phone held at arm's
-// length and to quote in a bug report — which is what a build string is for, and the
-// reason it stays selectable. The two update controls are here with them: the check
-// that asks whether a newer build exists, and the ↻ Update that switches to one already
-// waiting. They are two halves of one job and belong on one screen, or a check made on
-// this screen would report its find somewhere the player isn't.
+// **It says the app's name in its own body rather than in the header bar.** Every other
+// screen is named for what it holds — Settings, Debug, a game — and its header says so;
+// this one is about the app, so the name is the content, set at a size the header bar
+// has no room for and sitting a little below where a header would have put it. That is
+// why `<MenuHeader>` is given no title here: the wordmark *is* the screen's heading, and
+// a second one in the bar would name it twice.
+//
+// Top to bottom: the wordmark, a sentence on what Pip is, the link to the source it was
+// built from, and last the build this browser is running — under a heading, because
+// that block is the one thing here a reader might have come looking for rather than
+// read past.
+//
+// **The build is the screen's other subject.** The version and build time the Settings
+// footer prints as a quiet caption are set out here at a size to read off a phone at
+// arm's length and quote into a bug report — which is what a build string is for, and
+// the reason it stays selectable. Both update controls are with them: the check that
+// asks whether a newer build exists, and the ↻ Update that switches to one already
+// waiting. They are two halves of one job, and a check made on this screen would
+// otherwise report its find somewhere the player isn't.
 //
 // **The ↻ Update button rides the version's own row** rather than standing under the
 // check: that row is two lines of build string tall either way, which is the room the
@@ -33,6 +45,12 @@ type props = {
   onBackToSettings: unit => unit,
 }
 
+// What the app is, in two sentences, for a reader who has just arrived at its name.
+// Both halves are claims the app has to keep: every board really is dealt from a number
+// a player can share or type back in (`SeedDialog`, the share link), and it really does
+// run with the network gone (the service worker precaches the bundle).
+let blurb = "Pip deals FreeCell, Simple Simon and a few of their relatives. Every board has a number, so the one in front of you can be shared or dealt again exactly as it was — and once it has loaded, it plays offline."
+
 // The repository this build was made from. A real link out, like the game info screen's:
 // a new tab, because the app is a PWA and following a link in place would tear down a
 // board mid-play, and `rel` so the opened page can't reach back through `window.opener`.
@@ -46,15 +64,28 @@ let markGithub = "M6.766 11.328c-2.063-.25-3.516-1.734-3.516-3.656 0-.781.281-1.
 
 let make = ({version, buildTime, updateVisible, onReload, refresh, onClose, onBackToSettings}) => <>
   <MenuHeader
-    title="About"
-    back={Some({label: "Back to settings", onClick: onBackToSettings})}
-    onTitleTap=None
-    onClose
+    back={Some({label: "Back to settings", onClick: onBackToSettings})} onTitleTap=None onClose
   />
   <div className="menu-screen">
-    // The build, and the button that replaces it. Labelled but unheaded: a caption
-    // reading "version" over a version number says it twice.
-    <MenuSection label="version">
+    // The name, what it is, and where it came from: one band, because a reader takes
+    // them in as one paragraph. Unnamed — the wordmark is the heading inside it, and an
+    // `aria-label` over the top would be the app's name a third time.
+    <MenuSection>
+      // The app's own wordmark, which is the header's title one size up: same gradient,
+      // same weight, borrowed by class so the two can't drift (`MenuHeader.css`).
+      <h1 className="menu-title about-wordmark"> {Html.string("Pip")} </h1>
+      <p className="about-blurb"> {Html.string(blurb)} </p>
+      <a className="about-link" href={repoUrl} target="_blank" rel="noopener noreferrer">
+        <svg className="about-link__mark" viewBox="0 0 16 16" ariaHidden="true" focusable="false">
+          <path d={markGithub} fill="currentColor" />
+        </svg>
+        <span className="about-link__name"> {Html.string(repo)} </span>
+      </a>
+    </MenuSection>
+    // The build in hand and the two ways to move off it. Headed, unlike the band above:
+    // this is the block a reader comes to this screen *for*, and the heading is what
+    // they find it by.
+    <MenuSection label="updates" heading="Updates">
       <div className="about-build">
         <div>
           <div className="about-build__version"> {Html.string("v" ++ version)} </div>
@@ -64,15 +95,7 @@ let make = ({version, buildTime, updateVisible, onReload, refresh, onClose, onBa
         </div>
         <UpdateButton variant=UpdateButton.Inline visible={updateVisible} onReload />
       </div>
-    </MenuSection>
-    <MenuSection label="updates"> {refresh} </MenuSection>
-    <MenuSection label="source">
-      <a className="about-link" href={repoUrl} target="_blank" rel="noopener noreferrer">
-        <svg className="about-link__mark" viewBox="0 0 16 16" ariaHidden="true" focusable="false">
-          <path d={markGithub} fill="currentColor" />
-        </svg>
-        <span className="about-link__name"> {Html.string(repo)} </span>
-      </a>
+      {refresh}
     </MenuSection>
   </div>
 </>

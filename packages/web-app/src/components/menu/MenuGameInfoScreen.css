@@ -4,14 +4,12 @@
      footer around them are the components the screen composes, so what's left here is
      these four. */
 
-  /* The game in a paragraph — the only prose in the whole panel, everything else being
-     a control, a caption or a heading. So it is the only rule here that sets a line
-     height: a sentence set at a control's tight leading reads as a label that ran on.
-     Muted against the white of the headings, because it is the screen's background
+  /* The game in a paragraph: the chrome's prose face (`--prose-font`, styles/base.css),
+     muted against the white of the headings because it is the screen's background
      reading and the picture above it is the subject. */
   .game-info__prose {
     margin: 0;
-    font: 13px/1.55 "Libre Franklin", sans-serif;
+    font: var(--prose-font);
     color: var(--control-ink-muted);
   }
 

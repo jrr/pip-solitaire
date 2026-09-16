@@ -136,10 +136,11 @@ describe("Menu footer placement", () => {
   })
 
   test("places the screen the `screen` variant names", () => {
-    // Including the fifth, which is a door and a header for now: a screen that was in
-    // the variant and nowhere in the switch would be a button that does nothing.
+    // A screen that was in the variant and nowhere in the switch would be a button that
+    // does nothing. About answers with the app's name rather than its own: it is the one
+    // screen that puts its heading in its body (`MenuAboutScreen`).
     let titleOn = screen => paneOn(screen)->textIn(".menu-title")
-    expect(titleOn(Menu.About))->toBe("About")
+    expect(titleOn(Menu.About))->toBe("Pip")
     expect(titleOn(Menu.Settings))->toBe("Settings")
     expect(titleOn(Menu.Debug))->toBe("Debug")
   })

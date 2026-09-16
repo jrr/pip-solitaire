@@ -2,10 +2,15 @@
 // its own pure component: an optional **back** button on the left, the
 // screen's title in the middle, and the ✕ that closes the whole menu on the right.
 //
-// The three screens differ only in what they put in those slots — "Pip" with no
-// back button on the main menu, "Settings" going back to it, "Debug" going back
-// one step to Settings — so they're one component with a `back` option rather than
-// three headers that drift apart.
+// The screens differ only in what they put in those slots — "Pip" with no back button
+// on the main menu, "Settings" going back to it, "Debug" going back one step to
+// Settings — so they're one component with options rather than headers that drift apart.
+//
+// **The title is optional too**, and absent means *absent*: no empty `<h1>` holding a
+// slot. The About screen is the one that leaves it out, because it says the app's name
+// in its own body at a size a header bar has no room for — and a heading here as well
+// would be the screen's second, naming it twice. The row is `space-between`, so the two
+// buttons simply take the ends.
 //
 // **`onTitleTap` is attached to one screen only.** It's the hidden-options tap
 // target (`HiddenOptions`): every ten taps on the *Settings* screen's title flip
@@ -45,13 +50,13 @@ type back = {
 }
 
 type props = {
-  title: string,
+  title?: string,
   back: option<back>,
   onTitleTap: option<unit => unit>,
   onClose: unit => unit,
 }
 
-let make = ({title, back, onTitleTap, onClose}) =>
+let make = ({?title, back, onTitleTap, onClose}) =>
   <div className="menu-panel__header">
     {switch back {
     | Some({label, onClick}) =>
@@ -68,9 +73,13 @@ let make = ({title, back, onTitleTap, onClose}) =>
       </button>
     | None => Html.empty
     }}
-    <h1 className="menu-title" onClick=?{onTitleTap->Option.map(tap => _ => tap())}>
-      {Html.string(title)}
-    </h1>
+    {switch title {
+    | Some(title) =>
+      <h1 className="menu-title" onClick=?{onTitleTap->Option.map(tap => _ => tap())}>
+        {Html.string(title)}
+      </h1>
+    | None => Html.empty
+    }}
     <button className="menu-close" onClick={_ => onClose()} type_="button" ariaLabel="Close menu">
       <svg className="menu-close__icon" viewBox="0 0 24 24" ariaHidden="true" focusable="false">
         <path
