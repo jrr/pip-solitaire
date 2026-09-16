@@ -164,21 +164,39 @@ test.describe("in the menu", () => {
     expect(await touchEnds(page)).toEqual([false, true])
   })
 
-  test("leaves the version badge's double-tap alone", async ({ page }) => {
+  test("leaves the build string's double-tap alone", async ({ page }) => {
     // The build string opts back into `user-select: text` so it can be copied, and
     // on iOS double-tap-to-select-word is how a selection starts — refusing the
     // default there would take the selection with the zoom (`selectableSelector`).
     //
-    // On Settings, which is the one screen the About footer is placed under (`Menu`).
-    await page.getByRole("button", { name: "Settings", exact: true }).click()
+    // On About, which is the one screen that prints it (`MenuAboutScreen`).
+    await page.getByRole("button", { name: "About", exact: true }).click()
     await resetTouchEnds(page)
-    const badge = await page.locator("#version-badge").boundingBox()
-    const centre = { x: badge.x + badge.width / 2, y: badge.y + badge.height / 2 }
+    const stamp = await page.locator(".about-build__version").boundingBox()
+    const centre = { x: stamp.x + stamp.width / 2, y: stamp.y + stamp.height / 2 }
 
     await page.touchscreen.tap(centre.x, centre.y)
     await page.touchscreen.tap(centre.x, centre.y)
 
     expect(await touchEnds(page)).toEqual([false, false])
+  })
+
+  test("refuses a pair on the update control beside it", async ({ page }) => {
+    // The exemption is the two text lines by name, not the block around them: the
+    // control under them is a button like any other, and a pair landing on it is a pair
+    // to refuse. Naming the block would leave the one control on that screen able to
+    // zoom the page.
+    await page.getByRole("button", { name: "About", exact: true }).click()
+    const control = page.locator(".about-build .menu-refresh, .about-build .menu-update")
+    if ((await control.count()) === 0) test.skip(true, "no service-worker state detected here")
+    await resetTouchEnds(page)
+    const box = await control.boundingBox()
+    const centre = { x: box.x + box.width / 2, y: box.y + box.height / 2 }
+
+    await page.touchscreen.tap(centre.x, centre.y)
+    await page.touchscreen.tap(centre.x, centre.y)
+
+    expect(await touchEnds(page)).toEqual([false, true])
   })
 
   test("leaves two quick taps on different controls alone", async ({ page }) => {

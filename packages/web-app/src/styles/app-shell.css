@@ -5,8 +5,8 @@
 
   /* #app fills the column so the header can sit at the top while the scene
      stays centered in the space beneath it. Removing body's
-     `justify-content: center` (above) starts this stack at the top; the
-     header then hugs the top the way #version-badge hugs the bottom. */
+     `justify-content: center` (above) starts this stack at the top, so the
+     header hugs it and the scene takes everything left over. */
   #app {
     flex: 1;
     width: 100%;

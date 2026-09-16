@@ -4,11 +4,12 @@
      The header, the sections and the update controls around them are components this
      screen composes. */
 
-  /* The hero: the icon, the name, the line and the link, centred as one block. The Build
-     section under it stays left-aligned like every other band in the panel — that
-     contrast is what makes this one read as a masthead rather than as the first of two
-     lists. The band is `.menu-section`'s flex column, so centring is `align-items`
-     rather than a margin on each child. */
+  /* The hero: the icon, the name, the line and the link, centred as one block — as is the
+     build at the foot, so the screen reads as one centred column rather than as two
+     bands. What sets the two apart is size and face, not alignment: this is the only
+     block on the screen set large, and the one at the foot the only one set in mono. The
+     band is `.menu-section`'s flex column, so centring is `align-items` rather than a
+     margin on each child. */
   .about-hero {
     align-items: center;
     text-align: center;
@@ -74,44 +75,53 @@
     color: var(--control-ink-muted);
   }
 
-  /* The build string with the update check beside it, one row. */
+  /* The build string over its control, both centred under the masthead: a colophon at the
+     foot of the screen rather than a labelled row in a list of them.
+
+     Stacked rather than set side by side, which is what buys the control a line of its
+     own — "Check for updates" then sets on one line at a width a thumb can find, instead
+     of breaking over two in a slot narrow enough to sit beside the string. The centring
+     is inherited by both lines below rather than declared on each. */
   .about-build {
     display: flex;
+    flex-direction: column;
     align-items: center;
-    justify-content: space-between;
-    gap: 0.75rem;
+    gap: 0.6rem;
+    text-align: center;
   }
 
-  /* The row's one control, whichever of the two it is (`MenuAboutScreen.res`): a *fixed*
-     slot, so swapping the update check for the ↻ Update button changes nothing about the
-     row — the shorter word would otherwise shrink it under the reader's thumb. Narrow
-     enough that "Check for updates" sets over two lines, which is what keeps it beside
-     the build string rather than under it on a phone, and tall enough to hold those two.
+  /* The block's one control, whichever of the two it is (`MenuAboutScreen.res`): a *fixed*
+     slot, so swapping the update check for the ↻ Update button changes nothing under the
+     reader's thumb — the shorter word would otherwise shrink it into a different button
+     in the same place. The width holds the longest label either ever shows, "Check for
+     updates", on one line with room to spare; a longer label is a label to shorten rather
+     than a width to raise, because a control run out to the panel's edges stops reading
+     as the footnote's button and starts reading as the screen's.
 
-     `.menu-button` holds every control in the panel to one line and `.menu-update` is a
-     full-width block, so both of those are this rule's to overrule; the doubled selector
-     is what carries that, rather than the two sheets' order (docs/css-layers.md). */
+     `.menu-button` holds the check to one line and states no box beyond its padding, and
+     `.menu-update` states no box at all (UpdateButton.css) — so the two controls arrive
+     here shaped differently and leave shaped the same, which is the whole of what this
+     rule is for. */
   .about-build > .menu-refresh,
   .about-build > .menu-update {
     display: flex;
     align-items: center;
     justify-content: center;
-    flex: 0 0 8.5rem;
-    min-height: 3.4rem;
-    white-space: normal;
-    line-height: 1.25;
+    flex: none;
+    width: 10.5rem;
+    min-height: 2.75rem;
   }
 
   /* The version, which is the one thing on this screen a player might read out or type
      into a bug report: mono, so 0/O and 1/l can't be confused, and large enough to read
-     off a phone at arm's length. The build time under it is the same string the Settings
-     footer prints whole (`VersionBadge`) — here it is the second line rather than the
-     tail of a caption, so the version can be the size it needs to be.
+     off a phone at arm's length. The build time under it is the second line rather than
+     a tail on the same one, which is what lets the version be the size it needs to be.
 
-     The selection opt-out is the footer badge's, for the same reason: this is a string
-     to copy. Both sit inside the menu overlay, out of any card drag's reach, so
-     re-enabling selection here can't be caught by a stray drag (see `#version-badge`,
-     and <body> for the app-wide lock it opts out of). */
+     These two lines are the app's only opt-out from the app-wide `user-select: none`
+     (see <body> in styles/base.css for that lock and why it is there): this is a string
+     to copy. They sit inside the menu overlay, out of any card drag's reach, so
+     re-enabling selection here can't be caught by a stray drag — and `TapZoom` names
+     them so an iOS double-tap-to-select isn't eaten along with the zoom. */
   .about-build__version {
     font: 20px/1.2 ui-monospace, "SF Mono", Menlo, monospace;
     color: var(--control-ink);

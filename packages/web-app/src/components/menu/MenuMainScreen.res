@@ -1,15 +1,15 @@
 // The menu's **main screen**, lifted out of `Menu` into its own pure
-// component. What the pane shows when the menu opens; `Menu` puts the About
-// footer under it.
+// component. What the pane shows when the menu opens.
 //
 // Top to bottom:
-//   - the **title** ("Pip") beside the ✕;
-//   - the **↻ Update** band, where a new build is waiting and only then
-//     (`<UpdateButton>`). It leads because of where it is reached from: the pip on the
-//     top bar's Menu button is a notification, and this is the screen that button
-//     opens, so the one thing it is notifying about has to be here rather than two
-//     screens in. What that costs, and why the band is absent rather than reserved, is
-//     in `UpdateButton.res`;
+//   - the **title** ("Pip"), the **↻ Update** button where a new build is waiting, and
+//     the ✕ — one row. The update goes in the header's action slot because of where it
+//     is reached from: the pip on the top bar's Menu button is a notification, and this
+//     is the screen that button opens, so the one thing it is notifying about has to be
+//     here rather than two screens in. In the header it is the first thing read and the
+//     panel below it does not move when it arrives — a row that is already the height of
+//     the ✕ has room for it (`MenuHeader.css`). What the button *is* is
+//     `UpdateButton.res`;
 //   - a **"this game"** section — what can be done with the deal already on the
 //     table: **Restart** (re-deals the *same* seed to replay it) and **Share**
 //     (hands over a `?seed=` link to it). Which deal that is, the *heading* names —
@@ -36,12 +36,17 @@
 //     more than one (the FreeCell sizes, the Spiderette packs) — and, behind that same
 //     flag, an "i" that opens what that game is;
 //   - --- the space between top and bottom grows here (`menu-section--bottom`) ---
-//   - a single **Settings** button (`onOpenSettings`) low in the menu, just above the
-//     About footer — it takes over the pane with the Settings screen.
+//   - **Settings** and **About**, two across at the foot: the pair that leaves the game
+//     in hand behind, each taking over the pane with its own screen. They are siblings
+//     because they are a tap apart in worth — one holds the preferences a player came to
+//     change, the other the build string they came to quote — and burying either under
+//     the other makes it a thing you have to already know is there. They borrow the
+//     game buttons' grid (`.menu-buttons`), so the foot of the menu lands on the same
+//     two tracks as the rest of it.
 //
 // The screen renders as a fragment (header + sections, no wrapper), so the panel's
 // flex column still sees the sections directly and `--bottom`'s `margin-top: auto`
-// keeps pushing the Settings button to the foot.
+// keeps pushing that pair to the foot.
 
 %%raw(`import "./MenuMainScreen.css"`)
 
@@ -78,6 +83,7 @@ type props = {
   // offers more than one of.
   games: array<MenuGameRow.props>,
   onOpenSettings: unit => unit,
+  onOpenAbout: unit => unit,
   // A newer build is installed and waiting: the ↻ Update band at the top of the screen,
   // and nothing at all while it is false.
   updateVisible: bool,
@@ -110,14 +116,17 @@ let make = ({
   onShareDeal,
   games,
   onOpenSettings,
+  onOpenAbout,
   updateVisible,
   onReload,
 }) => <>
-  <MenuHeader title="Pip" back=None onTitleTap=None onClose />
-  // An unnamed band: the button inside it says what it is, and a group named "update"
-  // around one control called "Update now" is the same word twice. The section is what
-  // gives it the panel's own spacing, so it sits in the column rather than on top of it.
-  <MenuSection> {updateVisible ? <UpdateButton onReload /> : Html.empty} </MenuSection>
+  <MenuHeader
+    title="Pip"
+    back=None
+    onTitleTap=None
+    action={updateVisible ? <UpdateButton onReload /> : Html.empty}
+    onClose
+  />
   // The heading carries the game and its deal number, so the section says which board
   // its two buttons act on. A player can read the number off (or dictate it) where no
   // link can be delivered at all — which is the far end of `SeedDialog`. Absent on a
@@ -165,9 +174,16 @@ let make = ({
     )
     ->Html.array}
   </MenuSection>
+  // Unnamed: the two buttons in it say what they are, and a group named for the pair
+  // would have to be named for where they sit rather than for what they hold.
   <MenuSection modifier="menu-section--bottom">
-    <button className="menu-button" onClick={_ => onOpenSettings()} type_="button">
-      {Html.string("Settings")}
-    </button>
+    <div className="menu-buttons">
+      <button className="menu-button" onClick={_ => onOpenSettings()} type_="button">
+        {Html.string("Settings")}
+      </button>
+      <button className="menu-button" onClick={_ => onOpenAbout()} type_="button">
+        {Html.string("About")}
+      </button>
+    </div>
   </MenuSection>
 </>

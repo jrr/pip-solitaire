@@ -34,6 +34,35 @@
     gap: 0.75rem;
   }
 
+  /* The ↻ Update button in the header's action slot, which only the main menu fills
+     (MenuHeader.res). Two things it has to be, and both are about the row it joined:
+
+     **The ✕'s height, exactly.** The row is as tall as the tallest thing in it, so a
+     button any taller would move the whole panel down on the one render where a build
+     starts waiting — which is the render a player is looking at. Matching 2rem is what
+     makes its arrival cost nothing, and is why the padding here is horizontal only:
+     `--control-pad`'s 10px top and bottom would set the height from the type instead.
+
+     **Left where `space-between` puts it, with air on both sides.** An auto margin would
+     collect it and the ✕ into a pair at the end of the row — and those two want to be far
+     apart, not near: one dismisses the menu and the other reloads the tab, so a thumb
+     going for ✕ that lands a few pixels wide should find nothing rather than an install.
+     The free space either side is what buys that, and it is the reason to leave this rule
+     without a margin rather than an oversight to correct.
+
+     The type is a step down from `--control-font` because this is a word riding beside a
+     wordmark set at 1.6rem, not a control in a list of them — and because what has to
+     survive at a narrow width is the title. */
+  .menu-panel__header > .menu-update {
+    display: inline-flex;
+    align-items: center;
+    flex: 0 0 auto;
+    height: 2rem;
+    padding: 0 0.7rem;
+    font-size: 12px;
+    letter-spacing: 0.01em;
+  }
+
   /* The two glyph buttons, sized and spaced as a pair. `flex: 0 0 auto` is the
      load-bearing half: as ordinary flex items they shrink before the title does, so a
      title too long for the row breaks *them* first — "‹" and "Back" onto separate

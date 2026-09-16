@@ -1,88 +1,63 @@
-// The About footer — the way through to the About screen, and the build string under it
-// — belongs to the Settings screen and to no other. The update controls it used to hold
-// are one screen further in, on About, where the build string is the subject.
+// The update check is the About screen's, and About is one tap from the main menu — so
+// the check is two taps from a board, without passing through Settings.
 //
-// Why this can't be a unit test. Which screen the footer appears under is the pane's
-// (`Menu`), and whether there is an update check to offer at all is `Main`'s — it turns
-// on whether `Refresh.detect` has reported a service-worker state yet, and `Main` is the
-// entry point, so importing it mounts the app, registers a worker and takes over
-// `<body>`. A walk is the only thing that sees both.
+// Why this can't be a unit test. Whether there is an update check to offer at all is
+// `Main`'s: it turns on whether `Refresh.detect` has reported a service-worker state
+// yet, and `Main` is the entry point, so importing it mounts the app, registers a worker
+// and takes over `<body>`. Only a walk reaches the screen with the detection behind it.
 //
-// What it pins is the *shape* of the rule rather than a label: the footer is absent on
-// the main menu in both directions (before ever visiting Settings, and again on the way
-// back out), absent a level deeper on Debug, and present on Settings once the detection
-// has landed. Whether the check reads "Refresh" or "Check for updates" is
-// `Refresh.mode`'s business and depends on whether this build registered a worker —
-// pinning it here would tie the test to the PWA plugin's behaviour under `vite preview`.
+// **What this pins is that the About button carries the detection with it.** The check
+// is absent until a state has been reported, and the tap that opens About is the only
+// thing that can report one for a player who never opens Settings — so a check present
+// here is the whole of that wiring, and a check missing means About was promoted out of
+// Settings without its `Refresh.detect` coming along (`Main`'s `onOpenAbout`).
 //
-// The detection is kicked off by opening Settings, which is why the first assertion has
-// to happen before that tap: a control that appeared on the main menu would mean the
-// screen half of the rule had been dropped.
+// Whether the check reads "Refresh" or "Check for updates" is `Refresh.mode`'s business
+// and depends on whether this build registered a worker — pinning it here would tie the
+// test to the PWA plugin's behaviour under `vite preview`.
 import { expect, test } from "@playwright/test"
 
 test.use({ viewport: { width: 480, height: 900 } })
 
-test("the About footer is the Settings screen's, and no other screen's", async ({ page }) => {
+test("About is a tap from the main menu, and brings the update check with it", async ({ page }) => {
   await page.goto("/?game=freecell&animate=off")
   await page.getByRole("button", { name: /Open menu/ }).click()
 
-  const footer = page.locator(".menu-footer")
-  const version = page.locator("#version-badge")
-  await expect(footer).toHaveCount(0)
-  await expect(version).toHaveCount(0)
-
-  // Nor is there an ↻ Update band with nothing waiting: the main menu's is absent
-  // rather than reserved, so a box kept for it would show up here as a gap under the
-  // title (`UpdateButton.res`). Its presence can't be walked — that needs a service
-  // worker to actually install a newer build — so this is the half a walk can see.
+  // Nothing of the build on the main menu itself: no check, and no ↻ Update band with
+  // nothing waiting — the band is absent rather than reserved, so a box kept for it
+  // would show up here as a gap under the title (`UpdateButton.res`). Its presence
+  // can't be walked (that needs a worker to actually install a newer build), so this is
+  // the half a walk can see.
+  await expect(page.locator(".menu-refresh")).toHaveCount(0)
   await expect(page.locator(".menu-update")).toHaveCount(0)
 
-  await page.getByRole("button", { name: "Settings", exact: true }).click()
-  await expect(footer).toHaveCount(1)
-  await expect(version).toHaveCount(1)
+  // Settings and About are siblings at the foot of the menu, in that order.
+  const foot = page.locator(".menu-section--bottom .menu-button")
+  await expect(foot).toHaveText(["Settings", "About"])
 
-  // One level deeper is a screen about the build's tools, not about the build: the
-  // footer doesn't follow it down.
-  await page.getByRole("button", { name: "Debug" }).click()
-  await expect(footer).toHaveCount(0)
-  await page.getByRole("button", { name: /Back to settings/ }).click()
-  await expect(footer).toHaveCount(1)
+  // Straight to About, never touching Settings: the check is here, which is the
+  // detection having been kicked off by this very tap. The screen names the app rather
+  // than itself, so the wordmark is in its body and the header bar is two buttons with
+  // nothing between them.
+  await page.getByRole("button", { name: "About", exact: true }).click()
+  await expect(page.locator(".menu-refresh")).toHaveCount(1)
+  await expect(page.locator(".menu-title")).toHaveText("Pip")
+  await expect(page.locator(".menu-panel__header .menu-title")).toHaveCount(0)
 
-  // Back out to the main menu: gone again, now that a worker state *has* been
-  // detected. That's the half of the rule a screen-blind implementation would miss.
+  // And its way back is the menu it was opened from, not sideways into Settings.
   await page.getByRole("button", { name: /Back to menu/ }).click()
-  await expect(footer).toHaveCount(0)
+  await expect(foot).toHaveText(["Settings", "About"])
 })
 
-test("the About screen holds the build string and the update check", async ({ page }) => {
-  // The button at the foot of Settings opens one level down, so its way back is to
-  // Settings rather than out to the menu — and what it opens is where the build string
-  // is the subject rather than a caption, with the update check on it.
+test("Settings offers no update check of its own", async ({ page }) => {
+  // The check comes and goes with the worker detection, so it belongs on the one screen
+  // that is about the build. Settings opening the detection but never showing a control
+  // is what lets that screen's own foot stay a fixed height.
   await page.goto("/?game=freecell&animate=off")
   await page.getByRole("button", { name: /Open menu/ }).click()
   await page.getByRole("button", { name: "Settings", exact: true }).click()
-
-  // The check is *not* on Settings: it comes and goes with the worker detection, and
-  // nothing in that footer may change height.
   await expect(page.locator(".menu-refresh")).toHaveCount(0)
-
-  await page.getByRole("button", { name: "About", exact: true }).click()
-  // The screen names the app rather than itself, in its own body — so the header bar is
-  // two buttons and nothing between them.
-  await expect(page.locator(".menu-title")).toHaveText("Pip")
-  await expect(page.locator(".menu-panel__header .menu-title")).toHaveCount(0)
-  await expect(page.locator(".menu-refresh")).toHaveCount(1)
-  await expect(page.locator(".menu-footer")).toHaveCount(0)
-
-  // The version, set bigger here than the caption it is in the footer — the claim the
-  // stylesheet makes and only a browser can check.
-  const here = await page.locator(".about-build__version").boundingBox()
-  await page.getByRole("button", { name: /Back to settings/ }).click()
-  const caption = await page.locator("#version-badge").boundingBox()
-  expect(here.height).toBeGreaterThan(caption.height)
-
-  await expect(page.locator(".menu-title")).toHaveText("Settings")
-  await expect(page.locator(".menu-footer")).toHaveCount(1)
+  await expect(page.locator(".menu-update")).toHaveCount(0)
 })
 
 test("the source link goes to the repository, in a tab of its own", async ({ page }) => {
@@ -91,7 +66,6 @@ test("the source link goes to the repository, in a tab of its own", async ({ pag
   // test — jsdom draws nothing.
   await page.goto("/?game=freecell&animate=off")
   await page.getByRole("button", { name: /Open menu/ }).click()
-  await page.getByRole("button", { name: "Settings", exact: true }).click()
   await page.getByRole("button", { name: "About", exact: true }).click()
 
   const link = page.locator(".about-link")

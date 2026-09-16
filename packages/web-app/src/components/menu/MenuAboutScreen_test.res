@@ -11,7 +11,7 @@ let render = (
   ~refresh=Html.empty,
   ~onReload=() => (),
   ~onClose=() => (),
-  ~onBackToSettings=() => (),
+  ~onBackToMenu=() => (),
 ) =>
   Html.create(
     MenuAboutScreen.make({
@@ -21,7 +21,7 @@ let render = (
       onReload,
       refresh,
       onClose,
-      onBackToSettings,
+      onBackToMenu,
     }),
   )
 
@@ -43,7 +43,8 @@ describe("MenuAboutScreen", () => {
 
   test("reads: the name, what it is, where it came from — then the build", () => {
     // One band a reader takes in as a paragraph, and then the block they may have come
-    // for, which is the one with a heading to find it by.
+    // for, which carries no visible caption: its `aria-label` is the half of a heading
+    // that was doing work.
     let screen = render()
     let bands = screen->findAll(".menu-screen > *")
     expect(bands->Array.map(el => el->attrOr("aria-label")))->toEqual(["<missing>", "build"])
@@ -57,28 +58,27 @@ describe("MenuAboutScreen", () => {
     expect(screen->textIn(".about-blurb"))->toBe(
       "I made this for myself but I hope you like it too.",
     )
-    expect(screen->textIn("[aria-label='build'] .menu-section__heading"))->toBe("Build")
+    expect(screen->find("[aria-label='build'] .menu-section__heading")->Option.isSome)->toBe(false)
   })
 
   test("sets the build string out as the subject, version first", () => {
-    // The screen the Settings footer's caption is a caption *of*: the version on its own
-    // line, and the build time — the same string `VersionBadge` formats for that footer
-    // — under it.
+    // The build id on its own line, and the time it was built — as `BuildStamp` spells a
+    // timestamp — under it.
     let screen = render()
-    expect(screen->textIn(".about-build__version"))->toBe("v01e8f5f")
+    expect(screen->textIn(".about-build__version"))->toBe("01e8f5f")
     expect(screen->textIn(".about-build__time"))->toBe(
-      VersionBadge.formatBuildTime("2026-07-23T20:20:00.000Z"),
+      BuildStamp.format("2026-07-23T20:20:00.000Z"),
     )
   })
 
-  test("offers one control beside the build, and installs rather than re-checks", () => {
+  test("offers one control under the build, and installs rather than re-checks", () => {
     // A build already downloaded and waiting is installed, not checked for again — so the
-    // ↻ Update button takes the check's own slot rather than standing over it, and the row
-    // is one row in every state.
-    let row = screen =>
+    // ↻ Update button takes the check's own slot rather than standing over it, and the
+    // block is the string over one control in every state.
+    let block = screen =>
       screen->find(".about-build")->Option.getOrThrow->children->Array.map(classes)
-    expect(row(render(~refresh=check)))->toEqual(["", "menu-button menu-refresh"])
-    expect(row(render(~refresh=check, ~updateVisible=true)))->toEqual(["", "menu-update"])
+    expect(block(render(~refresh=check)))->toEqual(["", "menu-button menu-refresh"])
+    expect(block(render(~refresh=check, ~updateVisible=true)))->toEqual(["", "menu-update"])
   })
 
   test("sits at the foot of the panel, under the masthead's air", () => {
@@ -114,12 +114,12 @@ describe("MenuAboutScreen", () => {
     )->toBe("true")
   })
 
-  test("goes back to Settings, where the button was, and closes from the ✕", () => {
-    // A level below Settings, like Debug: back is one step up rather than all the way
-    // out, and the ✕ beside it still closes the whole menu.
+  test("goes back to the menu, where the button was, and closes from the ✕", () => {
+    // One tap below the main menu, like Settings: back is that one step, and the ✕
+    // beside it still closes the whole menu.
     let log = []
     let screen = render(
-      ~onBackToSettings=() => log->Array.push("back"),
+      ~onBackToMenu=() => log->Array.push("back"),
       ~onClose=() => log->Array.push("close"),
     )
     screen->find(".menu-back")->Option.forEach(click)

@@ -57,6 +57,7 @@ let make = ({info, ?variants, tilt, onClose, onBackToMenu}) => <>
   <MenuHeader
     title={info.name}
     back={Some({label: "Back to menu", onClick: onBackToMenu})}
+    action=Html.empty
     onTitleTap=None
     onClose
   />

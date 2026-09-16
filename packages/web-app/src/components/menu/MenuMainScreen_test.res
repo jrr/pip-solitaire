@@ -15,6 +15,7 @@ let render = (
   ~onRestart=() => (),
   ~onShareDeal=() => (),
   ~onOpenSettings=() => (),
+  ~onOpenAbout=() => (),
   ~games: array<MenuGameRow.props>=[],
   ~updateVisible=false,
   ~onReload=() => (),
@@ -31,6 +32,7 @@ let render = (
       onShareDeal,
       games,
       onOpenSettings,
+      onOpenAbout,
       updateVisible,
       onReload,
     }),
@@ -40,28 +42,32 @@ let render = (
 // apart now that there are two.
 let section = (screen, label): element => screen->find(`[aria-label="${label}"]`)->Option.getOrThrow
 
-let updateBand = screen => screen->find(".menu-update")
+let updateButton = screen => screen->find(".menu-panel__header > .menu-update")
 
 describe("MenuMainScreen", () => {
   test(
-    "leads with the \u21bb Update band where a build is waiting, and nothing where none is",
+    "puts the \u21bb Update button in the header where a build is waiting, and nothing where none is",
     () => {
       // This is the screen the top bar's pip opens, so the button it is a notification for
-      // has to be on it — first, and absent rather than reserved, since a box kept for it
-      // would be a gap under the title every time there was nothing to install.
-      expect(updateBand(render(~updateVisible=true))->Option.isSome)->toBe(true)
-      expect(updateBand(render())->Option.isSome)->toBe(false)
+      // has to be on it — and in the header, where it is read before anything else and
+      // the sections below it keep their places. Absent rather than reserved: a box held
+      // open would be a gap beside the title every time there was nothing to install.
+      expect(updateButton(render(~updateVisible=true))->Option.isSome)->toBe(true)
+      expect(updateButton(render())->Option.isSome)->toBe(false)
 
-      // Above "this game", which is otherwise the screen's first band.
+      // …and nowhere else on the screen, which is what says it moved rather than doubled.
+      expect(render(~updateVisible=true)->findAll(".menu-update")->Array.length)->toBe(1)
+
+      // "this game" still leads the body, with nothing of the update's between.
       let bands = render(~updateVisible=true)->children->Array.map(el => el->attrOr("aria-label"))
-      expect(bands->Array.indexOf("this game"))->toBe(2)
+      expect(bands->Array.indexOf("this game"))->toBe(1)
     },
   )
 
-  test("the band asks for the waiting build to be installed", () => {
+  test("the header's button asks for the waiting build to be installed", () => {
     let log = []
     render(~updateVisible=true, ~onReload=() => log->Array.push("reload"))
-    ->updateBand
+    ->updateButton
     ->Option.forEach(click)
     expect(log)->toEqual(["reload"])
   })
@@ -211,14 +217,19 @@ describe("MenuMainScreen", () => {
     expect(screen->findAll("nav .menu-row")->Array.map(text))->toEqual(["FreeCell", "Simple Simon"])
   })
 
-  test("hangs the Settings button off the bottom group, above the About footer", () => {
-    // `menu-section--bottom` is what pushes it to the foot of the panel; without the
-    // class it drifts up under Games.
-    let taps = ref(0)
-    let screen = render(~onOpenSettings=() => taps := taps.contents + 1)
-    let button = screen->find(".menu-section--bottom .menu-button")
-    expect(button->Option.mapOr("<missing>", text))->toBe("Settings")
-    button->Option.forEach(click)
-    expect(taps.contents)->toBe(1)
+  test("hangs Settings and About off the bottom group, two across", () => {
+    // `menu-section--bottom` is what pushes the pair to the foot of the panel; without
+    // the class they drift up under Games. The grid they sit in is the game buttons'
+    // (`.menu-buttons`), which is what lands them on the same two tracks as the rest of
+    // the menu rather than at whatever width their words come to.
+    let log = []
+    let screen = render(
+      ~onOpenSettings=() => log->Array.push("settings"),
+      ~onOpenAbout=() => log->Array.push("about"),
+    )
+    let buttons = screen->findAll(".menu-section--bottom .menu-buttons > .menu-button")
+    expect(buttons->Array.map(text))->toEqual(["Settings", "About"])
+    buttons->Array.forEach(click)
+    expect(log)->toEqual(["settings", "about"])
   })
 })

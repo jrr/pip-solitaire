@@ -3,15 +3,16 @@
      Moved here with the component; the rules are unchanged.
 
      `.menu-button` is the menu's general button look, so it has two borrowers
-     besides this component: the Settings button at the foot of the main menu
+     besides this component: the Settings · About pair at the foot of the main menu
      (MenuMainScreen) and the update-check button (RefreshControl). It stays here,
      with the component that defines the shape. */
 
-  /* A section's actions, **two across**: Restart · Share above New Deal · Enter
-     Seed. Fixed tracks rather than shared-out flex widths, and the same two tracks in
-     both sections, so the four buttons read as one grid — each button is half the
-     panel and the lower pair's edges land under the upper pair's. Get this from
-     `flex: 1` instead and the widths follow the labels, which differ per row.
+  /* A section's actions, **two across**: Restart · Share, New Deal · Enter Seed, and at
+     the foot of the main menu Settings · About. Fixed tracks rather than shared-out flex
+     widths, and the same two tracks in every section, so the six buttons read as one
+     grid — each button is half the panel and every row's seam lands under the one above
+     it. Get this from `flex: 1` instead and the widths follow the labels, which differ
+     per row.
 
      `minmax(0, 1fr)` rather than a bare `1fr`: a track's floor is its content by
      default, so on the narrowest phone the pair would push past the panel instead of

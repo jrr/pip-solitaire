@@ -56,10 +56,14 @@ external onDocument: (string, touchEvent => unit, {"passive": bool, "capture": b
 let suppressMs = 350.
 let suppressMoveTol = 30.
 
-// The build string opts back into `user-select: text` so it can be copied, and on iOS
-// double-tap-to-select-word is how that starts. Suppressing the default here would
-// take the selection gesture with the zoom.
-let selectableSelector = "#version-badge"
+// The build string on the About screen opts back into `user-select: text` so it can be
+// copied, and on iOS double-tap-to-select-word is how that starts. Suppressing the
+// default here would take the selection gesture with the zoom.
+//
+// The two lines by name rather than the block around them: the block's third child is
+// the update control, and a double tap landing on *that* is a pair to refuse like any
+// other — exempting it would leave the one button on the screen able to zoom the page.
+let selectableSelector = ".about-build__version, .about-build__time"
 
 let isSelectable = ev =>
   switch ev->target->Nullable.toOption {
