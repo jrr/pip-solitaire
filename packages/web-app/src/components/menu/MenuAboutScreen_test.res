@@ -47,7 +47,13 @@ describe("MenuAboutScreen", () => {
     let screen = render()
     let bands = screen->findAll(".menu-screen > *")
     expect(bands->Array.map(el => el->attrOr("aria-label")))->toEqual(["<missing>", "build"])
-    expect(bands->Array.getUnsafe(0)->children->Array.map(tag))->toEqual(["H1", "P", "A"])
+    expect(bands->Array.getUnsafe(0)->children->Array.map(tag))->toEqual(["DIV", "H1", "P", "A"])
+    // The icon is the app's own, drawn from the vnode the PWA icons are rasterized from,
+    // and decorative: the wordmark beside it is what a reader hears.
+    expect(screen->find(".about-icon > svg")->Option.isSome)->toBe(true)
+    expect(screen->find(".about-icon")->Option.mapOr("", el => el->attrOr("aria-hidden")))->toBe(
+      "true",
+    )
     expect(screen->textIn(".about-blurb"))->toBe(
       "I made this for myself but I hope you like it too.",
     )

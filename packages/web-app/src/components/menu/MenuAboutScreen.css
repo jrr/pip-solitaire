@@ -4,17 +4,45 @@
      The header, the sections and the update controls around them are components this
      screen composes. */
 
+  /* The hero: the icon, the name, the line and the link, centred as one block. The Build
+     section under it stays left-aligned like every other band in the panel — that
+     contrast is what makes this one read as a masthead rather than as the first of two
+     lists. The band is `.menu-section`'s flex column, so centring is `align-items`
+     rather than a margin on each child. */
+  .about-hero {
+    align-items: center;
+    text-align: center;
+  }
+
+  /* The link hugs its own words everywhere (see `.about-link`), which in a centred
+     column means centring that box rather than starting it. */
+  .about-hero .about-link {
+    align-self: center;
+  }
+
+  /* The icon, sized here rather than in the art: `IconArt` authors it 512 square and the
+     rasterizer scales it per output, so on screen it is whatever box it is given. The top
+     margin is the "a little lower" — with no title in the bar above it, the block would
+     otherwise start hard against the back button's row. */
+  .about-icon {
+    width: 7rem;
+    margin-top: 0.4rem;
+  }
+
+  .about-icon > svg {
+    display: block;
+    width: 100%;
+    height: auto;
+  }
+
   /* The app's name, which on this screen is the content rather than the header bar's
      label: the header's own title one size up, borrowing `.menu-title` for the gradient
      and the weight so the wordmark can't drift from the one on the main menu
-     (MenuHeader.css). The doubled selector is what wins the size and the margin — a
+     (MenuHeader.css). The doubled selector is what wins the size and the margins — a
      single class would tie with `.menu-title` inside the same layer and fall to source
-     order, which nothing in this app may lean on (docs/css-layers.md).
-
-     The top margin is the "a little lower" — with no title in the bar above it, the name
-     would otherwise start hard against the back button's row. */
+     order, which nothing in this app may lean on (docs/css-layers.md). */
   .menu-title.about-wordmark {
-    margin-top: 0.6rem;
+    margin-top: 0.1rem;
     margin-bottom: 0.2rem;
     font-size: 2.6rem;
   }
