@@ -46,10 +46,10 @@ describe("MenuAboutScreen", () => {
     // for, which is the one with a heading to find it by.
     let screen = render()
     let bands = screen->findAll(".menu-screen > *")
-    expect(bands->Array.map(el => el->attrOr("aria-label")))->toEqual(["<missing>", "updates"])
+    expect(bands->Array.map(el => el->attrOr("aria-label")))->toEqual(["<missing>", "build"])
     expect(bands->Array.getUnsafe(0)->children->Array.map(tag))->toEqual(["H1", "P", "A"])
     expect(screen->textIn(".about-blurb")->String.startsWith("Pip deals FreeCell"))->toBe(true)
-    expect(screen->textIn("[aria-label='updates'] .menu-section__heading"))->toBe("Updates")
+    expect(screen->textIn("[aria-label='build'] .menu-section__heading"))->toBe("Build")
   })
 
   test("sets the build string out as the subject, version first", () => {

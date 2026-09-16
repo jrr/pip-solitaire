@@ -9,9 +9,9 @@
 // a second one in the bar would name it twice.
 //
 // Top to bottom: the wordmark, a sentence on what Pip is, the link to the source it was
-// built from, and last the build this browser is running — under a heading, because
-// that block is the one thing here a reader might have come looking for rather than
-// read past.
+// built from, and last the build this browser is running — under a heading, because that
+// block is the one thing here a reader might have come looking for rather than read
+// past, and a heading is what they find it by.
 //
 // **The build is the screen's other subject.** The version and build time the Settings
 // footer prints as a quiet caption are set out here at a size to read off a phone at
@@ -82,10 +82,11 @@ let make = ({version, buildTime, updateVisible, onReload, refresh, onClose, onBa
         <span className="about-link__name"> {Html.string(repo)} </span>
       </a>
     </MenuSection>
-    // The build in hand and the two ways to move off it. Headed, unlike the band above:
-    // this is the block a reader comes to this screen *for*, and the heading is what
-    // they find it by.
-    <MenuSection label="updates" heading="Updates">
+    // The build in hand and the two ways to move off it. Headed "Build" rather than
+    // "Updates" because the string under it is what a reader came for — which build this
+    // is — and the two controls act on that; a heading naming them would head the block
+    // with the thing you reach for second.
+    <MenuSection label="build" heading="Build">
       <div className="about-build">
         <div>
           <div className="about-build__version"> {Html.string("v" ++ version)} </div>
