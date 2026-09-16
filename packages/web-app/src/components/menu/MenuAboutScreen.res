@@ -10,9 +10,9 @@
 // this screen would report its find somewhere the player isn't.
 //
 // **The ↻ Update button rides the version's own row** rather than standing under the
-// check, and is reserved with `visibility` when there is nothing to update — the same
-// bargain the footer made: the row is two lines of build string tall either way, so the
-// button can come and go without moving the controls under it.
+// check: that row is two lines of build string tall either way, which is the room the
+// button needs to come and go in without moving the check below it (`<UpdateButton>`,
+// whose `Inline` shape this is, and which the main menu offers as a band).
 //
 // `refresh` is a ready-made vnode, empty until a service-worker state has been detected
 // (`Main`), which is why the check can be absent while the ↻ Update button is only ever
@@ -62,20 +62,7 @@ let make = ({version, buildTime, updateVisible, onReload, refresh, onClose, onBa
             {Html.string(VersionBadge.formatBuildTime(buildTime))}
           </div>
         </div>
-        // Always in the row, reserved with `menu-update--hidden` when there's no update
-        // to offer — see the header. `aria-hidden` mirrors it for assistive tech.
-        <button
-          className={updateVisible
-            ? "menu-update__button"
-            : "menu-update__button menu-update--hidden"}
-          onClick={_ => onReload()}
-          type_="button"
-          title="Update available — reload"
-          ariaLabel="Update now — reload to the new version"
-          ariaHidden={updateVisible ? "false" : "true"}
-        >
-          {Html.string("↻ Update")}
-        </button>
+        <UpdateButton variant=UpdateButton.Inline visible={updateVisible} onReload />
       </div>
     </MenuSection>
     <MenuSection label="updates"> {refresh} </MenuSection>

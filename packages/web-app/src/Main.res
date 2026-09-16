@@ -1239,6 +1239,11 @@ let mainScreen = (model, dispatch): MenuMainScreen.props => {
     Refresh.detect(mode => dispatch(RefreshDetected(mode)))
     dispatch(OpenSettings)
   },
+  // The ↻ Update band: this is the screen the top bar's pip opens, so the notification
+  // and the thing it notifies about are one tap apart. The About screen offers the same
+  // button (`<UpdateButton>`) for a player who went looking.
+  updateVisible: model.updateAvailable,
+  onReload: () => dispatch(Reload),
 }
 
 // The "Enter seed" modal, raised over the menu by its Enter Seed button. It is built

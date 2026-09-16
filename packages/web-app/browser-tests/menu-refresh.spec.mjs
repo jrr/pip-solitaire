@@ -31,6 +31,12 @@ test("the About footer is the Settings screen's, and no other screen's", async (
   await expect(footer).toHaveCount(0)
   await expect(version).toHaveCount(0)
 
+  // Nor is there an ↻ Update band with nothing waiting: the main menu's is absent
+  // rather than reserved, so a box kept for it would show up here as a gap under the
+  // title (`UpdateButton.res`). Its presence can't be walked — that needs a service
+  // worker to actually install a newer build — so this is the half a walk can see.
+  await expect(page.locator(".menu-update")).toHaveCount(0)
+
   await page.getByRole("button", { name: "Settings", exact: true }).click()
   await expect(footer).toHaveCount(1)
   await expect(version).toHaveCount(1)

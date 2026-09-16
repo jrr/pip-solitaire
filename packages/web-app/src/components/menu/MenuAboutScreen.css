@@ -4,9 +4,9 @@
      and the update controls around them are components this screen composes. */
 
   /* The build, with the ↻ Update button at the end of its row. The button is reserved
-     with `visibility` when there's nothing to update (`.menu-update--hidden`), so it
-     needs a row taller than itself to come and go in without moving anything: the two
-     lines of build string are that row. */
+     with `visibility` when there's nothing to update (`UpdateButton.css`), so it needs a
+     row taller than itself to come and go in without moving anything: the two lines of
+     build string are that row. */
   .about-build {
     display: flex;
     align-items: center;
@@ -73,26 +73,5 @@
     flex: none;
     width: 1.15em;
     height: 1.15em;
-  }
-
-  /* The green call-to-action, keeping the accent fill it wears on the top bar: a short
-     button at the end of the build row, sized so the row's height doesn't depend on it. */
-  .menu-update__button {
-    flex: none;
-    white-space: nowrap;
-    padding: 8px 14px;
-    font: 14px "Libre Franklin", sans-serif;
-    color: #f8fafc;
-    background: #166534;
-    border: 1px solid transparent;
-    border-radius: 8px;
-    cursor: pointer;
-  }
-
-  /* Reserve an element's space while hiding it: `visibility` keeps the layout box
-     (unlike `display: none`, which collapses it), so the button can come and go without
-     reflowing what is under it. */
-  .menu-update--hidden {
-    visibility: hidden;
   }
 }

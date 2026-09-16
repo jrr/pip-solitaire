@@ -1,7 +1,7 @@
 // The About screen: the build string set as the subject, the two update controls, and
-// the link to the source. What is pinned here is what a browser can't be asked about
-// cheaply — that the ↻ Update button keeps its box when there is nothing to update, and
-// that the link out carries the three attributes that make it safe to follow.
+// the link to the source. What the ↻ Update button *is* in either of its shapes is
+// `UpdateButton_test`'s; what's left here is that this screen places the reserved one,
+// and that the link out carries the three attributes that make it safe to follow.
 open Vitest
 open TestDom
 
@@ -25,7 +25,7 @@ let render = (
   )
 
 let check = RefreshControl.make({label: "Check for updates", busy: false, onClick: () => ()})
-let updateButton = screen => screen->find(".menu-update__button")
+let updateButton = screen => screen->find(".menu-update")
 
 describe("MenuAboutScreen", () => {
   test("sets the build string out as the subject, version first", () => {
@@ -49,21 +49,21 @@ describe("MenuAboutScreen", () => {
     expect(screen->updateButton->Option.isSome)->toBe(true)
   })
 
-  test("keeps the Update button's box reserved when there is nothing to update", () => {
-    // Reserved with `visibility`, never the collapsing `hidden` attribute: the button
-    // rides the end of the build row, and a row that changed height as an update landed
-    // would move the controls under it.
+  test("takes the reserved shape of the Update button, inside the build row", () => {
+    // The *inline* one, which keeps its box when there's nothing to update — unlike the
+    // main menu's band, which is absent until there is. Reserved in a row two lines of
+    // build string tall, so it comes and goes without moving the check below it.
     switch render(~refresh=check)->updateButton {
     | Some(b) =>
-      expect(b->hasAttr("hidden"))->toBe(false)
+      expect(b->classes->String.includes("menu-update--inline"))->toBe(true)
       expect(b->classes->String.includes("menu-update--hidden"))->toBe(true)
-      expect(b->attrOr("aria-hidden"))->toBe("true")
     | None => expect("update button")->toBe("missing")
     }
-    switch render(~refresh=check, ~updateVisible=true)->updateButton {
-    | Some(b) => expect(b->classes->String.includes("menu-update--hidden"))->toBe(false)
-    | None => expect("update button")->toBe("missing")
-    }
+    expect(
+      render(~refresh=check)
+      ->find(".about-build > .menu-update")
+      ->Option.isSome,
+    )->toBe(true)
   })
 
   test("offers no check at all where the browser can say nothing about updates", () => {
