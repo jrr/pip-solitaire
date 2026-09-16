@@ -48,7 +48,9 @@ describe("MenuAboutScreen", () => {
     let bands = screen->findAll(".menu-screen > *")
     expect(bands->Array.map(el => el->attrOr("aria-label")))->toEqual(["<missing>", "build"])
     expect(bands->Array.getUnsafe(0)->children->Array.map(tag))->toEqual(["H1", "P", "A"])
-    expect(screen->textIn(".about-blurb")->String.startsWith("Pip deals FreeCell"))->toBe(true)
+    expect(screen->textIn(".about-blurb"))->toBe(
+      "I made this for myself but I hope you like it too.",
+    )
     expect(screen->textIn("[aria-label='build'] .menu-section__heading"))->toBe("Build")
   })
 

@@ -8,7 +8,7 @@
 // why `<MenuHeader>` is given no title here: the wordmark *is* the screen's heading, and
 // a second one in the bar would name it twice.
 //
-// Top to bottom: the wordmark, a sentence on what Pip is, the link to the source it was
+// Top to bottom: the wordmark, one line of copy under it, the link to the source it was
 // built from, and last the build this browser is running — under a heading, because that
 // block is the one thing here a reader might have come looking for rather than read
 // past, and a heading is what they find it by.
@@ -45,11 +45,16 @@ type props = {
   onBackToSettings: unit => unit,
 }
 
-// What the app is, in two sentences, for a reader who has just arrived at its name.
-// Both halves are claims the app has to keep: every board really is dealt from a number
-// a player can share or type back in (`SeedDialog`, the share link), and it really does
-// run with the network gone (the service worker precaches the bundle).
-let blurb = "Pip deals FreeCell, Simple Simon and a few of their relatives. Every board has a number, so the one in front of you can be shared or dealt again exactly as it was — and once it has loaded, it plays offline."
+// The screen's one line of copy, and it sets a **tone** rather than describing anything:
+// what the app does is what the games list and the board behind this menu are already
+// saying, and a feature sentence here would only be saying it worse.
+//
+// **First person, deliberately.** The line under it is a person's repository, which is
+// what gives the "I" a referent — and an app that is one person's habit rather than a
+// product is the fact worth setting the reader up with. Keep it a single sentence: it is
+// the only thing between the name and the link, and a second one would make it a
+// paragraph to read rather than a line to take in.
+let blurb = "I made this for myself but I hope you like it too."
 
 // The repository this build was made from. A real link out, like the game info screen's:
 // a new tab, because the app is a PWA and following a link in place would tear down a
