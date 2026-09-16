@@ -127,7 +127,7 @@ let make = ({version, buildTime, updateVisible, onReload, refresh, onClose, onBa
       // pair a single row on a phone.
       <div className="about-build">
         <div>
-          <div className="about-build__version"> {Html.string("v" ++ version)} </div>
+          <div className="about-build__version"> {Html.string(version)} </div>
           <div className="about-build__time">
             {Html.string(VersionBadge.formatBuildTime(buildTime))}
           </div>

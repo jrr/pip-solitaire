@@ -65,7 +65,7 @@ describe("MenuAboutScreen", () => {
     // line, and the build time — the same string `VersionBadge` formats for that footer
     // — under it.
     let screen = render()
-    expect(screen->textIn(".about-build__version"))->toBe("v01e8f5f")
+    expect(screen->textIn(".about-build__version"))->toBe("01e8f5f")
     expect(screen->textIn(".about-build__time"))->toBe(
       VersionBadge.formatBuildTime("2026-07-23T20:20:00.000Z"),
     )
