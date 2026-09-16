@@ -1,5 +1,5 @@
 // The About screen: the app's name and what it is, the link to the source, and the
-// build with its two update controls. What the ↻ Update button *is* in either of its
+// build with the one control that acts on it. What the ↻ Update button *is* in either of its
 // shapes is `UpdateButton_test`'s; what's left here is that this screen places the
 // reserved one, that the link out carries the three attributes that make it safe to
 // follow, and that the name is the screen's own heading rather than the header bar's.
@@ -71,30 +71,14 @@ describe("MenuAboutScreen", () => {
     )
   })
 
-  test("holds both update controls, the check and the switch-over", () => {
-    // They are two halves of one job — a check that found something has to have
-    // somewhere to report it — so a screen with one and not the other is the bug this
-    // catches.
-    let screen = render(~refresh=check, ~updateVisible=true)
-    expect(screen->find(".menu-refresh")->Option.mapOr("", text))->toBe("Check for updates")
-    expect(screen->updateButton->Option.isSome)->toBe(true)
-  })
-
-  test("leads the build block with the Update band and ends it with the check", () => {
-    // The order is what makes the band's arrival free: the block is anchored to the foot
-    // of the panel, so it grows upward, and the check — the control a hand is on at the
-    // moment an update is found — stays where it was. Under the check instead, that same
-    // hand's second tap would land on a reload.
-    let block =
-      render(~refresh=check, ~updateVisible=true)
-      ->find("[aria-label='build']")
-      ->Option.getOrThrow
-    expect(block->children->Array.map(el => el->classes))->toEqual([
-      "menu-section__heading",
-      "menu-update",
-      "about-build",
-    ])
-    expect(block->find(".about-build > .menu-refresh")->Option.isSome)->toBe(true)
+  test("offers one control beside the build, and installs rather than re-checks", () => {
+    // A build already downloaded and waiting is installed, not checked for again — so the
+    // ↻ Update button takes the check's own slot rather than standing over it, and the row
+    // is one row in every state.
+    let row = screen =>
+      screen->find(".about-build")->Option.getOrThrow->children->Array.map(classes)
+    expect(row(render(~refresh=check)))->toEqual(["", "menu-button menu-refresh"])
+    expect(row(render(~refresh=check, ~updateVisible=true)))->toEqual(["", "menu-update"])
   })
 
   test("sits at the foot of the panel, under the masthead's air", () => {

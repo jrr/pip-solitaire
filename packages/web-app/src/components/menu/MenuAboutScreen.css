@@ -12,6 +12,10 @@
   .about-hero {
     align-items: center;
     text-align: center;
+    /* Centred in the room it has: the build block below carries `margin-top: auto` too,
+       so the screen's slack is split between the two margins and the masthead sits
+       halfway between the header and the block at the foot. */
+    margin-top: auto;
   }
 
   /* The link hugs its own words everywhere (see `.about-link`), which in a centred
@@ -56,12 +60,16 @@
      thing on two screens. */
   .about-blurb {
     margin: 0;
-    /* Held well inside the panel so the sentence breaks over two or three short lines
-       under the name rather than running the full width: a line of body type as wide as
-       the panel reads as the start of a paragraph, and this is a caption on a wordmark.
-       Padding rather than a `max-width`, so the centring above still has the whole band
-       to centre in. */
-    padding-inline: 2.5rem;
+    /* Held well inside the panel so the sentence breaks into short lines under the name
+       rather than running the full width: a line of body type as wide as the panel reads
+       as the start of a paragraph, and this is a caption on a wordmark. Padding rather
+       than a `max-width`, so the centring above still has the whole band to centre in.
+
+       `balance` is what makes the break even rather than greedy — without it the first
+       line takes everything it can and the last carries a word or two. It is ignored
+       where it isn't supported, which costs that evenness and nothing else. */
+    padding-inline: 3.25rem;
+    text-wrap: balance;
     font: var(--prose-font);
     color: var(--control-ink-muted);
   }
@@ -74,13 +82,22 @@
     gap: 0.75rem;
   }
 
-  /* The check, given a column narrow enough that its words set over two lines — which is
-     what keeps it beside the build string rather than under it on a phone. `.menu-button`
-     holds every control in the panel to one line, so the wrap is this rule's to allow;
-     the doubled selector is what carries that, rather than the two sheets' order
-     (docs/css-layers.md). */
-  .about-build > .menu-refresh {
+  /* The row's one control, whichever of the two it is (`MenuAboutScreen.res`): a *fixed*
+     slot, so swapping the update check for the ↻ Update button changes nothing about the
+     row — the shorter word would otherwise shrink it under the reader's thumb. Narrow
+     enough that "Check for updates" sets over two lines, which is what keeps it beside
+     the build string rather than under it on a phone, and tall enough to hold those two.
+
+     `.menu-button` holds every control in the panel to one line and `.menu-update` is a
+     full-width block, so both of those are this rule's to overrule; the doubled selector
+     is what carries that, rather than the two sheets' order (docs/css-layers.md). */
+  .about-build > .menu-refresh,
+  .about-build > .menu-update {
+    display: flex;
+    align-items: center;
+    justify-content: center;
     flex: 0 0 8.5rem;
+    min-height: 3.4rem;
     white-space: normal;
     line-height: 1.25;
   }

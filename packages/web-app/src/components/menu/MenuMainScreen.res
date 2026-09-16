@@ -117,9 +117,7 @@ let make = ({
   // An unnamed band: the button inside it says what it is, and a group named "update"
   // around one control called "Update now" is the same word twice. The section is what
   // gives it the panel's own spacing, so it sits in the column rather than on top of it.
-  <MenuSection>
-    <UpdateButton visible={updateVisible} onReload />
-  </MenuSection>
+  <MenuSection> {updateVisible ? <UpdateButton onReload /> : Html.empty} </MenuSection>
   // The heading carries the game and its deal number, so the section says which board
   // its two buttons act on. A player can read the number off (or dictate it) where no
   // link can be delivered at all — which is the far end of `SeedDialog`. Absent on a

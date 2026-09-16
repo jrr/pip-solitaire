@@ -27,14 +27,20 @@
 // waiting. They are two halves of one job, and a check made on this screen would
 // otherwise report its find somewhere the player isn't.
 //
-// **The ↻ Update band leads that block and the check ends it.** The block is anchored to
-// the foot of the panel, so a band arriving inside it grows the block *upward*: the check
-// button — which is what a hand is on at the moment an update is found, having just
-// pressed it — does not move. Put the band under the check instead and that same hand's
-// second tap lands on a reload.
+// **The block offers one control, and which one is whichever is worth offering.** A build
+// already downloaded and waiting is installed, not checked for again — so the ↻ Update
+// button takes the check's own slot rather than standing over it. The slot is a fixed
+// box (MenuAboutScreen.css), so the swap moves nothing.
+//
+// What that costs: a check that finds something turns the button under the reader's
+// thumb into a reload. The two are a different colour and a different word, and the
+// install lands a beat later than the check it followed — `onNeedRefresh` fires when the
+// new worker has finished installing, not when the check resolves — so the swap is not
+// inside a double tap. A misfire reloads to a board the save restores, which is why this
+// is a cost rather than a refusal.
 //
 // `refresh` is a ready-made vnode, empty until a service-worker state has been detected
-// (`Main`), which is why the check can be absent while the build string is not.
+// (`Main`), which is why the slot can be empty while the build string is not.
 
 %%raw(`import "./MenuAboutScreen.css"`)
 
@@ -116,10 +122,9 @@ let make = ({version, buildTime, updateVisible, onReload, refresh, onClose, onBa
     // on that; a heading naming them would head the block with the thing you reach for
     // second.
     <MenuSection label="build" heading="Build" modifier="menu-section--bottom">
-      <UpdateButton visible={updateVisible} onReload />
-      // The build string with the check beside it: two short lines and a button narrow
-      // enough to set its words over two lines of its own, which is what keeps the pair a
-      // single row on a phone.
+      // The build string with its one control beside it: two short lines and a button
+      // narrow enough to set its words over two lines of its own, which is what keeps the
+      // pair a single row on a phone.
       <div className="about-build">
         <div>
           <div className="about-build__version"> {Html.string("v" ++ version)} </div>
@@ -127,7 +132,7 @@ let make = ({version, buildTime, updateVisible, onReload, refresh, onClose, onBa
             {Html.string(VersionBadge.formatBuildTime(buildTime))}
           </div>
         </div>
-        {refresh}
+        {updateVisible ? <UpdateButton onReload /> : refresh}
       </div>
     </MenuSection>
   </div>

@@ -2,8 +2,9 @@
   /* The ↻ Update button (UpdateButton.res): a full-width control in the panel's own box,
      wearing the accent fill the top bar's pip and the selected game row wear — this is
      the app telling you about itself rather than a control acting on the game in hand.
-     One shape, because the two screens that offer it both have room for a band and both
-     leave it out entirely when there is nothing to update. */
+     The box is the band the main menu gives it; the About screen sizes it to the slot it
+     shares with the update check there (MenuAboutScreen.css), which is why the width is
+     a plain `100%` rather than anything a flex parent can't overrule. */
   .menu-update {
     display: block;
     width: 100%;

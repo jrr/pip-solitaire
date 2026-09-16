@@ -9,32 +9,24 @@
 // the accessible name, which is the part that would quietly diverge if each screen spelt
 // its own.
 //
-// **Absent until there is something to press**, on both. A reserved box would be a
-// permanent gap — under the title on one screen and under the heading on the other — and
-// it would be there every time there was no update, which is almost always. What that
-// costs is that the band's arrival moves the rows around it the once; both screens place
-// it where that is affordable. On the main menu it leads, so the sections below shift
-// down; on the About screen it sits inside a block anchored to the foot of the panel, so
-// the block grows *upward* and the control under it — the update check — doesn't move at
-// all.
+// **Whether to offer it at all is the placing screen's**, and neither reserves a box for
+// it: on the main menu it is a band that leads the panel when a build is waiting and is
+// simply not there otherwise, and on the About screen it takes the update check's own
+// slot — a build already downloaded is installed, not checked for again. This file is
+// only the button, which is the half that would quietly diverge if each screen spelt its
+// own words.
 
 %%raw(`import "./UpdateButton.css"`)
 
-type props = {
-  // A newer build is installed and waiting. `false` renders nothing at all.
-  visible: bool,
-  onReload: unit => unit,
-}
+type props = {onReload: unit => unit}
 
-let make = ({visible, onReload}) =>
-  visible
-    ? <button
-        className="menu-update"
-        onClick={_ => onReload()}
-        type_="button"
-        title="Update available — reload"
-        ariaLabel="Update now — reload to the new version"
-      >
-        {Html.string("↻ Update")}
-      </button>
-    : Html.empty
+let make = ({onReload}) =>
+  <button
+    className="menu-update"
+    onClick={_ => onReload()}
+    type_="button"
+    title="Update available — reload"
+    ariaLabel="Update now — reload to the new version"
+  >
+    {Html.string("↻ Update")}
+  </button>
