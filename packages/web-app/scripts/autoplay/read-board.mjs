@@ -31,6 +31,9 @@ export function layoutOf(gameId) {
   return {
     id: gameId,
     law,
+    // The deck as `Position` packs it: how far the ranks run and which suits are in
+    // play, which a board mid-game no longer says for itself.
+    pack: Position.packOf(game.deck),
     cells: Game.pileIndices(game, "FreeCell"),
     foundations: Game.pileIndices(game, "Foundation"),
     cascades: Game.pileIndices(game, "Cascade"),
@@ -189,11 +192,12 @@ export function foundationTop(pile, law = "FreeCell") {
  * Build the `Position` the solver thinks with from the piles `assignPiles` returns,
  * each a list of `{ code, announced }` bottom-first, laid out as `layout` says.
  *
- * A `Position` is a plain record of arrays — `law` (which game's rules), `cells`
- * (one slot per free cell, `-1` when empty; none under Simple Simon), `found` (how
- * many of each suit are home, indexed by `Position.suitOf`), `casc` (the columns,
- * bottom-first like `GameState.cardsInPile`) — so a driver outside ReScript can
- * build one; see `core/src/Position.res`.
+ * A `Position` is a plain record of arrays — `law` (which game's rules), `pack` (the
+ * deck it's played with), `cells` (one slot per free cell, `-1` when empty; none
+ * under Simple Simon), `found` (how many of each suit are home, indexed by
+ * `Position.suitOf`), `casc` (the columns, bottom-first like
+ * `GameState.cardsInPile`) — so a driver outside ReScript can build one; see
+ * `core/src/Position.res`.
  *
  * Cascades are `Fanned`, so the reader's geometric order is the pile order.
  * Foundations go through `foundationTop` above. Free cells hold one card by
@@ -216,6 +220,7 @@ export function stateFromPiles(piles, layout = FREECELL) {
   }
   return {
     law: layout.law,
+    pack: layout.pack,
     cells,
     found,
     casc: layout.cascades.map((i) => piles[i].map((c) => cardId(c.code))),

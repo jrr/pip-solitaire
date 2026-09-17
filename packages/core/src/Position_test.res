@@ -36,7 +36,13 @@ describe("Position", () => {
   let packed = (~game, state) =>
     switch Position.ofGameState(~game, state) {
     | Some(position) => position
-    | None => {Position.law: FreeCell, cells: [], found: [], casc: []} // fails loudly in any test that uses it
+    | None => {
+        Position.law: FreeCell,
+        pack: Position.standardPack,
+        cells: [],
+        found: [],
+        casc: [],
+      } // fails loudly in any test that uses it
     }
 
   test("a card packs into an int and comes back the same card", () => {
@@ -87,10 +93,10 @@ describe("Position", () => {
     expect(Position.hasWon(position))->toBe(false)
   })
 
-  test("a board that isn't FreeCell-shaped packs to nothing at all", () => {
-    // The model can only say four cells, four foundations and eight columns, so a
-    // board of any other shape gets an honest `None` rather than one with pieces
-    // missing. Here: the same deal with the free cells and foundations taken away.
+  test("a board with nowhere to send a card home packs to nothing at all", () => {
+    // The counts are the board's own — cells and columns alike — but a suit with no
+    // foundation to climb can never come home, and `found` would count it up all the
+    // same. Here: the same deal with the free cells and foundations taken away.
     let cascadesOnly: Game.t = {
       ...game,
       piles: Game.pilesOf(game, Game.Cascade),
@@ -323,7 +329,13 @@ describe("Position under Simple Simon", () => {
   let packed = (~game, state) =>
     switch Position.ofGameState(~game, state) {
     | Some(position) => position
-    | None => {Position.law: SimpleSimon, cells: [], found: [], casc: []} // fails loudly in any test that uses it
+    | None => {
+        Position.law: SimpleSimon,
+        pack: Position.standardPack,
+        cells: [],
+        found: [],
+        casc: [],
+      } // fails loudly in any test that uses it
     }
 
   test("an opening deal packs under Simple Simon's law: no cells, ten columns", () => {
@@ -337,13 +349,16 @@ describe("Position under Simple Simon", () => {
   test("the law is read off the rules, and the shape is checked apart from it", () => {
     // Spiderette plays by Simple Simon's laws, so the law reads the same — but it has
     // a stock and face-down cards, which the model has no word for, so the board
-    // itself is refused. A short-deck FreeCell is the same story under the other law.
+    // itself is refused. What is *not* a refusal is a board of another size: Mini
+    // reads under the same law as FreeCell and packs, counts and pack and all.
     expect(Position.lawOf(Game.spiderette))->toEqual(Some(Position.SimpleSimon))
     expect(
       Position.ofGameState(~game=Game.spiderette, GameState.initial(Game.spiderette)),
     )->toEqual(None)
     expect(Position.lawOf(Game.mini))->toEqual(Some(Position.FreeCell))
-    expect(Position.ofGameState(~game=Game.mini, GameState.initial(Game.mini)))->toEqual(None)
+    expect(
+      Position.ofGameState(~game=Game.mini, GameState.initial(Game.mini))->Option.isSome,
+    )->toBe(true)
   })
 
   test("every move the model offers is a move the reducer accepts", () => {
@@ -480,4 +495,94 @@ describe("Position under Simple Simon", () => {
     }
     expect(divergences)->toEqual([])
   })
+})
+
+// The same law as the first block, over a pack that isn't fifty-two cards. What's
+// worth pinning is every place a 52 or a 13 used to be written down — a won board's
+// total, the rank a foundation is done at, and which foundations a card waits on
+// before it is safe to collect. Micro is the sharp one: its ♠♥ pack has *one* suit
+// of the other colour, so a rule naming two by number stalls above the Twos.
+describe("Position on a short pack", () => {
+  let settle = (~game, state) =>
+    if Reducer.canFinish(~game, state) {
+      state
+    } else {
+      let (collected, _moved) = Reducer.autoCollect(~game, state)
+      collected
+    }
+
+  test("the pack is the board's own deck, counts and all", () => {
+    switch (
+      Position.ofGameState(~game=Game.mini, GameState.initial(Game.mini)),
+      Position.ofGameState(~game=Game.micro, GameState.initial(Game.micro)),
+    ) {
+    | (Some(mini), Some(micro)) =>
+      expect(mini.pack)->toEqual({Position.suits: [0, 1, 2, 3], ranks: 5, size: 20})
+      expect(mini.cells)->toEqual([-1, -1])
+      expect(Array.length(mini.casc))->toBe(4)
+      // Micro's two suits keep their numbers from the full pack — ♠ 0 and ♥ 1 — so
+      // `isRed` and `suitOf` read a short deck with no case of their own.
+      expect(micro.pack)->toEqual({Position.suits: [0, 1], ranks: 8, size: 16})
+      expect(
+        micro.casc
+        ->Array.flatMap(pile => pile)
+        ->Array.every(card => Position.suitOf(card) == 0 || Position.suitOf(card) == 1),
+      )->toBe(true)
+      // A won board totals the pack, not 52.
+      expect(Position.hasWon({...micro, found: [8, 8, 0, 0]}))->toBe(true)
+      expect(Position.hasWon({...mini, found: [5, 5, 5, 5]}))->toBe(true)
+    | _ => expect("both short packs read")->toBe("but one of them didn't")
+    }
+  })
+
+  // A whole game played twice, once through `Reducer` and once through the mirror,
+  // for each of the two boards — the test that catches a predicate still counting to
+  // thirteen. Deal #3 of each, so neither is the opening every screenshot uses.
+  [Game.miniDeal(~seed=3), Game.microDeal(~seed=3)]->Array.forEach(game =>
+    test(
+      `auto-collect, canFinish and the board after a move are the reducer's on ${game.name}`,
+      () => {
+        let opening = GameState.initial(game)
+        let divergences = []
+        switch (Position.ofGameState(~game, opening), Solver.plan(~game, opening)) {
+        | (None, _) => divergences->Array.push(`${game.name} isn't a board the model reads`)
+        | (_, None) => divergences->Array.push(`${game.name} deal 3 went unsolved`)
+        | (Some(start), Some(moves)) =>
+          let real = ref(opening)
+          let mirrored = ref(start)
+          moves->Array.forEachWithIndex(
+            (move, i) =>
+              switch Position.toAction(~game, real.contents, move) {
+              | None => divergences->Array.push(`move ${Int.toString(i)}: no action for it`)
+              | Some(action) =>
+                switch Reducer.reduce(~game, real.contents, action) {
+                | Error(_) =>
+                  divergences->Array.push(`move ${Int.toString(i)}: the reducer refused it`)
+                | Ok(next) =>
+                  real := settle(~game, next)
+                  mirrored := Position.applyMove(mirrored.contents, move)
+                  let realKey =
+                    Position.ofGameState(~game, real.contents)->Option.mapOr(
+                      "(not a board the model reads)",
+                      Position.key,
+                    )
+                  if realKey != Position.key(mirrored.contents) {
+                    divergences->Array.push(
+                      `move ${Int.toString(i)} (${Position.describeMove(move)}): boards differ`,
+                    )
+                  }
+                  if (
+                    Position.canFinish(mirrored.contents) != Reducer.canFinish(~game, real.contents)
+                  ) {
+                    divergences->Array.push(`move ${Int.toString(i)}: canFinish differs`)
+                  }
+                }
+              },
+          )
+          expect(Reducer.canFinish(~game, real.contents))->toBe(true)
+        }
+        expect(divergences)->toEqual([])
+      },
+    )
+  )
 })
