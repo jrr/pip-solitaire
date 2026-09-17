@@ -26,6 +26,11 @@ type t = {
   // `numbers` below drops the term rather than printing "0 cells".
   cells: int,
   cards: int,
+  // How many of those cards the deal holds back in a stock, and 0 on a board with no
+  // stock at all — which is why `numbers` drops the term rather than printing it, as it
+  // does for cells. The *opening* count, not a running one: this screen describes a game
+  // rather than reporting on the one in hand, and the board it shows above is deal #1's.
+  stock: int,
   reference: string,
   // The board as dealt — every pile with its cards, and how many of them lie face down
   // — for the still of it the screen shows (`BoardPreview`). Deal #1, the one the games
@@ -98,6 +103,12 @@ let nameOf = (game: Game.t): string =>
 let deckSize = (deck: Cards.deck): int =>
   Array.length(deck.suits) * Array.length(deck.ranks) * deck.copies
 
+// The undealt remainder, counted off the piles rather than as `deckSize` minus the
+// tableau: a board could hold a card back somewhere that isn't a stock, and the
+// subtraction would report it as stock anyway.
+let stockSize = (game: Game.t): int =>
+  Game.pilesOf(game, Game.Stock)->Array.reduce(0, (n, pile) => n + Array.length(pile.cards))
+
 // The still's box: the *flattest* board in the game's family. It is the one board that
 // fills the box on both axes, and every other one fits inside it with room to spare
 // across — where the tallest-shaped board would leave the rest of the family sitting in
@@ -124,6 +135,7 @@ let forGame = (game: Game.t): t => {
   cascades: Game.pilesOf(game, Game.Cascade)->Array.length,
   cells: Game.pilesOf(game, Game.FreeCell)->Array.length,
   cards: deckSize(game.deck),
+  stock: stockSize(game),
   reference: referenceFor(game.id),
   opening: game.piles,
   previewBox: previewBoxFor(game),
@@ -132,18 +144,34 @@ let forGame = (game: Game.t): t => {
   ->descriptionFor,
 }
 
+// `\u{a0}` rather than a space, here and in the stock term below: the panel is narrow
+// enough that the line wraps on a phone, and a term is the unit it should wrap at.
+// Broken at an ordinary space it reads "24 in" over "stock", a number severed from what
+// it counts; unbreakable, the only place left to wrap is a middot, which is the one
+// place the line already says it may be read in parts.
 let count = (n: int, ~singular: string, ~plural: string): string =>
-  Int.toString(n) ++ " " ++ (n == 1 ? singular : plural)
+  Int.toString(n) ++ "\u{a0}" ++ (n == 1 ? singular : plural)
 
-// The numbers as one line — "8 cascades · 4 cells · 52 cards". A term whose count is
+// The numbers as one line — "52 cards · 8 cascades · 4 cells". A term whose count is
 // zero is left out entirely: "0 cells" is a number a reader has to discard, where the
 // absence says the same thing and is one term shorter. The separator is a middot with
-// spaces around it, which is what keeps the three readable as three.
+// spaces around it, which is what keeps the terms readable as separate terms.
+//
+// **The pack leads, and the board is described in it.** It is the term that survives
+// every game — a board can want no cells and no stock — so the line opens the same way
+// whichever game is on screen, and the shape terms after it say how that pack is laid
+// out rather than being joined by it.
+//
+// **The stock names no noun of its own.** Every other term counts a thing the board has
+// some number of; "24 in stock" counts part of the pack the line opened with, and the
+// bare "in stock" is what keeps it a share of that number rather than a fourth one to
+// add up — which "24 stock cards" alongside "52 cards" would not.
 let numbers = (info: t): string =>
   [
+    Some(count(info.cards, ~singular="card", ~plural="cards")),
     Some(count(info.cascades, ~singular="cascade", ~plural="cascades")),
     info.cells == 0 ? None : Some(count(info.cells, ~singular="cell", ~plural="cells")),
-    Some(count(info.cards, ~singular="card", ~plural="cards")),
+    info.stock == 0 ? None : Some(Int.toString(info.stock) ++ "\u{a0}in\u{a0}stock"),
   ]
   ->Array.filterMap(term => term)
   ->Array.join(" · ")

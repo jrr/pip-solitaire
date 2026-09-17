@@ -24,10 +24,13 @@
     border-radius: var(--control-radius);
   }
 
-  /* "8 cascades · 4 cells · 52 cards". The mono stack — the one the seed value and the
-     board readout already use — is what keeps the digits lined up as the eye runs
-     across the three terms, and `letter-spacing` opens them out so the middots read as
-     separators rather than as part of a number. */
+  /* "52 cards · 8 cascades · 4 cells", and a stock's board a term longer. The mono stack
+     — the one the seed value and the board readout already use — is what keeps the digits
+     lined up as the eye runs across the terms, and `letter-spacing` opens them out so the
+     middots read as separators rather than as part of a number. The line wraps rather
+     than shrinking to hold a fourth term: a smaller face here would be the one place in
+     the panel where a number is harder to read than the prose around it. Where it wraps
+     is `GameInfo`'s doing, not this file's — a term holds its words together. */
   .game-info__numbers {
     margin: 0;
     font: 13px ui-monospace, "SF Mono", Menlo, monospace;

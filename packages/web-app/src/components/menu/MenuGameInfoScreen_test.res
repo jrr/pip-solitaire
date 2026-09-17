@@ -83,7 +83,10 @@ describe("MenuGameInfoScreen", () => {
   })
 
   test("shows the board's numbers", () => {
-    expect(render()->textIn(".game-info__numbers"))->toBe("8 cascades · 4 cells · 52 cards")
+    // Non-breaking spaces inside the terms, which is `GameInfo`'s doing and pinned there.
+    expect(render()->textIn(".game-info__numbers"))->toBe(
+      "52\u{a0}cards · 8\u{a0}cascades · 4\u{a0}cells",
+    )
   })
 
   test("links out to the game's article in a tab of its own", () => {
