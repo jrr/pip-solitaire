@@ -4,7 +4,8 @@
 //   mise run solve -- 24680                 # a particular deal
 //   mise run solve -- 1-25                  # a range, for soaking the solver
 //   mise run solve -- --quiet 1-100         # just the summary line
-//   mise run solve -- --game simplesimon 7  # a Simple Simon deal
+//   mise run solve -- --game simplesimon 7  # another board, by `Game.t` id
+//   mise run solve -- --game mini 1-200     # …a short-deck one, likewise
 //
 // What it's for, and what to measure with it: docs/solver.md § Measuring it.
 //

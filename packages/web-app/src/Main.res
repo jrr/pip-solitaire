@@ -368,12 +368,12 @@ let settingsEnv = MenuSettingsScreen.liveEnv(
 settingsEnv.publish(settingsInit)
 settingsEnv.root(settingsInit)
 
-// **A board is now its family's chosen one**, which is the one fact three messages
+// **A board is now its family's chosen one**, which is the one fact two messages
 // below have to write. A scene mounting says it however the board got there — a row
-// tap, a `?game=` link, a resume — and so does the info screen opening on a board,
-// since the picker there is the tap that opens it. The family is read off the board
-// rather than passed in: a board belongs to at most one (`Game.familyOf`), so naming it
-// again at each call site would be the same fact written a second time.
+// tap, a `?game=` link, a resume — and so does a family's segment cycled with no board
+// of it up. The family is read off the board rather than passed in: a board belongs to
+// at most one (`Game.familyOf`), so naming it again at each call site would be the same
+// fact written a second time.
 //
 // A board of no family, or one its family has already chosen, hands the model straight
 // back — and the physical-equality check in `Html.mount` is what turns that into no
@@ -536,13 +536,12 @@ let update = (msg, model) =>
   // the "i" was tapped, and the game it is about need not be the one on the table, so
   // there is nothing here that Settings' own return doesn't already do.
   //
-  // The screen is *about* a variant, and the variant it is about is the one its family
-  // has chosen — which is what makes the picker on it a choice rather than a preview.
-  // Opening from a row's "i" that is already true and this writes nothing; opening from
-  // the picker is how a pack picked there is remembered.
-  | OpenGameInfo(info) =>
-    let (model, effect) = rememberVariant(model, info.id)
-    ({...model, menuScreen: Menu.GameInfo(info)}, effect)
+  // **Reading about a board is not choosing it.** The screen is *about* a variant, and
+  // its picker moves it from one to another, but neither touches the family's chosen
+  // board (`rememberVariant`): the Games list's segment shows what it did before the
+  // "i" was tapped, whatever the picker was walked through, and nothing mounts. The
+  // segment is the one control that chooses.
+  | OpenGameInfo(info) => ({...model, menuScreen: Menu.GameInfo(info)}, Html.noEffect)
   // Opening the Debug screen clears the previous visit's share link rather than
   // leaving it up: the board may well have moved on since, and a stale link is worse
   // than a briefly disabled button. The view kicks off a fresh encode alongside this
@@ -920,11 +919,11 @@ let switcher = SceneSwitcher.render(
   ),
 )
 
-// **Swapping the board under an open menu**: a control has chosen a different board of
-// the family whose board is on the table, so the new one mounts and the menu stays put
-// (`keepMenuOpen`) — the control a player is looking at as they tap it is still there to
-// tap again. Both controls that offer the choice do this: the Games list's segment and
-// the info screen's picker.
+// **Swapping the board under an open menu**: the Games list's segment has chosen a
+// different board of the family whose board is on the table, so the new one mounts and
+// the menu stays put (`keepMenuOpen`) — the control a player is looking at as they tap
+// it is still there to tap again. The info screen's picker offers the same boards and
+// does no such thing: it moves the screen, never the table (`OpenGameInfo`).
 //
 // Nothing is dispatched here. The activation carries the new board into the model on its
 // own (`SceneActivated`), remembered choice and all.
@@ -1340,26 +1339,16 @@ let debugScreen = (model, dispatch): MenuDebugScreen.props => {
 //
 // **The picker is the one thing on it that isn't the subject's own.** Which boards a
 // family has is a fact about the games (`Game.families`); which of them the menu is
-// *offering* is this render's, and so is what a tap on one does. A family the list is
-// offering one board of gets no section at all, exactly as its row gets no segment.
+// *offering* is this render's. A family the list is offering one board of gets no
+// section at all, exactly as its row gets no segment.
 let gameInfoScreen = (model, dispatch, info: GameInfo.t): MenuGameInfoScreen.props => {
-  // Whether the board this screen is about is the one on the table, which is the same
-  // question the Games list's segment asks — and the only thing that decides whether a
-  // pick is a board change or just a choice remembered.
-  let playing = model.activeScene == Some(info.id)
-
   let choice = (v: Game.variant): MenuVariantPicker.choice => {
     mark: GameVariant.forVariant(v),
     selected: v.game.id == info.id,
-    // Moving the screen to a board is what chooses it (`OpenGameInfo`), so that dispatch
-    // is the whole of the choice — with the board swapped under the menu first, where
-    // this family's board is the one being played.
-    onChoose: () => {
-      if playing && v.game.id != info.id {
-        swapBoard(v.game.id)
-      }
-      dispatch(OpenGameInfo(GameInfo.forGame(v.game)))
-    },
+    // A pick moves the screen to that board and does nothing else: the table and the
+    // family's chosen board are the segment's to change, not this control's, whether or
+    // not the board being read about is the one being played (`OpenGameInfo`).
+    onChoose: () => dispatch(OpenGameInfo(GameInfo.forGame(v.game))),
   }
 
   let picker = (family: Game.family): option<MenuVariantPicker.props> =>

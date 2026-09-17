@@ -34,7 +34,9 @@ let weightsFor = (law: Position.law): weights =>
   }
 
 // The cards the game is waiting on, as a flag per card number — scratch for
-// `heuristic`, filled afresh each call rather than allocated each call.
+// `heuristic`, filled afresh each call rather than allocated each call. 52 long
+// whatever the pack: card numbers are `Position`'s, and a short deck uses the same
+// numbering with gaps in it.
 let wanted = Array.make(~length=52, false)
 
 // Distance-to-go estimate: one term per way a position can be bad, each scaled by
@@ -42,18 +44,20 @@ let wanted = Array.make(~length=52, false)
 // `docs/solver.md`; two of them read differently under each law, and the reading
 // is said where it happens.
 let heuristic = (s: Position.t, w: weights): int => {
-  let h = ref((52 - Position.foundationTotal(s)) * w.remaining)
+  let h = ref((s.pack.size - Position.foundationTotal(s)) * w.remaining)
 
   // Which cards are *wanted* — the ones whose burial costs. Under FreeCell, the
   // next card each foundation needs. Under Simple Simon, for every run on the
   // tableau, the same-suit card one rank above its bottom: the card the run has to
-  // be carried onto next. (A run founded by a King wants nothing; it is the base.)
+  // be carried onto next. (A run founded by the pack's highest card wants nothing;
+  // it is the base.)
   wanted->Array.fill(false, ~start=0, ~end=52)
   switch s.law {
   | Position.FreeCell =>
-    for suit in 0 to 3 {
+    for i in 0 to Array.length(s.pack.suits) - 1 {
+      let suit = s.pack.suits->Array.getUnsafe(i)
       let home = s.found->Array.getUnsafe(suit)
-      if home < 13 {
+      if home < s.pack.ranks {
         wanted->Array.setUnsafe(suit * 13 + home, true)
       }
     }
@@ -64,7 +68,7 @@ let heuristic = (s: Position.t, w: weights): int => {
         let card = pile->Array.getUnsafe(i)
         let founds =
           i == 0 || !Position.follows(s.law, ~below=pile->Array.getUnsafe(i - 1), ~above=card)
-        if founds && Position.rankOf(card) < 13 {
+        if founds && Position.rankOf(card) < s.pack.ranks {
           wanted->Array.setUnsafe(card + 1, true) // the same suit, one rank up
         }
       }

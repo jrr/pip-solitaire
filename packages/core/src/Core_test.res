@@ -548,19 +548,22 @@ describe("Game", () => {
     )
 
     test(
-      "the solver declines them rather than mis-reading a board it can't model",
+      "the solver reads them, deck and counts alike",
       () => {
-        // Out of the solver's scope, and deliberately so: both play by FreeCell's law,
-        // but `Position` models that law only at FreeCell's shape and over the standard
-        // pack — a short deck would leave its suit tallies counting to a total no suit
-        // reaches — so these two get an honest `None` and autoplay answers
-        // `UnknownBoard`, rather than a position with pieces missing.
-        expect(
-          Position.ofGameState(~game=Game.mini, GameState.initial(Game.mini))->Option.isNone,
-        )->toBe(true)
-        expect(
-          Position.ofGameState(~game=Game.micro, GameState.initial(Game.micro))->Option.isNone,
-        )->toBe(true)
+        // Both play by FreeCell's law and neither is FreeCell's shape, so what the
+        // model reads off the board is the shape itself: two cells, four columns, and
+        // a pack of twenty or sixteen rather than the ambient fifty-two.
+        switch (
+          Position.ofGameState(~game=Game.mini, GameState.initial(Game.mini)),
+          Position.ofGameState(~game=Game.micro, GameState.initial(Game.micro)),
+        ) {
+        | (Some(mini), Some(micro)) =>
+          expect(mini.pack.size)->toBe(20)
+          expect(micro.pack.size)->toBe(16)
+          expect(Array.length(mini.cells))->toBe(2)
+          expect(Array.length(micro.casc))->toBe(4)
+        | _ => expect("both boards read")->toBe("but one of them didn't")
+        }
       },
     )
   })

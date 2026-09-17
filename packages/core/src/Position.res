@@ -13,6 +13,11 @@ open Card
 // column is a compact array of them. The suit numbering is this module's own — it
 // only has to be consistent with itself — and the two red suits sit in the middle
 // so `isRed` stays a single range test. Reorder them and that breaks silently.
+//
+// **The 13 is the numbering, not the deck.** A short pack numbers its cards exactly
+// the same way and simply leaves gaps — a Micro board's sixteen cards are still
+// ♠A…♠8 at 0…7 and ♥A…♥8 at 13…20. A denser numbering would save a few bytes of
+// scratch array and cost `isRed`, `suitOf` and `found`'s indexing all at once.
 
 let suitIndex = (suit: suit): int =>
   switch suit {
@@ -52,13 +57,13 @@ let rankAt = (r: int): rank =>
 let idOf = (card: card): int => suitIndex(card.suit) * 13 + Rules.rankValue(card.rank) - 1
 let cardOf = (id: int): card => {suit: suitAt(id / 13), rank: rankAt(mod(id, 13) + 1)}
 
-// The three things the rules ask of a card number, without unpacking it.
+// The three things the rules ask of a card number, without unpacking it — and the
+// colour of a bare suit number, which is the same range test one step earlier (the
+// safe-collect rule asks it of a suit that has no card in hand).
 let suitOf = (id: int): int => id / 13
 let rankOf = (id: int): int => mod(id, 13) + 1
-let isRed = (id: int): bool => {
-  let s = suitOf(id)
-  s == 1 || s == 2
-}
+let isRedSuit = (suit: int): bool => suit == 1 || suit == 2
+let isRed = (id: int): bool => isRedSuit(suitOf(id))
 
 // A card number as the text identity everything else in the repo names cards by
 // (`CardText`), and back — how a driver outside ReScript says which card it means.
@@ -81,41 +86,57 @@ type law =
   | FreeCell
   | SimpleSimon
 
+// --- The pack ----------------------------------------------------------------
+// The deck a board is played with, in the three numbers the rules ask of it. A
+// `Game.t` carries its own `Cards.deck` and `packOf` reads this off it; it travels
+// *on* the position because none of it can be recovered from one mid-game — which
+// suits are in play and how far the ranks run are facts about the deal, not about
+// where the cards are lying now.
+//
+// Every number here was once written down as a 52 or a 13 somewhere: what a won
+// board totals, how long Simple Simon's "unlimited" lift is, the rank a run is
+// complete at, the cards the heuristic counts down from.
+type pack = {
+  suits: array<int>, // the suit numbers in play, in `suitOf`'s numbering
+  ranks: int, // how many ranks, Ace upward — so also the rank a foundation is done at
+  size: int, // how many cards are on the board altogether
+}
+
+// Naïve on purpose: what a deck *would* pack to. Whether it may — one copy of each
+// card, ranks running up from the Ace — is `ofGameState`'s question, along with
+// every other thing the board has to be for the model to hold it.
+let packOf = (deck: Cards.deck): pack => {
+  suits: deck.suits->Array.map(suitIndex),
+  ranks: Array.length(deck.ranks),
+  size: Array.length(deck.suits) * Array.length(deck.ranks),
+}
+
+// The full pack, for a position posed by hand rather than read off a board.
+let standardPack: pack = packOf(Cards.standard)
+
 // --- The position ------------------------------------------------------------
 
-// `cells` — the free cells, `-1` for an empty one. Four under FreeCell; none under
-//   Simple Simon, and the array is empty rather than absent so the loops over it
-//   need no case.
-// `found` — how many cards of each suit are home, indexed by `suitOf`. Under
+// `pack` — the deck it's played with, above.
+// `cells` — the free cells, `-1` for an empty one. However many the board lays out;
+//   none under Simple Simon, and the array is empty rather than absent so the loops
+//   over it need no case.
+// `found` — how many cards of each suit are home, indexed by `suitOf` — four wide
+//   whatever the pack, since a suit keeps its number when the deck is short. Under
 //   FreeCell that's the rank its foundation has climbed to (an ascending same-suit
-//   run, so its top rank *is* its contents); under Simple Simon it's `0` or `13`,
-//   since a suit's run is collected whole or not at all.
-// `casc` — the columns, each bottom-first like `GameState.cardsInPile`: eight under
-//   FreeCell, ten under Simple Simon.
+//   run, so its top rank *is* its contents); under Simple Simon it's `0` or the
+//   pack's top rank, since a suit's run is collected whole or not at all.
+// `casc` — the columns, each bottom-first like `GameState.cardsInPile`.
 //
 // A plain record of arrays, deliberately: it is also the shape a JavaScript
-// driver builds by hand (`{law, cells, found, casc}`) when it reads a board off a
-// rendered page — see `web-app/scripts/autoplay/read-board.mjs`.
+// driver builds by hand (`{law, pack, cells, found, casc}`) when it reads a board off
+// a rendered page — see `web-app/scripts/autoplay/read-board.mjs`.
 type t = {
   law: law,
+  pack: pack,
   cells: array<int>,
   found: array<int>,
   casc: array<array<int>>,
 }
-
-let foundationCount = 4
-
-let cellCount = (law: law): int =>
-  switch law {
-  | FreeCell => 4
-  | SimpleSimon => 0
-  }
-
-let columnCount = (law: law): int =>
-  switch law {
-  | FreeCell => 8
-  | SimpleSimon => 10
-  }
 
 // A position of one's own: every array copied, so a caller can mutate the result
 // without reaching back into the original. The search leans on this — `applyMove`
@@ -123,6 +144,7 @@ let columnCount = (law: law): int =>
 // it can afford to be called a hundred thousand times.
 let copy = (s: t): t => {
   law: s.law,
+  pack: s.pack, // never mutated, so every copy shares the one record
   cells: s.cells->Array.copy,
   found: s.found->Array.copy,
   casc: s.casc->Array.map(pile => pile->Array.copy),
@@ -138,7 +160,8 @@ let emptyCells = (s: t): int => {
   n.contents
 }
 
-// How many cards are home — the game's progress, and `52` exactly when it's won.
+// How many cards are home — the game's progress, and the whole pack exactly when
+// it's won.
 let foundationTotal = (s: t): int => {
   let n = ref(0)
   for i in 0 to Array.length(s.found) - 1 {
@@ -147,7 +170,7 @@ let foundationTotal = (s: t): int => {
   n.contents
 }
 
-let hasWon = (s: t): bool => foundationTotal(s) == 52
+let hasWon = (s: t): bool => foundationTotal(s) == s.pack.size
 
 // `Rules.isRun`, for one pair: does `above` hold together with `below` as part of a
 // run a hand may lift? One rank down under both laws; opposite colour under
@@ -228,18 +251,29 @@ let maxSupermove = (s: t, ~ignoring: int): int => {
 let liftLimit = (s: t, ~ignoring: int): int =>
   switch s.law {
   | FreeCell => maxSupermove(s, ~ignoring)
-  | SimpleSimon => 52
+  | SimpleSimon => s.pack.size
   }
 
 // `Reducer.isSafeToCollect`: never strand a card a cascade might still want. Aces
 // and Twos are always safe — nothing is ever built down onto them — and anything
-// higher only once both opposite-colour foundations are within one rank of it.
+// higher only once every opposite-colour foundation is within one rank of it.
+//
+// Which suits those are is the pack's to say, exactly as `Reducer.oppositeColorSuits`
+// asks the deck: on Micro's ♠♥ pack a black card waits on one foundation, not two,
+// and naming the other two by number would stall auto-collect above the Twos.
 let isSafeToCollect = (s: t, card: int): bool =>
   foundationAccepts(s, card) && {
     let r = rankOf(card)
     r <= 2 || {
-        let (a, b) = isRed(card) ? (0, 3) : (1, 2)
-        s.found->Array.getUnsafe(a) >= r - 1 && s.found->Array.getUnsafe(b) >= r - 1
+        let red = isRed(card)
+        let safe = ref(true)
+        for i in 0 to Array.length(s.pack.suits) - 1 {
+          let suit = s.pack.suits->Array.getUnsafe(i)
+          if isRedSuit(suit) != red && s.found->Array.getUnsafe(suit) < r - 1 {
+            safe := false
+          }
+        }
+        safe.contents
       }
   }
 
@@ -281,14 +315,16 @@ let collectSafeCards = (s: t): unit => {
   }
 }
 
-// Does the top of `pile` hold a whole suit, King down to Ace — `Rules.isCompleteRun`
-// read off a column's tail.
-let topsCompleteRun = (pile: array<int>): bool => {
+// Does the top of `pile` hold a whole suit, the pack's highest rank down to the Ace
+// — `Rules.isCompleteRun` read off a column's tail, and against the deck for the
+// same reason it is: "thirteen cards ending on a King" is the full pack's answer to
+// the question, not the question.
+let topsCompleteRun = (~ranks: int, pile: array<int>): bool => {
   let depth = Array.length(pile)
-  depth >= 13 &&
-  rankOf(pile->Array.getUnsafe(depth - 13)) == 13 && {
+  depth >= ranks &&
+  rankOf(pile->Array.getUnsafe(depth - ranks)) == ranks && {
     let ok = ref(true)
-    let i = ref(depth - 12)
+    let i = ref(depth - ranks + 1)
     while ok.contents && i.contents < depth {
       ok :=
         follows(
@@ -305,16 +341,19 @@ let topsCompleteRun = (pile: array<int>): bool => {
 // `Reducer.collectRuns`: every column topped by a complete run has it lifted off
 // home. One move can complete two — the run it lands on, and one it uncovers by
 // leaving — so every column is looked at. There is always a foundation free for it:
-// four foundations, four suits. Mutates `s`.
-let collectRuns = (s: t): unit =>
+// `ofGameState` refuses a board with fewer foundations than the pack has suits.
+// Mutates `s`.
+let collectRuns = (s: t): unit => {
+  let ranks = s.pack.ranks
   for col in 0 to Array.length(s.casc) - 1 {
     let pile = s.casc->Array.getUnsafe(col)
-    if topsCompleteRun(pile) {
-      let king = pile->Array.getUnsafe(Array.length(pile) - 13)
-      s.found->Array.setUnsafe(suitOf(king), 13)
-      pile->Array.splice(~start=Array.length(pile) - 13, ~remove=13, ~insert=[])
+    if topsCompleteRun(~ranks, pile) {
+      let base = pile->Array.getUnsafe(Array.length(pile) - ranks)
+      s.found->Array.setUnsafe(suitOf(base), ranks)
+      pile->Array.splice(~start=Array.length(pile) - ranks, ~remove=ranks, ~insert=[])
     }
   }
+}
 
 // `Reducer.autoCollect`: what leaves the tableau on its own after a move, by the
 // law's `collect` policy. Mutates and returns `s`.
@@ -375,7 +414,7 @@ let canFinish = (s: t): bool =>
       let found = s.found->Array.copy
       let cells = s.cells->Array.copy
       let depth = s.casc->Array.map(pile => Array.length(pile))
-      let remaining = ref(52 - foundationTotal(s))
+      let remaining = ref(s.pack.size - foundationTotal(s))
       let progressed = ref(true)
       while progressed.contents {
         progressed := false
@@ -578,7 +617,7 @@ let describeMove = (move: move): string => {
 
 // The law a board is played under, read off its rules — or `None` for a board
 // under neither. Only the law: whether the board also has the *shape* the model
-// holds (no stock, the standard pack, every card face up) is `ofGameState`'s
+// holds (no stock, one copy of each card, every card face up) is `ofGameState`'s
 // question, so Spiderette reads as Simple Simon's law here and is refused there.
 // Every pile of a role is checked, not the first, so a board with one odd pile is
 // refused rather than read as the law its others follow.
@@ -591,32 +630,43 @@ let lawOf = (game: Game.t): option<law> => {
     every(Game.FreeCell, Rules.Free) =>
     Some(FreeCell)
   | (Game.Unlimited, Game.CompleteRuns)
-    if every(Game.Cascade, Rules.spiderCascade) && every(Game.Foundation, Rules.Sealed) =>
+    if every(Game.Cascade, Rules.spiderCascade) &&
+    every(Game.Foundation, Rules.Sealed) &&
+    every(Game.FreeCell, Rules.Free) =>
     Some(SimpleSimon)
   | _ => None
   }
 }
 
 // The position a real snapshot is in, or `None` when the board isn't one the model
-// can say — a board under neither law, or under one but not its shape: FreeCell is
-// four cells, four foundations and eight columns, Simple Simon four foundations and
-// ten columns, both over the standard pack with every card face up. Any other board
-// gets an honest `None` rather than a position with pieces missing.
+// can say. **The counts are read off the board, not insisted on**: however many
+// cells and columns the game lays out are however many the position has, and the
+// deck it carries is the pack (`packOf`). That is the whole of what Mini and Micro
+// needed — four columns, two cells, a pack of twenty or sixteen — and it's what a
+// seven-column board would need too.
+//
+// What's left is what the packing genuinely can't say, and each line below is one of
+// them: a stock (the model has no word for a deal), a face-down card or a card loose
+// on the table (it would go missing), a second copy of a card (two copies pack to one
+// int), ranks that don't run up from the Ace (a foundation's *length* is read as the
+// rank it has climbed to), a foundation count that isn't the number of suits to send
+// home (a spare foundation could never complete, so `hasWon` and `GameState.hasWon`
+// would disagree about the same board), and no column to play on at all. Any such
+// board gets an honest `None` rather than a position with pieces missing.
 let ofGameState = (~game: Game.t, state: GameState.t): option<t> =>
   lawOf(game)->Option.flatMap(law => {
     let cellPiles = Game.pileIndices(game, Game.FreeCell)
     let foundationPiles = Game.pileIndices(game, Game.Foundation)
     let cascadePiles = Game.pileIndices(game, Game.Cascade)
+    let deck = game.deck
     if (
-      Array.length(cellPiles) != cellCount(law) ||
-      Array.length(foundationPiles) != foundationCount ||
-      Array.length(cascadePiles) != columnCount(law) ||
       Array.length(Game.pileIndices(game, Game.Stock)) > 0 ||
-      // A second copy of a card would pack to the same int as the first, and a short
-      // pack would leave `found` counting to a total no suit reaches.
-      game.deck != Cards.standard ||
       state.faceDown->Array.some(n => n > 0) ||
-      Array.length(state.loose) > 0
+      Array.length(state.loose) > 0 ||
+      deck.copies != 1 ||
+      !(deck.ranks->Array.everyWithIndex((rank, i) => Rules.rankValue(rank) == i + 1)) ||
+      Array.length(foundationPiles) != Array.length(deck.suits) ||
+      Array.length(cascadePiles) == 0
     ) {
       None
     } else {
@@ -635,6 +685,7 @@ let ofGameState = (~game: Game.t, state: GameState.t): option<t> =>
       )
       Some({
         law,
+        pack: packOf(deck),
         cells: cellPiles->Array.map(i =>
           switch GameState.topOf(state, i) {
           | Some(card) => idOf(card)

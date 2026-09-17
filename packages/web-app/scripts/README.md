@@ -49,7 +49,7 @@ renders and publishes them per push.
 
 ## autoplay/
 
-Plays a game — FreeCell, or Simple Simon — in a real browser, every move a
+Plays a game — any board the solver models — in a real browser, every move a
 pointer drag on the rendered board — nothing reaches into game state, which is
 what makes a game played this way evidence about the *app*. Three parts:
 

@@ -7,7 +7,8 @@
 //   mise run autoplay -- --headed 24680  # watch it play
 //   mise run autoplay -- --quiet 1-25    # just the summary table
 //   mise run autoplay -- --shots out 42  # write deal/mid-game/win screenshots
-//   mise run autoplay -- --game simplesimon 3   # a Simple Simon deal
+//   mise run autoplay -- --game simplesimon 3   # another board, by `Game.t` id
+//   mise run autoplay -- --game mini 3          # …a short-deck one, likewise
 //
 // What it's for: driving the *real* app the way a player does — every move a
 // pointer drag on the bundled site, nothing reaching into game state. That makes
