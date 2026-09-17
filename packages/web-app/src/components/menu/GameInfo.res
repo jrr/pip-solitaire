@@ -60,28 +60,34 @@ let referenceFor = (id: string): string =>
   | _ => wikipedia("Patience_(game)")
   }
 
-// The game in two or three sentences, written for a reader who has played a solitaire
-// game or two: what is hidden, how a run moves, and the one rule that catches a player
-// coming from another game. Not the rules in full — the link out is for that.
+// The game in a sentence or two: how the tableau builds, what moves as a unit, and
+// how the game is won. Pitched at a reader who has played a solitaire game or two, so
+// it names the laws and leaves the rest to the link out — and says nothing the screen
+// around it already shows, which rules out the board's shape (the still above it) and
+// its counts (the line under the title).
 //
-// **Keyed by family where there is one**, which is what makes the paragraph steady under
-// the picker: the three FreeCell sizes are one game to describe and the three Spiderette
-// packs are another, and a reader who saw the words change would go back looking for a
-// difference that isn't there. The same rule forbids naming anything the picker moves:
-// "the free cells", never "four free cells".
+// **Keyed by family where there is one**, which is what makes the paragraph steady
+// under the picker: the three FreeCell sizes are one game to describe and the three
+// Spiderette packs are another, and a reader who saw the words change would go back
+// looking for a difference that isn't there. The same rule forbids naming anything the
+// picker moves: "the free cells", never "four free cells".
+//
+// Simple Simon and Spiderette open on the same sentence because they are the same laws
+// — `Rules.spiderCascade`, `Unlimited`, `CompleteRuns` — and a reader comparing the two
+// screens should see that. Spiderette's stock is the whole of the difference.
 let descriptionFor = (id: string): option<string> =>
   switch id {
   | "freecell" =>
     Some(
-      "Every card is face up from the deal: nothing is hidden, and almost any board can be solved by thinking it through. Columns build down in alternating colours, and the free cells park one card each — how many stand empty is how long a run you can move at once.",
+      "Build downward in descending rank of alternating colours; send up to like-suit piles in ascending rank. Moves are limited by available free spaces.",
     )
   | "simplesimon" =>
     Some(
-      "Spider's game with nothing hidden: every card is face up from the start, and there is nowhere to park one you can't place yet. Build down in rank whatever the suit, but only a same-suit run lifts as a block, and a suit gathered King down to Ace leaves the board for good.",
+      "Build downward in descending rank of any suit, but like-suit runs can move together. Win by building runs of King through Ace.",
     )
   | "spiderette" =>
     Some(
-      "Spider's rules over a Klondike deal: seven columns, only the top card of each face up. Build down in rank whatever the suit, but only a same-suit run lifts as a block, and a suit gathered King down to Ace leaves the board. The stock deals onto every column at once, and refuses while a column stands empty.",
+      "Build downward in descending rank of any suit, but like-suit runs can move together. Win by building runs of King through Ace. Deal from the stock when you're stuck.",
     )
   | _ => None
   }

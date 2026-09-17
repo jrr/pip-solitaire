@@ -73,13 +73,13 @@ describe("MenuGameInfoScreen", () => {
   })
 
   test("says what the game is in a paragraph, the same one for every board of a family", () => {
-    // The copy is generic on purpose: it describes FreeCell, not the size in hand, so
-    // the picker under it changes the board and the numbers and leaves the words alone.
-    // Which words those are is `GameInfo`'s (`descriptionFor`), tested there.
+    // That the screen draws the paragraph, and draws the *family's* one: picking another
+    // size changes the board and the numbers and leaves the words alone. Which words
+    // those are is copy, and copy is free to be rewritten without a test to update.
     let prose = game => render(~game)->textIn(".game-info__prose")
-    expect(prose(Game.freecell)->String.startsWith("Every card is face up"))->toBe(true)
+    expect(prose(Game.freecell) == "")->toBe(false)
     expect(prose(Game.micro))->toBe(prose(Game.freecell))
-    expect(prose(Game.spiderette)->String.includes("Spider's rules"))->toBe(true)
+    expect(prose(Game.spiderette) == prose(Game.freecell))->toBe(false)
   })
 
   test("shows the board's numbers", () => {
