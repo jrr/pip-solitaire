@@ -92,10 +92,12 @@
 
   /* Bigger than the About screen's mark, which rides beside 13px text and is sized in
      `em` to track it. This one is the link, so it is sized against the disc it sits in
-     rather than against a line it no longer has. */
+     rather than against a line it no longer has — and the number is larger than the
+     letter looks, the W being a good deal wider than it is tall inside a square viewBox.
+     Judge it against the ring, not against this figure. */
   .game-info__mark {
-    width: 20px;
-    height: 20px;
+    width: 22px;
+    height: 22px;
   }
 
   /* The ring belongs on the disc, not on the 44px box around it: a hard square around a
