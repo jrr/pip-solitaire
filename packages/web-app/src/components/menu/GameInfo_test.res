@@ -123,8 +123,8 @@ describe("GameInfo.numbers", () => {
 
   test("names nothing in the copy that the picker moves", () => {
     // The rule that keeps the paragraph honest as well as steady: it may say "the free
-    // cells" but not "four free cells", since Mini has two. No digit survives that rule
-    // — the one number any of this copy gives is Simple Simon's fifty-two, spelled.
+    // cells" but not "four free cells", since Mini has two. A rank named in words — King
+    // through Ace — is the same rank on every board, so the copy carries no digit at all.
     let digits = ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"]
     Game.all->Array.forEach(
       game =>

@@ -77,9 +77,11 @@ describe("MenuGameInfoScreen", () => {
     // the picker under it changes the board and the numbers and leaves the words alone.
     // Which words those are is `GameInfo`'s (`descriptionFor`), tested there.
     let prose = game => render(~game)->textIn(".game-info__prose")
-    expect(prose(Game.freecell)->String.startsWith("Every card is face up"))->toBe(true)
+    expect(prose(Game.freecell)->String.startsWith("Build down"))->toBe(true)
     expect(prose(Game.micro))->toBe(prose(Game.freecell))
-    expect(prose(Game.spiderette)->String.includes("Spider's rules"))->toBe(true)
+    // The stock is the whole of what Spiderette's paragraph says that Simple Simon's
+    // doesn't, so it is what tells the two apart on screen.
+    expect(prose(Game.spiderette)->String.includes("stock"))->toBe(true)
   })
 
   test("shows the board's numbers", () => {
