@@ -1,6 +1,6 @@
-// What the info screen has to say about a game: the board's numbers, and where the
-// rules are written down in full. A pure value, so `<MenuGameInfoScreen>` draws it and
-// `Main` never assembles a screen's worth of fields by hand.
+// What the info screen has to say about a game: the board's numbers, and which Wikipedia
+// article describes it. A pure value, so `<MenuGameInfoScreen>` draws it and `Main` never
+// assembles a screen's worth of fields by hand.
 //
 // **Derived from the `Game.t`, not tabulated beside it.** A board that changes its
 // cascade count or its deck reports the new number here without an edit — which is the
@@ -48,7 +48,8 @@ type t = {
   description: option<string>,
 }
 
-let wikipedia = (article: string): string => "https://en.wikipedia.org/wiki/" ++ article
+let wikipediaArticle = "https://en.wikipedia.org/wiki/"
+let wikipedia = (article: string): string => wikipediaArticle ++ article
 
 // The short-deck FreeCells are FreeCell, and the Spiderettes are Spider's family: each
 // points at the article for the game it is a variant of, rather than at nothing.
@@ -59,6 +60,24 @@ let referenceFor = (id: string): string =>
   | "spiderette1" | "spiderette" | "spiderette4" => wikipedia("Spider_(solitaire)")
   | _ => wikipedia("Patience_(game)")
   }
+
+// The link out, named for the page it goes to: "Spiderette" is described in Wikipedia's
+// Spider article, and saying so is what tells a reader both that there is a page about
+// this game and which page it is. It promises nothing about what is written there — some
+// of the rules are on this screen already, and an encyclopedia article is more than rules.
+//
+// Read off the URL rather than tabulated beside it, so a game pointed at a different
+// article says so with the one edit. The parenthesis Wikipedia needs to tell "Spider
+// (solitaire)" from the animal is the encyclopedia's own plumbing, so it is dropped: what
+// is left is the name a player would have searched for.
+let referenceLabel = (info: t): string => {
+  let article =
+    info.reference
+    ->String.replace(wikipediaArticle, "")
+    ->String.replaceAll("_", " ")
+    ->String.replaceRegExp(/ \(.+\)$/, "")
+  article ++ " on Wikipedia"
+}
 
 // The game in a sentence or two: how the tableau builds, what moves as a unit, and
 // how the game is won. Pitched at a reader who has played a solitaire game or two, so

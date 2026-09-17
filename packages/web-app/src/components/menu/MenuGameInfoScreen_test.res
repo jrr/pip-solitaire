@@ -89,15 +89,21 @@ describe("MenuGameInfoScreen", () => {
     )
   })
 
-  test("links out to the game's article in a tab of its own", () => {
-    // In place would tear the board down mid-play — the app is a PWA, and there is a
-    // game behind this menu. `rel` is what stops the opened page reaching back through
-    // `window.opener`.
+  test("links out to the game's article, named for the page it goes to", () => {
+    // A real link and not a button that navigates, so it can be long-pressed or copied.
+    // Which words it wears is `GameInfo`'s (`referenceLabel`), pinned there; that it
+    // wears them rather than a promise about rules is this screen's.
     let link = render()->find(".game-info__link")->Option.getOrThrow
     expect(link->tag)->toBe("A")
     expect(link->attrOr("href"))->toBe("https://en.wikipedia.org/wiki/FreeCell")
-    expect(link->attrOr("target"))->toBe("_blank")
+    expect(link->text)->toBe("FreeCell on Wikipedia")
     expect(link->attrOr("rel"))->toBe("noopener noreferrer")
+  })
+
+  test("asks for a tab of its own in a browser, which is where a board can be torn down", () => {
+    // The iOS Home Screen web app wants the opposite and gets it from `LinkOut`, which is
+    // where that reasoning lives; jsdom is a browser, so what this pins is the default.
+    expect(render()->find(".game-info__link")->Option.getOrThrow->attrOr("target"))->toBe("_blank")
   })
 
   test("offers the family's other boards, headed with the word for what they vary in", () => {
@@ -112,7 +118,7 @@ describe("MenuGameInfoScreen", () => {
   })
 
   test("describes the game first and offers the one control last", () => {
-    // Picture, the numbers counting it, how it plays, the rules in full — and then the
+    // Picture, the numbers counting it, how it plays, where to read on — and then the
     // picker, the only control on a screen that is otherwise all description.
     let screen = render(~game=Game.mini, ~variants=pickerFor(Game.freecellFamily, ~on=Game.mini))
     expect(

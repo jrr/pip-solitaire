@@ -10,15 +10,15 @@
 //
 // Top to bottom: a header whose **back** button returns to the main menu — where the
 // "i" was tapped, rather than to the game itself — a still of the opening board, the
-// board's numbers, the game in a paragraph, the link out to the rules in full, and last
-// the choice of which board of its family this is. `<GameInfo>` decides the numbers, the
-// paragraph and the link, `BoardPreview` the still and `<MenuVariantPicker>` the choice;
-// this file only places them.
+// board's numbers, the game in a paragraph, the link out to the game's Wikipedia article,
+// and last the choice of which board of its family this is. `<GameInfo>` decides the
+// numbers, the paragraph and the link, `BoardPreview` the still and `<MenuVariantPicker>`
+// the choice; this file only places them.
 //
 // **The description runs from what a reader takes in at a glance to what they have to
 // read**, and the one control comes after all of it: a picture, the numbers counting
-// what is in the picture, the paragraph saying how it plays, the link for the rules in
-// full. The picker is the only control on a screen that is otherwise all description, so
+// what is in the picture, the paragraph saying how it plays, the page to go on reading
+// on. The picker is the only control on a screen that is otherwise all description, so
 // it sits under the description rather than in it — and a reader going down the screen
 // reads in one direction, with nothing to step back over.
 //
@@ -97,13 +97,17 @@ let make = ({info, ?variants, tilt, onClose, onBackToMenu}) => <>
       // It is *drawn* as one too (`game-info__link`): a line of underlined text rather
       // than a full-width control box, because it leaves the app, and a control the
       // size of "Restart" would offer it as though it were one of the game's own.
-      // `target="_blank"` keeps the game on the table: the app is a PWA, and following
-      // a link in place would tear down a board mid-play. `rel` is what stops the
-      // opened page from reaching back through `window.opener`.
+      //
+      // Whether it asks for a tab of its own is `LinkOut`'s answer and not this
+      // screen's — the app is a PWA and the answer differs by platform. `rel` is what
+      // stops the opened page from reaching back through `window.opener`.
       <a
-        className="game-info__link" href={info.reference} target="_blank" rel="noopener noreferrer"
+        className="game-info__link"
+        href={info.reference}
+        target=?{LinkOut.target()}
+        rel="noopener noreferrer"
       >
-        {Html.string("Read the rules on Wikipedia")}
+        {Html.string(GameInfo.referenceLabel(info))}
       </a>
     </MenuSection>
     // The family's boards, headed with the word for what they vary in — "PACK", "SIZE" —

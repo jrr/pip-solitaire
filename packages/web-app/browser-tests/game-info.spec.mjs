@@ -195,6 +195,9 @@ test("opens the game's info screen from the i, and comes back to the menu", asyn
     "href",
     "https://en.wikipedia.org/wiki/Simple_Simon_(solitaire)",
   )
+  // The line names the page it goes to, and the "(solitaire)" the URL needs is not part
+  // of that name (`GameInfo.referenceLabel`).
+  await expect(page.locator(".game-info__link")).toHaveText("Simple Simon on Wikipedia")
 
   // Back to the games list, with FreeCell still on the table: reading about a game is
   // not choosing it.
