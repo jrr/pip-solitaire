@@ -649,8 +649,10 @@ let lawOf = (game: Game.t): option<law> => {
 // them: a stock (the model has no word for a deal), a face-down card or a card loose
 // on the table (it would go missing), a second copy of a card (two copies pack to one
 // int), ranks that don't run up from the Ace (a foundation's *length* is read as the
-// rank it has climbed to), and fewer foundations than there are suits to send home.
-// Any such board gets an honest `None` rather than a position with pieces missing.
+// rank it has climbed to), a foundation count that isn't the number of suits to send
+// home (a spare foundation could never complete, so `hasWon` and `GameState.hasWon`
+// would disagree about the same board), and no column to play on at all. Any such
+// board gets an honest `None` rather than a position with pieces missing.
 let ofGameState = (~game: Game.t, state: GameState.t): option<t> =>
   lawOf(game)->Option.flatMap(law => {
     let cellPiles = Game.pileIndices(game, Game.FreeCell)
