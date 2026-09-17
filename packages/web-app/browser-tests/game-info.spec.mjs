@@ -170,7 +170,7 @@ test("opens the game's info screen from the i, and comes back to the menu", asyn
   // The game names the screen, and the numbers are Simple Simon's — the game the "i"
   // belonged to, which is not the game on the table behind the menu.
   await expect(page.locator(".menu-title")).toHaveText("Simple Simon")
-  await expect(page.locator(".game-info__numbers")).toHaveText("10 cascades · 52 cards")
+  await expect(page.locator(".game-info__numbers")).toHaveText("52 cards · 10 cascades")
 
   // Centred, with the link under it. The panel is left-aligned everywhere else, so
   // this is the sort of exception a later tidy-up "corrects" back — and a ranged-left
@@ -282,14 +282,14 @@ test("swaps the board under the menu when the picker names the game being played
   await page.getByRole("button", { name: "About FreeCell" }).click()
 
   await expect(sizes(page)).toHaveText(["Standard", "Mini", "Micro"])
-  await expect(numbers(page)).toHaveText("8 cascades · 4 cells · 52 cards")
+  await expect(numbers(page)).toHaveText("52 cards · 8 cascades · 4 cells")
 
   await sizes(page).nth(1).click()
   // The numbers are the reason the picker sits under them, and on this family they are
   // also what says the screen moved: four cascades and two cells, on the line
   // immediately above the control that changed them. The title stays "FreeCell"
   // throughout, all three sizes being that game.
-  await expect(numbers(page)).toHaveText("4 cascades · 2 cells · 20 cards")
+  await expect(numbers(page)).toHaveText("20 cards · 4 cascades · 2 cells")
   await expect(page.locator(".menu-title")).toHaveText("FreeCell")
   await expect(page.locator("#menu-overlay")).toBeVisible()
 
