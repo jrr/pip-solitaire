@@ -298,6 +298,50 @@ let spideretteDealtOut = (game: Game.t): GameState.t => {
   dealAll(GameState.initial(game))
 }
 
+// A **full stock that can't deal**: two columns standing empty, which is the one thing
+// the Spider family refuses a deal over. Legal play arrives here — clearing a column
+// early is ordinary, and the stock then waits until something is put back — but only
+// after a long line, so the position is posed instead. It exists so the board's answer
+// to a refused deal can be looked at and tested: two empties rather than one, and not
+// the first two columns, so "every empty column" is told apart from "the first one
+// found".
+//
+// The opening deal repacked: its own stock untouched, its twenty-eight dealt cards
+// spread round-robin across the columns that stay, one face down at the foot of each.
+let spideretteStuck = (game: Game.t): GameState.t => {
+  let cascades = Game.pileIndices(game, Game.Cascade)
+  let dealt = GameState.initial(game)
+  // The second and the fifth column, on a board that has them.
+  let empties = [1, 4]->Array.filterMap(k => cascades->Array.get(k))
+  let filled = cascades->Array.filter(i => !(empties->Array.includes(i)))
+  let columns =
+    cascades
+    ->Array.flatMap(i => GameState.cardsInPile(dealt, i))
+    ->Cards.deal(~piles=Array.length(filled))
+  let cursor = ref(0)
+  let piles = dealt.piles->Array.mapWithIndex((cards, i) =>
+    if empties->Array.includes(i) {
+      []
+    } else if filled->Array.includes(i) {
+      let column = columns->Array.get(cursor.contents)->Option.getOr([])
+      cursor := cursor.contents + 1
+      column
+    } else {
+      cards
+    }
+  )
+  // The stock keeps the deal's own count — every card in it is still face down — and
+  // each column that holds cards hides the one at its foot.
+  let faceDown = piles->Array.mapWithIndex((cards, i) =>
+    if cascades->Array.includes(i) {
+      Array.length(cards) > 0 ? 1 : 0
+    } else {
+      GameState.faceDownIn(dealt, i)
+    }
+  )
+  {piles, loose: [], faceDown}
+}
+
 // A **near-won Spiderette**: three of the four runs already collected, the last one's
 // King→Two on the first cascade and its Ace alone on the second — one drag completes
 // the run, and lifting it is the win. Stock empty, everything face up. Built straight
@@ -463,11 +507,12 @@ let freecellScenarios: array<named> = [
 // spiderette dealt`), and shared by its three variants since all build from whatever
 // pack the board carries. None claims a deal: `dealt` is reachable from *whatever*
 // deal the board it's built on was dealt from, which a fixed number can't say, and the
-// deep column and the near-won position are posed from the pack.
+// other three are posed rather than played to.
 let spideretteScenarios: array<named> = [
   {name: "dealt", label: "Stock dealt out", build: spideretteDealtOut, seed: None},
   {name: "deep", label: "Deep column", build: spideretteDeep, seed: None},
   {name: "almost-won", label: "Almost won", build: spideretteAlmostWon, seed: None},
+  {name: "stuck", label: "Stock can't deal", build: spideretteStuck, seed: None},
 ]
 
 // The named scenarios that apply to `game`, in menu order — empty for a board
