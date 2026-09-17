@@ -16,9 +16,10 @@
 //
 // The **variant picker** on the screen is a second chain of the same kind, and the one
 // place two controls meet: `Main` decides which boards a family is offering and what a
-// tap on one does, `MenuVariantPicker` draws them, and the choice it writes is the one
-// the Games list's segment reads back (`game-variant.spec.mjs`). A walk is the only thing
-// that can see that they are one choice and not two.
+// tap on one does, `MenuVariantPicker` draws them, and the Games list's segment offers
+// the same boards (`game-variant.spec.mjs`) — but only the segment chooses. A walk is the
+// only thing that can see that a pick here moves the screen and nothing else: not the
+// segment, not the table under the menu.
 
 import { expect, test } from "@playwright/test"
 import { settleBoard } from "./lib/board.mjs"
@@ -259,22 +260,23 @@ test("offers a family's packs on its info screen, and moves the screen to the on
   await expect(page.locator(".menu-title")).toHaveText("Spiderette")
   await expect(page.locator("#menu-overlay")).toBeVisible()
 
-  // …and it is the *same* choice the Games list's segment offers, not a second one: back
-  // on the main menu the segment is showing the pack picked here, and it survives a
-  // launch like every other preference.
+  // …and it is a look, not a choice: back on the main menu the segment is showing the
+  // pack it showed before the "i" was tapped, and so it does after a launch — nothing was
+  // remembered, because nothing was chosen. The segment is the control that chooses.
   await page.getByRole("button", { name: "Back to menu" }).click()
-  await expect(packs(page)).toHaveText("♠♥♦♣")
+  await expect(packs(page)).toHaveText("♠♥×2")
   await page.reload()
   await settleBoard(page)
   await openMenu(page)
-  await expect(packs(page)).toHaveText("♠♥♦♣")
+  await expect(packs(page)).toHaveText("♠♥×2")
 })
 
-test("swaps the board under the menu when the picker names the game being played", async ({
+test("leaves the table alone when the picker names the game being played", async ({
   page,
 }) => {
-  // The same rule the Games list's segment follows: a choice about the board on the
-  // table is a board change, and the menu stays put so the control is still there.
+  // Where the Games list's segment would swap the board under the menu — a choice about
+  // the board on the table is a board change — the picker is not a choice at all, and the
+  // game being played is the one case where the difference can be seen from the table.
   await page.goto("/?seed=24680&animate=off")
   await settleBoard(page)
   await openMenu(page)
@@ -293,10 +295,16 @@ test("swaps the board under the menu when the picker names the game being played
   await expect(page.locator(".menu-title")).toHaveText("FreeCell")
   await expect(page.locator("#menu-overlay")).toBeVisible()
 
-  // …and the board really did change under the open menu.
+  // …but the row's segment is still on the size being played, its deal is still the
+  // deal on the table, and the board under the menu never changed: four cells, not two.
+  await page.getByRole("button", { name: "Back to menu" }).click()
+  await expect(sizes(page)).toHaveText("Standard")
+  await expect(page.locator('[aria-label="this game"] .menu-section__heading')).toHaveText(
+    "FreeCell #24680",
+  )
   await page.getByRole("button", { name: "Close menu" }).click()
   await settleBoard(page)
-  await expect(page.locator(".drop-zone__slot--cell")).toHaveCount(2)
+  await expect(page.locator(".drop-zone__slot--cell")).toHaveCount(4)
 })
 
 test("gives a game with no family no such section at all", async ({ page }) => {
