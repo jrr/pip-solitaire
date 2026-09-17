@@ -62,10 +62,16 @@ type props = {
 // thousand brand icons carried for one path, and an update to it could only ever change
 // this one letter.
 //
+// **Not the file Commons calls "Wikipedia's W.svg"**, which is the obvious place to
+// reach for and the wrong letter: public domain, genuine, and *retired*. It is Hoefler
+// Text, the W of the logo before the 2010 redesign, and its middle apex stops short of
+// the cap height where the live one reaches it with a serif on top. What is here matches
+// the wordmark en.wikipedia.org serves today, to a third of a percent on proportions.
+//
 // **The serifs survive the size**, which is the reason to take the real letter rather
-// than approximate it: at 20px the brackets and slabs still read as serifs, and they are
-// what makes this a W from an encyclopedia rather than a W. It is also what tells the
-// mark from the app's own icons, which are all one monoline weight.
+// than approximate it: at the size this is drawn the brackets and slabs still read as
+// serifs, and they are what makes it a W from an encyclopedia rather than a W. It is also
+// what tells the mark from the app's own icons, which are all one monoline weight.
 //
 // Using the mark to link to Wikipedia is a use the Wikimedia Foundation's trademark
 // policy allows without a licence, and it is the *linking* that it allows — so this glyph
