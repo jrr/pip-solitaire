@@ -85,7 +85,7 @@ describe("MenuGameInfoScreen", () => {
   test("shows the board's numbers", () => {
     // Non-breaking spaces inside the terms, which is `GameInfo`'s doing and pinned there.
     expect(render()->textIn(".game-info__numbers"))->toBe(
-      "8\u{a0}cascades · 4\u{a0}cells · 52\u{a0}cards",
+      "52\u{a0}cards · 8\u{a0}cascades · 4\u{a0}cells",
     )
   })
 

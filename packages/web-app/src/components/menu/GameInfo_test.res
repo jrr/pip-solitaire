@@ -65,7 +65,7 @@ describe("GameInfo.forGame", () => {
 describe("GameInfo.numbers", () => {
   test("sets the board's numbers out as one line", () => {
     expect(GameInfo.numbers(GameInfo.forGame(Game.freecell)))->toBe(
-      "8\u{a0}cascades · 4\u{a0}cells · 52\u{a0}cards",
+      "52\u{a0}cards · 8\u{a0}cascades · 4\u{a0}cells",
     )
   })
 
@@ -73,15 +73,15 @@ describe("GameInfo.numbers", () => {
     // "0 cells" is a number the reader has to discard; Simple Simon simply has no cells
     // to report, and no stock either.
     expect(GameInfo.numbers(GameInfo.forGame(Game.simpleSimon)))->toBe(
-      "10\u{a0}cascades · 52\u{a0}cards",
+      "52\u{a0}cards · 10\u{a0}cascades",
     )
   })
 
   test("says what part of the pack a board with a stock starts with held back", () => {
-    // The stock trails the pack it is part of: a player reading the line has the 52 in
-    // hand before being told 24 of them are out of play.
+    // The pack leads, so a reader has the 52 in hand well before being told that 24 of
+    // them are out of play.
     expect(GameInfo.numbers(GameInfo.forGame(Game.spiderette)))->toBe(
-      "7\u{a0}cascades · 52\u{a0}cards · 24\u{a0}in\u{a0}stock",
+      "52\u{a0}cards · 7\u{a0}cascades · 24\u{a0}in\u{a0}stock",
     )
   })
 
@@ -98,7 +98,7 @@ describe("GameInfo.numbers", () => {
       previewBox: 0.5,
       description: None,
     }
-    expect(GameInfo.numbers(one))->toBe("1\u{a0}cascade · 1\u{a0}cell · 1\u{a0}card")
+    expect(GameInfo.numbers(one))->toBe("1\u{a0}card · 1\u{a0}cascade · 1\u{a0}cell")
   })
 
   test("carries the board it was read off, as dealt", () => {

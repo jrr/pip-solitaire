@@ -24,7 +24,7 @@
     border-radius: var(--control-radius);
   }
 
-  /* "8 cascades · 4 cells · 52 cards", and a stock's board a term longer. The mono stack
+  /* "52 cards · 8 cascades · 4 cells", and a stock's board a term longer. The mono stack
      — the one the seed value and the board readout already use — is what keeps the digits
      lined up as the eye runs across the terms, and `letter-spacing` opens them out so the
      middots read as separators rather than as part of a number. The line wraps rather

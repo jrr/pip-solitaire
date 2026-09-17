@@ -152,20 +152,25 @@ let forGame = (game: Game.t): t => {
 let count = (n: int, ~singular: string, ~plural: string): string =>
   Int.toString(n) ++ "\u{a0}" ++ (n == 1 ? singular : plural)
 
-// The numbers as one line — "8 cascades · 4 cells · 52 cards". A term whose count is
+// The numbers as one line — "52 cards · 8 cascades · 4 cells". A term whose count is
 // zero is left out entirely: "0 cells" is a number a reader has to discard, where the
 // absence says the same thing and is one term shorter. The separator is a middot with
 // spaces around it, which is what keeps the terms readable as separate terms.
 //
-// **The stock comes after the pack, and names no noun of its own.** Every other term
-// counts a thing the board has some number of; "24 in stock" counts part of the 52 just
-// named, so it reads as a share of the term before it rather than as a fourth thing to
-// add up — which "24 stock cards" beside "52 cards" would not.
+// **The pack leads, and the board is described in it.** It is the term that survives
+// every game — a board can want no cells and no stock — so the line opens the same way
+// whichever game is on screen, and the shape terms after it say how that pack is laid
+// out rather than being joined by it.
+//
+// **The stock names no noun of its own.** Every other term counts a thing the board has
+// some number of; "24 in stock" counts part of the pack the line opened with, and the
+// bare "in stock" is what keeps it a share of that number rather than a fourth one to
+// add up — which "24 stock cards" alongside "52 cards" would not.
 let numbers = (info: t): string =>
   [
+    Some(count(info.cards, ~singular="card", ~plural="cards")),
     Some(count(info.cascades, ~singular="cascade", ~plural="cascades")),
     info.cells == 0 ? None : Some(count(info.cells, ~singular="cell", ~plural="cells")),
-    Some(count(info.cards, ~singular="card", ~plural="cards")),
     info.stock == 0 ? None : Some(Int.toString(info.stock) ++ "\u{a0}in\u{a0}stock"),
   ]
   ->Array.filterMap(term => term)
