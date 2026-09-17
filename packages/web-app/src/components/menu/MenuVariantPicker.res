@@ -28,9 +28,9 @@ type props = {
   // suits", the sentence the Games list's segment already says. A mark alone is a
   // control with no subject, and here there are three of them in a row.
   game: string,
-  // …and the word for what they vary in, which is also what heads the group: "pack",
-  // "size". Taken off the family rather than written down here, the same way the mark is
-  // (`GameVariant.nounFor`).
+  // …and the word for what they vary in, which is also the group's accessible name on
+  // the info screen: "pack", "size". Taken off the family rather than written down here,
+  // the same way the mark is (`GameVariant.nounFor`).
   noun: string,
   choices: array<choice>,
 }

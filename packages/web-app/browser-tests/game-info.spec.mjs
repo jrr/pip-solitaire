@@ -239,12 +239,16 @@ test("offers a family's packs on its info screen, and moves the screen to the on
   await setBetaFeatures(page, true)
   await page.getByRole("button", { name: "About Spiderette" }).click()
 
-  // All three at once, in the family's own order, with the pack the screen is about lit.
-  // The section is headed with the word for what they vary in — "PACK" on screen, the
-  // uppercasing being the heading's own, which is why the text asserted here is not.
-  const heading = page.locator("[aria-label='pack'] .menu-section__heading")
-  await expect(heading).toHaveText("pack")
-  await expect(heading).toHaveCSS("text-transform", "uppercase")
+  // All three at once, in the family's own order, with the pack the screen is about lit
+  // — and between the still and its numbers, with no heading over them: the control
+  // sits under the picture it redraws, and the word for what varies is the group's
+  // accessible name alone.
+  await expect(page.locator(".menu-screen .menu-section__heading")).toHaveCount(0)
+  const still = await page.locator(".game-info__preview").boundingBox()
+  const picker = await page.locator("[aria-label='pack']").boundingBox()
+  const numbers = await page.locator(".game-info__numbers").boundingBox()
+  expect(picker.y).toBeGreaterThanOrEqual(still.y + still.height)
+  expect(numbers.y).toBeGreaterThanOrEqual(picker.y + picker.height)
   await expect(packs(page)).toHaveText(["♠×4", "♠♥×2", "♠♥♦♣"])
   await expect(packs(page).nth(1)).toHaveAttribute("aria-current", "true")
   // The family names the screen, not the board: which pack is the picker's to say, and
@@ -287,10 +291,9 @@ test("leaves the table alone when the picker names the game being played", async
   await expect(numbers(page)).toHaveText("52 cards · 8 cascades · 4 cells")
 
   await sizes(page).nth(1).click()
-  // The numbers are the reason the picker sits under them, and on this family they are
-  // also what says the screen moved: four cascades and two cells, on the line
-  // immediately above the control that changed them. The title stays "FreeCell"
-  // throughout, all three sizes being that game.
+  // On this family the numbers are what says the screen moved: four cascades and two
+  // cells, on the line immediately under the control that changed them. The title stays
+  // "FreeCell" throughout, all three sizes being that game.
   await expect(numbers(page)).toHaveText("20 cards · 4 cascades · 2 cells")
   await expect(page.locator(".menu-title")).toHaveText("FreeCell")
   await expect(page.locator("#menu-overlay")).toBeVisible()
@@ -308,8 +311,8 @@ test("leaves the table alone when the picker names the game being played", async
 })
 
 test("gives a game with no family no such section at all", async ({ page }) => {
-  // Not an empty band with a heading over it: Simple Simon is a game on its own, so
-  // there is nothing to choose between and nothing to head.
+  // Not an empty band: Simple Simon is a game on its own, so there is nothing to
+  // choose between.
   await page.goto("/?seed=24680&animate=off")
   await settleBoard(page)
   await openMenu(page)
@@ -384,8 +387,8 @@ test("draws the link out as a link, holding its target to its own words", async 
 test("keeps the screen still while the picker redraws the board", async ({ page }) => {
   // The still is drawn in a box cut for the whole family (`GameInfo.previewBox`), not
   // sized to whichever board is in it. Without that, Micro's four short columns were
-  // scaled up to the panel's width, the mat grew by half again, and the numbers, the
-  // picker and the link all slid down the panel under the finger that had just tapped
+  // scaled up to the panel's width, the mat grew by half again, and the picker, the
+  // numbers and the link all slid down the panel under the finger that had just tapped
   // one of them — a control that moves when you use it.
   //
   // Only a browser can see this: the box is an `aspect-ratio` over container units, and
