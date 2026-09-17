@@ -196,6 +196,12 @@ test("opens the game's info screen from the i, and comes back to the menu", asyn
     "href",
     "https://en.wikipedia.org/wiki/Simple_Simon_(solitaire)",
   )
+  // Nothing on screen names the page, so the mark carries the name itself — and the
+  // "(solitaire)" the URL needs is not part of it (`GameInfo.referenceLabel`).
+  await expect(page.locator(".game-info__link")).toHaveAttribute(
+    "aria-label",
+    "Simple Simon on Wikipedia",
+  )
 
   // Back to the games list, with FreeCell still on the table: reading about a game is
   // not choosing it.
@@ -356,12 +362,15 @@ test("draws the picker as one control the width of the panel, not three side by 
   expect(Math.round(boxes[2].right)).toBe(Math.round(mat.x + mat.width))
 })
 
-test("draws the link out as a link, holding its target to its own words", async ({ page }) => {
-  // The one control on this screen that leaves the app, and the only one with no box:
-  // a box here reads as one of the game's own controls, and the panel is full of those.
-  // Both halves are invisible when they break — a link stretched to the panel's width
-  // draws exactly the same underline, and takes a tap anywhere along the empty rest of
-  // the line.
+test("draws the link out as a bare mark with a thumb's target around it", async ({ page }) => {
+  // The one control on this screen that leaves the app, and the only one with no box: a
+  // box here reads as one of the game's own controls, and the panel is full of those.
+  //
+  // Everything measured here is invisible when it breaks. The mark is 20px of ink, so a
+  // link left at that size is a target a third the size of the panel's others; a link
+  // stretched to the panel's width takes a tap anywhere along an empty line that never
+  // looked like a link at all; and the disc around the mark is the only thing saying
+  // there is anything here to tap.
   await page.goto("/?seed=24680&animate=off")
   await settleBoard(page)
   await openMenu(page)
@@ -369,19 +378,22 @@ test("draws the link out as a link, holding its target to its own words", async 
   await page.getByRole("button", { name: "About FreeCell" }).click()
 
   const link = page.locator(".game-info__link")
-  await expect(link).toHaveCSS("text-decoration-line", "underline")
   await expect(link).toHaveCSS("background-color", "rgba(0, 0, 0, 0)")
   await expect(link).toHaveCSS("border-top-width", "0px")
+  await expect(page.locator(".game-info__mark")).toBeVisible()
+
+  await expect(page.locator(".game-info__badge")).toHaveCSS("border-top-width", "1px")
 
   const box = await link.boundingBox()
   const mat = await page.locator(".game-info__preview").boundingBox()
-  const ink = await page.evaluate(() => {
-    const range = document.createRange()
-    range.selectNodeContents(document.querySelector(".game-info__link"))
-    return range.getBoundingClientRect().width
-  })
-  expect(Math.round(box.width)).toBe(Math.round(ink))
-  expect(box.width).toBeLessThan(mat.width * 0.8)
+  expect(box.height).toBeGreaterThanOrEqual(44)
+  expect(box.width).toBeLessThan(mat.width * 0.25)
+
+  // The *disc* on the panel's text column, not the target box around it — which is what
+  // the link's negative start margin buys, and what a tidy-up removing it would undo.
+  const badge = await page.locator(".game-info__badge").boundingBox()
+  const prose = await page.locator(".game-info__prose").boundingBox()
+  expect(Math.round(badge.x)).toBe(Math.round(prose.x))
 })
 
 test("keeps the screen still while the picker redraws the board", async ({ page }) => {

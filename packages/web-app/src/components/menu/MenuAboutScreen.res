@@ -76,9 +76,10 @@ type props = {
 // paragraph to read rather than a line to take in.
 let blurb = "I made this for myself but I hope you like it too."
 
-// The repository this build was made from. A real link out, like the game info screen's:
-// a new tab, because the app is a PWA and following a link in place would tear down a
-// board mid-play, and `rel` so the opened page can't reach back through `window.opener`.
+// The repository this build was made from. A real link out, like the game info screen's,
+// and it asks `LinkOut` for its target for the same reason: the app is a PWA, and what it
+// takes to hand a reader to their browser differs by platform. `rel` is what stops the
+// opened page from reaching back through `window.opener`.
 let repo = "jrr/pip-solitaire"
 let repoUrl = "https://github.com/" ++ repo
 
@@ -120,7 +121,7 @@ let make = ({version, buildTime, updateVisible, onReload, refresh, onClose, onBa
       // same weight, borrowed by class so the two can't drift (`MenuHeader.css`).
       <h1 className="menu-title about-wordmark"> {Html.string("Pip")} </h1>
       <p className="about-blurb"> {Html.string(blurb)} </p>
-      <a className="about-link" href={repoUrl} target="_blank" rel="noopener noreferrer">
+      <a className="about-link" href={repoUrl} target=?{LinkOut.target()} rel="noopener noreferrer">
         <svg className="about-link__mark" viewBox="0 0 16 16" ariaHidden="true" focusable="false">
           <path d={markGithub} fill="currentColor" />
         </svg>

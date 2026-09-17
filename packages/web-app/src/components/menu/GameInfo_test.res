@@ -51,6 +51,17 @@ describe("GameInfo.forGame", () => {
     )
   })
 
+  test("names the article the link goes to, without Wikipedia's disambiguator", () => {
+    // What the link says, which is where it goes and nothing about what is written
+    // there. A Spiderette is described in Spider's article, so the line says Spider —
+    // and the "(solitaire)" that tells that page from the animal's is not part of the
+    // name a player would have searched for.
+    let label = game => GameInfo.referenceLabel(GameInfo.forGame(game))
+    expect(label(Game.mini))->toBe("FreeCell on Wikipedia")
+    expect(label(Game.simpleSimon))->toBe("Simple Simon on Wikipedia")
+    expect(label(Game.spiderette))->toBe("Spider on Wikipedia")
+  })
+
   test("still hands back a link for a game the table has never heard of", () => {
     // A game added to `Game.all` and not to the table: the info screen's link must go
     // somewhere about patience rather than nowhere at all, since a missing `href` is a
