@@ -11,7 +11,7 @@ export default defineConfig({
     ssr: "src/Cli.res.mjs",
     target: "node20",
     outDir: "dist",
-    rollupOptions: {
+    rolldownOptions: {
       output: { entryFileNames: "cli.js" },
     },
   },

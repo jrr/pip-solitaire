@@ -1,9 +1,9 @@
 // Boot the *dev* server the way a developer does, load the app in a real browser,
 // and read what the server printed. **A rendered page is not enough to pass** —
-// the seam this guards is a dev-server-only esbuild config that breaks without
+// the seam this guards is a dev-server-only scanner config that breaks without
 // breaking the page, so anything the server calls an error fails the run. The
-// seam, and why `mise run ci` cannot cover it, are in docs/rendering.md § The
-// three esbuild settings, in four places.
+// seam, and why `mise run ci` cannot cover it, are in docs/rendering.md § The JSX
+// settings, in three places.
 //
 // Two things this deliberately does not do:
 //

@@ -27,7 +27,7 @@
     "opentype.js": "^2.0.0",
     "rescript": "^12.3.1",
     "subset-font": "^2.5.0",
-    "vite": "^7.0.0",
+    "vite": "^8.0.0",
     "vite-plugin-pwa": "^1.0.0",
     "vitest": "^5.0.1",
     "workbox-window": "^7.0.0"

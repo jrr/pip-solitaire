@@ -5,8 +5,8 @@ The compiler doesn't lower the JSX it type-checks: it emits real JSX syntax into
 the `.res.mjs` output and leaves the lowering to whatever bundles that output.
 Preact then owns the diff.
 
-That one decision is the reason for `runtime/Html.res`, for the same three
-esbuild settings appearing in four places, and for `scripts/lib/load-jsx-module.mjs`.
+That one decision is the reason for `runtime/Html.res`, for the JSX arrangement
+having to be restated in three places, and for `scripts/lib/load-jsx-module.mjs`.
 This page is the whole of it.
 
 ## The pipeline
@@ -17,7 +17,7 @@ TopBar.res
    │                   "jsx": { "version": 4, "module": "Html", "preserve": true }
    ▼
 TopBar.res.mjs       real JSX:  <svg className={"top-bar__icon"} viewBox={"0 0 24 24"}>…
-   │   esbuild       loader: jsx · jsx: automatic · jsxImportSource: preact
+   │   Oxc           lang: jsx · jsx: {runtime: automatic, importSource: preact}
    ▼
 preact/jsx-runtime   Preact diffs, patches, owns the DOM
 ```
@@ -26,10 +26,10 @@ Each stage owns one thing, and the split is what the rest of this page turns on:
 
 - **ReScript** type-checks the JSX against the module named by `jsx.module` —
   `Html` — and then writes the JSX out unchanged. It never emits a call.
-- **esbuild** decides what the JSX actually *becomes*. Which is to say: the
-  `@module("preact/jsx-runtime")` paths in `Html.res` are read by the type
-  checker; `jsxImportSource` is what the browser runs. They have to name the same
-  runtime, and nothing checks that they do.
+- **Oxc**, the transformer inside Vite's bundler, decides what the JSX actually
+  *becomes*. Which is to say: the `@module("preact/jsx-runtime")` paths in
+  `Html.res` are read by the type checker; `jsx.importSource` is what the browser
+  runs. They have to name the same runtime, and nothing checks that they do.
 - **`Html.res`** owns the three things the app needs from the arrangement: the
   types the transform checks against, the props a DOM element accepts
   (`elementProps`), and the small surface the app calls — `string`, `array`,
@@ -39,30 +39,40 @@ Preserve mode was chosen over the generic transform because it puts a real,
 inspectable JSX tree in the output and lets Preact's own tooling see it. The bill
 comes due in the next two sections.
 
-## The three esbuild settings, in four places
+## The JSX settings, in three places
 
-`.res.mjs` is not a JSX file extension, so nothing infers any of this. Every tool
-that reads the compiled output has to be told the same three things — `loader:
-jsx` (with a filter that matches `.res.mjs`), `jsx: "automatic"`,
-`jsxImportSource: "preact"` — and each reaches esbuild by its own route:
+`.res.mjs` is not a JSX file extension, and every tool here decides how to parse a
+file from its extension alone. So two things have to be said, in every pipeline
+that reads the compiled output: that these files may contain JSX at all, and what
+it becomes. The first is the one that gets forgotten, because the option that says
+it is a different option in each of the three vocabularies below — `lang`,
+`moduleTypes`, `loader` — while the second, the Preact runtime, is spelled almost
+the same way everywhere.
 
 | where | which route | reached by |
 |---|---|---|
-| `vite.config.js` → `esbuild` | the build's transform | `mise run bundle`, `mise run preview` |
-| `vite.config.js` → `optimizeDeps.esbuildOptions` | the dev server's dependency scanner, a separate esbuild instance that does *not* read the block above | `mise run dev` |
-| `vitest.config.js` → `esbuild` | the unit-test transform | `mise run test` |
-| `scripts/lib/load-jsx-module.mjs` | a one-off `build()` for bare Node | `mise run icons` |
+| `res-jsx-plugin.js` | a `pre` plugin over `.res.mjs`, so the JSX is gone before any of Vite's own extension-keyed machinery parses the module | `mise run bundle`, `mise run dev`, `mise run test` |
+| `vite.config.js` → `optimizeDeps.rolldownOptions` | the dev server's dependency scanner: a Rolldown pass of its own, which runs none of the app's plugins | `mise run dev` |
+| `scripts/lib/load-jsx-module.mjs` | a one-off esbuild `build()` for bare Node | `mise run icons` |
 
-**Nothing checks that the four agree**, and they didn't once: `bundle`, `test`
+That the first row covers three pipelines at once is the reason it is a plugin
+rather than a config block: a `pre` transform is the one hook the build, the dev
+server and the test run all honour, and lowering there means nothing downstream
+ever has to be told `.res.mjs` is special. Vite's own `oxc` option looks like the
+shorter way to say it and is a trap — `oxc: {include, lang: "jsx", …}` serves the
+dev server and the test run, and then the bundled build hands those same options
+to a native Rolldown plugin that reads the extension and ignores the `lang`.
+
+**Nothing checks that the three agree**, and they didn't once: `bundle`, `test`
 and `browsertest` were all green while `vite` printed a screenful of *"The JSX
 syntax extension is not currently enabled"* on every start.
 
 Two details make that failure quieter than it sounds:
 
-- **The scanner keys its loader on `.js`, not `.mjs`.** Vite's dependency scanner
-  normalizes an `.mjs` extension to `js` *before* looking the loader up, so a
-  `.mjs` key there is never consulted. Both are listed; the `.js` one is the
-  load-bearing half.
+- **The scanner keys `moduleTypes` on the file's real extension.** `.mjs` is the
+  entry that matters; a `.js` one is never consulted for the compiled output, so
+  adding one out of caution buys nothing and hides that the `.mjs` key is the
+  whole of it.
 - **A dependency-scan failure is not fatal to Vite.** It logs, skips
   pre-bundling, and serves anyway — so the app comes up looking perfectly fine.
   And a warm `node_modules/.vite` skips the scan entirely, so the breakage is
@@ -197,8 +207,8 @@ props. It costs a second Preact package in the bundle graph (~3 KB gzip), becaus
 
 ## Before you change the build
 
-1. Changing one of the three esbuild settings means changing it in **all four**
-   places above — and `.js`, not `.mjs`, is the key the dep scanner reads.
+1. Changing how the JSX is lowered means changing it in **all three** places
+   above, each in its own vocabulary.
 2. Run `mise run dev-smoke` after any build-config change. `mise run ci` will not
    catch a broken dev server; that task is the only thing that does.
 3. Adding an attribute means adding a field to `Html.elementProps`, with `@as` if
@@ -208,4 +218,4 @@ props. It costs a second Preact package in the bundle graph (~3 KB gzip), becaus
 5. Adding a Node script that imports compiled ReScript means going through
    `scripts/lib/load-jsx-module.mjs`.
 6. If the JSX runtime itself ever changes, the `@module` paths in `Html.res` and
-   `jsxImportSource` in the four configs have to move together.
+   the import source in all three places have to move together.

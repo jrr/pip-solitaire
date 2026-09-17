@@ -143,15 +143,16 @@ Developers get format-on-save automatically via the workspace settings in
 ## Rendering
 
 The web app's UI is ReScript JSX compiled in **preserve mode** onto **Preact**:
-the compiler emits real JSX into the `.res.mjs` output and esbuild lowers it. The
-bindings live in `packages/web-app/src/runtime/Html.res`; `docs/rendering.md` has
-the pipeline and the two things that bite.
+the compiler emits real JSX into the `.res.mjs` output and the bundler lowers it.
+The bindings live in `packages/web-app/src/runtime/Html.res`; `docs/rendering.md`
+has the pipeline and the two things that bite.
 
-The short version: the same three esbuild settings are duplicated in **four**
-places (`vite.config.js` twice, `vitest.config.js`, and
-`scripts/lib/load-jsx-module.mjs`) with nothing checking that they agree — `mise
-run dev-smoke` is what catches it — and bare Node can't `import` compiled output
-that carries JSX, so a build script goes through `load-jsx-module.mjs`.
+The short version: the same arrangement has to be stated in **three** places, in
+three different vocabularies (`res-jsx-plugin.js`, `vite.config.js`'s
+`optimizeDeps`, and `scripts/lib/load-jsx-module.mjs`) with nothing checking that
+they agree — `mise run dev-smoke` is what catches it — and bare Node can't
+`import` compiled output that carries JSX, so a build script goes through
+`load-jsx-module.mjs`.
 
 Attributes are typed props on `Html.elementProps`, not a generic string map:
 adding an attribute the app has never used means adding a field there.

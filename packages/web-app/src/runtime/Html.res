@@ -2,10 +2,10 @@
 // this module owns only the type surface that arrangement needs, plus the small
 // API the app calls (`string`, `array`, `empty`, `node`, `create`, `mount`).
 //
-// **The pipeline, and the four places the same three esbuild settings are
-// duplicated, are in `docs/rendering.md`.** Read it before changing anything about
-// the build: nothing checks that those four agree, and `mise run dev-smoke` is the
-// only task that catches them when they don't.
+// **The pipeline, and the three places the JSX arrangement has to be restated,
+// are in `docs/rendering.md`.** Read it before changing anything about the build:
+// nothing checks that those three agree, and `mise run dev-smoke` is the only task
+// that catches them when they don't.
 //
 // Hooks are available in principle, but see `create` below for the large
 // part of this app where they are not.

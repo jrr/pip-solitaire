@@ -1,6 +1,7 @@
 import { execSync } from "node:child_process";
 import { defineConfig } from "vite";
 import { VitePWA } from "vite-plugin-pwa";
+import { resJsxPlugin } from "./res-jsx-plugin.js";
 
 // Build-time version info, baked into the bundle via `define` below and shown
 // in the corner "about" badge. The git SHA lets a running PWA report exactly
@@ -65,17 +66,22 @@ const appNamePlugin = {
 //   - Icon `src`s are relative and resolve next to the manifest.
 export default defineConfig({
   base: "./",
-  // Two of the four places the same three esbuild settings have to be stated, and
-  // nothing checks that the four agree — docs/rendering.md § The three esbuild
-  // settings, in four places has the table and the failure. Change one, read that.
-  esbuild: {
-    include: [/\.res\.mjs$/, /\.[jt]sx?$/],
-    loader: "jsx",
-    jsx: "automatic",
-    jsxImportSource: "preact",
+  build: {
+    // Vite's own default here is Lightning CSS, which *deletes* the
+    // `@layer foundations, components, scenes, overrides;` statement from
+    // `styles/index.css` on the grounds that the bundled sheet's block order says
+    // the same thing. It doesn't: that statement is the only thing pinning the
+    // cascade, and leaving it to the order blocks happen to land in is precisely
+    // what docs/css-layers.md § Why the declaration comes first exists to prevent.
+    // esbuild's minifier leaves it alone. (`browser-tests/css-layers.spec.mjs` is
+    // what catches the loss — nothing else does.)
+    cssMinify: "esbuild",
   },
-  // …and again for the dev server's dependency scanner, a separate esbuild
-  // instance that does *not* read the block above.
+  // The dev server's dependency scanner is the one Vite pipeline `resJsxPlugin`
+  // can't reach: a Rolldown pass of its own that runs none of the app's plugins,
+  // so the same arrangement is restated here in Rolldown's vocabulary.
+  // docs/rendering.md § The JSX settings, in three places has the table and the
+  // failure. Change one, read that.
   optimizeDeps: {
     // Scan the app's entry and nothing else. Vite's default is every `index.html`
     // under the root, which sweeps up `screenshots/index.html` — the generated
@@ -83,12 +89,12 @@ export default defineConfig({
     // has run it) — and a scan that trips over it is skipped wholesale, taking
     // dependency pre-bundling with it.
     entries: ["index.html"],
-    esbuildOptions: {
-      // `".js"`, not `".mjs"`, is the load-bearing key here; `.mjs` is kept for the
-      // optimizer proper. Don't drop either (docs/rendering.md, same section).
-      loader: { ".js": "jsx", ".mjs": "jsx" },
-      jsx: "automatic",
-      jsxImportSource: "preact",
+    rolldownOptions: {
+      // Keyed on the file's real extension, so `.mjs` is the whole of it — a
+      // `".js"` entry is never consulted for the compiled output. Without this
+      // the scan fails wholesale, which Vite logs and then serves past.
+      moduleTypes: { ".mjs": "jsx" },
+      transform: { jsx: { runtime: "automatic", importSource: "preact" } },
     },
   },
   // Expose the build version to the app as compile-time constants. Vite
@@ -99,6 +105,7 @@ export default defineConfig({
     __BUILD_TIME__: JSON.stringify(buildTime),
   },
   plugins: [
+    resJsxPlugin,
     appNamePlugin,
     VitePWA({
       // On preview builds this replaces the whole PWA below with a self-

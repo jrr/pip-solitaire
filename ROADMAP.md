@@ -67,10 +67,11 @@ whole app compiled against the new runtime with no call-site changes at all. The
 diff that followed was the honest part: typed props replacing the generic `attrs`
 escape hatch, and stale comments about a reconciler we no longer own.
 
-**What we own now** is a binding module, and three esbuild configurations that
-have to agree (build, dev-server scan, Vitest) because preserve mode leaves JSX
-in the compiled output for the bundler to lower. `mise run dev-smoke` exists
-because nothing else checks the second one.
+**What we own now** is a binding module, and a JSX lowering that has to be stated
+once per pipeline that reads the compiled output (a shared plugin for build, dev
+server and Vitest; the dev-server dependency scan separately) because preserve
+mode leaves JSX there for the bundler to lower. `mise run dev-smoke` exists
+because nothing else checks the scan.
 
 ### Why a screen's state is a child loop, not a hook
 
