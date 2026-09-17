@@ -74,15 +74,15 @@ let descriptionFor = (id: string): option<string> =>
   switch id {
   | "freecell" =>
     Some(
-      "Build down in descending rank of alternating colours; send up to like-suit piles in ascending rank. Moves are limited by available free spaces.",
+      "Build downward in descending rank of alternating colours; send up to like-suit piles in ascending rank. Moves are limited by available free spaces.",
     )
   | "simplesimon" =>
     Some(
-      "Build down in descending rank of any suit, but like-suit runs can move together. Win by building runs of King through Ace.",
+      "Build downward in descending rank of any suit, but like-suit runs can move together. Win by building runs of King through Ace.",
     )
   | "spiderette" =>
     Some(
-      "Build down in descending rank of any suit, but like-suit runs can move together. Win by building runs of King through Ace. Deal from the stock when you're stuck.",
+      "Build downward in descending rank of any suit, but like-suit runs can move together. Win by building runs of King through Ace. Deal from the stock when you're stuck.",
     )
   | _ => None
   }
