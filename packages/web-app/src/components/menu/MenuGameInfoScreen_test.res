@@ -73,53 +73,76 @@ describe("MenuGameInfoScreen", () => {
   })
 
   test("says what the game is in a paragraph, the same one for every board of a family", () => {
-    // The copy is generic on purpose: it describes FreeCell, not the size in hand, so
-    // the picker under it changes the board and the numbers and leaves the words alone.
-    // Which words those are is `GameInfo`'s (`descriptionFor`), tested there.
+    // That the screen draws the paragraph, and draws the *family's* one: picking another
+    // size changes the board and the numbers and leaves the words alone. Which words
+    // those are is copy, and copy is free to be rewritten without a test to update.
     let prose = game => render(~game)->textIn(".game-info__prose")
-    expect(prose(Game.freecell)->String.startsWith("Every card is face up"))->toBe(true)
+    expect(prose(Game.freecell) == "")->toBe(false)
     expect(prose(Game.micro))->toBe(prose(Game.freecell))
-    expect(prose(Game.spiderette)->String.includes("Spider's rules"))->toBe(true)
+    expect(prose(Game.spiderette) == prose(Game.freecell))->toBe(false)
   })
 
   test("shows the board's numbers", () => {
-    expect(render()->textIn(".game-info__numbers"))->toBe("8 cascades · 4 cells · 52 cards")
+    // Non-breaking spaces inside the terms, which is `GameInfo`'s doing and pinned there.
+    expect(render()->textIn(".game-info__numbers"))->toBe(
+      "52\u{a0}cards · 8\u{a0}cascades · 4\u{a0}cells",
+    )
   })
 
-  test("links out to the game's article in a tab of its own", () => {
-    // In place would tear the board down mid-play — the app is a PWA, and there is a
-    // game behind this menu. `rel` is what stops the opened page reaching back through
-    // `window.opener`.
+  test("links out to the game's article, under a mark and nothing else", () => {
+    // A real link and not a button that navigates, so it can be long-pressed or copied.
     let link = render()->find(".game-info__link")->Option.getOrThrow
     expect(link->tag)->toBe("A")
     expect(link->attrOr("href"))->toBe("https://en.wikipedia.org/wiki/FreeCell")
-    expect(link->attrOr("target"))->toBe("_blank")
     expect(link->attrOr("rel"))->toBe("noopener noreferrer")
+    expect(link->text)->toBe("")
+    expect(link->findAll(".game-info__mark")->Array.length)->toBe(1)
   })
 
-  test("offers the family's other boards, headed with the word for what they vary in", () => {
+  test("gives the mark the name the words would have had, twice over", () => {
+    // Nothing on screen says where this goes, so the name is written where each kind of
+    // reader will be given it: `aria-label` announces it, `title` shows it to a pointer
+    // that rests on the mark. Which words those are is `GameInfo`'s (`referenceLabel`),
+    // pinned there — that a Spiderette's link is named for Spider is the point of
+    // carrying the whole sentence rather than the word "Wikipedia".
+    let link = game => render(~game)->find(".game-info__link")->Option.getOrThrow
+    expect(link(Game.freecell)->attrOr("aria-label"))->toBe("FreeCell on Wikipedia")
+    expect(link(Game.freecell)->attrOr("title"))->toBe("FreeCell on Wikipedia")
+    expect(link(Game.spiderette)->attrOr("aria-label"))->toBe("Spider on Wikipedia")
+  })
+
+  test("asks for a tab of its own in a browser, which is where a board can be torn down", () => {
+    // The iOS Home Screen web app wants the opposite and gets it from `LinkOut`, which is
+    // where that reasoning lives; jsdom is a browser, so what this pins is the default.
+    expect(render()->find(".game-info__link")->Option.getOrThrow->attrOr("target"))->toBe("_blank")
+  })
+
+  test("offers the family's other boards, named but not headed with what they vary in", () => {
     let screen = render(
       ~game=Game.spiderette,
       ~variants=pickerFor(Game.spideretteFamily, ~on=Game.spiderette),
     )
-    // "PACK" on screen — the heading is uppercased by the stylesheet, so the word here is
-    // the picker's own and nothing on this screen knows which families there are.
-    expect(screen->textIn("[aria-label='pack'] .menu-section__heading"))->toBe("pack")
-    expect(screen->findAll(".menu-variant-picker__choice")->Array.length)->toBe(3)
+    // "pack" is the group's accessible name, the picker's own word — nothing on this
+    // screen knows which families there are — and nothing is drawn over the control: a
+    // heading there would part the still from its numbers with a word the marks say.
+    expect(screen->findAll("[aria-label='pack'] .menu-variant-picker__choice")->Array.length)->toBe(
+      3,
+    )
+    expect(screen->findAll(".menu-section__heading")->Array.length)->toBe(0)
   })
 
-  test("describes the game first and offers the one control last", () => {
-    // Picture, the numbers counting it, how it plays, the rules in full — and then the
-    // picker, the only control on a screen that is otherwise all description.
+  test("puts the one control straight under the still it redraws, above the numbers", () => {
+    // Picture, then the boards to see it as, then the numbers counting it, how it plays,
+    // where to read on: everything a pick changes sits around the thumb that picks.
     let screen = render(~game=Game.mini, ~variants=pickerFor(Game.freecellFamily, ~on=Game.mini))
     expect(
       screen->findAll(".menu-screen > *")->Array.map(el => el->attrOr("aria-label")),
-    )->toEqual(["preview", "numbers", "how it plays", "reference", "size"])
+    )->toEqual(["preview", "size", "numbers", "how it plays", "reference"])
   })
 
   test("has no such section at all on a game that is a game on its own", () => {
-    // Not an empty band: Simple Simon has no family, so there is no choice to offer and
-    // nothing for a heading to head — and the screen ends on the link out.
+    // Not an empty band: Simple Simon has no family, so there is no choice to offer —
+    // and the numbers sit straight under the still.
     let screen = render(~game=Game.simpleSimon)
     expect(screen->findAll(".menu-variant-picker")->Array.length)->toBe(0)
     expect(

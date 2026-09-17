@@ -16,9 +16,10 @@
 //
 // The **variant picker** on the screen is a second chain of the same kind, and the one
 // place two controls meet: `Main` decides which boards a family is offering and what a
-// tap on one does, `MenuVariantPicker` draws them, and the choice it writes is the one
-// the Games list's segment reads back (`game-variant.spec.mjs`). A walk is the only thing
-// that can see that they are one choice and not two.
+// tap on one does, `MenuVariantPicker` draws them, and the Games list's segment offers
+// the same boards (`game-variant.spec.mjs`) — but only the segment chooses. A walk is the
+// only thing that can see that a pick here moves the screen and nothing else: not the
+// segment, not the table under the menu.
 
 import { expect, test } from "@playwright/test"
 import { settleBoard } from "./lib/board.mjs"
@@ -170,7 +171,7 @@ test("opens the game's info screen from the i, and comes back to the menu", asyn
   // The game names the screen, and the numbers are Simple Simon's — the game the "i"
   // belonged to, which is not the game on the table behind the menu.
   await expect(page.locator(".menu-title")).toHaveText("Simple Simon")
-  await expect(page.locator(".game-info__numbers")).toHaveText("10 cascades · 52 cards")
+  await expect(page.locator(".game-info__numbers")).toHaveText("52 cards · 10 cascades")
 
   // Centred, with the link under it. The panel is left-aligned everywhere else, so
   // this is the sort of exception a later tidy-up "corrects" back — and a ranged-left
@@ -194,6 +195,12 @@ test("opens the game's info screen from the i, and comes back to the menu", asyn
   await expect(page.locator(".game-info__link")).toHaveAttribute(
     "href",
     "https://en.wikipedia.org/wiki/Simple_Simon_(solitaire)",
+  )
+  // Nothing on screen names the page, so the mark carries the name itself — and the
+  // "(solitaire)" the URL needs is not part of it (`GameInfo.referenceLabel`).
+  await expect(page.locator(".game-info__link")).toHaveAttribute(
+    "aria-label",
+    "Simple Simon on Wikipedia",
   )
 
   // Back to the games list, with FreeCell still on the table: reading about a game is
@@ -238,12 +245,16 @@ test("offers a family's packs on its info screen, and moves the screen to the on
   await setBetaFeatures(page, true)
   await page.getByRole("button", { name: "About Spiderette" }).click()
 
-  // All three at once, in the family's own order, with the pack the screen is about lit.
-  // The section is headed with the word for what they vary in — "PACK" on screen, the
-  // uppercasing being the heading's own, which is why the text asserted here is not.
-  const heading = page.locator("[aria-label='pack'] .menu-section__heading")
-  await expect(heading).toHaveText("pack")
-  await expect(heading).toHaveCSS("text-transform", "uppercase")
+  // All three at once, in the family's own order, with the pack the screen is about lit
+  // — and between the still and its numbers, with no heading over them: the control
+  // sits under the picture it redraws, and the word for what varies is the group's
+  // accessible name alone.
+  await expect(page.locator(".menu-screen .menu-section__heading")).toHaveCount(0)
+  const still = await page.locator(".game-info__preview").boundingBox()
+  const picker = await page.locator("[aria-label='pack']").boundingBox()
+  const numbers = await page.locator(".game-info__numbers").boundingBox()
+  expect(picker.y).toBeGreaterThanOrEqual(still.y + still.height)
+  expect(numbers.y).toBeGreaterThanOrEqual(picker.y + picker.height)
   await expect(packs(page)).toHaveText(["♠×4", "♠♥×2", "♠♥♦♣"])
   await expect(packs(page).nth(1)).toHaveAttribute("aria-current", "true")
   // The family names the screen, not the board: which pack is the picker's to say, and
@@ -259,22 +270,23 @@ test("offers a family's packs on its info screen, and moves the screen to the on
   await expect(page.locator(".menu-title")).toHaveText("Spiderette")
   await expect(page.locator("#menu-overlay")).toBeVisible()
 
-  // …and it is the *same* choice the Games list's segment offers, not a second one: back
-  // on the main menu the segment is showing the pack picked here, and it survives a
-  // launch like every other preference.
+  // …and it is a look, not a choice: back on the main menu the segment is showing the
+  // pack it showed before the "i" was tapped, and so it does after a launch — nothing was
+  // remembered, because nothing was chosen. The segment is the control that chooses.
   await page.getByRole("button", { name: "Back to menu" }).click()
-  await expect(packs(page)).toHaveText("♠♥♦♣")
+  await expect(packs(page)).toHaveText("♠♥×2")
   await page.reload()
   await settleBoard(page)
   await openMenu(page)
-  await expect(packs(page)).toHaveText("♠♥♦♣")
+  await expect(packs(page)).toHaveText("♠♥×2")
 })
 
-test("swaps the board under the menu when the picker names the game being played", async ({
+test("leaves the table alone when the picker names the game being played", async ({
   page,
 }) => {
-  // The same rule the Games list's segment follows: a choice about the board on the
-  // table is a board change, and the menu stays put so the control is still there.
+  // Where the Games list's segment would swap the board under the menu — a choice about
+  // the board on the table is a board change — the picker is not a choice at all, and the
+  // game being played is the one case where the difference can be seen from the table.
   await page.goto("/?seed=24680&animate=off")
   await settleBoard(page)
   await openMenu(page)
@@ -282,26 +294,31 @@ test("swaps the board under the menu when the picker names the game being played
   await page.getByRole("button", { name: "About FreeCell" }).click()
 
   await expect(sizes(page)).toHaveText(["Standard", "Mini", "Micro"])
-  await expect(numbers(page)).toHaveText("8 cascades · 4 cells · 52 cards")
+  await expect(numbers(page)).toHaveText("52 cards · 8 cascades · 4 cells")
 
   await sizes(page).nth(1).click()
-  // The numbers are the reason the picker sits under them, and on this family they are
-  // also what says the screen moved: four cascades and two cells, on the line
-  // immediately above the control that changed them. The title stays "FreeCell"
-  // throughout, all three sizes being that game.
-  await expect(numbers(page)).toHaveText("4 cascades · 2 cells · 20 cards")
+  // On this family the numbers are what says the screen moved: four cascades and two
+  // cells, on the line immediately under the control that changed them. The title stays
+  // "FreeCell" throughout, all three sizes being that game.
+  await expect(numbers(page)).toHaveText("20 cards · 4 cascades · 2 cells")
   await expect(page.locator(".menu-title")).toHaveText("FreeCell")
   await expect(page.locator("#menu-overlay")).toBeVisible()
 
-  // …and the board really did change under the open menu.
+  // …but the row's segment is still on the size being played, its deal is still the
+  // deal on the table, and the board under the menu never changed: four cells, not two.
+  await page.getByRole("button", { name: "Back to menu" }).click()
+  await expect(sizes(page)).toHaveText("Standard")
+  await expect(page.locator('[aria-label="this game"] .menu-section__heading')).toHaveText(
+    "FreeCell #24680",
+  )
   await page.getByRole("button", { name: "Close menu" }).click()
   await settleBoard(page)
-  await expect(page.locator(".drop-zone__slot--cell")).toHaveCount(2)
+  await expect(page.locator(".drop-zone__slot--cell")).toHaveCount(4)
 })
 
 test("gives a game with no family no such section at all", async ({ page }) => {
-  // Not an empty band with a heading over it: Simple Simon is a game on its own, so
-  // there is nothing to choose between and nothing to head.
+  // Not an empty band: Simple Simon is a game on its own, so there is nothing to
+  // choose between.
   await page.goto("/?seed=24680&animate=off")
   await settleBoard(page)
   await openMenu(page)
@@ -345,12 +362,15 @@ test("draws the picker as one control the width of the panel, not three side by 
   expect(Math.round(boxes[2].right)).toBe(Math.round(mat.x + mat.width))
 })
 
-test("draws the link out as a link, holding its target to its own words", async ({ page }) => {
-  // The one control on this screen that leaves the app, and the only one with no box:
-  // a box here reads as one of the game's own controls, and the panel is full of those.
-  // Both halves are invisible when they break — a link stretched to the panel's width
-  // draws exactly the same underline, and takes a tap anywhere along the empty rest of
-  // the line.
+test("draws the link out as a bare mark with a thumb's target around it", async ({ page }) => {
+  // The one control on this screen that leaves the app, and the only one with no box: a
+  // box here reads as one of the game's own controls, and the panel is full of those.
+  //
+  // Everything measured here is invisible when it breaks. The mark is 20px of ink, so a
+  // link left at that size is a target a third the size of the panel's others; a link
+  // stretched to the panel's width takes a tap anywhere along an empty line that never
+  // looked like a link at all; and the disc around the mark is the only thing saying
+  // there is anything here to tap.
   await page.goto("/?seed=24680&animate=off")
   await settleBoard(page)
   await openMenu(page)
@@ -358,26 +378,29 @@ test("draws the link out as a link, holding its target to its own words", async 
   await page.getByRole("button", { name: "About FreeCell" }).click()
 
   const link = page.locator(".game-info__link")
-  await expect(link).toHaveCSS("text-decoration-line", "underline")
   await expect(link).toHaveCSS("background-color", "rgba(0, 0, 0, 0)")
   await expect(link).toHaveCSS("border-top-width", "0px")
+  await expect(page.locator(".game-info__mark")).toBeVisible()
+
+  await expect(page.locator(".game-info__badge")).toHaveCSS("border-top-width", "1px")
 
   const box = await link.boundingBox()
   const mat = await page.locator(".game-info__preview").boundingBox()
-  const ink = await page.evaluate(() => {
-    const range = document.createRange()
-    range.selectNodeContents(document.querySelector(".game-info__link"))
-    return range.getBoundingClientRect().width
-  })
-  expect(Math.round(box.width)).toBe(Math.round(ink))
-  expect(box.width).toBeLessThan(mat.width * 0.8)
+  expect(box.height).toBeGreaterThanOrEqual(44)
+  expect(box.width).toBeLessThan(mat.width * 0.25)
+
+  // The *disc* on the panel's text column, not the target box around it — which is what
+  // the link's negative start margin buys, and what a tidy-up removing it would undo.
+  const badge = await page.locator(".game-info__badge").boundingBox()
+  const prose = await page.locator(".game-info__prose").boundingBox()
+  expect(Math.round(badge.x)).toBe(Math.round(prose.x))
 })
 
 test("keeps the screen still while the picker redraws the board", async ({ page }) => {
   // The still is drawn in a box cut for the whole family (`GameInfo.previewBox`), not
   // sized to whichever board is in it. Without that, Micro's four short columns were
-  // scaled up to the panel's width, the mat grew by half again, and the numbers, the
-  // picker and the link all slid down the panel under the finger that had just tapped
+  // scaled up to the panel's width, the mat grew by half again, and the picker, the
+  // numbers and the link all slid down the panel under the finger that had just tapped
   // one of them — a control that moves when you use it.
   //
   // Only a browser can see this: the box is an `aspect-ratio` over container units, and

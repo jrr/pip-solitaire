@@ -10,15 +10,18 @@
 // does — a minimal in-memory Storage is installed for `Preferences`' bindings to write
 // into.
 %%raw(`
-  globalThis.localStorage = (() => {
-    const store = new Map()
-    return {
-      getItem: (k) => (store.has(k) ? store.get(k) : null),
-      setItem: (k, v) => { store.set(k, String(v)) },
-      removeItem: (k) => { store.delete(k) },
-      clear: () => { store.clear() },
-    }
-  })()
+  Object.defineProperty(globalThis, "localStorage", {
+    configurable: true,
+    value: (() => {
+      const store = new Map()
+      return {
+        getItem: (k) => (store.has(k) ? store.get(k) : null),
+        setItem: (k, v) => { store.set(k, String(v)) },
+        removeItem: (k) => { store.delete(k) },
+        clear: () => { store.clear() },
+      }
+    })(),
+  })
 `)
 
 // Not on `Preferences`, which only ever writes: these reach past it to set up the

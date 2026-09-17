@@ -342,6 +342,7 @@ describe("Solver", () => {
     // whole pack to be on the board.
     let position = (columns: array<array<string>>): Position.t => {
       law: Position.SimpleSimon,
+      pack: Position.standardPack,
       cells: [],
       found: [0, 0, 0, 0],
       casc: columns->Array.map(
@@ -363,6 +364,54 @@ describe("Solver", () => {
         expect(
           h(position([["8S", "3D"], ["7S"], ["4C"]])) > h(position([["8S"], ["7S"], ["4C", "3D"]])),
         )->toBe(true)
+      },
+    )
+  })
+
+  // FreeCell's law over twenty cards or sixteen. Nothing about the search changes:
+  // what's pinned is that a board whose deck and counts are its own gets played
+  // through to the finish, and that on a pack this small "there is no line" is an
+  // ordinary answer the search has to *prove* rather than shrug at.
+  describe("the short-deck FreeCells", () => {
+    testWithin(
+      "plays a spread of Mini and Micro deals, or proves them unwinnable",
+      () => {
+        let problems = []
+        for seed in 1 to 12 {
+          [Game.miniDeal(~seed), Game.microDeal(~seed)]->Array.forEach(
+            game => {
+              let opening = GameState.initial(game)
+              let deal = `${game.name} #${Int.toString(seed)}`
+              switch Solver.autoplay(~game, opening) {
+              | Solver.UnknownBoard => problems->Array.push(`${deal}: not a board it read`)
+              | Solver.NoLine => problems->Array.push(`${deal}: the ladder ran out`)
+              | Solver.Unwinnable => ()
+              | Solver.Played({steps}) =>
+                let finished =
+                  steps->Array.last->Option.mapOr(opening, (step: Solver.played) => step.state)
+                if !Reducer.canFinish(~game, finished) {
+                  problems->Array.push(`${deal}: the line ended short of a finish`)
+                }
+              }
+            },
+          )
+        }
+        expect(problems)->toEqual([])
+      },
+      ~timeout=60_000,
+    )
+
+    test(
+      "a deal with no line is proved, not merely given up on",
+      () => {
+        // Both of these are stuck: every position reachable from them is searched in
+        // milliseconds and none finishes. Twenty cards and two cells leave that
+        // answer common enough — eight of the first thousand Mini deals — that it has
+        // to read as the proof it is rather than as the ladder giving up.
+        let mini = Game.miniDeal(~seed=10)
+        expect(Solver.autoplay(~game=mini, GameState.initial(mini)))->toEqual(Solver.Unwinnable)
+        let micro = Game.microDeal(~seed=43)
+        expect(Solver.autoplay(~game=micro, GameState.initial(micro)))->toEqual(Solver.Unwinnable)
       },
     )
   })

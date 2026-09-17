@@ -1,6 +1,6 @@
-// What the info screen has to say about a game: the board's numbers, and where the
-// rules are written down in full. A pure value, so `<MenuGameInfoScreen>` draws it and
-// `Main` never assembles a screen's worth of fields by hand.
+// What the info screen has to say about a game: the board's numbers, and which Wikipedia
+// article describes it. A pure value, so `<MenuGameInfoScreen>` draws it and `Main` never
+// assembles a screen's worth of fields by hand.
 //
 // **Derived from the `Game.t`, not tabulated beside it.** A board that changes its
 // cascade count or its deck reports the new number here without an edit — which is the
@@ -26,6 +26,11 @@ type t = {
   // `numbers` below drops the term rather than printing "0 cells".
   cells: int,
   cards: int,
+  // How many of those cards the deal holds back in a stock, and 0 on a board with no
+  // stock at all — which is why `numbers` drops the term rather than printing it, as it
+  // does for cells. The *opening* count, not a running one: this screen describes a game
+  // rather than reporting on the one in hand, and the board it shows above is deal #1's.
+  stock: int,
   reference: string,
   // The board as dealt — every pile with its cards, and how many of them lie face down
   // — for the still of it the screen shows (`BoardPreview`). Deal #1, the one the games
@@ -43,7 +48,8 @@ type t = {
   description: option<string>,
 }
 
-let wikipedia = (article: string): string => "https://en.wikipedia.org/wiki/" ++ article
+let wikipediaArticle = "https://en.wikipedia.org/wiki/"
+let wikipedia = (article: string): string => wikipediaArticle ++ article
 
 // The short-deck FreeCells are FreeCell, and the Spiderettes are Spider's family: each
 // points at the article for the game it is a variant of, rather than at nothing.
@@ -55,28 +61,54 @@ let referenceFor = (id: string): string =>
   | _ => wikipedia("Patience_(game)")
   }
 
-// The game in two or three sentences, written for a reader who has played a solitaire
-// game or two: what is hidden, how a run moves, and the one rule that catches a player
-// coming from another game. Not the rules in full — the link out is for that.
+// The link out's name — announced and shown on hover rather than drawn, the link itself
+// being Wikipedia's mark alone (`MenuGameInfoScreen`). It names the page it goes to:
+// "Spiderette" is described in Wikipedia's Spider article, and saying so is what tells a
+// reader both that there is a page about this game and which page it is. It promises
+// nothing about what is written there — some of the rules are on this screen already, and
+// an encyclopedia article is more than rules.
 //
-// **Keyed by family where there is one**, which is what makes the paragraph steady under
-// the picker: the three FreeCell sizes are one game to describe and the three Spiderette
-// packs are another, and a reader who saw the words change would go back looking for a
-// difference that isn't there. The same rule forbids naming anything the picker moves:
-// "the free cells", never "four free cells".
+// Read off the URL rather than tabulated beside it, so a game pointed at a different
+// article says so with the one edit. The parenthesis Wikipedia needs to tell "Spider
+// (solitaire)" from the animal is the encyclopedia's own plumbing, so it is dropped: what
+// is left is the name a player would have searched for.
+let referenceLabel = (info: t): string => {
+  let article =
+    info.reference
+    ->String.replace(wikipediaArticle, "")
+    ->String.replaceAll("_", " ")
+    ->String.replaceRegExp(/ \(.+\)$/, "")
+  article ++ " on Wikipedia"
+}
+
+// The game in a sentence or two: how the tableau builds, what moves as a unit, and
+// how the game is won. Pitched at a reader who has played a solitaire game or two, so
+// it names the laws and leaves the rest to the link out — and says nothing the screen
+// around it already shows, which rules out the board's shape (the still above it) and
+// its counts (the line under the title).
+//
+// **Keyed by family where there is one**, which is what makes the paragraph steady
+// under the picker: the three FreeCell sizes are one game to describe and the three
+// Spiderette packs are another, and a reader who saw the words change would go back
+// looking for a difference that isn't there. The same rule forbids naming anything the
+// picker moves: "the free cells", never "four free cells".
+//
+// Simple Simon and Spiderette open on the same sentence because they are the same laws
+// — `Rules.spiderCascade`, `Unlimited`, `CompleteRuns` — and a reader comparing the two
+// screens should see that. Spiderette's stock is the whole of the difference.
 let descriptionFor = (id: string): option<string> =>
   switch id {
   | "freecell" =>
     Some(
-      "Every card is face up from the deal: nothing is hidden, and almost any board can be solved by thinking it through. Columns build down in alternating colours, and the free cells park one card each — how many stand empty is how long a run you can move at once.",
+      "Build downward in descending rank of alternating colours; send up to like-suit piles in ascending rank. Moves are limited by available free spaces.",
     )
   | "simplesimon" =>
     Some(
-      "Spider's game with nothing hidden: every card is face up from the start, and there is nowhere to park one you can't place yet. Build down in rank whatever the suit, but only a same-suit run lifts as a block, and a suit gathered King down to Ace leaves the board for good.",
+      "Build downward in descending rank of any suit, but like-suit runs can move together. Win by building runs of King through Ace.",
     )
   | "spiderette" =>
     Some(
-      "Spider's rules over a Klondike deal: seven columns, only the top card of each face up. Build down in rank whatever the suit, but only a same-suit run lifts as a block, and a suit gathered King down to Ace leaves the board. The stock deals onto every column at once, and refuses while a column stands empty.",
+      "Build downward in descending rank of any suit, but like-suit runs can move together. Win by building runs of King through Ace. Deal from the stock when you're stuck.",
     )
   | _ => None
   }
@@ -97,6 +129,12 @@ let nameOf = (game: Game.t): string =>
 // 28 for a Spiderette.
 let deckSize = (deck: Cards.deck): int =>
   Array.length(deck.suits) * Array.length(deck.ranks) * deck.copies
+
+// The undealt remainder, counted off the piles rather than as `deckSize` minus the
+// tableau: a board could hold a card back somewhere that isn't a stock, and the
+// subtraction would report it as stock anyway.
+let stockSize = (game: Game.t): int =>
+  Game.pilesOf(game, Game.Stock)->Array.reduce(0, (n, pile) => n + Array.length(pile.cards))
 
 // The still's box: the *flattest* board in the game's family. It is the one board that
 // fills the box on both axes, and every other one fits inside it with room to spare
@@ -124,6 +162,7 @@ let forGame = (game: Game.t): t => {
   cascades: Game.pilesOf(game, Game.Cascade)->Array.length,
   cells: Game.pilesOf(game, Game.FreeCell)->Array.length,
   cards: deckSize(game.deck),
+  stock: stockSize(game),
   reference: referenceFor(game.id),
   opening: game.piles,
   previewBox: previewBoxFor(game),
@@ -132,18 +171,34 @@ let forGame = (game: Game.t): t => {
   ->descriptionFor,
 }
 
+// `\u{a0}` rather than a space, here and in the stock term below: the panel is narrow
+// enough that the line wraps on a phone, and a term is the unit it should wrap at.
+// Broken at an ordinary space it reads "24 in" over "stock", a number severed from what
+// it counts; unbreakable, the only place left to wrap is a middot, which is the one
+// place the line already says it may be read in parts.
 let count = (n: int, ~singular: string, ~plural: string): string =>
-  Int.toString(n) ++ " " ++ (n == 1 ? singular : plural)
+  Int.toString(n) ++ "\u{a0}" ++ (n == 1 ? singular : plural)
 
-// The numbers as one line — "8 cascades · 4 cells · 52 cards". A term whose count is
+// The numbers as one line — "52 cards · 8 cascades · 4 cells". A term whose count is
 // zero is left out entirely: "0 cells" is a number a reader has to discard, where the
 // absence says the same thing and is one term shorter. The separator is a middot with
-// spaces around it, which is what keeps the three readable as three.
+// spaces around it, which is what keeps the terms readable as separate terms.
+//
+// **The pack leads, and the board is described in it.** It is the term that survives
+// every game — a board can want no cells and no stock — so the line opens the same way
+// whichever game is on screen, and the shape terms after it say how that pack is laid
+// out rather than being joined by it.
+//
+// **The stock names no noun of its own.** Every other term counts a thing the board has
+// some number of; "24 in stock" counts part of the pack the line opened with, and the
+// bare "in stock" is what keeps it a share of that number rather than a fourth one to
+// add up — which "24 stock cards" alongside "52 cards" would not.
 let numbers = (info: t): string =>
   [
+    Some(count(info.cards, ~singular="card", ~plural="cards")),
     Some(count(info.cascades, ~singular="cascade", ~plural="cascades")),
     info.cells == 0 ? None : Some(count(info.cells, ~singular="cell", ~plural="cells")),
-    Some(count(info.cards, ~singular="card", ~plural="cards")),
+    info.stock == 0 ? None : Some(Int.toString(info.stock) ++ "\u{a0}in\u{a0}stock"),
   ]
   ->Array.filterMap(term => term)
   ->Array.join(" · ")

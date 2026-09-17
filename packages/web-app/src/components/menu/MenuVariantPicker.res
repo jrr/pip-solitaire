@@ -1,13 +1,13 @@
 // The **variant picker** on a game's info screen: every board of that game's family laid
 // out at once — the Spiderette packs, the FreeCell sizes — with the one the screen is
-// about marked, and a tap on any other choosing it.
+// about marked, and a tap on any other moving the screen to it.
 //
-// It offers the same choice the Games list does on the segment beside a game's name
-// (`MenuGameRow`), in the other of the two shapes that choice takes. A row has room for
-// one mark, so the segment *cycles* and a player finds the packs by tapping through
-// them; a screen about a game has room for all three, so here they are laid out and the
-// choice is made by pointing at one. Which pack is remembered is one fact behind both
-// (`Main`), and the mark is one component (`MenuVariantMark`).
+// It shows the same boards the Games list's segment offers beside a game's name
+// (`MenuGameRow`), and wears the same mark (`MenuVariantMark`), but it is a way of
+// *reading* about them, not of choosing one: the segment is what picks the family's
+// board and what swaps the table, and a walk through this control changes neither
+// (`Main`). A row has room for one mark, so the segment *cycles*; a screen about a game
+// has room for all three, so here they are laid out and pointed at.
 //
 // The buttons are `.menu-row`s — `MenuRow.classesFor`, the one spelling of that class
 // list — so the box and the highlight arrive with them, and what this file adds is the
@@ -28,9 +28,9 @@ type props = {
   // suits", the sentence the Games list's segment already says. A mark alone is a
   // control with no subject, and here there are three of them in a row.
   game: string,
-  // …and the word for what they vary in, which is also what heads the group: "pack",
-  // "size". Taken off the family rather than written down here, the same way the mark is
-  // (`GameVariant.nounFor`).
+  // …and the word for what they vary in, which is also the group's accessible name on
+  // the info screen: "pack", "size". Taken off the family rather than written down here,
+  // the same way the mark is (`GameVariant.nounFor`).
   noun: string,
   choices: array<choice>,
 }

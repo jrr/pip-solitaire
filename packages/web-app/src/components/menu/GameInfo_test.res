@@ -28,8 +28,15 @@ describe("GameInfo.forGame", () => {
   test("counts the whole pack on a board that holds some of it back", () => {
     // Spiderette deals 28 cards across its cascades and leaves 24 in the stock. "52
     // cards" is what the game is played with, which is the number worth reporting;
-    // counting the tableau would report the deal instead.
-    expect(GameInfo.forGame(Game.spiderette).cards)->toBe(52)
+    // counting the tableau would report the deal instead. The 24 is reported beside it
+    // rather than instead of it.
+    let info = GameInfo.forGame(Game.spiderette)
+    expect((info.cards, info.stock))->toEqual((52, 24))
+  })
+
+  test("reports no stock on a board that deals its whole pack out", () => {
+    expect(GameInfo.forGame(Game.freecell).stock)->toBe(0)
+    expect(GameInfo.forGame(Game.simpleSimon).stock)->toBe(0)
   })
 
   test("reports no cells on a game that has none", () => {
@@ -44,6 +51,17 @@ describe("GameInfo.forGame", () => {
     )
   })
 
+  test("names the article the link goes to, without Wikipedia's disambiguator", () => {
+    // What the link says, which is where it goes and nothing about what is written
+    // there. A Spiderette is described in Spider's article, so the line says Spider —
+    // and the "(solitaire)" that tells that page from the animal's is not part of the
+    // name a player would have searched for.
+    let label = game => GameInfo.referenceLabel(GameInfo.forGame(game))
+    expect(label(Game.mini))->toBe("FreeCell on Wikipedia")
+    expect(label(Game.simpleSimon))->toBe("Simple Simon on Wikipedia")
+    expect(label(Game.spiderette))->toBe("Spider on Wikipedia")
+  })
+
   test("still hands back a link for a game the table has never heard of", () => {
     // A game added to `Game.all` and not to the table: the info screen's link must go
     // somewhere about patience rather than nowhere at all, since a missing `href` is a
@@ -52,17 +70,30 @@ describe("GameInfo.forGame", () => {
   })
 })
 
+// The spaces inside a term are non-breaking (see `GameInfo.count`), which is why these
+// expectations are written with `\u{a0}` where a term holds a space and a plain space
+// where the line may be broken: that difference is the claim.
 describe("GameInfo.numbers", () => {
   test("sets the board's numbers out as one line", () => {
     expect(GameInfo.numbers(GameInfo.forGame(Game.freecell)))->toBe(
-      "8 cascades · 4 cells · 52 cards",
+      "52\u{a0}cards · 8\u{a0}cascades · 4\u{a0}cells",
     )
   })
 
   test("drops a term whose count is zero rather than printing it", () => {
     // "0 cells" is a number the reader has to discard; Simple Simon simply has no cells
-    // to report.
-    expect(GameInfo.numbers(GameInfo.forGame(Game.simpleSimon)))->toBe("10 cascades · 52 cards")
+    // to report, and no stock either.
+    expect(GameInfo.numbers(GameInfo.forGame(Game.simpleSimon)))->toBe(
+      "52\u{a0}cards · 10\u{a0}cascades",
+    )
+  })
+
+  test("says what part of the pack a board with a stock starts with held back", () => {
+    // The pack leads, so a reader has the 52 in hand well before being told that 24 of
+    // them are out of play.
+    expect(GameInfo.numbers(GameInfo.forGame(Game.spiderette)))->toBe(
+      "52\u{a0}cards · 7\u{a0}cascades · 24\u{a0}in\u{a0}stock",
+    )
   })
 
   test("says one cell rather than 1 cells", () => {
@@ -72,12 +103,13 @@ describe("GameInfo.numbers", () => {
       cascades: 1,
       cells: 1,
       cards: 1,
+      stock: 0,
       reference: "",
       opening: [],
       previewBox: 0.5,
       description: None,
     }
-    expect(GameInfo.numbers(one))->toBe("1 cascade · 1 cell · 1 card")
+    expect(GameInfo.numbers(one))->toBe("1\u{a0}card · 1\u{a0}cascade · 1\u{a0}cell")
   })
 
   test("carries the board it was read off, as dealt", () => {
@@ -123,8 +155,8 @@ describe("GameInfo.numbers", () => {
 
   test("names nothing in the copy that the picker moves", () => {
     // The rule that keeps the paragraph honest as well as steady: it may say "the free
-    // cells" but not "four free cells", since Mini has two. No digit survives that rule
-    // — the one number any of this copy gives is Simple Simon's fifty-two, spelled.
+    // cells" but not "four free cells", since Mini has two. A rank named in words — King
+    // through Ace — is the same rank on every board, so the copy carries no digit at all.
     let digits = ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"]
     Game.all->Array.forEach(
       game =>
