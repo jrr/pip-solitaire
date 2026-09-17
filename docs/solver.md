@@ -5,10 +5,15 @@
 command in both front ends, the browser harness that plays a deal end to end,
 and the tests that need a game played through all reach the same two modules.
 
-It plays two games. A position carries a `law` — `FreeCell` or `SimpleSimon` —
-that says whose rules it is the packed reading of, and every predicate in
-`Position` and both terms of the heuristic that differ are read under it. The
-search itself is the same code for both.
+It plays two *laws* over more boards than two. A position carries a `law` —
+`FreeCell` or `SimpleSimon` — that says whose rules it is the packed reading of,
+and every predicate in `Position` and both terms of the heuristic that differ
+are read under it. The search itself is the same code for both.
+
+It also carries a `pack`: which suits are in play, how far the ranks run, and how
+many cards that is altogether. That is what lets one law cover boards of
+different sizes — Mini FreeCell's twenty cards over four columns and Micro's
+sixteen in two suits are FreeCell's law at another size, not another game.
 
 This page carries the contract, the benchmark record, the heuristic, and the
 measured case for making it faster. The code keeps the knobs.
@@ -35,7 +40,9 @@ frontier saw every position reachable from the start, and none of them
 finishes. That is a proof, and `Solver.autoplay` answers it as `Unwinnable`
 rather than `NoLine`. It is not a rare answer: about one Simple Simon deal in
 twelve is stuck within a few dozen positions of the deal, and the search says so
-in a millisecond.
+in a millisecond. The short packs make it commoner still and cheaper still —
+eight Mini deals and nineteen Micro ones in the first thousand, none of them
+taking longer than the deal it was dealt from.
 
 **No clock.** `Solver.effort` reports positions, moves and passes; how *long* a
 solve took is the caller's own measurement, taken around a call it made. That's
@@ -48,7 +55,8 @@ what lets a plan stay a value two runs can be expected to agree on — an ordina
 mise run solve                    # deal 1, with the line printed
 mise run solve -- 24680           # a particular deal
 mise run solve -- --quiet 1-1000  # a soak: just the summary line
-mise run solve -- --game simplesimon 1-1000 --quiet   # the other game
+mise run solve -- --game simplesimon 1-1000 --quiet   # the other law
+mise run solve -- --game mini --quiet 1-1000          # the short packs
 ```
 
 `mise run solve` is the solver with nothing attached — no browser, no bundle, no
@@ -79,6 +87,20 @@ a heuristic change is trying to reduce.
 | Date | Deals | Solved | Unwinnable | Unsolved | Mean | Mean moves | Worst | Environment |
 |---|---|---|---|---|---|---|---|---|
 | 2026-09-10 | 1–1000 | 941/1000 | 54 | 5 | 458 ms | 85 | #964 at 13.2 s | Node v26.7.0, Apple Silicon laptop |
+
+**Mini and Micro**, under FreeCell's law and its weights. Every deal is
+*answered* — the ladder's first rung either finds a line or empties its frontier
+— so the number to watch here is "unsolved", and it is zero.
+
+| Date | Board | Deals | Solved | Unwinnable | Unsolved | Mean | Mean moves | Worst | Environment |
+|---|---|---|---|---|---|---|---|---|---|
+| 2026-09-17 | Mini | 1–1000 | 992/1000 | 8 | 0 | <1 ms | 11 | #10 at 49 ms | Node v26.7.0, CI runner |
+| 2026-09-17 | Micro | 1–1000 | 981/1000 | 19 | 0 | <1 ms | 10 | #699 at 8 ms | Node v26.7.0, CI runner |
+
+Over deals 1–200 that is 198 and 196 solved — the same counts `Game.res` records
+from an exhaustive single-card search when it chose two free cells for each
+board, arrived at by a different method. A soak of a short pack costs about two
+seconds for the thousand, so it is worth running beside the other two.
 
 Method: `mise run solve -- --quiet 1-1000` (with `--game simplesimon` for the
 second table), one process, timed per deal by `solve.mjs` around its own
@@ -121,7 +143,10 @@ Eight of another suit is a seam there, which is the whole game.
 
 The weights are two named records (`Solver.freecellWeights`,
 `Solver.simonWeights`) that `search` takes as an argument, which is how they
-were chosen — measured rather than guessed.
+were chosen — measured rather than guessed. Two, not four: the short packs were
+tuned on nothing, because they left nothing to tune. Under FreeCell's own
+weights the first rung answers every Mini and Micro deal in the first thousand,
+so a third record could only make a fast, complete answer differently fast.
 
 **The two that earned their keep are the mobility terms**, `cell` and
 `emptyColumn`. Without them the search cheerfully plays itself into positions
@@ -186,15 +211,26 @@ measure it over a soak before believing otherwise.
 ## The packed position
 
 `GameState.t` is the game's real snapshot and stays the source of truth.
-`Position.t` is the same board squeezed into ints — the `law`, the free cells
-(four, or none), how many of each suit are home, and the columns of card
-numbers (eight, or ten), each card `suit * 13 + (rank − 1)` in 0…51.
+`Position.t` is the same board squeezed into ints — the `law`, the `pack`, the
+free cells, how many of each suit are home, and the columns of card numbers,
+each card `suit * 13 + (rank − 1)` in 0…51.
+
+**The 13 there is the numbering, not the deck.** A short pack is numbered the
+same way and simply leaves gaps: Micro's sixteen cards are ♠A…♠8 at 0…7 and
+♥A…♥8 at 13…20. That keeps `isRed` a single range test, `suitOf` a division, and
+`found` and the heuristic's scratch array four and fifty-two wide whatever the
+board — sparse ids cost a few bytes and leave every predicate alone. A denser
+numbering breaks all three at once.
 
 `Position.lawOf` reads a `Game.t`'s law off its rules — the cascade rule, the
 run limit, the collect policy, whether the foundations are sealed — and
-`ofGameState` then insists on the shape that law is modelled at: the standard
-pack, every card face up, no stock. Spiderette plays by Simple Simon's laws and
-is refused on shape; the short-deck FreeCells by FreeCell's, likewise.
+`ofGameState` then reads the board: **the counts are the board's own**, and the
+deck it carries is the pack. What is still refused is only what the packing
+genuinely can't say — a stock, a face-down card, a card loose on the table, a
+second copy of a card (two copies pack to one int), ranks that don't run up from
+the Ace (a foundation's *length* is read as the rank it has climbed to), and
+fewer foundations than the deck has suits. Spiderette plays by Simple Simon's
+laws and is refused on the first of those; Mini and Micro are refused on none.
 
 The packing exists for one reason: **a search asks "and then what?" hundreds of
 thousands of times per deal**, and the honest `GameState` transition — which
@@ -211,6 +247,7 @@ playing a solved game through both:
 | `follows` / `runLength` | `Rules.isRun` — alternating colour, or one suit | what a grab lifts is what the plan said it would |
 | `liftLimit` / `maxSupermove` | `Reducer.withinRunLimit` — `(1 + emptyCells) × 2^emptyCascades` with the destination excluded, or unlimited | a planned run move is one the reducer will actually take |
 | `autoCollect` — `collectSafeCards` / `collectRuns` | `Reducer.autoCollect` — on by `Options.default` | the board *after* a move usually isn't just that move applied |
+| `isSafeToCollect`'s opposite colours | `Reducer.oppositeColorSuits` — read off the deck | Micro's ♠♥ pack has *one* suit of the other colour, and naming two stalls the collect above the Twos |
 | `canFinish` | `Reducer.canFinish` — the drain, or (with sealed foundations) the win itself | it's the goal, and where the drivers stand aside |
 
 That last row is the one that bites. **A plan is a plan for a game played with
@@ -265,10 +302,11 @@ to want it is more likely a *shorter line* than a faster one, which is the trade
 
 ## Before you change the solver
 
-- **Soak it — both games.** `mise run solve -- --quiet 1-1000`, and again with
-  `--game simplesimon`, and add a row to each table above. A change that helps
-  the mean and doubles the worst case is not an improvement, and a change to the
-  search or a shared term moves both games at once.
+- **Soak it — every board.** `mise run solve -- --quiet 1-1000`, and again with
+  `--game simplesimon`, `--game mini` and `--game micro`, and add a row to each
+  table above. A change that helps the mean and doubles the worst case is not an
+  improvement, and a change to the search or a shared term moves every board at
+  once. The two short packs take about two seconds each, so there is no excuse.
 - **Check the mirror.** If you touched `Position`, `Position_test` plays a solved
   game through both models — that's the test that catches a predicate drifting
   from the `Rules`/`Reducer` it mirrors.
