@@ -61,10 +61,12 @@ let referenceFor = (id: string): string =>
   | _ => wikipedia("Patience_(game)")
   }
 
-// The link out, named for the page it goes to: "Spiderette" is described in Wikipedia's
-// Spider article, and saying so is what tells a reader both that there is a page about
-// this game and which page it is. It promises nothing about what is written there — some
-// of the rules are on this screen already, and an encyclopedia article is more than rules.
+// The link out's name — announced and shown on hover rather than drawn, the link itself
+// being Wikipedia's mark alone (`MenuGameInfoScreen`). It names the page it goes to:
+// "Spiderette" is described in Wikipedia's Spider article, and saying so is what tells a
+// reader both that there is a page about this game and which page it is. It promises
+// nothing about what is written there — some of the rules are on this screen already, and
+// an encyclopedia article is more than rules.
 //
 // Read off the URL rather than tabulated beside it, so a game pointed at a different
 // article says so with the one edit. The parenthesis Wikipedia needs to tell "Spider

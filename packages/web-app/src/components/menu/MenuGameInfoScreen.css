@@ -42,25 +42,70 @@
     color: var(--control-ink-muted);
   }
 
-  /* The link out, drawn as a link: underlined accent text on no box at all. **Keep it
-     off the menu's control box.** Everything in the panel wearing that box acts on the
-     game in hand, and a trip to Wikipedia dressed as Restart or Share is the loudest
-     control on the screen offering the least game.
+  /* The link out: Wikipedia's mark in a faint disc. **Keep it off the menu's control
+     box.** Everything in the panel wearing that box acts on the game in hand, and a trip
+     to Wikipedia dressed as Restart or Share is the loudest control on the screen
+     offering the least game.
 
-     `align-self: start` is what holds it to its words. The section is a flex column, so
-     a stretched link would take the panel's whole width and a tap anywhere along that
-     empty line would navigate — invisible, since the underline only ever draws under the
-     text. The block padding is the rest of the target: a 13px line is a small thing to
-     hit, and the padding grows it without widening what is drawn. */
+     What a mark on its own costs instead is the affordance. There is no underline under
+     it and no words beside it, so a letter alone in a band reads as a stray glyph rather
+     than as somewhere to tap — and the panel has a shape for exactly this: the Games
+     list's "i", a small mark in a ring on the control's own fill (MenuGameRow.css).
+     Wearing it makes the panel's two quiet round targets one idea rather than two
+     inventions.
+
+     `align-self: start` is what holds the link to that square. The section is a flex
+     column, so a stretched link would take the panel's whole width and a tap anywhere
+     along that empty line would navigate, with nothing drawn out there to suggest it. */
   .game-info__link {
     align-self: start;
-    padding-block: 4px;
-    font: 13px "Libre Franklin", sans-serif;
-    /* The ink and the rule a link out of the app wears, which the About screen's
-       repository link wears too — the reasoning is with the tokens, in styles/base.css. */
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    /* A 44px target around a 36px disc, and the 4px that leaves on the start edge taken
+       back off so the *disc* — not the box around it — lands on the column the paragraph
+       above it starts on. The same trick, and the same reason, as the "i" button's
+       `margin-right` (MenuGameRow.css). */
+    width: 2.75rem;
+    height: 2.75rem;
+    margin-inline-start: -4px;
+    /* The ink a link out of the app wears, which the About screen's repository link
+       wears too — the reasoning is with the tokens, in styles/base.css. `currentColor`
+       in the markup is what carries it into the mark. */
     color: var(--link-ink);
-    text-decoration: underline;
-    text-decoration-color: var(--link-rule);
-    text-underline-offset: 0.2em;
+  }
+
+  /* The ring is drawn in `--link-rule`, the colour this link's underline was: the rule
+     did not go away when the words did, it went round the mark. The fill is the control
+     background, a shade lighter than the panel — the faint disc that leaves is the whole
+     effect, as it is on the "i". */
+  .game-info__badge {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    background: var(--control-bg);
+    border: 1px solid var(--link-rule);
+    border-radius: 50%;
+  }
+
+  /* Bigger than the About screen's mark, which rides beside 13px text and is sized in
+     `em` to track it. This one is the link, so it is sized against the disc it sits in
+     rather than against a line it no longer has. */
+  .game-info__mark {
+    width: 20px;
+    height: 20px;
+  }
+
+  /* The ring belongs on the disc, not on the 44px box around it: a hard square around a
+     small circle reads as a bug rather than as focus. The same split the "i" makes. */
+  .game-info__link:focus-visible {
+    outline: none;
+  }
+
+  .game-info__link:focus-visible .game-info__badge {
+    outline: 2px solid #93c5fd;
+    outline-offset: 2px;
   }
 }

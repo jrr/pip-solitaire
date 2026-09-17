@@ -89,15 +89,26 @@ describe("MenuGameInfoScreen", () => {
     )
   })
 
-  test("links out to the game's article, named for the page it goes to", () => {
+  test("links out to the game's article, under a mark and nothing else", () => {
     // A real link and not a button that navigates, so it can be long-pressed or copied.
-    // Which words it wears is `GameInfo`'s (`referenceLabel`), pinned there; that it
-    // wears them rather than a promise about rules is this screen's.
     let link = render()->find(".game-info__link")->Option.getOrThrow
     expect(link->tag)->toBe("A")
     expect(link->attrOr("href"))->toBe("https://en.wikipedia.org/wiki/FreeCell")
-    expect(link->text)->toBe("FreeCell on Wikipedia")
     expect(link->attrOr("rel"))->toBe("noopener noreferrer")
+    expect(link->text)->toBe("")
+    expect(link->findAll(".game-info__mark")->Array.length)->toBe(1)
+  })
+
+  test("gives the mark the name the words would have had, twice over", () => {
+    // Nothing on screen says where this goes, so the name is written where each kind of
+    // reader will be given it: `aria-label` announces it, `title` shows it to a pointer
+    // that rests on the mark. Which words those are is `GameInfo`'s (`referenceLabel`),
+    // pinned there — that a Spiderette's link is named for Spider is the point of
+    // carrying the whole sentence rather than the word "Wikipedia".
+    let link = game => render(~game)->find(".game-info__link")->Option.getOrThrow
+    expect(link(Game.freecell)->attrOr("aria-label"))->toBe("FreeCell on Wikipedia")
+    expect(link(Game.freecell)->attrOr("title"))->toBe("FreeCell on Wikipedia")
+    expect(link(Game.spiderette)->attrOr("aria-label"))->toBe("Spider on Wikipedia")
   })
 
   test("asks for a tab of its own in a browser, which is where a board can be torn down", () => {

@@ -53,6 +53,25 @@ type props = {
   onBackToMenu: unit => unit,
 }
 
+// Wikipedia's W, drawn here rather than fetched — like the About screen's GitHub mark
+// and the top bar's undo glyph, because a file to fetch is a file that can be missing,
+// and `currentColor` lets it take the link's ink.
+//
+// Built as a letter and not as a stroked zigzag: two overlapping V's, each one's outer
+// edges meeting at its foot and its inner edges at a notch above, which is what gives the
+// four strokes their thick and thin. That modulation is the whole of what survives at
+// 20px, and it is what tells the mark from the app's own icons — the chevron, the ✕ and
+// the undo arrow are all one monoline weight.
+//
+// **Serif-less, deliberately.** Wikipedia sets its W in a Libertine serif, whose slabs
+// and brackets come to a pixel or so each at this size: drawn, they read as debris along
+// the top of the letter rather than as serifs, and they cost the shape its silhouette.
+//
+// Using the mark to link to Wikipedia is a use the Wikimedia Foundation's trademark
+// policy allows without a licence, and it is the *linking* that it allows — so this glyph
+// belongs inside the `<a>` and has no business anywhere else in the app.
+let markWikipedia = "M1.7 2.8 L5.65 13.4 L8.775 2.8 L7.825 2.8 L6.09 8.68 L3.9 2.8 Z M7.2 2.8 L10.95 13.4 L14.275 2.8 L13.325 2.8 L11.48 8.68 L9.4 2.8 Z"
+
 let make = ({info, ?variants, tilt, onClose, onBackToMenu}) => <>
   <MenuHeader
     title={info.name}
@@ -94,9 +113,18 @@ let make = ({info, ?variants, tilt, onClose, onBackToMenu}) => <>
     <MenuSection label="reference">
       // A real link rather than a button that navigates, so it can be opened in a new
       // tab, long-pressed, or copied — all the things a reader expects of a link out.
-      // It is *drawn* as one too (`game-info__link`): a line of underlined text rather
-      // than a full-width control box, because it leaves the app, and a control the
-      // size of "Restart" would offer it as though it were one of the game's own.
+      //
+      // **The mark carries it alone.** Everything the words used to say is already on
+      // the screen: which game this is, in the title, and what it plays like, in the
+      // paragraph over the link. What was left to say is that there is a page about it,
+      // and that is the one thing a mark says faster than a line of text can.
+      //
+      // Which leaves the mark carrying the link's whole name, so it is written where a
+      // reader who can't see it will still be given it: `aria-label` for a screen
+      // reader, `title` for a pointer that rests on it. `GameInfo.referenceLabel` is
+      // that name, and it stays the sentence it would have been on screen — "Spider on
+      // Wikipedia" — rather than shrinking to "Wikipedia", because the article a
+      // Spiderette goes to is worth knowing *before* the trip.
       //
       // Whether it asks for a tab of its own is `LinkOut`'s answer and not this
       // screen's — the app is a PWA and the answer differs by platform. `rel` is what
@@ -106,8 +134,14 @@ let make = ({info, ?variants, tilt, onClose, onBackToMenu}) => <>
         href={info.reference}
         target=?{LinkOut.target()}
         rel="noopener noreferrer"
+        ariaLabel={GameInfo.referenceLabel(info)}
+        title={GameInfo.referenceLabel(info)}
       >
-        {Html.string(GameInfo.referenceLabel(info))}
+        <span className="game-info__badge">
+          <svg className="game-info__mark" viewBox="0 0 16 16" ariaHidden="true" focusable="false">
+            <path d={markWikipedia} fill="currentColor" />
+          </svg>
+        </span>
       </a>
     </MenuSection>
     // The family's boards, headed with the word for what they vary in — "PACK", "SIZE" —
