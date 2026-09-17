@@ -100,29 +100,32 @@ describe("MenuGameInfoScreen", () => {
     expect(link->attrOr("rel"))->toBe("noopener noreferrer")
   })
 
-  test("offers the family's other boards, headed with the word for what they vary in", () => {
+  test("offers the family's other boards, named but not headed with what they vary in", () => {
     let screen = render(
       ~game=Game.spiderette,
       ~variants=pickerFor(Game.spideretteFamily, ~on=Game.spiderette),
     )
-    // "PACK" on screen — the heading is uppercased by the stylesheet, so the word here is
-    // the picker's own and nothing on this screen knows which families there are.
-    expect(screen->textIn("[aria-label='pack'] .menu-section__heading"))->toBe("pack")
-    expect(screen->findAll(".menu-variant-picker__choice")->Array.length)->toBe(3)
+    // "pack" is the group's accessible name, the picker's own word — nothing on this
+    // screen knows which families there are — and nothing is drawn over the control: a
+    // heading there would part the still from its numbers with a word the marks say.
+    expect(screen->findAll("[aria-label='pack'] .menu-variant-picker__choice")->Array.length)->toBe(
+      3,
+    )
+    expect(screen->findAll(".menu-section__heading")->Array.length)->toBe(0)
   })
 
-  test("describes the game first and offers the one control last", () => {
-    // Picture, the numbers counting it, how it plays, the rules in full — and then the
-    // picker, the only control on a screen that is otherwise all description.
+  test("puts the one control straight under the still it redraws, above the numbers", () => {
+    // Picture, then the boards to see it as, then the numbers counting it, how it plays,
+    // the rules in full: everything a pick changes sits around the thumb that picks.
     let screen = render(~game=Game.mini, ~variants=pickerFor(Game.freecellFamily, ~on=Game.mini))
     expect(
       screen->findAll(".menu-screen > *")->Array.map(el => el->attrOr("aria-label")),
-    )->toEqual(["preview", "numbers", "how it plays", "reference", "size"])
+    )->toEqual(["preview", "size", "numbers", "how it plays", "reference"])
   })
 
   test("has no such section at all on a game that is a game on its own", () => {
-    // Not an empty band: Simple Simon has no family, so there is no choice to offer and
-    // nothing for a heading to head — and the screen ends on the link out.
+    // Not an empty band: Simple Simon has no family, so there is no choice to offer —
+    // and the numbers sit straight under the still.
     let screen = render(~game=Game.simpleSimon)
     expect(screen->findAll(".menu-variant-picker")->Array.length)->toBe(0)
     expect(
