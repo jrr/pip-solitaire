@@ -255,6 +255,7 @@ describe("Scenario", () => {
               "dealt",
               "deep",
               "almost-won",
+              "stuck",
             ])
             let state = Scenario.forName(variant, "almost-won")->Option.getOrThrow
             let onTable = state.piles->Array.flat
@@ -381,6 +382,40 @@ describe("Scenario", () => {
           expect(GameState.hasWon(game, settled))->toBe(true)
         | Error(_) => expect("the ace lands")->toBe("refused")
         }
+      },
+    )
+
+    test(
+      "the stuck position holds a full stock the empty columns refuse a deal from",
+      () => {
+        [Game.spiderette1, Game.spiderette, Game.spiderette4]->Array.forEach(
+          variant => {
+            let state = Scenario.forName(variant, "stuck")->Option.getOrThrow
+            let onTable = state.piles->Array.flat
+            expect(Array.length(onTable))->toBe(52)
+            let pack = Cards.cardsOf(variant.deck)
+            expect(
+              pack->Array.every(d => onTable->Array.some(c => GameState.sameCard(c, d))),
+            )->toBe(true)
+            // The stock is the deal's own, untouched and still face down.
+            let stock = Reducer.stockOf(variant)->Option.getOrThrow
+            let dealt = GameState.initial(variant)
+            expect(GameState.cardsInPile(state, stock))->toEqual(
+              GameState.cardsInPile(dealt, stock),
+            )
+            expect(GameState.faceDownIn(state, stock))->toBe(GameState.faceDownIn(dealt, stock))
+            // Two columns empty — the second and the fifth, not the first two — and the
+            // deal refused over them rather than over an empty stock.
+            let columns = Game.pileIndices(variant, Game.Cascade)
+            expect(
+              columns->Array.map(i => Array.length(GameState.cardsInPile(state, i)) == 0),
+            )->toEqual([false, true, false, false, true, false, false])
+            expect(Reducer.dealRefusal(~game=variant, state))->toEqual(Some(Reducer.CascadeEmpty))
+            expect(Reducer.reduce(~game=variant, state, Reducer.Deal))->toEqual(
+              Error(Reducer.CascadeEmpty),
+            )
+          },
+        )
       },
     )
 

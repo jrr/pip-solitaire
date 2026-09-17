@@ -1,9 +1,10 @@
 // Spiderette, in a real browser: the first board with a stock and cards lying face
 // down. `Core_test` holds the rules — what a deal drops, what a face-down card refuses,
 // which move turns it over. What only a browser can say is that a tap on the stock is
-// what deals, that a back is drawn where the snapshot says one lies and the card under
-// it is not announced, that a drag exposing a face-down card turns it up on screen,
-// and that a run completed by a drag flies home and raises the overlay.
+// what deals, that a refused tap says on the board which column refused it, that a back
+// is drawn where the snapshot says one lies and the card under it is not announced, that
+// a drag exposing a face-down card turns it up on screen, and that a run completed by a
+// drag flies home and raises the overlay.
 //
 // The deal is played from `seed=1`, so the taps land on the same board every run; the
 // exposing move is found against `core`'s own reducer from that same deal rather than
@@ -31,15 +32,48 @@ const nameOf = (card) => `${RANK_WORDS[RANKS.indexOf(card.rank)]} of ${SUIT_WORD
 
 const backs = (page) => page.locator(".stacking-card--down")
 const stock = (page) => page.locator(".stacking-card--stock")
+// The columns flashing at a deal they refused (`TableScene.css`'s `--refused`).
+const refused = (page) => page.locator(".drop-zone--refused")
 
 // The stock's top card is the one the board announces — reflow takes a squared pile's
 // covered cards out of the accessible tree — so it is the one to tap.
 async function tapStock(page) {
   const top = page.locator('.stacking-card--stock:not([aria-hidden="true"])')
   await expect(top).toHaveCount(1)
-  const box = await top.boundingBox()
+  await tapCentre(page, top)
+}
+
+// A tap in the middle of whatever `what` is. By coordinates rather than `locator.click`,
+// since the slots below are `pointer-events: none` — the `.drop-zone` around them is the
+// board's hit-test box — and a tap on a slot is exactly a tap a player aims there.
+async function tapCentre(page, what) {
+  const box = await what.boundingBox()
   await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2)
   await settle(page)
+}
+
+// Watch for the refusal flash rather than sampling for it: the class takes itself off
+// when its animation ends, so a check that looked at the board afterwards would be
+// racing a deliberately short-lived thing. Returns a reader of the zones it has landed
+// on since (`{clear: true}` to start it over), each named by its pile index — zones are
+// in the document in the board's own pile order, which is what `read-board.mjs` reads
+// them by too.
+async function watchFlashes(page) {
+  await page.evaluate(() => {
+    const zones = [...document.querySelectorAll(".drop-zone")]
+    globalThis.flashed = new Set()
+    new MutationObserver(() =>
+      zones.forEach((el, i) => {
+        if (el.classList.contains("drop-zone--refused")) globalThis.flashed.add(i)
+      }),
+    ).observe(document.body, { subtree: true, attributes: true, attributeFilter: ["class"] })
+  })
+  return async ({ clear = false } = {}) =>
+    page.evaluate((reset) => {
+      const seen = [...globalThis.flashed].sort((a, b) => a - b)
+      if (reset) globalThis.flashed.clear()
+      return seen
+    }, clear)
 }
 
 test("spiderette turns a card over when it is exposed, and deals its stock by tap", async ({ page }) => {
@@ -93,9 +127,11 @@ test("spiderette turns a card over when it is exposed, and deals its stock by ta
   state = Reducer.reduce(game, state, { TAG: "Move", card: move.card, to: { TAG: "ToPile", _0: move.to } })._0
 
   // Four taps: seven, seven, seven, then the last three onto the first three columns.
+  // A deal the board accepts says nothing beyond dealing: no column is at fault.
   for (const left of [17, 10, 3, 0]) {
     await tapStock(page)
     await expect(stock(page)).toHaveCount(left)
+    await expect(refused(page)).toHaveCount(0)
     state = Reducer.reduce(game, state, "Deal")._0
   }
   await expect(backs(page)).toHaveCount(20)
@@ -105,6 +141,72 @@ test("spiderette turns a card over when it is exposed, and deals its stock by ta
   expect(cascades.map((i) => piles[i].length)).toEqual(expected)
   // Nothing left to tap: the stock is empty, and its slot shows.
   await expect(page.locator('.stacking-card--stock')).toHaveCount(0)
+})
+
+// The refused deal, which is a rule a player can only learn from the board: the Spider
+// family won't deal a row while a column stands empty, and the tap that does nothing is
+// otherwise a tap that missed. `Core_test` has the rule and `Scenario_test` the posed
+// position; what only a browser can say is which slots go red, that they stop, and that
+// the board is otherwise exactly where it was.
+test.describe("a deal refused by an empty column", () => {
+  test("flashes every empty column, and nothing else", async ({ page }) => {
+    const game = Game.spiderette
+    const cascades = Game.pileIndices(game, "Cascade")
+    await page.goto("/?game=spiderette&state=stuck&animate=off")
+    await settle(page)
+
+    // Two columns empty with the stock still full — the second and the fifth, so a
+    // flash on "every empty column" can't pass as a flash on the first one found.
+    const state = Scenario.forName(game, "stuck")
+    const empty = cascades.filter((i) => GameState.cardsInPile(state, i).length === 0)
+    expect(empty).toEqual([cascades[1], cascades[4]])
+    await expect(stock(page)).toHaveCount(24)
+    await expect(refused(page)).toHaveCount(0)
+
+    const flashed = await watchFlashes(page)
+    await tapStock(page)
+    // The empty columns, and only them: not the stock, which is willing, and not a
+    // column that holds cards.
+    expect(await flashed()).toEqual(empty)
+
+    // Refused means refused: no card moved, and the stock still holds all twenty-four.
+    await expect(stock(page)).toHaveCount(24)
+    const piles = assignPiles(await readGeometry(page))
+    expect(cascades.map((i) => piles[i].length)).toEqual(
+      cascades.map((i) => GameState.cardsInPile(state, i).length),
+    )
+
+    // The flash plays out and takes itself off, so the board comes back to rest — and
+    // the next refused tap flashes again rather than going quiet.
+    await expect(refused(page)).toHaveCount(0)
+    await flashed({ clear: true })
+    await tapStock(page)
+    expect(await flashed()).toEqual(empty)
+  })
+
+  test("says nothing on a board whose stock is empty", async ({ page }) => {
+    // Every run collected but the last: five columns stand empty and the stock is out,
+    // so the deal is refused for a reason no column is to blame for — and there is no
+    // stock card left to tap in the first place.
+    await page.goto("/?game=spiderette&state=almost-won&animate=off")
+    await settle(page)
+    await expect(stock(page)).toHaveCount(0)
+    const flashed = await watchFlashes(page)
+    await tapCentre(page, page.locator(".drop-zone__slot--stock"))
+    expect(await flashed()).toEqual([])
+  })
+
+  test("says nothing on a game that has no stock", async ({ page }) => {
+    // FreeCell deals no rows, so nothing on its board can refuse one — including the
+    // empty free cells and foundations, which look like the empty columns that do.
+    await page.goto("/?game=freecell&animate=off")
+    await settle(page)
+    await expect(page.locator(".drop-zone__slot--stock")).toHaveCount(0)
+    const flashed = await watchFlashes(page)
+    await tapCentre(page, page.locator(".drop-zone__slot--cell").first())
+    await tapCentre(page, page.locator(".drop-zone__slot--foundation").first())
+    expect(await flashed()).toEqual([])
+  })
 })
 
 test("a drag that completes the last run flies it home and wins", async ({ page }) => {

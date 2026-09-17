@@ -427,6 +427,19 @@
     animation: drop-zone-reject 0.5s ease-in-out infinite;
   }
 
+  /* The same red, on the column that is refusing a deal from the stock: the Spider
+     family won't deal a row while any column stands empty, and a tap that changed
+     nothing is indistinguishable from a tap that missed. Sharing the rejected drop's
+     accent and keyframes is deliberate — the board says "no" in one voice — but this
+     one plays out and stops, since nothing is being held over the zone to end it.
+     `TableScene.res` hangs the class and drops it when the animation finishes, so how
+     long the flash lasts is settled here and nowhere else. */
+  .drop-zone--refused {
+    border-color: #ef4444;
+    background: rgba(239, 68, 68, 0.12);
+    animation: drop-zone-reject 0.5s ease-in-out 2;
+  }
+
   @keyframes drop-zone-reject {
     0%,
     100% {

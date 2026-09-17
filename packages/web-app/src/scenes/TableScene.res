@@ -43,6 +43,12 @@ external onPointerCapturing: (
   {"capture": bool},
 ) => unit = "addEventListener"
 @send external stopPropagation: pointerEvent => unit = "stopPropagation"
+// A CSS animation running out on an element, so a class that carries a finite one can
+// take itself back off when it has played (the refusal flash below). Only the flash
+// ends: the hover highlight's animation is `infinite`, and a class removed mid-run
+// cancels rather than finishes.
+@send
+external onAnimation: (WebDom.element, string, unit => unit) => unit = "addEventListener"
 
 // The initial deal is centred on the stage's live size, which isn't known until
 // the stage is in the document and laid out. On first load the scene mounts while
@@ -413,6 +419,11 @@ let flyHome = (~wrapper, ~dx, ~dy, ~flight, ~delay) =>
 let doubleTapMs = 300.
 let doubleTapMoveTol = 12.
 
+// The class an empty column wears while it flashes at a deal it refused. Named once
+// because both ends of the flash say it: the zone that clears the class when the
+// animation ends, and the refusal that hangs it.
+let refusedClass = "drop-zone--refused"
+
 // The browser's own double-tap gesture — which on iOS scales the viewport, over
 // the top of this one — is refused app-wide in `TapZoom`, armed by `Main`. It has
 // to be refused in the touch layer, and so can't ride along with the pointer
@@ -732,6 +743,11 @@ let make = (
       let zones = game.piles->Array.mapWithIndex((pile: Game.pile, index) => {
         let el = Html.create(TableMarkup.zone(TableMarkup.slot(pile.role)))
         rowFor(pile)->WebDom.appendChild(el)->ignore
+        // The refusal flash takes itself off when it has played out, so its length is
+        // the stylesheet's alone (`.drop-zone--refused`) and a later refusal can hang
+        // it again. Hung once per zone here rather than once per flash, which would
+        // pile up a listener every time the stock was tapped.
+        el->onAnimation("animationend", () => classList(el)->removeClass(refusedClass))
         {el, index, stacking: pile.stacking}
       })
 
@@ -1032,6 +1048,25 @@ let make = (
       // and it always reflows both ends of a move (the pile a card left and the one
       // it joined) without the view tracking which those were.
       let reflowAll = () => zones->Array.forEach(reflow)
+
+      // Why a tap on the stock did nothing: the Spider family refuses a deal while any
+      // column stands empty, so the empty columns are what answer. *Every* one of them,
+      // because the rule is about every column rather than the first one found — and the
+      // columns alone, since the stock is willing and they are what has to change for it
+      // to deal.
+      let flashEmptyColumns = () =>
+        Game.pileIndices(game, Game.Cascade)
+        ->Array.filter(i => Array.length(GameState.cardsInPile(state(), i)) == 0)
+        ->Array.filterMap(i => zones->Array.find(z => z.index == i))
+        ->Array.forEach(({el}) => {
+          // A second refused tap has to flash again. Taking the class off and putting it
+          // back in one go is no change at all as far as the browser is concerned, so the
+          // animation would carry on from wherever it had got to; measuring the element in
+          // between forces the style flush that makes the two into two states.
+          classList(el)->removeClass(refusedClass)
+          boundingRect(el)->ignore
+          classList(el)->addClass(refusedClass)
+        })
 
       // Run `body` with the cards' left/top snap transition switched off (the
       // `.stacking-playfield.dealing` rule), restoring it a frame later — once the
@@ -1913,13 +1948,22 @@ let make = (
 
         // Deal the next row: the same `Session.dispatch` a drop goes through, so the
         // deal is one undoable step, settled by auto-collect like any move (a dealt card
-        // can complete a run), and then flown from the stock to the columns. A refusal
-        // — a column standing empty — is already in the log with its reason.
+        // can complete a run), and then flown from the stock to the columns.
+        //
+        // A refusal is already in the log with its reason, but a log is not something a
+        // player reads: on screen a refused tap is indistinguishable from one that
+        // missed. So the one refusal the board can point at answers on the board — see
+        // `flashEmptyColumns`. The other two have nothing to flash: no stock, or a stock
+        // with nothing left in it, and the empty stock's slot is already showing.
         let playDeal = () => {
           let before = state()
           switch dispatch(Reducer.Deal) {
           | Session.Settled({moved, collected}) => flySettled(~before, ~moved, ~collected)
-          | _ => ()
+          | _ =>
+            switch Reducer.dealRefusal(~game, before) {
+            | Some(Reducer.CascadeEmpty) => flashEmptyColumns()
+            | Some(_) | None => ()
+            }
           }
         }
 
