@@ -1,4 +1,4 @@
-// Play a full game — FreeCell, or Simple Simon — in a real browser, by hand.
+// Play a full game — any board `Position.ofGameState` reads — in a real browser, by hand.
 //
 // The harness has three parts, and the split is the point:
 //   - **eyes** — `read-board.mjs`, which reads the board off the rendered page
