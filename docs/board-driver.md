@@ -1,6 +1,6 @@
 # The board and its driver
 
-`TableScene.make` takes fourteen arguments and publishes a record back. That is a
+`TableScene.make` takes fifteen arguments and publishes a record back. That is a
 wide seam for one call site, and the width is not accidental: the board owns the
 cards and the driver owns everything a card can't answer. This page is the
 contract between them — what each side may know, why an argument is the shape it
@@ -31,6 +31,8 @@ live ref   ~options ~tiltEnabled
 
 channel    ~onHistory ~onDeal          board → driver, after every change
            ~loadHistory ~currentDeal   driver → board, asked at the moment of use
+           ~onceUncovered              board → driver → board: a thunk handed over,
+                                       run now or when the board is next in view
            ~publish ~persist           the two records that cross whole
 ```
 
@@ -106,6 +108,29 @@ resumes whatever is saved *now*.
 class of reason: the number can't come from `game.seed`, because a posed position
 sits on a game whose own seed didn't produce it and a resumed game's number lives
 in the driver's storage.
+
+## Why the deal is handed back to be played
+
+The opening fly-in is the one flight that is only worth making in front of someone,
+and whether anyone is looking is a fact about the chrome, not the cards. The board
+can't ask it — the menu is the driver's — and it can't be a value either: the same
+scene mounts many times, and only one of those mounts happens under an open menu.
+
+So the board builds the pass paused, every card parked at the off-stage origin, and
+hands the driver a thunk that plays it (`~onceUncovered`). The driver runs it on the
+spot for every mount but one: the Games list's segment swapping the board of the
+family being played (`Main.swapBoard`), which is the one activation that keeps the
+menu up. That mount's thunk is held (`heldDeal`) and run by whatever closes the menu
+— on the model's open-to-closed transition rather than in any one message, so a new
+way of closing the menu can't leave a board with its cards off-stage. `onActivate`
+drops the thunk before anything else, since a board torn down with its deal waiting
+has nothing left to play.
+
+The board keeps its own guard for the same case from the other side: the held flights
+live in a mount-scope ref that a re-deal or a teardown cancels and empties, and the
+thunk plays *that ref*, so a stale release the driver still holds plays nothing. It
+has to be the ref rather than the array the flights were built from, because playing a
+cancelled Web Animation restarts it.
 
 ## Who resolves the deal number
 

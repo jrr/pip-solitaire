@@ -276,6 +276,34 @@ let liveGame: ref<option<Game.t>> = ref(None)
 
 let closeMenu: ref<unit => unit> = ref(() => ())
 
+// **A scene change the menu asked for as a change of state rather than of place.**
+// Cycling a family's pack while that family's board is up swaps the board for the next
+// pack's — a scene change like any other, except that the control doing it is one you
+// watch as you tap it, so the menu has to stay put. Every other activation is a
+// departure (a row tap, a link landing), which is why closing the menu is what
+// `~onActivate` does by default and this is the one thing that asks it not to.
+//
+// A ref rather than an argument because it is read inside the switcher's own callback,
+// one call away from the tap that sets it, and it is lowered again the moment
+// `select` returns — `onActivate` runs synchronously inside it.
+let keepMenuOpen = ref(false)
+
+// **A deal the board built under the open menu, waiting to be played.** The board hands
+// its opening fly-in over as a thunk rather than playing it (`~onceUncovered`), and the
+// one mount that happens with the menu up — the segment's swap, under `keepMenuOpen` —
+// is the one whose thunk is held here instead of run. Whatever closes the menu runs it
+// (`releaseHeldDeal`), so the cards a player couldn't see dealt fly in as the pane
+// goes, the way a row tap's do. Cleared as any scene activates: a board torn down
+// with its deal still waiting has nothing left to play.
+let heldDeal: ref<option<unit => unit>> = ref(None)
+let releaseHeldDeal = () =>
+  switch heldDeal.contents {
+  | Some(release) =>
+    heldDeal := None
+    release()
+  | None => ()
+  }
+
 // This one can afford to *drop* its opening report the way `reportHistory` can't: the
 // initial scene is `switcher.active`, which `init` reads directly.
 let reportScene: ref<string => unit> = ref(_ => ())
@@ -651,6 +679,28 @@ let update = (msg, model) =>
   | SeedTyped(seedInput) => ({...model, seedInput}, Html.noEffect)
   }
 
+// **Whatever closes the menu uncovers the board.** Four messages lower `menuOpen` — the
+// ✕ and the backdrop, the top bar's button, the console and its dock — and a deal
+// waiting under the menu (`heldDeal`) is played on the *transition*, not in any one of
+// them, or a fifth way of closing the menu would leave a board with its cards parked
+// off-stage. Wrapped around the step above rather than written into it because it is
+// about the change in the model, which no single branch sees; and an effect rather than
+// a call here, so it runs after the render that hides the pane.
+let update = (msg, model) => {
+  let (next, effect) = update(msg, model)
+  if model.menuOpen && !next.menuOpen {
+    (
+      next,
+      () => {
+        effect()
+        releaseHeldDeal()
+      },
+    )
+  } else {
+    (next, effect)
+  }
+}
+
 // The scene area (switcher + demos) is built imperatively and owns its own
 // subtree. `render` hands back one real DOM node — the scene container, wrapped by
 // the scene band and spliced in with `Html.node`, never re-rendered — plus the menu's
@@ -863,6 +913,9 @@ let gameScene = (game: Game.t) => {
     // board that isn't the one being opened. Once that position lands, play is ordinary
     // play and its moves fly like anyone else's.
     ~skipDealFlyIn=url.shared->Option.isSome,
+    // Whether the fly-in can be seen is this side's to say: only the segment's swap
+    // mounts a board under the open menu, and its deal waits there for the menu to go.
+    ~onceUncovered=release => keepMenuOpen.contents ? heldDeal := Some(release) : release(),
     opening,
   )
 }
@@ -908,18 +961,6 @@ let launchGame = plainUrl
   ? SavedGame.loadLastGame()->Option.flatMap(menuGameById)->Option.getOr(Game.default)
   : Game.default
 
-// **A scene change the menu asked for as a change of state rather than of place.**
-// Cycling a family's pack while that family's board is up swaps the board for the next
-// pack's — a scene change like any other, except that the control doing it is one you
-// watch as you tap it, so the menu has to stay put. Every other activation is a
-// departure (a row tap, a link landing), which is why closing the menu is what
-// `~onActivate` does by default and this is the one thing that asks it not to.
-//
-// A ref rather than an argument because it is read inside the switcher's own callback,
-// one call away from the tap that sets it, and it is lowered again the moment
-// `select` returns — `onActivate` runs synchronously inside it.
-let keepMenuOpen = ref(false)
-
 let switcher = SceneSwitcher.render(
   // The launch scene: the remembered game, or the game `core` says a nameless deal
   // number belongs to. Never the literal `"freecell"` — that's the same fact twice
@@ -961,6 +1002,9 @@ let switcher = SceneSwitcher.render(
     // back always names a game the menu leads with — the Gallery can never be what the
     // app opens on.
     menuGameById(scene.id)->Option.forEach(game => SavedGame.saveLastGame(game.id))
+    // …and drop a deal the outgoing board never got to play, before the close below
+    // could run it over a board that is being torn down.
+    heldDeal := None
     if !keepMenuOpen.contents {
       closeMenu.contents()
     }

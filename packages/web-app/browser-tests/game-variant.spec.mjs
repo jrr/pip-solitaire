@@ -18,7 +18,7 @@
 // here for the picker on the info screen too, which wears the same one.
 
 import { expect, test } from "@playwright/test"
-import { settleBoard } from "./lib/board.mjs"
+import { allowMotion, settleBoard } from "./lib/board.mjs"
 import { menuSeed, setBetaFeatures } from "./lib/menu.mjs"
 
 test.use({ viewport: { width: 800, height: 1000 } })
@@ -179,6 +179,59 @@ test("swaps the board under the menu when the game it names is the one being pla
   await page.getByRole("button", { name: "Close menu" }).click()
   await settleBoard(page)
   await expect(page.locator(".drop-zone__slot--stock")).toHaveCount(1)
+})
+
+// The swap's one difference from a row tap is that the menu is still up when the new
+// board mounts, and a board with no game saved is a fresh deal — on a phone, one dealt
+// entirely behind the pane. So the deal is built with every card parked off-stage and
+// played only once the menu goes (`TableScene`'s `~onceUncovered`, held by `Main`): what
+// the player sees on closing the menu is the deal, not a board that dealt itself while
+// they weren't looking.
+//
+// Motion is allowed and `?animate=off` left off, since the flights are the subject; a
+// fresh context has no Mini FreeCell saved, so the size tap is the fresh deal wanted.
+test("holds a fresh deal's cards off-stage while the menu is up, and deals them once it closes", async ({
+  page,
+}) => {
+  await allowMotion(page)
+  await page.goto("/")
+  await settleBoard(page)
+  await openMenu(page)
+  await showTheGames(page)
+
+  await sizes(page).click()
+  await expect(onTheTable(page)).toContainText("Mini FreeCell")
+
+  // Every card of the new board has a flight built for it, and none has started: the
+  // whole pass is paused at its origin, which is a card's height below the stage.
+  const parked = () =>
+    page.evaluate(() => {
+      const stage = document.querySelector(".stacking-playfield").getBoundingClientRect()
+      const cards = [...document.querySelectorAll(".stacking-card")]
+      const flights = cards.flatMap((el) => el.getAnimations())
+      return {
+        cards: cards.length,
+        paused: flights.filter((a) => a.playState === "paused").length,
+        running: flights.filter((a) => a.playState === "running").length,
+        belowStage: cards.filter((el) => el.getBoundingClientRect().top >= stage.bottom).length,
+      }
+    })
+  const held = await parked()
+  expect(held.cards).toBeGreaterThan(0)
+  expect(held.paused).toBe(held.cards)
+  expect(held.running).toBe(0)
+  expect(held.belowStage).toBe(held.cards)
+
+  // Closing the menu is what deals: the same flights, now running — and the cards land
+  // on the stage, as a deal watched from the start would have.
+  await page.getByRole("button", { name: "Close menu" }).click()
+  await expect(page.locator("#menu-overlay")).toBeHidden()
+  const dealing = await parked()
+  expect(dealing.paused).toBe(0)
+  expect(dealing.running).toBe(held.cards)
+  await settleBoard(page)
+  expect((await parked()).belowStage).toBe(0)
+  await expect(page.locator(".drop-zone__slot--cell")).toHaveCount(2)
 })
 
 // A trip through the sizes is a trip through three mounts of the family's scenes, and

@@ -115,7 +115,14 @@ let holdFlights: unit => unit = %raw(`() => {
   globalThis.__flights = []
   globalThis.__realAnimate = Element.prototype.animate
   Element.prototype.animate = function () {
-    const flight = { onfinish: null, cancelled: false, cancel() { this.cancelled = true } }
+    const flight = {
+      onfinish: null,
+      cancelled: false,
+      paused: false,
+      cancel() { this.cancelled = true },
+      pause() { this.paused = true },
+      play() { this.paused = false },
+    }
     globalThis.__flights.push(flight)
     return flight
   }
@@ -144,6 +151,14 @@ let landLastFlight: unit => unit = %raw(`() => {
 let allFlightsCancelled: unit => bool = %raw(`() => globalThis.__flights.every((f) => f.cancelled)`)
 
 let flightCount: unit => int = %raw(`() => globalThis.__flights.length`)
+
+// The flights the board built and then put on hold — the opening deal waiting for the
+// driver to play it (`~onceUncovered`) — and, of them, the ones a cancel has since taken
+// out of the running rather than a play let go.
+let pausedFlights: unit => int = %raw(`() =>
+  globalThis.__flights.filter((f) => f.paused && !f.cancelled).length`)
+let cancelledFlights: unit => int = %raw(`() =>
+  globalThis.__flights.filter((f) => f.cancelled).length`)
 
 // How many cards flew while `body` ran. A fly-in leaves no trace in the finished DOM —
 // the cards are placed on their resting spots first and animated *back* from an offset —
@@ -405,6 +420,75 @@ describe("TableScene opening fly-in", () => {
     // The fixed deal a `#g=` link wears while its real position inflates is a board
     // about to be replaced, so the driver asks for it to arrive quietly.
     expect(flightsToOpen(~skipDealFlyIn=true, ()))->toBe(0)
+  })
+
+  // The fly-in is built paused and handed to the driver to play, which is what lets a
+  // board mounted under the open menu wait, cards off-stage, until the menu goes. The
+  // default hands it straight back, so every count above is of a deal that played; these
+  // hold the release instead and ask what the board does in the meantime.
+  let holdingRelease = () => {
+    let held = ref(None)
+    let onceUncovered = release => held := Some(release)
+    let release = () => held.contents->Option.forEach(f => f())
+    (onceUncovered, release)
+  }
+
+  test("a deal the driver has not yet released waits with every card parked", () => {
+    flushFrames()
+    let (onceUncovered, release) = holdingRelease()
+    let paused = ref((0, 0))
+    flightsDuring(
+      () => {
+        let container = host("div")
+        let teardown = TableScene.make(~onceUncovered, game).mount(container)
+        flushFrames()
+        let before = pausedFlights()
+        // The pass plays as one, and only when the driver says so.
+        release()
+        paused := (before, pausedFlights())
+        teardown()
+      },
+    )->ignore
+    expect(paused.contents)->toEqual((52, 0))
+  })
+
+  test("a board dealt over a waiting one drops it rather than playing it later", () => {
+    flushFrames()
+    let (onceUncovered, release) = holdingRelease()
+    let board = ref(None)
+    let after = ref((0, 0))
+    flightsDuring(
+      () => {
+        let container = host("div")
+        let scene = TableScene.make(~onceUncovered, ~publish=b => board := Some(b), game)
+        let teardown = scene.mount(container)
+        flushFrames()
+        // Restart under the held deal: the first fifty-two are cancelled with the board
+        // they were built for, and the release the driver kept plays only the fresh ones.
+        board.contents->Option.forEach(b => b.restart())
+        flushFrames()
+        release()
+        after := (cancelledFlights(), pausedFlights())
+        teardown()
+      },
+    )->ignore
+    expect(after.contents)->toEqual((52, 0))
+  })
+
+  test("a scene torn down with its deal still waiting cancels it", () => {
+    flushFrames()
+    let (onceUncovered, _release) = holdingRelease()
+    let after = ref(0)
+    flightsDuring(
+      () => {
+        let container = host("div")
+        let teardown = TableScene.make(~onceUncovered, game).mount(container)
+        flushFrames()
+        teardown()
+        after := cancelledFlights()
+      },
+    )->ignore
+    expect(after.contents)->toBe(52)
   })
 })
 
