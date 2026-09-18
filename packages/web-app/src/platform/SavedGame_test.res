@@ -9,16 +9,22 @@
 // on `globalThis` for these tests to save into. It's just enough of the Web
 // Storage surface (`getItem`/`setItem`/`removeItem`, missing key → `null`) for the
 // `@scope("localStorage")` bindings the module uses.
+//
+// It goes on with `defineProperty`: jsdom's `localStorage` is a getter with no
+// setter, so a plain `globalThis.localStorage =` throws in a module's strict mode.
 %%raw(`
-  globalThis.localStorage = (() => {
-    const store = new Map()
-    return {
-      getItem: (k) => (store.has(k) ? store.get(k) : null),
-      setItem: (k, v) => { store.set(k, String(v)) },
-      removeItem: (k) => { store.delete(k) },
-      clear: () => { store.clear() },
-    }
-  })()
+  Object.defineProperty(globalThis, "localStorage", {
+    configurable: true,
+    value: (() => {
+      const store = new Map()
+      return {
+        getItem: (k) => (store.has(k) ? store.get(k) : null),
+        setItem: (k, v) => { store.set(k, String(v)) },
+        removeItem: (k) => { store.delete(k) },
+        clear: () => { store.clear() },
+      }
+    })(),
+  })
 `)
 
 open Vitest
