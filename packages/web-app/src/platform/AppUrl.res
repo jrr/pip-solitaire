@@ -4,7 +4,7 @@
 //
 //   ?game=mini     which game, by id       ?state=midgame  a named `Scenario`
 //   ?scene=raster  which scene, by id      ?seed=7         the deal number
-//   ?animate=off   skip the deal fly-in    ?raster=svg     the raster scene's rendering
+//   ?animate=off   still every card       ?raster=svg     the raster scene's rendering
 //   ?cascade=pose  freeze the cascade at a fixed frame
 //   #g=<blob>      a whole shared game, compressed
 //

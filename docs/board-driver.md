@@ -1,6 +1,6 @@
 # The board and its driver
 
-`TableScene.make` takes thirteen arguments and publishes a record back. That is a
+`TableScene.make` takes fourteen arguments and publishes a record back. That is a
 wide seam for one call site, and the width is not accidental: the board owns the
 cards and the driver owns everything a card can't answer. This page is the
 contract between them — what each side may know, why an argument is the shape it
@@ -23,7 +23,7 @@ Everything crossing the seam is one of these, and which one it is decides the
 shape:
 
 ```
-value      ~initial ~newDeal ~winShare ~skipDealAnimation
+value      ~initial ~newDeal ~winShare ~skipFlights ~skipDealFlyIn
            settled before the board is built, and true for its whole life
 
 live ref   ~options ~tiltEnabled

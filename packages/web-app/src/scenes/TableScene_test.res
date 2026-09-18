@@ -26,7 +26,7 @@
 // The stub above reports reduced motion for the whole file, which is what keeps every
 // flight within jsdom's reach — and it is also what sends a win straight to the panel,
 // so no other suite here pays for a sprite build. The cascade tests borrow the other
-// answer for the length of one board; they pass `~skipDealAnimation` instead, which
+// answer for the length of one board; they pass `~skipFlights` instead, which
 // collapses the same flights without silencing the celebration they are about.
 let withMotionAllowed: (unit => unit) => unit = %raw(`(body) => {
   const reduced = globalThis.matchMedia
@@ -142,6 +142,30 @@ let landLastFlight: unit => unit = %raw(`() => {
 // Whether every flight started so far has been cancelled — the board carrying no raised
 // flight layers into the position it stopped on.
 let allFlightsCancelled: unit => bool = %raw(`() => globalThis.__flights.every((f) => f.cancelled)`)
+
+let flightCount: unit => int = %raw(`() => globalThis.__flights.length`)
+
+// How many cards flew while `body` ran. A fly-in leaves no trace in the finished DOM —
+// the cards are placed on their resting spots first and animated *back* from an offset —
+// so counting what reached `Element.animate` is the only way to ask whether a board
+// dealt itself in front of the player or simply appeared. Movement is welcome for the
+// length of the body (`holdFlights`), and released however the body ends, so one failed
+// assertion can't leave the rest of the file in a world where nothing finishes.
+let flightsDuring = (body: unit => unit): int => {
+  holdFlights()
+  let counted = ref(0)
+  let settle = () => {
+    counted := flightCount()
+    releaseFlights()
+  }
+  switch body() {
+  | () => settle()
+  | exception e =>
+    settle()
+    throw(e)
+  }
+  counted.contents
+}
 
 open Vitest
 open TestDom
@@ -328,6 +352,59 @@ describe("TableScene save/resume", () => {
     )
     let _teardown = scene.mount(container)
     expect(lastCanUndo.contents->Option.getOr(false))->toBe(true)
+  })
+})
+
+// The opening fly-in is a claim about the board behind it — these cards were just dealt
+// to you — so it is spent only on a board the player asked for. What decides is whether
+// the build opened on its own deal (`freshDeal`), and the three ways it doesn't are all
+// here, each paired with the deal that proves the suppression is the position's doing
+// rather than a board that never flies. `docs/animation-timing.md` § When nothing flies
+// has the rule and the reasoning; these pin the wiring.
+describe("TableScene opening fly-in", () => {
+  let game = Game.freecell
+  // One mount, counted from the deferred frame the deal is scheduled on. The frame queue
+  // is shared by the whole file and a test that never flushes leaves its own deal sitting
+  // in it, so clear it first — out here, where the file's reduced-motion stub collapses
+  // whatever was waiting to an instant placement and nothing reaches the count.
+  let flightsToOpen = (~loadHistory=() => None, ~initial=?, ~skipDealFlyIn=false, ()) => {
+    flushFrames()
+    flightsDuring(() => {
+      let container = host("div")
+      let scene = TableScene.make(~loadHistory, ~initial?, ~skipDealFlyIn, game)
+      let teardown = scene.mount(container)
+      flushFrames()
+      teardown()
+    })
+  }
+
+  test("a freshly dealt board flies its cards in", () => {
+    // FreeCell deals all fifty-two, and every one of them is a card the player watched
+    // arrive — the baseline the three suppressions below are measured against.
+    expect(flightsToOpen())->toBe(52)
+  })
+
+  test("a game resumed from storage simply appears", () => {
+    // The cards a save restores were not dealt just now, and the arrangement shows it:
+    // fly them in and the pass ends on a board mid-game, having mimed a deal that never
+    // happened. Drained to a win here because it is the extreme of the same point — the
+    // aces are already home before the first card would have landed.
+    let (won, _moved) = Reducer.finishSequence(~game, Scenario.freecellAlmostWon(game))
+    expect(
+      flightsToOpen(~loadHistory=() => Some(SaveState.ofHistory(History.make(won))), ()),
+    )->toBe(0)
+  })
+
+  test("a posed position is not dealt onto the board", () => {
+    // `?state=` and the debug-states menu both open on a position nobody dealt, which is
+    // also what lets a screenshot of one be taken without asking for `?animate=off`.
+    expect(flightsToOpen(~initial=Scenario.freecellFinish(game), ()))->toBe(0)
+  })
+
+  test("a shared link's scaffolding board is never dealt in front of the player", () => {
+    // The fixed deal a `#g=` link wears while its real position inflates is a board
+    // about to be replaced, so the driver asks for it to arrive quietly.
+    expect(flightsToOpen(~skipDealFlyIn=true, ()))->toBe(0)
   })
 })
 
@@ -1193,7 +1270,7 @@ describe("TableScene victory animation", () => {
       ~initial=Scenario.freecellFinish(game),
       ~newDeal=() => Game.freecellDeal(~seed=7),
       ~publish=published => board := Some(published),
-      ~skipDealAnimation=true,
+      ~skipFlights=true,
       game,
     )
     let teardown = scene.mount(container)
@@ -1293,7 +1370,7 @@ describe("TableScene victory animation", () => {
       () => {
         let scene = TableScene.make(
           ~loadHistory=() => Some(SaveState.ofHistory(History.make(won))),
-          ~skipDealAnimation=true,
+          ~skipFlights=true,
           game,
         )
         teardown := scene.mount(container)

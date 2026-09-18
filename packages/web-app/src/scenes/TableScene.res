@@ -511,10 +511,15 @@ let make = (
   ~tiltEnabled: ref<bool>=ref(true),
   // Drops the cards straight into their resting places — the URL's `?animate=off`, for
   // a shot of the already-dealt board. The layout is identical either way; only the
-  // cosmetic flight is suppressed, as "reduce motion" already does. **Its name is
-  // narrower than its scope**: every flight goes through `flyCards`, so this silences
-  // the finish sweep and a commanded move too, which is what a deterministic test wants.
-  ~skipDealAnimation: bool=false,
+  // cosmetic flight is suppressed, as "reduce motion" already does. **Every** flight:
+  // the opening deal, the finish sweep and a commanded move alike, which is what a
+  // deterministic test and a screenshot both want.
+  ~skipFlights: bool=false,
+  // Silences the opening fly-in alone, leaving the flights a move plays. For a board
+  // whose opening deal is scaffolding the player never asked to watch — the fixed deal a
+  // `#g=` link wears while its real position inflates — where animating the cards in
+  // would draw the eye to a board that is about to be replaced.
+  ~skipDealFlyIn: bool=false,
   game: Game.t,
 ): Scene.t => {
   id: game.id,
@@ -689,18 +694,20 @@ let make = (
         "build board: " ++ game.id ++ (initial->Option.isSome ? " (forced state)" : ""),
       )
       currentGame := game
-      // **The rule is "what's on the table *is* this deal's opening position"**, which
-      // is the only claim a deal-number share can make good on. So a fresh deal reports
-      // the game's seed, and a restored history or a forced state reports `None` — the
-      // driver knows where either came from and fills the gap (`docs/board-driver.md`
-      // § Who resolves the deal number).
+      // **Is what's on the table this deal's own opening position?** A restored history
+      // and a forced state are both positions the game arrived at by some other route,
+      // and the two things this build decides turn on exactly that:
       //
-      // That also keeps reporting in step with saving: a seed is reported on precisely
-      // the builds that become the saved game, so the driver needs no second rule.
+      //   - the seed it reports. A fresh deal reports the game's, and either of the
+      //     others reports `None` — the driver knows where it came from and fills the
+      //     gap (`docs/board-driver.md` § Who resolves the deal number). That also keeps
+      //     reporting in step with saving: a seed is reported on precisely the builds
+      //     that become the saved game, so the driver needs no second rule.
+      //   - whether the cards fly in (`animateDeal`).
       //
-      // Named, because the session below carries the same fact for the same reason and
-      // two spellings of one rule is one too many.
-      let boardSeed = initial->Option.isSome || seedHistory->Option.isSome ? None : game.seed
+      // Named once, because two spellings of one rule is one too many.
+      let freshDeal = initial->Option.isNone && seedHistory->Option.isNone
+      let boardSeed = freshDeal ? game.seed : None
       switch onDeal {
       | Some(report) => report(boardSeed)
       | None => ()
@@ -1433,7 +1440,7 @@ let make = (
         let reduceMotion = matchMedia("(prefers-reduced-motion: reduce)")["matches"]
         let cards = movedCards->Array.filterMap(nodeFor)
         let n = Array.length(cards)
-        if reduceMotion || skipDealAnimation || n == 0 {
+        if reduceMotion || skipFlights || n == 0 {
           reflowAll()
           onDone()
         } else {
@@ -2327,14 +2334,23 @@ let make = (
       // so they all launch from the same "stack" a magician would throw from, and
       // animates to `translate 0` (its left/top already hold the final spot). The
       // per-card start offset therefore differs on *both* axes, since each card
-      // travels from that one origin to a different landing spot. With the OS
-      // asking for reduced motion — or the URL's `?animate=off` (`~skipDealAnimation`)
-      // — the cards simply stay where they were placed, no fly-in.
+      // travels from that one origin to a different landing spot.
+      //
+      // **A dealer's pass is a claim, so only a board that was dealt may make it**
+      // (`freshDeal`). Fly a restored history in and the cards land on a half-played
+      // board — aces already up, a card in a free cell — having mimed a deal that
+      // didn't happen; fly a forced state in and the pass introduces a position nobody
+      // dealt. Both open by simply being there. That leaves the fly-in to the boards a
+      // player asked for: a new deal, a chosen number, a restart, and a game the app
+      // deals you on a cold open.
+      //
+      // The OS asking for reduced motion and either skip flag are the other three ways
+      // out, and all four leave the cards exactly where they were placed.
       let animateDeal = () => {
         let reduceMotion = matchMedia("(prefers-reduced-motion: reduce)")["matches"]
         let cards = dealSequence()
         let n = Array.length(cards)
-        if !reduceMotion && !skipDealAnimation && n > 0 {
+        if !reduceMotion && !skipFlights && !skipDealFlyIn && freshDeal && n > 0 {
           let pr = boundingRect(playfield)
           let cw = TableLayout.cardW *. scale.contents
           let ch = TableLayout.cardH *. scale.contents
