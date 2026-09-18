@@ -128,10 +128,11 @@ type model = {
   shareUrl: option<string>,
   shareStatus: option<string>,
   // The main menu's "this game" section: the seed of the board on the table, which the
-  // heading names and Share hands over a link to, reported by the scene (`~onDeal`
-  // below) — and the transient line under the buttons
-  // reporting where its link went. `None` greys the button out — a demo scene, or a
-  // game resumed from a save with no deal number recorded. Unlike `shareUrl` above
+  // heading names, Share hands over a link to and Restart lays out again, reported by
+  // the scene (`~onDeal` below) — and the transient line under the buttons reporting
+  // where its link went. `None` greys *both* buttons out — a demo scene, a game landed
+  // from a `#g=` link, or one resumed from a save with no deal number recorded: a board
+  // nobody can name is a board nobody can re-deal. Unlike `shareUrl` above
   // there's nothing to prepare: the link is a `?seed=` string built on the press
   // (`ShareLink.urlForDeal`), so only the number has to be to hand — that, and the game
   // it's a deal of, which the press reads off `liveGame` rather than the model.
@@ -1193,6 +1194,10 @@ let mainScreen = (model, dispatch): MenuMainScreen.props => {
     dispatch(CloseMenu)
   },
   onEnterSeed: () => dispatch(OpenSeedDialog),
+  // Replay the board on the table. The button is dark where `dealSeed` is `None`, so
+  // this is only reached for a board the app can name — and the board's own `restart`
+  // is the guard behind that, since the number a resumed board replays is the one this
+  // screen is showing (`~currentDeal`).
   onRestart: () => {
     liveBoard.contents->Option.forEach(board => board.restart())
     dispatch(CloseMenu)
@@ -1203,7 +1208,7 @@ let mainScreen = (model, dispatch): MenuMainScreen.props => {
   // the heading its own label. Read off the model, not `liveGame`: the heading is drawn
   // by the render, so it has to move with one.
   gameName: model.activeScene->Option.flatMap(Game.byId)->Option.map(game => game.name),
-  shareDealSeed: model.dealSeed,
+  dealSeed: model.dealSeed,
   shareDealStatus: model.shareDealStatus,
   onShareDeal: () =>
     // Share the *deal*. The link is a `?seed=` string, so it's built right

@@ -8,7 +8,7 @@ open TestDom
 
 let render = (
   ~gameName=Some("FreeCell"),
-  ~shareDealSeed=None,
+  ~dealSeed=None,
   ~shareDealStatus=None,
   ~onNewGame=() => (),
   ~onEnterSeed=() => (),
@@ -27,7 +27,7 @@ let render = (
       onEnterSeed,
       onRestart,
       gameName,
-      shareDealSeed,
+      dealSeed,
       shareDealStatus,
       onShareDeal,
       games,
@@ -79,7 +79,7 @@ describe("MenuMainScreen", () => {
     // already on the screen behind the menu. The share tests below (and `Menu_test`'s)
     // reach Share positionally within its group, so the order inside each is
     // load-bearing beyond how it looks.
-    let screen = render(~shareDealSeed=Some(4242))
+    let screen = render(~dealSeed=Some(4242))
     expect(screen->section("this game")->findAll("button")->Array.map(text))->toEqual([
       "Restart",
       "Share",
@@ -101,7 +101,7 @@ describe("MenuMainScreen", () => {
     // over a link to it — so the number belongs to the group, not to either control.
     // Keeping it off the buttons is also what lets the four be one grid: a label that
     // grows by five digits on some boards can't line up with the pair above.
-    let screen = render(~gameName=Some("Simple Simon"), ~shareDealSeed=Some(4242))
+    let screen = render(~gameName=Some("Simple Simon"), ~dealSeed=Some(4242))
     expect(screen->section("this game")->textIn(".menu-section__heading"))->toBe(
       "Simple Simon #4242",
     )
@@ -109,16 +109,17 @@ describe("MenuMainScreen", () => {
 
   test("falls back to naming the section on a scene that is no game", () => {
     // A demo has no game behind it and no seed to name: the heading says what the
-    // group is, and the share line below says why the button is dark.
-    let screen = render(~gameName=None, ~shareDealSeed=None)
+    // group is, and the line below says why the buttons are dark.
+    let screen = render(~gameName=None, ~dealSeed=None)
     expect(screen->section("this game")->textIn(".menu-section__heading"))->toBe("this game")
     expect(screen->find(".menu-section__value")->Option.isSome)->toBe(false)
   })
 
   test("leaves the heading bare on a board with no seed", () => {
-    // A game resumed from a save written before seeds were kept: the game is still
-    // named, and there is simply no number after it rather than a stray gap.
-    let screen = render(~shareDealSeed=None)
+    // A game landed from a `#g=` link, or resumed from a save written before seeds were
+    // kept: the game is still named, and there is simply no number after it rather than
+    // a stray gap.
+    let screen = render(~dealSeed=None)
     expect(screen->section("this game")->textIn(".menu-section__heading"))->toBe("FreeCell")
     expect(screen->find(".menu-section__value")->Option.isSome)->toBe(false)
   })
@@ -126,7 +127,7 @@ describe("MenuMainScreen", () => {
   test("wires each game button to its own action", () => {
     let log = []
     let screen = render(
-      ~shareDealSeed=Some(1),
+      ~dealSeed=Some(1),
       ~onNewGame=() => log->Array.push("new"),
       ~onEnterSeed=() => log->Array.push("enter seed"),
       ~onRestart=() => log->Array.push("restart"),
@@ -147,17 +148,40 @@ describe("MenuMainScreen", () => {
   test("keeps the share line's slot even when it has nothing to say", () => {
     // Empty but rendered: a confirmation that appeared out of nothing would shove every
     // section below it down the panel as it came and went.
-    let quiet = render(~shareDealSeed=Some(9))
+    let quiet = render(~dealSeed=Some(9))
     expect(quiet->find(".menu-share-line")->Option.isSome)->toBe(true)
     expect(quiet->textIn(".menu-share-line"))->toBe("")
   })
 
+  test("darkens both of this game's buttons on a board the app can't name", () => {
+    // The heading names the deal the pair act on, so with no number there is nothing for
+    // either to act on: no link to hand out, and no deal to lay out again. A `#g=` shared
+    // game is the case that makes the rule — its seed is cleared as the link lands, and
+    // replaying the position it arrived at would restart a player onto a board this
+    // device can neither name nor share again.
+    //
+    // Really disabled rather than merely muted, so neither emits a click at all.
+    let dark = render(~dealSeed=None)->section("this game")->findAll("button")
+    expect(dark->Array.map(text))->toEqual(["Restart", "Share"])
+    expect(dark->Array.map(b => b->hasAttr("disabled")))->toEqual([true, true])
+    let lit = render(~dealSeed=Some(4242))->section("this game")->findAll("button")
+    expect(lit->Array.map(b => b->hasAttr("disabled")))->toEqual([false, false])
+    // The pair below are about a board that isn't this one, so a nameless board leaves
+    // them alone: there is always another deal to open.
+    expect(
+      render(~dealSeed=None)
+      ->section("new game")
+      ->findAll("button")
+      ->Array.map(b => b->hasAttr("disabled")),
+    )->toEqual([false, false])
+  })
+
   test("uses the line to report a share, or to say why there's nothing to share", () => {
-    expect(render(~shareDealSeed=None)->find(".menu-share-line")->Option.mapOr("", text))->toBe(
+    expect(render(~dealSeed=None)->find(".menu-share-line")->Option.mapOr("", text))->toBe(
       "No seed for this board.",
     )
     expect(
-      render(~shareDealSeed=Some(9), ~shareDealStatus=Some("Link copied to clipboard."))
+      render(~dealSeed=Some(9), ~shareDealStatus=Some("Link copied to clipboard."))
       ->find(".menu-share-line")
       ->Option.mapOr("", text),
     )->toBe("Link copied to clipboard.")

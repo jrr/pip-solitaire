@@ -255,22 +255,25 @@ type boardOps = {
   squareUp: unit => unit,
 }
 
-// **What a Restart replays**: the opening position of the game on the table. Which of
-// the two it is depends on how that board got there, and the board is the only thing
-// that knows.
+// **Where the board on the table came from**, which is what decides what a Restart of
+// it lays out. Two cases, and only the board knows which it is in.
 //
-// A board this scene *dealt* is its `Game.t`, so a Restart lays that deal out again —
-// a Restart after a New Game replays the new seed rather than the one the scene first
-// mounted with. A board that was *resumed* descends from a deal this session never made:
-// a relaunch, a swap to another game and back, a `#g=` link. Its `Game.t` is the
-// placeholder the driver dealt while the save was being read, and re-dealing that is the
-// bug this type exists to make unrepresentable. A deal *number* is no better an answer —
-// a shared game's is cleared outright (`SavedGame.clearSeed`) — so the opening such a
-// board replays is the one thing it carries: the first state of the history it was
-// restored from.
+// `Deal` is a board this scene laid out — the opening deal, a New Game, a typed number,
+// a `?state=` pose over one — and it carries the `Game.t` that produced it, so a Restart
+// deals that board again. A Restart after a New Game therefore replays the new seed
+// rather than the one the scene first mounted with.
+//
+// `Resumed` is a board that arrived whole: a save read back at launch, a swap to another
+// game and back, a `#g=` link. The `Game.t` such a board wears is the placeholder the
+// driver dealt while the save was being read, so dealing it again lays out a board nobody
+// was playing — the bug this type exists to make unrepresentable. It carries nothing,
+// because a resumed board holds no name for its own opening: the deal number is the
+// driver's to resolve (`~currentDeal`), and a shared game has none at all, its seed
+// having been cleared as the link landed (`SavedGame.clearSeed`). No number, nothing to
+// replay — which is the state the menu's Restart button greys out for.
 type opening =
   | Deal(Game.t)
-  | Restored(GameState.t)
+  | Resumed
 
 // The shake control the scene publishes to the chrome, one field of the
 // `controls` record below: `start` begins listening for shakes (Settings turns Wiggle
@@ -293,7 +296,8 @@ type controls = {
   // seeded shuffle to put the two together.
   loadDeal: option<int => unit>,
   // Replay the deal now on the table. Every card table offers it — a fixed-layout demo
-  // restarts to its own deal.
+  // restarts to its own deal — and it is a no-op on the one board that has no opening to
+  // go back to, which the `opening` type above says which is and why.
   restart: unit => unit,
   // The debug-states menu's live twin of `?state=`. **Never persisted**, so a debug
   // jump can't clobber a saved game.
@@ -684,16 +688,13 @@ let make = (
     // opens from its game's own fresh deal.
     // `~history as seedHistory` seeds the opening build with a saved undo/redo
     // stack instead of a clean one — the resume path; a re-deal calls
-    // `buildBoard` without it and so starts fresh. `~opening` is the Restart of such a
-    // board: the same clean start a re-deal makes, at a position the game didn't deal
-    // (see `opening` above) rather than from a `Game.t`. `~persistThis` gates whether
-    // this particular build saves itself: on for the opening/New Game/Restart deals
-    // (each becomes the saved game), off for a forced-state load so a debug scenario
-    // never clobbers a real saved game (matching the URL's `?state=`).
+    // `buildBoard` without it and so starts fresh. `~persistThis` gates whether this
+    // particular build saves itself: on for the opening/New Game/Restart deals (each
+    // becomes the saved game), off for a forced-state load so a debug scenario never
+    // clobbers a real saved game (matching the URL's `?state=`).
     let rec buildBoard = (
       ~initial: option<GameState.t>=?,
       ~history as seedHistory: option<SaveState.t>=?,
-      ~opening as replayed: option<GameState.t>=?,
       ~persistThis: bool=true,
       game: Game.t,
     ) => {
@@ -713,36 +714,25 @@ let make = (
       DebugLog.message(
         "build board: " ++ game.id ++ (initial->Option.isSome ? " (forced state)" : ""),
       )
-      // What a Restart of *this* board replays. A resumed board hands its opening on
-      // rather than the `Game.t` it wears — and hands it on across a Restart too, so the
-      // second one replays the board the first did (see `opening` above).
-      restartFrom :=
-        switch (seedHistory, replayed) {
-        | (Some(saved), _) => Restored(History.oldest(saved.history))
-        | (None, Some(state)) => Restored(state)
-        // A forced state included: a `?state=` pose is a position nobody dealt, and the
-        // nearest thing to an opening it has is its game's real deal.
-        | (None, None) => Deal(game)
-        }
+      // Where this board came from, which is what a Restart of it will need (see
+      // `opening` above). A forced state counts as dealt here: a `?state=` pose is a
+      // position nobody dealt, and the nearest thing to an opening it has is its game's
+      // real deal.
+      restartFrom := (seedHistory->Option.isSome ? Resumed : Deal(game))
       // **Is what's on the table this deal's own opening position?** A restored history
-      // and a forced state are both positions the game arrived at by some other route —
-      // but the two things this build decides draw that line in different places, so
-      // each gets a name:
+      // and a forced state are both positions the game arrived at by some other route,
+      // and the two things this build decides turn on exactly that:
       //
-      //   - `dealtHere`: the seed it reports. Only a board laid out from `game`'s own
-      //     deal can name a number; every other build reports `None` and the driver
-      //     fills the gap from what only it can see (`docs/board-driver.md` § Who
-      //     resolves the deal number) — including a replayed opening, whose number lives
-      //     in the driver's storage or nowhere at all.
-      //   - `atOpening`: whether the cards fly in (`animateDeal`). A replayed opening
-      //     *is* one, however it was reached: the player asked for a board to start
-      //     over from, and the dealer's pass is a true claim about it.
+      //   - the seed it reports. A fresh deal reports the game's, and either of the
+      //     others reports `None` — the driver knows where it came from and fills the
+      //     gap (`docs/board-driver.md` § Who resolves the deal number). That also keeps
+      //     reporting in step with saving: a seed is reported on precisely the builds
+      //     that become the saved game, so the driver needs no second rule.
+      //   - whether the cards fly in (`animateDeal`).
       //
-      // Named once each, because two spellings of one rule is one too many.
-      let dealtHere =
-        initial->Option.isNone && seedHistory->Option.isNone && replayed->Option.isNone
-      let atOpening = dealtHere || replayed->Option.isSome
-      let boardSeed = dealtHere ? game.seed : None
+      // Named once, because two spellings of one rule is one too many.
+      let freshDeal = initial->Option.isNone && seedHistory->Option.isNone
+      let boardSeed = freshDeal ? game.seed : None
       switch onDeal {
       | Some(report) => report(boardSeed)
       | None => ()
@@ -810,15 +800,12 @@ let make = (
         switch seedHistory {
         | Some(saved) => Session.restore(~seed=boardSeed, ~options=options.contents, game, saved)
         | None =>
-          // A forced state and a replayed opening are the same thing to a session — a
-          // position to open at, with a clean history, a zero tally and the clock
-          // started — and they never arrive together.
           Session.open_(
             ~clock,
             ~options=options.contents,
             ~seed=boardSeed,
             game,
-            initial->Option.orElse(replayed)->Option.getOr(GameState.initial(game)),
+            initial->Option.getOr(GameState.initial(game)),
           )
         },
       )
@@ -2374,8 +2361,8 @@ let make = (
       // per-card start offset therefore differs on *both* axes, since each card
       // travels from that one origin to a different landing spot.
       //
-      // **A dealer's pass is a claim, so only a board at its own opening may make it**
-      // (`atOpening`). Fly a restored history in and the cards land on a half-played
+      // **A dealer's pass is a claim, so only a board that was dealt may make it**
+      // (`freshDeal`). Fly a restored history in and the cards land on a half-played
       // board — aces already up, a card in a free cell — having mimed a deal that
       // didn't happen; fly a forced state in and the pass introduces a position nobody
       // dealt. Both open by simply being there. That leaves the fly-in to the boards a
@@ -2388,7 +2375,7 @@ let make = (
         let reduceMotion = matchMedia("(prefers-reduced-motion: reduce)")["matches"]
         let cards = dealSequence()
         let n = Array.length(cards)
-        if !reduceMotion && !skipFlights && !skipDealFlyIn && atOpening && n > 0 {
+        if !reduceMotion && !skipFlights && !skipDealFlyIn && freshDeal && n > 0 {
           let pr = boundingRect(playfield)
           let cw = TableLayout.cardW *. scale.contents
           let ch = TableLayout.cardH *. scale.contents
@@ -2521,10 +2508,14 @@ let make = (
     // at all.
     //
     // `restart` is offered by *every* card table — a demo restarts to its own
-    // opening deal — and replays whatever the board on the table opened on, which is
-    // either a deal or a position (`restartFrom`, and the `opening` type above for why
-    // it can't just be the `Game.t`). It passes no `~initial`, so a `?state=` board
-    // restarts to the game's real deal rather than the posed position.
+    // opening deal — and lays out the board on the table again, which for a board this
+    // scene dealt is the `Game.t` it wears and for a resumed one is its deal *number*,
+    // asked of the driver (`restartFrom`, and the `opening` type above for why the
+    // `Game.t` won't do). It passes no `~initial`, so a `?state=` board restarts to the
+    // game's real deal rather than the posed position.
+    // The arm that does nothing is a resumed board the driver can't name, and the menu
+    // is reading the very same number to grey its Restart button out (`Main`'s
+    // `dealSeed`) — so the button is dark exactly when this would have been a no-op.
     //
     // `loadState` forces a position without persisting it (`~persistThis=false`), so a
     // debug-states jump never clobbers a real saved game — where `loadHistory` *does*
@@ -2543,7 +2534,11 @@ let make = (
         restart: () =>
           switch restartFrom.contents {
           | Deal(dealt) => buildBoard(dealt)
-          | Restored(state) => buildBoard(~opening=state, game)
+          | Resumed =>
+            switch (currentDeal(), game.deal) {
+            | (Some(seed), Some(deal)) => buildBoard(deal(seed))
+            | _ => ()
+            }
           },
         loadState: state => buildBoard(~initial=state, ~persistThis=false, game),
         loadHistory: restored => buildBoard(~history=restored, game),

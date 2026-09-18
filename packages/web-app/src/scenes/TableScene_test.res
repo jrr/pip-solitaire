@@ -545,7 +545,9 @@ describe("TableScene published controls", () => {
 // the board that was *resumed*: a relaunch, or a swap to another game and back. Such a
 // board is mounted on a `Game.t` the driver dealt while the save was being read, so
 // restarting it as "this scene's game, dealt again" lays out a board nobody was playing
-// and loses the one they were — the deal the menu heading still names.
+// and loses the one they were — the deal the menu heading still names. That number is the
+// driver's, so the board asks for it (`~currentDeal`) rather than deriving it, and a
+// board the driver can't name doesn't restart at all.
 //
 // These read the `~persist` sink rather than the DOM, because what a restart put on the
 // table is exactly what it saves: a one-state history at the opening position.
@@ -571,6 +573,9 @@ describe("TableScene restart", () => {
     let scene = TableScene.make(
       ~loadHistory=() => Some(resumed(game, ~seed=24680)),
       ~persist=s => saved := Some(s),
+      // The number the driver resolved for the board it put on the table — here from its
+      // own storage, as a relaunch does (`SavedGame.loadSeed`).
+      ~currentDeal=() => Some(24680),
       // The placeholder the driver deals while the save is being read. Restart must not
       // land here, and seed 7 is what it would show if it did.
       ~newDeal=() => Game.freecellDeal(~seed=7),
@@ -585,24 +590,24 @@ describe("TableScene restart", () => {
     let restarted: SaveState.t = saved.contents->Option.getOrThrow
     expect(History.canUndo(restarted.history))->toBe(false)
 
-    // A second Restart replays the board the first one did. The restarted build has no
-    // history to descend from any more, so the opening has to be carried forward rather
-    // than re-derived — otherwise Restart works once and wanders on the next press.
+    // A second Restart lands on the same board. The restart dealt 24680 itself, so this
+    // press is an ordinary re-deal of it — the resumed board is behind us either way.
     live(board).restart()
     expect(openingOf(saved))->toEqual(Some(GameState.initial(Game.freecellDeal(~seed=24680)).piles))
   })
 
-  test("a resumed board's Restart leaves the deal number to the driver", () => {
-    // The board reports `Some(n)` only for a deal it laid out itself. A replayed opening
-    // isn't one — the number is in the driver's storage, or (a shared game, whose seed is
-    // cleared) nowhere — so reporting the placeholder's seed here is how the menu heading
-    // and Share would come to name a board nobody is looking at.
+  test("a resumed board's Restart names the deal it laid out, which is the one showing", () => {
+    // The mount reports `None` — a resumed board is no deal of this scene's — and the
+    // driver fills that in. The restart *is* a deal of this scene's, and the number it
+    // names is the one the driver just handed back, so the menu heading and Share come
+    // through the press saying exactly what they said before it.
     let game = Game.freecell
     let reported = ref([])
     let board = ref(None)
     let container = host("div")
     let scene = TableScene.make(
       ~loadHistory=() => Some(resumed(game, ~seed=24680)),
+      ~currentDeal=() => Some(24680),
       ~newDeal=() => Game.freecellDeal(~seed=7),
       ~onDeal=seed => reported := Array.concat(reported.contents, [seed]),
       ~publish=published => board := Some(published),
@@ -610,12 +615,14 @@ describe("TableScene restart", () => {
     )
     let _teardown = scene.mount(container)
     live(board).restart()
-    expect(reported.contents)->toEqual([None, None])
+    expect(reported.contents)->toEqual([None, Some(24680)])
   })
 
-  test("a Restart after a New Game replays the new deal", () => {
-    // The other side of the same rule: once this scene *has* dealt the board itself,
-    // that deal is the opening — the resumed one it opened on is over and done with.
+  test("a resumed board the driver can't name doesn't restart at all", () => {
+    // A `#g=` shared game: the link clears the seed as it lands (`SavedGame.clearSeed`),
+    // so there is no deal to lay out again — and the position it arrived at is not one
+    // either. Nothing happens on the press, which is what the menu's dark Restart button
+    // is the visible half of; the game the player was handed stays on the table.
     let game = Game.freecell
     let saved = ref(None)
     let board = ref(None)
@@ -623,6 +630,35 @@ describe("TableScene restart", () => {
     let scene = TableScene.make(
       ~loadHistory=() => Some(resumed(game, ~seed=24680)),
       ~persist=s => saved := Some(s),
+      ~currentDeal=() => None,
+      ~newDeal=() => Game.freecellDeal(~seed=7),
+      ~publish=published => board := Some(published),
+      game,
+    )
+    let _teardown = scene.mount(container)
+    let resumedSave = saved.contents
+
+    live(board).restart()
+    // Untouched: no rebuild ran, so the sink still holds the restored line, a move deep
+    // and with that move behind it to undo.
+    expect(saved.contents == resumedSave)->toBe(true)
+    expect(live(board).readHistory()->Option.map(s => History.canUndo(s.history)))->toEqual(
+      Some(true),
+    )
+  })
+
+  test("a Restart after a New Game replays the new deal", () => {
+    // The other side of the same rule: once this scene *has* dealt the board itself,
+    // that deal is the opening — the resumed one it opened on is over and done with, and
+    // the driver is no longer the one who knows the number.
+    let game = Game.freecell
+    let saved = ref(None)
+    let board = ref(None)
+    let container = host("div")
+    let scene = TableScene.make(
+      ~loadHistory=() => Some(resumed(game, ~seed=24680)),
+      ~persist=s => saved := Some(s),
+      ~currentDeal=() => Some(24680),
       ~newDeal=() => Game.freecellDeal(~seed=7),
       ~publish=published => board := Some(published),
       game,

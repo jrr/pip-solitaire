@@ -90,29 +90,3 @@ describe("History.steps", () => {
     expect(History.steps(branched))->toBe(1)
   })
 })
-
-// `oldest` is where a line *began*, which is the one position a restored save can still
-// offer a Restart: the deal it descends from was laid out in some other session, or (a
-// share link) by some other player. The cases that matter are the ones that move `past`
-// around, since the claim is that its first element never does.
-describe("History.oldest", () => {
-  test("a fresh history opened on the present is its own opening", () => {
-    expect(History.oldest(History.make(1)))->toBe(1)
-  })
-
-  test("a line of play still names the state it started from", () => {
-    let h = History.make(1)->History.record(_, 2)->History.record(_, 3)
-    expect(History.oldest(h))->toBe(1)
-  })
-
-  test("stepping back and forth over the line doesn't move it", () => {
-    let h = History.make(1)->History.record(_, 2)->History.record(_, 3)
-    // All the way back — `past` empties out onto the opening itself…
-    let back = h->History.undo->History.undo
-    expect(History.present(back))->toBe(1)
-    expect(History.oldest(back))->toBe(1)
-    // …then forward again, and onto a branch that abandons the original line.
-    expect(History.oldest(History.redo(back)))->toBe(1)
-    expect(History.oldest(History.record(back, 9)))->toBe(1)
-  })
-})

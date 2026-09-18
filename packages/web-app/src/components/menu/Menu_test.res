@@ -69,7 +69,7 @@ let render = (~seed, ~status): Html.element =>
         onRestart: () => (),
         gameName: Some("FreeCell"),
         // The three under test.
-        shareDealSeed: seed,
+        dealSeed: seed,
         shareDealStatus: status,
         onShareDeal: () => (),
         games: [],
@@ -100,7 +100,7 @@ let paneOn = (screen): Html.element =>
         onEnterSeed: () => (),
         onRestart: () => (),
         gameName: Some("FreeCell"),
-        shareDealSeed: Some(1),
+        dealSeed: Some(1),
         shareDealStatus: None,
         onShareDeal: () => (),
         games: [],
