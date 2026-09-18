@@ -49,6 +49,24 @@ solve took is the caller's own measurement, taken around a call it made. That's
 what lets a plan stay a value two runs can be expected to agree on — an ordinary
 `toEqual` in a test, rather than a timing-shaped hole in one.
 
+## What the solver sees
+
+**It peeks.** A Klondike-dealt board lies partly face down, and `GameState`
+holds those cards' identities, so the packed position carries them too and the
+search reads them like any other card. What the face-down count buys is the one
+thing turning a card over actually changes: a hand takes hold only of what lies
+above the boundary, so a run reads up to it and stops (`Position.runLength`,
+`Reducer.isSpan`), and a move that uncovers a card leaves it face up, because the
+reducer turns it over as part of that move. The alternative is a different
+program — a search under uncertainty, where `Position.key` no longer identifies a
+board and a plan can be invalidated by the card it turns over — and nothing in
+`Solver` is shaped for that. What peeking costs is not technical but
+player-facing: **a hint that peeks is a hint that knows where the Ace is.**
+Whether the game may offer a hint, or autoplay, on a board with cards face down
+is therefore the front end's question and is still open; `mise run solve`, the
+harness and the tests all want the solver that sees everything, and that is the
+one they get.
+
 ## Measuring it
 
 ```
@@ -212,8 +230,9 @@ measure it over a soak before believing otherwise.
 
 `GameState.t` is the game's real snapshot and stays the source of truth.
 `Position.t` is the same board squeezed into ints — the `law`, the `pack`, the
-free cells, how many of each suit are home, and the columns of card numbers,
-each card `suit * 13 + (rank − 1)` in 0…51.
+free cells, how many of each suit are home, the columns of card numbers, each
+card `suit * 13 + (rank − 1)` in 0…51, and how many of each column's cards lie
+face down.
 
 **The 13 there is the numbering, not the deck.** A short pack is numbered the
 same way and simply leaves gaps: Micro's sixteen cards are ♠A…♠8 at 0…7 and
@@ -226,11 +245,14 @@ numbering breaks all three at once.
 run limit, the collect policy, whether the foundations are sealed — and
 `ofGameState` then reads the board: **the counts are the board's own**, and the
 deck it carries is the pack. What is still refused is only what the packing
-genuinely can't say — a stock, a face-down card, a card loose on the table, a
-second copy of a card (two copies pack to one int), ranks that don't run up from
-the Ace (a foundation's *length* is read as the rank it has climbed to), and
-fewer foundations than the deck has suits. Spiderette plays by Simple Simon's
-laws and is refused on the first of those; Mini and Micro are refused on none.
+genuinely can't say — a stock, a card loose on the table, a second copy of a card
+(two copies pack to one int), ranks that don't run up from the Ace (a
+foundation's *length* is read as the rank it has climbed to), fewer foundations
+than the deck has suits, and a card face down anywhere but under a column's
+visible ones (a hidden card in a cell, or a column with nothing showing, is a
+board whose top card no predicate could name). Spiderette plays by Simple
+Simon's laws and is refused on the stock — its one- and two-suit variants on the
+repeated cards as well; Mini and Micro are refused on none.
 
 The packing exists for one reason: **a search asks "and then what?" hundreds of
 thousands of times per deal**, and the honest `GameState` transition — which
@@ -245,6 +267,7 @@ playing a solved game through both:
 |---|---|---|
 | `cascadeAccepts` / `foundationAccepts` | `Rules.accepts` under `Rules.cascade` or `Rules.spiderCascade`; `Rules.foundation`, or `Sealed` | a planned move has to be one the board takes |
 | `follows` / `runLength` | `Rules.isRun` — alternating colour, or one suit | what a grab lifts is what the plan said it would |
+| `runLength`'s boundary, and `afterLifting` | `Reducer.isSpan`, which refuses a span reaching below a pile's face-down count, and `liftCard`, which turns over the card a move uncovers | a plan that lifted what no hand can see, or left a card face down that the board has turned over, comes apart on the next move |
 | `liftLimit` / `maxSupermove` | `Reducer.withinRunLimit` — `(1 + emptyCells) × 2^emptyCascades` with the destination excluded, or unlimited | a planned run move is one the reducer will actually take |
 | `autoCollect` — `collectSafeCards` / `collectRuns` | `Reducer.autoCollect` — on by `Options.default` | the board *after* a move usually isn't just that move applied |
 | `isSafeToCollect`'s opposite colours | `Reducer.oppositeColorSuits` — read off the deck | Micro's ♠♥ pack has *one* suit of the other colour, and naming two stalls the collect above the Twos |
