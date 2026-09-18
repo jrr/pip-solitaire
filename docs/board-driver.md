@@ -117,16 +117,25 @@ say". The driver then fills the gap from what only it can see:
 
 | the board is showing | `~onDeal` reports | the driver resolves it to |
 |---|---|---|
-| a fresh deal (open, New Game, Restart) | `Some(n)` | `n`, and saves it if this open saves |
+| a deal it laid out (open, New Game, `deal <n>`, a Restart of one of those) | `Some(n)` | `n`, and saves it if this open saves |
 | a resumed history | `None` | `SavedGame.loadSeed` — the number the last session stored |
+| a Restart of a resumed history | `None` | the same, and the number is unchanged by the restart — the board replayed is the one the heading already named |
 | a `?state=` scenario | `None` | `Scenario.seedForName`, when the scenario has *proved* a line to itself |
 | a `#g=` shared game | `None` | nothing — a real position with no deal behind it |
 
-That last row is why both Share buttons can go dark: a shared game has no number
+The last row is why both Share buttons can go dark: a shared game has no number
 to name, and a button pointing at a board nobody is looking at is worse than no
 button. The `?state=` row is the same rule from the other side — only
 `almost-won` descends from a deal it can prove (264), so every other posed board
 offers nothing rather than naming a deal it didn't come from.
+
+The two Restart rows are the same rule applied to what a board *opened on* rather
+than to how the player got there, and they are why a Restart can't simply rebuild
+from the game the scene was mounted with. A resumed board wears a placeholder deal
+the driver invented while the save was being read; the opening it actually
+descends from is the first state of the restored history, and for a shared game
+that is the only opening there is, since landing the link clears the seed
+(`SavedGame.clearSeed`). `TableScene`'s `opening` type is that distinction.
 
 The saved deal number is the one fact the history doesn't carry, which is why
 `SavedGame.saveSeed` exists at all; `docs/save-and-share.md` § Storage has the

@@ -54,6 +54,17 @@ let canRedo = (h: t<'a>): bool => Array.length(h.future) > 0
 // where it is (see `SaveState.ofHistory`).
 let steps = (h: t<'a>): int => Array.length(h.past)
 
+// The state this line of play started from — the first of `past`, or the present
+// itself when nothing has been recorded yet.
+//
+// It is the one state a line can't lose. `record` only ever appends to `past`, and
+// `undo` pops from its *end* toward the front, so the first element is the position
+// everything else was reached from and stays so for the history's whole life; step all
+// the way back and `past` empties out onto exactly that state as the present. Which is
+// what makes it the answer to "what did this game open on" for a line whose deal the
+// asker never saw — a save restored from storage or a share link.
+let oldest = (h: t<'a>): 'a => h.past->Array.get(0)->Option.getOr(h.present)
+
 // Record a new present reached from the current one: the old present is pushed
 // onto `past`, `next` becomes the present, and `future` is cleared — a fresh
 // action after an undo abandons the redo branch, the standard undo-stack
