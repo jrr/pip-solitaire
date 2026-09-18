@@ -37,6 +37,7 @@ let debug: MenuDebugScreen.props = {
   shareEnabled: false,
   shareStatus: None,
   onShareGame: () => (),
+  onClearStored: () => (),
   // The debug groups; empty stand-ins here.
   gameScenes: [],
   gameScenesOpen: false,

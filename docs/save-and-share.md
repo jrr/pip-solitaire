@@ -174,6 +174,22 @@ continues saving as usual, exactly as if it had been dealt here. Its deal number
 *cleared* (`clearSeed`), because a shared position was never dealt from a number on
 this device and the previous game's seed must not be read as its own.
 
+### Throwing it all away
+
+The Debug screen's **Clear saved data** (`StoredState`) is the way back to a first
+launch: it sweeps every key above — and every `Preferences` one, which share the
+`pip.` namespace — then reopens the app at the same address with the fragment dropped.
+Both halves are needed. The board on the table is still holding the game that was just
+erased and its next move would write it straight back, and a `#g=` left on the address
+would land a shared game on the fresh board and take storage over again — a clear that
+undid itself in the same breath. The query survives, because `?game=` is which board to
+open on and seeing *that* game deal for the first time is most of what the control is
+for.
+
+The sweep *enumerates* rather than working from a list, so a key added here or in
+`Preferences` is cleared on the day it is added. A key written outside the `pip.`
+namespace is not — that is the one thing a new key can do to escape it.
+
 ## Nothing here can take the board down
 
 Every failure in this pipeline lands on the same answer: **ignore it and deal a
