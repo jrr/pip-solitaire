@@ -42,6 +42,7 @@ describe("Position", () => {
         cells: [],
         found: [],
         casc: [],
+        down: [],
       } // fails loudly in any test that uses it
     }
 
@@ -335,6 +336,7 @@ describe("Position under Simple Simon", () => {
         cells: [],
         found: [],
         casc: [],
+        down: [],
       } // fails loudly in any test that uses it
     }
 
@@ -495,6 +497,203 @@ describe("Position under Simple Simon", () => {
     }
     expect(divergences)->toEqual([])
   })
+})
+
+// A board with cards face down, which is the one board the model knows more about
+// than the player does: the cards under a column's boundary are packed like every
+// other card and the search reads them (`docs/solver.md` § What the solver sees).
+// What has to be pinned is therefore not what the model *sees* but what it lets a
+// hand take hold of, and what a move leaves behind when it uncovers something — both
+// of which `Reducer` already answers, so every test here asks it the same question.
+//
+// The boards are posed. No board the app deals is packable with a card face down
+// yet: Spiderette's stock is the thing the model has no word for, and until a deal
+// has one, face down only arrives on a board put there by hand.
+describe("Position with cards face down", () => {
+  let settle = (~game, state) =>
+    if Reducer.canFinish(~game, state) {
+      state
+    } else {
+      let (collected, _moved) = Reducer.autoCollect(~game, state)
+      collected
+    }
+
+  // A real deal, dealt Klondike-style: the bottom `under` cards of every column face
+  // down, never so many that a column has nothing showing.
+  let hiding = (game: Game.t, ~under: int): Game.t => {
+    ...game,
+    piles: game.piles->Array.map((pile: Game.pile) =>
+      switch pile.role {
+      | Game.Cascade => {...pile, faceDown: Math.Int.min(under, Array.length(pile.cards) - 1)}
+      | _ => pile
+      }
+    ),
+  }
+
+  // A board posed column by column rather than dealt: `columns` on the cascades in
+  // board order with `down` of each face down, everything else empty. A handful of
+  // cards is enough to ask what a hand may lift, so these boards are not whole packs.
+  let posed = (game: Game.t, ~columns: array<array<card>>, ~down: array<int>): GameState.t => {
+    let cascades = Game.pileIndices(game, Game.Cascade)
+    let forPile = (queue, i) =>
+      switch cascades->Array.indexOf(i) {
+      | -1 => None
+      | col => queue->Array.get(col)
+      }
+    {
+      GameState.piles: game.piles->Array.mapWithIndex((_, i) =>
+        forPile(columns, i)->Option.getOr([])
+      ),
+      loose: [],
+      faceDown: game.piles->Array.mapWithIndex((_, i) => forPile(down, i)->Option.getOr(0)),
+    }
+  }
+
+  test("the cards under the boundary are packed like any other, and counted", () => {
+    let game = hiding(Game.miniDeal(~seed=1), ~under=1)
+    let opening = GameState.initial(game)
+    switch Position.ofGameState(~game, opening) {
+    | None => expect("a board with a card face down packs")->toBe("but it didn't")
+    | Some(position) =>
+      expect(position.down)->toEqual([1, 1, 1, 1])
+      // Every column in full, hidden bottom card included: this is the decision of
+      // what the solver may see, written as an assertion.
+      Game.pileIndices(game, Game.Cascade)->Array.forEachWithIndex(
+        (pile, col) =>
+          expect(position.casc->Array.getUnsafe(col))->toEqual(
+            GameState.cardsInPile(opening, pile)->Array.map(Position.idOf),
+          ),
+      )
+    }
+  })
+
+  test("a card hidden anywhere else is a board the model declines", () => {
+    // Face down is a fact about a column's *lower* cards. A hidden card in a free
+    // cell, and a column with nothing showing at all, are both boards whose top card
+    // no predicate here could name — and neither happens in play, since the reducer
+    // turns over whatever a move uncovers.
+    let game = Game.mini
+    let cell = Game.pileIndices(game, Game.FreeCell)->Array.getUnsafe(0)
+    let board = posed(game, ~columns=[[{suit: Clubs, rank: Five}]], ~down=[0])
+    expect(Position.ofGameState(~game, board)->Option.isSome)->toBe(true)
+    let inCell = {
+      ...board,
+      piles: board.piles->Array.mapWithIndex(
+        (cards, i) => i == cell ? [{suit: Spades, rank: Ace}] : cards,
+      ),
+      faceDown: board.faceDown->Array.mapWithIndex((n, i) => i == cell ? 1 : n),
+    }
+    expect(Position.ofGameState(~game, inCell))->toEqual(None)
+    let blind = posed(
+      game,
+      ~columns=[[{suit: Spades, rank: Five}, {suit: Diamonds, rank: Four}]],
+      ~down=[2],
+    )
+    expect(Position.ofGameState(~game, blind))->toEqual(None)
+  })
+
+  test("a run reads up to the boundary and no further, as the reducer's span does", () => {
+    // ♠5 ♦4 ♣3 is a run all three cards long, and the ♠5 lies face down — so a hand
+    // can only take the two above it. The ♦2 under the ♠5 is what makes that worth
+    // asserting: without it the three-card lift is the whole column, which the model
+    // declines to move into an empty one anyway, and a boundary that did nothing
+    // would look the same from here.
+    let game = Game.mini
+    let column = [
+      {suit: Diamonds, rank: Two},
+      {suit: Spades, rank: Five},
+      {suit: Diamonds, rank: Four},
+      {suit: Clubs, rank: Three},
+    ]
+    let run = column->Array.sliceToEnd(~start=1)
+    let state = posed(game, ~columns=[column, [{suit: Clubs, rank: Five}]], ~down=[2, 0])
+    let empty = Game.pileIndices(game, Game.Cascade)->Array.getUnsafe(2)
+    switch Position.ofGameState(~game, state) {
+    | None => expect("a posed board packs")->toBe("but it didn't")
+    | Some(position) =>
+      let packedColumn = position.casc->Array.getUnsafe(0)
+      // The run really does carry on below the boundary: it is the count that stops
+      // the reading, not the cards.
+      expect(Position.runLength(Position.FreeCell, packedColumn, ~down=0))->toBe(3)
+      expect(Position.runLength(Position.FreeCell, packedColumn, ~down=2))->toBe(2)
+      // …so the deepest grab the model authorises from that column takes two cards.
+      expect(
+        Position.legalMoves(position)
+        ->Array.filter(move => move.source == Position.FromColumn(0))
+        ->Array.reduce(0, (most, move) => Math.Int.max(most, move.n)),
+      )->toBe(2)
+    }
+    // And that is the reducer's own answer: the whole run is not a span it will lift,
+    // and the refusal names the reason rather than calling the bottom card buried.
+    expect(Reducer.canMoveRun(~game, state, run, ~onto=empty))->toBe(false)
+    expect(
+      Reducer.reduce(~game, state, Reducer.MoveRun({cards: run, to: Reducer.ToPile(empty)})),
+    )->toEqual(Error(Reducer.CardFaceDown))
+    expect(Reducer.canMoveRun(~game, state, run->Array.sliceToEnd(~start=1), ~onto=empty))->toBe(
+      true,
+    )
+  })
+
+  // The round trip, on a board with cards face down: a whole line played twice, once
+  // through `Reducer` and once through the mirror, compared after every move. The
+  // cards that get uncovered along the way are what this is here for — the reducer
+  // turns one over as part of the move that exposes it, so a mirror that didn't would
+  // diverge on the very next key. Both laws, since the flip is neither law's.
+  [
+    ("Mini", hiding(Game.miniDeal(~seed=1), ~under=1)),
+    ("Simple Simon", hiding(Game.simpleSimonDeal(~seed=1), ~under=2)),
+  ]->Array.forEach(((label, game)) =>
+    test(
+      `the board after a move, the card it turns over and canFinish are the reducer's on ${label}`,
+      () => {
+        let opening = GameState.initial(game)
+        let divergences = []
+        switch (Position.ofGameState(~game, opening), Solver.plan(~game, opening)) {
+        | (None, _) => divergences->Array.push(`${label} face down isn't a board the model reads`)
+        | (_, None) => divergences->Array.push(`${label} face down went unsolved`)
+        | (Some(start), Some(moves)) =>
+          let real = ref(opening)
+          let mirrored = ref(start)
+          moves->Array.forEachWithIndex(
+            (move, i) =>
+              switch Position.toAction(~game, real.contents, move) {
+              | None => divergences->Array.push(`move ${Int.toString(i)}: no action for it`)
+              | Some(action) =>
+                switch Reducer.reduce(~game, real.contents, action) {
+                | Error(_) =>
+                  divergences->Array.push(`move ${Int.toString(i)}: the reducer refused it`)
+                | Ok(next) =>
+                  real := settle(~game, next)
+                  mirrored := Position.applyMove(mirrored.contents, move)
+                  let realKey =
+                    Position.ofGameState(~game, real.contents)->Option.mapOr(
+                      "(not a board the model reads)",
+                      Position.key,
+                    )
+                  if realKey != Position.key(mirrored.contents) {
+                    divergences->Array.push(
+                      `move ${Int.toString(i)} (${Position.describeMove(move)}): boards differ`,
+                    )
+                  }
+                  if (
+                    Position.canFinish(mirrored.contents) != Reducer.canFinish(~game, real.contents)
+                  ) {
+                    divergences->Array.push(`move ${Int.toString(i)}: canFinish differs`)
+                  }
+                }
+              },
+          )
+          expect(Reducer.canFinish(~game, real.contents))->toBe(true)
+          // The line really did uncover cards, so the flip above was exercised rather
+          // than merely available: a board that ended as hidden as it began would
+          // have compared two models that never had to turn anything over.
+          let hidden = (state: GameState.t) => state.faceDown->Array.reduce(0, (a, b) => a + b)
+          expect(hidden(real.contents) < hidden(opening))->toBe(true)
+        }
+        expect(divergences)->toEqual([])
+      },
+    )
+  )
 })
 
 // The same law as the first block, over a pack that isn't fifty-two cards. What's

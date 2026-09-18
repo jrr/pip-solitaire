@@ -126,16 +126,26 @@ let standardPack: pack = packOf(Cards.standard)
 //   run, so its top rank *is* its contents); under Simple Simon it's `0` or the
 //   pack's top rank, since a suit's run is collected whole or not at all.
 // `casc` — the columns, each bottom-first like `GameState.cardsInPile`.
+// `down` — how many of each column's cards, counted from the bottom, lie face down;
+//   as long as `casc`, and `GameState.faceDown` read over the cascades alone. The
+//   cards under it are packed like every other card, so **whether the search may read
+//   them is a decision — `docs/solver.md` § What the solver sees is where it's
+//   made.** What the count itself buys is the one thing turning a card over changes
+//   either way: a hand takes hold only of what lies above it. A non-empty column's
+//   top card is therefore always visible — `ofGameState` refuses a board where it
+//   isn't, and every move leaves the card it uncovers turned over — so nothing here
+//   has to ask whether the card it is reading can be seen.
 //
 // A plain record of arrays, deliberately: it is also the shape a JavaScript
-// driver builds by hand (`{law, pack, cells, found, casc}`) when it reads a board off
-// a rendered page — see `web-app/scripts/autoplay/read-board.mjs`.
+// driver builds by hand (`{law, pack, cells, found, casc, down}`) when it reads a
+// board off a rendered page — see `web-app/scripts/autoplay/read-board.mjs`.
 type t = {
   law: law,
   pack: pack,
   cells: array<int>,
   found: array<int>,
   casc: array<array<int>>,
+  down: array<int>,
 }
 
 // A position of one's own: every array copied, so a caller can mutate the result
@@ -148,6 +158,7 @@ let copy = (s: t): t => {
   cells: s.cells->Array.copy,
   found: s.found->Array.copy,
   casc: s.casc->Array.map(pile => pile->Array.copy),
+  down: s.down->Array.copy,
 }
 
 let emptyCells = (s: t): int => {
@@ -209,15 +220,35 @@ let foundationAccepts = (s: t, card: int): bool =>
   | SimpleSimon => false
   }
 
+// The face-down count a column is left with once `n` cards have gone from its top:
+// `Reducer.liftCard`'s flip, which turns over the card a departure uncovers. Applied
+// once per card, because that is how the reducer lifts a run — one card at a time,
+// flipping nothing until the last of them leaves the pile down to its hidden cards.
+let afterLifting = (~down: int, ~depth: int, ~n: int): int => {
+  let hidden = ref(down)
+  for k in 1 to n {
+    let left = depth - k
+    if hidden.contents > 0 && hidden.contents >= left {
+      hidden := left - 1
+    }
+  }
+  hidden.contents
+}
+
 // How many cards form the ordered run at the top of a column — the packed reading
 // of the maximal tail `Rules.isRun` accepts, which is the most a hand may lift.
-let runLength = (law: law, pile: array<int>): int => {
+//
+// It stops at the face-down cards, however well they continue the run: `down` of them
+// lie under the column and `Reducer.isSpan` refuses a span that reaches below the
+// count, because a hand can't take hold of what it can't see.
+let runLength = (law: law, pile: array<int>, ~down: int): int => {
+  let seen = Array.length(pile) - down
   let n = ref(0)
   let i = ref(Array.length(pile) - 1)
-  let running = ref(Array.length(pile) > 0)
+  let running = ref(Array.length(pile) > 0 && seen > 0)
   while running.contents {
     n := n.contents + 1
-    if i.contents == 0 {
+    if i.contents == 0 || n.contents >= seen {
       running := false
     } else {
       let above = pile->Array.getUnsafe(i.contents)
@@ -283,7 +314,10 @@ let sendHome = (s: t, ~card: int, ~cell: int, ~col: int): unit => {
   if cell >= 0 {
     s.cells->Array.setUnsafe(cell, -1)
   } else {
-    s.casc->Array.getUnsafe(col)->Array.pop->ignore
+    let pile = s.casc->Array.getUnsafe(col)
+    let depth = Array.length(pile)
+    pile->Array.pop->ignore
+    s.down->Array.setUnsafe(col, afterLifting(~down=s.down->Array.getUnsafe(col), ~depth, ~n=1))
   }
 }
 
@@ -319,6 +353,12 @@ let collectSafeCards = (s: t): unit => {
 // — `Rules.isCompleteRun` read off a column's tail, and against the deck for the
 // same reason it is: "thirteen cards ending on a King" is the full pack's answer to
 // the question, not the question.
+//
+// The face-down count is deliberately not consulted, because `Reducer.collectRuns`
+// doesn't consult it either: it reads a tail by rank and suit alone, so a column
+// whose hidden cards happen to carry the top of the run has it collected on both
+// sides of the mirror. This is the one thing on the board that reads *across* the
+// boundary — the game collects a run, where a hand lifts one.
 let topsCompleteRun = (~ranks: int, pile: array<int>): bool => {
   let depth = Array.length(pile)
   depth >= ranks &&
@@ -348,9 +388,14 @@ let collectRuns = (s: t): unit => {
   for col in 0 to Array.length(s.casc) - 1 {
     let pile = s.casc->Array.getUnsafe(col)
     if topsCompleteRun(~ranks, pile) {
-      let base = pile->Array.getUnsafe(Array.length(pile) - ranks)
+      let depth = Array.length(pile)
+      let base = pile->Array.getUnsafe(depth - ranks)
       s.found->Array.setUnsafe(suitOf(base), ranks)
-      pile->Array.splice(~start=Array.length(pile) - ranks, ~remove=ranks, ~insert=[])
+      pile->Array.splice(~start=depth - ranks, ~remove=ranks, ~insert=[])
+      s.down->Array.setUnsafe(
+        col,
+        afterLifting(~down=s.down->Array.getUnsafe(col), ~depth, ~n=ranks),
+      )
     }
   }
 }
@@ -508,7 +553,7 @@ let legalMoves = (s: t): array<move> => {
           card: top,
         })
       }
-      let liftable = runLength(s.law, pile)
+      let liftable = runLength(s.law, pile, ~down=s.down->Array.getUnsafe(src))
       for n in 1 to liftable {
         let bottom = pile->Array.getUnsafe(Array.length(pile) - n)
         for dest in 0 to Array.length(s.casc) - 1 {
@@ -559,7 +604,14 @@ let applyMove = (s: t, move: move): t => {
   | FromCell(cell) => t.cells->Array.setUnsafe(cell, -1)
   | FromColumn(col) =>
     let pile = t.casc->Array.getUnsafe(col)
-    pile->Array.splice(~start=Array.length(pile) - move.n, ~remove=move.n, ~insert=[])
+    let depth = Array.length(pile)
+    pile->Array.splice(~start=depth - move.n, ~remove=move.n, ~insert=[])
+    // A move that uncovers the column's face-down cards turns the top one over, since
+    // the reducer does it as part of the same move rather than as a move of its own.
+    t.down->Array.setUnsafe(
+      col,
+      afterLifting(~down=t.down->Array.getUnsafe(col), ~depth, ~n=move.n),
+    )
   }
   switch move.destination {
   | ToFoundation => t.found->Array.setUnsafe(suitOf(move.card), rankOf(move.card))
@@ -585,7 +637,17 @@ let applyMove = (s: t, move: move): t => {
 let key = (s: t): string => {
   let cells = s.cells->Array.filter(c => c >= 0)
   cells->Array.sort(Int.compare)
-  let cols = s.casc->Array.map(pile => pile->Array.joinUnsafe(","))
+  // How many of a column's cards are face down is part of the column: the same cards
+  // with one more of them turned over is a board a hand can play less of. Written
+  // only where there is one, since this is the hottest string in the search and every
+  // board but a Klondike-dealt one has none.
+  let cols = s.casc->Array.mapWithIndex((pile, col) => {
+    let cards = pile->Array.joinUnsafe(",")
+    switch s.down->Array.getUnsafe(col) {
+    | 0 => cards
+    | down => `${Int.toString(down)}:${cards}`
+    }
+  })
   cols->Array.sort(String.compare)
   s.found->Array.joinUnsafe(".") ++
   "|" ++
@@ -617,8 +679,8 @@ let describeMove = (move: move): string => {
 
 // The law a board is played under, read off its rules — or `None` for a board
 // under neither. Only the law: whether the board also has the *shape* the model
-// holds (no stock, one copy of each card, every card face up) is `ofGameState`'s
-// question, so Spiderette reads as Simple Simon's law here and is refused there.
+// holds (no stock, one copy of each card) is `ofGameState`'s question, so Spiderette
+// reads as Simple Simon's law here and is refused there.
 // Every pile of a role is checked, not the first, so a board with one odd pile is
 // refused rather than read as the law its others follow.
 let lawOf = (game: Game.t): option<law> => {
@@ -646,22 +708,35 @@ let lawOf = (game: Game.t): option<law> => {
 // seven-column board would need too.
 //
 // What's left is what the packing genuinely can't say, and each line below is one of
-// them: a stock (the model has no word for a deal), a face-down card or a card loose
-// on the table (it would go missing), a second copy of a card (two copies pack to one
-// int), ranks that don't run up from the Ace (a foundation's *length* is read as the
-// rank it has climbed to), a foundation count that isn't the number of suits to send
-// home (a spare foundation could never complete, so `hasWon` and `GameState.hasWon`
-// would disagree about the same board), and no column to play on at all. Any such
-// board gets an honest `None` rather than a position with pieces missing.
+// them: a stock (the model has no word for a deal), a card loose on the table (it
+// would go missing), a second copy of a card (two copies pack to one int), ranks that
+// don't run up from the Ace (a foundation's *length* is read as the rank it has
+// climbed to), a foundation count that isn't the number of suits to send home (a
+// spare foundation could never complete, so `hasWon` and `GameState.hasWon` would
+// disagree about the same board), no column to play on at all — and a face-down card
+// anywhere but under a column's visible ones. Any such board gets an honest `None`
+// rather than a position with pieces missing.
+//
+// That last line is the shape the rest of the model is written against: face down is
+// a fact about a *column's* lower cards, so a hidden card in a cell or on a
+// foundation has no word here, and neither has a column whose top card is face down —
+// every predicate reads a column's top as the card a hand could name, and there
+// would be no such card. Neither arises in play: the reducer turns over whatever a
+// move uncovers, and only a cascade is ever dealt face down.
 let ofGameState = (~game: Game.t, state: GameState.t): option<t> =>
   lawOf(game)->Option.flatMap(law => {
     let cellPiles = Game.pileIndices(game, Game.FreeCell)
     let foundationPiles = Game.pileIndices(game, Game.Foundation)
     let cascadePiles = Game.pileIndices(game, Game.Cascade)
     let deck = game.deck
+    let hiddenTop = i => {
+      let down = GameState.faceDownIn(state, i)
+      down > 0 && down >= Array.length(GameState.cardsInPile(state, i))
+    }
     if (
       Array.length(Game.pileIndices(game, Game.Stock)) > 0 ||
-      state.faceDown->Array.some(n => n > 0) ||
+      state.faceDown->Array.someWithIndex((n, i) => n > 0 && !(cascadePiles->Array.includes(i))) ||
+      cascadePiles->Array.some(hiddenTop) ||
       Array.length(state.loose) > 0 ||
       deck.copies != 1 ||
       !(deck.ranks->Array.everyWithIndex((rank, i) => Rules.rankValue(rank) == i + 1)) ||
@@ -696,6 +771,7 @@ let ofGameState = (~game: Game.t, state: GameState.t): option<t> =>
         casc: cascadePiles->Array.map(i =>
           GameState.cardsInPile(state, i)->Array.map(card => idOf(card))
         ),
+        down: cascadePiles->Array.map(i => GameState.faceDownIn(state, i)),
       })
     }
   })

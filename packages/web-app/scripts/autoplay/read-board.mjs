@@ -196,7 +196,8 @@ export function foundationTop(pile, law = "FreeCell") {
  * deck it's played with), `cells` (one slot per free cell, `-1` when empty; none
  * under Simple Simon), `found` (how many of each suit are home, indexed by
  * `Position.suitOf`), `casc` (the columns, bottom-first like
- * `GameState.cardsInPile`) — so a driver outside ReScript can build one; see
+ * `GameState.cardsInPile`), `down` (how many of each column's cards lie face down,
+ * counted from the bottom) — so a driver outside ReScript can build one; see
  * `core/src/Position.res`.
  *
  * Cascades are `Fanned`, so the reader's geometric order is the pile order.
@@ -224,6 +225,10 @@ export function stateFromPiles(piles, layout = FREECELL) {
     cells,
     found,
     casc: layout.cascades.map((i) => piles[i].map((c) => cardId(c.code))),
+    // Nothing is face down on either board this harness plays: a card whose name the
+    // page won't say is one `parseCardName` throws on, well before a position is
+    // built. A Klondike-dealt board would have to read the count off the page here.
+    down: layout.cascades.map(() => 0),
   }
 }
 
