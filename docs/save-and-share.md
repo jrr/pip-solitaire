@@ -149,6 +149,12 @@ a resumed board can't work its own deal number out — the positions are restore
 deal that produced them is gone — so without this key the Share button would go dark
 on the most ordinary case there is.
 
+A board a link addressed writes neither key until the player changes it, and writes
+both at the moment they do: the history from the change itself, and the seed it is
+adopted with — or a *cleared* seed, when the board is a position no number produced.
+`docs/board-driver.md` § Which opens touch storage is the rule; what it means here is
+that `clearSeed` has two callers rather than one.
+
 `pip.lastGame` is the one key that is *not* per game, and it is what a bare launch
 opens on: choosing a game from the menu outlives the tab, and the per-game saves above
 mean the board that was on it comes back with it. Two rules fence it, both `Main`'s.

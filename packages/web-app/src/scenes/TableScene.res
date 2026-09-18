@@ -838,8 +838,9 @@ let make = (
       // encodes the board on the table rather than one a re-deal has since replaced.
       readHistory := (() => Some(currentSave()))
 
-      // A no-op unless the driver wired a `~persist` sink, which it does only for the
-      // opens that save (`docs/board-driver.md` § Which opens touch storage).
+      // A no-op unless the driver wired a `~persist` sink — and a wired sink is still
+      // free to decline, since which boards save is the driver's question rather than
+      // this one's (`docs/board-driver.md` § Which opens touch storage).
       let persistCurrent = () =>
         switch persist {
         | Some(save) => save(currentSave())
@@ -2530,8 +2531,7 @@ let make = (
     // debug-states jump never clobbers a real saved game — where `loadHistory` *does*
     // persist, because a shared game takes over as this device's saved game and play
     // continues from it normally. (Whether either write reaches storage is still the
-    // driver's call; the sink is only wired for the opens that may write. See `Main`'s
-    // `~persist`.)
+    // driver's call, which its sink makes board by board. See `Main`'s `~persist`.)
     switch publish {
     | Some(publish) =>
       publish({

@@ -118,7 +118,7 @@ say". The driver then fills the gap from what only it can see:
 | the board is showing | `~onDeal` reports | the driver resolves it to |
 |---|---|---|
 | a deal it laid out (open, New Game, `deal <n>`, a Restart of one of those) | `Some(n)` | `n`, and saves it if this open saves |
-| a resumed history | `None` | `SavedGame.loadSeed` — the number the last session stored |
+| a resumed history | `None` | `SavedGame.loadSeed` — the number stored beside that save, by the session that wrote it or by the adoption that took it over |
 | a Restart of a resumed history | `None` | the same, and the number is unchanged by the restart — the board replayed is the one the heading already named |
 | a `?state=` scenario | `None` | `Scenario.seedForName`, when the scenario has *proved* a line to itself |
 | a `#g=` shared game | `None` | nothing — a real position with no deal behind it |
@@ -168,29 +168,60 @@ sites keep.
 
 ## Which opens touch storage
 
-Save-and-resume attaches to one case only: a **plain open of a re-dealable
-game** — no `?state=`, no `?seed=`, no `#g=`. An addressed board opens what it
-was addressed to and leaves any saved game strictly alone, neither resumed nor
-overwritten, which is what keeps the screenshot report's shots side-effect-free.
+Saving is not a property of the URL but of the board, and the question it turns on
+is whether the board on the table is the player's own. A **plain open of a
+re-dealable game** — no `?state=`, no `?seed=`, no `#g=` — is theirs the moment it
+deals: nobody addressed it, so what came up is simply the game they are playing.
+An addressed board is one they were *sent*, and it writes nothing on sight. It
+opens what it was addressed to and leaves the saved game alone, neither resumed
+nor overwritten, which is what keeps the screenshot report's shots
+side-effect-free.
 
-The same three-way condition decides one thing outside this file: whether the
-launch may open on the game the player was last on, rather than on the default.
-`Main` spells it once (`plainUrl`) and both read it, so they cannot drift apart.
-The key that answers it is the one storage an *addressed* open does write, and
-`docs/save-and-share.md` § Storage has the rules it keeps.
+**An addressed board is adopted the moment the player changes it** — a move
+played, or a board dealt from it (New Deal, Enter seed, Restart). From then on it
+saves like any other: it persists after every change, and a later mount of that
+scene resumes it. The two halves are reported separately, so adoption is wired to
+both — `~onHistory` with something to undo is a board that has been played,
+`~onDeal` past this mount's opening build is a board the player dealt for
+themselves — and `~publish` is what says a mount's opening build is still to come.
 
-A `#g=` link is the one addressed open that *does* write, and it splits the two
-halves apart: it doesn't resume (the link already says which board), but once the
-shared game lands it takes over. That gate is asked twice at two different times,
-because inflating the blob is asynchronous — at build time a scene knows only
-that *some* link is coming (`sharePending`), and only later does one of them turn
-out to be the game it named (`sharedOpen`). The `~persist` sink is wired for any
-scene the link might name, and the gate inside it settles which one it did.
+`adopted` is one ref per *scene*, not per mount, and that is the whole point: every
+scene change tears the board down and builds it again, so a board that hadn't
+saved had nothing to come back to but the deal its link named. The three storage
+decisions ask one thunk between them, `saving()`, because two of its three answers
+land after the scene was built.
+
+Adoption also writes the one thing a history can't carry. The number it takes is
+whatever the app would share for that board at that moment (`liveDealSeed`) — the
+link's seed, or a scenario's proved deal — and it *clears* the key when there is
+none, so a posed board is never handed the last game's seed to answer with. That
+is a shared game's arrival in miniature.
+
+What it changes on the next launch: a bare relaunch resumes a link's board once
+the player has played it, where it used to go back to whatever was saved before
+the link landed. That is the same rule as everywhere else here — the game you
+played is the game you come back to — and the board it used to resume is one the
+player had already left.
+
+Which *game* a launch comes up on is a separate question with its own rule: only a
+plain open may open on the game the player was last on, since a bare `?seed=` is a
+link to the default game's deal and a remembered game would answer it with a
+different board. `Main` spells that condition once (`plainUrl`) and both readers
+take it from there, so they cannot drift apart; `docs/save-and-share.md` § Storage
+has the keys.
+
+A `#g=` link is the one addressed open that takes storage over without being
+played, and it splits the two halves apart: it doesn't resume (the link already
+says which board), but once the shared game lands it takes over. That gate is
+asked twice at two different times, because inflating the blob is asynchronous —
+at build time a scene knows only that *some* link is coming (`sharePending`), and
+only later does one of them turn out to be the game it named (`sharedOpen`).
 
 The consequence to hold onto: **the placeholder board a shared open wears while
-the blob inflates must never be written to storage.** It is scaffolding. Writing
-it would clobber the player's own game with a board nobody asked for, and a link
-that fails to decode would take a save down with it.
+the blob inflates must never be written to storage unasked.** It is scaffolding.
+Writing it would clobber the player's own game with a board nobody chose, and a
+link that fails to decode would take a save down with it. Adoption is the only
+thing that may promote it, and it takes a move to do so.
 
 ## Before you add an argument
 

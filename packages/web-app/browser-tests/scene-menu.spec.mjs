@@ -220,6 +220,65 @@ test("the games rows walk between FreeCell and Simple Simon, keeping each game",
   await expect(menuGameName(page)).toContainText("FreeCell")
 })
 
+// The same walk, from a `?seed=` link. An addressed open deliberately doesn't resume
+// what was saved and doesn't write over it — but the moment the player plays the board
+// the link opened, it is their game, and a walk away from it has to come back to it
+// rather than to the link's opening position all over again.
+test("a link's board, once played, is what the way back returns to", async ({ page }) => {
+  await page.goto("/?seed=24680&animate=off")
+  await settleBoard(page)
+
+  // One move: the whole difference between a board a link addressed and a game in
+  // progress that happens to have started from one.
+  await page.keyboard.press("Backquote")
+  await expect(consoleInput(page)).toBeFocused()
+  await runCommand(page, `move ${FIRST_MOVE_24680}`)
+  await settleBoard(page)
+  await page.keyboard.press("Escape")
+  await expect(undo(page)).toBeEnabled()
+
+  await openMenu(page)
+  await gameRow(page, "Simple Simon").click()
+  await settleBoard(page)
+  await expect(page.locator(".drop-zone")).toHaveCount(14)
+
+  await openMenu(page)
+  await gameRow(page, "FreeCell").click()
+  await settleBoard(page)
+  // The deal the link named, with the move still on it — not dealt afresh, which on a
+  // pinned seed is the failure that looks like success: the same cards, no history.
+  await expect(page.locator(".drop-zone")).toHaveCount(16)
+  await expect(undo(page)).toBeEnabled()
+  await openMenu(page)
+  await expect(menuSeed(page)).toHaveText("#24680")
+})
+
+// Dealing from a link's board is the other way of making it yours, and the one where
+// coming back to the link's own deal would be plainly wrong: the player asked for a
+// different board and was given one.
+test("a New Deal on a link's board outlives the walk away from it", async ({ page }) => {
+  await page.goto("/?seed=24680&animate=off")
+  await settleBoard(page)
+
+  await openMenu(page)
+  await page.getByRole("button", { name: "New Deal" }).click()
+  await expect(page.locator("#menu-overlay")).toBeHidden()
+  await settleBoard(page)
+
+  await openMenu(page)
+  const dealt = await menuSeed(page).textContent()
+  expect(dealt).not.toBe("#24680")
+
+  await gameRow(page, "Simple Simon").click()
+  await settleBoard(page)
+  await openMenu(page)
+  await gameRow(page, "FreeCell").click()
+  await settleBoard(page)
+
+  await openMenu(page)
+  await expect(menuSeed(page)).toHaveText(dealt)
+})
+
 // `?game=simplesimon` lands on a row that is already up top, so the menu opens with
 // it marked and no debug group unfolded for it.
 test("a ?game= link onto Simple Simon opens with its row marked", async ({ page }) => {
