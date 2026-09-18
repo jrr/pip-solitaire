@@ -148,6 +148,14 @@ asked for and stays put otherwise:
 
 Both leave a move's flights alone: a resumed game plays exactly like a fresh one.
 
+A pass that *is* made can still wait. The deal is built with every flight paused —
+`fill: "backwards"` holds each card at the origin, so the board is laid out and empty
+to look at — and the board hands the driver the thunk that plays it. Every mount but
+one runs it at once; the one that happens under the open menu (the Games list's
+segment swapping the board being played) holds it until the menu closes. The timing
+above is unchanged: `T` starts when the pass is played, not when it was built.
+`docs/board-driver.md` § Why the deal is handed back to be played has the seam.
+
 The model is already committed before any of this runs — a flight is a purely
 *visual* catch-up over cards that the state says have already moved. So skipping
 it is always safe, and undo and persistence stay correct however a sequence is

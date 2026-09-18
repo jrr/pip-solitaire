@@ -122,6 +122,12 @@ external animate: (
 // landed (see `animateFinish`).
 @send external cancel: animation => unit = "cancel"
 @set external setOnFinish: (animation, unit => unit) => unit = "onfinish"
+// A flight paused as it is built holds its card at its `fill: "backwards"` start — for
+// the opening deal, the off-stage origin — until it is played. That is how a deal can be
+// laid out now and flown later (`~onceUncovered`): the cards are committed to their
+// spots and out of sight, and playing is the only thing left to do.
+@send external pause: animation => unit = "pause"
+@send external play: animation => unit = "play"
 // The finish sweep also animates z: a card holds its resting layer while it
 // waits its turn (so the source fan it hasn't left stays correctly stacked), then
 // jumps above the board for its flight and landing. `fill: "forwards"` is the whole
@@ -537,6 +543,13 @@ let make = (
   // `#g=` link wears while its real position inflates — where animating the cards in
   // would draw the eye to a board that is about to be replaced.
   ~skipDealFlyIn: bool=false,
+  // The one thing about an opening the board can't decide: whether anyone can see it.
+  // Every opening build lays its cards out, builds the fly-in paused where there is one,
+  // and hands this the thunk that plays it; the driver runs it at once, or holds it while
+  // its chrome covers the board and runs it when the cover lifts — which is also the
+  // driver's moment to treat the board as seen, so the handover is made whether or not
+  // anything flies. Omitted, the deal plays as it is built.
+  ~onceUncovered: (unit => unit) => unit=release => release(),
   game: Game.t,
 ): Scene.t => {
   id: game.id,
@@ -561,6 +574,22 @@ let make = (
     let cancelOutstanding = () => {
       outstandingAnimations.contents->Array.forEach(cancel)
       outstandingAnimations := []
+    }
+
+    // The opening deal's flights, from the moment they're built until the driver plays
+    // them (`~onceUncovered`). Mount scope for the same reason the sweep's are: a
+    // re-deal or a teardown under a held deal has to drop it, and the release the driver
+    // may still be holding then plays whatever is here — nothing — rather than a
+    // torn-down build's cards. It reads the ref rather than the array it was built from
+    // because playing a cancelled animation *restarts* it.
+    let heldDeal: ref<array<animation>> = ref([])
+    let dropHeldDeal = () => {
+      heldDeal.contents->Array.forEach(cancel)
+      heldDeal := []
+    }
+    let playHeldDeal = () => {
+      heldDeal.contents->Array.forEach(play)
+      heldDeal := []
     }
 
     // The victory cascade, if one is falling. Mount scope for the same reason the
@@ -700,8 +729,11 @@ let make = (
       // Cancel any finish sweep still in flight from the board being torn down, so
       // its cards stop animating and its last-card `onfinish` can't raise a win over
       // the fresh board — and stop an autoplay still walking the old board's
-      // line, which the cancelled flight would otherwise hand straight on to.
+      // line, which the cancelled flight would otherwise hand straight on to. A deal
+      // still waiting to be played goes the same way: its cards are the ones this clear
+      // removes.
       cancelOutstanding()
+      dropHeldDeal()
       interruptPlay()
       // A cascade celebrating the board being replaced goes with it — its canvas hangs
       // off the playfield the clear below drops, but its frame loop and its window
@@ -2385,6 +2417,11 @@ let make = (
       //
       // The OS asking for reduced motion and either skip flag are the other three ways
       // out, and all four leave the cards exactly where they were placed.
+      //
+      // A pass that *is* made is built paused, every card parked at the origin, for
+      // `deal` below to hand the driver. Usually the driver plays it on the spot; a board
+      // mounted under the open menu waits, cards out of sight, until the menu goes — a
+      // deal nobody watched is a flourish spent on nothing.
       let animateDeal = () => {
         let reduceMotion = matchMedia("(prefers-reduced-motion: reduce)")["matches"]
         let cards = dealSequence()
@@ -2405,15 +2442,18 @@ let make = (
             ~perCardMs=dealPerCardMs,
             ~n,
           )
-          cards->Array.forEachWithIndex((card, i) => {
-            flyHome(
-              ~wrapper=card.wrapper,
-              ~dx=originX -. card.x.contents,
-              ~dy=originY -. card.y.contents,
-              ~flight,
-              ~delay=Int.toFloat(i) *. delta,
-            )->ignore
-          })
+          heldDeal :=
+            cards->Array.mapWithIndex((card, i) => {
+              let flight = flyHome(
+                ~wrapper=card.wrapper,
+                ~dx=originX -. card.x.contents,
+                ~dy=originY -. card.y.contents,
+                ~flight,
+                ~delay=Int.toFloat(i) *. delta,
+              )
+              flight->pause
+              flight
+            })
         }
       }
 
@@ -2428,6 +2468,10 @@ let make = (
           dealPiles()
           animateDeal()
         })
+        // Laid out, and now the driver's to show: the pass plays when it says so. Handed
+        // over even when nothing flies — a resumed board, reduced motion — because the
+        // driver's side of the moment is about the board, not the flourish.
+        onceUncovered(playHeldDeal)
       }
 
       // Re-run the layout for the stage's current size — a resize snaps the
@@ -2595,12 +2639,14 @@ let make = (
       () => {
         unsubscribeShake()
         endCascade()
+        dropHeldDeal()
         observer->disconnect
       }
     | None =>
       () => {
         unsubscribeShake()
         endCascade()
+        dropHeldDeal()
       }
     }
   },
