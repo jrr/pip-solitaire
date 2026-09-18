@@ -67,10 +67,11 @@ let saveSeed = (gameId: string, seed: int): unit =>
   | _ => ()
   }
 
-// Drop just the deal number, leaving the saved game itself alone. What a shared
-// game's arrival needs (`Main`): it takes over as the saved game but was never
-// dealt from a number here, so the previous game's seed must not stay behind and
-// be read as its own.
+// Drop just the deal number, leaving the saved game itself alone. What a board with no
+// number of its own needs as it takes over as the saved game (`Main`) — a shared game
+// arriving, or a posed one the player has played and made theirs. Neither was dealt
+// from a number here, so the previous game's seed must not stay behind and be read as
+// its own.
 let clearSeed = (gameId: string): unit =>
   try removeItem(seedKey(gameId)) catch {
   | _ => ()

@@ -693,9 +693,41 @@ let gameScene = (game: Game.t) => {
   let sharedOpen = () =>
     sharePending && sharedGame.contents->Option.mapOr(false, shared => shared.id == game.id)
   let plainOpen = canDeal && plainUrl
+
+  // **Has this board become the player's own?** A plain open is theirs from the moment
+  // it deals; an addressed one becomes theirs when they change what the link opened —
+  // a move played, or a board dealt from it. The ref lives for the scene's whole life
+  // rather than one mount, which is what makes a swap away to another board and back
+  // come home to the game they left instead of re-dealing the link over it.
+  let adopted = ref(plainOpen)
+  // The one question all three storage decisions below ask (§ Which opens touch
+  // storage). A thunk for the same reason `sharedOpen` is: both answers can arrive
+  // after the scene was built.
+  let saving = () => canDeal && (adopted.contents || sharedOpen())
+
+  // The moment an addressed board takes over storage, which is a shared game's arrival
+  // in miniature. The history needs nothing here — the change that adopted the board
+  // persists straight after this — but the deal number never rides in a history, so it
+  // is written now: whatever number the app would currently share for this board, or
+  // *cleared* when there is none, since a posed board must not be handed the last
+  // game's seed to answer with.
+  let adopt = (dealSeed: option<int>) =>
+    if canDeal && !saving() {
+      adopted := true
+      switch dealSeed {
+      | Some(seed) => SavedGame.saveSeed(game.id, seed)
+      | None => SavedGame.clearSeed(game.id)
+      }
+    }
+
+  // Is the build about to report the one this mount opened with? Raised as the scene
+  // mounts (`~publish`, which runs just before that build) and lowered by the report
+  // itself, so every deal after it is one the player asked for.
+  let openingBuild = ref(true)
+
   // Read when the scene *mounts*, not here where it's built — § Why the read-backs are
   // thunks.
-  let loadHistory = () => plainOpen ? SavedGame.load(game.id) : None
+  let loadHistory = () => saving() ? SavedGame.load(game.id) : None
 
   // A plain open takes a fresh random seed each load, so a reload with nothing saved
   // lays out a new board rather than always deal #1, matching New Game. A `?seed=`
@@ -717,18 +749,20 @@ let gameScene = (game: Game.t) => {
   TableScene.make(
     ~initial=?url.state->Option.flatMap(name => Scenario.forName(game, name)),
     ~loadHistory,
-    // The sink is wired for any scene a pending link *might* name, and the gate inside
-    // it settles which one it actually did — it runs long after the blob inflated, so
-    // it can ask what this scene couldn't answer when it was built.
+    // The sink is wired for every re-dealable board, and the gate inside it settles
+    // which of them may actually write — it runs long after the scene was built, so it
+    // can ask what this scene couldn't answer then: whether a pending link turned out
+    // to name this game, and whether the player has since made an addressed board
+    // theirs.
     //
-    // **A shared open saves only once the game has landed on this board.** The fixed
-    // deal it wears while the blob inflates is scaffolding; writing that would clobber
-    // the player's own game with a board nobody asked for. It also means a link that
-    // fails to decode, or one that names another game, leaves this save untouched.
-    ~persist=?plainOpen || sharePending
+    // **An addressed open saves nothing until it is adopted.** The deal a `?seed=`
+    // names, the pose a `?state=` forces and the scaffolding a `#g=` wears while its
+    // blob inflates are all boards the player was *sent*, and writing one on sight
+    // would clobber their own game with a board they haven't touched.
+    ~persist=?canDeal
       ? Some(
           saved =>
-            if plainOpen || sharedOpen() {
+            if saving() {
               SavedGame.save(game.id, saved)
             },
         )
@@ -742,11 +776,22 @@ let gameScene = (game: Game.t) => {
       // …and which game it's a board of. This is the one place that knows: the scene
       // publishes controls, not the `Game.t` they were built from.
       liveGame := Some(game)
+      // The board this mount opens with is still to come, whichever it turns out to be
+      // (`openingBuild`). Published before it, so this is the moment to say so.
+      openingBuild := true
       if shakeActive.contents {
         board.shake.start()
       }
     },
-    ~onHistory=canUndo => reportHistory.contents(canUndo),
+    // A move is one of the two ways an addressed board becomes the player's own — the
+    // report that says a board has something to undo is the report that says it has been
+    // played. (The other is dealing from it, below.)
+    ~onHistory=canUndo => {
+      if canUndo {
+        adopt(liveDealSeed.contents)
+      }
+      reportHistory.contents(canUndo)
+    },
     // What the console's printed board titles itself with. `liveDealSeed` is the
     // *resolved* number both Share buttons offer, so a printed board names the deal the
     // app would share rather than re-deriving it from a `game.seed` that a posed or
@@ -759,20 +804,31 @@ let gameScene = (game: Game.t) => {
     // The one local fact: a `Some(n)` on an open that saves is saved *here*, because
     // the number is the one thing the history doesn't carry — without it the next
     // session's resumed game couldn't be shared at all.
-    ~onDeal=seed =>
+    //
+    // It is also where the second half of adoption lands. Every deal after the one this
+    // mount opened with is a board the player put on the table — a New Deal, an Enter
+    // seed, a Restart — so an addressed board becomes theirs at that point exactly as a
+    // move makes it theirs, and the number it is adopted with is the one being reported.
+    ~onDeal=seed => {
+      let playerDealt = !openingBuild.contents
+      openingBuild := false
       publishDeal(
         switch seed {
         | Some(n) =>
-          if plainOpen || sharedOpen() {
+          if playerDealt {
+            adopt(Some(n))
+          }
+          if saving() {
             SavedGame.saveSeed(game.id, n)
           }
           Some(n)
         | None =>
-          plainOpen
+          saving()
             ? SavedGame.loadSeed(game.id)
             : url.state->Option.flatMap(name => Scenario.seedForName(game, name))
         },
-      ),
+      )
+    },
     // **No deal number, no button.** A posed `?state=` board, or a game landed from a
     // `#g=` link, has nothing truthful to offer, so the overlay is New Game alone
     // rather than a button sharing someone else's deal. (Worth revisiting for the

@@ -19,7 +19,7 @@
 
 import { expect, test } from "@playwright/test"
 import { settleBoard } from "./lib/board.mjs"
-import { setBetaFeatures } from "./lib/menu.mjs"
+import { menuSeed, setBetaFeatures } from "./lib/menu.mjs"
 
 test.use({ viewport: { width: 800, height: 1000 } })
 
@@ -179,6 +179,39 @@ test("swaps the board under the menu when the game it names is the one being pla
   await page.getByRole("button", { name: "Close menu" }).click()
   await settleBoard(page)
   await expect(page.locator(".drop-zone__slot--stock")).toHaveCount(1)
+})
+
+// A trip through the sizes is a trip through three mounts of the family's scenes, and
+// the board a player left has to be waiting when they come back to it. The link is what
+// makes this worth a test of its own: a `?seed=` board opens on a deal fixed for the
+// session, so a scene that came back without its game would deal that same link again
+// and look for all the world like nothing had happened.
+test("keeps the board you dealt while the size segment walks away and back", async ({ page }) => {
+  await page.goto("/?seed=24680&animate=off")
+  await settleBoard(page)
+  await openMenu(page)
+  await showTheGames(page)
+  await expect(menuSeed(page)).toHaveText("#24680")
+
+  // Deal for yourself, which is what makes the board yours rather than the link's.
+  await page.getByRole("button", { name: "New Deal" }).click()
+  await expect(page.locator("#menu-overlay")).toBeHidden()
+  await settleBoard(page)
+  await openMenu(page)
+  const dealt = await menuSeed(page).textContent()
+  expect(dealt).not.toBe("#24680")
+
+  // Out to both short decks and back, every tap under the open menu.
+  await sizes(page).click()
+  await expect(sizes(page)).toHaveText("Mini")
+  await sizes(page).click()
+  await expect(sizes(page)).toHaveText("Micro")
+  await sizes(page).click()
+  await expect(sizes(page)).toHaveText("Standard")
+
+  // The board that comes back is the one dealt above, not the deal the link named.
+  await expect(onTheTable(page)).toHaveText(/^FreeCell/)
+  await expect(menuSeed(page)).toHaveText(dealt)
 })
 
 test("remembers each family's choice across a launch, and opens it from the row", async ({
