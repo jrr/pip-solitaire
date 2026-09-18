@@ -130,8 +130,23 @@ with no overshoot. A card landing on a foundation shouldn't bounce.
 Every one of the four collapses to an instant `reflowAll` under any of:
 
 - the OS asking for reduced motion (`prefers-reduced-motion: reduce`)
-- the URL's `?animate=off`
+- the URL's `?animate=off` (`~skipFlights`)
 - nothing to move (`n = 0`)
+
+The opening deal answers to two more, because a dealer's pass is the one flight
+that makes a *claim* — these cards were just dealt to you — and the other three
+only catch a board up to a move already made. So it flies for a board the player
+asked for and stays put otherwise:
+
+- a restored history or a forced state (`freshDeal` in `TableScene.buildBoard`).
+  Resuming a saved game, switching to a game with a save, a `?state=` scenario
+  and the debug-states menu all open on a position that was reached rather than
+  dealt, and a pass that ends with aces already on foundations mimes a deal that
+  never happened.
+- a shared link's scaffolding board (`~skipDealFlyIn`), whose cards are about to
+  be replaced by the position still inflating.
+
+Both leave a move's flights alone: a resumed game plays exactly like a fresh one.
 
 The model is already committed before any of this runs — a flight is a purely
 *visual* catch-up over cards that the state says have already moved. So skipping

@@ -110,6 +110,45 @@ test("a shared link takes over the saved game", async ({ page }) => {
   expect(await readBoard(page)).toEqual(adopted)
 })
 
+// The two halves of what a recipient sees, which pull in opposite directions and so are
+// one test: the board must arrive without being dealt in front of them, and it must then
+// play like any other board. Recording what reached `Element.animate` rather than
+// catching a flight mid-air, for the reason `debug-console.spec.mjs` records them that
+// way — what's asserted is what the code asked the compositor for.
+test("a shared board arrives without a fly-in, then moves like any other", async ({ page }) => {
+  // Shared from the almost-won scenario so the reopened board has a move known to be
+  // legal on it — the same one the console suite plays.
+  await page.goto("/?game=freecell&state=almost-won&animate=off")
+  await settleBoard(page)
+  const url = await shareFromDebugScreen(page)
+
+  // Armed before the navigation, because the thing under test happens during the load:
+  // the fixed deal the board wears while the blob inflates, and the rebuild that
+  // replaces it, are both over before a test body could patch anything.
+  await page.addInitScript(() => {
+    window.__flights = []
+    const original = Element.prototype.animate
+    Element.prototype.animate = function (frames, options) {
+      if (this.classList?.contains("stacking-card")) window.__flights.push(JSON.stringify(frames))
+      return original.call(this, frames, options)
+    }
+  })
+  await page.goto(url)
+  await settleBoard(page)
+  expect(await page.evaluate(() => window.__flights.length)).toBe(0)
+
+  // …and the suppression ends with the opening. A shared game is this device's game now,
+  // so its moves fly: silencing them for the life of the page would leave a recipient
+  // playing a board where nothing ever moves.
+  await page.evaluate(() => (window.__flights = []))
+  await page.keyboard.press("Backquote")
+  await expect(page.locator("#debug-console-input")).toBeFocused()
+  await page.keyboard.type("move KC 7")
+  await page.keyboard.press("Enter")
+  const flights = await page.evaluate(() => window.__flights)
+  expect(flights.some((f) => f.includes("translate3d"))).toBe(true)
+})
+
 test("a shared link opens the game it was shared from", async ({ page }) => {
   // The link carries the cards *and* the name of the board they belong to.
   // Nothing in the URL says which game — no `?game=`, only the fragment — so opening it

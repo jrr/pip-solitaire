@@ -63,8 +63,9 @@ async function openBoard(page, { tilt }) {
   }, tilt)
   await page.goto("/?game=freecell&state=finish")
   await expect(page.locator(".finish-button")).toBeVisible()
-  // The board deals with a fly-in here (the sweep is the thing under test, not
-  // the deal), so wait for the cards to stop moving before sampling angles.
+  // A `?state=` board is placed rather than dealt, so nothing flies in and the only
+  // thing moving is each card's tilt settling. Sampling an angle through that reads as
+  // the sweep turning cards it hasn't reached, so wait the board out (`settleBoard`).
   await settleBoard(page)
 }
 

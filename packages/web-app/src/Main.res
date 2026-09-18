@@ -788,12 +788,14 @@ let gameScene = (game: Game.t) => {
     },
     ~options,
     ~tiltEnabled,
-    // Skip the opening-deal fly-in when the URL asks for `?animate=off`, so the
-    // board is shown already dealt (the same instant placement reduced-motion gives).
-    // A shared board skips the fly-in too: the cards it deals are about to be
+    // `?animate=off` stills the whole board — every flight, not just the opening
+    // one — so a shot or a scripted run reads a settled position at every step.
+    ~skipFlights=!url.animate,
+    // A shared board skips its opening fly-in alone: the cards it deals are about to be
     // replaced by the shared position, so animating them in only draws the eye to a
-    // board that isn't the one being opened.
-    ~skipDealAnimation=!url.animate || url.shared->Option.isSome,
+    // board that isn't the one being opened. Once that position lands, play is ordinary
+    // play and its moves fly like anyone else's.
+    ~skipDealFlyIn=url.shared->Option.isSome,
     opening,
   )
 }

@@ -40,19 +40,28 @@ export const allowMotion = (page) => page.emulateMedia({ reducedMotion: "no-pref
  * scripts opened with. The deal's fly-in is a Web Animations API flight (see
  * TableScene's `animateDeal`) created on the *first* animation frame, so the two
  * `requestAnimationFrame`s come first — otherwise "no animations running" is
- * trivially true a beat before the deal starts. `?animate=off` skips the flight
- * entirely, in which case this just costs two frames.
+ * trivially true a beat before the deal starts. A board that doesn't fly in —
+ * `?animate=off`, or any opening position that wasn't dealt just now — skips the
+ * flight entirely, in which case this costs two frames and the tilt below.
+ *
+ * **`subtree: true` is what makes this true of a board that never flew.** A card's
+ * hand-placed angle is a `transform` transition on its `.card-art` child, ~0.18s,
+ * and it runs on every board including one whose cards were merely placed. Left out
+ * of the wait it is invisible under a fly-in an order of magnitude longer, and the
+ * only thing still moving without one — so a sweep sampled right after this would
+ * read cards still turning from the deal as cards the sweep turned.
  *
  * Scoped to `.stacking-card` rather than `document.getAnimations()` on purpose:
  * some board states carry a deliberately infinite animation (the rejected-drop
- * pulse), which would never settle. The cap is a backstop for the same reason.
+ * pulse on a zone), which would never settle. The cap is a backstop for the same
+ * reason.
  */
 export async function settleBoard(page) {
   await expect(page.locator(".stacking-card").first()).toBeVisible()
   await page.evaluate(async () => {
     await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)))
     const running = [...document.querySelectorAll(".stacking-card")].flatMap((el) =>
-      el.getAnimations(),
+      el.getAnimations({ subtree: true }),
     )
     await Promise.race([
       Promise.all(running.map((a) => a.finished.catch(() => {}))),
