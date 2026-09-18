@@ -26,6 +26,7 @@ let render = (
   ~onToggleCutoutDebug=() => (),
   ~onToggleDebugLog=() => (),
   ~onShareGame=() => (),
+  ~onClearStored=() => (),
   ~onBackToSettings=() => (),
 ) =>
   Html.create(
@@ -39,6 +40,7 @@ let render = (
       shareEnabled,
       shareStatus,
       onShareGame,
+      onClearStored,
       gameScenes,
       gameScenesOpen,
       debugScenes,
@@ -47,7 +49,23 @@ let render = (
     }),
   )
 
-let shareDesc = screen => screen->textIn(".menu-row--action .menu-row__desc")
+// The screen's own two action rows, each reached by its place in the order the screen
+// puts them in — a test that silently took the first would go on passing while asking
+// about the wrong row. Anchored to the section rather than to the class alone, because
+// a row with nothing at its right-hand end is an action row (`MenuRow.classesFor`) and
+// every scene and state entry inside the disclosures below is one too.
+let share = 0
+let clearData = 1
+
+let actionRow = (screen, which) =>
+  screen->findAll(".menu-section > .menu-row--action")->Array.get(which)
+
+let actionDesc = (screen, which) =>
+  screen
+  ->actionRow(which)
+  ->Option.mapOr("<no such action row>", row => row->textIn(".menu-row__desc"))
+
+let shareDesc = screen => screen->actionDesc(share)
 
 describe("MenuDebugScreen", () => {
   test("offers the two developer toggles", () => {
@@ -78,7 +96,11 @@ describe("MenuDebugScreen", () => {
     // went, shoving the scene lists below it down the panel.
     let screen = render(~shareEnabled=true, ~shareStatus=Some("Link copied to clipboard."))
     expect(screen->shareDesc)->toBe("Link copied to clipboard.")
-    expect(screen->findAll(".menu-row--action .menu-row__desc")->Array.length)->toBe(1)
+    expect(
+      screen
+      ->actionRow(share)
+      ->Option.mapOr(0, row => row->findAll(".menu-row__desc")->Array.length),
+    )->toBe(1)
   })
 
   test("is really disabled with no game to share, and says so", () => {
@@ -87,7 +109,7 @@ describe("MenuDebugScreen", () => {
     let taps = ref(0)
     let screen = render(~shareEnabled=false, ~onShareGame=() => taps := taps.contents + 1)
     expect(screen->shareDesc)->toBe("No game on screen to share.")
-    switch screen->find(".menu-row--action") {
+    switch screen->actionRow(share) {
     | Some(row) =>
       expect(row->hasAttr("disabled"))->toBe(true)
       row->click
@@ -99,8 +121,38 @@ describe("MenuDebugScreen", () => {
   test("shares the game state when the row is live", () => {
     let taps = ref(0)
     let screen = render(~shareEnabled=true, ~onShareGame=() => taps := taps.contents + 1)
-    screen->find(".menu-row--action")->Option.forEach(click)
+    screen->actionRow(share)->Option.forEach(click)
     expect(taps.contents)->toBe(1)
+  })
+
+  test("says what clearing takes with it, since a tap is the last chance to not", () => {
+    // No confirmation stands between the tap and the wipe, so the description is the
+    // whole of the warning — and it has to name the settings as well as the games.
+    expect(render()->actionDesc(clearData))->toBe(
+      "Forget every saved game and setting on this device, then reopen the app.",
+    )
+  })
+
+  test("leaves the clear row live whatever else the screen can offer", () => {
+    // Unlike Share, it depends on nothing being on screen: a scene with no game has
+    // storage to forget just the same.
+    let taps = ref(0)
+    let screen = render(~shareEnabled=false, ~onClearStored=() => taps := taps.contents + 1)
+    switch screen->actionRow(clearData) {
+    | Some(row) =>
+      expect(row->hasAttr("disabled"))->toBe(false)
+      row->click
+      expect(taps.contents)->toBe(1)
+    | None => expect("clear row")->toBe("missing")
+    }
+  })
+
+  test("keeps the destructive row under Share, not above it", () => {
+    // Order is the only thing separating a tap that copies a link from one that
+    // erases the device, so it's pinned rather than left to the reading order.
+    expect(
+      render()->findAll(".menu-section > .menu-row--action .menu-row__label")->Array.map(text),
+    )->toEqual(["Share game state", "Clear saved data"])
   })
 
   test("renders the two groups, scenes first, each with its own entries", () => {

@@ -175,6 +175,7 @@ type msg =
   // travel up inside it and go straight back down to its `update`; what each of them
   // means is that file's business, not this one's.
   | SettingsMsg(MenuSettingsScreen.msg)
+  | ClearStoredState // the Debug screen's "Clear saved data" — forget the device, reopen
   | ToggleCutoutDebug // the menu's safe-area overlay switch (debug)
   | ToggleDebugLog // the Debug screen's console-logging switch
   | SceneActivated(string) // the switcher mounted a scene — which one the menu highlights
@@ -593,6 +594,16 @@ let update = (msg, model) =>
   | SettingsMsg(msg) =>
     let (settings, effect) = MenuSettingsScreen.update(settingsEnv, msg, model.settings)
     (settings === model.settings ? model : {...model, settings}, effect)
+  // No model change, and none is wanted: the effect takes the page with it, so the
+  // next thing on screen is a launch rather than a render of this one. Which is also
+  // why the clear and the relaunch are a pair — see `StoredState`.
+  | ClearStoredState => (
+      model,
+      () => {
+        StoredState.clear()
+        StoredState.relaunch()
+      },
+    )
   | ToggleCutoutDebug =>
     let cutoutDebug = !model.cutoutDebug
     (
@@ -1326,6 +1337,7 @@ let debugScreen = (model, dispatch): MenuDebugScreen.props => {
       })
       ->ignore
     ),
+  onClearStored: () => dispatch(ClearStoredState),
   // Asked afresh on every render: the entry for the scene that's mounted now is the
   // `selected` one, and that's what puts the highlight in the menu.
   gameScenes: switcher.gameScenes(),

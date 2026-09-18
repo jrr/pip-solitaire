@@ -6,7 +6,8 @@
 //     step back up, not all the way out — beside the ✕;
 //   - the **Safe-area overlay** toggle (`cutoutDebug`) and the **Console logging**
 //     toggle (`debugLog` — narrates the UI↔core traffic to the JS console);
-//   - **Share game state** (`ShareLink`), the action row;
+//   - the two action rows: **Share game state** (`ShareLink`) and **Clear saved
+//     data** (`StoredState`);
 //   - the collapsible groups: the
 //     games that aren't the one in the main menu (`gameScenes`, labelled "games"),
 //     the demo scenes (`debugScenes`, "scenes") and the named starting positions
@@ -39,6 +40,12 @@ type props = {
   // description while it's up, so the row doesn't change height as it comes and goes.
   shareStatus: option<string>,
   onShareGame: unit => unit,
+  // "Clear saved data": throw away everything the app has stored on this device and
+  // reopen it, which is the only way to see a first launch without devtools or a new
+  // browser profile. Always live — there is nothing it depends on being on screen,
+  // and storage with nothing in it is a clear that finds nothing rather than a row
+  // that has to go dark.
+  onClearStored: unit => unit,
   // The games that don't have a row in the main menu, one entry each, with the
   // mounted one `selected`. Empty when every game has one, and an empty group isn't
   // placed at all.
@@ -77,6 +84,7 @@ let make = ({
   shareEnabled,
   shareStatus,
   onShareGame,
+  onClearStored,
   gameScenes,
   gameScenesOpen,
   debugScenes,
@@ -111,6 +119,15 @@ let make = ({
         desc={shareDesc(~enabled=shareEnabled, ~status=shareStatus)}
         enabled=shareEnabled
         onClick=onShareGame
+      />
+      // Under Share deliberately: it is the one row here that destroys something, and
+      // the description is the only warning it gets — a tap clears and reloads, with
+      // nothing in between to take it back.
+      <MenuActionRow
+        label="Clear saved data"
+        desc="Forget every saved game and setting on this device, then reopen the app."
+        enabled=true
+        onClick=onClearStored
       />
       // Placed only when there is something in it: an empty `<details>` is a summary
       // that opens onto nothing, and today — one game, the one already in the main
