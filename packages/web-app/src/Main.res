@@ -288,13 +288,15 @@ let closeMenu: ref<unit => unit> = ref(() => ())
 // `select` returns — `onActivate` runs synchronously inside it.
 let keepMenuOpen = ref(false)
 
-// **A deal the board built under the open menu, waiting to be played.** The board hands
-// its opening fly-in over as a thunk rather than playing it (`~onceUncovered`), and the
-// one mount that happens with the menu up — the segment's swap, under `keepMenuOpen` —
-// is the one whose thunk is held here instead of run. Whatever closes the menu runs it
+// **A board mounted under the open menu, waiting to be seen.** The board hands its
+// opening over as a thunk rather than playing it (`~onceUncovered`), and the one mount
+// that happens with the menu up — the segment's swap, under `keepMenuOpen` — is the one
+// whose thunk is held here instead of run. Whatever closes the menu runs it
 // (`releaseHeldDeal`), so the cards a player couldn't see dealt fly in as the pane
-// goes, the way a row tap's do. Cleared as any scene activates: a board torn down
-// with its deal still waiting has nothing left to play.
+// goes, the way a row tap's do, and a fresh deal becomes theirs at that moment rather
+// than as it was built (`gameScene`'s `reveal`). Cleared as any scene activates: a
+// board torn down with its deal still waiting has nothing left to play, and a fresh
+// one never written was never there.
 let heldDeal: ref<option<unit => unit>> = ref(None)
 let releaseHeldDeal = () =>
   switch heldDeal.contents {
@@ -750,10 +752,17 @@ let gameScene = (game: Game.t) => {
   // rather than one mount, which is what makes a swap away to another board and back
   // come home to the game they left instead of re-dealing the link over it.
   let adopted = ref(plainOpen)
+  // **Was this mount's opening dealt where nobody could see it?** The segment's swap
+  // mounts a board under the open menu, and a fresh deal there is a board the player
+  // hasn't met: it writes nothing until the menu goes (`reveal`), and if they cycle on
+  // before then it was never there — the next mount of this scene deals afresh, rather
+  // than resuming a board they only ever saw at rest. A mount's fact, not the scene's
+  // (unlike `adopted`), so every mount starts it false and its opening report settles it.
+  let unseen = ref(false)
   // The one question all three storage decisions below ask (§ Which opens touch
   // storage). A thunk for the same reason `sharedOpen` is: both answers can arrive
   // after the scene was built.
-  let saving = () => canDeal && (adopted.contents || sharedOpen())
+  let saving = () => canDeal && !unseen.contents && (adopted.contents || sharedOpen())
 
   // The moment an addressed board takes over storage, which is a shared game's arrival
   // in miniature. The history needs nothing here — the change that adopted the board
@@ -774,6 +783,20 @@ let gameScene = (game: Game.t) => {
   // mounts (`~publish`, which runs just before that build) and lowered by the report
   // itself, so every deal after it is one the player asked for.
   let openingBuild = ref(true)
+
+  // The menu has gone from over a board dealt behind it: the player has now seen it,
+  // and it is theirs the way any plain deal is. What its opening build would have
+  // written had anyone been looking — the number (`~onDeal` skipped it) and the history
+  // (the sink did) — is written now. Nothing on a board that was seen all along, and
+  // nothing on an addressed board, which a look doesn't adopt any more than it did.
+  let reveal = () =>
+    if unseen.contents {
+      unseen := false
+      if saving() {
+        liveDealSeed.contents->Option.forEach(n => SavedGame.saveSeed(game.id, n))
+        currentHistory()->Option.forEach(saved => SavedGame.save(game.id, saved))
+      }
+    }
 
   // Read when the scene *mounts*, not here where it's built — § Why the read-backs are
   // thunks.
@@ -827,8 +850,10 @@ let gameScene = (game: Game.t) => {
       // publishes controls, not the `Game.t` they were built from.
       liveGame := Some(game)
       // The board this mount opens with is still to come, whichever it turns out to be
-      // (`openingBuild`). Published before it, so this is the moment to say so.
+      // (`openingBuild`). Published before it, so this is the moment to say so — and to
+      // start the mount as one whose board is in view, until that build says otherwise.
       openingBuild := true
+      unseen := false
       if shakeActive.contents {
         board.shake.start()
       }
@@ -862,11 +887,21 @@ let gameScene = (game: Game.t) => {
     ~onDeal=seed => {
       let playerDealt = !openingBuild.contents
       openingBuild := false
+
+      // A board the player dealt for themselves is one they are looking at, whatever the
+      // opening was: a New Deal under the menu closes it in the same breath.
+      if playerDealt {
+        unseen := false
+      }
       publishDeal(
         switch seed {
         | Some(n) =>
           if playerDealt {
             adopt(Some(n))
+          } else if keepMenuOpen.contents {
+            // A fresh deal, and it is the segment's swap that dealt it: behind the
+            // menu, to nobody. Settled before the write below asks `saving()`.
+            unseen := true
           }
           if saving() {
             SavedGame.saveSeed(game.id, n)
@@ -913,9 +948,21 @@ let gameScene = (game: Game.t) => {
     // board that isn't the one being opened. Once that position lands, play is ordinary
     // play and its moves fly like anyone else's.
     ~skipDealFlyIn=url.shared->Option.isSome,
-    // Whether the fly-in can be seen is this side's to say: only the segment's swap
-    // mounts a board under the open menu, and its deal waits there for the menu to go.
-    ~onceUncovered=release => keepMenuOpen.contents ? heldDeal := Some(release) : release(),
+    // Whether the board can be seen is this side's to say: only the segment's swap
+    // mounts one under the open menu, and that board waits there for the menu to go —
+    // its deal unplayed and, if it was fresh, unwritten (`reveal`).
+    ~onceUncovered=release =>
+      if keepMenuOpen.contents {
+        heldDeal :=
+          Some(
+            () => {
+              reveal()
+              release()
+            },
+          )
+      } else {
+        release()
+      },
     opening,
   )
 }

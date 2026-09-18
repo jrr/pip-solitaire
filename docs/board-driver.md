@@ -126,6 +126,11 @@ way of closing the menu can't leave a board with its cards off-stage. `onActivat
 drops the thunk before anything else, since a board torn down with its deal waiting
 has nothing left to play.
 
+The handover is made by every opening build, flights or none, because the driver
+has a second use for the moment: it is when a board dealt behind the menu becomes
+the player's (§ Which opens touch storage, below). A resumed board or a reduced-motion
+one has nothing to play, and still has to be able to say it has been seen.
+
 The board keeps its own guard for the same case from the other side: the held flights
 live in a mount-scope ref that a re-deal or a teardown cancels and empties, and the
 thunk plays *that ref*, so a stale release the driver still holds plays nothing. It
@@ -201,6 +206,17 @@ An addressed board is one they were *sent*, and it writes nothing on sight. It
 opens what it was addressed to and leaves the saved game alone, neither resumed
 nor overwritten, which is what keeps the screenshot report's shots
 side-effect-free.
+
+**A plain deal made behind the menu is nobody's until the menu goes.** The
+segment's swap is the one mount that happens under the open menu, and a fresh deal
+there is a board the player hasn't met. It reports its number and lays its cards out
+like any other, but `saving()` answers no (`unseen`) until the held release runs
+(`reveal`), which then writes the number and the history its opening build would have
+written. Cycle on before that and it was never there: nothing was saved, and the next
+mount of that scene deals afresh — rather than resuming, at rest, a board the player
+only ever saw the menu over. `unseen` is one mount's fact, cleared as the next
+publishes, and any deal the player makes for themselves clears it too, since a New
+Deal under the menu closes it in the same breath.
 
 **An addressed board is adopted the moment the player changes it** — a move
 played, or a board dealt from it (New Deal, Enter seed, Restart). From then on it

@@ -543,10 +543,12 @@ let make = (
   // `#g=` link wears while its real position inflates — where animating the cards in
   // would draw the eye to a board that is about to be replaced.
   ~skipDealFlyIn: bool=false,
-  // The one thing about the opening fly-in the board can't decide: whether anyone can
-  // see it. The deal's flights are built paused and this is handed the thunk that plays
-  // them; the driver runs it at once, or holds it while its chrome covers the board and
-  // runs it when the cover lifts. Omitted, the deal plays as it is built.
+  // The one thing about an opening the board can't decide: whether anyone can see it.
+  // Every opening build lays its cards out, builds the fly-in paused where there is one,
+  // and hands this the thunk that plays it; the driver runs it at once, or holds it while
+  // its chrome covers the board and runs it when the cover lifts — which is also the
+  // driver's moment to treat the board as seen, so the handover is made whether or not
+  // anything flies. Omitted, the deal plays as it is built.
   ~onceUncovered: (unit => unit) => unit=release => release(),
   game: Game.t,
 ): Scene.t => {
@@ -2416,10 +2418,10 @@ let make = (
       // The OS asking for reduced motion and either skip flag are the other three ways
       // out, and all four leave the cards exactly where they were placed.
       //
-      // A pass that *is* made is built paused, every card parked at the origin, and the
-      // driver is handed the thunk that plays it. Usually it plays it on the spot; a
-      // board mounted under the open menu waits, cards out of sight, until the menu
-      // goes — a deal nobody watched is a flourish spent on nothing.
+      // A pass that *is* made is built paused, every card parked at the origin, for
+      // `deal` below to hand the driver. Usually the driver plays it on the spot; a board
+      // mounted under the open menu waits, cards out of sight, until the menu goes — a
+      // deal nobody watched is a flourish spent on nothing.
       let animateDeal = () => {
         let reduceMotion = matchMedia("(prefers-reduced-motion: reduce)")["matches"]
         let cards = dealSequence()
@@ -2452,7 +2454,6 @@ let make = (
               flight->pause
               flight
             })
-          onceUncovered(playHeldDeal)
         }
       }
 
@@ -2467,6 +2468,10 @@ let make = (
           dealPiles()
           animateDeal()
         })
+        // Laid out, and now the driver's to show: the pass plays when it says so. Handed
+        // over even when nothing flies — a resumed board, reduced motion — because the
+        // driver's side of the moment is about the board, not the flourish.
+        onceUncovered(playHeldDeal)
       }
 
       // Re-run the layout for the stage's current size — a resize snaps the

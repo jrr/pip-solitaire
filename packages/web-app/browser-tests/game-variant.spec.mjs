@@ -234,6 +234,59 @@ test("holds a fresh deal's cards off-stage while the menu is up, and deals them 
   await expect(page.locator(".drop-zone__slot--cell")).toHaveCount(2)
 })
 
+// A board dealt behind the menu is nobody's until the menu goes: a plain deal saves as
+// it is built, but one nobody has seen would come back *at rest* on the next visit — a
+// board the player never watched dealt, sitting there as if they had. So its writes wait
+// on the same release as its flights (`Main`'s `reveal`), and cycling on past it leaves
+// nothing behind: the next visit deals afresh, parked and paused like the first.
+test("keeps only the board the menu closed on, and deals an unseen one afresh", async ({
+  page,
+}) => {
+  await allowMotion(page)
+  await page.goto("/")
+  await settleBoard(page)
+  await openMenu(page)
+  await showTheGames(page)
+
+  const dealt = () =>
+    page.evaluate(() => {
+      const cards = [...document.querySelectorAll(".stacking-card")]
+      const paused = cards.flatMap((el) => el.getAnimations()).filter((a) => a.playState === "paused")
+      return { cards: cards.length, paused: paused.length }
+    })
+
+  // Round one: Mini and Micro each deal behind the menu and are cycled past unseen.
+  await sizes(page).click()
+  await expect(onTheTable(page)).toContainText("Mini FreeCell")
+  const first = await dealt()
+  expect(first.paused).toBe(first.cards)
+  await sizes(page).click()
+  await expect(onTheTable(page)).toContainText("Micro FreeCell")
+  await sizes(page).click()
+  await expect(onTheTable(page)).toHaveText(/^FreeCell/)
+
+  // Round two: Mini was never kept, so it deals again — parked, not resumed at rest.
+  await sizes(page).click()
+  await expect(onTheTable(page)).toContainText("Mini FreeCell")
+  const again = await dealt()
+  expect(again.paused).toBe(again.cards)
+
+  // Closing the menu on it is what keeps it: the deal plays, and the board is now the
+  // one this size comes back to.
+  await page.getByRole("button", { name: "Close menu" }).click()
+  await settleBoard(page)
+  await openMenu(page)
+  const kept = await menuSeed(page).textContent()
+  await sizes(page).click()
+  await expect(onTheTable(page)).toContainText("Micro FreeCell")
+  await sizes(page).click()
+  await expect(onTheTable(page)).toHaveText(/^FreeCell/)
+  await sizes(page).click()
+  await expect(onTheTable(page)).toContainText("Mini FreeCell")
+  await expect(menuSeed(page)).toHaveText(kept)
+  expect((await dealt()).paused).toBe(0)
+})
+
 // A trip through the sizes is a trip through three mounts of the family's scenes, and
 // the board a player left has to be waiting when they come back to it. The link is what
 // makes this worth a test of its own: a `?seed=` board opens on a deal fixed for the

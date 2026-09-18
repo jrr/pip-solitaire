@@ -475,6 +475,32 @@ describe("TableScene opening fly-in", () => {
     expect(after.contents)->toEqual((52, 0))
   })
 
+  test("a board with nothing to fly hands its opening over all the same", () => {
+    // The driver's side of the handover is about the board being seen, not the
+    // flourish: a board it holds back under the menu is written to storage when the
+    // menu goes, and that has to happen for a board that arrived quietly too — a
+    // shared link's scaffolding here, reduced motion on a phone.
+    flushFrames()
+    let handovers = ref(0)
+    flightsDuring(
+      () => {
+        let container = host("div")
+        let scene = TableScene.make(
+          ~onceUncovered=release => {
+            handovers := handovers.contents + 1
+            release()
+          },
+          ~skipDealFlyIn=true,
+          game,
+        )
+        let teardown = scene.mount(container)
+        flushFrames()
+        teardown()
+      },
+    )->ignore
+    expect(handovers.contents)->toBe(1)
+  })
+
   test("a scene torn down with its deal still waiting cancels it", () => {
     flushFrames()
     let (onceUncovered, _release) = holdingRelease()
