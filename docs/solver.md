@@ -105,6 +105,7 @@ core's own shuffle, not Microsoft's numbering. "Moves" counts moves to the
 |---|---|---|---|---|---|---|
 | 2026-08-29 | 1–1000 | 1000/1000 | 101 ms | 54 | #582 at 7.2 s | Node v26.7.0, CI runner |
 | 2026-09-10 | 1–1000 | 1000/1000 | 62 ms | 54 | #582 at 4.6 s | Node v26.7.0, Apple Silicon laptop |
+| 2026-09-19 | 1–1000 | 1000/1000 | 107 ms | 54 | #582 at 7.4 s | Node v26.7.0, CI runner |
 
 **Simple Simon.** "Unwinnable" is the deals the search *proved* have no line
 (`exhausted`); "unsolved" is the ones the ladder gave up on, which is the number
@@ -114,6 +115,16 @@ a heuristic change is trying to reduce.
 |---|---|---|---|---|---|---|---|---|
 | 2026-09-10 | 1–1000 | 941/1000 | 54 | 5 | 458 ms | 85 | #964 at 13.2 s | Node v26.7.0, Apple Silicon laptop |
 
+**Spiderette · 4 suits**, over 1–200 rather than the thousand: a deal the ladder
+gives up on costs it the whole budget, so this soak is half an hour where Simple
+Simon's is eight minutes. The unsolved count is the number to beat, and unlike
+every other board here it is not zero — `mise run solve` exits non-zero on this
+board today.
+
+| Date | Deals | Solved | Unwinnable | Unsolved | Mean | Mean moves | Worst | Environment |
+|---|---|---|---|---|---|---|---|---|
+| 2026-09-19 | 1–200 | 159/200 | 8 | 33 | 5.4 s | 105 | #147 at 38.6 s | Node v26.7.0, CI runner |
+
 **Mini and Micro**, under FreeCell's law and its weights. Every deal is
 *answered* — the ladder's first rung either finds a line or empties its frontier
 — so the number to watch here is "unsolved", and it is zero.
@@ -122,6 +133,8 @@ a heuristic change is trying to reduce.
 |---|---|---|---|---|---|---|---|---|---|
 | 2026-09-17 | Mini | 1–1000 | 992/1000 | 8 | 0 | <1 ms | 11 | #10 at 49 ms | Node v26.7.0, CI runner |
 | 2026-09-17 | Micro | 1–1000 | 981/1000 | 19 | 0 | <1 ms | 10 | #699 at 8 ms | Node v26.7.0, CI runner |
+| 2026-09-19 | Mini | 1–1000 | 992/1000 | 8 | 0 | <1 ms | 11 | #10 at 38 ms | Node v26.7.0, CI runner |
+| 2026-09-19 | Micro | 1–1000 | 981/1000 | 19 | 0 | <1 ms | 10 | #699 at 7 ms | Node v26.7.0, CI runner |
 
 Over deals 1–200 that is 198 and 196 solved — the same counts `Game.res` records
 from an exhaustive single-card search when it chose two free cells for each
@@ -177,9 +190,13 @@ stock is out is weighed as the Simple Simon board it has become.
 **`stock` is not a rounding term.** On the opening of deal #1, dealing a row
 costs 46 under Simple Simon's weights — seven cards land on seven columns and
 land mostly as seams, so by every other term the board just got worse. A search
-weighed that way never deals at all: it spends its whole budget tidying a board
+weighed that way barely deals at all: it spends its whole budget tidying a board
 it can only win by dealing. Charging 5 a card pays back 35 of the 46, which is
 what makes "get the row down" worth the mess it makes.
+
+Measured rather than argued: with the term at zero, deals 1–5 come back 1 solved
+and 4 given up on at 16 s each; with it at 5 the same five come back 4 solved,
+and the one that doesn't (#3) is one the whole ladder can't crack either way.
 
 The weights are three named records (`Solver.freecellWeights`,
 `Solver.simonWeights`, `Solver.spideretteWeights`) that `search` takes as an
