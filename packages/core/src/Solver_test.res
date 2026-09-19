@@ -370,11 +370,15 @@ describe("Solver", () => {
     )
   })
 
-  // Spiderette · 4 suits: Simple Simon's law with twenty-four cards still to come.
-  // What is new to the search is a move that deals, so what's pinned is that it takes
-  // one when it should, that the line still plays move-for-move against the reducer,
-  // and that a step that deals can say which cards it dropped — an animating driver
-  // has no other way to know, since the action names none.
+  // Spiderette: Simple Simon's law with twenty-four cards still to come. What is new to
+  // the search is a move that deals, so what's pinned is that it takes one when it
+  // should, that the line still plays move-for-move against the reducer, and that a step
+  // that deals can say which cards it dropped — an animating driver has no other way to
+  // know, since the action names none.
+  //
+  // The four-suit pack for those, because the deal is what they are about and every pack
+  // deals alike. The repeated packs get a run of their own below, for the one thing only
+  // they can say.
   describe("Spiderette", () => {
     let game = Game.spiderette4Deal(~seed=1)
     let opening = GameState.initial(game)
@@ -439,6 +443,53 @@ describe("Solver", () => {
           expect(cost(weights))->toBe(cost(Solver.simonWeights) - 7 * weights.stock)
           expect(cost(weights) < cost(Solver.simonWeights) / 3)->toBe(true)
         },
+    )
+
+    // The packs where the same face is on the table more than once. The model collapses
+    // the copies — both Sevens of Spades are one int — so what has to be shown is that a
+    // *plan* made on the collapsed board still names real cards: every step is an action
+    // the reducer takes, on a board where naming the wrong Seven would be refused or
+    // would move the other one. And the win is the model's own, since a suit with four
+    // runs to send home is the case `found` had to start counting for.
+    testWithin(
+      "plays a repeated pack out, each step naming a card the reducer will move",
+      () => {
+        let problems = []
+        [Game.spiderette1Deal(~seed=1), Game.spideretteDeal(~seed=1)]->Array.forEach(
+          game => {
+            let opening = GameState.initial(game)
+            switch Solver.autoplay(~game, opening) {
+            | Solver.UnknownBoard => problems->Array.push(`${game.id}: not a board it read`)
+            | Solver.NoLine | Solver.Unwinnable =>
+              problems->Array.push(`${game.id}: deal 1 went unplayed`)
+            | Solver.Played({steps}) =>
+              let before = ref(opening)
+              steps->Array.forEachWithIndex(
+                (step: Solver.played, i) => {
+                  switch Reducer.reduce(~game, before.contents, step.action) {
+                  | Error(_) =>
+                    problems->Array.push(
+                      `${game.id} step ${Int.toString(i)}: the reducer refused it`,
+                    )
+                  | Ok(next) =>
+                    if !GameState.equal(settle(~game, next), step.state) {
+                      problems->Array.push(
+                        `${game.id} step ${Int.toString(i)}: the state doesn't follow`,
+                      )
+                    }
+                  }
+                  before := step.state
+                },
+              )
+              if !GameState.hasWon(game, before.contents) {
+                problems->Array.push(`${game.id}: the line ended short of the win`)
+              }
+            }
+          },
+        )
+        expect(problems)->toEqual([])
+      },
+      ~timeout=120_000,
     )
   })
 

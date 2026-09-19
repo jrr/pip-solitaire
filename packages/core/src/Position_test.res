@@ -362,21 +362,17 @@ describe("Position under Simple Simon", () => {
 
   test("the law is read off the rules, and the shape is checked apart from it", () => {
     // Spiderette plays by Simple Simon's laws, so the law reads the same on all three
-    // of its packs — and the standard pack is a board the model holds, stock and all.
-    // The two-suit variant is refused anyway, on the repeated cards: two Sevens of
-    // Spades pack to one int. What is *not* a refusal is a board of another size:
-    // Mini reads under the same law as FreeCell and packs, counts and pack and all.
-    expect(Position.lawOf(Game.spiderette))->toEqual(Some(Position.SimpleSimon))
-    expect(
-      Position.ofGameState(~game=Game.spiderette, GameState.initial(Game.spiderette)),
-    )->toEqual(None)
-    expect(Position.lawOf(Game.spiderette4))->toEqual(Some(Position.SimpleSimon))
-    expect(
-      Position.ofGameState(
-        ~game=Game.spiderette4,
-        GameState.initial(Game.spiderette4),
-      )->Option.isSome,
-    )->toBe(true)
+    // of its packs, and all three are boards the model holds — stock, repeated cards
+    // and all. What is *not* a refusal either is a board of another size: Mini reads
+    // under the same law as FreeCell and packs, counts and pack and all.
+    [Game.spiderette1, Game.spiderette, Game.spiderette4]->Array.forEach(
+      board => {
+        expect(Position.lawOf(board))->toEqual(Some(Position.SimpleSimon))
+        expect(Position.ofGameState(~game=board, GameState.initial(board))->Option.isSome)->toBe(
+          true,
+        )
+      },
+    )
     expect(Position.lawOf(Game.mini))->toEqual(Some(Position.FreeCell))
     expect(
       Position.ofGameState(~game=Game.mini, GameState.initial(Game.mini))->Option.isSome,
@@ -743,12 +739,12 @@ describe("Position on a short pack", () => {
       Position.ofGameState(~game=Game.micro, GameState.initial(Game.micro)),
     ) {
     | (Some(mini), Some(micro)) =>
-      expect(mini.pack)->toEqual({Position.suits: [0, 1, 2, 3], ranks: 5, size: 20})
+      expect(mini.pack)->toEqual({Position.suits: [0, 1, 2, 3], ranks: 5, size: 20, copies: 1})
       expect(mini.cells)->toEqual([-1, -1])
       expect(Array.length(mini.casc))->toBe(4)
       // Micro's two suits keep their numbers from the full pack — ♠ 0 and ♥ 1 — so
       // `isRed` and `suitOf` read a short deck with no case of their own.
-      expect(micro.pack)->toEqual({Position.suits: [0, 1], ranks: 8, size: 16})
+      expect(micro.pack)->toEqual({Position.suits: [0, 1], ranks: 8, size: 16, copies: 1})
       expect(
         micro.casc
         ->Array.flatMap(pile => pile)
@@ -819,9 +815,9 @@ describe("Position on a short pack", () => {
 // deal: whether the model offers one exactly when the reducer would take one, and
 // whether a row lands where the reducer lands it.
 //
-// The standard pack, because it is the one the model holds. The other two variants
-// repeat cards and two copies of a card pack to one int, which `ofGameState` refuses
-// for reasons that have nothing to do with the stock.
+// The standard pack, because the deal is all these ask about and one pack answers it.
+// What the other two variants add — the same card twice on the table — is the block
+// after this one.
 describe("Position with a stock to deal from", () => {
   let game = Game.spiderette4Deal(~seed=1)
   let opening = GameState.initial(game)
@@ -956,4 +952,79 @@ describe("Position with a stock to deal from", () => {
     },
     ~timeout=120_000,
   )
+})
+
+// A board where the same face sits on the table more than once — Spiderette · 1 suit is
+// ♠ taken four times, · 2 suits is ♠♥ taken twice. The packing **collapses the copies
+// deliberately**: both Sevens of Spades are the int 6, because two boards differing only
+// in which of them sits where are the same position and `key` already sorts to say so.
+//
+// So these ask about the one place the collapse would lose something real. `found` is
+// four wide and indexed by suit, and a suit that repeats has several runs to put there
+// — which works exactly as long as the entry counts *cards home* and `collectRuns` adds
+// to it. Assigning `ranks` would leave a board with four ♠ runs collected reading as
+// one, and a won game never winning.
+describe("Position on a pack that repeats a card", () => {
+  let cascadeAt = (game, k) => Game.pileIndices(game, Game.Cascade)->Array.getUnsafe(k)
+
+  test("a suit's runs add up, and the last of them wins the board in both models", () => {
+    let disagreements = []
+    // `Scenario.spideretteAlmostWon` collects every run but the last, and leaves that
+    // one's King→Two on the first cascade with its Ace alone on the second: one drag
+    // completes it, and collecting it is the win. Its `found` before the drag is the
+    // assertion — three runs of one suit read as 39 only if they were added.
+    [
+      (Game.spiderette1Deal(~seed=1), [39, 0, 0, 0], [52, 0, 0, 0]),
+      (Game.spideretteDeal(~seed=1), [26, 13, 0, 0], [26, 26, 0, 0]),
+    ]->Array.forEach(
+      ((game, before, after)) => {
+        let almost = Scenario.spideretteAlmostWon(game)
+        let ace = GameState.topOf(almost, cascadeAt(game, 1))->Option.getOrThrow
+        let drag = Reducer.Move({card: ace, to: Reducer.ToPile(cascadeAt(game, 0))})
+        let play = Position.Play({
+          n: 1,
+          source: Position.FromColumn(1),
+          destination: Position.ToColumn(0),
+          card: Position.idOf(ace),
+        })
+        switch (Position.ofGameState(~game, almost), Reducer.reduce(~game, almost, drag)) {
+        | (None, _) => disagreements->Array.push(`${game.id}: not a board the model reads`)
+        | (_, Error(_)) => disagreements->Array.push(`${game.id}: the reducer refused the drag`)
+        | (Some(position), Ok(dragged)) =>
+          expect(position.found)->toEqual(before)
+          expect(Position.foundationTotal(position))->toBe(before->Array.reduce(0, (a, b) => a + b))
+          expect(Position.hasWon(position))->toBe(false)
+          expect(GameState.hasWon(game, almost))->toBe(false)
+
+          // The plan has to be a move the board would take, on a pack where `cardOf`
+          // can't name which copy the plan meant.
+          if !(Position.legalMoves(position)->Array.some(offered => offered == play)) {
+            disagreements->Array.push(`${game.id}: the model doesn't offer the drag`)
+          }
+          if Position.toAction(~game, almost, play) != Some(drag) {
+            disagreements->Array.push(`${game.id}: toAction resolves the drag to another card`)
+          }
+
+          let (settled, _moved) = Reducer.autoCollect(~game, dragged)
+          let mirrored = Position.applyMove(position, play)
+          expect(mirrored.found)->toEqual(after)
+          expect(Position.foundationTotal(mirrored))->toBe(mirrored.pack.size)
+          expect(Position.hasWon(mirrored))->toBe(true)
+          expect(GameState.hasWon(game, settled))->toBe(true)
+        }
+      },
+    )
+    expect(disagreements)->toEqual([])
+  })
+
+  test("a repeated pack is refused under FreeCell's law, where `found` is a rank", () => {
+    // The collapse costs nothing under Simple Simon's law because `found` counts runs
+    // there. FreeCell's law reads the same entry as the rank its foundation has climbed
+    // to — a second copy would carry it past the King — so the refusal stays, and stays
+    // where the reading it protects is.
+    let repeated: Cards.deck = {suits: Cards.suits, ranks: Cards.ranks, copies: 2}
+    let doubled = {...Game.freecell, deck: repeated}
+    expect(Position.lawOf(doubled))->toEqual(Some(Position.FreeCell))
+    expect(Position.ofGameState(~game=doubled, GameState.initial(doubled)))->toEqual(None)
+  })
 })

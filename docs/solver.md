@@ -83,6 +83,8 @@ mise run solve -- --quiet 1-1000  # a soak: just the summary line
 mise run solve -- --game simplesimon 1-1000 --quiet   # the other law
 mise run solve -- --game mini --quiet 1-1000          # the short packs
 mise run solve -- --game spiderette4 --quiet 1-200    # the board that deals
+mise run solve -- --game spiderette1 --quiet 1-200    # …and its repeated packs
+mise run solve -- --game spiderette --quiet 1-200
 ```
 
 `mise run solve` is the solver with nothing attached — no browser, no bundle, no
@@ -291,19 +293,31 @@ same way and simply leaves gaps: Micro's sixteen cards are ♠A…♠8 at 0…7 
 board — sparse ids cost a few bytes and leave every predicate alone. A denser
 numbering breaks all three at once.
 
+**A repeated pack collapses onto the same numbering, on purpose.** Spiderette · 1
+suit is ♠ taken four times, so both Sevens of Spades are the int 6 — and two
+boards differing only in which of them sits where *are* the same position, which
+is the same thing `Position.key` says when it sorts the cells and the columns.
+What the collapse would lose is one fact and the packing keeps it two ways:
+`pack.copies` says how many runs there are to send home (so `pack.size` is
+`suits × ranks × copies`), and `found` **counts cards home** rather than naming a
+rank, so `collectRuns` adds a run's worth to a suit's entry instead of assigning
+one. Where a copy genuinely has to be told from its twin is on the real board, and
+`toAction` gets there by carrying the cards a move lifts out of the live pile
+rather than rebuilding them from the int.
+
 `Position.lawOf` reads a `Game.t`'s law off its rules — the cascade rule, the
 run limit, the collect policy, whether the foundations are sealed — and
 `ofGameState` then reads the board: **the counts are the board's own**, and the
 deck it carries is the pack. What is still refused is only what the packing
 genuinely can't say — a second stock (`Reducer.stockOf` deals from the first and
-the rest would sit there unplayable), a card loose on the table, a second copy of
-a card (two copies pack to one int), ranks that don't run up from the Ace (a
-foundation's *length* is read as the rank it has climbed to), fewer foundations
-than the deck has suits, and a card face down anywhere but in a column or the
-stock (a hidden card in a cell, or a column with nothing showing, is a board
-whose top card no predicate could name). Spiderette · 4 suits is refused on
-none of it; its one- and two-suit variants are refused on the repeated cards,
-which is a different step. Mini and Micro are refused on none either.
+the rest would sit there unplayable), a card loose on the table, a repeated pack
+*under FreeCell's law* (`found` is a rank there, and a second copy would carry it
+past the King), ranks that don't run up from the Ace (a foundation's *length* is
+read as the rank it has climbed to), fewer foundations than the deck has runs to
+send home, and a card face down anywhere but in a column or the stock (a hidden
+card in a cell, or a column with nothing showing, is a board whose top card no
+predicate could name). All three Spiderettes are refused on none of it, and
+neither are Mini and Micro.
 
 The packing exists for one reason: **a search asks "and then what?" hundreds of
 thousands of times per deal**, and the honest `GameState` transition — which
