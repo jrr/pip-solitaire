@@ -223,6 +223,35 @@ test("a drag that completes the last run flies it home and wins", async ({ page 
   await expect(page.getByRole("button", { name: "Finish" })).toHaveCount(0)
 })
 
+// Autoplay, on the one board whose plan holds a move that isn't a drag. `Solver_test`
+// pins the line core finds; what only a browser can say is that the board takes a
+// dealt row *from the solver* the way it takes one from a tap — four of them, and the
+// stock empty at the end, because a Spiderette board can't be won any other way.
+//
+// The four-suit pack, since that is the variant the solver models (`docs/solver.md` §
+// The packed position), and `seed=1` so the line is the same one every run.
+test("autoplay plays a four-suit deal out, dealing the stock as it goes", async ({ page }) => {
+  // The search thinks for about a second, then ninety-odd moves play out and the last
+  // runs fly home — more than the suite's default patience.
+  test.setTimeout(180_000)
+  await page.goto("/?game=spiderette4&seed=1&animate=off")
+  await settle(page)
+  await expect(stock(page)).toHaveCount(24)
+  await expect(page.locator(".win-overlay")).toHaveCount(0)
+
+  await page.keyboard.press("Backquote")
+  await expect(page.locator("#debug-console-input")).toBeFocused()
+  await page.keyboard.type("autoplay")
+  await page.keyboard.press("Enter")
+
+  await expect(page.locator(".win-overlay")).toHaveCount(1, { timeout: 120_000 })
+  // Every card reached the tableau to be collected from it, so the stock is out and
+  // the deals are in the play-by-play under the verb a typed one uses.
+  await expect(stock(page)).toHaveCount(0)
+  const narrated = page.locator("#debug-console-lines li")
+  expect(await narrated.filter({ hasText: "draw" }).count()).toBeGreaterThan(0)
+})
+
 // The deep column, in a window too short for it: the fan is compressed to stay on the
 // board (`geometry.spec.mjs` measures it), and what has to still hold is that its zone
 // grew with it — a drop on the last card of twenty lands, rather than falling short
