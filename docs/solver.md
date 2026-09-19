@@ -114,6 +114,7 @@ a heuristic change is trying to reduce.
 | Date | Deals | Solved | Unwinnable | Unsolved | Mean | Mean moves | Worst | Environment |
 |---|---|---|---|---|---|---|---|---|
 | 2026-09-10 | 1–1000 | 941/1000 | 54 | 5 | 458 ms | 85 | #964 at 13.2 s | Node v26.7.0, Apple Silicon laptop |
+| 2026-09-19 | 1–1000 | 941/1000 | 54 | 5 | 732 ms | 85 | #964 at 20.8 s | Node v26.7.0, CI runner |
 
 **Spiderette · 4 suits**, over 1–200 rather than the thousand: a deal the ladder
 gives up on costs it the whole budget, so this soak is half an hour where Simple
