@@ -1333,10 +1333,20 @@ describe("Game", () => {
     )
 
     test(
-      "the solver declines it rather than mis-reading a board it can't model",
+      "the model reads it, both Sevens of Spades packing to the one int",
       () => {
-        expect(Position.ofGameState(~game=board, opening)->Option.isNone)->toBe(true)
-        expect(Solver.autoplay(~game=board, opening))->toEqual(Solver.UnknownBoard)
+        switch Position.ofGameState(~game=board, opening) {
+        | None => expect("the two-suit board packs")->toBe("but it didn't")
+        | Some(position) =>
+          // The pack carries what the collapse loses: two copies, so 52 cards and four
+          // runs to send home rather than the two a ♠♥ deck would otherwise imply.
+          expect(position.pack)->toEqual({
+            Position.suits: [0, 1],
+            ranks: 13,
+            size: 52,
+            copies: 2,
+          })
+        }
         // Nothing on it is ever finishable by foundation moves: the foundations take
         // only what the game collects.
         expect(Reducer.canFinish(~game=board, opening))->toBe(false)

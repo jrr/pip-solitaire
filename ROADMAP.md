@@ -221,6 +221,7 @@ Depends on the card table and the FreeCell rules.
 
 - A second variant (Klondike) reusing `core`.
 - Shareable/numbered deals, timer, and stats.
-- Autosolve or hint.
+- ~~Autosolve or hint.~~ **Done** — `core`'s `Solver` plans every board the picker
+  offers, and both front ends spend it as `hint` and `autoplay` (`docs/solver.md`).
 - Keyboard play and accessibility.
 - Playwright end-to-end tests for the drag interactions.

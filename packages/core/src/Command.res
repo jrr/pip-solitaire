@@ -739,7 +739,7 @@ let describeRejection = (err: Reducer.moveError, ~action: Reducer.action): strin
 // solver for the reason every other refusal in this module is: it's what a *front
 // end* says to someone who typed something, and a terminal and a panel saying it
 // differently would be two commands wearing one name.
-let autoplayUnknownBoard = "Autoplay plays FreeCell — full, Mini or Micro — Simple Simon, and Spiderette on the four-suit pack; this board isn't one it knows."
+let autoplayUnknownBoard = "Autoplay plays every board the game deals — FreeCell full, Mini or Micro, Simple Simon, and all three Spiderettes; this board isn't one of them."
 
 let autoplayNoLine = "Autoplay couldn't find a way to win from here."
 

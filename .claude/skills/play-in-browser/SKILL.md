@@ -15,7 +15,7 @@ The machinery is in three parts. Two of them live in
 | part | where | what it does |
 | --- | --- | --- |
 | eyes | `autoplay/read-board.mjs` | reads the board off the DOM: zone boxes, card `aria-label`s, `settle()`, and the `Position` it all adds up to |
-| brain | `core`'s `Position` + `Solver` | the rules, and a solver that plans to a finishable board — in core, not here (#290). Three boards: FreeCell, Simple Simon, and four-suit Spiderette, whose stock the search deals from |
+| brain | `core`'s `Position` + `Solver` | the rules, and a solver that plans to a finishable board — in core, not here (#290). Every board the picker offers: FreeCell, Simple Simon, and Spiderette on all three of its packs, whose stock the search deals from |
 | hands | `autoplay/autoplay.mjs` | `playGame()` and `dragMove()` — a planned move as a real drag, then look again |
 
 The brain used to be a JavaScript mirror of core's rules kept beside the other
@@ -105,7 +105,7 @@ Query parameters, all documented in `src/platform/AppUrl.res`:
 - `?game=freecell` — open a game by id (`freecell`, `mini`, `micro`, `simplesimon`,
   `spiderette1`, `spiderette`, `spiderette4`). `playGame()` knows FreeCell and
   Simple Simon (`playGame(page, { game: "simplesimon", seed })`). The solver plans
-  four-suit Spiderette too, but this harness can't play it — `read-board.mjs` says
+  every Spiderette too, but this harness can't play them — `read-board.mjs` says
   why, and the in-app `autoplay` command plays those instead. The other boards are
   played by hand — `browser-tests/lib/play-line.mjs` drags a recorded line, and a
   tap on Spiderette's stock deals the next row.

@@ -18,6 +18,13 @@ open Card
 // the same way and simply leaves gaps — a Micro board's sixteen cards are still
 // ♠A…♠8 at 0…7 and ♥A…♥8 at 13…20. A denser numbering would save a few bytes of
 // scratch array and cost `isRed`, `suitOf` and `found`'s indexing all at once.
+//
+// **A repeated pack collapses onto it, deliberately.** Spiderette · 1 suit is ♠ taken
+// four times, so both Sevens of Spades are the int 6 — and that is the right answer,
+// because two boards differing only in which of them sits where are the same position
+// and `key` already sorts the cells and the columns to say so. Where a copy has to be
+// told from its twin is on the *real* board, and `toAction` gets there by carrying the
+// cards a move lifts out of the live pile rather than rebuilding them from the int.
 
 let suitIndex = (suit: suit): int =>
   switch suit {
@@ -100,6 +107,10 @@ type pack = {
   suits: array<int>, // the suit numbers in play, in `suitOf`'s numbering
   ranks: int, // how many ranks, Ace upward — so also the rank a foundation is done at
   size: int, // how many cards are on the board altogether
+  // How many times over the pack is taken. Not a count of *card numbers* — a repeated
+  // pack collapses onto the same ints — but of the runs there are to send home, which
+  // is what `size` and the foundation count are multiplied by.
+  copies: int,
 }
 
 // Naïve on purpose: what a deck *would* pack to. Whether it may — one copy of each
@@ -108,7 +119,8 @@ type pack = {
 let packOf = (deck: Cards.deck): pack => {
   suits: deck.suits->Array.map(suitIndex),
   ranks: Array.length(deck.ranks),
-  size: Array.length(deck.suits) * Array.length(deck.ranks),
+  size: Array.length(deck.suits) * Array.length(deck.ranks) * deck.copies,
+  copies: deck.copies,
 }
 
 // The full pack, for a position posed by hand rather than read off a board.
@@ -123,8 +135,11 @@ let standardPack: pack = packOf(Cards.standard)
 // `found` — how many cards of each suit are home, indexed by `suitOf` — four wide
 //   whatever the pack, since a suit keeps its number when the deck is short. Under
 //   FreeCell that's the rank its foundation has climbed to (an ascending same-suit
-//   run, so its top rank *is* its contents); under Simple Simon it's `0` or the
-//   pack's top rank, since a suit's run is collected whole or not at all.
+//   run, so its top rank *is* its contents); under Simple Simon it is a *count of
+//   collected runs* in cards — a whole multiple of the pack's top rank, since a run is
+//   collected whole or not at all, and one suit can complete several on a repeated
+//   pack. A cards-home count is what makes the two readings one number: they differ in
+//   what can be inferred back out of it, and only FreeCell's law ever asks.
 // `casc` — the columns, each bottom-first like `GameState.cardsInPile`.
 // `down` — how many of each column's cards, counted from the bottom, lie face down;
 //   as long as `casc`, and `GameState.faceDown` read over the cascades alone. The
@@ -387,22 +402,36 @@ let topsCompleteRun = (~ranks: int, pile: array<int>): bool => {
 
 // `Reducer.collectRuns`: every column topped by a complete run has it lifted off
 // home. One move can complete two — the run it lands on, and one it uncovers by
-// leaving — so every column is looked at. There is always a foundation free for it:
-// `ofGameState` refuses a board with fewer foundations than the pack has suits.
-// Mutates `s`.
+// leaving — so every column is looked at, and the reducer's own fixpoint is kept
+// because lifting one run can uncover another *in the same column*: a King only ever
+// lands on an empty column, but the deal drops cards wherever it likes, so a pack with
+// four Kings of Spades in it can deal one run straight onto another. There is always a
+// foundation free: `ofGameState` refuses a board with fewer foundations than the pack
+// has runs to send home. Mutates `s`.
+//
+// `found` is *added* to rather than assigned. It counts cards home, and a suit taken
+// four times has four runs to put there — the one thing the packing genuinely can't
+// collapse, since which copy a run was built from is exactly what nothing else here
+// remembers.
 let collectRuns = (s: t): unit => {
   let ranks = s.pack.ranks
-  for col in 0 to Array.length(s.casc) - 1 {
-    let pile = s.casc->Array.getUnsafe(col)
-    if topsCompleteRun(~ranks, pile) {
-      let depth = Array.length(pile)
-      let base = pile->Array.getUnsafe(depth - ranks)
-      s.found->Array.setUnsafe(suitOf(base), ranks)
-      pile->Array.splice(~start=depth - ranks, ~remove=ranks, ~insert=[])
-      s.down->Array.setUnsafe(
-        col,
-        afterLifting(~down=s.down->Array.getUnsafe(col), ~depth, ~n=ranks),
-      )
+  let progressed = ref(true)
+  while progressed.contents {
+    progressed := false
+    for col in 0 to Array.length(s.casc) - 1 {
+      let pile = s.casc->Array.getUnsafe(col)
+      if topsCompleteRun(~ranks, pile) {
+        let depth = Array.length(pile)
+        let base = pile->Array.getUnsafe(depth - ranks)
+        let suit = suitOf(base)
+        s.found->Array.setUnsafe(suit, s.found->Array.getUnsafe(suit) + ranks)
+        pile->Array.splice(~start=depth - ranks, ~remove=ranks, ~insert=[])
+        s.down->Array.setUnsafe(
+          col,
+          afterLifting(~down=s.down->Array.getUnsafe(col), ~depth, ~n=ranks),
+        )
+        progressed := true
+      }
     }
   }
 }
@@ -779,14 +808,15 @@ let lawOf = (game: Game.t): option<law> => {
 //
 // What's left is what the packing genuinely can't say, and each line below is one of
 // them: a second stock (`Reducer.stockOf` deals from the first and the rest would sit
-// there unplayable), a card loose on the table (it would go missing), a second copy of
-// a card (two copies pack to one int), ranks that don't run up from the Ace (a
-// foundation's *length* is read as the rank it has climbed to), a foundation count
-// that isn't the number of suits to send home (a spare foundation could never
-// complete, so `hasWon` and `GameState.hasWon` would disagree about the same board),
-// no column to play on at all — and a face-down card anywhere but in a column or the
-// stock. Any such board gets an honest `None` rather than a position with pieces
-// missing.
+// there unplayable), a card loose on the table (it would go missing), a repeated pack
+// under FreeCell's law (`found` is read there as the rank a foundation has climbed to,
+// and a second copy would carry it past the King — Simple Simon's law counts runs and
+// takes repeats in its stride), ranks that don't run up from the Ace (a foundation's
+// *length* is read as the rank it has climbed to), a foundation count that isn't the
+// number of runs to send home (a spare foundation could never complete, so `hasWon` and
+// `GameState.hasWon` would disagree about the same board), no column to play on at all
+// — and a face-down card anywhere but in a column or the stock. Any such board gets an
+// honest `None` rather than a position with pieces missing.
 //
 // That last line is the shape the rest of the model is written against: face down is
 // a fact about a *column's* lower cards, or about the stock, which is face down in its
@@ -802,6 +832,7 @@ let ofGameState = (~game: Game.t, state: GameState.t): option<t> =>
     let cascadePiles = Game.pileIndices(game, Game.Cascade)
     let stockPiles = Game.pileIndices(game, Game.Stock)
     let deck = game.deck
+    let pack = packOf(deck)
     let hiddenTop = i => {
       let down = GameState.faceDownIn(state, i)
       down > 0 && down >= Array.length(GameState.cardsInPile(state, i))
@@ -813,29 +844,33 @@ let ofGameState = (~game: Game.t, state: GameState.t): option<t> =>
       ) ||
       cascadePiles->Array.some(hiddenTop) ||
       Array.length(state.loose) > 0 ||
-      deck.copies != 1 ||
+      law == FreeCell && pack.copies != 1 ||
       !(deck.ranks->Array.everyWithIndex((rank, i) => Rules.rankValue(rank) == i + 1)) ||
-      Array.length(foundationPiles) != Array.length(deck.suits) ||
+      Array.length(foundationPiles) != Array.length(pack.suits) * pack.copies ||
       Array.length(cascadePiles) == 0
     ) {
       None
     } else {
       let found = [0, 0, 0, 0]
-      // A foundation holds one suit's run, whichever way up, so its top names the
-      // suit and its length says how much of that suit is home.
+      // A foundation holds one suit's run, whichever way up, so its top names the suit
+      // and its length says how many of that suit's cards are on it. Added rather than
+      // assigned, because a repeated pack gives one suit several foundations — and
+      // under FreeCell's law, where `found` is a rank rather than a count, `copies` is
+      // 1 and a suit has the one foundation, so the two readings coincide.
       foundationPiles->Array.forEach(i =>
         switch GameState.topOf(state, i) {
         | Some(card) =>
+          let suit = suitIndex(card.suit)
           found->Array.setUnsafe(
-            suitIndex(card.suit),
-            Array.length(GameState.cardsInPile(state, i)),
+            suit,
+            found->Array.getUnsafe(suit) + Array.length(GameState.cardsInPile(state, i)),
           )
         | None => ()
         }
       )
       Some({
         law,
-        pack: packOf(deck),
+        pack,
         cells: cellPiles->Array.map(i =>
           switch GameState.topOf(state, i) {
           | Some(card) => idOf(card)
@@ -864,6 +899,14 @@ let ofGameState = (~game: Game.t, state: GameState.t): option<t> =>
 // The destination is resolved against the *live* state rather than baked into the
 // move: which foundation pile a suit lives on is a fact about the board being
 // played, not about the plan.
+//
+// **The cards are taken out of the live pile, not rebuilt from the int**, which is what
+// lets a plan made on a repeated pack name a real card: `cardOf(6)` is the *first*
+// Seven of Spades, and on a four-copy board the one the plan meant may be any of them.
+// The two paths that do rebuild — a card leaving a cell, and a card going home — are
+// reachable only under FreeCell's law, which `ofGameState` admits on a single pack
+// alone. A repeated pack that grew free cells, or unsealed foundations, would have to
+// carry the identity through here the way the column path does.
 //
 // A `Deal` asks `Reducer.dealRefusal` itself rather than consulting `canDeal` again.
 // `canDeal` is a mirror and this is the seam the mirror is held against, so the answer
