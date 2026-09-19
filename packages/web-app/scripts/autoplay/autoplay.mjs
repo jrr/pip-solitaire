@@ -165,8 +165,6 @@ export async function playGame(
     if (Position.canFinish(view.state)) {
       log(`  finishable after ${played} moves — pressing Finish`)
       await page.getByRole("button", { name: "Finish" }).click()
-      await page.locator(".win-overlay").waitFor({ timeout: 15_000 })
-      await settle(page)
       break
     }
 
@@ -201,6 +199,20 @@ export async function playGame(
       if (Position.canFinish(step.after) || Position.hasWon(step.after)) break
     }
   }
+
+  // Both ways out of the loop leave the game won but the panel still to come:
+  // the Finish sweep has only just been asked for, and a board that won on its
+  // own — every Simple Simon win, since it has no Finish — read as won while the
+  // last collection was still flying. Either way the victory cascades for six
+  // seconds before the panel eases in (`winPanelDelayMs`, `docs/cascade.md`), so
+  // the wait belongs here, past both exits, or the count below asks too early and
+  // a won deal reports NOT WON. A panel that never rises is the report's answer
+  // to give, not this line's: swallow the timeout and let the count say so.
+  await page
+    .locator(".win-overlay")
+    .waitFor({ timeout: 15_000 })
+    .catch(() => {})
+  await settle(page)
 
   const won = (await page.locator(".win-overlay").count()) > 0
   const title = won ? await page.locator(".win-panel__title").textContent() : null
