@@ -22,6 +22,12 @@ jobs:
       (github.event_name == 'pull_request_review' && contains(github.event.review.body, '@claude') && github.event.review.user.type != 'Bot') ||
       (github.event_name == 'issues' && (contains(github.event.issue.body, '@claude') || contains(github.event.issue.title, '@claude')))
     runs-on: ubuntu-latest
+    # Far above what the work needs, and deliberately so: over 57 real runs in
+    # the three weeks to 2026-09-19 the median was 15 minutes and the 90th
+    # percentile 26, but a solver change that soaked Spiderette took 80. The cap
+    # exists so a wedged run can't hold a runner until the 6h default, not to
+    # bound the agent — if a legitimate soak ever gets cancelled here, raise it.
+    timeout-minutes: 120
     permissions:
       contents: read
       pull-requests: read
@@ -96,6 +102,10 @@ jobs:
       github.event.review.user.type == 'Bot'
     runs-on: ubuntu-latest
     environment: bot-review-approval
+    # The same cap as `claude` above, for the same reason. Safe next to a job
+    # that can sit in "Waiting" for days: the clock starts when a reviewer
+    # approves and the job begins, not when it is queued behind the approval.
+    timeout-minutes: 120
     permissions:
       contents: read
       pull-requests: read
