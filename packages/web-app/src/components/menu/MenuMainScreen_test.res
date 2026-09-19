@@ -168,14 +168,21 @@ describe("MenuMainScreen", () => {
     // — `menu-row--active` plus `aria-current` — on the scene mounted. The switcher
     // builds no DOM of its own, so this is where its rows are pinned. A second game
     // would list beneath the first, which is what this section is a section for.
-    //
-    // Neither row is handed an `onInfo`, so these are the class lists of the plain
-    // row — the shape the list keeps while the Beta features flag is off.
     let taps = []
     let screen = render(
       ~games=[
-        {label: "freecell", selected: true, onSelect: () => taps->Array.push("freecell")},
-        {label: "spider", selected: false, onSelect: () => taps->Array.push("spider")},
+        {
+          label: "freecell",
+          selected: true,
+          onSelect: () => taps->Array.push("freecell"),
+          onInfo: () => (),
+        },
+        {
+          label: "spider",
+          selected: false,
+          onSelect: () => taps->Array.push("spider"),
+          onInfo: () => (),
+        },
       ],
     )
     let rows = screen->findAll("nav .menu-row")
@@ -190,11 +197,9 @@ describe("MenuMainScreen", () => {
     expect(taps)->toEqual(["freecell", "spider"])
   })
 
-  test("gives a game an info button only when it was handed somewhere to go", () => {
-    // The Beta features flag, as this screen sees it: a game with an `onInfo` gets the "i"
-    // beside it, one without gets the plain full-width button it always had. Both
-    // shapes in one render, because the flag is a *list*-wide fact everywhere else and
-    // this is the only place that could quietly make it a per-row one.
+  test("puts an info button beside each game, and each opens its own", () => {
+    // The "i" is handed in with the row, so a crossed wire here would open the wrong
+    // game's screen and look right in either row alone.
     let opened = []
     let screen = render(
       ~games=[
@@ -204,16 +209,20 @@ describe("MenuMainScreen", () => {
           onSelect: () => (),
           onInfo: () => opened->Array.push("FreeCell"),
         },
-        {label: "Simple Simon", selected: false, onSelect: () => ()},
+        {
+          label: "Simple Simon",
+          selected: false,
+          onSelect: () => (),
+          onInfo: () => opened->Array.push("Simple Simon"),
+        },
       ],
     )
     expect(
       screen->findAll("nav .menu-game-row__info")->Array.map(el => el->attrOr("aria-label")),
-    )->toEqual(["About FreeCell"])
+    )->toEqual(["About FreeCell", "About Simple Simon"])
     screen->findAll("nav .menu-game-row__info")->Array.forEach(click)
-    expect(opened)->toEqual(["FreeCell"])
-    // …and the rows themselves are unchanged: two of them, in order, whichever shape
-    // each took.
+    expect(opened)->toEqual(["FreeCell", "Simple Simon"])
+    // …and the rows themselves are unchanged: two of them, in order.
     expect(screen->findAll("nav .menu-row")->Array.map(text))->toEqual(["FreeCell", "Simple Simon"])
   })
 

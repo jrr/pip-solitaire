@@ -1,6 +1,6 @@
 // A game in the menu's **Games** list: the row that mounts it, the variant segment on a
-// game the list offers more than one of, and — behind the feature flag — an "i" beside
-// it that opens the game's info screen.
+// game the list offers more than one of, and an "i" beside it that opens the game's
+// info screen.
 //
 // **They are siblings, never nested.** A button inside a button is invalid markup that
 // browsers rewrite, and the tap on the inner one would reach the outer through
@@ -19,11 +19,6 @@
 // `<span>` inside it is the 18px circle a player sees. Sizing a touch target by what it
 // has to look like is how you end up with either a clumsy mark or a thumb-sized miss,
 // and the two spans here are what let each be judged on its own.
-//
-// `onInfo` absent is the flag off (see `MenuSettingsScreen`'s "Beta features"), and a game
-// the list offers one of has no `variant`; with neither this renders *exactly* what the
-// list rendered before either existed — a bare `<MenuRow>`, no wrapper — so nothing
-// about the plain row's layout depends on a feature being on.
 
 %%raw(`import "./MenuGameRow.css"`)
 
@@ -41,9 +36,8 @@ type props = {
   selected: bool,
   onSelect: unit => unit,
   variant?: variant,
-  // The "i", and what it opens. `None` leaves the row without one — which is the flag
-  // off.
-  onInfo?: unit => unit,
+  // The "i", and what it opens.
+  onInfo: unit => unit,
 }
 
 // The segment: the name button's box carried on, so it takes the row's own class list
@@ -78,31 +72,20 @@ let infoButton = (~label: string, onInfo: unit => unit) =>
     <span className="menu-game-row__badge" ariaHidden="true"> {Html.string("i")} </span>
   </button>
 
-let make = (props: props) => {
-  let row = <MenuRow label={props.label} selected={props.selected} onClick={props.onSelect} />
-  switch (props.variant, props.onInfo) {
-  // Nothing beside the name: no wrapper either. The wrapper is what lays a pair out, so
-  // a row that kept one would be reserving space beside itself for nothing.
-  | (None, None) => row
-  | (variant, onInfo) =>
-    // The wrapper says nothing about which game is on the table — the highlight is the
-    // name button's own, and the segment's. `--segmented` is what the stylesheet joins
-    // the two boxes on, so the class is the presence of the segment and not a second
-    // reading of the props.
-    <div
-      className={variant->Option.isSome
-        ? "menu-game-row menu-game-row--segmented"
-        : "menu-game-row"}
-    >
-      {row}
-      {switch variant {
-      | Some(variant) => variantSegment(~label=props.label, ~selected=props.selected, variant)
-      | None => Html.empty
-      }}
-      {switch onInfo {
-      | Some(onInfo) => infoButton(~label=props.label, onInfo)
-      | None => Html.empty
-      }}
-    </div>
-  }
-}
+// The wrapper says nothing about which game is on the table — the highlight is the name
+// button's own, and the segment's. `--segmented` is what the stylesheet joins the two
+// boxes on, so the class is the presence of the segment and not a second reading of the
+// props.
+let make = (props: props) =>
+  <div
+    className={props.variant->Option.isSome
+      ? "menu-game-row menu-game-row--segmented"
+      : "menu-game-row"}
+  >
+    <MenuRow label={props.label} selected={props.selected} onClick={props.onSelect} />
+    {switch props.variant {
+    | Some(variant) => variantSegment(~label=props.label, ~selected=props.selected, variant)
+    | None => Html.empty
+    }}
+    {infoButton(~label=props.label, props.onInfo)}
+  </div>

@@ -28,13 +28,12 @@
 //     *keeps* the menu open, because the line under the buttons reporting where the
 //     link went is the only confirmation there is, and it's the only game button that
 //     ever renders *disabled* — on a board with no seed to name;
-//   - a **"Games"** section — the games this build offers as top-level rows: FreeCell
-//     and Simple Simon, and behind the Beta features flag the ones still in development. They arrive as `games`, a list of `MenuGameRow.props` the
-//     switcher's scene list is turned into, and are drawn here — data rather than a
-//     node the switcher builds and this screen splices in (see `games` below). A row is
-//     the game's name — with which of it on a segment beside it, where the list offers
-//     more than one (the FreeCell sizes, the Spiderette packs) — and, behind that same
-//     flag, an "i" that opens what that game is;
+//   - a **"Games"** section — the games this build offers as top-level rows. They
+//     arrive as `games`, a list of `MenuGameRow.props` the switcher's scene list is
+//     turned into, and are drawn here — data rather than a node the switcher builds and
+//     this screen splices in (see `games` below). A row is the game's name — with which
+//     of it on a segment beside it, where the list offers more than one (the FreeCell
+//     sizes, the Spiderette packs) — and an "i" that opens what that game is;
 //   - --- the space between top and bottom grows here (`menu-section--bottom`) ---
 //   - **Settings** and **About**, two across at the foot: the pair that leaves the game
 //     in hand behind, each taking over the pane with its own screen. They are siblings
@@ -168,7 +167,7 @@ let make = ({
         selected={game.selected}
         onSelect={game.onSelect}
         variant=?{game.variant}
-        onInfo=?{game.onInfo}
+        onInfo={game.onInfo}
         key={game.label}
       />
     )

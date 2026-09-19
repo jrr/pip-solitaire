@@ -49,13 +49,10 @@ type model = {
   // into the corner wings beside the notch; off clamps every control inside the safe
   // area.
   notchDisplay: bool,
-  // "Beta features": the one switch in front of what's built but not finished. Today it
-  // gates the "i" beside each game in the menu and the screen it opens (`<MenuGameRow>`,
-  // `<MenuGameInfoScreen>`), and the games not yet released into that menu — the short
-  // decks and the Spiderettes — listed there beside FreeCell and Simple Simon instead of
-  // a level down in the Debug screen. A feature flag rather than a preference, which is
-  // why it is hidden and why it defaults off; graduating a feature takes its gate out
-  // and leaves this field standing for the next one.
+  // "Beta features": the one switch in front of what's built but not finished. Nothing
+  // stands behind it today — the switch is kept for the next unfinished feature, which
+  // gates itself on this field and takes the gate out when it graduates. A feature flag
+  // rather than a preference, which is why it is hidden and why it defaults off.
   betaFeatures: bool,
   // The hidden settings and the run of taps that reveals them (`HiddenOptions`). Today
   // that is Wiggle Waggle and Beta features. A hidden row says nothing about whether its
@@ -86,10 +83,9 @@ type request =
 // whole model, so what a setting's write-through *is* stays one line in the writer
 // instead of a branch in here.
 type env = {
-  // The live values the board reads at the moment of use, the app-wide motion state
-  // the debug scene reads, and the flag the scene switcher files its menu rows by.
-  // Idempotent: it publishes the snapshot it's given, so any branch that changed one of
-  // them can simply hand over the new model.
+  // The live values the board reads at the moment of use, and the app-wide motion
+  // state the debug scene reads. Idempotent: it publishes the snapshot it's given, so
+  // any branch that changed one of them can simply hand over the new model.
   publish: model => unit,
   // The board on the table, when there is one. `Main` resolves that; a demo scene has
   // none and the request is dropped.
@@ -110,7 +106,6 @@ let liveEnv = (
   ~options: ref<Options.t>,
   ~tiltEnabled: ref<bool>,
   ~shakeActive: ref<bool>,
-  ~betaFeatures: ref<bool>,
   ~board: request => unit,
 ): env => {
   publish: model => {
@@ -120,9 +115,6 @@ let liveEnv = (
     // debug Motion scene shows it, and the board listens only while `shakeActive`.
     shakeActive := Motion.isOn(model.wiggle)
     Motion.current := model.wiggle
-    // Which games the menu lists, read by the scene switcher rather than by a
-    // component: the rows it files are built outside the chrome's render (see `Main`).
-    betaFeatures := model.betaFeatures
   },
   board,
   root: model => NotchDisplay.setEnabled(model.notchDisplay),
@@ -240,20 +232,14 @@ let update = (env: env, msg, model) =>
         env.persist(model)
       },
     )
-  // A feature flag, so there is nothing for the board to do: most of what it gates is
-  // drawn by the *menu*, which re-renders from this model on the very next pass. It
-  // still publishes, because one thing it gates is read outside the chrome — which games
-  // the switcher files as top-level rows comes off a ref (`Main`'s `betaFeatures`), and
-  // persist alone would leave that half of a flip to land on the launch after it.
+  // A feature flag with nothing behind it, so storing the flip is the whole of the
+  // change. A feature that gates on it decides what more its flip needs: a menu screen
+  // re-renders from this model on the very next pass, but anything read outside the
+  // chrome's render — a ref the switcher files rows by, say — has to be published too,
+  // or that half of a flip lands on the launch after it.
   | ToggleBetaFeatures =>
     let model = {...model, betaFeatures: !model.betaFeatures}
-    (
-      model,
-      () => {
-        env.publish(model)
-        env.persist(model)
-      },
-    )
+    (model, () => env.persist(model))
   // Every tenth tap flips the settings that aren't ready to be found yet into or out of
   // view, and persists that so the gesture is performed once per device rather than once
   // per launch. Hiding them again leaves whatever they switched on running — see
@@ -326,8 +312,7 @@ let make = ({model, dispatch, onClose, onBackToMenu, onOpenDebug}) => <>
         // a player yet, but reachable on a test device. Ten more taps hide the rows
         // again *without* turning any off, so an absent row here doesn't mean its
         // setting is off — Wiggle Waggle can still be jostling a board with no switch
-        // on screen to stop it, and Beta features can still be listing the unfinished
-        // games and putting an "i" beside every game in the menu.
+        // on screen to stop it.
         model.hidden.revealed
           ? <>
               <MenuWiggleRow

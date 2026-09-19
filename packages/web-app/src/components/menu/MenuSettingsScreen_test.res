@@ -242,15 +242,13 @@ describe("MenuSettingsScreen.update", () => {
     expect(log)->toEqual(["publish", "persist"])
   })
 
-  test("publishes the beta flag as well as storing it, and asks nothing of the page", () => {
-    // Most of what it gates is drawn by the menu, which renders from this model anyway —
-    // but the games the menu lists are filed by the scene switcher, outside the chrome's
-    // render, off a ref `publish` writes. Persist alone would leave that half of a flip
-    // to take effect on the *next* launch, and `root` here would mean the CSS had
-    // started reading it too.
+  test("stores the beta flag, and asks nothing of the board or the page", () => {
+    // Nothing is gated on it, so nothing reads it but the switch itself: `publish` here
+    // would mean a ref outside the chrome had started reading it, and `root` that the
+    // CSS had.
     let (next, log, saved) = run(~model=model(), ToggleBetaFeatures)
     expect(next.betaFeatures)->toBe(true)
-    expect(log)->toEqual(["publish", "persist"])
+    expect(log)->toEqual(["persist"])
     expect(saved->Option.map(s => s.betaFeatures))->toEqual(Some(true))
   })
 

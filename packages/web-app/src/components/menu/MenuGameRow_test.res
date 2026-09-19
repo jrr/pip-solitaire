@@ -2,8 +2,13 @@
 open Vitest
 open TestDom
 
-let render = (~label="FreeCell", ~selected=false, ~onSelect=() => (), ~variant=?, ~onInfo=?) =>
-  Html.create(MenuGameRow.make({label, selected, onSelect, ?variant, ?onInfo}))
+let render = (
+  ~label="FreeCell",
+  ~selected=false,
+  ~onSelect=() => (),
+  ~variant=?,
+  ~onInfo=() => (),
+) => Html.create(MenuGameRow.make({label, selected, onSelect, ?variant, onInfo}))
 
 // A row with a segment on it is a row of a real family, so the mark is a real one rather
 // than a string invented here — what the segment shows is `GameVariant`'s claim, tested
@@ -14,14 +19,6 @@ let variantOf = (game, ~onCycle=() => ()): MenuGameRow.variant => {
 }
 
 describe("MenuGameRow", () => {
-  test("is a bare row, with no wrapper at all, while there is nothing beside it", () => {
-    // One pack and the flag off. The wrapper is what lays a pair out, so a row that
-    // kept one would be reserving space beside itself for nothing.
-    let row = render()
-    expect(row->tag)->toBe("BUTTON")
-    expect(row->classes)->toBe("menu-row menu-row--action")
-  })
-
   test("puts the name and the i side by side, as siblings", () => {
     // The whole point of the shape: a button inside a button is markup the browser
     // rewrites, and the inner tap would reach the outer through bubbling — tapping "i"
