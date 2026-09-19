@@ -18,7 +18,7 @@
 
 import { expect, test } from "@playwright/test"
 import { playGame } from "../scripts/autoplay/autoplay.mjs"
-import { quietWin } from "./lib/board.mjs"
+import { allowMotion, quietWin } from "./lib/board.mjs"
 
 // Deal 7 — an ordinary winnable board that the solver takes in its stride, so the
 // test spends its time dragging rather than thinking.
@@ -62,6 +62,14 @@ test("plays Simple Simon deal 1 from the opening layout to the win overlay", asy
   // ~90 drags, each waiting for the board to settle: a Simple Simon line runs to
   // the win itself, and takes a CI runner most of these minutes.
   test.setTimeout(420_000)
+
+  // The one game whose win arrives by collection is also the one where the panel
+  // lags the board: nothing is clicked to bring it up, so the harness sees every
+  // card home while the last run is still flying and the cascade has six seconds
+  // to run. Under `quietWin` that gap closes to nothing and `result.won` is true
+  // however early it's read — which is how a harness that read it too early got
+  // this far. The gap costs a few seconds here and is the whole point of them.
+  await allowMotion(page)
 
   const result = await playGame(page, {
     game: "simplesimon",
