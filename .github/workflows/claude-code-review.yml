@@ -79,6 +79,7 @@ jobs:
           claude_args: |
             --model claude-sonnet-5
             --max-turns 300
+            --append-system-prompt "This job is cancelled the moment its timeout expires, so review in a way that leaves something behind when that happens. Post each finding through mcp__github_inline_comment__create_inline_comment as soon as you have confirmed it, rather than gathering findings and posting them in one pass at the end. A comment you have already written is buffered and gets posted even when the run is cancelled; one you are still holding is lost with the runner. So take the diff in passes, most likely to matter first, and treat each pass as the last one you will be allowed to finish. If a restriction stops you — a denied tool, a blocked host, a file you cannot read — post what you have found so far first, then say in a comment what was refused and what it stopped you reviewing."
             --allowedTools "Bash(mise run:*)" "Bash(mise tasks:*)" "Bash(mise install)" "Bash(gh pr view:*)" "Bash(gh pr diff:*)" "Bash(gh pr comment:*)" "Bash(gh pr list:*)" "Bash(gh issue view:*)" "Bash(gh issue list:*)" "Bash(gh search:*)" "Skill" "mcp__github_inline_comment__create_inline_comment"
 
       # Capture the full JSON session log (all messages, incl. the result
