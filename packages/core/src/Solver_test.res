@@ -349,6 +349,7 @@ describe("Solver", () => {
         column => column->Array.map(code => Position.idOfCode(code)->Option.getOr(-1)),
       ),
       down: columns->Array.map(_ => 0),
+      stock: [],
     }
     let h = p => Solver.heuristic(p, Solver.simonWeights)
 

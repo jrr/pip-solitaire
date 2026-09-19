@@ -136,9 +136,14 @@ let standardPack: pack = packOf(Cards.standard)
 //   isn't, and every move leaves the card it uncovers turned over — so nothing here
 //   has to ask whether the card it is reading can be seen.
 //
+// `stock` — the undealt cards, bottom-first like a column, so the card the next deal
+//   drops first is the *last* of them. Empty on a board that doesn't deal, and the
+//   array is empty rather than absent for the same reason `cells` is. What the search
+//   may read of it is the face-down decision again, and gets the same answer.
+//
 // A plain record of arrays, deliberately: it is also the shape a JavaScript
-// driver builds by hand (`{law, pack, cells, found, casc, down}`) when it reads a
-// board off a rendered page — see `web-app/scripts/autoplay/read-board.mjs`.
+// driver builds by hand (`{law, pack, cells, found, casc, down, stock}`) when it reads
+// a board off a rendered page — see `web-app/scripts/autoplay/read-board.mjs`.
 type t = {
   law: law,
   pack: pack,
@@ -146,6 +151,7 @@ type t = {
   found: array<int>,
   casc: array<array<int>>,
   down: array<int>,
+  stock: array<int>,
 }
 
 // A position of one's own: every array copied, so a caller can mutate the result
@@ -159,6 +165,7 @@ let copy = (s: t): t => {
   found: s.found->Array.copy,
   casc: s.casc->Array.map(pile => pile->Array.copy),
   down: s.down->Array.copy,
+  stock: s.stock->Array.copy,
 }
 
 let emptyCells = (s: t): int => {
@@ -491,6 +498,38 @@ let canFinish = (s: t): bool =>
     }
   }
 
+// --- The deal ----------------------------------------------------------------
+// The one move that isn't a card leaving a pile for another, and the only reason the
+// stock is on the position at all.
+
+// `Reducer.dealRefusal`, read off the packed board. **Two of its three refusals are
+// one here**: a board with no stock and a board whose stock is out are the same empty
+// array, and the packing has no way to tell them apart because it never has to — both
+// answers are "no". The third is the one that makes a deal a choice rather than a
+// formality, and it is the reason the search can't simply deal whenever it may: a row
+// is refused while any cascade stands empty, so "deal now" and "make room first" are
+// different games.
+let canDeal = (s: t): bool =>
+  Array.length(s.stock) > 0 && !(s.casc->Array.some(pile => Array.length(pile) == 0))
+
+// How many cards the next deal drops: one per cascade, or the whole of a stock too
+// short for that — `Reducer.nextDeal`'s count, which is what leaves a seven-column
+// board's last row landing on three columns.
+let dealCount = (s: t): int => Math.Int.min(Array.length(s.stock), Array.length(s.casc))
+
+// `Reducer.dealRow`: the stock's top card onto the first cascade, the next onto the
+// second, and so on while the stock lasts. The face-down counts don't move — a dealt
+// card lands face up above them. Mutates `s`.
+let dealRow = (s: t): unit => {
+  let n = dealCount(s)
+  for col in 0 to n - 1 {
+    switch s.stock->Array.pop {
+    | Some(card) => s.casc->Array.getUnsafe(col)->Array.push(card)
+    | None => ()
+    }
+  }
+}
+
 // --- Moves -------------------------------------------------------------------
 
 // Where a move starts: a free cell, or the top of a column.
@@ -505,32 +544,37 @@ type destination =
   | ToCell(int)
   | ToColumn(int)
 
-// One move, in the terms a player makes it: `n` cards (more than one only for a
-// run move) lifted from `source` onto `destination`, `card` being the one the
-// player would grab — for a run, its *bottom* card, since grabbing that is what
-// lifts the whole span.
-type move = {
-  n: int,
-  source: source,
-  destination: destination,
-  card: int,
-}
+// One move, in the terms a player makes it, and the packed reading of
+// `Reducer.action`'s two the search has a word for.
+//
+// `Play` is a card leaving one pile for another: `n` cards (more than one only for a
+// run move) lifted from `source` onto `destination`, `card` being the one the player
+// would grab — for a run, its *bottom* card, since grabbing that is what lifts the
+// whole span.
+//
+// `Deal` names no card, exactly as `Reducer.Deal` names none: which cards a row drops
+// is the stock's to say (`dealRow` above). It is a branch like any other and is
+// weighed like one — the search chooses *when* to deal the way a player does.
+type move =
+  | Play({n: int, source: source, destination: destination, card: int})
+  | Deal
 
 // Every legal move from here, less three deliberate prunings that only ever cost the
 // search time — `docs/solver.md` § The search names them. The same loops serve both
 // laws: a Simple Simon position has no cells to loop over and no foundation that
-// accepts, so the moves it has no word for are never reached.
+// accepts, and a board that doesn't deal never clears `canDeal`, so the moves a board
+// has no word for are never reached.
 let legalMoves = (s: t): array<move> => {
   let moves = []
   for cell in 0 to Array.length(s.cells) - 1 {
     let card = s.cells->Array.getUnsafe(cell)
     if card >= 0 {
       if foundationAccepts(s, card) {
-        moves->Array.push({n: 1, source: FromCell(cell), destination: ToFoundation, card})
+        moves->Array.push(Play({n: 1, source: FromCell(cell), destination: ToFoundation, card}))
       }
       for col in 0 to Array.length(s.casc) - 1 {
         if cascadeAccepts(s, ~col, ~card) {
-          moves->Array.push({n: 1, source: FromCell(cell), destination: ToColumn(col), card})
+          moves->Array.push(Play({n: 1, source: FromCell(cell), destination: ToColumn(col), card}))
         }
       }
     }
@@ -543,15 +587,19 @@ let legalMoves = (s: t): array<move> => {
     | None => ()
     | Some(top) =>
       if foundationAccepts(s, top) {
-        moves->Array.push({n: 1, source: FromColumn(src), destination: ToFoundation, card: top})
+        moves->Array.push(
+          Play({n: 1, source: FromColumn(src), destination: ToFoundation, card: top}),
+        )
       }
       if firstEmptyCell >= 0 {
-        moves->Array.push({
-          n: 1,
-          source: FromColumn(src),
-          destination: ToCell(firstEmptyCell),
-          card: top,
-        })
+        moves->Array.push(
+          Play({
+            n: 1,
+            source: FromColumn(src),
+            destination: ToCell(firstEmptyCell),
+            card: top,
+          }),
+        )
       }
       let liftable = runLength(s.law, pile, ~down=s.down->Array.getUnsafe(src))
       for n in 1 to liftable {
@@ -566,28 +614,35 @@ let legalMoves = (s: t): array<move> => {
             !(intoEmpty && (dest != firstEmptyColumn || n == Array.length(pile))) &&
             n <= liftLimit(s, ~ignoring=dest)
           ) {
-            moves->Array.push({
-              n,
-              source: FromColumn(src),
-              destination: ToColumn(dest),
-              card: bottom,
-            })
+            moves->Array.push(
+              Play({
+                n,
+                source: FromColumn(src),
+                destination: ToColumn(dest),
+                card: bottom,
+              }),
+            )
           }
         }
       }
     }
   }
+  if canDeal(s) {
+    moves->Array.push(Deal)
+  }
   moves
 }
 
 // The cards a move lifts, bottom-first — one card, or the whole span of a
-// run move. What a driver expects its grab to raise off the board.
+// run move. What a driver expects its grab to raise off the board. A deal lifts
+// nothing: no hand takes hold of anything, and what it *drops* is `dealRow`'s.
 let lifted = (s: t, move: move): array<int> =>
-  switch move.source {
-  | FromCell(_) => [move.card]
-  | FromColumn(col) =>
+  switch move {
+  | Deal => []
+  | Play({source: FromCell(_), card}) => [card]
+  | Play({source: FromColumn(col), n}) =>
     let pile = s.casc->Array.getUnsafe(col)
-    pile->Array.slice(~start=Array.length(pile) - move.n)
+    pile->Array.slice(~start=Array.length(pile) - n)
   }
 
 // Apply a move, then the app's post-move auto-collect, and return the resulting
@@ -599,26 +654,27 @@ let lifted = (s: t, move: move): array<int> =>
 // flag off is the last row of `docs/solver.md` § The packed position.
 let applyMove = (s: t, move: move): t => {
   let t = copy(s)
-  let cards = lifted(s, move)
-  switch move.source {
-  | FromCell(cell) => t.cells->Array.setUnsafe(cell, -1)
-  | FromColumn(col) =>
-    let pile = t.casc->Array.getUnsafe(col)
-    let depth = Array.length(pile)
-    pile->Array.splice(~start=depth - move.n, ~remove=move.n, ~insert=[])
-    // A move that uncovers the column's face-down cards turns the top one over, since
-    // the reducer does it as part of the same move rather than as a move of its own.
-    t.down->Array.setUnsafe(
-      col,
-      afterLifting(~down=t.down->Array.getUnsafe(col), ~depth, ~n=move.n),
-    )
-  }
-  switch move.destination {
-  | ToFoundation => t.found->Array.setUnsafe(suitOf(move.card), rankOf(move.card))
-  | ToCell(cell) => t.cells->Array.setUnsafe(cell, move.card)
-  | ToColumn(col) =>
-    let pile = t.casc->Array.getUnsafe(col)
-    cards->Array.forEach(c => pile->Array.push(c))
+  switch move {
+  | Deal => dealRow(t)
+  | Play({n, source, destination, card}) =>
+    let cards = lifted(s, move)
+    switch source {
+    | FromCell(cell) => t.cells->Array.setUnsafe(cell, -1)
+    | FromColumn(col) =>
+      let pile = t.casc->Array.getUnsafe(col)
+      let depth = Array.length(pile)
+      pile->Array.splice(~start=depth - n, ~remove=n, ~insert=[])
+      // A move that uncovers the column's face-down cards turns the top one over, since
+      // the reducer does it as part of the same move rather than as a move of its own.
+      t.down->Array.setUnsafe(col, afterLifting(~down=t.down->Array.getUnsafe(col), ~depth, ~n))
+    }
+    switch destination {
+    | ToFoundation => t.found->Array.setUnsafe(suitOf(card), rankOf(card))
+    | ToCell(cell) => t.cells->Array.setUnsafe(cell, card)
+    | ToColumn(col) =>
+      let pile = t.casc->Array.getUnsafe(col)
+      cards->Array.forEach(c => pile->Array.push(c))
+    }
   }
   if canFinish(t) {
     t
@@ -649,28 +705,41 @@ let key = (s: t): string => {
     }
   })
   cols->Array.sort(String.compare)
+  // The stock as its *length*: its order is fixed at the deal and it only ever
+  // shortens from the top, so within one search two boards holding the same number of
+  // undealt cards are holding the same cards. Written only where there is a stock, for
+  // the same reason the face-down count is — this is the hottest string in the search.
+  let stock = switch Array.length(s.stock) {
+  | 0 => ""
+  | n => `|${Int.toString(n)}`
+  }
   s.found->Array.joinUnsafe(".") ++
   "|" ++
   cells->Array.joinUnsafe(",") ++
   "|" ++
-  cols->Array.join("/")
+  cols->Array.join("/") ++
+  stock
 }
 
-// A move in words, for a play-by-play.
-let describeMove = (move: move): string => {
-  let where = spot =>
-    switch spot {
-    | ToFoundation => "foundation"
-    | ToCell(i) => `cell ${Int.toString(i)}`
-    | ToColumn(i) => `column ${Int.toString(i)}`
+// A move in words, for a play-by-play. A deal names no card because it has none to
+// name; which cards this one drops is a question for the board it is played on.
+let describeMove = (move: move): string =>
+  switch move {
+  | Deal => "deal a row"
+  | Play({n, source, destination, card}) =>
+    let where = spot =>
+      switch spot {
+      | ToFoundation => "foundation"
+      | ToCell(i) => `cell ${Int.toString(i)}`
+      | ToColumn(i) => `column ${Int.toString(i)}`
+      }
+    let from = switch source {
+    | FromCell(i) => `cell ${Int.toString(i)}`
+    | FromColumn(i) => `column ${Int.toString(i)}`
     }
-  let from = switch move.source {
-  | FromCell(i) => `cell ${Int.toString(i)}`
-  | FromColumn(i) => `column ${Int.toString(i)}`
+    let what = n > 1 ? `${code(card)}+${Int.toString(n - 1)}` : code(card)
+    `${what} from ${from} to ${where(destination)}`
   }
-  let what = move.n > 1 ? `${code(move.card)}+${Int.toString(move.n - 1)}` : code(move.card)
-  `${what} from ${from} to ${where(move.destination)}`
-}
 
 // --- Across the seam, to the real board --------------------------------------
 // The two directions that make this a mirror rather than a fork: a real
@@ -679,8 +748,9 @@ let describeMove = (move: move): string => {
 
 // The law a board is played under, read off its rules — or `None` for a board
 // under neither. Only the law: whether the board also has the *shape* the model
-// holds (no stock, one copy of each card) is `ofGameState`'s question, so Spiderette
-// reads as Simple Simon's law here and is refused there.
+// holds (one copy of each card, ranks up from the Ace) is `ofGameState`'s question.
+// A stock is not a law — Spiderette deals, and plays Simple Simon's rules between
+// deals, so it reads as Simple Simon's law here and keeps its stock on the position.
 // Every pile of a role is checked, not the first, so a board with one odd pile is
 // refused rather than read as the law its others follow.
 let lawOf = (game: Game.t): option<law> => {
@@ -708,34 +778,39 @@ let lawOf = (game: Game.t): option<law> => {
 // seven-column board would need too.
 //
 // What's left is what the packing genuinely can't say, and each line below is one of
-// them: a stock (the model has no word for a deal), a card loose on the table (it
-// would go missing), a second copy of a card (two copies pack to one int), ranks that
-// don't run up from the Ace (a foundation's *length* is read as the rank it has
-// climbed to), a foundation count that isn't the number of suits to send home (a
-// spare foundation could never complete, so `hasWon` and `GameState.hasWon` would
-// disagree about the same board), no column to play on at all — and a face-down card
-// anywhere but under a column's visible ones. Any such board gets an honest `None`
-// rather than a position with pieces missing.
+// them: a second stock (`Reducer.stockOf` deals from the first and the rest would sit
+// there unplayable), a card loose on the table (it would go missing), a second copy of
+// a card (two copies pack to one int), ranks that don't run up from the Ace (a
+// foundation's *length* is read as the rank it has climbed to), a foundation count
+// that isn't the number of suits to send home (a spare foundation could never
+// complete, so `hasWon` and `GameState.hasWon` would disagree about the same board),
+// no column to play on at all — and a face-down card anywhere but in a column or the
+// stock. Any such board gets an honest `None` rather than a position with pieces
+// missing.
 //
 // That last line is the shape the rest of the model is written against: face down is
-// a fact about a *column's* lower cards, so a hidden card in a cell or on a
-// foundation has no word here, and neither has a column whose top card is face down —
-// every predicate reads a column's top as the card a hand could name, and there
-// would be no such card. Neither arises in play: the reducer turns over whatever a
-// move uncovers, and only a cascade is ever dealt face down.
+// a fact about a *column's* lower cards, or about the stock, which is face down in its
+// entirety and dealt face up — so a hidden card in a cell or on a foundation has no
+// word here, and neither has a column whose top card is face down: every predicate
+// reads a column's top as the card a hand could name, and there would be no such card.
+// None of it arises in play — the reducer turns over whatever a move uncovers, and
+// only a cascade and a stock are ever dealt face down.
 let ofGameState = (~game: Game.t, state: GameState.t): option<t> =>
   lawOf(game)->Option.flatMap(law => {
     let cellPiles = Game.pileIndices(game, Game.FreeCell)
     let foundationPiles = Game.pileIndices(game, Game.Foundation)
     let cascadePiles = Game.pileIndices(game, Game.Cascade)
+    let stockPiles = Game.pileIndices(game, Game.Stock)
     let deck = game.deck
     let hiddenTop = i => {
       let down = GameState.faceDownIn(state, i)
       down > 0 && down >= Array.length(GameState.cardsInPile(state, i))
     }
     if (
-      Array.length(Game.pileIndices(game, Game.Stock)) > 0 ||
-      state.faceDown->Array.someWithIndex((n, i) => n > 0 && !(cascadePiles->Array.includes(i))) ||
+      Array.length(stockPiles) > 1 ||
+      state.faceDown->Array.someWithIndex((n, i) =>
+        n > 0 && !(cascadePiles->Array.includes(i)) && !(stockPiles->Array.includes(i))
+      ) ||
       cascadePiles->Array.some(hiddenTop) ||
       Array.length(state.loose) > 0 ||
       deck.copies != 1 ||
@@ -772,6 +847,10 @@ let ofGameState = (~game: Game.t, state: GameState.t): option<t> =>
           GameState.cardsInPile(state, i)->Array.map(card => idOf(card))
         ),
         down: cascadePiles->Array.map(i => GameState.faceDownIn(state, i)),
+        stock: switch stockPiles->Array.get(0) {
+        | Some(i) => GameState.cardsInPile(state, i)->Array.map(card => idOf(card))
+        | None => []
+        },
       })
     }
   })
@@ -785,29 +864,37 @@ let ofGameState = (~game: Game.t, state: GameState.t): option<t> =>
 // The destination is resolved against the *live* state rather than baked into the
 // move: which foundation pile a suit lives on is a fact about the board being
 // played, not about the plan.
-let toAction = (~game: Game.t, state: GameState.t, move: move): option<Reducer.action> => {
-  let cards = switch move.source {
-  | FromCell(_) => Some([cardOf(move.card)])
-  | FromColumn(col) =>
-    Game.pileIndices(game, Game.Cascade)
-    ->Array.get(col)
-    ->Option.map(i => {
-      let pile = GameState.cardsInPile(state, i)
-      pile->Array.slice(~start=Array.length(pile) - move.n)
-    })
+//
+// A `Deal` asks `Reducer.dealRefusal` itself rather than consulting `canDeal` again.
+// `canDeal` is a mirror and this is the seam the mirror is held against, so the answer
+// that travels to a driver is the board's own — and the two disagreeing is exactly
+// what `Position_test` is looking for.
+let toAction = (~game: Game.t, state: GameState.t, move: move): option<Reducer.action> =>
+  switch move {
+  | Deal => Reducer.dealRefusal(~game, state)->Option.isNone ? Some(Reducer.Deal) : None
+  | Play({n, source, destination, card}) =>
+    let cards = switch source {
+    | FromCell(_) => Some([cardOf(card)])
+    | FromColumn(col) =>
+      Game.pileIndices(game, Game.Cascade)
+      ->Array.get(col)
+      ->Option.map(i => {
+        let pile = GameState.cardsInPile(state, i)
+        pile->Array.slice(~start=Array.length(pile) - n)
+      })
+    }
+    let onto = switch destination {
+    | ToFoundation => Reducer.foundationTarget(~game, state, cardOf(card))
+    | ToCell(cell) => Game.pileIndices(game, Game.FreeCell)->Array.get(cell)
+    | ToColumn(col) => Game.pileIndices(game, Game.Cascade)->Array.get(col)
+    }
+    switch (cards, onto) {
+    | (Some(cards), Some(i)) if Array.length(cards) == n =>
+      Some(
+        n == 1
+          ? Reducer.Move({card: cards->Array.getUnsafe(0), to: Reducer.ToPile(i)})
+          : Reducer.MoveRun({cards, to: Reducer.ToPile(i)}),
+      )
+    | _ => None
+    }
   }
-  let onto = switch move.destination {
-  | ToFoundation => Reducer.foundationTarget(~game, state, cardOf(move.card))
-  | ToCell(cell) => Game.pileIndices(game, Game.FreeCell)->Array.get(cell)
-  | ToColumn(col) => Game.pileIndices(game, Game.Cascade)->Array.get(col)
-  }
-  switch (cards, onto) {
-  | (Some(cards), Some(i)) if Array.length(cards) == move.n =>
-    Some(
-      move.n == 1
-        ? Reducer.Move({card: cards->Array.getUnsafe(0), to: Reducer.ToPile(i)})
-        : Reducer.MoveRun({cards, to: Reducer.ToPile(i)}),
-    )
-  | _ => None
-  }
-}

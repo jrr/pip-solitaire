@@ -43,6 +43,7 @@ describe("Position", () => {
         found: [],
         casc: [],
         down: [],
+        stock: [],
       } // fails loudly in any test that uses it
     }
 
@@ -169,7 +170,13 @@ describe("Position", () => {
             let position = packed(~game, state)
             let offered =
               Position.legalMoves(position)
-              ->Array.filter(m => m.n == 1)
+              ->Array.filter(
+                m =>
+                  switch m {
+                  | Position.Play({n}) => n == 1
+                  | Position.Deal => false
+                  },
+              )
               ->Array.map(Position.describeMove)
             let cells = Game.pileIndices(game, Game.FreeCell)
             let cascades = Game.pileIndices(game, Game.Cascade)
@@ -276,21 +283,25 @@ describe("Position", () => {
   })
 
   test("a move's description names the card, the run and both ends", () => {
-    let move: Position.move = {
+    let move = Position.Play({
       n: 3,
       source: Position.FromColumn(6),
       destination: Position.ToColumn(2),
       card: Position.idOf({suit: Hearts, rank: Ten}),
-    }
+    })
     expect(Position.describeMove(move))->toBe("TH+2 from column 6 to column 2")
     expect(
-      Position.describeMove({
-        n: 1,
-        source: Position.FromCell(1),
-        destination: Position.ToFoundation,
-        card: Position.idOf({suit: Spades, rank: Ace}),
-      }),
+      Position.describeMove(
+        Position.Play({
+          n: 1,
+          source: Position.FromCell(1),
+          destination: Position.ToFoundation,
+          card: Position.idOf({suit: Spades, rank: Ace}),
+        }),
+      ),
     )->toBe("AS from cell 1 to foundation")
+    // A deal names no card because it has none to name.
+    expect(Position.describeMove(Position.Deal))->toBe("deal a row")
   })
 
   test("two boards that rest every card the same way share a key", () => {
@@ -337,6 +348,7 @@ describe("Position under Simple Simon", () => {
         found: [],
         casc: [],
         down: [],
+        stock: [],
       } // fails loudly in any test that uses it
     }
 
@@ -432,12 +444,14 @@ describe("Position under Simple Simon", () => {
                         let intoEmpty = Array.length(GameState.cardsInPile(state, onto)) == 0
                         let pruned =
                           intoEmpty && (dest != firstEmptyColumn || n == Array.length(cards))
-                        let wanted = Position.describeMove({
-                          n,
-                          source: Position.FromColumn(src),
-                          destination: Position.ToColumn(dest),
-                          card: Position.idOf(run->Array.getUnsafe(0)),
-                        })
+                        let wanted = Position.describeMove(
+                          Position.Play({
+                            n,
+                            source: Position.FromColumn(src),
+                            destination: Position.ToColumn(dest),
+                            card: Position.idOf(run->Array.getUnsafe(0)),
+                          }),
+                        )
                         if !pruned && !(offered->Array.includes(wanted)) {
                           missing->Array.push(wanted)
                         }
@@ -618,9 +632,14 @@ describe("Position with cards face down", () => {
       expect(Position.runLength(Position.FreeCell, packedColumn, ~down=2))->toBe(2)
       // …so the deepest grab the model authorises from that column takes two cards.
       expect(
-        Position.legalMoves(position)
-        ->Array.filter(move => move.source == Position.FromColumn(0))
-        ->Array.reduce(0, (most, move) => Math.Int.max(most, move.n)),
+        Position.legalMoves(position)->Array.reduce(
+          0,
+          (most, move) =>
+            switch move {
+            | Position.Play({source: Position.FromColumn(0), n}) => Math.Int.max(most, n)
+            | _ => most
+            },
+        ),
       )->toBe(2)
     }
     // And that is the reducer's own answer: the whole run is not a span it will lift,

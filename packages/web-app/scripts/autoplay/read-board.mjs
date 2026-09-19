@@ -229,6 +229,11 @@ export function stateFromPiles(piles, layout = FREECELL) {
     // page won't say is one `parseCardName` throws on, well before a position is
     // built. A Klondike-dealt board would have to read the count off the page here.
     down: layout.cascades.map(() => 0),
+    // …and the same fact stops it reading a stock: the board draws backs, and a back
+    // has no name to read. A board that deals is therefore one the *harness* can't
+    // play, whatever the solver makes of it — the in-app `autoplay` command is what
+    // plays those, since it reads the board out of the game rather than off the page.
+    stock: [],
   }
 }
 
