@@ -1,6 +1,6 @@
 ---
 name: play-in-browser
-description: Play pip's FreeCell or Simple Simon in a real browser — drive the built web app with pointer drags to play a deal end to end, try a move by hand, reproduce a board position, or see how the game actually behaves. Use when asked to play the game, to check something in the running app rather than in tests, to reproduce a bug by playing, or to capture what a real game looks like.
+description: Play pip's FreeCell, Simple Simon or a short-deck board in a real browser — drive the built web app with pointer drags to play a deal end to end, try a move by hand, reproduce a board position, or see how the game actually behaves. Use when asked to play the game, to check something in the running app rather than in tests, to reproduce a bug by playing, or to capture what a real game looks like.
 ---
 
 # Playing the game in a browser
