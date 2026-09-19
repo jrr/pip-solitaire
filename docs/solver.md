@@ -120,9 +120,9 @@ a heuristic change is trying to reduce.
 
 **Spiderette · 4 suits**, over 1–200 rather than the thousand: a deal the ladder
 gives up on costs it the whole budget, so this soak is half an hour where Simple
-Simon's is eight minutes. The unsolved count is the number to beat, and unlike
-every other board here it is not zero — `mise run solve` exits non-zero on this
-board today.
+Simon's is eight minutes. The unsolved count is the number to beat, and it is
+not zero — `mise run solve` exits non-zero on this board today, and on the
+two-suit pack below it.
 
 | Date | Deals | Solved | Unwinnable | Unsolved | Mean | Mean moves | Worst | Environment |
 |---|---|---|---|---|---|---|---|---|
@@ -132,12 +132,13 @@ board today.
 and weights on a cheaper deck — these are the repeated packs, where `found`
 counts a suit's runs rather than naming one (§ The packed position). One suit
 has nothing to build wrong, so every deal is answered and the soak is under a
-minute; two suits sits between it and the four-suit board, and its unsolved
-count is a second number to beat.
+minute; two suits sits between it and the four-suit board — a ten-minute soak,
+and an unsolved count that is a second number to beat.
 
 | Date | Board | Deals | Solved | Unwinnable | Unsolved | Mean | Mean moves | Worst | Environment |
 |---|---|---|---|---|---|---|---|---|---|
 | 2026-09-19 | 1 suit | 1–200 | 198/200 | 2 | 0 | 252 ms | 71 | #143 at 17.7 s | Node v26.9.0, cloud sandbox |
+| 2026-09-19 | 2 suits | 1–200 | 183/200 | 5 | 12 | 2.8 s | 86 | #42 at 38.3 s | Node v26.9.0, cloud sandbox |
 
 **Mini and Micro**, under FreeCell's law and its weights. Every deal is
 *answered* — the ladder's first rung either finds a line or empties its frontier
@@ -411,7 +412,8 @@ to want it is more likely a *shorter line* than a faster one, which is the trade
   hour, because the deals it gives up on each cost the whole ladder — so soak it
   over 1–200 rather than the thousand, and leave it running. Its repeated packs
   (`spiderette1`, `spiderette`) are the same board with a cheaper deck and are
-  worth the same range: the one-suit soak is under a minute.
+  worth the same range: the one-suit soak is under a minute, the two-suit one
+  about ten.
 - **Check the mirror.** If you touched `Position`, `Position_test` plays a solved
   game through both models — that's the test that catches a predicate drifting
   from the `Rules`/`Reducer` it mirrors.
