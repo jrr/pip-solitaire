@@ -9,17 +9,20 @@
 // `key(i)` as well, since enumerating is the whole subject: insertion order, and an
 // index past the end reading `null`, are the two things the real API promises here.
 %%raw(`
-  globalThis.localStorage = (() => {
-    const store = new Map()
-    return {
-      getItem: (k) => (store.has(k) ? store.get(k) : null),
-      setItem: (k, v) => { store.set(k, String(v)) },
-      removeItem: (k) => { store.delete(k) },
-      clear: () => { store.clear() },
-      key: (i) => [...store.keys()][i] ?? null,
-      get length() { return store.size },
-    }
-  })()
+  Object.defineProperty(globalThis, "localStorage", {
+    configurable: true,
+    value: (() => {
+      const store = new Map()
+      return {
+        getItem: (k) => (store.has(k) ? store.get(k) : null),
+        setItem: (k, v) => { store.set(k, String(v)) },
+        removeItem: (k) => { store.delete(k) },
+        clear: () => { store.clear() },
+        key: (i) => [...store.keys()][i] ?? null,
+        get length() { return store.size },
+      }
+    })(),
+  })
 `)
 
 open Vitest
