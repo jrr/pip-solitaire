@@ -15,6 +15,11 @@ many cards that is altogether. That is what lets one law cover boards of
 different sizes — Mini FreeCell's twenty cards over four columns and Micro's
 sixteen in two suits are FreeCell's law at another size, not another game.
 
+And it carries a `stock`, which is how Spiderette fits: it plays Simple Simon's
+law between deals, so the law is not what makes it a different game — the
+twenty-four cards still to come are. **A deal is a move like any other**, and
+the search takes one when it chooses to, not when it may.
+
 This page carries the contract, the benchmark record, the heuristic, and the
 measured case for making it faster. The code keeps the knobs.
 
@@ -29,7 +34,9 @@ because every driver already has one.
 Under Simple Simon there is no drain — the foundations are sealed, and a run
 reaches one only by being collected — so the only finishable board is the won
 one, and the line runs to the win itself. That is why its lines are twice as
-long as FreeCell's and its ladder is its own.
+long as FreeCell's and its ladder is its own. Spiderette is that law with
+twenty-four more cards arriving seven at a time, so its lines are longer again
+and its ladder is its own for the same reason.
 
 **Good enough, not optimal.** It looks for a line that wins, not the shortest
 one. Nothing here promises a solution either: both games have deals with no
@@ -75,6 +82,7 @@ mise run solve -- 24680           # a particular deal
 mise run solve -- --quiet 1-1000  # a soak: just the summary line
 mise run solve -- --game simplesimon 1-1000 --quiet   # the other law
 mise run solve -- --game mini --quiet 1-1000          # the short packs
+mise run solve -- --game spiderette4 --quiet 1-200    # the board that deals
 ```
 
 `mise run solve` is the solver with nothing attached — no browser, no bundle, no
@@ -97,6 +105,7 @@ core's own shuffle, not Microsoft's numbering. "Moves" counts moves to the
 |---|---|---|---|---|---|---|
 | 2026-08-29 | 1–1000 | 1000/1000 | 101 ms | 54 | #582 at 7.2 s | Node v26.7.0, CI runner |
 | 2026-09-10 | 1–1000 | 1000/1000 | 62 ms | 54 | #582 at 4.6 s | Node v26.7.0, Apple Silicon laptop |
+| 2026-09-19 | 1–1000 | 1000/1000 | 107 ms | 54 | #582 at 7.4 s | Node v26.7.0, CI runner |
 
 **Simple Simon.** "Unwinnable" is the deals the search *proved* have no line
 (`exhausted`); "unsolved" is the ones the ladder gave up on, which is the number
@@ -105,6 +114,17 @@ a heuristic change is trying to reduce.
 | Date | Deals | Solved | Unwinnable | Unsolved | Mean | Mean moves | Worst | Environment |
 |---|---|---|---|---|---|---|---|---|
 | 2026-09-10 | 1–1000 | 941/1000 | 54 | 5 | 458 ms | 85 | #964 at 13.2 s | Node v26.7.0, Apple Silicon laptop |
+| 2026-09-19 | 1–1000 | 941/1000 | 54 | 5 | 732 ms | 85 | #964 at 20.8 s | Node v26.7.0, CI runner |
+
+**Spiderette · 4 suits**, over 1–200 rather than the thousand: a deal the ladder
+gives up on costs it the whole budget, so this soak is half an hour where Simple
+Simon's is eight minutes. The unsolved count is the number to beat, and unlike
+every other board here it is not zero — `mise run solve` exits non-zero on this
+board today.
+
+| Date | Deals | Solved | Unwinnable | Unsolved | Mean | Mean moves | Worst | Environment |
+|---|---|---|---|---|---|---|---|---|
+| 2026-09-19 | 1–200 | 159/200 | 8 | 33 | 5.4 s | 105 | #147 at 38.6 s | Node v26.7.0, CI runner |
 
 **Mini and Micro**, under FreeCell's law and its weights. Every deal is
 *answered* — the ladder's first rung either finds a line or empties its frontier
@@ -114,6 +134,8 @@ a heuristic change is trying to reduce.
 |---|---|---|---|---|---|---|---|---|---|
 | 2026-09-17 | Mini | 1–1000 | 992/1000 | 8 | 0 | <1 ms | 11 | #10 at 49 ms | Node v26.7.0, CI runner |
 | 2026-09-17 | Micro | 1–1000 | 981/1000 | 19 | 0 | <1 ms | 10 | #699 at 8 ms | Node v26.7.0, CI runner |
+| 2026-09-19 | Mini | 1–1000 | 992/1000 | 8 | 0 | <1 ms | 11 | #10 at 38 ms | Node v26.7.0, CI runner |
+| 2026-09-19 | Micro | 1–1000 | 981/1000 | 19 | 0 | <1 ms | 10 | #699 at 7 ms | Node v26.7.0, CI runner |
 
 Over deals 1–200 that is 198 and 196 solved — the same counts `Game.res` records
 from an exhaustive single-card search when it chose two free cells for each
@@ -143,13 +165,14 @@ replaces.
 A distance-to-go estimate: the same five terms under both laws, two of them
 read differently.
 
-| Term | FreeCell | Simple Simon | What it charges for |
-|---|---|---|---|
-| `remaining` | 2 | 0 | every card still off the foundations |
-| `buried` | 2 | 1 | each card sitting on top of a *wanted* card |
-| `seam` | 1 | 2 | each break in the run a hand could lift |
-| `cell` | 3 | — | each loaded free cell — a card parked is a card in the way |
-| `emptyColumn` | 3 | 4 | *credited*, not charged: room to manoeuvre |
+| Term | FreeCell | Simple Simon | Spiderette | What it charges for |
+|---|---|---|---|---|
+| `remaining` | 2 | 0 | 0 | every card still off the foundations |
+| `buried` | 2 | 1 | 1 | each card sitting on top of a *wanted* card |
+| `seam` | 1 | 2 | 2 | each break in the run a hand could lift |
+| `cell` | 3 | — | — | each loaded free cell — a card parked is a card in the way |
+| `emptyColumn` | 3 | 4 | 4 | *credited*, not charged: room to manoeuvre |
+| `stock` | — | — | 5 | every card still undealt |
 
 What's *wanted* is the reading that differs. Under FreeCell it's the next card
 each foundation needs. Under Simple Simon it's, for every run on the tableau,
@@ -159,12 +182,30 @@ break in whatever holds a lifted run together: alternating colour under
 FreeCell, one suit under Simple Simon — so a Seven lawfully dropped on an
 Eight of another suit is a seam there, which is the whole game.
 
-The weights are two named records (`Solver.freecellWeights`,
-`Solver.simonWeights`) that `search` takes as an argument, which is how they
-were chosen — measured rather than guessed. Two, not four: the short packs were
-tuned on nothing, because they left nothing to tune. Under FreeCell's own
-weights the first rung answers every Mini and Micro deal in the first thousand,
-so a third record could only make a fast, complete answer differently fast.
+`stock` is the one term a board can be weighed by without its law changing.
+Spiderette's record is Simple Simon's with that one number in it, and
+`Solver.weightsFor` picks it by asking whether the board has a stock left to deal
+from — a fact about the board, not its rules, so a Spiderette position whose
+stock is out is weighed as the Simple Simon board it has become.
+
+**`stock` is not a rounding term.** On the opening of deal #1, dealing a row
+costs 46 under Simple Simon's weights — seven cards land on seven columns and
+land mostly as seams, so by every other term the board just got worse. A search
+weighed that way barely deals at all: it spends its whole budget tidying a board
+it can only win by dealing. Charging 5 a card pays back 35 of the 46, which is
+what makes "get the row down" worth the mess it makes.
+
+Measured rather than argued: with the term at zero, deals 1–5 come back 1 solved
+and 4 given up on at 16 s each; with it at 5 the same five come back 4 solved,
+and the one that doesn't (#3) is one the whole ladder can't crack either way.
+
+The weights are three named records (`Solver.freecellWeights`,
+`Solver.simonWeights`, `Solver.spideretteWeights`) that `search` takes as an
+argument, which is how they were chosen — measured rather than guessed. Three,
+not five: the short packs were tuned on nothing, because they left nothing to
+tune. Under FreeCell's own weights the first rung answers every Mini and Micro
+deal in the first thousand, so a record of their own could only make a fast,
+complete answer differently fast.
 
 **The two that earned their keep are the mobility terms**, `cell` and
 `emptyColumn`. Without them the search cheerfully plays itself into positions
@@ -202,14 +243,15 @@ Weighted best-first, from the start position to the first one that
 
 `solve` escalates until a rung gives, the rungs run out, or a rung *exhausts*
 the position — after which no wider rung is climbed, since it would only search
-the same finite space again. One ladder per law:
+the same finite space again. `Solver.ladderFor` picks one the same way
+`weightsFor` does: the law, and then whether the board deals.
 
-| FreeCell | `weight` | `maxNodes` | | Simple Simon | `weight` | `maxNodes` |
-|---|---|---|---|---|---|---|
-| 1 | 2.0 | 60,000 | | 1 | 1.0 | 100,000 |
-| 2 | 1.0 | 150,000 | | 2 | 2.0 | 150,000 |
-| 3 | 4.0 | 150,000 | | 3 | 0.5 | 400,000 |
-| 4 | 0.5 | 400,000 | | | | |
+| FreeCell | `weight` | `maxNodes` | | Simple Simon | `weight` | `maxNodes` | | Spiderette | `weight` | `maxNodes` |
+|---|---|---|---|---|---|---|---|---|---|---|
+| 1 | 2.0 | 60,000 | | 1 | 1.0 | 100,000 | | 1 | 2.0 | 200,000 |
+| 2 | 1.0 | 150,000 | | 2 | 2.0 | 150,000 | | 2 | 1.0 | 500,000 |
+| 3 | 4.0 | 150,000 | | 3 | 0.5 | 400,000 | | | | |
+| 4 | 0.5 | 400,000 | | | | | | | | |
 
 A high `weight` is greedy and dives; a low one searches wider and costs more per
 answer. FreeCell's first pass is mildly greedy because almost every deal falls to
@@ -221,6 +263,13 @@ only one to leave nothing unsolved, and did it on the fewest nodes — a wider
 final rung (0.5 at 400,000) caught the two deals every 0.7-at-300,000 ladder
 gave up on, and a smaller first rung cost nothing.
 
+Spiderette's is **budgeted rather than inherited**, which is the whole of why it
+is two rungs and not three. A board with twenty-four cards to come is not
+searched wide cheaply, so the first rung is greedy where Simple Simon's is not,
+and the second is the whole of the extra effort it gets. A deal that beats
+neither costs its full budget twice — that is the worst case in the table above,
+and the price of a third rung would be paid on every one of them.
+
 **The rungs are capped deliberately.** A rung that can't find a line inside its
 budget is usually a rung that never will, and the wasted nodes were most of the
 old worst case. Raising a cap is the obvious knob and mostly buys nothing —
@@ -231,8 +280,9 @@ measure it over a soak before believing otherwise.
 `GameState.t` is the game's real snapshot and stays the source of truth.
 `Position.t` is the same board squeezed into ints — the `law`, the `pack`, the
 free cells, how many of each suit are home, the columns of card numbers, each
-card `suit * 13 + (rank − 1)` in 0…51, and how many of each column's cards lie
-face down.
+card `suit * 13 + (rank − 1)` in 0…51, how many of each column's cards lie
+face down, and the `stock` still to be dealt (bottom-first, so the card the next
+deal drops first is the last of them).
 
 **The 13 there is the numbering, not the deck.** A short pack is numbered the
 same way and simply leaves gaps: Micro's sixteen cards are ♠A…♠8 at 0…7 and
@@ -245,14 +295,15 @@ numbering breaks all three at once.
 run limit, the collect policy, whether the foundations are sealed — and
 `ofGameState` then reads the board: **the counts are the board's own**, and the
 deck it carries is the pack. What is still refused is only what the packing
-genuinely can't say — a stock, a card loose on the table, a second copy of a card
-(two copies pack to one int), ranks that don't run up from the Ace (a
+genuinely can't say — a second stock (`Reducer.stockOf` deals from the first and
+the rest would sit there unplayable), a card loose on the table, a second copy of
+a card (two copies pack to one int), ranks that don't run up from the Ace (a
 foundation's *length* is read as the rank it has climbed to), fewer foundations
-than the deck has suits, and a card face down anywhere but under a column's
-visible ones (a hidden card in a cell, or a column with nothing showing, is a
-board whose top card no predicate could name). Spiderette plays by Simple
-Simon's laws and is refused on the stock — its one- and two-suit variants on the
-repeated cards as well; Mini and Micro are refused on none.
+than the deck has suits, and a card face down anywhere but in a column or the
+stock (a hidden card in a cell, or a column with nothing showing, is a board
+whose top card no predicate could name). Spiderette · 4 suits is refused on
+none of it; its one- and two-suit variants are refused on the repeated cards,
+which is a different step. Mini and Micro are refused on none either.
 
 The packing exists for one reason: **a search asks "and then what?" hundreds of
 thousands of times per deal**, and the honest `GameState` transition — which
@@ -271,6 +322,7 @@ playing a solved game through both:
 | `liftLimit` / `maxSupermove` | `Reducer.withinRunLimit` — `(1 + emptyCells) × 2^emptyCascades` with the destination excluded, or unlimited | a planned run move is one the reducer will actually take |
 | `autoCollect` — `collectSafeCards` / `collectRuns` | `Reducer.autoCollect` — on by `Options.default` | the board *after* a move usually isn't just that move applied |
 | `isSafeToCollect`'s opposite colours | `Reducer.oppositeColorSuits` — read off the deck | Micro's ♠♥ pack has *one* suit of the other colour, and naming two stalls the collect above the Twos |
+| `canDeal` / `dealRow` | `Reducer.dealRefusal` — no stock, stock empty, a cascade standing empty — and `Reducer.dealRow`, which lands one card per cascade left to right | a deal is a branch, not a formality: a search that deals whenever it may misses every line that makes room first |
 | `canFinish` | `Reducer.canFinish` — the drain, or (with sealed foundations) the win itself | it's the goal, and where the drivers stand aside |
 
 That last row is the one that bites. **A plan is a plan for a game played with
@@ -330,6 +382,9 @@ to want it is more likely a *shorter line* than a faster one, which is the trade
   table above. A change that helps the mean and doubles the worst case is not an
   improvement, and a change to the search or a shared term moves every board at
   once. The two short packs take about two seconds each, so there is no excuse.
+  Spiderette is the expensive one — `--game spiderette4 --quiet 1-200` is half an
+  hour, because the deals it gives up on each cost the whole ladder — so soak it
+  over 1–200 rather than the thousand, and leave it running.
 - **Check the mirror.** If you touched `Position`, `Position_test` plays a solved
   game through both models — that's the test that catches a predicate drifting
   from the `Rules`/`Reducer` it mirrors.
@@ -338,4 +393,7 @@ to want it is more likely a *shorter line* than a faster one, which is the trade
 - **Play one for real.** `mise run autoplay -- <deal>` (and
   `-- --game simplesimon <deal>`) runs the plan through the actual app, which is
   the only thing that checks `Position.toAction` still lands where the plan
-  meant.
+  meant. Not Spiderette: that harness reads the board off the rendered page and
+  a face-down card has no name to read, so a board that deals is played by the
+  in-app `autoplay` command instead — `mise run cli -- play spiderette4` and the
+  web app's debug console, both of which read the board out of the game.

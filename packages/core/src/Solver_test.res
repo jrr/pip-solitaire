@@ -349,6 +349,7 @@ describe("Solver", () => {
         column => column->Array.map(code => Position.idOfCode(code)->Option.getOr(-1)),
       ),
       down: columns->Array.map(_ => 0),
+      stock: [],
     }
     let h = p => Solver.heuristic(p, Solver.simonWeights)
 
@@ -366,6 +367,78 @@ describe("Solver", () => {
           h(position([["8S", "3D"], ["7S"], ["4C"]])) > h(position([["8S"], ["7S"], ["4C", "3D"]])),
         )->toBe(true)
       },
+    )
+  })
+
+  // Spiderette · 4 suits: Simple Simon's law with twenty-four cards still to come.
+  // What is new to the search is a move that deals, so what's pinned is that it takes
+  // one when it should, that the line still plays move-for-move against the reducer,
+  // and that a step that deals can say which cards it dropped — an animating driver
+  // has no other way to know, since the action names none.
+  describe("Spiderette", () => {
+    let game = Game.spiderette4Deal(~seed=1)
+    let opening = GameState.initial(game)
+
+    testWithin(
+      "plays deal #1 to the win, dealing the stock out on the way",
+      () =>
+        switch Solver.autoplay(~game, opening) {
+        | Solver.UnknownBoard => expect("a Spiderette board")->toBe("but the solver didn't know it")
+        | Solver.NoLine | Solver.Unwinnable =>
+          expect("deal 1 played")->toBe("but no line was found")
+        | Solver.Played({steps}) =>
+          let problems = []
+          let deals = []
+          let before = ref(opening)
+          steps->Array.forEachWithIndex(
+            (step: Solver.played, i) => {
+              if step.action == Reducer.Deal {
+                deals->Array.push((Reducer.nextDeal(~game, before.contents), step.moved))
+              }
+              switch Reducer.reduce(~game, before.contents, step.action) {
+              | Error(_) => problems->Array.push(`step ${Int.toString(i)}: the reducer refused it`)
+              | Ok(next) =>
+                if !GameState.equal(settle(~game, next), step.state) {
+                  problems->Array.push(`step ${Int.toString(i)}: the state doesn't follow`)
+                }
+              }
+              before := step.state
+            },
+          )
+          expect(problems)->toEqual([])
+          // A card is collected from the tableau, so every card has to get there: a
+          // line that wins is a line that dealt the stock out, three rows of seven and
+          // a last of three.
+          expect(deals->Array.map(((dropped, _)) => Array.length(dropped)))->toEqual([7, 7, 7, 3])
+          // …and each of those steps reports the cards it dropped, ahead of whatever
+          // the settle swept up behind them.
+          deals->Array.forEach(
+            ((dropped, moved)) =>
+              expect(moved->Array.slice(~start=0, ~end=Array.length(dropped)))->toEqual(dropped),
+          )
+          expect(GameState.hasWon(game, before.contents))->toBe(true)
+        },
+      ~timeout=120_000,
+    )
+
+    test(
+      "the stock is weighed, so most of what a deal costs is paid back",
+      () =>
+        switch Position.ofGameState(~game, opening) {
+        | None => expect("a Spiderette board packs")->toBe("but it didn't")
+        | Some(start) =>
+          let weights = Solver.weightsFor(start)
+          let dealt = Position.applyMove(start, Position.Deal)
+          let cost = w => Solver.heuristic(dealt, w) - Solver.heuristic(start, w)
+          // Seven cards land on seven columns and land mostly as seams, so by every
+          // other term the board just got worse: under Simple Simon's own weights the
+          // opening deal is pure damage, and a search weighed that way never takes one.
+          expect(cost(Solver.simonWeights) > 40)->toBe(true)
+          // Charging for the undealt cards pays back exactly the seven that left the
+          // stock, and that is most of it.
+          expect(cost(weights))->toBe(cost(Solver.simonWeights) - 7 * weights.stock)
+          expect(cost(weights) < cost(Solver.simonWeights) / 3)->toBe(true)
+        },
     )
   })
 

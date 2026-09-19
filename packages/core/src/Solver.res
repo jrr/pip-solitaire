@@ -17,20 +17,33 @@ type weights = {
   seam: int,
   cell: int,
   emptyColumn: int,
+  stock: int,
 }
 
-let freecellWeights = {remaining: 2, buried: 2, seam: 1, cell: 3, emptyColumn: 3}
+let freecellWeights = {remaining: 2, buried: 2, seam: 1, cell: 3, emptyColumn: 3, stock: 0}
 
-// The same five terms under Simple Simon, where there are no cells to charge for,
+// The same terms under Simple Simon, where there are no cells to charge for,
 // a seam is a break in a *same-suit* run — the join the game is really about — and
 // `remaining` has nothing to steer (a run is collected the moment it forms, never
 // by choice), so it is zero rather than a number that measured as no number at all.
-let simonWeights = {remaining: 0, buried: 1, seam: 2, cell: 0, emptyColumn: 4}
+let simonWeights = {remaining: 0, buried: 1, seam: 2, cell: 0, emptyColumn: 4, stock: 0}
 
-let weightsFor = (law: Position.law): weights =>
-  switch law {
+// Simple Simon's again, for a board that deals. **Only `stock` differs, and it is not
+// a rounding term** — without it the search never deals at all: a row lands seven
+// cards across seven columns and every one of them is a fresh seam, so a deal looks
+// like pure damage next to any tidying move, and the search spends its whole budget
+// tidying a board it can only win by dealing. Charging for the undealt cards is what
+// makes "get the row down" worth the mess it makes.
+let spideretteWeights = {...simonWeights, stock: 5}
+
+// Which of the three a board is weighed by. The law picks two of them; the third is
+// picked by whether there is a stock to deal from, which is a fact about the *board*
+// and not about its rules — Spiderette between deals is Simple Simon. So a Spiderette
+// position whose stock is out is weighed as what it has become.
+let weightsFor = (s: Position.t): weights =>
+  switch s.law {
   | Position.FreeCell => freecellWeights
-  | Position.SimpleSimon => simonWeights
+  | Position.SimpleSimon => Array.length(s.stock) > 0 ? spideretteWeights : simonWeights
   }
 
 // The cards the game is waiting on, as a flag per card number — scratch for
@@ -96,7 +109,13 @@ let heuristic = (s: Position.t, w: weights): int => {
     }
   }
   // A card parked in a cell is a card in the way.
-  h.contents + (Array.length(s.cells) - Position.emptyCells(s)) * w.cell
+  h := h.contents + (Array.length(s.cells) - Position.emptyCells(s)) * w.cell
+
+  // A card still in the stock is a card the game hasn't reached yet. `remaining`
+  // charges for cards off the foundations and this charges for the ones not even on
+  // the table; under Simple Simon's law, where `remaining` is zero, it is the only
+  // term that makes progress through the pack worth anything at all.
+  h.contents + Array.length(s.stock) * w.stock
 }
 
 // --- A tiny binary heap, keyed by numeric priority ---------------------------
@@ -197,7 +216,7 @@ type node = {position: Position.t, path: array<Position.move>}
 // Weighted best-first search from `start` to the first position that
 // `Position.canFinish`.
 let search = (start: Position.t, attempt: attempt, ~weights: option<weights>=?): outcome => {
-  let weights = weights->Option.getOr(weightsFor(start.law))
+  let weights = weights->Option.getOr(weightsFor(start))
   if Position.canFinish(start) {
     {path: Some([]), nodes: 0, applied: 0, exhausted: false}
   } else {
@@ -274,10 +293,20 @@ let simonLadder = [
   {weight: 0.5, maxNodes: 400_000},
 ]
 
-let ladderFor = (law: Position.law): array<attempt> =>
-  switch law {
+// A board that deals. Its line runs to the win like Simple Simon's, but through
+// twenty-four more cards that arrive seven at a time, so it is half as long again —
+// and **the rungs are budgeted rather than inherited**: a greedier first rung than
+// Simple Simon's, because a board this deep is not searched wide cheaply, and a
+// second that is the whole of the extra effort it gets. A deal that beats neither
+// costs its full budget twice, which is the worst case in the table.
+let spideretteLadder = [{weight: 2., maxNodes: 200_000}, {weight: 1., maxNodes: 500_000}]
+
+// The ladder a board climbs — picked the same way its weights are, and for the same
+// reason: a stock is a longer game, not another law.
+let ladderFor = (s: Position.t): array<attempt> =>
+  switch s.law {
   | Position.FreeCell => freecellLadder
-  | Position.SimpleSimon => simonLadder
+  | Position.SimpleSimon => Array.length(s.stock) > 0 ? spideretteLadder : simonLadder
   }
 
 // What a solve cost, totalled over every rung it climbed — for a front end that
@@ -304,7 +333,7 @@ let solveWithEffort = (start: Position.t, ~ladder: option<array<attempt>>=?): (
   option<array<Position.move>>,
   effort,
 ) => {
-  let ladder = ladder->Option.getOr(ladderFor(start.law))
+  let ladder = ladder->Option.getOr(ladderFor(start))
   let plan = ref(None)
   let rung = ref(0)
   let positions = ref(0)
@@ -417,11 +446,17 @@ let settle = (~game: Game.t, state: GameState.t): (GameState.t, array<Card.card>
 
 // The cards an action names, bottom-first, which is the order they'd be lifted in.
 // A column reorder names none — it moves whole piles rather than cards.
-let namedCards = (action: Reducer.action): array<Card.card> =>
+//
+// A `Deal` names none either, but it does move cards, and a driver animating the line
+// needs them: `Reducer.nextDeal` says which they are and in what order they land, so
+// this asks the board it is about to be played on rather than recomputing it. Read
+// against the state *before* the deal, which is the only state that still has them.
+let namedCards = (~game: Game.t, state: GameState.t, action: Reducer.action): array<Card.card> =>
   switch action {
   | Reducer.Move({card}) => [card]
   | Reducer.MoveRun({cards}) => cards
-  | Reducer.MoveColumn(_) | Reducer.Deal => []
+  | Reducer.Deal => Reducer.nextDeal(~game, state)
+  | Reducer.MoveColumn(_) => []
   }
 
 let autoplay = (~game: Game.t, state: GameState.t): autoplayed =>
@@ -451,7 +486,7 @@ let autoplay = (~game: Game.t, state: GameState.t): autoplayed =>
             steps->Array.push({
               action,
               state: settled,
-              moved: Array.concat(namedCards(action), collected),
+              moved: Array.concat(namedCards(~game, current.contents, action), collected),
             })
             current := settled
           }
@@ -470,10 +505,12 @@ let autoplay = (~game: Game.t, state: GameState.t): autoplayed =>
 // drop it, and the board the move should leave behind.
 
 // One planned move, ready to drag.
-//   `card`        — the card to grab, as a `CardText` code.
+//   `card`        — the card to grab, as a `CardText` code, or `""` for a deal, which
+//                   is a tap on the stock and grabs nothing.
 //   `lifts`       — every card that grab should raise, bottom-first, so a driver
 //                   can check that the board lifted what the plan meant.
-//   `target`      — where it lands: "foundation", "cell" or "column".
+//   `target`      — where it lands: "foundation", "cell", "column" — or "deal", the
+//                   one step that isn't a drag at all.
 //   `column`      — the destination column, or `-1` for the other targets.
 //   `description` — the move in words, for a play-by-play.
 //   `after`       — the position this move should leave behind, for a driver that
@@ -491,15 +528,19 @@ type step = {
 // that picked the move itself (playing a single move by hand, see the
 // `play-in-browser` skill) rather than taking a whole plan.
 let stepFor = (position: Position.t, move: Position.move): step => {
-  card: Position.code(move.card),
-  lifts: Position.lifted(position, move)->Array.map(Position.code),
-  target: switch move.destination {
-  | Position.ToFoundation => "foundation"
-  | Position.ToCell(_) => "cell"
-  | Position.ToColumn(_) => "column"
+  card: switch move {
+  | Position.Deal => ""
+  | Position.Play({card}) => Position.code(card)
   },
-  column: switch move.destination {
-  | Position.ToColumn(col) => col
+  lifts: Position.lifted(position, move)->Array.map(Position.code),
+  target: switch move {
+  | Position.Deal => "deal"
+  | Position.Play({destination: Position.ToFoundation}) => "foundation"
+  | Position.Play({destination: Position.ToCell(_)}) => "cell"
+  | Position.Play({destination: Position.ToColumn(_)}) => "column"
+  },
+  column: switch move {
+  | Position.Play({destination: Position.ToColumn(col)}) => col
   | _ => -1
   },
   description: Position.describeMove(move),

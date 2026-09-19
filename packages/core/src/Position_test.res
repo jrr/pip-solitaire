@@ -43,6 +43,7 @@ describe("Position", () => {
         found: [],
         casc: [],
         down: [],
+        stock: [],
       } // fails loudly in any test that uses it
     }
 
@@ -169,7 +170,13 @@ describe("Position", () => {
             let position = packed(~game, state)
             let offered =
               Position.legalMoves(position)
-              ->Array.filter(m => m.n == 1)
+              ->Array.filter(
+                m =>
+                  switch m {
+                  | Position.Play({n}) => n == 1
+                  | Position.Deal => false
+                  },
+              )
               ->Array.map(Position.describeMove)
             let cells = Game.pileIndices(game, Game.FreeCell)
             let cascades = Game.pileIndices(game, Game.Cascade)
@@ -276,21 +283,25 @@ describe("Position", () => {
   })
 
   test("a move's description names the card, the run and both ends", () => {
-    let move: Position.move = {
+    let move = Position.Play({
       n: 3,
       source: Position.FromColumn(6),
       destination: Position.ToColumn(2),
       card: Position.idOf({suit: Hearts, rank: Ten}),
-    }
+    })
     expect(Position.describeMove(move))->toBe("TH+2 from column 6 to column 2")
     expect(
-      Position.describeMove({
-        n: 1,
-        source: Position.FromCell(1),
-        destination: Position.ToFoundation,
-        card: Position.idOf({suit: Spades, rank: Ace}),
-      }),
+      Position.describeMove(
+        Position.Play({
+          n: 1,
+          source: Position.FromCell(1),
+          destination: Position.ToFoundation,
+          card: Position.idOf({suit: Spades, rank: Ace}),
+        }),
+      ),
     )->toBe("AS from cell 1 to foundation")
+    // A deal names no card because it has none to name.
+    expect(Position.describeMove(Position.Deal))->toBe("deal a row")
   })
 
   test("two boards that rest every card the same way share a key", () => {
@@ -337,6 +348,7 @@ describe("Position under Simple Simon", () => {
         found: [],
         casc: [],
         down: [],
+        stock: [],
       } // fails loudly in any test that uses it
     }
 
@@ -349,14 +361,22 @@ describe("Position under Simple Simon", () => {
   })
 
   test("the law is read off the rules, and the shape is checked apart from it", () => {
-    // Spiderette plays by Simple Simon's laws, so the law reads the same — but it has
-    // a stock and face-down cards, which the model has no word for, so the board
-    // itself is refused. What is *not* a refusal is a board of another size: Mini
-    // reads under the same law as FreeCell and packs, counts and pack and all.
+    // Spiderette plays by Simple Simon's laws, so the law reads the same on all three
+    // of its packs — and the standard pack is a board the model holds, stock and all.
+    // The two-suit variant is refused anyway, on the repeated cards: two Sevens of
+    // Spades pack to one int. What is *not* a refusal is a board of another size:
+    // Mini reads under the same law as FreeCell and packs, counts and pack and all.
     expect(Position.lawOf(Game.spiderette))->toEqual(Some(Position.SimpleSimon))
     expect(
       Position.ofGameState(~game=Game.spiderette, GameState.initial(Game.spiderette)),
     )->toEqual(None)
+    expect(Position.lawOf(Game.spiderette4))->toEqual(Some(Position.SimpleSimon))
+    expect(
+      Position.ofGameState(
+        ~game=Game.spiderette4,
+        GameState.initial(Game.spiderette4),
+      )->Option.isSome,
+    )->toBe(true)
     expect(Position.lawOf(Game.mini))->toEqual(Some(Position.FreeCell))
     expect(
       Position.ofGameState(~game=Game.mini, GameState.initial(Game.mini))->Option.isSome,
@@ -432,12 +452,14 @@ describe("Position under Simple Simon", () => {
                         let intoEmpty = Array.length(GameState.cardsInPile(state, onto)) == 0
                         let pruned =
                           intoEmpty && (dest != firstEmptyColumn || n == Array.length(cards))
-                        let wanted = Position.describeMove({
-                          n,
-                          source: Position.FromColumn(src),
-                          destination: Position.ToColumn(dest),
-                          card: Position.idOf(run->Array.getUnsafe(0)),
-                        })
+                        let wanted = Position.describeMove(
+                          Position.Play({
+                            n,
+                            source: Position.FromColumn(src),
+                            destination: Position.ToColumn(dest),
+                            card: Position.idOf(run->Array.getUnsafe(0)),
+                          }),
+                        )
                         if !pruned && !(offered->Array.includes(wanted)) {
                           missing->Array.push(wanted)
                         }
@@ -506,9 +528,9 @@ describe("Position under Simple Simon", () => {
 // hand take hold of, and what a move leaves behind when it uncovers something — both
 // of which `Reducer` already answers, so every test here asks it the same question.
 //
-// The boards are posed. No board the app deals is packable with a card face down
-// yet: Spiderette's stock is the thing the model has no word for, and until a deal
-// has one, face down only arrives on a board put there by hand.
+// The boards here are posed rather than dealt, so one column's boundary can be put
+// exactly where a case needs it — Spiderette deals a board with forty-five cards face
+// down, but every one of its columns shows exactly one card.
 describe("Position with cards face down", () => {
   let settle = (~game, state) =>
     if Reducer.canFinish(~game, state) {
@@ -618,9 +640,14 @@ describe("Position with cards face down", () => {
       expect(Position.runLength(Position.FreeCell, packedColumn, ~down=2))->toBe(2)
       // …so the deepest grab the model authorises from that column takes two cards.
       expect(
-        Position.legalMoves(position)
-        ->Array.filter(move => move.source == Position.FromColumn(0))
-        ->Array.reduce(0, (most, move) => Math.Int.max(most, move.n)),
+        Position.legalMoves(position)->Array.reduce(
+          0,
+          (most, move) =>
+            switch move {
+            | Position.Play({source: Position.FromColumn(0), n}) => Math.Int.max(most, n)
+            | _ => most
+            },
+        ),
       )->toBe(2)
     }
     // And that is the reducer's own answer: the whole run is not a span it will lift,
@@ -783,5 +810,150 @@ describe("Position on a short pack", () => {
         expect(divergences)->toEqual([])
       },
     )
+  )
+})
+
+// A board with a stock, where a move can be something other than a card leaving one
+// pile for another. Everything the blocks above pin about the rules holds here
+// unchanged — Spiderette between deals *is* Simple Simon — so these ask only about the
+// deal: whether the model offers one exactly when the reducer would take one, and
+// whether a row lands where the reducer lands it.
+//
+// The standard pack, because it is the one the model holds. The other two variants
+// repeat cards and two copies of a card pack to one int, which `ofGameState` refuses
+// for reasons that have nothing to do with the stock.
+describe("Position with a stock to deal from", () => {
+  let game = Game.spiderette4Deal(~seed=1)
+  let opening = GameState.initial(game)
+  let stockPile = Game.pileIndices(game, Game.Stock)->Array.getUnsafe(0)
+
+  let settle = (~game, state) =>
+    if Reducer.canFinish(~game, state) {
+      state
+    } else {
+      let (collected, _moved) = Reducer.autoCollect(~game, state)
+      collected
+    }
+
+  let mirrorKey = (~game, state) =>
+    Position.ofGameState(~game, state)->Option.mapOr("(not a board the model reads)", Position.key)
+
+  test("an opening deal packs its stock, and the board it deals onto", () => {
+    switch Position.ofGameState(~game, opening) {
+    | None => expect("a Spiderette board packs")->toBe("but it didn't")
+    | Some(position) =>
+      expect(position.law)->toEqual(Position.SimpleSimon)
+      expect(Array.length(position.casc))->toBe(7)
+      // Every column but the first lies partly face down, and the stock lies face down
+      // in its entirety — which the model reads rather than refuses.
+      expect(position.down)->toEqual([0, 1, 2, 3, 4, 5, 6])
+      expect(position.stock)->toEqual(
+        GameState.cardsInPile(opening, stockPile)->Array.map(Position.idOf),
+      )
+      expect(Array.length(position.stock))->toBe(24)
+      // Its *end* is its top: the seven cards the next deal drops, in landing order,
+      // are the last seven reversed — which is what `Reducer.nextDeal` says they are.
+      expect(Position.dealCount(position))->toBe(7)
+      expect(Reducer.nextDeal(~game, opening)->Array.map(Position.idOf))->toEqual(
+        position.stock->Array.sliceToEnd(~start=17)->Array.toReversed,
+      )
+    }
+  })
+
+  test("a deal is offered exactly when the reducer would take one", () => {
+    // `Reducer.dealRefusal` names three refusals and each board below raises a
+    // different one — so a mirror that happened to agree by refusing everything, or by
+    // reading only the stock, disagrees here.
+    let stuck = Scenario.spideretteStuck(game)
+    let out = Scenario.spideretteAlmostWon(game)
+    let freecell = Game.freecell
+    let dealsNothing = GameState.initial(freecell)
+    expect(Reducer.dealRefusal(~game, opening))->toEqual(None)
+    expect(Reducer.dealRefusal(~game, stuck))->toEqual(Some(Reducer.CascadeEmpty))
+    expect(Reducer.dealRefusal(~game, out))->toEqual(Some(Reducer.StockEmpty))
+    expect(Reducer.dealRefusal(~game=freecell, dealsNothing))->toEqual(Some(Reducer.NoStock))
+
+    let disagreements = []
+    [
+      ("the opening", game, opening),
+      ("a cascade standing empty", game, stuck),
+      ("the stock out", game, out),
+      ("no stock at all", freecell, dealsNothing),
+    ]->Array.forEach(
+      ((what, game, state)) =>
+        switch Position.ofGameState(~game, state) {
+        | None => disagreements->Array.push(`${what}: not a board the model reads`)
+        | Some(position) =>
+          let would = Reducer.dealRefusal(~game, state)->Option.isNone
+          if Position.canDeal(position) != would {
+            disagreements->Array.push(`${what}: canDeal disagrees with dealRefusal`)
+          }
+
+          // …and the answer reaches the search and a driver by the two routes they use.
+          if Position.legalMoves(position)->Array.includes(Position.Deal) != would {
+            disagreements->Array.push(`${what}: legalMoves disagrees`)
+          }
+          if Position.toAction(~game, state, Position.Deal)->Option.isSome != would {
+            disagreements->Array.push(`${what}: toAction disagrees`)
+          }
+        },
+    )
+    expect(disagreements)->toEqual([])
+  })
+
+  test("a dealt row lands the cards the reducer lands, in the same places", () => {
+    switch (Position.ofGameState(~game, opening), Reducer.reduce(~game, opening, Reducer.Deal)) {
+    | (Some(position), Ok(dealt)) =>
+      let mirrored = Position.applyMove(position, Position.Deal)
+      expect(Position.key(mirrored))->toBe(mirrorKey(~game, settle(~game, dealt)))
+      expect(Array.length(mirrored.stock))->toBe(17)
+      // The face-down counts don't move: a dealt card lands face up above them.
+      expect(mirrored.down)->toEqual(position.down)
+    | _ => expect("the opening deals")->toBe("but it didn't")
+    }
+  })
+
+  testWithin(
+    "a whole game, four deals and all, is the same board in both models",
+    () => {
+      // The check the other blocks make, over the one line that takes a move nobody
+      // else's board has. A won Spiderette has every card on the tableau at some
+      // point, so a line that wins is a line that dealt the stock out — which is what
+      // makes the count at the end worth asserting.
+      let divergences = []
+      switch (Position.ofGameState(~game, opening), Solver.plan(~game, opening)) {
+      | (None, _) => divergences->Array.push("Spiderette · 4 suits isn't a board the model reads")
+      | (_, None) => divergences->Array.push("deal 1 went unsolved")
+      | (Some(start), Some(moves)) =>
+        let real = ref(opening)
+        let mirrored = ref(start)
+        let deals = ref(0)
+        moves->Array.forEachWithIndex((move, i) =>
+          switch Position.toAction(~game, real.contents, move) {
+          | None => divergences->Array.push(`move ${Int.toString(i)}: no action for it`)
+          | Some(action) =>
+            if action == Reducer.Deal {
+              deals := deals.contents + 1
+            }
+            switch Reducer.reduce(~game, real.contents, action) {
+            | Error(_) => divergences->Array.push(`move ${Int.toString(i)}: the reducer refused it`)
+            | Ok(next) =>
+              real := settle(~game, next)
+              mirrored := Position.applyMove(mirrored.contents, move)
+              if mirrorKey(~game, real.contents) != Position.key(mirrored.contents) {
+                divergences->Array.push(
+                  `move ${Int.toString(i)} (${Position.describeMove(move)}): boards differ`,
+                )
+              }
+            }
+          }
+        )
+        expect(deals.contents)->toBe(4)
+        expect(GameState.hasWon(game, real.contents))->toBe(true)
+        expect(Position.hasWon(mirrored.contents))->toBe(true)
+      }
+      expect(divergences)->toEqual([])
+    },
+    ~timeout=120_000,
   )
 })
