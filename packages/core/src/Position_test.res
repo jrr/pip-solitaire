@@ -1022,9 +1022,25 @@ describe("Position on a pack that repeats a card", () => {
     // there. FreeCell's law reads the same entry as the rank its foundation has climbed
     // to — a second copy would carry it past the King — so the refusal stays, and stays
     // where the reading it protects is.
-    let repeated: Cards.deck = {suits: Cards.suits, ranks: Cards.ranks, copies: 2}
-    let doubled = {...Game.freecell, deck: repeated}
+    //
+    // The four extra foundations are what make this the *copies* refusal and not the
+    // count one: a doubled deck has eight runs to send home, and a board with four
+    // foundations would have been refused whatever its law.
+    let spare: Game.pile = {
+      role: Game.Foundation,
+      stacking: Game.Squared,
+      rule: Rules.foundation,
+      capacity: None,
+      cards: [],
+      faceDown: 0,
+    }
+    let doubled: Game.t = {
+      ...Game.freecell,
+      deck: {suits: Cards.suits, ranks: Cards.ranks, copies: 2},
+      piles: Game.freecell.piles->Array.concat(Array.make(~length=4, spare)),
+    }
     expect(Position.lawOf(doubled))->toEqual(Some(Position.FreeCell))
+    expect(Array.length(Game.pileIndices(doubled, Game.Foundation)))->toBe(8)
     expect(Position.ofGameState(~game=doubled, GameState.initial(doubled)))->toEqual(None)
   })
 })
