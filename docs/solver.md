@@ -398,7 +398,9 @@ to want it is more likely a *shorter line* than a faster one, which is the trade
   once. The two short packs take about two seconds each, so there is no excuse.
   Spiderette is the expensive one — `--game spiderette4 --quiet 1-200` is half an
   hour, because the deals it gives up on each cost the whole ladder — so soak it
-  over 1–200 rather than the thousand, and leave it running.
+  over 1–200 rather than the thousand, and leave it running. Its repeated packs
+  (`spiderette1`, `spiderette`) are the same board with a cheaper deck and are
+  worth the same range: the one-suit soak is under a minute.
 - **Check the mirror.** If you touched `Position`, `Position_test` plays a solved
   game through both models — that's the test that catches a predicate drifting
   from the `Rules`/`Reducer` it mirrors.
@@ -407,7 +409,9 @@ to want it is more likely a *shorter line* than a faster one, which is the trade
 - **Play one for real.** `mise run autoplay -- <deal>` (and
   `-- --game simplesimon <deal>`) runs the plan through the actual app, which is
   the only thing that checks `Position.toAction` still lands where the plan
-  meant. Not Spiderette: that harness reads the board off the rendered page and
-  a face-down card has no name to read, so a board that deals is played by the
-  in-app `autoplay` command instead — `mise run cli -- play spiderette4` and the
-  web app's debug console, both of which read the board out of the game.
+  meant. Not Spiderette: that harness reads the board off the rendered page, where
+  a face-down card has no name to read and a repeated pack announces two cards by
+  the same one, so a board that deals is played by the in-app `autoplay` command
+  instead — `mise run cli -- play spiderette4` and the web app's debug console
+  (`browser-tests/spiderette.spec.mjs` types it on each of the three packs), both
+  of which read the board out of the game.

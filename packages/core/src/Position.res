@@ -832,6 +832,7 @@ let ofGameState = (~game: Game.t, state: GameState.t): option<t> =>
     let cascadePiles = Game.pileIndices(game, Game.Cascade)
     let stockPiles = Game.pileIndices(game, Game.Stock)
     let deck = game.deck
+    let pack = packOf(deck)
     let hiddenTop = i => {
       let down = GameState.faceDownIn(state, i)
       down > 0 && down >= Array.length(GameState.cardsInPile(state, i))
@@ -843,9 +844,9 @@ let ofGameState = (~game: Game.t, state: GameState.t): option<t> =>
       ) ||
       cascadePiles->Array.some(hiddenTop) ||
       Array.length(state.loose) > 0 ||
-      law == FreeCell && deck.copies != 1 ||
+      law == FreeCell && pack.copies != 1 ||
       !(deck.ranks->Array.everyWithIndex((rank, i) => Rules.rankValue(rank) == i + 1)) ||
-      Array.length(foundationPiles) != Array.length(deck.suits) * deck.copies ||
+      Array.length(foundationPiles) != Array.length(pack.suits) * pack.copies ||
       Array.length(cascadePiles) == 0
     ) {
       None
@@ -869,7 +870,7 @@ let ofGameState = (~game: Game.t, state: GameState.t): option<t> =>
       )
       Some({
         law,
-        pack: packOf(deck),
+        pack,
         cells: cellPiles->Array.map(i =>
           switch GameState.topOf(state, i) {
           | Some(card) => idOf(card)
