@@ -128,6 +128,17 @@ board today.
 |---|---|---|---|---|---|---|---|---|
 | 2026-09-19 | 1–200 | 159/200 | 8 | 33 | 5.4 s | 105 | #147 at 38.6 s | Node v26.7.0, CI runner |
 
+**Spiderette · 1 suit and · 2 suits**, over the same 1–200. The same law, ladder
+and weights on a cheaper deck — these are the repeated packs, where `found`
+counts a suit's runs rather than naming one (§ The packed position). One suit
+has nothing to build wrong, so every deal is answered and the soak is under a
+minute; two suits sits between it and the four-suit board, and its unsolved
+count is a second number to beat.
+
+| Date | Board | Deals | Solved | Unwinnable | Unsolved | Mean | Mean moves | Worst | Environment |
+|---|---|---|---|---|---|---|---|---|---|
+| 2026-09-19 | 1 suit | 1–200 | 198/200 | 2 | 0 | 252 ms | 71 | #143 at 17.7 s | Node v26.9.0, cloud sandbox |
+
 **Mini and Micro**, under FreeCell's law and its weights. Every deal is
 *answered* — the ladder's first rung either finds a line or empties its frontier
 — so the number to watch here is "unsolved", and it is zero.
