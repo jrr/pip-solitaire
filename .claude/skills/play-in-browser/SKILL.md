@@ -15,7 +15,7 @@ The machinery is in three parts. Two of them live in
 | part | where | what it does |
 | --- | --- | --- |
 | eyes | `autoplay/read-board.mjs` | reads the board off the DOM: zone boxes, card `aria-label`s, `settle()`, and the `Position` it all adds up to |
-| brain | `core`'s `Position` + `Solver` | the rules, and a solver that plans to a finishable board — in core, not here (#290). Two games: FreeCell, and Simple Simon |
+| brain | `core`'s `Position` + `Solver` | the rules, and a solver that plans to a finishable board — in core, not here (#290). Three boards: FreeCell, Simple Simon, and four-suit Spiderette, whose stock the search deals from |
 | hands | `autoplay/autoplay.mjs` | `playGame()` and `dragMove()` — a planned move as a real drag, then look again |
 
 The brain used to be a JavaScript mirror of core's rules kept beside the other
@@ -78,9 +78,11 @@ console.log(moves.map(Position.describeMove))          // what's playable right 
 await dragMove(page, view, Solver.stepFor(view.state, moves[0]))  // settles before returning
 view = await look(page)                                // always re-read after a drag
 
-// Or aim at one card. `legalMoves` only lists *movable* cards — the top of a pile
-// or the head of a run — so a buried card simply isn't in the list, and `find`
-// gives you `undefined` rather than a move that would bounce.
+// Or aim at one card. A move is a variant — `{TAG: "Play", card, n, source,
+// destination}` or the bare string `"Deal"` — so a deal has no card to match.
+// `legalMoves` only lists *movable* cards — the top of a pile or the head of a
+// run — so a buried card simply isn't in the list, and `find` gives you
+// `undefined` rather than a move that would bounce.
 const move = Position.legalMoves(view.state).find((m) => m.card === cardId("QS"))
 if (move) await dragMove(page, view, Solver.stepFor(view.state, move))
 
@@ -101,10 +103,12 @@ hand-run script doesn't.)
 Query parameters, all documented in `src/platform/AppUrl.res`:
 
 - `?game=freecell` — open a game by id (`freecell`, `mini`, `micro`, `simplesimon`,
-  `spiderette1`, `spiderette`, `spiderette4`). The solver and `playGame()` know
-  FreeCell and Simple Simon (`playGame(page, { game: "simplesimon", seed })`); the
-  other boards are played by hand — `browser-tests/lib/play-line.mjs` drags a
-  recorded line, and a tap on Spiderette's stock deals the next row.
+  `spiderette1`, `spiderette`, `spiderette4`). `playGame()` knows FreeCell and
+  Simple Simon (`playGame(page, { game: "simplesimon", seed })`). The solver plans
+  four-suit Spiderette too, but this harness can't play it — `read-board.mjs` says
+  why, and the in-app `autoplay` command plays those instead. The other boards are
+  played by hand — `browser-tests/lib/play-line.mjs` drags a recorded line, and a
+  tap on Spiderette's stock deals the next row.
 - `?scene=gallery` — mount a non-game scene (`gallery`, `raster`, `trail`,
   `cascade`, `motion`).
 - `?seed=N` — open deal N of whichever game is mounted. Deterministic: the same N
