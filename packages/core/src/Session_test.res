@@ -258,6 +258,30 @@ describe("Session autoplay", () => {
     expect(Stats.usedAutoplay(played.stats))->toBe(true)
   })
 
+  test("a driver out of patience says so, and leaves the board where it was", () => {
+    // The wait is the *driver's*, and `Session` is where it becomes one: the caller says
+    // how many milliseconds, the session supplies the clock it already holds. This one
+    // jumps six seconds a reading, so a five-second wait is over however many times it
+    // is consulted — an assertion about a limit, not about how fast this machine is.
+    let reads = ref(0)
+    let clock = () => {
+      let at = 6_000. *. Int.toFloat(reads.contents)
+      reads := reads.contents + 1
+      at
+    }
+    let before = fresh()
+    let (after, outcome) = Session.step(~clock, ~patience=5_000., before, Command.Autoplay)
+    expect(outcome.change)->toEqual(Session.Unchanged)
+    // …and it reports the wait it actually spent, measured on that same clock: the first
+    // reading opens the call and the last closes it.
+    expect(outcome.reply)->toEqual(
+      Render.text(Command.autoplayOutOfPatience(~ms=6_000. *. Int.toFloat(reads.contents - 1))),
+    )
+    // Nothing moved, nothing was counted, and the board is the one it started on.
+    expect(after.stats.autoplays)->toBe(0)
+    expect(GameState.equal(Session.present(after), Session.present(before)))->toBe(true)
+  })
+
   testWithin(
     "each step in the trail is one further undoable move",
     () => {

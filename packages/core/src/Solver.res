@@ -190,35 +190,87 @@ module Heap = {
     }
 }
 
-// --- The search --------------------------------------------------------------
+// --- What a caller is willing to spend ---------------------------------------
 
 // How hard one pass tries: `weight` scales the heuristic against depth, `maxNodes`
 // is the budget it gives up at. What each buys: `docs/solver.md` § The ladder.
 type attempt = {weight: float, maxNodes: int}
 
-// What a pass came back with: the moves to a finishable board, or `None` if it
-// ran out — and what it cost to get there, which is what makes the weights
-// measurable. `nodes` counts the positions taken off the frontier and grown;
-// `applied` the moves played out to see where they led, which is the bigger number
-// and the one most of the time goes into (every one of them is an `applyMove`, a
-// `key` and a `canFinish`).
+// How long the caller is willing to wait, and the clock to measure it on. **The solver
+// still keeps no clock of its own** — it is handed one, the way `Session` is handed the
+// clock a win is stamped with, and for the same reason: hand it a stopped clock and the
+// answer is the one the node budgets alone would find, on every run and every machine.
 //
-// A `None` comes in two kinds, and `exhausted` tells them apart: the budget ran out
-// with positions still waiting, or the frontier emptied with none left to grow. The
-// second is a proof — every position reachable from `start` was seen and none
-// finishes — and it is not rare: a Simple Simon deal with no line at all is usually
-// found out within a few dozen positions.
-type outcome = {path: option<array<Position.move>>, nodes: int, applied: int, exhausted: bool}
+// What a real one buys and what it costs: `docs/solver.md` § What a caller is willing
+// to spend. Read that before changing either number below.
+type patience = {ms: float, clock: unit => float}
+
+// The two waits the drivers use, named here so neither front end invents its own —
+// `interactive` for a board someone is watching, `patient` for a terminal or a script.
+let interactive = 10_000.
+let patient = 120_000.
+
+// `patience` resolved against the clock once, at the moment the caller asked — so every
+// rung is measured from there rather than from its own first node.
+type deadline = {at: float, clock: unit => float}
+
+let deadlineFor = (patience: option<patience>): option<deadline> =>
+  patience->Option.map(({ms, clock}) => {at: clock() +. ms, clock})
+
+let past = (deadline: option<deadline>): bool =>
+  switch deadline {
+  | None => false
+  | Some({at, clock}) => clock() >= at
+  }
+
+// How often that clock is read: once every this many positions rather than once per
+// position. A search grows hundreds of thousands of them and a clock read on each is a
+// cost the answer doesn't need; at the slowest board's ~50µs a position this overshoots
+// a deadline by well under a tenth of a second, against a wait said in seconds.
+let clockEvery = 1024
+
+// --- The search --------------------------------------------------------------
+
+// How a pass — and so a whole climb — came to a stop. **Three of these mean "no line",
+// and only one of them means "there is none".**
+//
+//   `Found`      — a line, and the path carries it.
+//   `Exhausted`  — the frontier emptied: every position reachable from the start was
+//                  seen and none finishes. A proof, and what `autoplay` answers
+//                  `Unwinnable` from.
+//   `OutOfNodes` — a rung spent its `maxNodes` with positions still waiting. It proves
+//                  nothing about the deal, and the next rung is climbed.
+//   `OutOfTime`  — the caller's `patience` ran out. It proves nothing about the deal
+//                  *or about the ladder*, because the rungs above it were never climbed.
+//                  That is why it isn't folded into `OutOfNodes`: it is the one refusal
+//                  a more patient caller might turn into an answer.
+type ending =
+  | Found
+  | Exhausted
+  | OutOfNodes
+  | OutOfTime
+
+// What a pass came back with: the moves to a finishable board, or `None` if it ran out
+// — and what it cost to get there, which is what makes the weights measurable. `nodes`
+// counts the positions taken off the frontier and grown; `applied` the moves played out
+// to see where they led, which is the bigger number and the one most of the time goes
+// into (every one of them is an `applyMove`, a `key` and a `canFinish`).
+type outcome = {path: option<array<Position.move>>, nodes: int, applied: int, ending: ending}
 
 // One node of the open list: a position and the moves that reached it.
 type node = {position: Position.t, path: array<Position.move>}
 
 // Weighted best-first search from `start` to the first position that
 // `Position.canFinish`.
-let search = (start: Position.t, attempt: attempt, ~weights: option<weights>=?): outcome => {
+let search = (
+  start: Position.t,
+  attempt: attempt,
+  ~weights: option<weights>=?,
+  ~deadline: option<deadline>=?,
+): outcome => {
   let weights = weights->Option.getOr(weightsFor(start))
   if Position.canFinish(start) {
-    {path: Some([]), nodes: 0, applied: 0, exhausted: false}
+    {path: Some([]), nodes: 0, applied: 0, ending: Found}
   } else {
     let frontier = Heap.make()
     let seen = Map.make()
@@ -230,13 +282,22 @@ let search = (start: Position.t, attempt: attempt, ~weights: option<weights>=?):
     let nodes = ref(0)
     let applied = ref(0)
     let found = ref(None)
+    // Read before the first position is grown, so a caller who was already out of time
+    // when it asked is told so rather than charged for a rung.
+    let expired = ref(past(deadline))
     while (
-      Option.isNone(found.contents) && Heap.size(frontier) > 0 && nodes.contents < attempt.maxNodes
+      Option.isNone(found.contents) &&
+      Heap.size(frontier) > 0 &&
+      nodes.contents < attempt.maxNodes &&
+      !expired.contents
     ) {
       switch Heap.pop(frontier) {
       | None => ()
       | Some({position, path}) =>
         nodes := nodes.contents + 1
+        if mod(nodes.contents, clockEvery) == 0 {
+          expired := past(deadline)
+        }
         let moves = Position.legalMoves(position)
         let i = ref(0)
         while Option.isNone(found.contents) && i.contents < Array.length(moves) {
@@ -268,7 +329,13 @@ let search = (start: Position.t, attempt: attempt, ~weights: option<weights>=?):
       path: found.contents,
       nodes: nodes.contents,
       applied: applied.contents,
-      exhausted: Option.isNone(found.contents) && Heap.size(frontier) == 0,
+      ending: switch found.contents {
+      | Some(_) => Found
+      // An emptied frontier is a proof whatever else was running out at the time, so it
+      // is read before either budget.
+      | None if Heap.size(frontier) == 0 => Exhausted
+      | None => expired.contents ? OutOfTime : OutOfNodes
+      },
     }
   }
 }
@@ -317,36 +384,56 @@ let ladderFor = (s: Position.t): array<attempt> =>
 //                 count; several per position, and the bigger number by far).
 //   `passes`    — rungs of the ladder it took. One is an ordinary deal; more than
 //                 one means the greedy pass gave up and a wider search found it.
-//   `exhausted` — a rung ran out of positions rather than budget, so a line that
-//                 wasn't found doesn't exist: no rung above it is climbed, since it
-//                 would only search the same finite space again.
+//   `ending`    — how the last rung stopped, and so how the climb did. The three kinds
+//                 of "no" are told apart there rather than here.
 //
-// **Deliberately no clock**: time a call from outside it, the way `solve.mjs` and
-// both front ends do. What that buys: `docs/solver.md` § The contract.
-type effort = {positions: int, moves: int, passes: int, exhausted: bool}
+// **Deliberately no elapsed time.** `patience` is a limit handed in, not a clock the
+// solver keeps, and nothing here reports how long anything took: a caller times its own
+// call, the way `solve.mjs` and `Session.autoplay` do. What that buys:
+// `docs/solver.md` § The contract.
+type effort = {positions: int, moves: int, passes: int, ending: ending}
 
-// Solve to the finishable position, escalating effort until a rung gives — or
-// `None` when the ladder runs out, which proves nothing about the deal unless the
-// effort says `exhausted`. Reports what the climb cost alongside the line, since a
-// rung that failed still spent its budget.
-let solveWithEffort = (start: Position.t, ~ladder: option<array<attempt>>=?): (
-  option<array<Position.move>>,
-  effort,
-) => {
+// The two readings of `ending` a driver outside ReScript needs: `solve.mjs` counts its
+// deals by them and gates its exit code on the first. A variant of constant
+// constructors is a bare number by the time it reaches JavaScript, so it is *asked*
+// rather than unpacked — the same bargain `stepFor` strikes for a move.
+let provedUnwinnable = (e: effort): bool => e.ending == Exhausted
+let ranOutOfTime = (e: effort): bool => e.ending == OutOfTime
+
+// Solve to the finishable position, escalating effort until a rung gives — or `None`
+// when the ladder runs out or the caller's patience does, neither of which proves
+// anything about the deal unless the effort says `Exhausted`. Reports what the climb
+// cost alongside the line, since a rung that failed still spent its budget.
+let solveWithEffort = (
+  start: Position.t,
+  ~ladder: option<array<attempt>>=?,
+  ~patience: option<patience>=?,
+): (option<array<Position.move>>, effort) => {
   let ladder = ladder->Option.getOr(ladderFor(start))
+  // Once for the climb, not once per rung — see `deadline`.
+  let deadline = deadlineFor(patience)
   let plan = ref(None)
   let rung = ref(0)
   let positions = ref(0)
   let moves = ref(0)
-  let exhausted = ref(false)
-  while (
-    Option.isNone(plan.contents) && !exhausted.contents && rung.contents < Array.length(ladder)
-  ) {
-    let outcome = search(start, ladder->Array.getUnsafe(rung.contents))
+  // An empty ladder is a caller asking for no effort at all, and gets the answer that
+  // describes: nothing found, nothing proved.
+  let ending = ref(OutOfNodes)
+  let climbing = ref(true)
+  while climbing.contents && rung.contents < Array.length(ladder) {
+    let outcome = search(start, ladder->Array.getUnsafe(rung.contents), ~deadline?)
     positions := positions.contents + outcome.nodes
     moves := moves.contents + outcome.applied
     plan := outcome.path
-    exhausted := outcome.exhausted
+    ending := outcome.ending
+    // Only a rung that merely spent its budget leaves a wider one anything to do: a line
+    // is the answer, an emptied frontier would be the same finite space again, and a
+    // spent clock is the caller's limit rather than this rung's.
+    climbing :=
+      switch outcome.ending {
+      | OutOfNodes => true
+      | Found | Exhausted | OutOfTime => false
+      }
     rung := rung.contents + 1
   }
   (
@@ -355,14 +442,17 @@ let solveWithEffort = (start: Position.t, ~ladder: option<array<attempt>>=?): (
       positions: positions.contents,
       moves: moves.contents,
       passes: rung.contents,
-      exhausted: exhausted.contents,
+      ending: ending.contents,
     },
   )
 }
 
 // The line alone, for the callers that only ever wanted that.
-let solve = (start: Position.t, ~ladder: option<array<attempt>>=?): option<array<Position.move>> =>
-  Pair.first(solveWithEffort(start, ~ladder?))
+let solve = (
+  start: Position.t,
+  ~ladder: option<array<attempt>>=?,
+  ~patience: option<patience>=?,
+): option<array<Position.move>> => Pair.first(solveWithEffort(start, ~ladder?, ~patience?))
 
 // Wanting this faster? It has been profiled, and the answer isn't the one it looks
 // like — read `docs/solver.md` § On making this faster first.
@@ -376,13 +466,16 @@ let solve = (start: Position.t, ~ladder: option<array<attempt>>=?): option<array
 //
 // **A plan is a plan for a game played with auto-collect on** — the warning is on
 // `Position.applyMove`, which is where the settling happens.
-let plan = (~game: Game.t, state: GameState.t): option<array<Position.move>> =>
-  Position.ofGameState(~game, state)->Option.flatMap(position => solve(position))
+let plan = (~game: Game.t, ~patience: option<patience>=?, state: GameState.t): option<
+  array<Position.move>,
+> => Position.ofGameState(~game, state)->Option.flatMap(position => solve(position, ~patience?))
 
 // The next move to play, as the action a driver dispatches — the smallest useful
 // thing to ask the solver, and the one the game itself will want first.
-let hint = (~game: Game.t, state: GameState.t): option<Reducer.action> =>
-  plan(~game, state)
+let hint = (~game: Game.t, ~patience: option<patience>=?, state: GameState.t): option<
+  Reducer.action,
+> =>
+  plan(~game, ~patience?, state)
   ->Option.flatMap(moves => moves->Array.get(0))
   ->Option.flatMap(move => Position.toAction(~game, state, move))
 
@@ -416,12 +509,12 @@ type played = {
   moved: array<Card.card>,
 }
 
-// What autoplay found. The three refusals are different questions and read as
-// different sentences (`Command.autoplayUnknownBoard` / `autoplayNoLine` /
-// `autoplayUnwinnable`): a board the solver doesn't understand, one it understands
-// and couldn't win, and one it understands and has proved can't be won. A `Played`
-// with no steps is none of them — it's a board already finishable, where there was
-// nothing left to think about.
+// What autoplay found. The four refusals answer four different questions and read as
+// four different sentences (`Command.autoplayUnknownBoard` / `autoplayNoLine` /
+// `autoplayUnwinnable` / `autoplayOutOfPatience`): a board the solver doesn't
+// understand, one it understands and couldn't win, one it has proved can't be won, and
+// one nobody finished looking at. A `Played` with no steps is none of them — it's a
+// board already finishable, where there was nothing left to think about.
 //
 // `Played` carries what the search cost alongside the line it found (`effort`), so a
 // front end can say how hard the answer was to come by. It travels with the steps
@@ -431,7 +524,11 @@ type autoplayed =
   | Played({steps: array<played>, effort: effort})
   | UnknownBoard // not a board `Position.ofGameState` can read — neither game, or a shape of one it doesn't model
   | NoLine // the ladder ran out (which proves nothing about the deal — see `solve`)
-  | Unwinnable // every reachable position was searched and none wins (`effort.exhausted`)
+  | Unwinnable // every reachable position was searched and none wins (`ending` says `Exhausted`)
+  // The caller's own `patience` ran out with rungs left unclimbed — an answer about the
+  // wait that was asked for, not about the board. It reads as its own refusal because it
+  // is the only one where asking again, somewhere more patient, is worth anything.
+  | OutOfPatience
 
 // The post-move settle the plan assumes: safe auto-collect, standing aside once the
 // board is finishable — `Position.applyMove`'s own rule, said against a real state.
@@ -459,13 +556,18 @@ let namedCards = (~game: Game.t, state: GameState.t, action: Reducer.action): ar
   | Reducer.MoveColumn(_) => []
   }
 
-let autoplay = (~game: Game.t, state: GameState.t): autoplayed =>
+let autoplay = (~game: Game.t, ~patience: option<patience>=?, state: GameState.t): autoplayed =>
   switch Position.ofGameState(~game, state) {
   | None => UnknownBoard
   | Some(position) =>
-    let (line, effort) = solveWithEffort(position)
+    let (line, effort) = solveWithEffort(position, ~patience?)
     switch line {
-    | None => effort.exhausted ? Unwinnable : NoLine
+    | None =>
+      switch effort.ending {
+      | Exhausted => Unwinnable
+      | OutOfTime => OutOfPatience
+      | Found | OutOfNodes => NoLine
+      }
     | Some(moves) =>
       let steps = []
       let current = ref(state)
@@ -547,10 +649,12 @@ let stepFor = (position: Position.t, move: Position.move): step => {
   after: Position.applyMove(position, move),
 }
 
-// The plan from `start` as steps: `None` when the ladder ran out, and `Some([])`
-// when the board is already finishable and there's nothing left to think about.
-let planSteps = (start: Position.t): option<array<step>> =>
-  solve(start)->Option.map(moves => {
+// The plan from `start` as steps: `None` when the ladder ran out or the patience did,
+// and `Some([])` when the board is already finishable and there's nothing left to think
+// about. The patience comes first so a driver outside ReScript passes it positionally
+// — the harness hands it `patient`, since the thing waiting there is a script.
+let planSteps = (~patience: option<patience>=?, start: Position.t): option<array<step>> =>
+  solve(start, ~patience?)->Option.map(moves => {
     let position = ref(start)
     moves->Array.map(move => {
       let step = stepFor(position.contents, move)
