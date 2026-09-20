@@ -302,13 +302,22 @@ let simpleSimon = simpleSimonDeal(~seed=freecellSeed)
 // since the same number shuffles a different pack on each.
 let spideretteCounts = [1, 2, 3, 4, 5, 6, 7]
 
-// The seams that differ per variant, so the shape below can be written once. `id`
-// stays the storage key and `?game=` value, so the two-suit board keeps the bare
-// `spiderette` it has always had: a save or link written for it still opens it.
-let rec spideretteShaped = (~id: string, ~name: string, ~deck: Cards.deck, ~seed: int): t => {
+// The seams that differ per variant, so the shape below can be written once — and per
+// game, since Spider (below) is this same shape at ten columns and two packs: the
+// counts are what tell the two apart, and everything after them is read off the deck
+// and the counts. `id` stays the storage key and `?game=` value, so the two-suit board
+// keeps the bare `spiderette` it has always had: a save or link written for it still
+// opens it.
+let rec spiderShaped = (
+  ~id: string,
+  ~name: string,
+  ~deck: Cards.deck,
+  ~counts: array<int>,
+  ~seed: int,
+): t => {
   let shuffled = Cards.shuffle(~deck, ~seed)
-  let dealt = spideretteCounts->Array.reduce(0, (a, b) => a + b)
-  let cascadePiles = Cards.dealByCounts(~counts=spideretteCounts, shuffled)->Array.map(column => {
+  let dealt = counts->Array.reduce(0, (a, b) => a + b)
+  let cascadePiles = Cards.dealByCounts(~counts, shuffled)->Array.map(column => {
     role: Cascade,
     stacking: Fanned,
     rule: Rules.spiderCascade,
@@ -341,7 +350,7 @@ let rec spideretteShaped = (~id: string, ~name: string, ~deck: Cards.deck, ~seed
     piles: [stockPile]->Array.concat(foundationPiles)->Array.concat(cascadePiles),
     deck,
     seed: Some(seed),
-    deal: Some(seed => spideretteShaped(~id, ~name, ~deck, ~seed)),
+    deal: Some(seed => spiderShaped(~id, ~name, ~deck, ~counts, ~seed)),
     runLimit: Unlimited,
     collect: CompleteRuns,
   }
@@ -352,26 +361,107 @@ let rec spideretteShaped = (~id: string, ~name: string, ~deck: Cards.deck, ~seed
 let spiderette1Deck: Cards.deck = {suits: [Spades], ranks: Cards.ranks, copies: 4}
 
 let spiderette1Deal = (~seed: int): t =>
-  spideretteShaped(~id="spiderette1", ~name="Spiderette · 1 suit", ~deck=spiderette1Deck, ~seed)
+  spiderShaped(
+    ~id="spiderette1",
+    ~name="Spiderette · 1 suit",
+    ~deck=spiderette1Deck,
+    ~counts=spideretteCounts,
+    ~seed,
+  )
 
 // Spades and hearts, twice over — the variant the game is usually meant by.
 let spideretteDeck: Cards.deck = {suits: [Spades, Hearts], ranks: Cards.ranks, copies: 2}
 
 let spideretteDeal = (~seed: int): t =>
-  spideretteShaped(~id="spiderette", ~name="Spiderette · 2 suits", ~deck=spideretteDeck, ~seed)
+  spiderShaped(
+    ~id="spiderette",
+    ~name="Spiderette · 2 suits",
+    ~deck=spideretteDeck,
+    ~counts=spideretteCounts,
+    ~seed,
+  )
 
 // The standard pack: the hard one, where a lawful drop across suits is most often a
 // card in the way.
 let spiderette4Deal = (~seed: int): t =>
-  spideretteShaped(~id="spiderette4", ~name="Spiderette · 4 suits", ~deck=Cards.standard, ~seed)
+  spiderShaped(
+    ~id="spiderette4",
+    ~name="Spiderette · 4 suits",
+    ~deck=Cards.standard,
+    ~counts=spideretteCounts,
+    ~seed,
+  )
 
 let spiderette1 = spiderette1Deal(~seed=freecellSeed)
 let spiderette = spideretteDeal(~seed=freecellSeed)
 let spiderette4 = spiderette4Deal(~seed=freecellSeed)
 
+// --- Spider ----------------------------------------------------------------------
+// The full game: Spiderette's shape on two packs. Ten cascades dealt 6/6/6/6/5/5/5/5/5/5
+// with only the top card of each face up, and the other fifty a stock — five deals of
+// ten, one card to every column, and the stock runs out on exactly the fifth.
+//
+// **The pack is the variant here too**, and is the game's difficulty setting: the same
+// 104 cards as one suit taken eight times, two taken four times, or the standard pack
+// twice over. Eight runs to collect whichever pack it is, so eight foundations
+// (`suits × copies`) — which, with the stock's fifty, is what tells Spider's top row from
+// Spiderette's. One suit makes the same-suit run rule vacuous and four suits is the real
+// game; two is where most players start. The two-suit board keeps the bare `spider` id
+// as the two-suit Spiderette keeps `spiderette`, so the two families' ids read alike.
+let spiderCounts = [6, 6, 6, 6, 5, 5, 5, 5, 5, 5]
+
+let spider1Deck: Cards.deck = {suits: [Spades], ranks: Cards.ranks, copies: 8}
+
+let spider1Deal = (~seed: int): t =>
+  spiderShaped(
+    ~id="spider1",
+    ~name="Spider · 1 suit",
+    ~deck=spider1Deck,
+    ~counts=spiderCounts,
+    ~seed,
+  )
+
+let spiderDeck: Cards.deck = {suits: [Spades, Hearts], ranks: Cards.ranks, copies: 4}
+
+let spiderDeal = (~seed: int): t =>
+  spiderShaped(
+    ~id="spider",
+    ~name="Spider · 2 suits",
+    ~deck=spiderDeck,
+    ~counts=spiderCounts,
+    ~seed,
+  )
+
+// The standard pack twice: every suit, and two of every card.
+let spider4Deck: Cards.deck = {...Cards.standard, copies: 2}
+
+let spider4Deal = (~seed: int): t =>
+  spiderShaped(
+    ~id="spider4",
+    ~name="Spider · 4 suits",
+    ~deck=spider4Deck,
+    ~counts=spiderCounts,
+    ~seed,
+  )
+
+let spider1 = spider1Deal(~seed=freecellSeed)
+let spider = spiderDeal(~seed=freecellSeed)
+let spider4 = spider4Deal(~seed=freecellSeed)
+
 // In picker order; a further game joins it here. The scene picker and the CLI's
 // `games`/`deal <id>` both enumerate it.
-let all = [freecell, mini, micro, simpleSimon, spiderette1, spiderette, spiderette4]
+let all = [
+  freecell,
+  mini,
+  micro,
+  simpleSimon,
+  spiderette1,
+  spiderette,
+  spiderette4,
+  spider1,
+  spider,
+  spider4,
+]
 
 // The game a bare `deal`/`new`, or a bare deal *number*, lays out. Named here so each
 // front end asks for "the default game" rather than deciding for itself that a number
@@ -461,8 +551,19 @@ let spideretteFamily: family = {
   default: spideretteTwoSuit,
 }
 
-// Every family. A third joins here.
-let families: array<family> = [freecellFamily, spideretteFamily]
+// Spider's packs, ordered easiest-first like Spiderette's and defaulting to the same
+// middle pack: two suits is where most players start, and four is a choice to make.
+let spiderTwoSuit: variant = {game: spider, mark: Pack}
+
+let spiderFamily: family = {
+  id: "spider",
+  name: "Spider",
+  variants: [{game: spider1, mark: Pack}, spiderTwoSuit, {game: spider4, mark: Pack}],
+  default: spiderTwoSuit,
+}
+
+// Every family. A fourth joins here.
+let families: array<family> = [freecellFamily, spideretteFamily, spiderFamily]
 
 // The family a board belongs to, or `None` for a board that is a game on its own —
 // which is also the question a caller asks before offering the choice at all.

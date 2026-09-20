@@ -49,10 +49,11 @@ type model = {
   // into the corner wings beside the notch; off clamps every control inside the safe
   // area.
   notchDisplay: bool,
-  // "Beta features": the one switch in front of what's built but not finished. Nothing
-  // stands behind it today — the switch is kept for the next unfinished feature, which
-  // gates itself on this field and takes the gate out when it graduates. A feature flag
-  // rather than a preference, which is why it is hidden and why it defaults off.
+  // "Beta features": the one switch in front of what's built but not finished. Today it
+  // lists Spider in the Games menu (`Main`'s `betaGames`), read off storage at launch
+  // rather than off this field: an unfinished feature gates itself on the flag and takes
+  // the gate out when it graduates. A feature flag rather than a preference, which is
+  // why it is hidden and why it defaults off.
   betaFeatures: bool,
   // The hidden settings and the run of taps that reveals them (`HiddenOptions`). Today
   // that is Wiggle Waggle and Beta features. A hidden row says nothing about whether its
@@ -232,11 +233,11 @@ let update = (env: env, msg, model) =>
         env.persist(model)
       },
     )
-  // A feature flag with nothing behind it, so storing the flip is the whole of the
-  // change. A feature that gates on it decides what more its flip needs: a menu screen
+  // A feature flag, so storing the flip is the whole of the change: what it gates today
+  // (`Main`'s `menuGames`) is read off storage at launch, and the row says so. A feature
+  // that wants its flip to land sooner has to be published too — a menu screen
   // re-renders from this model on the very next pass, but anything read outside the
-  // chrome's render — a ref the switcher files rows by, say — has to be published too,
-  // or that half of a flip lands on the launch after it.
+  // chrome's render, a ref the switcher files rows by, say, does not.
   | ToggleBetaFeatures =>
     let model = {...model, betaFeatures: !model.betaFeatures}
     (model, () => env.persist(model))
@@ -320,7 +321,7 @@ let make = ({model, dispatch, onClose, onBackToMenu, onOpenDebug}) => <>
               />
               <MenuToggleRow
                 label="Beta features"
-                desc="Turn on the features still in development."
+                desc="Turn on the features still in development. Takes effect on the next launch."
                 on={model.betaFeatures}
                 onToggle={() => dispatch(ToggleBetaFeatures)}
               />

@@ -163,6 +163,7 @@ mise run solve -- --game mini --quiet 1-1000          # the short packs
 mise run solve -- --game spiderette4 --quiet 1-200    # the board that deals
 mise run solve -- --game spiderette1 --quiet 1-200    # …and its repeated packs
 mise run solve -- --game spiderette --quiet 1-200
+mise run solve -- --game spider --limit 20 --quiet 1-3  # two packs: reads, unmeasured
 mise run solve -- --limit 10 --game spiderette4 --quiet 1-200   # …as a player waits for it
 ```
 

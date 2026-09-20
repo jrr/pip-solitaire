@@ -363,9 +363,17 @@ describe("Position under Simple Simon", () => {
   test("the law is read off the rules, and the shape is checked apart from it", () => {
     // Spiderette plays by Simple Simon's laws, so the law reads the same on all three
     // of its packs, and all three are boards the model holds — stock, repeated cards
-    // and all. What is *not* a refusal either is a board of another size: Mini reads
-    // under the same law as FreeCell and packs, counts and pack and all.
-    [Game.spiderette1, Game.spiderette, Game.spiderette4]->Array.forEach(
+    // and all; Spider is the same shape on two packs, and holds the same way. What is
+    // *not* a refusal either is a board of another size: Mini reads under the same law
+    // as FreeCell and packs, counts and pack and all.
+    [
+      Game.spiderette1,
+      Game.spiderette,
+      Game.spiderette4,
+      Game.spider1,
+      Game.spider,
+      Game.spider4,
+    ]->Array.forEach(
       board => {
         expect(Position.lawOf(board))->toEqual(Some(Position.SimpleSimon))
         expect(Position.ofGameState(~game=board, GameState.initial(board))->Option.isSome)->toBe(

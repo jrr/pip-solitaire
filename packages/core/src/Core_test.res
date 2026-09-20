@@ -8,9 +8,9 @@ test("greeting returns the expected message", () => {
 // The modelled games: assert the rules the presentation layer reads back.
 describe("Game", () => {
   test("every game is listed with a stable id and a non-empty name", () => {
-    // FreeCell, its two short-deck siblings, Simple Simon and the three Spiderette
-    // packs — the list the scene picker and the CLI's `games`/`deal <id>` enumerate,
-    // in picker order.
+    // FreeCell, its two short-deck siblings, Simple Simon, and the three packs each of
+    // Spiderette and Spider — the list the scene picker and the CLI's `games`/`deal
+    // <id>` enumerate, in picker order.
     expect(Game.all->Array.map(g => g.id))->toEqual([
       "freecell",
       "mini",
@@ -19,6 +19,9 @@ describe("Game", () => {
       "spiderette1",
       "spiderette",
       "spiderette4",
+      "spider1",
+      "spider",
+      "spider4",
     ])
     expect(Game.all->Array.every(g => g.name != ""))->toBe(true)
   })
@@ -1407,6 +1410,119 @@ describe("Game", () => {
     )
   })
 
+  // Spider: Spiderette's shape on two packs. What is new is only the counts and the
+  // deck, so what is checked is what those change — the opening deal, the stock's five
+  // rows, the eight runs — and that the rest of the board is Spiderette's.
+  describe("spider", () => {
+    test(
+      "is 104 cards in nineteen piles: a stock, eight foundations, then ten cascades dealt 6/6/6/6/5/5/5/5/5/5 with the top card up",
+      () => {
+        [Game.spider1, Game.spider, Game.spider4]->Array.forEach(
+          board => {
+            expect(Array.length(Cards.cardsOf(board.deck)))->toBe(104)
+            expect(Array.length(board.piles))->toBe(19)
+            expect(Game.pileIndices(board, Game.Stock))->toEqual([0])
+            expect(Game.pileIndices(board, Game.Foundation))->toEqual([1, 2, 3, 4, 5, 6, 7, 8])
+            expect(Game.pileIndices(board, Game.FreeCell))->toEqual([])
+            let cascades = Game.pilesOf(board, Game.Cascade)
+            expect(cascades->Array.map(p => Array.length(p.cards)))->toEqual(Game.spiderCounts)
+            expect(cascades->Array.map(p => p.faceDown))->toEqual([5, 5, 5, 5, 4, 4, 4, 4, 4, 4])
+            expect(cascades->Array.every(p => p.rule == Rules.spiderCascade))->toBe(true)
+            let stock = board.piles->Array.getUnsafe(0)
+            expect(Array.length(stock.cards))->toBe(50)
+            expect(stock.faceDown)->toBe(50)
+            expect(board.runLimit)->toEqual(Game.Unlimited)
+            expect(board.collect)->toEqual(Game.CompleteRuns)
+            expect(Array.length(GameState.initial(board).piles->Array.flat))->toBe(104)
+          },
+        )
+      },
+    )
+
+    test(
+      "one suit is spades eight times over, two suits is two taken four times, four suits is the standard pack twice",
+      () => {
+        expect(Game.spider1.deck)->toEqual({suits: [Spades], ranks: Cards.ranks, copies: 8})
+        expect(Game.spider.deck)->toEqual({suits: [Spades, Hearts], ranks: Cards.ranks, copies: 4})
+        expect(Game.spider4.deck)->toEqual({suits: Cards.suits, ranks: Cards.ranks, copies: 2})
+        // Every card of the pack is on the table exactly once, copies told apart.
+        let onTable = GameState.initial(Game.spider1).piles->Array.flat
+        expect(
+          onTable
+          ->Array.filter(c => c.rank == Ace)
+          ->Array.map(Card.copyOf)
+          ->Array.toSorted(Int.compare),
+        )->toEqual([0, 1, 2, 3, 4, 5, 6, 7])
+      },
+    )
+
+    test(
+      "each pack re-deals as itself, and a deal number is a different board on each",
+      () => {
+        let again = Game.dealt(Game.spider1, ~seed=7)
+        expect(again.id)->toBe("spider1")
+        expect(again.deck)->toEqual(Game.spider1.deck)
+        expect(again.seed)->toEqual(Some(7))
+        expect(Game.dealt(Game.spider4, ~seed=7).deck)->toEqual(Game.spider4Deck)
+      },
+    )
+
+    test(
+      "the stock deals five rows of ten and then has nothing left, so the sixth is refused",
+      () => {
+        let board = Game.spider
+        let stock = 0
+        let cascades = Game.pileIndices(board, Game.Cascade)
+        let rec dealAll = (state, deals) =>
+          switch Reducer.reduce(~game=board, state, Reducer.Deal) {
+          | Ok(next) => dealAll(next, deals + 1)
+          | Error(why) => (state, deals, why)
+          }
+        let (dealtOut, deals, why) = dealAll(GameState.initial(board), 0)
+        expect(deals)->toBe(5)
+        expect(why)->toEqual(Reducer.StockEmpty)
+        expect(Array.length(GameState.cardsInPile(dealtOut, stock)))->toBe(0)
+        // Each column grew by five, all of them face up: the dealt rows land on top of
+        // the face-down cards the opening left.
+        expect(cascades->Array.map(i => Array.length(GameState.cardsInPile(dealtOut, i))))->toEqual(
+          Game.spiderCounts->Array.map(n => n + 5),
+        )
+        expect(cascades->Array.map(i => GameState.faceDownIn(dealtOut, i)))->toEqual([
+          5,
+          5,
+          5,
+          5,
+          4,
+          4,
+          4,
+          4,
+          4,
+          4,
+        ])
+      },
+    )
+
+    test(
+      "a one-suit run is complete on any eight copies, so the win needs all eight foundations",
+      () => {
+        let board = Game.spider1
+        let foundations = Game.pileIndices(board, Game.Foundation)
+        let run = k =>
+          Cards.ranks->Array.toReversed->Array.map(rank => Card.nth({suit: Spades, rank}, k))
+        let piles = board.piles->Array.mapWithIndex(
+          (_, i) =>
+            switch foundations->Array.indexOf(i) {
+            | -1 => []
+            | k => run(k)
+            },
+        )
+        expect(GameState.hasWon(board, GameState.faceUp(piles)))->toBe(true)
+        let sevenOnly = piles->Array.mapWithIndex((cards, i) => i == 8 ? [] : cards)
+        expect(GameState.hasWon(board, GameState.faceUp(sevenOnly)))->toBe(false)
+      },
+    )
+  })
+
   // The boards a menu offers as **one game** (`Game.family`): what a front end needs in
   // order to draw one row with a control on it for which board, and the reason it can
   // draw one without holding a list of the ids itself.
@@ -1420,6 +1536,8 @@ describe("Game", () => {
         expect(ids(Game.freecellFamily))->toEqual(["freecell", "mini", "micro"])
         expect(Game.spideretteFamily.name)->toBe("Spiderette")
         expect(ids(Game.spideretteFamily))->toEqual(["spiderette1", "spiderette", "spiderette4"])
+        expect(Game.spiderFamily.name)->toBe("Spider")
+        expect(ids(Game.spiderFamily))->toEqual(["spider1", "spider", "spider4"])
       },
     )
 
@@ -1431,6 +1549,7 @@ describe("Game", () => {
         // two-suit pack in the middle.
         expect(Game.freecellFamily.default.game.id)->toBe("freecell")
         expect(Game.spideretteFamily.default.game.id)->toBe("spiderette")
+        expect(Game.spiderFamily.default.game.id)->toBe("spider")
       },
     )
 
@@ -1471,7 +1590,7 @@ describe("Game", () => {
           Game.families
           ->Array.flatMap(ids)
           ->Array.map(id => Game.byId(id)->Option.isSome),
-        )->toEqual([true, true, true, true, true, true])
+        )->toEqual([true, true, true, true, true, true, true, true, true])
       },
     )
 
