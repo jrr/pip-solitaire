@@ -81,11 +81,12 @@ Two are named in `Solver`, for **who is waiting** rather than for how long:
 | `patient` | 120 s | a terminal or a script, where the waiting is the point — passed by `Cli` |
 
 `interactive` is a **policy**, and it really does cost answers — § What the
-interactive wait costs measures how many. `patient` is a **backstop**: it sits above the worst climb any
-board's ladder makes, so it bites only on a machine far slower than the one the
-record was measured on. `mise run solve` passes whatever `--limit` says, and
-nothing at all by default, which is what makes the benchmark record a measurement
-of the ladder rather than of a wait.
+interactive wait costs measures how many, and § Why the unsolved count stands is
+the decision that came out of it. `patient` is a **backstop**: it sits above the
+worst climb any board's ladder makes, so it bites only on a machine far slower
+than the one the record was measured on. `mise run solve` passes whatever
+`--limit` says, and nothing at all by default, which is what makes the benchmark
+record a measurement of the ladder rather than of a wait.
 
 **The wait bounds the whole climb, not a rung of it.** It is resolved into a
 deadline once, when the caller asks, and every rung is measured against that one
@@ -208,9 +209,9 @@ a heuristic change is trying to reduce.
 
 **Spiderette · 4 suits**, over 1–200 rather than the thousand: a deal the ladder
 gives up on costs it the whole budget, so this soak is half an hour where Simple
-Simon's is eight minutes. The unsolved count is the number to beat, and it is
-not zero — `mise run solve` exits non-zero on this board today, and on the
-two-suit pack below it.
+Simon's is eight minutes. The unsolved count is not zero and is not a target —
+`mise run solve` exits non-zero on this board today, and on the two-suit pack
+below it. Why it stands: § Why the unsolved count stands.
 
 | Date | Deals | Solved | Unwinnable | Unsolved | Mean | Mean moves | Worst | Environment |
 |---|---|---|---|---|---|---|---|---|
@@ -222,7 +223,7 @@ and weights on a cheaper deck — these are the repeated packs, where `found`
 counts a suit's runs rather than naming one (§ The packed position). One suit
 has nothing to build wrong, so every deal is answered and the soak is under a
 minute; two suits sits between it and the four-suit board — a ten-minute soak,
-and an unsolved count that is a second number to beat.
+and an unsolved count of its own.
 
 | Date | Board | Deals | Solved | Unwinnable | Unsolved | Mean | Mean moves | Worst | Environment |
 |---|---|---|---|---|---|---|---|---|---|
@@ -296,6 +297,51 @@ FreeCell's worst is the one a smaller `interactive` would take first.
 
 All six rows: 2026-09-20, Node v26.9.0, cloud sandbox, the capped half with
 `--limit 10`.
+
+### Why the unsolved count stands
+
+Four-suit Spiderette leaves 33 of 200 deals unanswered and the two-suit pack 12,
+where every other board the solver models answers all of them. **Those numbers
+are the record, not a target**, and this is the argument for leaving them alone
+rather than tuning the heuristic or widening the ladder to move them.
+
+**The cost that made them a defect is gone.** What was wrong with an unanswered
+deal was never the gap in the table — it was that reaching it took the whole
+ladder, nearly forty seconds, wherever `autoplay` had been typed. A player now
+waits ten (§ What a caller is willing to spend). The deal is still unanswered
+and the board still can't say whether it is winnable, but neither of those is
+something anyone sits through.
+
+**And the answer they give is now true.** These deals used to come back
+"couldn't find a way to win from here", which reads as a verdict on the board.
+Under a wait they come back `OutOfTime`, which says what actually happened:
+nobody finished looking. Part of what made the count feel like a defect was a
+sentence claiming more than the search had earned.
+
+**Nobody knows the count is too high.** Eight of the 200 four-suit deals were
+*proved* unwinnable; the 33 were not proved either way. A deal with no line is
+not a deal the solver failed on, and no one has established how many of the 33
+have lines at all. "Answer more of them" is only a goal for the ones that can be
+answered, and that number is unknown.
+
+**A longer search is the wrong knob, and now for a second reason.** The rungs are
+capped deliberately, and § The ladder has the measured case that raising a cap
+mostly buys nothing while a third rung is paid by every deal that beats the first
+two. The bounded wait sharpens that, and the sharpening is measurable. On three
+stubborn four-suit deals — #3, #141, #147 — the full ladder spends all 700,000 of
+its positions and takes 21 to 31 s. Ten seconds buys 217,000 to 357,000 of them:
+the first rung entire, and **between a thirtieth and a third of the second**. So a
+third rung is not something a player would ever reach, and widening the second is
+barely better. Either would be tuning for `mise run solve` and the CLI — worth
+doing only if those are who it is for, which should be said out loud rather than
+assumed.
+
+**What would actually help is a cheaper proof.** A rung that empties its frontier
+answers a deal in milliseconds, which is well inside any wait; that is how Mini
+and Micro answer every deal in the first thousand. Converting some of the 33 into
+`Exhausted` would raise the answered count *within* the ten seconds, where a
+longer search cannot. That is a different piece of work from tuning weights, and
+it is the direction to take if this is picked up again.
 
 Add a row rather than editing one. Two runs on different machines are two
 different facts, and a heuristic change is worth a soak beside the run it
