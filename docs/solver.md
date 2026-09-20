@@ -95,9 +95,12 @@ deadline ends the climb outright, rather than handing on to a wider one.
 
 **The clock is read once every 1,024 positions**, not once per position: a search
 grows hundreds of thousands of them and a clock read on each is a cost the answer
-doesn't need. At the slowest board's ~50 µs a position that overshoots by well
-under a tenth of a second — measured, a ten-second limit on the worst four-suit
-Spiderette deal came back at 10,016 ms.
+doesn't need. What it costs instead is an overshoot of up to those 1,024 positions
+— and a position is not a fixed price, because a board with more legal moves grows
+more children out of each one. Measured against a ten-second limit, the worst deal
+of each board came back at 10,073 ms (Simple Simon), 10,130 ms (four-suit
+Spiderette) and 10,326 ms (two-suit). **So a wait under about a second is not a
+wait this can keep**; both named ones are far above that.
 
 **Lowering `interactive` is a change to what the browser suite can play.**
 `browser-tests/spiderette.spec.mjs` types `autoplay` on all three Spiderette packs

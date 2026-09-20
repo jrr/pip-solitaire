@@ -224,9 +224,10 @@ let past = (deadline: option<deadline>): bool =>
   }
 
 // How often that clock is read: once every this many positions rather than once per
-// position. A search grows hundreds of thousands of them and a clock read on each is a
-// cost the answer doesn't need; at the slowest board's ~50µs a position this overshoots
-// a deadline by well under a tenth of a second, against a wait said in seconds.
+// position — a search grows hundreds of thousands of them, and a clock read on each is a
+// cost the answer doesn't need. The price is an overshoot of up to this many positions,
+// which on the heaviest board is a third of a second: **a wait under about a second is
+// not one this can keep.** Measured, per board, in `docs/solver.md`.
 let clockEvery = 1024
 
 // --- The search --------------------------------------------------------------
