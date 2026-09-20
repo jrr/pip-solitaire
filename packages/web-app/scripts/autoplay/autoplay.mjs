@@ -171,7 +171,11 @@ export async function playGame(
     // The plan, already said in the terms this file plays a move in: which card to
     // grab, what that grab should raise, where to drop it, and the board the move
     // should leave behind (`Solver.planSteps`).
-    const plan = Solver.planSteps(view.state)
+    //
+    // The wait it is allowed is `patient` rather than the board-watching one: what is
+    // waiting here is a script that will then spend a minute dragging cards. Passed
+    // positionally because that is what a ReScript optional argument compiles to.
+    const plan = Solver.planSteps({ ms: Solver.patient, clock: Date.now }, view.state)
     if (!plan) throw new Error(`${game} deal ${seed}: no solution from the position on screen`)
     if (planned === null) {
       planned = plan.length

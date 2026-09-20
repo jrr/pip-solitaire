@@ -174,10 +174,16 @@ let dealFirstHint = "freecell"
 //
 // `~clock` is the other impurity a session needs, and it's here for the same reason:
 // `Timing` stamps a win with a real moment, and `core` doesn't invent one.
+//
+// `~patience` rides alongside `~clock` and is there for the same reason: how long this
+// driver is willing to let `autoplay` think is the driver's to say, not `core`'s. Left
+// off — as every test leaves it — the search runs its whole ladder, which against the
+// stopped clock above is the only answer that could be reproduced anyway.
 let stepCommand = (
   ~options: Options.t,
   ~newSeed: unit => int=() => Game.freecellSeed,
   ~clock: unit => float=stoppedClock,
+  ~patience: option<float>=?,
   session: option<Session.t>,
   command: Command.t,
 ): (option<Session.t>, string) => {
@@ -191,7 +197,7 @@ let stepCommand = (
     | None => (session, `Deal a game first (try \`deal ${dealFirstHint}\`).`)
     }
   let onSession = (s: Session.t) => {
-    let (s', outcome) = Session.step(~clock, s, command)
+    let (s', outcome) = Session.step(~clock, ~patience?, s, command)
     (Some(s'), transcript(s', outcome))
   }
   switch command {
@@ -244,10 +250,11 @@ let step = (
   ~options: Options.t,
   ~newSeed: unit => int=() => Game.freecellSeed,
   ~clock: unit => float=stoppedClock,
+  ~patience: option<float>=?,
   session: option<Session.t>,
   line: string,
 ): (option<Session.t>, string) =>
-  stepCommand(~options, ~newSeed, ~clock, session, Command.parse(line))
+  stepCommand(~options, ~newSeed, ~clock, ~patience?, session, Command.parse(line))
 
 // The prompt, in one place: written *before* the read in an interactive session and
 // *behind* the line in a batch transcript. Same string either way — that's what makes
@@ -280,6 +287,7 @@ let consider = (
   ~options: Options.t,
   ~newSeed: unit => int=() => Game.freecellSeed,
   ~clock: unit => float=stoppedClock,
+  ~patience: option<float>=?,
   session: option<Session.t>,
   line: string,
 ): outcome => {
@@ -301,7 +309,7 @@ let consider = (
         output: Command.describeSet(~setting, ~on),
       })
     | command =>
-      let (next, output) = stepCommand(~options, ~newSeed, ~clock, session, command)
+      let (next, output) = stepCommand(~options, ~newSeed, ~clock, ~patience?, session, command)
       Ran({session: next, options, output})
     }
   }
@@ -319,6 +327,7 @@ let run = (
   ~options: Options.t=Options.default,
   ~newSeed: unit => int=() => Game.freecellSeed,
   ~clock: unit => float=stoppedClock,
+  ~patience: option<float>=?,
   lines: array<string>,
 ): string => {
   let session = ref(None)
@@ -328,7 +337,14 @@ let run = (
   let ended = ref(false)
   lines->Array.forEach(line =>
     if !ended.contents {
-      switch consider(~options=flags.contents, ~newSeed, ~clock, session.contents, line) {
+      switch consider(
+        ~options=flags.contents,
+        ~newSeed,
+        ~clock,
+        ~patience?,
+        session.contents,
+        line,
+      ) {
       | Skipped => ()
       | Ended =>
         out->Array.push(prompt ++ String.trim(line))

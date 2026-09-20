@@ -1927,9 +1927,14 @@ let make = (
         | Session.Played(_) => ()
         }
 
+      // `~patience` is what `autoplay` is allowed to spend thinking, and it is this
+      // layer's to set because this is the layer someone is watching: a board that sits
+      // still for the better part of a minute reads as a hung page, whatever the search
+      // is doing. It costs answers on the stubborn deals — `docs/solver.md` § What a
+      // caller is willing to spend — and the trade is deliberate.
       let runCommand = (command: Command.t): array<Render.line> => {
         let before = state()
-        let (next, outcome) = Session.step(~clock, current(), command)
+        let (next, outcome) = Session.step(~clock, ~patience=Solver.interactive, current(), command)
         switch outcome.change {
         // A solver line is walked, not adopted: `next` is where it *ends up*, and getting
         // there a move at a time is the point (see `playLine`).

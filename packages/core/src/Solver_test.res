@@ -129,7 +129,7 @@ describe("Solver", () => {
   test("a plan is handed to a driver in the terms it plays moves in", () => {
     // What the browser autoplay harness reads: which card to grab, what that grab
     // should raise, where to drop it, and the board the move should leave behind.
-    switch Position.ofGameState(~game, opening)->Option.flatMap(Solver.planSteps) {
+    switch Position.ofGameState(~game, opening)->Option.flatMap(start => Solver.planSteps(start)) {
     | None => expect("a plan")->toBe("but got None")
     | Some(steps) =>
       let problems = []
@@ -179,7 +179,7 @@ describe("Solver", () => {
       () =>
         switch Solver.autoplay(~game, opening) {
         | Solver.UnknownBoard => expect("a FreeCell board")->toBe("but the solver didn't know it")
-        | Solver.NoLine | Solver.Unwinnable =>
+        | Solver.NoLine | Solver.Unwinnable | Solver.OutOfPatience =>
           expect("deal 1 played")->toBe("but no line was found")
         | Solver.Played({steps, effort}) =>
           expect(Array.length(steps) > 20)->toBe(true) // a real game, not a shortcut
@@ -248,7 +248,10 @@ describe("Solver", () => {
         // first pass returns having spent nothing.
         let finishable = Scenario.freecellFinish(game)
         expect(Solver.autoplay(~game, finishable))->toEqual(
-          Solver.Played({steps: [], effort: {positions: 0, moves: 0, passes: 1, exhausted: false}}),
+          Solver.Played({
+            steps: [],
+            effort: {positions: 0, moves: 0, passes: 1, ending: Solver.Found},
+          }),
         )
       },
     )
@@ -260,6 +263,89 @@ describe("Solver", () => {
         expect(Solver.autoplay(~game=cascadesOnly, GameState.initial(cascadesOnly)))->toEqual(
           Solver.UnknownBoard,
         )
+      },
+    )
+  })
+
+  // What the caller is willing to wait. The solver keeps no clock of its own — it is
+  // handed one — and that is exactly what makes a wait testable: hand it a clock this
+  // file drives, and "ten seconds went by" is a fact rather than a race. Nothing below
+  // reads a real clock, so none of it can fail on a slow machine.
+  describe("patience", () => {
+    // Readings in order, the last one repeating. The first read is the wait being
+    // resolved into a deadline; every one after it is a look to see whether it is over.
+    let clockOf = (readings: array<float>) => {
+      let i = ref(0)
+      () => {
+        let at =
+          readings->Array.get(i.contents)->Option.getOr(readings->Array.last->Option.getOr(0.))
+        i := i.contents + 1
+        at
+      }
+    }
+
+    // Asked at 0 with a second to spend, and ten seconds gone by the first look.
+    let spent = (): Solver.patience => {ms: 1000., clock: clockOf([0., 10_000.])}
+
+    test(
+      "a caller already out of time is told so, not charged for a rung",
+      () => {
+        // It reads as its own refusal so that a front end doesn't report "no way to win"
+        // about a board nobody finished looking at: the answer is about the wait.
+        expect(Solver.autoplay(~game, ~patience=spent(), opening))->toEqual(Solver.OutOfPatience)
+      },
+    )
+
+    testWithin(
+      "a stopped clock never runs out, however little patience it is given",
+      () =>
+        // The property the rest of this file rests on — and why a wait puts no
+        // timing-shaped hole in the suite. A caller that hands over a stopped clock gets
+        // the plan the node budgets alone would find, so a plan stays a value two runs
+        // can be expected to agree on.
+        expect(Solver.plan(~game, ~patience={ms: 1., clock: () => 0.}, opening))->toEqual(
+          Solver.plan(~game, opening),
+        ),
+      ~timeout=60_000,
+    )
+
+    test(
+      "a spent clock ends the climb, where a spent budget only ends the rung",
+      () =>
+        switch Position.ofGameState(~game, opening) {
+        | None => expect("a FreeCell board packs")->toBe("but it didn't")
+        | Some(start) =>
+          // Two rungs, each far too small to find anything on a full deal.
+          let ladder: array<Solver.attempt> = [
+            {weight: 2., maxNodes: 10},
+            {weight: 1., maxNodes: 10},
+          ]
+          // With time to spare, a rung that merely spent its budget leaves the next one
+          // something to do, and `passes` counts both.
+          let (_, budget) = Solver.solveWithEffort(start, ~ladder)
+          expect(budget.passes)->toBe(2)
+          expect(budget.ending)->toEqual(Solver.OutOfNodes)
+          // Out of time, the rung above is never climbed at all — which is the whole
+          // reason the two aren't one ending with a bit of colour on it.
+          let (_, clock) = Solver.solveWithEffort(start, ~ladder, ~patience=spent())
+          expect(clock.passes)->toBe(1)
+          expect(clock.ending)->toEqual(Solver.OutOfTime)
+        },
+    )
+
+    test(
+      "a proof outranks the clock",
+      () => {
+        // A rung that empties its frontier has seen everything there was to see, so the
+        // answer is the proof it is — with however much of the wait left unspent.
+        let dead = Game.simpleSimonDeal(~seed=2)
+        expect(
+          Solver.autoplay(
+            ~game=dead,
+            ~patience={ms: 60_000., clock: () => 0.},
+            GameState.initial(dead),
+          ),
+        )->toEqual(Solver.Unwinnable)
       },
     )
   })
@@ -277,7 +363,7 @@ describe("Solver", () => {
         switch Solver.autoplay(~game, opening) {
         | Solver.UnknownBoard =>
           expect("a Simple Simon board")->toBe("but the solver didn't know it")
-        | Solver.NoLine | Solver.Unwinnable =>
+        | Solver.NoLine | Solver.Unwinnable | Solver.OutOfPatience =>
           expect("deal 1 played")->toBe("but no line was found")
         | Solver.Played({steps, effort}) =>
           expect(Array.length(steps) > 40)->toBe(true) // a real game, not a shortcut
@@ -324,6 +410,8 @@ describe("Solver", () => {
           switch Solver.autoplay(~game, GameState.initial(game)) {
           | Solver.UnknownBoard => problems->Array.push(`deal ${Int.toString(seed)}: not read`)
           | Solver.NoLine => problems->Array.push(`deal ${Int.toString(seed)}: the ladder ran out`)
+          | Solver.OutOfPatience =>
+            problems->Array.push(`deal ${Int.toString(seed)}: the patience ran out`)
           | Solver.Unwinnable => ()
           | Solver.Played({steps}) =>
             switch steps->Array.last {
@@ -388,7 +476,7 @@ describe("Solver", () => {
       () =>
         switch Solver.autoplay(~game, opening) {
         | Solver.UnknownBoard => expect("a Spiderette board")->toBe("but the solver didn't know it")
-        | Solver.NoLine | Solver.Unwinnable =>
+        | Solver.NoLine | Solver.Unwinnable | Solver.OutOfPatience =>
           expect("deal 1 played")->toBe("but no line was found")
         | Solver.Played({steps}) =>
           let problems = []
@@ -460,7 +548,7 @@ describe("Solver", () => {
             let opening = GameState.initial(game)
             switch Solver.autoplay(~game, opening) {
             | Solver.UnknownBoard => problems->Array.push(`${game.id}: not a board it read`)
-            | Solver.NoLine | Solver.Unwinnable =>
+            | Solver.NoLine | Solver.Unwinnable | Solver.OutOfPatience =>
               problems->Array.push(`${game.id}: deal 1 went unplayed`)
             | Solver.Played({steps}) =>
               let before = ref(opening)
@@ -510,6 +598,7 @@ describe("Solver", () => {
               switch Solver.autoplay(~game, opening) {
               | Solver.UnknownBoard => problems->Array.push(`${deal}: not a board it read`)
               | Solver.NoLine => problems->Array.push(`${deal}: the ladder ran out`)
+              | Solver.OutOfPatience => problems->Array.push(`${deal}: the patience ran out`)
               | Solver.Unwinnable => ()
               | Solver.Played({steps}) =>
                 let finished =

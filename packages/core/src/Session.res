@@ -304,18 +304,36 @@ let finish = (~clock: unit => float, s: t): (t, outcome) =>
 //
 // The reach is counted once, *before* the first step, so the very first save already
 // carries "this game was autoplayed" even if a caller stops the run a move later.
-let autoplay = (~clock: unit => float, s: t): (t, outcome) => {
+//
+// `~patience` is how long the driver is willing to wait, in milliseconds — the caller
+// supplies the number and the session supplies the clock, since it already holds one.
+// Left off, the search runs the whole ladder however long that takes, which is what
+// every test and every fold with a stopped clock wants.
+let autoplay = (~clock: unit => float, ~patience: option<float>=?, s: t): (t, outcome) => {
   // This session's clock, not the solver's: it times the whole call, search plus
   // replay. The replay is fifty reductions against a search of tens of thousands of
   // positions, so the number describes the thinking.
   let started = clock()
-  switch Solver.autoplay(~game=s.game, present(s)) {
+  // The same clock, handed down — so the limit the driver set and the time this
+  // reports are read off one source and can't disagree.
+  let limit = switch patience {
+  | None => None
+  | Some(ms) => Some(({ms, clock}: Solver.patience))
+  }
+  switch Solver.autoplay(~game=s.game, ~patience=?limit, present(s)) {
   | Solver.UnknownBoard => (
       s,
       {change: Unchanged, reply: Render.text(Command.autoplayUnknownBoard)},
     )
   | Solver.NoLine => (s, {change: Unchanged, reply: Render.text(Command.autoplayNoLine)})
   | Solver.Unwinnable => (s, {change: Unchanged, reply: Render.text(Command.autoplayUnwinnable)})
+  | Solver.OutOfPatience => (
+      s,
+      {
+        change: Unchanged,
+        reply: Render.text(Command.autoplayOutOfPatience(~ms=clock() -. started)),
+      },
+    )
   | Solver.Played({steps, effort}) =>
     let ms = clock() -. started
     let reached = {...s, stats: Stats.autoplay(s.stats)}
@@ -440,14 +458,17 @@ let deal = (
 // Pure: the caller shows what comes back and carries the session forward. A verb this
 // doesn't play is *reported* rather than silently ignored, so a caller that forwards
 // more than the board half finds out.
-let step = (~clock: unit => float, s: t, command: Command.t): (t, outcome) =>
+let step = (~clock: unit => float, ~patience: option<float>=?, s: t, command: Command.t): (
+  t,
+  outcome,
+) =>
   switch command {
   | Command.Print => (s, {change: Shown, reply: []})
   | Command.Undo => undo(~clock, s)
   | Command.Redo => redo(~clock, s)
   | Command.Redeal => redeal(~clock, s)
   | Command.Finish => finish(~clock, s)
-  | Command.Autoplay => autoplay(~clock, s)
+  | Command.Autoplay => autoplay(~clock, ~patience?, s)
   // A typed name is a face, and a board with two packs has two cards of it: the
   // readers say which (`Command.resolveCard`), and only then does the reducer see it.
   | Command.Home({card}) =>

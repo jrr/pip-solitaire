@@ -111,7 +111,7 @@ let script = (start: option<string>): string => {
   | Some(id) => Array.concat([`deal ${id}`], commandLines)
   | None => commandLines
   }
-  Repl.run(~newSeed=randomSeed, ~clock=now, lines)
+  Repl.run(~newSeed=randomSeed, ~clock=now, ~patience=Solver.patient, lines)
 }
 
 // --- The interactive shape ----------------------------------------------------
@@ -146,6 +146,7 @@ let interactive = (start: option<string>): unit => {
       ~options=flags.contents,
       ~newSeed=randomSeed,
       ~clock=now,
+      ~patience=Solver.patient,
       session.contents,
       line,
     ) {

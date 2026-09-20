@@ -42,7 +42,7 @@ and its ladder is its own for the same reason.
 one. Nothing here promises a solution either: both games have deals with no
 line, and `solve` returns `None` when the ladder runs out rather than pretending
 otherwise. A `None` proves nothing about the deal — only that these rungs
-didn't crack it — *unless* the effort says `exhausted`: a rung that emptied its
+didn't crack it — *unless* the effort says `Exhausted`: a rung that emptied its
 frontier saw every position reachable from the start, and none of them
 finishes. That is a proof, and `Solver.autoplay` answers it as `Unwinnable`
 rather than `NoLine`. It is not a rare answer: about one Simple Simon deal in
@@ -51,10 +51,87 @@ in a millisecond. The short packs make it commoner still and cheaper still —
 eight Mini deals and nineteen Micro ones in the first thousand, none of them
 taking longer than the deal it was dealt from.
 
-**No clock.** `Solver.effort` reports positions, moves and passes; how *long* a
-solve took is the caller's own measurement, taken around a call it made. That's
-what lets a plan stay a value two runs can be expected to agree on — an ordinary
-`toEqual` in a test, rather than a timing-shaped hole in one.
+**No clock of its own.** `Solver.effort` reports positions, moves and passes, and
+never an elapsed time: how *long* a solve took is the caller's own measurement,
+taken around a call it made. What the solver takes instead is a **`patience`** — a
+wait, and the clock to measure it on. A caller that hands over a *stopped* clock,
+as every test and every folded transcript does, gets back the plan the node
+budgets alone would find, on every machine. That's what lets a plan stay a value
+two runs can be expected to agree on — an ordinary `toEqual` in a test, rather
+than a timing-shaped hole in one. What handing over a *real* clock buys, and
+costs, is the next section.
+
+## What a caller is willing to spend
+
+The ladder is a budget in *positions*, and a position is not a unit anyone waits
+in. Two hundred thousand of them is a fifth of a second of Mini and most of a
+minute of four-suit Spiderette, and the same number again is one wait on a CI
+runner and another on a phone. So the rungs say how hard to try, and `patience`
+says how long the caller will let that take:
+
+```rescript
+type patience = {ms: float, clock: unit => float}
+```
+
+Two are named in `Solver`, for **who is waiting** rather than for how long:
+
+| | | |
+|---|---|---|
+| `interactive` | 10 s | a board someone is watching — passed by `TableScene` |
+| `patient` | 120 s | a terminal or a script, where the waiting is the point — passed by `Cli` |
+
+`interactive` is a **policy**, and it really does cost answers — § What the
+interactive wait costs measures how many. `patient` is a **backstop**: it sits above the worst climb any
+board's ladder makes, so it bites only on a machine far slower than the one the
+record was measured on. `mise run solve` passes whatever `--limit` says, and
+nothing at all by default, which is what makes the benchmark record a measurement
+of the ladder rather than of a wait.
+
+**The wait bounds the whole climb, not a rung of it.** It is resolved into a
+deadline once, when the caller asks, and every rung is measured against that one
+moment — otherwise the same number would mean a different total on every board,
+since the boards don't have the same number of rungs. A rung that reaches the
+deadline ends the climb outright, rather than handing on to a wider one.
+
+**The clock is read once every 1,024 positions**, not once per position: a search
+grows hundreds of thousands of them and a clock read on each is a cost the answer
+doesn't need. What it costs instead is an overshoot of up to those 1,024 positions
+— and a position is not a fixed price, because a board with more legal moves grows
+more children out of each one. Measured against a ten-second limit, the worst deal
+of each board came back at 10,073 ms (Simple Simon), 10,130 ms (four-suit
+Spiderette) and 10,326 ms (two-suit). **So a wait under about a second is not a
+wait this can keep**; both named ones are far above that.
+
+**Lowering `interactive` is a change to what the browser suite can play.**
+`browser-tests/spiderette.spec.mjs` types `autoplay` on all three Spiderette packs
+at `seed=1` and waits for the win overlay, so those three searches have to finish
+inside it. They are not close to it — 69 ms, 907 ms and 771 ms on a loaded
+four-core sandbox — but they are the floor, and the failure they'd give is a
+missing overlay rather than anything that says "time".
+
+### The three ways to come back with nothing
+
+`Solver.effort` carries an `ending`, and only one of its refusals is a statement
+about the board:
+
+| `ending` | what happened | `autoplay` says |
+|---|---|---|
+| `Exhausted` | the frontier emptied: every reachable position was seen, and none finishes | `Unwinnable` — a proof |
+| `OutOfNodes` | the last rung spent its `maxNodes` with positions still waiting | `NoLine` |
+| `OutOfTime` | the caller's `patience` ran out, with rungs left unclimbed | `OutOfPatience` |
+
+**The last two are not one answer in two moods.** `OutOfNodes` means the ladder was
+climbed and gave up, which is the most this solver has to say about a deal.
+`OutOfTime` means nobody finished looking — so it's the one refusal a more patient
+caller might turn into an answer, and the front end says *that* rather than
+reporting a verdict the search never reached (`Command.autoplayOutOfPatience`).
+A proof outranks both: a frontier that empties on the last position before the
+deadline is still a proof.
+
+For a driver outside ReScript, `Solver.provedUnwinnable` and `Solver.ranOutOfTime`
+ask the two questions worth asking, so that nothing outside the language depends on
+how the compiler spells a constructor in the JavaScript it emits; `solve.mjs` counts
+its deals by them.
 
 ## What the solver sees
 
@@ -85,7 +162,14 @@ mise run solve -- --game mini --quiet 1-1000          # the short packs
 mise run solve -- --game spiderette4 --quiet 1-200    # the board that deals
 mise run solve -- --game spiderette1 --quiet 1-200    # …and its repeated packs
 mise run solve -- --game spiderette --quiet 1-200
+mise run solve -- --limit 10 --game spiderette4 --quiet 1-200   # …as a player waits for it
 ```
+
+`--limit` is a wait in seconds — the `patience` a driver would impose, so a soak can
+be run the way a front end actually calls the solver. It is also how the expensive
+boards are soaked in an evening rather than half a day, since a deal that beats the
+ladder stops costing the ladder. Leave it off for anything destined for the benchmark
+record: that table is a measurement of the rungs, and a capped run measures the cap.
 
 `mise run solve` is the solver with nothing attached — no browser, no bundle, no
 drags. `mise run autoplay` is the same brain playing the real app through the
@@ -93,7 +177,9 @@ DOM and takes about a minute a deal; this takes milliseconds. **It's what you
 measure a heuristic change with**, and how you find out whether a deal is one
 the ladder can't crack. It exits non-zero if any deal goes unsolved — a deal
 proved unwinnable is answered, not unsolved, and the summary line counts the two
-apart.
+apart. A deal that ran out of a `--limit` is unsolved like any other — the limit is
+what the caller chose to spend, not a verdict on the board — and the summary says how
+many of the unsolved were that.
 
 ## The benchmark record
 
@@ -108,6 +194,7 @@ core's own shuffle, not Microsoft's numbering. "Moves" counts moves to the
 | 2026-08-29 | 1–1000 | 1000/1000 | 101 ms | 54 | #582 at 7.2 s | Node v26.7.0, CI runner |
 | 2026-09-10 | 1–1000 | 1000/1000 | 62 ms | 54 | #582 at 4.6 s | Node v26.7.0, Apple Silicon laptop |
 | 2026-09-19 | 1–1000 | 1000/1000 | 107 ms | 54 | #582 at 7.4 s | Node v26.7.0, CI runner |
+| 2026-09-20 | 1–1000 | 1000/1000 | 123 ms | 54 | #582 at 8.5 s | Node v26.9.0, cloud sandbox |
 
 **Simple Simon.** "Unwinnable" is the deals the search *proved* have no line
 (`exhausted`); "unsolved" is the ones the ladder gave up on, which is the number
@@ -117,6 +204,7 @@ a heuristic change is trying to reduce.
 |---|---|---|---|---|---|---|---|---|
 | 2026-09-10 | 1–1000 | 941/1000 | 54 | 5 | 458 ms | 85 | #964 at 13.2 s | Node v26.7.0, Apple Silicon laptop |
 | 2026-09-19 | 1–1000 | 941/1000 | 54 | 5 | 732 ms | 85 | #964 at 20.8 s | Node v26.7.0, CI runner |
+| 2026-09-20 | 1–1000 | 941/1000 | 54 | 5 | 855 ms | 85 | #964 at 25.1 s | Node v26.9.0, cloud sandbox |
 
 **Spiderette · 4 suits**, over 1–200 rather than the thousand: a deal the ladder
 gives up on costs it the whole budget, so this soak is half an hour where Simple
@@ -127,6 +215,7 @@ two-suit pack below it.
 | Date | Deals | Solved | Unwinnable | Unsolved | Mean | Mean moves | Worst | Environment |
 |---|---|---|---|---|---|---|---|---|
 | 2026-09-19 | 1–200 | 159/200 | 8 | 33 | 5.4 s | 105 | #147 at 38.6 s | Node v26.7.0, CI runner |
+| 2026-09-20 | 1–200 | 159/200 | 8 | 33 | 5.9 s | 105 | #147 at 30.2 s | Node v26.9.0, cloud sandbox |
 
 **Spiderette · 1 suit and · 2 suits**, over the same 1–200. The same law, ladder
 and weights on a cheaper deck — these are the repeated packs, where `found`
@@ -139,6 +228,8 @@ and an unsolved count that is a second number to beat.
 |---|---|---|---|---|---|---|---|---|---|
 | 2026-09-19 | 1 suit | 1–200 | 198/200 | 2 | 0 | 252 ms | 71 | #143 at 17.7 s | Node v26.9.0, cloud sandbox |
 | 2026-09-19 | 2 suits | 1–200 | 183/200 | 5 | 12 | 2.8 s | 86 | #42 at 38.3 s | Node v26.9.0, cloud sandbox |
+| 2026-09-20 | 1 suit | 1–200 | 198/200 | 2 | 0 | 262 ms | 71 | #143 at 17.8 s | Node v26.9.0, cloud sandbox |
+| 2026-09-20 | 2 suits | 1–200 | 183/200 | 5 | 12 | 3.0 s | 86 | #42 at 40.2 s | Node v26.9.0, cloud sandbox |
 
 **Mini and Micro**, under FreeCell's law and its weights. Every deal is
 *answered* — the ladder's first rung either finds a line or empties its frontier
@@ -150,6 +241,8 @@ and an unsolved count that is a second number to beat.
 | 2026-09-17 | Micro | 1–1000 | 981/1000 | 19 | 0 | <1 ms | 10 | #699 at 8 ms | Node v26.7.0, CI runner |
 | 2026-09-19 | Mini | 1–1000 | 992/1000 | 8 | 0 | <1 ms | 11 | #10 at 38 ms | Node v26.7.0, CI runner |
 | 2026-09-19 | Micro | 1–1000 | 981/1000 | 19 | 0 | <1 ms | 10 | #699 at 7 ms | Node v26.7.0, CI runner |
+| 2026-09-20 | Mini | 1–1000 | 992/1000 | 8 | 0 | <1 ms | 11 | #10 at 35 ms | Node v26.9.0, cloud sandbox |
+| 2026-09-20 | Micro | 1–1000 | 981/1000 | 19 | 0 | <1 ms | 10 | #699 at 8 ms | Node v26.9.0, cloud sandbox |
 
 Over deals 1–200 that is 198 and 196 solved — the same counts `Game.res` records
 from an exhaustive single-card search when it chose two free cells for each
@@ -169,6 +262,40 @@ The five Simple Simon deals the ladder gives up on (#314, #320, #805, #957,
 #964) are the record to beat: each costs the whole ladder, nine to thirteen
 seconds, and none is known to be winnable. A proof of unwinnability is cheap by
 comparison — the slowest of the 54 took 6.6 s, and most take a millisecond.
+
+### What the interactive wait costs
+
+Every row above is the ladder with nothing in its way, and that is what those
+tables are for. This is the same ladder under `Solver.interactive` — the ten
+seconds a watched board gets — over the same ranges, each capped row beside the
+uncapped one it should be read against. All six rows were measured in one sitting
+on one machine, so here the times compare as well as the counts; read across any
+other pair of rows in this page and only the counts do.
+
+| Board | Deals | Wait | Solved | Unwinnable | Unsolved | Mean | Worst |
+|---|---|---|---|---|---|---|---|
+| Simple Simon | 1–1000 | none | 941 | 54 | 5 | 855 ms | #964 at 25.1 s |
+| Simple Simon | 1–1000 | 10 s | 914 | 53 | 33 | 714 ms | #34 at 10.1 s |
+| Spiderette · 2 suits | 1–200 | none | 183 | 5 | 12 | 3.0 s | #42 at 40.2 s |
+| Spiderette · 2 suits | 1–200 | 10 s | 175 | 4 | 21 | 1.7 s | #120 at 10.3 s |
+| Spiderette · 4 suits | 1–200 | none | 159 | 8 | 33 | 5.9 s | #147 at 30.2 s |
+| Spiderette · 4 suits | 1–200 | 10 s | 149 | 7 | 44 | 3.6 s | #141 at 10.1 s |
+
+So the wait costs **twenty-seven Simple Simon deals in the thousand, and eight
+two-suit and ten four-suit in the two hundred** — and one proof on each board,
+because a rung that would have emptied its frontier is stopped before it does.
+That is what not making someone watch a still board for forty seconds is worth,
+and it is the number to argue with if `interactive` should be five seconds or
+twenty.
+
+**FreeCell is the board to watch here, not Spiderette.** It is missing from the
+table because the wait costs it nothing — but its worst deal, #582, takes 7.4 s on
+the CI runner and 8.5 s on a cloud sandbox, which is close enough to ten that a
+slower machine loses it. Spiderette's stubborn deals are already lost either way;
+FreeCell's worst is the one a smaller `interactive` would take first.
+
+All six rows: 2026-09-20, Node v26.9.0, cloud sandbox, the capped half with
+`--limit 10`.
 
 Add a row rather than editing one. Two runs on different machines are two
 different facts, and a heuristic change is worth a soak beside the run it
@@ -413,7 +540,9 @@ to want it is more likely a *shorter line* than a faster one, which is the trade
   over 1–200 rather than the thousand, and leave it running. Its repeated packs
   (`spiderette1`, `spiderette`) are the same board with a cheaper deck and are
   worth the same range: the one-suit soak is under a minute, the two-suit one
-  about ten.
+  about ten. **Don't reach for `--limit` to make that cheaper**: a capped run
+  measures the cap, and a cap is exactly what would hide a regression in the rungs
+  it stopped short of.
 - **Check the mirror.** If you touched `Position`, `Position_test` plays a solved
   game through both models — that's the test that catches a predicate drifting
   from the `Rules`/`Reducer` it mirrors.
