@@ -204,6 +204,7 @@ a heuristic change is trying to reduce.
 |---|---|---|---|---|---|---|---|---|
 | 2026-09-10 | 1–1000 | 941/1000 | 54 | 5 | 458 ms | 85 | #964 at 13.2 s | Node v26.7.0, Apple Silicon laptop |
 | 2026-09-19 | 1–1000 | 941/1000 | 54 | 5 | 732 ms | 85 | #964 at 20.8 s | Node v26.7.0, CI runner |
+| 2026-09-20 | 1–1000 | 941/1000 | 54 | 5 | 855 ms | 85 | #964 at 25.1 s | Node v26.9.0, cloud sandbox |
 
 **Spiderette · 4 suits**, over 1–200 rather than the thousand: a deal the ladder
 gives up on costs it the whole budget, so this soak is half an hour where Simple
@@ -227,6 +228,7 @@ and an unsolved count that is a second number to beat.
 | 2026-09-19 | 1 suit | 1–200 | 198/200 | 2 | 0 | 252 ms | 71 | #143 at 17.7 s | Node v26.9.0, cloud sandbox |
 | 2026-09-19 | 2 suits | 1–200 | 183/200 | 5 | 12 | 2.8 s | 86 | #42 at 38.3 s | Node v26.9.0, cloud sandbox |
 | 2026-09-20 | 1 suit | 1–200 | 198/200 | 2 | 0 | 262 ms | 71 | #143 at 17.8 s | Node v26.9.0, cloud sandbox |
+| 2026-09-20 | 2 suits | 1–200 | 183/200 | 5 | 12 | 3.0 s | 86 | #42 at 40.2 s | Node v26.9.0, cloud sandbox |
 
 **Mini and Micro**, under FreeCell's law and its weights. Every deal is
 *answered* — the ladder's first rung either finds a line or empties its frontier
