@@ -277,7 +277,8 @@ test("a New Deal on a link's board outlives the walk away from it", async ({ pag
 })
 
 // `?game=simplesimon` lands on a row that is already up top, so the menu opens with
-// it marked and no debug group unfolded for it.
+// it marked and no debug group unfolded for it — neither the demos' nor the withheld
+// games', which is placed but stays closed.
 test("a ?game= link onto Simple Simon opens with its row marked", async ({ page }) => {
   await page.goto("/?game=simplesimon&animate=off")
   await settleBoard(page)
@@ -288,6 +289,6 @@ test("a ?game= link onto Simple Simon opens with its row marked", async ({ page 
   await expect(gameRow(page, "FreeCell")).not.toHaveAttribute("aria-current", "true")
 
   await openDebugScreen(page)
-  await expect(gameGroup(page)).toHaveCount(0)
+  await expect(gameGroup(page)).not.toHaveAttribute("open", "")
   await expect(sceneGroup(page)).not.toHaveAttribute("open", "")
 })
