@@ -20,10 +20,13 @@ const openMenu = async (page) => {
   await expect(page.locator("#menu-overlay")).toBeVisible()
 }
 
-// The Games section's rows: the switcher's primary scenes, one per released game.
-const gameRows = (page) => page.locator("nav[aria-label='Games']").getByRole("button")
+// The Games section's rows: the switcher's primary scenes, one per game — the name
+// buttons, since a family's row also carries a segment, and every row an "i". A row is
+// found by its exact name for the same reason: those two are buttons named after it too.
+const gameRows = (page) =>
+  page.locator("nav[aria-label='Games'] .menu-row:not(.menu-game-row__variant)")
 const gameRow = (page, name) =>
-  page.locator("nav[aria-label='Games']").getByRole("button", { name })
+  page.locator("nav[aria-label='Games']").getByRole("button", { name, exact: true })
 
 // The top bar's Undo: enabled exactly when the board on the table has a move behind
 // it, which is how a test tells a game in progress from a fresh deal of the same seed.
@@ -56,10 +59,9 @@ const openDebugScreen = async (page) => {
 const sceneGroup = (page) => page.locator(".scene-menu__group").filter({ hasText: "scenes" })
 const sceneRow = (page, name) => sceneGroup(page).getByRole("button", { name })
 
-// …and the "games" disclosure beside it, which holds the games that aren't released
-// into the main menu — the short decks and the Spiderettes, today.
+// …and the "games" disclosure beside it, which would hold any game withheld from the
+// main menu — none, today, so it is never placed.
 const gameGroup = (page) => page.locator(".scene-menu__group").filter({ hasText: "games" })
-const gameGroupRow = (page, name) => gameGroup(page).getByRole("button", { name })
 
 // Activation tears the live scene down and builds it afresh, so a re-mount throws
 // away the game in progress.
@@ -84,39 +86,26 @@ test("tapping the game you're already playing doesn't re-deal it", async ({ page
   await expect(page.locator("#scene-container .table-board[data-pinned='yes']")).toHaveCount(1)
 })
 
-// The placement rule: seven games in `Game.all`, two of them released. `SceneSwitcher_test`
-// pins the grouping rule against fake scenes; what it can't say is where the *real*
-// boards land — the menu leads with the released games and the rest live under Debug.
-test("the unreleased games sit under Debug, leaving the released ones up top", async ({ page }) => {
+// The placement rule: seven boards in `Game.all`, three rows. `SceneSwitcher_test` pins
+// the grouping rule against fake scenes; what it can't say is where the *real* boards
+// land — every one up top, a family's on its row's segment, and nothing under Debug.
+test("every game is listed up top, and none is filed under Debug", async ({ page }) => {
   await page.goto("/?game=micro&animate=off")
   await settleBoard(page)
 
   await openMenu(page)
-  // The released games in the Games section, in `Game.all`'s order — not one row per
-  // entry.
-  await expect(gameRows(page)).toHaveText(["FreeCell", "Simple Simon"])
-  // Nothing up here is current: the board showing is Micro, which lives below.
-  await expect(gameRow(page, "FreeCell")).not.toHaveAttribute("aria-current", "true")
+  // One row per game in `Game.all`'s order — not one per board: the short decks are
+  // FreeCell's segment, the packs Spiderette's.
+  await expect(gameRows(page)).toHaveText(["FreeCell", "Simple Simon", "Spiderette"])
+  // The board showing is Micro, so FreeCell's row is current with Micro on its segment.
+  await expect(gameRow(page, "FreeCell")).toHaveAttribute("aria-current", "true")
+  await expect(page.getByRole("button", { name: "FreeCell size: Micro" })).toBeVisible()
   await expect(gameRow(page, "Simple Simon")).not.toHaveAttribute("aria-current", "true")
 
   await openDebugScreen(page)
-  // The group is placed (it has entries now), opened onto the mounted board, and
-  // holds the siblings with only the mounted one marked.
-  await expect(gameGroup(page)).toHaveAttribute("open", "")
-  await expect(gameGroupRow(page, "Micro FreeCell")).toHaveAttribute("aria-current", "true")
-  await expect(gameGroupRow(page, "Mini FreeCell")).not.toHaveAttribute("aria-current", "true")
-  // …and they're games, not demos: neither is filed in the "scenes" group.
-  await expect(sceneGroup(page).getByRole("button", { name: "Mini FreeCell" })).toHaveCount(0)
-  // A released game is listed once, up top, and not down here as well.
-  await expect(gameGroupRow(page, "Simple Simon")).toHaveCount(0)
-
-  // Tapping a sibling mounts it, and the highlight follows.
-  await gameGroupRow(page, "Mini FreeCell").click()
-  await settleBoard(page)
-  await openMenu(page)
-  await openDebugScreen(page)
-  await expect(gameGroupRow(page, "Mini FreeCell")).toHaveAttribute("aria-current", "true")
-  await expect(gameGroupRow(page, "Micro FreeCell")).not.toHaveAttribute("aria-current", "true")
+  // No "games" group at all, and the short decks aren't filed as demos either.
+  await expect(gameGroup(page)).toHaveCount(0)
+  await expect(sceneGroup(page).getByRole("button", { name: "Micro FreeCell" })).toHaveCount(0)
 })
 
 // The whole highlight path end to end: an id the switcher resolved before the
@@ -174,7 +163,7 @@ test("the games rows walk between FreeCell and Simple Simon, keeping each game",
   await expect(undo(page)).toBeEnabled()
 
   await openMenu(page)
-  await expect(gameRows(page)).toHaveText(["FreeCell", "Simple Simon"])
+  await expect(gameRows(page)).toHaveText(["FreeCell", "Simple Simon", "Spiderette"])
   await expect(gameRow(page, "FreeCell")).toHaveAttribute("aria-current", "true")
   await expect(gameRow(page, "Simple Simon")).not.toHaveAttribute("aria-current", "true")
   await expect(menuSeed(page)).toHaveText("#24680")
@@ -291,7 +280,6 @@ test("a ?game= link onto Simple Simon opens with its row marked", async ({ page 
   await expect(gameRow(page, "FreeCell")).not.toHaveAttribute("aria-current", "true")
 
   await openDebugScreen(page)
-  await expect(gameGroupRow(page, "Simple Simon")).toHaveCount(0)
-  await expect(gameGroup(page)).not.toHaveAttribute("open", "")
+  await expect(gameGroup(page)).toHaveCount(0)
   await expect(sceneGroup(page)).not.toHaveAttribute("open", "")
 })
