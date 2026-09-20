@@ -215,6 +215,7 @@ two-suit pack below it.
 | Date | Deals | Solved | Unwinnable | Unsolved | Mean | Mean moves | Worst | Environment |
 |---|---|---|---|---|---|---|---|---|
 | 2026-09-19 | 1–200 | 159/200 | 8 | 33 | 5.4 s | 105 | #147 at 38.6 s | Node v26.7.0, CI runner |
+| 2026-09-20 | 1–200 | 159/200 | 8 | 33 | 5.9 s | 105 | #147 at 30.2 s | Node v26.9.0, cloud sandbox |
 
 **Spiderette · 1 suit and · 2 suits**, over the same 1–200. The same law, ladder
 and weights on a cheaper deck — these are the repeated packs, where `found`
@@ -267,18 +268,18 @@ comparison — the slowest of the 54 took 6.6 s, and most take a millisecond.
 Every row above is the ladder with nothing in its way, and that is what those
 tables are for. This is the same ladder under `Solver.interactive` — the ten
 seconds a watched board gets — over the same ranges, each capped row beside the
-uncapped one it should be read against. **Compare the counts, not the times.** A
-count is the same on any machine and a time is not, and these uncapped rows were
-measured where their own tables say.
+uncapped one it should be read against. All six rows were measured in one sitting
+on one machine, so here the times compare as well as the counts; read across any
+other pair of rows in this page and only the counts do.
 
-| Board | Deals | Wait | Solved | Unwinnable | Unsolved | Worst |
-|---|---|---|---|---|---|---|
-| Simple Simon | 1–1000 | none | 941 | 54 | 5 | #964 at 20.8 s |
-| Simple Simon | 1–1000 | 10 s | 914 | 53 | 33 | #34 at 10.1 s |
-| Spiderette · 2 suits | 1–200 | none | 183 | 5 | 12 | #42 at 38.3 s |
-| Spiderette · 2 suits | 1–200 | 10 s | 175 | 4 | 21 | #120 at 10.3 s |
-| Spiderette · 4 suits | 1–200 | none | 159 | 8 | 33 | #147 at 38.6 s |
-| Spiderette · 4 suits | 1–200 | 10 s | 149 | 7 | 44 | #141 at 10.1 s |
+| Board | Deals | Wait | Solved | Unwinnable | Unsolved | Mean | Worst |
+|---|---|---|---|---|---|---|---|
+| Simple Simon | 1–1000 | none | 941 | 54 | 5 | 855 ms | #964 at 25.1 s |
+| Simple Simon | 1–1000 | 10 s | 914 | 53 | 33 | 714 ms | #34 at 10.1 s |
+| Spiderette · 2 suits | 1–200 | none | 183 | 5 | 12 | 3.0 s | #42 at 40.2 s |
+| Spiderette · 2 suits | 1–200 | 10 s | 175 | 4 | 21 | 1.7 s | #120 at 10.3 s |
+| Spiderette · 4 suits | 1–200 | none | 159 | 8 | 33 | 5.9 s | #147 at 30.2 s |
+| Spiderette · 4 suits | 1–200 | 10 s | 149 | 7 | 44 | 3.6 s | #141 at 10.1 s |
 
 So the wait costs **twenty-seven Simple Simon deals in the thousand, and eight
 two-suit and ten four-suit in the two hundred** — and one proof on each board,
@@ -293,7 +294,8 @@ the CI runner and 8.5 s on a cloud sandbox, which is close enough to ten that a
 slower machine loses it. Spiderette's stubborn deals are already lost either way;
 FreeCell's worst is the one a smaller `interactive` would take first.
 
-The capped rows: 2026-09-20, `--limit 10`, Node v26.9.0, cloud sandbox.
+All six rows: 2026-09-20, Node v26.9.0, cloud sandbox, the capped half with
+`--limit 10`.
 
 Add a row rather than editing one. Two runs on different machines are two
 different facts, and a heuristic change is worth a soak beside the run it
