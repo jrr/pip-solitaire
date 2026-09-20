@@ -75,13 +75,13 @@ type patience = {ms: float, clock: unit => float}
 
 Two are named in `Solver`, for **who is waiting** rather than for how long:
 
-| | | | passed by |
-|---|---|---|---|
-| `interactive` | 10 s | someone is watching a board | `TableScene` |
-| `patient` | 120 s | a terminal or a script, where waiting is the point | `Cli` |
+| | | |
+|---|---|---|
+| `interactive` | 10 s | a board someone is watching — passed by `TableScene` |
+| `patient` | 120 s | a terminal or a script, where the waiting is the point — passed by `Cli` |
 
-`interactive` is a **policy**, and it really does cost answers — the table below
-says how many. `patient` is a **backstop**: it sits above the worst climb any
+`interactive` is a **policy**, and it really does cost answers — § The benchmark
+record measures how many. `patient` is a **backstop**: it sits above the worst climb any
 board's ladder makes, so it bites only on a machine far slower than the one the
 record was measured on. `mise run solve` passes whatever `--limit` says, and
 nothing at all by default, which is what makes the benchmark record a measurement
@@ -496,12 +496,12 @@ to want it is more likely a *shorter line* than a faster one, which is the trade
   once. The two short packs take about two seconds each, so there is no excuse.
   Spiderette is the expensive one — `--game spiderette4 --quiet 1-200` is half an
   hour, because the deals it gives up on each cost the whole ladder — so soak it
-  over 1–200 rather than the thousand, and leave it running. `--limit 10` is the
-  quick read on the same board, but it belongs in the capped table rather than the
-  record, and it can't tell you a cap didn't hide a regression. Its repeated packs
+  over 1–200 rather than the thousand, and leave it running. Its repeated packs
   (`spiderette1`, `spiderette`) are the same board with a cheaper deck and are
   worth the same range: the one-suit soak is under a minute, the two-suit one
-  about ten.
+  about ten. **Don't reach for `--limit` to make that cheaper**: a capped run
+  measures the cap, and a cap is exactly what would hide a regression in the rungs
+  it stopped short of.
 - **Check the mirror.** If you touched `Position`, `Position_test` plays a solved
   game through both models — that's the test that catches a predicate drifting
   from the `Rules`/`Reducer` it mirrors.

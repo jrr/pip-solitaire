@@ -38,8 +38,7 @@ function parseArgs(argv) {
     else if (arg === "--limit") {
       opts.limit = Number(argv[++i])
       if (!(opts.limit > 0)) throw new Error("--limit takes a number of seconds")
-    }
-    else if (/^\d+-\d+$/.test(arg)) {
+    } else if (/^\d+-\d+$/.test(arg)) {
       const [from, to] = arg.split("-").map(Number)
       for (let s = from; s <= to; s++) opts.seeds.push(s)
     } else if (/^\d+$/.test(arg)) opts.seeds.push(Number(arg))
