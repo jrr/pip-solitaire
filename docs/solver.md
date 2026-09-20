@@ -80,8 +80,8 @@ Two are named in `Solver`, for **who is waiting** rather than for how long:
 | `interactive` | 10 s | a board someone is watching — passed by `TableScene` |
 | `patient` | 120 s | a terminal or a script, where the waiting is the point — passed by `Cli` |
 
-`interactive` is a **policy**, and it really does cost answers — § The benchmark
-record measures how many. `patient` is a **backstop**: it sits above the worst climb any
+`interactive` is a **policy**, and it really does cost answers — § What the
+interactive wait costs measures how many. `patient` is a **backstop**: it sits above the worst climb any
 board's ladder makes, so it bites only on a machine far slower than the one the
 record was measured on. `mise run solve` passes whatever `--limit` says, and
 nothing at all by default, which is what makes the benchmark record a measurement
@@ -259,6 +259,39 @@ The five Simple Simon deals the ladder gives up on (#314, #320, #805, #957,
 #964) are the record to beat: each costs the whole ladder, nine to thirteen
 seconds, and none is known to be winnable. A proof of unwinnability is cheap by
 comparison — the slowest of the 54 took 6.6 s, and most take a millisecond.
+
+### What the interactive wait costs
+
+Every row above is the ladder with nothing in its way, and that is what those
+tables are for. This is the same ladder under `Solver.interactive` — the ten
+seconds a watched board gets — over the same ranges, each capped row beside the
+uncapped one it should be read against. **Compare the counts, not the times.** A
+count is the same on any machine and a time is not, and these uncapped rows were
+measured where their own tables say.
+
+| Board | Deals | Wait | Solved | Unwinnable | Unsolved | Worst |
+|---|---|---|---|---|---|---|
+| Simple Simon | 1–1000 | none | 941 | 54 | 5 | #964 at 20.8 s |
+| Simple Simon | 1–1000 | 10 s | 914 | 53 | 33 | #34 at 10.1 s |
+| Spiderette · 2 suits | 1–200 | none | 183 | 5 | 12 | #42 at 38.3 s |
+| Spiderette · 2 suits | 1–200 | 10 s | 175 | 4 | 21 | #120 at 10.3 s |
+| Spiderette · 4 suits | 1–200 | none | 159 | 8 | 33 | #147 at 38.6 s |
+| Spiderette · 4 suits | 1–200 | 10 s | 149 | 7 | 44 | #141 at 10.1 s |
+
+So the wait costs **twenty-seven Simple Simon deals in the thousand, and eight
+two-suit and ten four-suit in the two hundred** — and one proof on each board,
+because a rung that would have emptied its frontier is stopped before it does.
+That is what not making someone watch a still board for forty seconds is worth,
+and it is the number to argue with if `interactive` should be five seconds or
+twenty.
+
+**FreeCell is the board to watch here, not Spiderette.** It is missing from the
+table because the wait costs it nothing — but its worst deal, #582, takes 7.4 s on
+the CI runner and 8.5 s on a cloud sandbox, which is close enough to ten that a
+slower machine loses it. Spiderette's stubborn deals are already lost either way;
+FreeCell's worst is the one a smaller `interactive` would take first.
+
+The capped rows: 2026-09-20, `--limit 10`, Node v26.9.0, cloud sandbox.
 
 Add a row rather than editing one. Two runs on different machines are two
 different facts, and a heuristic change is worth a soak beside the run it
