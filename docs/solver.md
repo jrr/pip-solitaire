@@ -84,9 +84,9 @@ Two are named in `Solver`, for **who is waiting** rather than for how long:
 interactive wait costs measures how many, and § Why the unsolved count stands is
 the decision that came out of it. `patient` is a **backstop**: it sits above the
 worst climb any board's ladder makes, so it bites only on a machine far slower
-than the one the record was measured on. `mise run solve` passes whatever `--limit` says, and
-nothing at all by default, which is what makes the benchmark record a measurement
-of the ladder rather than of a wait.
+than the one the record was measured on. `mise run solve` passes whatever
+`--limit` says, and nothing at all by default, which is what makes the benchmark
+record a measurement of the ladder rather than of a wait.
 
 **The wait bounds the whole climb, not a rung of it.** It is resolved into a
 deadline once, when the caller asks, and every rung is measured against that one
