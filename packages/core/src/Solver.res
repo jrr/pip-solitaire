@@ -395,9 +395,9 @@ let ladderFor = (s: Position.t): array<attempt> =>
 type effort = {positions: int, moves: int, passes: int, ending: ending}
 
 // The two readings of `ending` a driver outside ReScript needs: `solve.mjs` counts its
-// deals by them and gates its exit code on the first. A variant of constant
-// constructors is a bare number by the time it reaches JavaScript, so it is *asked*
-// rather than unpacked — the same bargain `stepFor` strikes for a move.
+// deals by them and gates its exit code on the first. *Asked* rather than compared,
+// because how the compiler spells a constructor in the JavaScript it emits is its own
+// business — the same bargain `stepFor` strikes for a move.
 let provedUnwinnable = (e: effort): bool => e.ending == Exhausted
 let ranOutOfTime = (e: effort): bool => e.ending == OutOfTime
 

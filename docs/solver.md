@@ -128,9 +128,10 @@ reporting a verdict the search never reached (`Command.autoplayOutOfPatience`).
 A proof outranks both: a frontier that empties on the last position before the
 deadline is still a proof.
 
-For a driver outside ReScript, where a variant of constant constructors is a bare
-number by the time it arrives, `Solver.provedUnwinnable` and `Solver.ranOutOfTime`
-ask the two questions worth asking; `solve.mjs` counts its deals by them.
+For a driver outside ReScript, `Solver.provedUnwinnable` and `Solver.ranOutOfTime`
+ask the two questions worth asking, so that nothing outside the language depends on
+how the compiler spells a constructor in the JavaScript it emits; `solve.mjs` counts
+its deals by them.
 
 ## What the solver sees
 
