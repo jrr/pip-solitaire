@@ -185,8 +185,9 @@ test("a shared link takes over the save of the game it names, and no other", asy
   await settleBoard(page)
   expect(await readBoard(page)).toEqual(adopted)
 
-  // …and the default game's own save is untouched: FreeCell deals its own 52.
-  await page.goto("/")
+  // …and the default game's own save is untouched: FreeCell, opened by name — Mini is
+  // now the remembered game, so a bare open would resume it — deals its own 52.
+  await page.goto("/?game=freecell")
   await settleBoard(page)
   expect((await readBoard(page)).length).toBe(52)
 })

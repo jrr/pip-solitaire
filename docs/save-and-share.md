@@ -160,16 +160,9 @@ opens on: choosing a game from the menu outlives the tab, and the per-game saves
 mean the board that was on it comes back with it. Two rules fence it, both `Main`'s.
 Only a **plain open** reads it, for the reason in the next section — a bare `?seed=` is
 a link to the *default* game's deal, and a remembered game answering it would open a
-different board under the same link. And only a game the menu offers as a top-level row
-is ever written to it, so neither a demo scene nor a board reachable only from the Debug
-screen becomes what the app opens on. A stored id that no longer names such a game reads
+different board under the same link. And only a game is ever written to it, so a demo
+scene never becomes what the app opens on. A stored id that no longer names a game reads
 as nothing, and the default game answers instead.
-
-Which games those are is itself a live question, since the **Beta features** flag
-(`Main`'s `menuGames`) lifts the unfinished ones into that list for as long as it is on.
-So a game played under the flag is resumed while it stays on, and stops being the launch
-game the moment it is off — by the rule above rather than by one of its own: the id is
-still in storage, and no longer names a game the menu offers.
 
 What it records is the game that was *played*, however it reached the table. A game
 opened from a link is remembered the same as one tapped in the menu; it is the reading

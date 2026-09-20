@@ -19,7 +19,7 @@
 
 import { expect, test } from "@playwright/test"
 import { allowMotion, settleBoard } from "./lib/board.mjs"
-import { menuSeed, setBetaFeatures } from "./lib/menu.mjs"
+import { menuSeed } from "./lib/menu.mjs"
 
 test.use({ viewport: { width: 800, height: 1000 } })
 
@@ -27,11 +27,6 @@ const openMenu = async (page) => {
   await page.getByRole("button", { name: "Open menu" }).click()
   await expect(page.locator("#menu-overlay")).toBeVisible()
 }
-
-// Both families have boards that aren't released yet, and a family is collapsed only over
-// the boards the list is offering — so every walk here starts by turning **Beta features**
-// on (`lib/menu.mjs`).
-const showTheGames = (page) => setBetaFeatures(page, true)
 
 // The rows' names, and each family's segment. The segments are addressed by their
 // accessible names — what a player's screen reader has, and what changes as the mark does
@@ -52,7 +47,6 @@ test("offers a family as one row, and cycles it in place", async ({ page }) => {
   await page.goto("/?seed=24680&animate=off")
   await settleBoard(page)
   await openMenu(page)
-  await showTheGames(page)
 
   // Three rows for seven boards: the families are one row each, with the rest of their
   // boards on the segment rather than in a row of their own.
@@ -101,7 +95,6 @@ test("draws the pips in the app's own suit face, not the platform's", async ({ p
   await page.goto("/?animate=off")
   await settleBoard(page)
   await openMenu(page)
-  await showTheGames(page)
 
   const suits = page.locator(".menu-variant-mark__suits")
   await expect(suits).toHaveCSS("font-family", /^"Pip Suits"/)
@@ -110,18 +103,11 @@ test("draws the pips in the app's own suit face, not the platform's", async ({ p
   expect(await page.evaluate(() => document.fonts.check('16px "Pip Suits"', "♠♥♦♣"))).toBe(true)
 })
 
-test("gives FreeCell a size only once the short decks are listed", async ({ page }) => {
+test("swaps the board under the open menu as FreeCell's size cycles", async ({ page }) => {
   await page.goto("/?animate=off")
   await settleBoard(page)
   await openMenu(page)
 
-  // Off: the released list, and no segment anywhere. A family is collapsed over the
-  // boards the menu is *offering*, so FreeCell is one board here and the row is the plain
-  // one it has always been — Mini and Micro no more reachable than before.
-  await expect(gameNames(page)).toHaveText(["FreeCell", "Simple Simon"])
-  await expect(page.locator(".menu-game-row__variant")).toHaveCount(0)
-
-  await showTheGames(page)
   await expect(sizes(page)).toHaveText("Standard")
 
   // Standard is the game on the table, so the size is a board change: four cells become
@@ -153,7 +139,6 @@ test("swaps the board under the menu when the game it names is the one being pla
   await page.goto("/?animate=off")
   await settleBoard(page)
   await openMenu(page)
-  await showTheGames(page)
 
   // Open Spiderette from its row: the pack the segment was showing is the board that
   // comes up — seven cascades over a stock — and the menu gets out of the way.
@@ -197,7 +182,6 @@ test("holds a fresh deal's cards off-stage while the menu is up, and deals them 
   await page.goto("/")
   await settleBoard(page)
   await openMenu(page)
-  await showTheGames(page)
 
   await sizes(page).click()
   await expect(onTheTable(page)).toContainText("Mini FreeCell")
@@ -246,7 +230,6 @@ test("keeps only the board the menu closed on, and deals an unseen one afresh", 
   await page.goto("/")
   await settleBoard(page)
   await openMenu(page)
-  await showTheGames(page)
 
   const dealt = () =>
     page.evaluate(() => {
@@ -296,7 +279,6 @@ test("keeps the board you dealt while the size segment walks away and back", asy
   await page.goto("/?seed=24680&animate=off")
   await settleBoard(page)
   await openMenu(page)
-  await showTheGames(page)
   await expect(menuSeed(page)).toHaveText("#24680")
 
   // Deal for yourself, which is what makes the board yours rather than the link's.
@@ -326,7 +308,6 @@ test("remembers each family's choice across a launch, and opens it from the row"
   await page.goto("/?animate=off")
   await settleBoard(page)
   await openMenu(page)
-  await showTheGames(page)
 
   // A variant chosen on a family whose board isn't on the table is remembered, not
   // played: FreeCell is still up, and nothing has mounted.

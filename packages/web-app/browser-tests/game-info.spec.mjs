@@ -1,10 +1,9 @@
-// The game info feature, from the switch that turns it on to the screen it opens.
+// The game info feature, from the "i" on a game's row to the screen it opens.
 //
-// Everything here is a *join* between parts that unit tests cover one at a time: the
-// hidden **Beta features** switch persists a flag (`MenuSettingsScreen`), the flag
-// decides whether a game's row is handed an `onInfo` (`Main`), the row draws the "i"
-// from that (`MenuGameRow`), and the tap swaps the pane to a fourth screen (`Menu`). No
-// single one of those can see the chain, and the chain is what a player has.
+// Everything here is a *join* between parts that unit tests cover one at a time: `Main`
+// hands each game's row an `onInfo`, the row draws the "i" from that (`MenuGameRow`),
+// and the tap swaps the pane to a fourth screen (`Menu`). No single one of those can see
+// the chain, and the chain is what a player has.
 //
 // The row is also a set of *measured* claims, and a stylesheet is only evaluated by a
 // browser. Three of them are invisible when they break, which is why they are here at
@@ -23,7 +22,6 @@
 
 import { expect, test } from "@playwright/test"
 import { settleBoard } from "./lib/board.mjs"
-import { setBetaFeatures } from "./lib/menu.mjs"
 
 test.use({ viewport: { width: 800, height: 1000 } })
 
@@ -32,43 +30,29 @@ const openMenu = async (page) => {
   await expect(page.locator("#menu-overlay")).toBeVisible()
 }
 
-// One switch now turns on every unfinished feature, so the same flip that puts the "i"
-// on a row also lists the unreleased games (`more-games.spec.mjs`) — which means the
-// Games list every walk below sees is the longer one, and FreeCell's row carries a
-// variant segment between its name and its "i". The measured claims here are about the
-// *plain* row, so they are taken on Simple Simon, the game with no family to collapse.
+// FreeCell's row carries a variant segment between its name and its "i", and so does
+// Spiderette's (`game-variant.spec.mjs`). The measured claims here are about the *plain*
+// row, so they are taken on Simple Simon, the game with no family to collapse.
 const infoRow = (page, game) =>
   page
     .locator(".menu-game-row")
     .filter({ has: page.getByRole("button", { name: `About ${game}` }) })
 
-test("hides the info buttons until the flag is found, then puts one beside each game", async ({
-  page,
-}) => {
+test("puts an info button beside each game, named for it", async ({ page }) => {
   await page.goto("/?seed=24680&animate=off")
   await settleBoard(page)
   await openMenu(page)
 
-  // Off by default, and off is the plain row the menu has always had.
-  await expect(page.locator(".menu-game-row__info")).toHaveCount(0)
-
-  await setBetaFeatures(page, true)
   await expect(page.getByRole("button", { name: "About FreeCell" })).toBeVisible()
   await expect(page.getByRole("button", { name: "About Simple Simon" })).toBeVisible()
-
-  // …and it stays on across a launch, the flag being persisted like every other
-  // preference.
-  await page.reload()
-  await settleBoard(page)
-  await openMenu(page)
-  await expect(page.getByRole("button", { name: "About FreeCell" })).toBeVisible()
+  await expect(page.getByRole("button", { name: "About Spiderette" })).toBeVisible()
+  await expect(page.locator(".menu-game-row__info")).toHaveCount(3)
 })
 
 test("gives the i a target bigger than the mark, without disturbing the row", async ({ page }) => {
   await page.goto("/?seed=24680&animate=off")
   await settleBoard(page)
   await openMenu(page)
-  await setBetaFeatures(page, true)
 
   const row = infoRow(page, "Simple Simon")
   const box = await row.boundingBox()
@@ -117,7 +101,6 @@ test("keeps one row's i out of the next row's", async ({ page }) => {
   await page.goto("/?seed=24680&animate=off")
   await settleBoard(page)
   await openMenu(page)
-  await setBetaFeatures(page, true)
 
   const targets = page.locator(".menu-game-row__info")
   const first = await targets.nth(0).boundingBox()
@@ -135,7 +118,6 @@ test("holds a game's name on one header row at a narrow width", async ({ page })
   await page.goto("/?seed=24680&animate=off")
   await settleBoard(page)
   await openMenu(page)
-  await setBetaFeatures(page, true)
   await page.getByRole("button", { name: "About Simple Simon" }).click()
 
   const header = await page.locator(".menu-panel__header").boundingBox()
@@ -164,7 +146,6 @@ test("opens the game's info screen from the i, and comes back to the menu", asyn
   await page.goto("/?seed=24680&animate=off")
   await settleBoard(page)
   await openMenu(page)
-  await setBetaFeatures(page, true)
 
   await page.getByRole("button", { name: "About Simple Simon" }).click()
 
@@ -218,7 +199,6 @@ test("leaves the info screen behind when the menu closes", async ({ page }) => {
   await page.goto("/?seed=24680&animate=off")
   await settleBoard(page)
   await openMenu(page)
-  await setBetaFeatures(page, true)
 
   await page.getByRole("button", { name: "About FreeCell" }).click()
   await expect(page.locator(".game-info__numbers")).toBeVisible()
@@ -242,7 +222,6 @@ test("offers a family's packs on its info screen, and moves the screen to the on
   await page.goto("/?seed=24680&animate=off")
   await settleBoard(page)
   await openMenu(page)
-  await setBetaFeatures(page, true)
   await page.getByRole("button", { name: "About Spiderette" }).click()
 
   // All three at once, in the family's own order, with the pack the screen is about lit
@@ -290,7 +269,6 @@ test("leaves the table alone when the picker names the game being played", async
   await page.goto("/?seed=24680&animate=off")
   await settleBoard(page)
   await openMenu(page)
-  await setBetaFeatures(page, true)
   await page.getByRole("button", { name: "About FreeCell" }).click()
 
   await expect(sizes(page)).toHaveText(["Standard", "Mini", "Micro"])
@@ -322,7 +300,6 @@ test("gives a game with no family no such section at all", async ({ page }) => {
   await page.goto("/?seed=24680&animate=off")
   await settleBoard(page)
   await openMenu(page)
-  await setBetaFeatures(page, true)
   await page.getByRole("button", { name: "About Simple Simon" }).click()
 
   await expect(page.locator(".menu-variant-picker")).toHaveCount(0)
@@ -340,7 +317,6 @@ test("draws the picker as one control the width of the panel, not three side by 
   await page.goto("/?seed=24680&animate=off")
   await settleBoard(page)
   await openMenu(page)
-  await setBetaFeatures(page, true)
   await page.getByRole("button", { name: "About FreeCell" }).click()
 
   const boxes = await sizes(page).evaluateAll((els) => els.map((el) => el.getBoundingClientRect()))
@@ -374,7 +350,6 @@ test("draws the link out as a bare mark with a thumb's target around it", async 
   await page.goto("/?seed=24680&animate=off")
   await settleBoard(page)
   await openMenu(page)
-  await setBetaFeatures(page, true)
   await page.getByRole("button", { name: "About FreeCell" }).click()
 
   const link = page.locator(".game-info__link")
@@ -408,7 +383,6 @@ test("keeps the screen still while the picker redraws the board", async ({ page 
   await page.goto("/?seed=24680&animate=off")
   await settleBoard(page)
   await openMenu(page)
-  await setBetaFeatures(page, true)
   await page.getByRole("button", { name: "About FreeCell" }).click()
 
   const layout = async () => {
@@ -461,7 +435,6 @@ test("draws the opening board as the table draws it, and takes no pointer input"
   await page.goto("/?seed=24680&animate=off")
   await settleBoard(page)
   await openMenu(page)
-  await setBetaFeatures(page, true)
   await page.getByRole("button", { name: "About Spiderette" }).click()
   const still = page.locator(".board-preview")
   await expect(still).toBeVisible()

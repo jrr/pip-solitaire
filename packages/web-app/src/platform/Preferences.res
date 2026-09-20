@@ -89,17 +89,14 @@ let saveDebugLog = (enabled: bool) => saveFlag(debugLogKey, enabled)
 let loadRevealHidden = (): bool => loadFlag(revealHiddenKey, ~fallback=false)
 let saveRevealHidden = (revealed: bool) => saveFlag(revealHiddenKey, revealed)
 
-// "Beta features": the one switch in front of everything built but not finished. Today
-// that is the "i" beside each game in the menu and the screen it opens, and the games
-// not yet released into that menu — the short decks and the Spiderettes — listed there
-// rather than a level down in the Debug screen. Off by default and reachable only from
-// the hidden settings, which is a second gesture in front of this one; persisted like
-// the rest, so a device left with it on keeps it across launches.
+// "Beta features": the one switch in front of everything built but not finished. Nothing
+// stands behind it today. Off by default and reachable only from the hidden settings,
+// which is a second gesture in front of this one; persisted like the rest, so a device
+// left with it on keeps it across launches.
 //
 // One key for all of it rather than one per feature, so a feature graduating drops its
 // gate and leaves nothing stored behind — the switch outlives whatever is currently
-// behind it. Read at launch as well as at each menu render: it decides which games a
-// bare open may resume.
+// behind it.
 let loadBetaFeatures = (): bool => loadFlag(betaFeaturesKey, ~fallback=false)
 let saveBetaFeatures = (enabled: bool) => saveFlag(betaFeaturesKey, enabled)
 

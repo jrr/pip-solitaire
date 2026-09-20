@@ -11,7 +11,7 @@
 //
 // The grouping is three-way: the primary rows, the `Game` scenes that aren't among
 // them, and the `Demo` scenes. Fake scenes stand in for the real list so every group
-// can be populated at once, whichever games a build happens to release.
+// can be populated at once, whichever games a build happens to list.
 
 open Vitest
 
@@ -36,7 +36,7 @@ describe("SceneSwitcher's games list", () => {
       ~default="freecell",
       [game(~id="freecell", ~mounts), countingScene(~id="gallery", ~mounts)],
     )
-    expect(switcher.primaryScenes()->Array.map(scene => (scene.id, scene.label)))->toEqual([
+    expect(switcher.primaryScenes->Array.map(scene => (scene.id, scene.label)))->toEqual([
       ("freecell", "freecell"),
     ])
     expect(switcher.active)->toEqual(Some("freecell"))
@@ -164,7 +164,7 @@ describe("SceneSwitcher's grouping by kind", () => {
   test("splits into the primary row, the other games, and the demos", () => {
     let mounts = ref(0)
     let switcher = SceneSwitcher.render(~default="freecell", scenes(mounts))
-    expect(switcher.primaryScenes()->Array.map(scene => scene.id))->toEqual(["freecell"])
+    expect(switcher.primaryScenes->Array.map(scene => scene.id))->toEqual(["freecell"])
     expect(switcher.gameScenes()->labels)->toEqual(["klondike"])
     expect(switcher.debugScenes()->labels)->toEqual(["gallery", "motion"])
   })
@@ -220,16 +220,16 @@ describe("SceneSwitcher's grouping by kind", () => {
     // also appear in the demos group, or the menu would list it twice.
     let mounts = ref(0)
     let switcher = SceneSwitcher.render(~default="gallery", scenes(mounts))
-    expect(switcher.primaryScenes()->Array.map(scene => scene.id))->toEqual(["gallery"])
+    expect(switcher.primaryScenes->Array.map(scene => scene.id))->toEqual(["gallery"])
     expect(switcher.gameScenes()->labels)->toEqual(["freecell", "klondike"])
     expect(switcher.debugScenes()->labels)->toEqual(["motion"])
   })
 })
 
 describe("SceneSwitcher's promoted games", () => {
-  // The real shape now: two released games up top, a game still in development under
-  // Debug, and the demos. `~primary` is what promotes a game; the launch default is
-  // promoted whether or not it's named, so the way home can't be configured away.
+  // Two games up top, a third withheld under Debug, and the demos. `~primary` is what
+  // promotes a game; the launch default is promoted whether or not it's named, so the
+  // way home can't be configured away.
   let scenes = mounts => [
     game(~id="freecell", ~mounts),
     countingScene(~id="gallery", ~mounts),
@@ -243,10 +243,10 @@ describe("SceneSwitcher's promoted games", () => {
     let mounts = ref(0)
     let switcher = SceneSwitcher.render(
       ~default="freecell",
-      ~primary=() => ["simplesimon"],
+      ~primary=["simplesimon"],
       scenes(mounts),
     )
-    expect(switcher.primaryScenes()->Array.map(scene => scene.id))->toEqual([
+    expect(switcher.primaryScenes->Array.map(scene => scene.id))->toEqual([
       "freecell",
       "simplesimon",
     ])
@@ -260,10 +260,10 @@ describe("SceneSwitcher's promoted games", () => {
     let mounts = ref(0)
     let switcher = SceneSwitcher.render(
       ~default="freecell",
-      ~primary=() => ["simplesimon", "freecell"],
+      ~primary=["simplesimon", "freecell"],
       scenes(mounts),
     )
-    expect(switcher.primaryScenes()->Array.map(scene => scene.id))->toEqual([
+    expect(switcher.primaryScenes->Array.map(scene => scene.id))->toEqual([
       "freecell",
       "simplesimon",
     ])
@@ -273,65 +273,26 @@ describe("SceneSwitcher's promoted games", () => {
     let mounts = ref(0)
     let switcher = SceneSwitcher.render(
       ~default="freecell",
-      ~primary=() => ["simplesimon"],
+      ~primary=["simplesimon"],
       scenes(mounts),
     )
-    expect(switcher.primaryScenes()->Array.map(scene => scene.id))->toEqual([
+    expect(switcher.primaryScenes->Array.map(scene => scene.id))->toEqual([
       "freecell",
       "simplesimon",
     ])
     // …and naming it too lists it once, not twice.
     let named = SceneSwitcher.render(
       ~default="freecell",
-      ~primary=() => ["freecell", "simplesimon"],
+      ~primary=["freecell", "simplesimon"],
       scenes(mounts),
     )
-    expect(named.primaryScenes()->Array.map(scene => scene.id))->toEqual([
-      "freecell",
-      "simplesimon",
-    ])
+    expect(named.primaryScenes->Array.map(scene => scene.id))->toEqual(["freecell", "simplesimon"])
   })
 
   test("an id that names no scene promotes nothing", () => {
     let mounts = ref(0)
-    let switcher = SceneSwitcher.render(
-      ~default="freecell",
-      ~primary=() => ["spider"],
-      scenes(mounts),
-    )
-    expect(switcher.primaryScenes()->Array.map(scene => scene.id))->toEqual(["freecell"])
-  })
-
-  test("a game promoted after launch moves groups without a re-render of the scene", () => {
-    // What the Beta features flag does: `~primary` answers differently on the next menu
-    // render, and the game crosses from the debug group to a top-level row with no
-    // scene torn down or mounted on the way. The list is asked afresh, so the row a
-    // player taps is the one the flag says should be there now — not the one the app
-    // launched with.
-    let mounts = ref(0)
-    let promoted = ref(false)
-    let switcher = SceneSwitcher.render(
-      ~default="freecell",
-      ~primary=() => promoted.contents ? ["simplesimon", "klondike"] : ["simplesimon"],
-      scenes(mounts),
-    )
-    expect(switcher.primaryScenes()->Array.map(scene => scene.id))->toEqual([
-      "freecell",
-      "simplesimon",
-    ])
-    expect(switcher.gameScenes()->labels)->toEqual(["klondike"])
-
-    promoted := true
-    expect(switcher.primaryScenes()->Array.map(scene => scene.id))->toEqual([
-      "freecell",
-      "simplesimon",
-      "klondike",
-    ])
-    // …and it leaves the games group as it goes, so it is never listed twice — which
-    // empties that group, and an empty group is one `MenuDebugScreen` doesn't place.
-    expect(switcher.gameScenes())->toEqual([])
-    expect(switcher.debugScenes()->labels)->toEqual(["gallery"])
-    expect(mounts.contents)->toBe(1) // the launch mount, and nothing since
+    let switcher = SceneSwitcher.render(~default="freecell", ~primary=["spider"], scenes(mounts))
+    expect(switcher.primaryScenes->Array.map(scene => scene.id))->toEqual(["freecell"])
   })
 
   test("selecting each promoted game by id mounts it, and the highlight follows", () => {
@@ -343,7 +304,7 @@ describe("SceneSwitcher's promoted games", () => {
     let reselects = ref(0)
     let switcher = SceneSwitcher.render(
       ~default="freecell",
-      ~primary=() => ["simplesimon"],
+      ~primary=["simplesimon"],
       ~onActivate=(scene: Scene.t) => activated->Array.push(scene.id),
       ~onReselect=() => reselects := reselects.contents + 1,
       scenes(mounts),
@@ -368,7 +329,7 @@ describe("SceneSwitcher's promoted games", () => {
     let mounts = ref(0)
     let switcher = SceneSwitcher.render(
       ~default="freecell",
-      ~primary=() => ["simplesimon"],
+      ~primary=["simplesimon"],
       ~forced="simplesimon",
       scenes(mounts),
     )

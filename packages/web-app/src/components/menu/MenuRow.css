@@ -27,10 +27,9 @@
        past it — a switch row carrying a description runs to 90 — so this reaches
        only the three that were under: the games, and the Debug disclosure.
 
-       On `.menu-row` rather than on the games list, because a games row is a bare
-       `.menu-row` when the beta features flag is off (see MenuGameRow.res). Scoped any
-       tighter, how tall a row stands would depend on whether a feature is switched
-       on. */
+       On `.menu-row` rather than on the games list, because the Debug disclosure's
+       rows are under it too, and a floor that reached only one of the two lists would
+       leave the other short. */
     min-height: 2.75rem;
     padding: var(--control-pad);
     font: var(--control-font);

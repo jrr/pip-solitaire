@@ -9,7 +9,7 @@
 //   - the two action rows: **Share game state** (`ShareLink`) and **Clear saved
 //     data** (`StoredState`);
 //   - the collapsible groups: the
-//     games that aren't the one in the main menu (`gameScenes`, labelled "games"),
+//     games without a row in the main menu (`gameScenes`, labelled "games"),
 //     the demo scenes (`debugScenes`, "scenes") and the named starting positions
 //     (`debugStates`, "states") a tap drops the board into (`Scenario`), the menu
 //     twin of `?state=`.
@@ -19,10 +19,10 @@
 // All three calls differ only in their data — a group that needs its own markup wants
 // a prop on `<MenuDisclosure>`, not a fourth way of drawing a disclosure here.
 //
-// The "games" group is the odd one: it is placed only when it has entries, so a build
-// whose every game has a row in the main menu — which is what the Beta features flag makes
-// of every build — shows two groups, scenes then states. It exists so that a game still
-// in development lands among the games rather than under "scenes", between Gallery and
+// The "games" group is the odd one: it is placed only when it has entries, and today it
+// has none — every game has a row in the main menu (`Main`'s `menuGames`) — so the
+// screen shows two groups, scenes then states. It stays so that a game withheld from
+// that menu lands among the games rather than under "scenes", between Gallery and
 // Motion, filed as a render demo.
 type props = {
   onClose: unit => unit,
@@ -130,8 +130,8 @@ let make = ({
         onClick=onClearStored
       />
       // Placed only when there is something in it: an empty `<details>` is a summary
-      // that opens onto nothing, and today — one game, the one already in the main
-      // menu — that is what it would be.
+      // that opens onto nothing, and today — every game already in the main menu —
+      // that is what it would be.
       {Array.length(gameScenes) == 0
         ? Html.empty
         : <MenuDisclosure summary="games" entries=gameScenes open_=gameScenesOpen />}

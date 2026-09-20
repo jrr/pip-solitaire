@@ -10,8 +10,8 @@
 // asked for. **A URL that names a board wins**, which matters most for the bare
 // `?seed=` a FreeCell share link is: `ShareLink.urlForDeal` omits `?game=` for the
 // default game, so a remembered game answering that link would open a different board
-// under it. And **only a game the menu offers is ever remembered**, so neither a demo
-// scene nor a debug-menu board becomes what the app opens on.
+// under it. And **only a game is ever remembered**, so a demo scene never becomes what
+// the app opens on.
 //
 // Browser-only, and reload-only: nothing below can be assembled in jsdom, because the
 // whole subject is what a second page load does with what the first one stored.
@@ -34,8 +34,9 @@ const openMenu = async (page) => {
   await expect(page.locator("#menu-overlay")).toBeVisible()
 }
 
+// By exact name: the row's "i" and a family's segment are buttons named after it too.
 const gameRow = (page, name) =>
-  page.locator("nav[aria-label='Games']").getByRole("button", { name })
+  page.locator("nav[aria-label='Games']").getByRole("button", { name, exact: true })
 
 // The "this game" heading, which names the game the board belongs to.
 const menuGameName = (page) => page.locator('[aria-label="this game"] .menu-section__heading')
@@ -119,9 +120,8 @@ test("a game reached by a link is remembered like one chosen from the menu", asy
   await expect(zones(page)).toHaveCount(FREECELL_ZONES)
 })
 
-// Only a game the menu offers is remembered. A demo owns no board at all, so opening on
-// one would be opening on no game — the failure this rules out is a launch into the
-// card gallery.
+// Only a game is remembered. A demo owns no board at all, so opening on one would be
+// opening on no game — the failure this rules out is a launch into the card gallery.
 test("a demo scene never becomes the game a launch opens on", async ({ page }) => {
   await page.goto("/?animate=off")
   await settleBoard(page)
@@ -133,21 +133,6 @@ test("a demo scene never becomes the game a launch opens on", async ({ page }) =
   await page.goto("/?animate=off")
   await settleBoard(page)
   await expect(page.locator(".card-gallery")).toHaveCount(0)
-  await expect(zones(page)).toHaveCount(SIMPLE_SIMON_ZONES)
-})
-
-// Nor does a board that only the Debug screen offers: a developer who opens one by URL
-// gets it, and gets their own game back the next time they launch without one.
-test("a debug-menu game never becomes the game a launch opens on", async ({ page }) => {
-  await page.goto("/?animate=off")
-  await settleBoard(page)
-  await chooseGame(page, "Simple Simon")
-
-  await page.goto("/?game=micro&animate=off")
-  await settleBoard(page)
-
-  await page.goto("/?animate=off")
-  await settleBoard(page)
   await expect(zones(page)).toHaveCount(SIMPLE_SIMON_ZONES)
 })
 
