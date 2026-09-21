@@ -74,8 +74,9 @@ type props = {
 
 // What the row says while the solver is searching. The search holds the thread for as
 // long as it runs, so this is the last thing the panel paints before it stops answering
-// — and the only warning anyone gets that the freeze is the point rather than a hang.
-let thinking = "Thinking — nothing responds until the solver is done."
+// — which is what makes a word here worth painting at all, and the freeze that follows
+// a thing being waited out rather than a hang.
+let thinking = "Thinking…"
 
 // The "Autoplay" row's description — the solver's own words once it has any, on the
 // same substitution as the share row below.
