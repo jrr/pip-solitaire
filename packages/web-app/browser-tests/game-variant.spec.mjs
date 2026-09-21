@@ -48,8 +48,8 @@ test("offers a family as one row, and cycles it in place", async ({ page }) => {
   await settleBoard(page)
   await openMenu(page)
 
-  // Three rows for seven boards: the families are one row each, with the rest of their
-  // boards on the segment rather than in a row of their own.
+  // Three rows for the seven released boards: the families are one row each, with the
+  // rest of their boards on the segment rather than in a row of their own.
   await expect(gameNames(page)).toHaveText(["FreeCell", "Simple Simon", "Spiderette"])
   await expect(packs(page)).toHaveCount(1)
   await expect(packs(page)).toHaveAttribute("aria-label", "Spiderette pack: 2 suits")

@@ -20,11 +20,11 @@
 // All three calls differ only in their data — a group that needs its own markup wants
 // a prop on `<MenuDisclosure>`, not a fourth way of drawing a disclosure here.
 //
-// The "games" group is the odd one: it is placed only when it has entries, and today it
-// has none — every game has a row in the main menu (`Main`'s `menuGames`) — so the
-// screen shows two groups, scenes then states. It stays so that a game withheld from
-// that menu lands among the games rather than under "scenes", between Gallery and
-// Motion, filed as a render demo.
+// The "games" group is the odd one: it is placed only when it has entries, which is
+// while a game is withheld from the main menu (`Main`'s `menuGames` — Spider, until the
+// Beta features switch or its release lists it); with none withheld the screen shows two
+// groups, scenes then states. It exists so that a withheld game lands among the games
+// rather than under "scenes", between Gallery and Motion, filed as a render demo.
 type props = {
   onClose: unit => unit,
   onBackToSettings: unit => unit,
@@ -167,8 +167,8 @@ let make = ({
         onClick=onClearStored
       />
       // Placed only when there is something in it: an empty `<details>` is a summary
-      // that opens onto nothing, and today — every game already in the main menu —
-      // that is what it would be.
+      // that opens onto nothing, which is what it would be whenever every game is
+      // already in the main menu.
       {Array.length(gameScenes) == 0
         ? Html.empty
         : <MenuDisclosure summary="games" entries=gameScenes open_=gameScenesOpen />}

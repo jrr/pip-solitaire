@@ -103,12 +103,14 @@ hand-run script doesn't.)
 Query parameters, all documented in `src/platform/AppUrl.res`:
 
 - `?game=freecell` — open a game by id (`freecell`, `mini`, `micro`, `simplesimon`,
-  `spiderette1`, `spiderette`, `spiderette4`). `playGame()` knows FreeCell and
-  Simple Simon (`playGame(page, { game: "simplesimon", seed })`). The solver plans
-  every Spiderette too, but this harness can't play them — `read-board.mjs` says
-  why, and the in-app `autoplay` command plays those instead. The other boards are
-  played by hand — `browser-tests/lib/play-line.mjs` drags a recorded line, and a
-  tap on Spiderette's stock deals the next row.
+  `spiderette1`, `spiderette`, `spiderette4`, `spider1`, `spider`, `spider4`).
+  `playGame()` knows FreeCell and Simple Simon (`playGame(page, { game:
+  "simplesimon", seed })`). The solver plans every Spiderette too, but this harness
+  can't play them — `read-board.mjs` says why, and the in-app `autoplay` command
+  plays those instead; Spider it reads the same way, and nobody has measured the
+  search on two packs. The other boards are played by hand —
+  `browser-tests/lib/play-line.mjs` drags a recorded line, and a tap on a stock
+  deals the next row.
 - `?scene=gallery` — mount a non-game scene (`gallery`, `raster`, `trail`,
   `cascade`, `motion`).
 - `?seed=N` — open deal N of whichever game is mounted. Deterministic: the same N

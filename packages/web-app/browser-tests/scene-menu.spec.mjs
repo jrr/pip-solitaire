@@ -59,8 +59,9 @@ const openDebugScreen = async (page) => {
 const sceneGroup = (page) => page.locator(".scene-menu__group").filter({ hasText: "scenes" })
 const sceneRow = (page, name) => sceneGroup(page).getByRole("button", { name })
 
-// …and the "games" disclosure beside it, which would hold any game withheld from the
-// main menu — none, today, so it is never placed.
+// …and the "games" disclosure beside it, which holds any game withheld from the main
+// menu — Spider's three boards, until Beta features is on (`more-games.spec.mjs` walks
+// both states of the flag).
 const gameGroup = (page) => page.locator(".scene-menu__group").filter({ hasText: "games" })
 
 // Activation tears the live scene down and builds it afresh, so a re-mount throws
@@ -86,10 +87,13 @@ test("tapping the game you're already playing doesn't re-deal it", async ({ page
   await expect(page.locator("#scene-container .table-board[data-pinned='yes']")).toHaveCount(1)
 })
 
-// The placement rule: seven boards in `Game.all`, three rows. `SceneSwitcher_test` pins
-// the grouping rule against fake scenes; what it can't say is where the *real* boards
-// land — every one up top, a family's on its row's segment, and nothing under Debug.
-test("every game is listed up top, and none is filed under Debug", async ({ page }) => {
+// The placement rule: ten boards in `Game.all`, three rows and a group. `SceneSwitcher_test`
+// pins the grouping rule against fake scenes; what it can't say is where the *real*
+// boards land — every released one up top, a family's on its row's segment, the withheld
+// ones under Debug's "games", and none of them under "scenes".
+test("every released game is listed up top, and only the withheld ones are filed under Debug", async ({
+  page,
+}) => {
   await page.goto("/?game=micro&animate=off")
   await settleBoard(page)
 
@@ -103,8 +107,12 @@ test("every game is listed up top, and none is filed under Debug", async ({ page
   await expect(gameRow(page, "Simple Simon")).not.toHaveAttribute("aria-current", "true")
 
   await openDebugScreen(page)
-  // No "games" group at all, and the short decks aren't filed as demos either.
-  await expect(gameGroup(page)).toHaveCount(0)
+  // The "games" group holds exactly the withheld boards, and the short decks aren't
+  // filed as demos either.
+  await expect(gameGroup(page)).toHaveCount(1)
+  await gameGroup(page).locator("summary").click()
+  await expect(gameGroup(page).getByRole("button")).toHaveCount(3)
+  await expect(gameGroup(page).getByRole("button", { name: "Micro FreeCell" })).toHaveCount(0)
   await expect(sceneGroup(page).getByRole("button", { name: "Micro FreeCell" })).toHaveCount(0)
 })
 
@@ -269,7 +277,8 @@ test("a New Deal on a link's board outlives the walk away from it", async ({ pag
 })
 
 // `?game=simplesimon` lands on a row that is already up top, so the menu opens with
-// it marked and no debug group unfolded for it.
+// it marked and no debug group unfolded for it — neither the demos' nor the withheld
+// games', which is placed but stays closed.
 test("a ?game= link onto Simple Simon opens with its row marked", async ({ page }) => {
   await page.goto("/?game=simplesimon&animate=off")
   await settleBoard(page)
@@ -280,6 +289,6 @@ test("a ?game= link onto Simple Simon opens with its row marked", async ({ page 
   await expect(gameRow(page, "FreeCell")).not.toHaveAttribute("aria-current", "true")
 
   await openDebugScreen(page)
-  await expect(gameGroup(page)).toHaveCount(0)
+  await expect(gameGroup(page)).not.toHaveAttribute("open", "")
   await expect(sceneGroup(page)).not.toHaveAttribute("open", "")
 })

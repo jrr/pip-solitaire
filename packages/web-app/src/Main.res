@@ -962,12 +962,24 @@ let gameScene = (game: Game.t) => {
     opening,
   )
 }
+// The games still in development: dealt by `Game.all`, reached by `?game=`, saved and
+// resumed like any other, and withheld from the main menu until **Beta features** is
+// on. Spider is there while its finer points are polished — a whole family, so that
+// the row it will get is the row it is judged on. A game graduates by leaving this list.
+let betaGames: array<string> = Game.spiderFamily.variants->Array.map(v => v.game.id)
+
 // The games the menu offers, as its top-level Games rows: every game `Game.all` deals,
-// in `Game.all`'s order. A game joins the menu by being added there and nowhere else —
-// the switcher files it, the menu draws it, and `?game=` already reached it. The Debug
-// screen's "games" group is where a game *withheld* from this list would land, and with
-// nothing withheld it is never placed (`MenuDebugScreen`).
-let menuGames: array<Game.t> = Game.all
+// in `Game.all`'s order, less `betaGames` while the flag is off. A game joins the menu by
+// being added there and nowhere else — the switcher files it, the menu draws it, and
+// `?game=` already reached it. The Debug screen's "games" group is where a withheld game
+// lands, and it is placed only while there is one (`MenuDebugScreen`).
+//
+// The flag is read **once, at launch**: the switcher files its rows as a value, so a flip
+// of the switch lands on the next launch rather than the next menu render, and the
+// switch's own line says so.
+let menuGames: array<Game.t> = Preferences.loadBetaFeatures()
+  ? Game.all
+  : Game.all->Array.filter(game => !(betaGames->Array.includes(game.id)))
 
 // The game a bare launch opens on: the one last on the table, else the default. The
 // board waiting on it comes back with it — each game keeps its own save — so this

@@ -505,9 +505,12 @@ let freecellScenarios: array<named> = [
 
 // Spiderette's, addressed the same way (`?game=spiderette&state=dealt`, `deal
 // spiderette dealt`), and shared by its three variants since all build from whatever
-// pack the board carries. None claims a deal: `dealt` is reachable from *whatever*
-// deal the board it's built on was dealt from, which a fixed number can't say, and the
-// other three are posed rather than played to.
+// pack the board carries — and by Spider's three, since each builds from the board's
+// cascades and foundations as well: the deep column is posed on the first of however
+// many, and the near-won board collects all but one of however many runs. None claims a
+// deal: `dealt` is reachable from *whatever* deal the board it's built on was dealt
+// from, which a fixed number can't say, and the other three are posed rather than
+// played to.
 let spideretteScenarios: array<named> = [
   {name: "dealt", label: "Stock dealt out", build: spideretteDealtOut, seed: None},
   {name: "deep", label: "Deep column", build: spideretteDeep, seed: None},
@@ -520,7 +523,12 @@ let spideretteScenarios: array<named> = [
 let scenariosFor = (game: Game.t): array<named> =>
   switch game.id {
   | "freecell" => freecellScenarios
-  | "spiderette1" | "spiderette" | "spiderette4" => spideretteScenarios
+  | "spiderette1"
+  | "spiderette"
+  | "spiderette4"
+  | "spider1"
+  | "spider"
+  | "spider4" => spideretteScenarios
   | _ => []
   }
 

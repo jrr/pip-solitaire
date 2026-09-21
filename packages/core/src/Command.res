@@ -748,7 +748,7 @@ let duration = (ms: float): string =>
 // solver for the reason every other refusal in this module is: it's what a *front
 // end* says to someone who typed something, and a terminal and a panel saying it
 // differently would be two commands wearing one name.
-let autoplayUnknownBoard = "Autoplay plays every board the game deals — FreeCell full, Mini or Micro, Simple Simon, and all three Spiderettes; this board isn't one of them."
+let autoplayUnknownBoard = "Autoplay plays every board the game deals — FreeCell full, Mini or Micro, Simple Simon, and every Spiderette and Spider pack; this board isn't one of them."
 
 let autoplayNoLine = "Autoplay couldn't find a way to win from here."
 
@@ -823,7 +823,7 @@ let boardHelp: array<helpRow> = [
     "supermove an ordered run: its cards bottom-first, or the column it's showing in (moverun T6 T2)",
   ),
   ("home <card>", "send a card to its foundation, if one will take it (e.g. home AS)"),
-  ("draw", "deal the next row from the stock, on a board that has one (Spiderette)"),
+  ("draw", "deal the next row from the stock, on a board that has one (Spiderette, Spider)"),
   (
     "movecol <from> <to>",
     "reorder cascade columns: pull column <from> and drop it at <to> (e.g. movecol 8 15)",

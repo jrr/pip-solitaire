@@ -57,7 +57,8 @@ let referenceFor = (id: string): string =>
   switch id {
   | "freecell" | "mini" | "micro" => wikipedia("FreeCell")
   | "simplesimon" => wikipedia("Simple_Simon_(solitaire)")
-  | "spiderette1" | "spiderette" | "spiderette4" => wikipedia("Spider_(solitaire)")
+  | "spiderette1" | "spiderette" | "spiderette4" | "spider1" | "spider" | "spider4" =>
+    wikipedia("Spider_(solitaire)")
   | _ => wikipedia("Patience_(game)")
   }
 
@@ -95,7 +96,9 @@ let referenceLabel = (info: t): string => {
 //
 // Simple Simon and Spiderette open on the same sentence because they are the same laws
 // — `Rules.spiderCascade`, `Unlimited`, `CompleteRuns` — and a reader comparing the two
-// screens should see that. Spiderette's stock is the whole of the difference.
+// screens should see that. Spiderette's stock is the whole of the difference, and Spider
+// reads word for word as Spiderette because its whole difference is the still and the
+// counts above this paragraph: two packs on ten columns.
 let descriptionFor = (id: string): option<string> =>
   switch id {
   | "freecell" =>
@@ -106,7 +109,7 @@ let descriptionFor = (id: string): option<string> =>
     Some(
       "Build downward in descending rank of any suit, but like-suit runs can move together. Win by building runs of King through Ace.",
     )
-  | "spiderette" =>
+  | "spiderette" | "spider" =>
     Some(
       "Build downward in descending rank of any suit, but like-suit runs can move together. Win by building runs of King through Ace. Deal from the stock when you're stuck.",
     )

@@ -163,6 +163,7 @@ mise run solve -- --game mini --quiet 1-1000          # the short packs
 mise run solve -- --game spiderette4 --quiet 1-200    # the board that deals
 mise run solve -- --game spiderette1 --quiet 1-200    # …and its repeated packs
 mise run solve -- --game spiderette --quiet 1-200
+mise run solve -- --game spider --limit 10 --quiet 1-5   # two packs: a probe, not a record
 mise run solve -- --limit 10 --game spiderette4 --quiet 1-200   # …as a player waits for it
 ```
 
@@ -297,6 +298,17 @@ FreeCell's worst is the one a smaller `interactive` would take first.
 
 All six rows: 2026-09-20, Node v26.9.0, cloud sandbox, the capped half with
 `--limit 10`.
+
+**Spider has no row here, and a probe is why.** `Position.ofGameState` reads all
+three packs — nothing in the model assumes one pack or four foundations — so the
+search runs on 104 cards without an edit. What it does *not* do is answer: at the
+interactive ten seconds, four of the first five two-suit deals came back out of
+time, and the one that solved took 206 moves. Five deals is a probe, not a record,
+and the honest reading is only that the numbers above do not carry over — a board
+twice the size is not the same search at the same cap. Whoever measures it properly
+owes a range and a row; until then the Debug screen's Autoplay row on a Spider board
+is ten seconds of a held thread and then a refusal, which is the designed path
+(`Solver.ranOutOfTime`) and not a wait anyone should be asked to like.
 
 ### Why the unsolved count stands
 
