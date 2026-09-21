@@ -16,8 +16,6 @@ let debugStates: array<MenuDisclosure.entry> = [
 ]
 
 let render = (
-  ~gameScenes: array<MenuDisclosure.entry>=[],
-  ~gameScenesOpen=false,
   ~debugScenesOpen=false,
   ~autoplayEnabled=true,
   ~autoplayStatus=None,
@@ -47,8 +45,6 @@ let render = (
       shareStatus,
       onShareGame,
       onClearStored,
-      gameScenes,
-      gameScenesOpen,
       debugScenes,
       debugScenesOpen,
       debugStates,
@@ -218,45 +214,13 @@ describe("MenuDebugScreen", () => {
     expect(rowsIn(1))->toEqual(["Mid-game", "Almost won"])
   })
 
-  test("places the games group above the other two, when there is one", () => {
-    // A game that isn't released belongs among the games, not under "scenes" between
-    // Gallery and Motion filed as a render demo.
-    let screen = render(~gameScenes=[{label: "Klondike", onSelect: () => ()}])
-    expect(screen->findAll(".scene-menu__group > summary")->Array.map(text))->toEqual([
-      "games",
-      "scenes",
-      "states",
-    ])
-    expect(
-      screen
-      ->findAll(".scene-menu__group")
-      ->Array.get(0)
-      ->Option.mapOr(
-        ["<no games group>"],
-        group => group->findAll(".scene-menu__group-body .menu-row")->Array.map(text),
-      ),
-    )->toEqual(["Klondike"])
-  })
-
-  test("leaves the games group out entirely when it's empty", () => {
-    // A build whose every game has a main-menu row shows no games group at all — an
-    // empty `<details>` would be a summary opening onto nothing.
-    expect(render()->findAll(".scene-menu__group > summary")->Array.map(text))->toEqual([
-      "scenes",
-      "states",
-    ])
-  })
-
   test("opens whichever group the switcher says the app landed inside", () => {
     // A `?scene=gallery` deep link: the highlighted row has to be visible rather
-    // than hidden behind a collapsed disclosure. The other groups are unaffected.
+    // than hidden behind a collapsed disclosure. The states group is unaffected.
     let open_ = screen =>
       screen->findAll(".scene-menu__group")->Array.map(group => group->hasAttr("open"))
     expect(render(~debugScenesOpen=true)->open_)->toEqual([true, false])
     expect(render(~debugScenesOpen=false)->open_)->toEqual([false, false])
-    let games: array<MenuDisclosure.entry> = [{label: "Klondike", onSelect: () => ()}]
-    expect(render(~gameScenes=games, ~gameScenesOpen=true)->open_)->toEqual([true, false, false])
-    expect(render(~gameScenes=games, ~debugScenesOpen=true)->open_)->toEqual([false, true, false])
   })
 
   test("goes back one step, to Settings — not all the way out", () => {

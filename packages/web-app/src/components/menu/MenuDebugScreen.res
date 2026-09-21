@@ -9,22 +9,20 @@
 //   - the three action rows: **Autoplay** (the console's verb of the same name, as a
 //     button), **Share game state** (`ShareLink`) and **Clear saved data**
 //     (`StoredState`);
-//   - the collapsible groups: the
-//     games without a row in the main menu (`gameScenes`, labelled "games"),
-//     the demo scenes (`debugScenes`, "scenes") and the named starting positions
-//     (`debugStates`, "states") a tap drops the board into (`Scenario`), the menu
-//     twin of `?state=`.
+//   - the collapsible groups: the demo scenes (`debugScenes`, labelled "scenes") and
+//     the named starting positions (`debugStates`, "states") a tap drops the board
+//     into (`Scenario`), the menu twin of `?state=`.
 //
 // The groups arrive the same way and are drawn by the same component: a list of
-// `<MenuDisclosure>` entries each, two from `SceneSwitcher` and one from `Main`.
-// All three calls differ only in their data — a group that needs its own markup wants
-// a prop on `<MenuDisclosure>`, not a fourth way of drawing a disclosure here.
+// `<MenuDisclosure>` entries each, one from `SceneSwitcher` and one from `Main`.
+// Both calls differ only in their data — a group that needs its own markup wants a prop
+// on `<MenuDisclosure>`, not a third way of drawing a disclosure here.
 //
-// The "games" group is the odd one: it is placed only when it has entries, which is
-// while a game is withheld from the main menu (`Main`'s `menuGames` — Spider, until the
-// Beta features switch or its release lists it); with none withheld the screen shows two
-// groups, scenes then states. It exists so that a withheld game lands among the games
-// rather than under "scenes", between Gallery and Motion, filed as a render demo.
+// **A game the main menu withholds is listed on no screen, this one included** (`Main`'s
+// `menuGames` — Spider, until the Beta features switch or its release lists it). It is
+// reached by `?game=` and nothing else, which is the whole of what withholding a game
+// means; a board already on the table when the switch goes off stays up, with no row
+// anywhere to bring it back.
 type props = {
   onClose: unit => unit,
   onBackToSettings: unit => unit,
@@ -56,12 +54,6 @@ type props = {
   // and storage with nothing in it is a clear that finds nothing rather than a row
   // that has to go dark.
   onClearStored: unit => unit,
-  // The games that don't have a row in the main menu, one entry each, with the
-  // mounted one `selected`. Empty when every game has one, and an empty group isn't
-  // placed at all.
-  gameScenes: array<MenuDisclosure.entry>,
-  // Whether that group opens expanded, on the same rule as `debugScenesOpen`.
-  gameScenesOpen: bool,
   // The demo scenes, one entry per scene, with the mounted one `selected`.
   debugScenes: array<MenuDisclosure.entry>,
   // Whether that group opens expanded — `SceneSwitcher`'s call, made when the app
@@ -112,8 +104,6 @@ let make = ({
   shareStatus,
   onShareGame,
   onClearStored,
-  gameScenes,
-  gameScenesOpen,
   debugScenes,
   debugScenesOpen,
   debugStates,
@@ -166,12 +156,6 @@ let make = ({
         enabled=true
         onClick=onClearStored
       />
-      // Placed only when there is something in it: an empty `<details>` is a summary
-      // that opens onto nothing, which is what it would be whenever every game is
-      // already in the main menu.
-      {Array.length(gameScenes) == 0
-        ? Html.empty
-        : <MenuDisclosure summary="games" entries=gameScenes open_=gameScenesOpen />}
       <MenuDisclosure summary="scenes" entries=debugScenes open_=debugScenesOpen />
       <MenuDisclosure summary="states" entries=debugStates />
     </MenuSection>

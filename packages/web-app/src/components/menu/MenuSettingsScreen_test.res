@@ -242,13 +242,15 @@ describe("MenuSettingsScreen.update", () => {
     expect(log)->toEqual(["publish", "persist"])
   })
 
-  test("stores the beta flag, and asks nothing of the board or the page", () => {
-    // Nothing is gated on it, so nothing reads it but the switch itself: `publish` here
-    // would mean a ref outside the chrome had started reading it, and `root` that the
-    // CSS had.
+  test("publishes the beta flag as well as storing it, so the flip lands on this render", () => {
+    // `publish` is the whole of why the Games list grows a row without a relaunch: the
+    // switcher reads the flag from a ref outside the chrome's render (`Main`'s
+    // `betaFeatures`), so a model that only reached this screen would leave that half of
+    // the flip waiting for the next launch. No `board` — no card moves — and no `root`,
+    // the CSS knowing nothing about it.
     let (next, log, saved) = run(~model=model(), ToggleBetaFeatures)
     expect(next.betaFeatures)->toBe(true)
-    expect(log)->toEqual(["persist"])
+    expect(log)->toEqual(["publish", "persist"])
     expect(saved->Option.map(s => s.betaFeatures))->toEqual(Some(true))
   })
 

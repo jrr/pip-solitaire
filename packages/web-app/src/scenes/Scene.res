@@ -9,9 +9,9 @@
 // container after tearing a scene down, so a scene whose nodes carry no extra
 // resources can just return `() => ()`.
 
-// What a scene *is*, as opposed to where it happens to sit in the menu. A scene
-// says which it is and the switcher groups on that, so a second game is filed as a game
-// rather than as a render demo.
+// What a scene *is*, as opposed to where it happens to sit in the menu. A scene says
+// which it is and the switcher groups on that, so a game the menu isn't offering is
+// left out of the menu altogether rather than listed among the render demos.
 type kind =
   | Game // a playable table (`TableScene`, one per `Game.all` entry)
   | Demo // a debug/render demo (Gallery, Raster, Motion)

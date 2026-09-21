@@ -326,6 +326,14 @@ let reportScene: ref<string => unit> = ref(_ => ())
 let options: ref<Options.t> = ref(Preferences.load())
 let tiltEnabled: ref<bool> = ref(Preferences.loadCardTilt())
 
+// The "Beta features" flag, a ref for a reason of its own — nothing on the board reads
+// it. It is read where the Elm model can't reach: the switcher's `~primary` (`menuGames`
+// below), which files scenes into menu groups afresh on every render, and first during
+// module init, before the chrome exists at all. Seeded from storage here and rewritten
+// by the switch through `settingsEnv.publish`, which is what lands a flip on the next
+// menu render rather than the next launch.
+let betaFeatures: ref<bool> = ref(Preferences.loadBetaFeatures())
+
 // The persisted "Console logging" preference (defaults off). Read once at
 // startup to seed both the model's toggle and the shared `DebugLog` gate, and the gate
 // is opened straight away — before the first board is built below — so a developer who
@@ -382,6 +390,7 @@ let settingsEnv = MenuSettingsScreen.liveEnv(
   ~options,
   ~tiltEnabled,
   ~shakeActive,
+  ~betaFeatures,
   ~board=settingsBoard,
 )
 
@@ -971,15 +980,21 @@ let betaGames: array<string> = Game.spiderFamily.variants->Array.map(v => v.game
 // The games the menu offers, as its top-level Games rows: every game `Game.all` deals,
 // in `Game.all`'s order, less `betaGames` while the flag is off. A game joins the menu by
 // being added there and nowhere else — the switcher files it, the menu draws it, and
-// `?game=` already reached it. The Debug screen's "games" group is where a withheld game
-// lands, and it is placed only while there is one (`MenuDebugScreen`).
+// `?game=` already reached it.
 //
-// The flag is read **once, at launch**: the switcher files its rows as a value, so a flip
-// of the switch lands on the next launch rather than the next menu render, and the
-// switch's own line says so.
-let menuGames: array<Game.t> = Preferences.loadBetaFeatures()
-  ? Game.all
-  : Game.all->Array.filter(game => !(betaGames->Array.includes(game.id)))
+// **A game this list leaves out is offered on no screen at all**, the Debug one included
+// (`SceneSwitcher`'s `#withheld`): `?game=` is the way to it and the only way. So a board
+// on the table when the switch goes off stays up and playable, with no row anywhere to
+// come back to it — worth knowing before withholding a game a player might be mid-way
+// through, and the reason this list holds a whole family rather than a board.
+//
+// A function rather than a value because the switch can flip between two menu renders,
+// and a flip has to land on the next one: the rows are asked afresh each render, so the
+// game appears among them without a relaunch.
+let menuGames = (): array<Game.t> =>
+  betaFeatures.contents
+    ? Game.all
+    : Game.all->Array.filter(game => !(betaGames->Array.includes(game.id)))
 
 // The game a bare launch opens on: the one last on the table, else the default. The
 // board waiting on it comes back with it — each game keeps its own save — so this
@@ -1006,7 +1021,7 @@ let switcher = SceneSwitcher.render(
   // link to mean what it says. `launchGame` is what keeps that true, by declining to
   // remember on exactly the opens that carry such a link.
   ~default=launchGame.id,
-  ~primary=menuGames->Array.map(game => game.id),
+  ~primary=() => menuGames()->Array.map(game => game.id),
   // What the URL asked to open, as a scene id. `?game=` is checked first because it is
   // the more specific claim — it names a board, and a board's scene is its id, so it
   // answers "which scene" as a side effect of answering "which game". `?scene=` is what
@@ -1376,7 +1391,7 @@ let mainScreen = (model, dispatch): MenuMainScreen.props => {
     | _ => ()
     },
   // The games list: the switcher's primary scenes, turned into rows (`gameRows` above).
-  games: gameRows(model, dispatch, switcher.primaryScenes),
+  games: gameRows(model, dispatch, switcher.primaryScenes()),
   onOpenSettings: () => {
     // Re-detect the service-worker state each time Settings opens, so the button
     // reflects a worker that registered (or self-destructed) since page load.
@@ -1505,8 +1520,6 @@ let debugScreen = (model, dispatch): MenuDebugScreen.props => {
   onClearStored: () => dispatch(ClearStoredState),
   // Asked afresh on every render: the entry for the scene that's mounted now is the
   // `selected` one, and that's what puts the highlight in the menu.
-  gameScenes: switcher.gameScenes(),
-  gameScenesOpen: switcher.gameScenesOpen,
   debugScenes: switcher.debugScenes(),
   debugScenesOpen: switcher.debugScenesOpen,
   debugStates,
@@ -1531,7 +1544,7 @@ let gameInfoScreen = (model, dispatch, info: GameInfo.t): MenuGameInfoScreen.pro
   }
 
   let picker = (family: Game.family): option<MenuVariantPicker.props> =>
-    switch offeredVariants(switcher.primaryScenes, family) {
+    switch offeredVariants(switcher.primaryScenes(), family) {
     | siblings if Array.length(siblings) > 1 =>
       Some({
         game: family.name,
