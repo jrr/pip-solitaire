@@ -980,14 +980,17 @@ let betaGames: array<string> = Game.spiderFamily.variants->Array.map(v => v.game
 // The games the menu offers, as its top-level Games rows: every game `Game.all` deals,
 // in `Game.all`'s order, less `betaGames` while the flag is off. A game joins the menu by
 // being added there and nowhere else — the switcher files it, the menu draws it, and
-// `?game=` already reached it. The Debug screen's "games" group is where a withheld game
-// lands, and it is placed only while there is one (`MenuDebugScreen`).
+// `?game=` already reached it.
+//
+// **A game this list leaves out is offered on no screen at all**, the Debug one included
+// (`SceneSwitcher`'s `#withheld`): `?game=` is the way to it and the only way. So a board
+// on the table when the switch goes off stays up and playable, with no row anywhere to
+// come back to it — worth knowing before withholding a game a player might be mid-way
+// through, and the reason this list holds a whole family rather than a board.
 //
 // A function rather than a value because the switch can flip between two menu renders,
-// and a flip has to land on the next one: the game leaves the Debug screen's group as it
-// joins the rows up top, both groups being asked afresh each render. A board already on
-// the table stays there when the flag goes off — the menu stops offering it, which is not
-// the same as taking it away — and the Debug group is where it is found until it is left.
+// and a flip has to land on the next one: the rows are asked afresh each render, so the
+// game appears among them without a relaunch.
 let menuGames = (): array<Game.t> =>
   betaFeatures.contents
     ? Game.all
@@ -1517,8 +1520,6 @@ let debugScreen = (model, dispatch): MenuDebugScreen.props => {
   onClearStored: () => dispatch(ClearStoredState),
   // Asked afresh on every render: the entry for the scene that's mounted now is the
   // `selected` one, and that's what puts the highlight in the menu.
-  gameScenes: switcher.gameScenes(),
-  gameScenesOpen: switcher.gameScenesOpen,
   debugScenes: switcher.debugScenes(),
   debugScenesOpen: switcher.debugScenesOpen,
   debugStates,

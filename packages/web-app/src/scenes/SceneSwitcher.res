@@ -7,13 +7,18 @@
 // for the menu to re-render from. Keep it that way: a highlight written onto a row by
 // hand is the job the diff exists to do, done by a module that must reach outside it.
 //
-// The rows are three groups, not a flat list — the primary games up top, and two
-// disclosures under the menu's "debug" header. Which games are primary is the caller's
-// say (`~primary`), asked afresh each time rather than settled here, since a feature
-// flag can promote a game between one menu render and the next; the launch default is
-// always among them. The rest are grouped **on `Scene.kind`, never on "is this the
-// launch default?"**: that reads as games-vs-demos only while there is exactly one
-// game, and a further game would land under "scenes" filed as a render demo.
+// The rows are two groups, not a flat list — the primary games up top, and the demos
+// in a disclosure under the menu's "debug" header. Which games are primary is the
+// caller's say (`~primary`), asked afresh each time rather than settled here, since a
+// feature flag can promote a game between one menu render and the next; the launch
+// default is always among them.
+//
+// **A game that isn't primary is offered nowhere.** It keeps its scene — `~forced`
+// still reaches it, and `ensureActive` still mounts it — but no row anywhere names it,
+// which is what a game withheld from the menu means (`Main`'s `menuGames`). That is
+// decided **on `Scene.kind`, never on "is this the launch default?"**: the kind is what
+// keeps a withheld game out of the demos group rather than listed there as a render
+// demo, which is what it would look like with no row of its own to go to.
 //
 // Nothing is persisted *here*: the app launches into `~default`, or into the `~forced`
 // scene the URL named. Which scene `~default` is can itself be a remembered answer, but
@@ -40,10 +45,8 @@ type t = {
   // when there are no scenes at all.
   active: option<string>,
   select: string => unit,
-  gameScenes: unit => array<MenuDisclosure.entry>,
-  gameScenesOpen: bool,
-  // Thunks rather than arrays, because which entry is `selected` is whichever scene is
-  // mounted *at the moment the menu renders*. The chrome calls them while building the
+  // A thunk rather than an array, because which entry is `selected` is whichever scene
+  // is mounted *at the moment the menu renders*. The chrome calls it while building the
   // Debug screen's props, and a scene change is always followed by a render.
   debugScenes: unit => array<MenuDisclosure.entry>,
   debugScenesOpen: bool,
@@ -97,15 +100,16 @@ let render = (
   let isPrimary = (scene: Scene.t) =>
     defaultId == Some(scene.id) || primary()->Array.includes(scene.id)
 
-  // A primary keeps its top-level row and appears in neither disclosure — including
-  // when `~default` names a demo, where surfacing it up top *and* in the demos group
-  // would list it twice.
+  // A primary keeps its top-level row and stays out of the disclosure — including when
+  // `~default` names a demo, where surfacing it up top *and* in the demos group would
+  // list it twice. A game that isn't primary is `#withheld`: a group nothing draws, so
+  // the scene is reachable only by id.
   let group = (scene: Scene.t) =>
     if isPrimary(scene) {
       #primary
     } else {
       switch scene.kind {
-      | Game => #games
+      | Game => #withheld
       | Demo => #demos
       }
     }
@@ -141,30 +145,23 @@ let render = (
   // Recomputed per call, so `selected` names the scene mounted now: the highlight
   // rides in the data the menu renders from and moves through the diff like any other
   // row's state, rather than by rewriting a mounted row's classes in place.
-  let entriesIn = which =>
-    () =>
-      scenes
-      ->Array.filter(scene => group(scene) == which)
-      ->Array.map((scene): MenuDisclosure.entry => {
-        label: scene.label,
-        onSelect: () => select(scene),
-        selected: activeId.contents == Some(scene.id),
-      })
+  let debugScenes = () =>
+    scenes
+    ->Array.filter(scene => group(scene) == #demos)
+    ->Array.map((scene): MenuDisclosure.entry => {
+      label: scene.label,
+      onSelect: () => select(scene),
+      selected: activeId.contents == Some(scene.id),
+    })
 
-  let gameScenes = entriesIn(#games)
-  let debugScenes = entriesIn(#demos)
-
-  // Open the group the initial scene is in, so a `?scene=gallery` deep link's
-  // highlighted row is visible rather than hidden behind a collapsed disclosure. A
-  // scene that got a top-level row opens neither.
-  let openedIn = which =>
-    switch initial {
-    | Some(scene) => group(scene) == which
-    | None => false
-    }
-
-  let gameScenesOpen = openedIn(#games)
-  let debugScenesOpen = openedIn(#demos)
+  // Open the disclosure when the initial scene is inside it, so a `?scene=gallery` deep
+  // link's highlighted row is visible rather than hidden behind a collapsed one. A
+  // scene that got a top-level row leaves it shut, and so does a withheld game: there
+  // is no row of its own in there to show.
+  let debugScenesOpen = switch initial {
+  | Some(scene) => group(scene) == #demos
+  | None => false
+  }
 
   switch initial {
   | Some(scene) => activate(scene)
@@ -186,8 +183,6 @@ let render = (
     // `choice`, and looking the scene back up here keeps `Scene.t` — mount function
     // and all — inside this module.
     select: id => byId(id)->Option.forEach(select),
-    gameScenes,
-    gameScenesOpen,
     debugScenes,
     debugScenesOpen,
     scene: container,

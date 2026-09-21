@@ -3,12 +3,10 @@
 //
 // A *join*, like `game-info.spec.mjs`, between parts each covered on their own: the
 // hidden switch publishes a flag (`MenuSettingsScreen`), a ref carries it out of the
-// chrome (`Main`), the switcher files scenes into groups by it (`SceneSwitcher`), and
-// the two screens draw whichever rows they were handed. What no unit test can see is
-// that a game is in one screen or the other and never both — the two screens are
-// rendered by different components, and a game listed in both would look right in
-// either one alone — nor that the group is absent rather than merely empty once
-// nothing is withheld.
+// chrome (`Main`), the switcher files scenes by it (`SceneSwitcher`), and the menu draws
+// whichever rows it was handed. What no unit test can see is that a withheld game is
+// listed on **no screen of the pane at all** — each screen is a different component, and
+// each one alone looks right however the others list it.
 //
 // **Nothing here reloads to make a flip count**, and that is the point of the walk: the
 // switch is four taps away from the games list and the row has to be there when the
@@ -44,25 +42,28 @@ const reopenMenu = async (page) => {
 const gameRows = (page) =>
   page.locator("nav[aria-label='Games'] .menu-row:not(.menu-game-row__variant)")
 
-// …and the Debug screen's "games" disclosure, which holds any game withheld from that
-// section — Spider, until **Beta features** is on. It isn't placed at all when it has no
-// entries.
-const gameGroup = (page) => page.locator(".scene-menu__group").filter({ hasText: "games" })
+// …and every row of the Debug screen, a screen down, where a withheld game must *not*
+// turn up: the disclosures there are opened first, since a collapsed `<details>` hides
+// its rows from the accessibility tree and would pass this by default.
+const debugRowsNaming = (page, name) =>
+  page.locator("#menu-overlay .menu-row").filter({ hasText: name })
 
 const openDebugScreen = async (page) => {
   await openSettings(page)
   await page.getByRole("button", { name: "Debug" }).click()
+  for (const summary of await page.locator(".scene-menu__group > summary").all()) {
+    await summary.click()
+  }
 }
 
 // Every released game, in the scene list's order — which is the order the menu takes,
 // one place deciding it. Not a row per game: a game that belongs to a family joins that
 // family's *segment* (`game-variant.spec.mjs`), so seven boards arrive as three rows,
-// two of them carrying a segment. Spider's three are the boards withheld until the flag
-// is on, and arrive as a fourth row with a segment when it is.
+// two of them carrying a segment. Spider's three are withheld until the flag is on, and
+// arrive as a fourth row with a segment of its own when it is.
 const GAMES = ["FreeCell", "Simple Simon", "Spiderette"]
-const WITHHELD = ["Spider · 1 suit", "Spider · 2 suits", "Spider · 4 suits"]
 
-test("moves Spider between Debug and the games list as the flag flips, with no relaunch", async ({
+test("gives Spider a row the moment the flag goes on, and no row anywhere while it's off", async ({
   page,
 }) => {
   await page.goto("/?seed=24680&animate=off")
@@ -73,13 +74,11 @@ test("moves Spider between Debug and the games list as the flag flips, with no r
   await expect(gameRows(page)).toHaveText(GAMES)
   await expect(page.locator(".menu-game-row__variant")).toHaveCount(2)
 
-  // …and the withheld boards one screen down, each on a row of its own — a segment is
-  // the Games list's shape, not the Debug screen's — and nowhere else. The group opens
-  // collapsed, the board on the table being none of them.
+  // …and Spider on no row of the Debug screen either, disclosures and all. `?game=` is
+  // the only way to those boards, which is the whole of what withholding a game means.
   await openDebugScreen(page)
-  await expect(gameGroup(page)).toHaveCount(1)
-  await gameGroup(page).locator("summary").click()
-  await expect(gameGroup(page).getByRole("button")).toHaveText(WITHHELD)
+  await expect(debugRowsNaming(page, /Gallery/)).toHaveCount(1) // the reading works…
+  await expect(debugRowsNaming(page, /Spider/)).toHaveCount(0) // …and finds no Spider
 
   // On: the family joins the list as one row with a segment, on the render the walk
   // back from Settings draws — this is the same page it flipped the switch on, never
@@ -88,10 +87,6 @@ test("moves Spider between Debug and the games list as the flag flips, with no r
   await setBetaFeatures(page, true)
   await expect(gameRows(page)).toHaveText([...GAMES, "Spider"])
   await expect(page.locator(".menu-game-row__variant")).toHaveCount(3)
-  // …and gone from the Debug screen, which drops the group rather than showing an
-  // empty disclosure: the game moved between the two lists rather than joining one.
-  await openDebugScreen(page)
-  await expect(gameGroup(page)).toHaveCount(0)
 
   // And back the other way, on the same page again: a flag that only ever promoted
   // would pass everything above.
@@ -99,7 +94,8 @@ test("moves Spider between Debug and the games list as the flag flips, with no r
   await setBetaFeatures(page, false)
   await expect(gameRows(page)).toHaveText(GAMES)
   await openDebugScreen(page)
-  await expect(gameGroup(page)).toHaveCount(1)
+  await expect(debugRowsNaming(page, /Gallery/)).toHaveCount(1) // the reading works…
+  await expect(debugRowsNaming(page, /Spider/)).toHaveCount(0) // …and finds no Spider
 })
 
 test("mounts a game from its row, and resumes it after a reload", async ({ page }) => {
