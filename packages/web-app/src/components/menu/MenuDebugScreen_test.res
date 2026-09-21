@@ -19,6 +19,9 @@ let render = (
   ~gameScenes: array<MenuDisclosure.entry>=[],
   ~gameScenesOpen=false,
   ~debugScenesOpen=false,
+  ~autosolveEnabled=true,
+  ~autosolveStatus=None,
+  ~onAutosolve=() => (),
   ~shareEnabled=true,
   ~shareStatus=None,
   ~cutoutDebug=false,
@@ -37,6 +40,9 @@ let render = (
       onToggleCutoutDebug,
       debugLog,
       onToggleDebugLog,
+      autosolveEnabled,
+      autosolveStatus,
+      onAutosolve,
       shareEnabled,
       shareStatus,
       onShareGame,
@@ -49,13 +55,14 @@ let render = (
     }),
   )
 
-// The screen's own two action rows, each reached by its place in the order the screen
+// The screen's own three action rows, each reached by its place in the order the screen
 // puts them in — a test that silently took the first would go on passing while asking
 // about the wrong row. Anchored to the section rather than to the class alone, because
 // a row with nothing at its right-hand end is an action row (`MenuRow.classesFor`) and
 // every scene and state entry inside the disclosures below is one too.
-let share = 0
-let clearData = 1
+let autosolve = 0
+let share = 1
+let clearData = 2
 
 let actionRow = (screen, which) =>
   screen->findAll(".menu-section > .menu-row--action")->Array.get(which)
@@ -66,6 +73,7 @@ let actionDesc = (screen, which) =>
   ->Option.mapOr("<no such action row>", row => row->textIn(".menu-row__desc"))
 
 let shareDesc = screen => screen->actionDesc(share)
+let autosolveDesc = screen => screen->actionDesc(autosolve)
 
 describe("MenuDebugScreen", () => {
   test("offers the two developer toggles", () => {
@@ -83,6 +91,45 @@ describe("MenuDebugScreen", () => {
     )
     screen->findAll(".menu-row--switch")->Array.forEach(click)
     expect(log)->toEqual(["cutout", "debug-log"])
+  })
+
+  test("says what handing the board to the solver will do", () => {
+    expect(render(~autosolveEnabled=true)->autosolveDesc)->toBe(
+      "Hand the board to the solver and let it play the game out.",
+    )
+  })
+
+  test("hands the board over when the row is live", () => {
+    let taps = ref(0)
+    let screen = render(~autosolveEnabled=true, ~onAutosolve=() => taps := taps.contents + 1)
+    screen->actionRow(autosolve)->Option.forEach(click)
+    expect(taps.contents)->toBe(1)
+  })
+
+  test("is really disabled with no board to solve, and says so", () => {
+    let taps = ref(0)
+    let screen = render(~autosolveEnabled=false, ~onAutosolve=() => taps := taps.contents + 1)
+    expect(screen->autosolveDesc)->toBe("No game on screen to solve.")
+    switch screen->actionRow(autosolve) {
+    | Some(row) =>
+      expect(row->hasAttr("disabled"))->toBe(true)
+      row->click
+      expect(taps.contents)->toBe(0)
+    | None => expect("autosolve row")->toBe("missing")
+    }
+  })
+
+  test("gives the solver the row's own description to answer in", () => {
+    // A refusal is the whole of what a declined solve leaves behind — the board itself
+    // doesn't move — so it has to be readable where the press happened, and without
+    // growing the row.
+    let screen = render(~autosolveStatus=Some("Autoplay couldn't find a way to win from here."))
+    expect(screen->autosolveDesc)->toBe("Autoplay couldn't find a way to win from here.")
+    expect(
+      screen
+      ->actionRow(autosolve)
+      ->Option.mapOr(0, row => row->findAll(".menu-row__desc")->Array.length),
+    )->toBe(1)
   })
 
   test("explains what a game-state share hands over", () => {
@@ -147,12 +194,13 @@ describe("MenuDebugScreen", () => {
     }
   })
 
-  test("keeps the destructive row under Share, not above it", () => {
-    // Order is the only thing separating a tap that copies a link from one that
-    // erases the device, so it's pinned rather than left to the reading order.
+  test("keeps the destructive row last, under the two harmless ones", () => {
+    // Order is the only thing separating a tap that solves a board or copies a link
+    // from one that erases the device, so it's pinned rather than left to the reading
+    // order.
     expect(
       render()->findAll(".menu-section > .menu-row--action .menu-row__label")->Array.map(text),
-    )->toEqual(["Share game state", "Clear saved data"])
+    )->toEqual(["Autosolve", "Share game state", "Clear saved data"])
   })
 
   test("renders the two groups, scenes first, each with its own entries", () => {

@@ -1346,6 +1346,33 @@ describe("TableScene autoplay", () => {
       Command.autoplayUnknownBoard,
     )
   })
+
+  test("autosolve says a line was found, so a caller covering the board can uncover it", () => {
+    let board = ref(None)
+    let container = host("div")
+    let game = Game.freecell
+    let scene = TableScene.make(
+      ~initial=Scenario.freecellFinish(game),
+      ~publish=published => board := Some(published),
+      game,
+    )
+    let _teardown = scene.mount(container)
+    expect(live(board).autosolve().playing)->toBe(true)
+  })
+
+  test("autosolve hands a refusal back instead, since the board won't be showing one", () => {
+    let game: Game.t = {
+      ...Game.freecell,
+      piles: Game.pilesOf(Game.freecell, Game.Cascade),
+    }
+    let board = ref(None)
+    let container = host("div")
+    let scene = TableScene.make(~publish=published => board := Some(published), game)
+    let _teardown = scene.mount(container)
+    let solved = live(board).autosolve()
+    expect(solved.playing)->toBe(false)
+    expect(Render.toPlain(solved.reply))->toBe(Command.autoplayUnknownBoard)
+  })
 })
 
 // A press and its release at one spot, as a tap on the stock arrives. jsdom has no
