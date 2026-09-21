@@ -234,7 +234,7 @@ test("offers a family's packs on its info screen, and moves the screen to the on
   const numbers = await page.locator(".game-info__numbers").boundingBox()
   expect(picker.y).toBeGreaterThanOrEqual(still.y + still.height)
   expect(numbers.y).toBeGreaterThanOrEqual(picker.y + picker.height)
-  await expect(packs(page)).toHaveText(["♠×4", "♠♥×2", "♠♥♦♣"])
+  await expect(packs(page)).toHaveText(["♠", "♠♥", "♠♥♦♣"])
   await expect(packs(page).nth(1)).toHaveAttribute("aria-current", "true")
   // The family names the screen, not the board: which pack is the picker's to say, and
   // the title would only be saying it twice.
@@ -253,11 +253,11 @@ test("offers a family's packs on its info screen, and moves the screen to the on
   // pack it showed before the "i" was tapped, and so it does after a launch — nothing was
   // remembered, because nothing was chosen. The segment is the control that chooses.
   await page.getByRole("button", { name: "Back to menu" }).click()
-  await expect(packs(page)).toHaveText("♠♥×2")
+  await expect(packs(page)).toHaveText("♠♥")
   await page.reload()
   await settleBoard(page)
   await openMenu(page)
-  await expect(packs(page)).toHaveText("♠♥×2")
+  await expect(packs(page)).toHaveText("♠♥")
 })
 
 test("leaves the table alone when the picker names the game being played", async ({

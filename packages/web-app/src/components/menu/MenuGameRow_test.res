@@ -92,7 +92,7 @@ describe("MenuGameRow", () => {
     // What a pack or a size *looks* like is `MenuVariantMark`'s, tested there; what this
     // row promises is that the segment carries that component and not a copy of it.
     let row = render(~label="Spiderette", ~variant=variantOf(Game.spiderette))
-    expect(row->textIn(".menu-game-row__variant"))->toBe("♠♥×2")
+    expect(row->textIn(".menu-game-row__variant"))->toBe("♠♥")
     expect(row->findAll(".menu-variant-mark__suits")->Array.length)->toBe(1)
   })
 

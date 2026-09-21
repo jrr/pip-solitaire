@@ -53,9 +53,7 @@ test("offers a family as one row, and cycles it in place", async ({ page }) => {
   await expect(gameNames(page)).toHaveText(["FreeCell", "Simple Simon", "Spiderette"])
   await expect(packs(page)).toHaveCount(1)
   await expect(packs(page)).toHaveAttribute("aria-label", "Spiderette pack: 2 suits")
-  // Pips and multiplier are separate spans held apart by the mark's own margin, so the
-  // text runs together and the *space* a player sees is the layout's.
-  await expect(packs(page)).toHaveText("♠♥×2")
+  await expect(packs(page)).toHaveText("♠♥")
 
   // A tap changes the pack and nothing else: the menu is still open, the row is still
   // where it was, and FreeCell is still the game on the table.
@@ -69,10 +67,10 @@ test("offers a family as one row, and cycles it in place", async ({ page }) => {
   // …and it wraps, so every pack is reachable from every other.
   boxes.push(await packs(page).boundingBox())
   await packs(page).click()
-  await expect(packs(page)).toHaveText("♠×4")
+  await expect(packs(page)).toHaveText("♠")
   boxes.push(await packs(page).boundingBox())
   await packs(page).click()
-  await expect(packs(page)).toHaveText("♠♥×2")
+  await expect(packs(page)).toHaveText("♠♥")
 
   // One box for all three packs — the widest mark neither widened the control nor moved
   // it, so the name button beside it is the same length throughout…

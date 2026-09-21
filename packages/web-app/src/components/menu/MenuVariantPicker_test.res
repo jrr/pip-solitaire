@@ -27,8 +27,8 @@ describe("MenuVariantPicker", () => {
     // The whole difference from the Games list's segment, which shows one and cycles:
     // a screen about a game has room to put the choice in front of a player.
     expect(marks(render(Game.spideretteFamily, ~on=Game.spiderette)))->toEqual([
-      "♠×4",
-      "♠♥×2",
+      "♠",
+      "♠♥",
       "♠♥♦♣",
     ])
     expect(marks(render(Game.freecellFamily, ~on=Game.freecell)))->toEqual([
