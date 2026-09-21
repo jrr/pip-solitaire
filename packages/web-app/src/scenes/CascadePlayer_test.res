@@ -110,6 +110,50 @@ describe("the sprite sheet in hand", () => {
   })
 })
 
+describe("the fade behind the cards", () => {
+  test("is the share of a second the caller asked for, whatever it is paid in", () => {
+    // Two half-seconds have to leave the surface where one second does, or the fade
+    // would be a different trail at every stamp interval.
+    expect(CascadePlayer.fadeShare(~fade=0.5, ~ms=1000.))->toBeCloseToWithin(0.5, 6)
+    let half = CascadePlayer.fadeShare(~fade=0.5, ~ms=500.)
+    expect(1. -. (1. -. half) *. (1. -. half))->toBeCloseToWithin(0.5, 6)
+  })
+
+  test("is off at zero, which is the trail that keeps everything", () => {
+    expect(CascadePlayer.fadeShare(~fade=0., ~ms=1000.))->toBe(0.)
+    // And `fadeHalfLife` agrees rather than dividing by zero behind the readout.
+    expect(CascadePlayer.fadeHalfLife(0.))->toBe(infinity)
+  })
+
+  test("is saved up until it is worth a coin, instead of being spent on a rounding error", () => {
+    // At the default trail interval half a second's fade is a hundredth of a stamp,
+    // which an eight-bit alpha rounds straight back to where it was — so the player
+    // holds the debt and spends it once it is worth `minFadeShare` (see `Canvas.dim`).
+    let player = ready()
+    let paidAfter = ref(0)
+    for stamp in 1 to 40 {
+      let owed = player.fadeOwedMs
+      CascadePlayer.dim(player)
+      if player.fadeOwedMs < owed && paidAfter.contents == 0 {
+        paidAfter := stamp
+      }
+    }
+    // 152ms is what a tenth costs at half a second, which is ten 16ms stamps.
+    expect(paidAfter.contents)->toBe(10)
+    after(player, () => expect(player.fadeOwedMs < 160.)->toBe(true))
+  })
+
+  test("spends every coin in full, so a run of stamps is worth what the seconds say", () => {
+    // The debt is cleared by what was paid, not by a fixed amount, so nothing drifts
+    // between one payment and the next.
+    let player = ready()
+    for _ in 1 to 10 {
+      CascadePlayer.dim(player)
+    }
+    after(player, () => expect(player.fadeOwedMs)->toBe(0.))
+  })
+})
+
 describe("new settings, handed over mid-flight", () => {
   // One step, so the run has got somewhere and a restart is visible as one.
   let underway = (player: CascadePlayer.t) =>
@@ -130,6 +174,19 @@ describe("new settings, handed over mid-flight", () => {
       () => {
         expect(player.run.launched)->toBe(1)
         expect(player.options.knobs.gravity)->toBe(40.)
+      },
+    )
+  })
+
+  test("a fade is one of those: what you dim is the trail in front of you", () => {
+    let player = ready()
+    underway(player)
+    CascadePlayer.retune(player, {...player.options, fade: 0.9})
+    after(
+      player,
+      () => {
+        expect(player.run.launched)->toBe(1)
+        expect(player.options.fade)->toBe(0.9)
       },
     )
   })

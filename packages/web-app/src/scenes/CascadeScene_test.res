@@ -62,6 +62,7 @@ describe("the cascade scene, on an engine that can't draw", () => {
       "speedVariance",
       "launchInterval",
       "trail",
+      "fade",
     ])
   })
 
@@ -97,6 +98,20 @@ describe("the cascade scene, on an engine that can't draw", () => {
     let collisions = TestDom.find(host, `input[data-knob="collisions"]`)->Option.getOrThrow
     TestDom.typeInto(collisions, "0")
     expect(readout(host, "collisions"))->toBe("off")
+  })
+
+  test("reads a fade out as a half-life, which is the half an eye can look for", () => {
+    // A share per second is not a length anyone can find on the stage; "the faintest
+    // thing you can still see went down a second ago" is.
+    let (host, _) = mount()
+    expect(readout(host, "fade"))->toBe("0.5 /s · 1s half-life")
+    let fade = TestDom.find(host, `input[data-knob="fade"]`)->Option.getOrThrow
+    TestDom.typeInto(fade, "0.75")
+    expect(readout(host, "fade"))->toBe("0.75 /s · 0.5s half-life")
+    // Zero is the trail this animation started with, and it says so rather than
+    // reading out a half-life of forever.
+    TestDom.typeInto(fade, "0")
+    expect(readout(host, "fade"))->toBe("off · the trail keeps everything")
   })
 
   test("won't offer a card a negative number of bounces, however wide the ± is dragged", () => {

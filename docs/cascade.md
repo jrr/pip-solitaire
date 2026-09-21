@@ -204,10 +204,37 @@ a time as its sprites take over. It can't ride on `~onChange`, which is a
 half-second heartbeat — a node left on the table that long after its copy has
 flown off it is a card in two places.
 
-**Nothing is ever cleared.** The trail *is* the effect, and it's why this is a
-canvas rather than DOM nodes: per-frame cost tracks the cards in flight, not the
-length of the trail behind them. With retained nodes it would be one to two
-thousand SVGs by the end of a run.
+**Nothing is ever cleared — the surface is dimmed instead.** The trail *is* the
+effect, and it's why this is a canvas rather than DOM nodes: per-frame cost
+tracks the cards in flight, not the length of the trail behind them. With
+retained nodes it would be one to two thousand SVGs by the end of a run.
+
+Kept at full strength, though, the trail wins. A stamp from thirty seconds ago is
+exactly as bright as the one going down now, so by the last third of a 52-card
+run the stage is a white sheet with a few cards somewhere in it. The surface
+gives up a share of itself per second instead (`fade`), and that is what sorts
+the picture into depth: the card in the air is white, the second behind it is
+grey, and what fell half a minute ago is a ghost the table shows through.
+
+**The fade takes alpha, not colour.** `destination-out` with a flat fill
+multiplies every pixel's alpha and leaves the pixel alone, so a stamp thins back
+towards the transparency it started from — on the board, back to the table.
+Painting a translucent backdrop over the surface instead would dim the live DOM
+underneath along with the cards.
+
+**It is paid in coins, which is what makes the gentle fade the expensive one.**
+A fade in eight-bit alpha settles at a floor rather than at nothing, and the
+smaller the share the higher that floor — `Canvas.dim` has the arithmetic. Half a
+second's fade spread over sixty stamps is a hundredth apiece, and a hundredth
+settles at fifty alpha: the white sheet again, in grey. So what is owed is saved
+up and spent once it is worth `minFadeShare`, a tenth, which settles under 2%.
+At the default rate that is a payment every 152ms of simulated time, in steps the
+trail's own stamps hide.
+
+**Per second of simulated time**, like the stamp interval and for the same
+reason: a fade counted per frame would leave a shorter trail on a 120Hz display
+than on a 60Hz one. It also means the two trail knobs are independent — dragging
+`trail` changes the spacing of the stamps and not how long they last.
 
 **One ratio, two consumers.** The backing store is `css × CardRaster.displayPixelRatio()`
 and the sprite sheet is built at that same number. `CascadePlayer.spritesStale`
@@ -269,10 +296,11 @@ chosen.
 | speed | 0.4 ± 0.1 m/s | the sideways throw |
 | launchInterval | 750 ms | so a 52-card deck takes ~39s |
 | trail | 16 ms | of simulated time between stamps |
+| fade | 0.5 /s | the share of its brightness the trail gives up per simulated second — a one-second half-life |
 
 Not on a slider: the simulation step (1/120s), `maxStep`
-(50ms), `maxCatchUpMs` (100ms), the pose length (16 cards), and the scene's three
-card sizes (40/90/140px).
+(50ms), `maxCatchUpMs` (100ms), `minFadeShare` (a tenth), the pose length (16
+cards), and the scene's three card sizes (40/90/140px).
 
 At earth gravity the trail knob has to come down with it — spacing is speed ×
 interval, and raising one without the other turns the smear into a scatter.

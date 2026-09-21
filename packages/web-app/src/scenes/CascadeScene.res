@@ -96,6 +96,7 @@ let make = (~mode=Live, ~seed as initialSeed=1): Scene.t => {
     let cardWidth = ref(CascadePlayer.defaults.cardWidth)
     let seed = ref(initialSeed)
     let snap = ref(true)
+    let fade = ref(CascadePlayer.defaults.fade)
 
     let options = () => {
       ...CascadePlayer.defaults,
@@ -104,6 +105,7 @@ let make = (~mode=Live, ~seed as initialSeed=1): Scene.t => {
       knobs: knobs.contents,
       stampMs: stampMs.contents,
       snap: snap.contents,
+      fade: fade.contents,
     }
 
     let refresh = ref(() => ())
@@ -317,6 +319,23 @@ let make = (~mode=Live, ~seed as initialSeed=1): Scene.t => {
       ~value=stampMs.contents,
       ~format=value => `${whole(value)} ms`,
       ~onChange=value => stampMs := value,
+    )
+    // The knob a long run needs and a short one never shows: at zero the last seconds of a
+    // 52-card cascade are a white sheet with cards somewhere in it. A half-life is what is
+    // read out, because a share per second is not something an eye can look for on the
+    // stage, and "the faintest stamp you can still see went down a second ago" is.
+    knob(
+      ~label="fade",
+      ~min=0.,
+      ~max=0.95,
+      ~step=0.01,
+      ~value=fade.contents,
+      ~wide=true,
+      ~format=value =>
+        value <= 0.
+          ? "off · the trail keeps everything"
+          : `${hundredth(value)} /s · ${hundredth(CascadePlayer.fadeHalfLife(value))}s half-life`,
+      ~onChange=value => fade := value,
     )
 
     // ---- What the chrome says ----

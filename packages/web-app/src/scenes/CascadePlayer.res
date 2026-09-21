@@ -48,6 +48,10 @@ type options = {
   // Whether a blit is put on the device-pixel grid. On everywhere except where the point is
   // to see what it buys.
   snap: bool,
+  // The share of its brightness the trail gives up per second of simulated time — in the
+  // same clock as `stampMs`, so the fade keeps pace with the cards rather than with the
+  // frames. 0 is the trail that keeps everything.
+  fade: float,
 }
 
 let defaults = {
@@ -58,6 +62,7 @@ let defaults = {
   knobs: Cascade.defaults,
   stampMs: 16.,
   snap: true,
+  fade: 0.5,
 }
 
 // `Building` and `Failed` are the sprite sheet's: it decodes asynchronously, and there is
@@ -108,6 +113,8 @@ type t = {
   mutable lastFrameAt: option<float>,
   mutable carryMs: float,
   mutable sinceStamp: float,
+  // Simulated time the fade has not been paid for yet — see `dim`.
+  mutable fadeOwedMs: float,
   mutable framesSeen: int,
   mutable fpsSince: float,
   mutable fps: float,
@@ -192,8 +199,50 @@ let sizeStore = player => {
   Canvas.context2d(player.canvas)->Option.forEach(ctx => ctx->Canvas.scale(scale, scale))
 }
 
-// One stamp of the cards in flight, over whatever is already there — nothing is ever
-// cleared, because the trail is the effect.
+// What a stretch of simulated time takes off the surface, from the share of a second the
+// caller asked for. A share of what is left, rather than a fixed amount, is the only fade
+// that treats every moment alike: whatever is on the surface loses `fade` of itself per
+// simulated second, however many stamps that second is made of, so the trail knob changes
+// the spacing and not the length.
+let fadeShare = (~fade, ~ms) =>
+  fade <= 0. ? 0. : 1. -. Math.pow(1. -. Math.min(fade, 1.), ~exp=ms /. 1000.)
+
+// The smallest fade worth paying in one go. A fade spent in shares much below this is
+// mostly taken back by the rounding in `Canvas.dim`, which is why what is owed is saved up
+// rather than paid off every stamp — `docs/cascade.md` has what a coin this size buys, and
+// why the gentle fade is the expensive one.
+let minFadeShare = 0.1
+
+// How long a stamp takes to lose half its brightness: the fade in the unit an eye can look
+// for on the stage, which is what the scene reads out beside the slider.
+let fadeHalfLife = fade =>
+  fade <= 0. ? infinity : Math.log(0.5) /. Math.log(1. -. Math.min(fade, 1.))
+
+// The fade owed for the simulated time since it was last paid, spent once it is worth a
+// coin (see `minFadeShare`) and left to accrue until then. It is taken just before a stamp,
+// so the cards going down this instant are the only thing on the surface at full strength.
+//
+// The rect is the backing store's own size read back in CSS pixels rather than the
+// element's box: the same rectangle, without a layout read per stamp.
+let dim = player => {
+  player.fadeOwedMs = player.fadeOwedMs +. player.options.stampMs
+  let share = fadeShare(~fade=player.options.fade, ~ms=player.fadeOwedMs)
+  if share >= minFadeShare {
+    player.fadeOwedMs = 0.
+    Canvas.context2d(player.canvas)->Option.forEach(ctx => {
+      let scale = ratio()
+      Canvas.dim(
+        ctx,
+        ~width=Int.toFloat(Canvas.pixelWidth(player.canvas)) /. scale,
+        ~height=Int.toFloat(Canvas.pixelHeight(player.canvas)) /. scale,
+        ~share,
+      )
+    })
+  }
+}
+
+// One stamp of the cards in flight, over whatever is already there — the surface is never
+// cleared, only faded, because the trail is the effect.
 //
 // The blit is 1:1 with the bitmap by construction: the sprite's device size back in CSS
 // pixels, rather than the size it was asked for, so a card size the ratio doesn't divide
@@ -239,6 +288,7 @@ let advance = (player, ~stage) => {
   }
   player.sinceStamp = player.sinceStamp +. stepMs
   if player.sinceStamp >= player.options.stampMs {
+    dim(player)
     draw(player)
     player.sinceStamp = Math.max(player.sinceStamp -. player.options.stampMs, 0.)
   }
@@ -310,6 +360,7 @@ let restart = player => {
   player.paused = false
   sizeStore(player)
   player.sinceStamp = 0.
+  player.fadeOwedMs = 0.
   player.run = Cascade.make(~seed=player.options.seed, ~cards=?player.options.cards)
   switch player.intent {
   | Idle => ()
@@ -480,6 +531,7 @@ let attach = (
     lastFrameAt: None,
     carryMs: 0.,
     sinceStamp: 0.,
+    fadeOwedMs: 0.,
     framesSeen: 0,
     fpsSince: 0.,
     fps: 0.,
