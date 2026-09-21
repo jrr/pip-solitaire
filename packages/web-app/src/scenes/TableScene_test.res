@@ -1347,7 +1347,7 @@ describe("TableScene autoplay", () => {
     )
   })
 
-  test("autosolve says a line was found, so a caller covering the board can uncover it", () => {
+  test("autoplay says a line was found, so a caller covering the board can uncover it", () => {
     let board = ref(None)
     let container = host("div")
     let game = Game.freecell
@@ -1357,10 +1357,10 @@ describe("TableScene autoplay", () => {
       game,
     )
     let _teardown = scene.mount(container)
-    expect(live(board).autosolve().playing)->toBe(true)
+    expect(live(board).autoplay().playing)->toBe(true)
   })
 
-  test("autosolve hands a refusal back instead, since the board won't be showing one", () => {
+  test("autoplay hands a refusal back instead, since the board won't be showing one", () => {
     let game: Game.t = {
       ...Game.freecell,
       piles: Game.pilesOf(Game.freecell, Game.Cascade),
@@ -1369,7 +1369,7 @@ describe("TableScene autoplay", () => {
     let container = host("div")
     let scene = TableScene.make(~publish=published => board := Some(published), game)
     let _teardown = scene.mount(container)
-    let solved = live(board).autosolve()
+    let solved = live(board).autoplay()
     expect(solved.playing)->toBe(false)
     expect(Render.toPlain(solved.reply))->toBe(Command.autoplayUnknownBoard)
   })

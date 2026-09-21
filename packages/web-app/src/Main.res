@@ -127,11 +127,11 @@ type model = {
   // renders disabled. `shareStatus` is the transient line reporting what happened.
   shareUrl: option<string>,
   shareStatus: option<string>,
-  // The Debug screen's "Autosolve" row: what the solver had to say, standing in for the
+  // The Debug screen's "Autoplay" row: what the solver had to say, standing in for the
   // row's description until the screen is left. Only ever a refusal or the word that
   // the search has started — a line the solver *found* takes the menu down with it, so
   // there is nothing left here to read it on.
-  autosolveStatus: option<string>,
+  autoplayStatus: option<string>,
   // The main menu's "this game" section: the seed of the board on the table, which the
   // heading names and Share hands over a link to, reported by the scene (`~onDeal`
   // below) — and the transient line under the buttons
@@ -191,7 +191,7 @@ type msg =
   | RefreshChecked // an update check finished — stop the spinner (a found update surfaces as the About button)
   | ShareLinkReady(option<string>) // the open Debug screen's board, encoded into a link (`ShareLink`)
   | ShareStatus(option<string>) // the share row's transient status line; `None` clears it
-  | AutosolveStatus(option<string>) // what the solver said, in the Autosolve row's description
+  | AutoplayStatus(option<string>) // what the solver said, in the Autoplay row's description
   | DealChanged(option<int>) // the board reported which deal it's showing
   | ShareDealStatus(option<string>) // the Share button's transient status line; `None` clears it
   | OpenSeedDialog // the main menu's Enter Seed button — raise the modal over the menu
@@ -578,7 +578,7 @@ let update = (msg, model) =>
         settings: MenuSettingsScreen.freshVisit(model.settings),
         shareUrl: None,
         shareStatus: None,
-        autosolveStatus: None,
+        autoplayStatus: None,
       },
       Html.noEffect,
     )
@@ -665,7 +665,7 @@ let update = (msg, model) =>
   | RefreshChecked => ({...model, refreshBusy: false}, Html.noEffect)
   | ShareLinkReady(shareUrl) => ({...model, shareUrl}, Html.noEffect)
   | ShareStatus(shareStatus) => ({...model, shareStatus}, Html.noEffect)
-  | AutosolveStatus(autosolveStatus) => ({...model, autosolveStatus}, Html.noEffect)
+  | AutoplayStatus(autoplayStatus) => ({...model, autoplayStatus}, Html.noEffect)
   // A new deal reached the table. Whatever status line the previous deal's
   // share left up goes with it — "Link copied to clipboard." must not sit under a
   // number it no longer refers to.
@@ -1445,8 +1445,8 @@ let debugScreen = (model, dispatch): MenuDebugScreen.props => {
   // Asked of the live board rather than the model: the row is live wherever a command
   // has somewhere to land, which is the same question the console answers with "no board
   // on this scene".
-  autosolveEnabled: liveBoard.contents->Option.isSome,
-  autosolveStatus: model.autosolveStatus,
+  autoplayEnabled: liveBoard.contents->Option.isSome,
+  autoplayStatus: model.autoplayStatus,
   // The console's `autoplay`, pressed instead of typed — and the two things a button
   // has to do that a typed line doesn't.
   //
@@ -1461,16 +1461,16 @@ let debugScreen = (model, dispatch): MenuDebugScreen.props => {
   // says nothing by itself, so the menu stays up and the solver's words take over the
   // row. Either way the reply also goes to the log, where the typed verb's does and
   // where the play-by-play is about to appear under it.
-  onAutosolve: () => {
-    dispatch(AutosolveStatus(Some(MenuDebugScreen.thinking)))
+  onAutoplay: () => {
+    dispatch(AutoplayStatus(Some(MenuDebugScreen.thinking)))
     setTimeout(() =>
       liveBoard.contents->Option.forEach(board => {
-        let {playing, reply} = board.autosolve()
+        let {playing, reply} = board.autoplay()
         DebugConsole.say(reply)
         if playing {
           dispatch(CloseMenu)
         } else {
-          dispatch(AutosolveStatus(Some(Render.toPlain(reply))))
+          dispatch(AutoplayStatus(Some(Render.toPlain(reply))))
         }
       })
     , 0)->ignore
@@ -1690,8 +1690,8 @@ let dispatch = Html.mount(
     // startup — there's no point encoding a board nobody has asked to share.
     shareUrl: None,
     shareStatus: None,
-    // …and the Autosolve row has nothing to report until it is pressed.
-    autosolveStatus: None,
+    // …and the Autoplay row has nothing to report until it is pressed.
+    autoplayStatus: None,
     // Seeded from the board's opening deal report, for the same reason
     // `canUndo` is: it fired during the switcher's initial mount above, before
     // `dispatch` existed. On a plain open that report *is* the deal number the Share

@@ -10,7 +10,7 @@
 // A row with something to report afterwards — where a link went, what the solver
 // found — folds that line into `desc` rather than rendering one of its own, so saying
 // it doesn't change the row's height and shove everything below it down the panel. The
-// Debug screen's Share and Autosolve rows are both that shape: see `<MenuDebugScreen>`.
+// Debug screen's Share and Autoplay rows are both that shape: see `<MenuDebugScreen>`.
 type props = {
   label: string,
   desc: string,

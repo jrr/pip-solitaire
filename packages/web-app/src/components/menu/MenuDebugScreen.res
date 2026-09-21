@@ -6,8 +6,9 @@
 //     step back up, not all the way out — beside the ✕;
 //   - the **Safe-area overlay** toggle (`cutoutDebug`) and the **Console logging**
 //     toggle (`debugLog` — narrates the UI↔core traffic to the JS console);
-//   - the three action rows: **Autosolve** (the console's `autoplay`, as a button),
-//     **Share game state** (`ShareLink`) and **Clear saved data** (`StoredState`);
+//   - the three action rows: **Autoplay** (the console's verb of the same name, as a
+//     button), **Share game state** (`ShareLink`) and **Clear saved data**
+//     (`StoredState`);
 //   - the collapsible groups: the
 //     games without a row in the main menu (`gameScenes`, labelled "games"),
 //     the demo scenes (`debugScenes`, "scenes") and the named starting positions
@@ -31,15 +32,15 @@ type props = {
   onToggleCutoutDebug: unit => unit,
   debugLog: bool,
   onToggleDebugLog: unit => unit,
-  // "Autosolve": whether there is a board behind this screen to hand to the solver.
+  // "Autoplay": whether there is a board behind this screen to hand to the solver.
   // False on a scene with no game, where the row goes dark rather than answering a tap
   // with a refusal.
-  autosolveEnabled: bool,
+  autoplayEnabled: bool,
   // What the solver said. It takes over the row's description the way a share's status
   // does, and for the same reason — a row that grew a line of its own would shove the
   // scene lists below it down the panel.
-  autosolveStatus: option<string>,
-  onAutosolve: unit => unit,
+  autoplayStatus: option<string>,
+  onAutoplay: unit => unit,
   // "Share game state" (`ShareLink`): whether a link has been encoded for the board
   // behind this screen — false on a scene with no game, and for the moment between
   // opening the screen and the encode resolving, which is what the disabled state
@@ -76,15 +77,12 @@ type props = {
 // — and the only warning anyone gets that the freeze is the point rather than a hang.
 let thinking = "Thinking — nothing responds until the solver is done."
 
-// The "Autosolve" row's description — the solver's own words once it has any, on the
+// The "Autoplay" row's description — the solver's own words once it has any, on the
 // same substitution as the share row below.
-let autosolveDesc = (~enabled, ~status) =>
+let autoplayDesc = (~enabled, ~status) =>
   switch status {
   | Some(status) => status
-  | None =>
-    enabled
-      ? "Hand the board to the solver and let it play the game out."
-      : "No game on screen to solve."
+  | None => enabled ? "Solve the current game for me." : "No game on screen to solve."
   }
 
 // The "Share game state" row's description. The status line takes over the
@@ -106,9 +104,9 @@ let make = ({
   onToggleCutoutDebug,
   debugLog,
   onToggleDebugLog,
-  autosolveEnabled,
-  autosolveStatus,
-  onAutosolve,
+  autoplayEnabled,
+  autoplayStatus,
+  onAutoplay,
   shareEnabled,
   shareStatus,
   onShareGame,
@@ -145,10 +143,10 @@ let make = ({
       // the run is the answer, and it is behind the panel — so the status line only ever
       // carries a refusal, or the word that the thinking has started.
       <MenuActionRow
-        label="Autosolve"
-        desc={autosolveDesc(~enabled=autosolveEnabled, ~status=autosolveStatus)}
-        enabled=autosolveEnabled
-        onClick=onAutosolve
+        label="Autoplay"
+        desc={autoplayDesc(~enabled=autoplayEnabled, ~status=autoplayStatus)}
+        enabled=autoplayEnabled
+        onClick=onAutoplay
       />
       // "Share game state" (`ShareLink`): encode the board behind this screen into a
       // link and hand it to the OS share sheet, or failing that the clipboard.

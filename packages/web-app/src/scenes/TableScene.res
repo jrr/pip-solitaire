@@ -58,7 +58,7 @@ external onAnimation: (WebDom.element, string, unit => unit) => unit = "addEvent
 
 // An autoplay run starts on the *next* tick rather than inside the command that asked
 // for it, so the console's reply — the one sentence that describes the whole run — is
-// printed above the play-by-play instead of one move down it. See `autoplay` below.
+// printed above the play-by-play instead of one move down it. See `playLine` below.
 // The victory cascade's own timer — the panel raising itself part-way through the
 // run — is the other holder, and the one that has to be cleared (`endCascade`).
 @val external setTimeout: (unit => unit, int) => int = "setTimeout"
@@ -288,13 +288,13 @@ type shakeControl = {
   stop: unit => unit,
 }
 
-// What `controls.autosolve` hands back: whether the solver found a line — in which case
+// What `controls.autoplay` hands back: whether the solver found a line — in which case
 // the board is already walking it — and the reply to show either way.
 //
 // The pair travels together because a caller that covers the board needs both halves at
 // once. A line found is something to get out of the way of; a refusal is the only thing
 // there will ever be to show, since a board that doesn't move says nothing by itself.
-type autosolved = {
+type autoplayed = {
   playing: bool,
   reply: array<Render.line>,
 }
@@ -323,10 +323,10 @@ type controls = {
   // Not a second interpreter: the command goes to `Session.step` exactly as the
   // terminal's does, and what comes back is turned into cards moving on a screen.
   runCommand: Command.t => array<Render.line>,
-  // `autoplay` as a control rather than a typed line — the menu's Autosolve row. The
+  // `autoplay` as a control rather than a typed line — the menu's Autoplay row. The
   // command and the runner are the console's; what is extra is the answer, which a
   // caller standing over the board has to read before deciding whether to stay there.
-  autosolve: unit => autosolved,
+  autoplay: unit => autoplayed,
   // Re-lay every resting card, so the tilt switch re-tilts the board in place rather
   // than only on the next move.
   relayout: unit => unit,
@@ -692,7 +692,7 @@ let make = (
     // time instead of each of them being re-published on every build.
     let liveUndo: ref<unit => unit> = ref(() => ())
     let liveRunCommand: ref<Command.t => array<Render.line>> = ref(_ => [])
-    let liveAutosolve: ref<unit => autosolved> = ref(() => {playing: false, reply: []})
+    let liveAutoplay: ref<unit => autoplayed> = ref(() => {playing: false, reply: []})
     let liveRelayout: ref<unit => unit> = ref(() => ())
 
     // The active `devicemotion` shake subscription, `Some` while Wiggle Waggle is on
@@ -1951,7 +1951,7 @@ let make = (
       //
       // Both published runners come through here. What the second one wants back is the
       // *change*, not just the reply: a caller that is covering the board (the menu's
-      // Autosolve row) has to know whether there is now a line being played to get out
+      // Autoplay row) has to know whether there is now a line being played to get out
       // of the way of.
       let runAndReport = (command: Command.t): (Session.change, array<Render.line>) => {
         let before = state()
@@ -1995,7 +1995,7 @@ let make = (
       // same runner, with the one fact a button needs and a typed line doesn't — whether
       // the solver found a line. `Played` is the only change this verb can make, so it
       // is the whole of the question.
-      let autosolve = (): autosolved => {
+      let autoplay = (): autoplayed => {
         let (change, reply) = runAndReport(Command.Autoplay)
         {
           playing: switch change {
@@ -2577,7 +2577,7 @@ let make = (
       // field dispatches through these refs.
       liveUndo := undo
       liveRunCommand := runCommand
-      liveAutosolve := autosolve
+      liveAutoplay := autoplay
       liveRelayout := squareUp
       reportHistory()
 
@@ -2600,7 +2600,7 @@ let make = (
     //   - the four rebuilds (`newGame`, `loadDeal`, `restart`, `loadState`) and the
     //     share-link restore call `buildBoard` directly, which clears the host and
     //     builds a fresh board in place — so they're about the *scene*, not a build;
-    //   - `readHistory`, `undo`, `runCommand`, `autosolve`, `relayout` and `dockFit`
+    //   - `readHistory`, `undo`, `runCommand`, `autoplay`, `relayout` and `dockFit`
     //     dispatch through mount-scope refs that each build repoints at its own board;
     //   - `shake` drives the live board's nodes through `boardOps`, the same way.
     //
@@ -2642,7 +2642,7 @@ let make = (
         readHistory: () => readHistory.contents(),
         undo: () => liveUndo.contents(),
         runCommand: command => liveRunCommand.contents(command),
-        autosolve: () => liveAutosolve.contents(),
+        autoplay: () => liveAutoplay.contents(),
         relayout: () => liveRelayout.contents(),
         dockFit: inset => dockFit.contents(inset),
         shake: {start: startShake, stop: stopShake},

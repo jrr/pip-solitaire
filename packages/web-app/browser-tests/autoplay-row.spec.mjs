@@ -1,4 +1,4 @@
-// The Debug screen's "Autosolve" row: the console's `autoplay`, pressed instead of
+// The Debug screen's "Autoplay" row: the console's `autoplay`, pressed instead of
 // typed. The board goes to the solver, and the menu that was covering it comes down so
 // the line can be watched being played.
 //
@@ -22,16 +22,16 @@ test.setTimeout(90_000)
 // subject, not this file's — what is under test here is that the run happens at all.
 const DEAL = "/?game=freecell&seed=24680&animate=off"
 
-const autosolveRow = (page) =>
+const autoplayRow = (page) =>
   page.locator(".menu-row--action", {
-    has: page.locator('.menu-row__label:text-is("Autosolve")'),
+    has: page.locator('.menu-row__label:text-is("Autoplay")'),
   })
 
 const openDebug = async (page) => {
   await page.getByRole("button", { name: "Open menu" }).click()
   await openSettings(page)
   await page.getByRole("button", { name: "Debug" }).first().click()
-  await expect(autosolveRow(page)).toBeVisible()
+  await expect(autoplayRow(page)).toBeVisible()
 }
 
 test("the row hands the board to the solver, gets out of the way, and the line is played", async ({
@@ -40,9 +40,9 @@ test("the row hands the board to the solver, gets out of the way, and the line i
   await page.goto(DEAL)
   await settleBoard(page)
   await openDebug(page)
-  await expect(autosolveRow(page)).toHaveText(/Hand the board to the solver/)
+  await expect(autoplayRow(page)).toHaveText(/Solve the current game/)
 
-  await autosolveRow(page).click()
+  await autoplayRow(page).click()
   // The menu goes when — and only when — there is a line to watch, so this is the press's
   // answer as much as the cards are.
   await expect(page.locator("#menu-overlay")).toBeHidden()
@@ -54,6 +54,6 @@ test("a scene with no board to solve says so, and the row can't be pressed", asy
   // "no board on this scene" — and a row that can't act is dark rather than sorry.
   await page.goto("/?scene=gallery")
   await openDebug(page)
-  await expect(autosolveRow(page)).toHaveText(/No game on screen to solve\./)
-  await expect(autosolveRow(page)).toBeDisabled()
+  await expect(autoplayRow(page)).toHaveText(/No game on screen to solve\./)
+  await expect(autoplayRow(page)).toBeDisabled()
 })

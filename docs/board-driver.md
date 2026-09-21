@@ -179,7 +179,7 @@ list of hooks for a new action to be missing from, and no way for the chrome to
 be left driving a board that has been torn down.
 
 **Every field is mount-scoped, not build-scoped.** The four that genuinely
-belong to a build — `undo`, `runCommand`, `autosolve`, `relayout` — dispatch
+belong to a build — `undo`, `runCommand`, `autoplay`, `relayout` — dispatch
 through mount-scope refs that each `buildBoard` repoints at its own. So the record the
 chrome took at mount goes on driving whatever is actually on the table, and a
 stale closure over a torn-down build isn't something a caller can hold even by
@@ -196,10 +196,10 @@ button that then has no deal to share is the one failure a share button can't
 afford, so the record makes it a type error rather than a convention two call
 sites keep.
 
-`autosolve` answers with a pair on the same argument, and it is the one field that
+`autoplay` answers with a pair on the same argument, and it is the one field that
 exists because of *where* its caller stands. It runs the console's `autoplay` through
 the same runner a typed line takes; what it adds is whether the solver found a line
-(`autosolved.playing`). A caller covering the board — the menu's Debug screen, whose
+(`autoplayed.playing`). A caller covering the board — the menu's Debug screen, whose
 panel is the width of a phone — has to know: a line found is played out on the board
 behind it and is something to get out of the way of, while a refusal moves nothing at
 all, which makes the reply the only thing there will ever be to show.
