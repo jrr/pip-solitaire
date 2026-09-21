@@ -326,6 +326,14 @@ let reportScene: ref<string => unit> = ref(_ => ())
 let options: ref<Options.t> = ref(Preferences.load())
 let tiltEnabled: ref<bool> = ref(Preferences.loadCardTilt())
 
+// The "Beta features" flag, a ref for a reason of its own — nothing on the board reads
+// it. It is read where the Elm model can't reach: the switcher's `~primary` (`menuGames`
+// below), which files scenes into menu groups afresh on every render, and first during
+// module init, before the chrome exists at all. Seeded from storage here and rewritten
+// by the switch through `settingsEnv.publish`, which is what lands a flip on the next
+// menu render rather than the next launch.
+let betaFeatures: ref<bool> = ref(Preferences.loadBetaFeatures())
+
 // The persisted "Console logging" preference (defaults off). Read once at
 // startup to seed both the model's toggle and the shared `DebugLog` gate, and the gate
 // is opened straight away — before the first board is built below — so a developer who
@@ -382,6 +390,7 @@ let settingsEnv = MenuSettingsScreen.liveEnv(
   ~options,
   ~tiltEnabled,
   ~shakeActive,
+  ~betaFeatures,
   ~board=settingsBoard,
 )
 
@@ -974,12 +983,15 @@ let betaGames: array<string> = Game.spiderFamily.variants->Array.map(v => v.game
 // `?game=` already reached it. The Debug screen's "games" group is where a withheld game
 // lands, and it is placed only while there is one (`MenuDebugScreen`).
 //
-// The flag is read **once, at launch**: the switcher files its rows as a value, so a flip
-// of the switch lands on the next launch rather than the next menu render, and the
-// switch's own line says so.
-let menuGames: array<Game.t> = Preferences.loadBetaFeatures()
-  ? Game.all
-  : Game.all->Array.filter(game => !(betaGames->Array.includes(game.id)))
+// A function rather than a value because the switch can flip between two menu renders,
+// and a flip has to land on the next one: the game leaves the Debug screen's group as it
+// joins the rows up top, both groups being asked afresh each render. A board already on
+// the table stays there when the flag goes off — the menu stops offering it, which is not
+// the same as taking it away — and the Debug group is where it is found until it is left.
+let menuGames = (): array<Game.t> =>
+  betaFeatures.contents
+    ? Game.all
+    : Game.all->Array.filter(game => !(betaGames->Array.includes(game.id)))
 
 // The game a bare launch opens on: the one last on the table, else the default. The
 // board waiting on it comes back with it — each game keeps its own save — so this
@@ -1006,7 +1018,7 @@ let switcher = SceneSwitcher.render(
   // link to mean what it says. `launchGame` is what keeps that true, by declining to
   // remember on exactly the opens that carry such a link.
   ~default=launchGame.id,
-  ~primary=menuGames->Array.map(game => game.id),
+  ~primary=() => menuGames()->Array.map(game => game.id),
   // What the URL asked to open, as a scene id. `?game=` is checked first because it is
   // the more specific claim — it names a board, and a board's scene is its id, so it
   // answers "which scene" as a side effect of answering "which game". `?scene=` is what
@@ -1376,7 +1388,7 @@ let mainScreen = (model, dispatch): MenuMainScreen.props => {
     | _ => ()
     },
   // The games list: the switcher's primary scenes, turned into rows (`gameRows` above).
-  games: gameRows(model, dispatch, switcher.primaryScenes),
+  games: gameRows(model, dispatch, switcher.primaryScenes()),
   onOpenSettings: () => {
     // Re-detect the service-worker state each time Settings opens, so the button
     // reflects a worker that registered (or self-destructed) since page load.
@@ -1531,7 +1543,7 @@ let gameInfoScreen = (model, dispatch, info: GameInfo.t): MenuGameInfoScreen.pro
   }
 
   let picker = (family: Game.family): option<MenuVariantPicker.props> =>
-    switch offeredVariants(switcher.primaryScenes, family) {
+    switch offeredVariants(switcher.primaryScenes(), family) {
     | siblings if Array.length(siblings) > 1 =>
       Some({
         game: family.name,

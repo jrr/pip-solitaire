@@ -28,3 +28,29 @@ export const openSettings = async (page) => {
   await page.getByRole("button", { name: "Settings", exact: true }).click()
   await expect(page.getByRole("switch", { name: /^Auto-collect/ })).toBeVisible()
 }
+
+/**
+ * Flip **Beta features** the way a tester would, and come back to the games list: into
+ * Settings, ten taps on the title for the hidden rows (`HiddenOptions`), the switch,
+ * then Back to menu. No reload — the flip is meant to land on the very next render of
+ * the menu it returns to, which is what the walk leaves the caller looking at.
+ *
+ * The reveal is itself a *toggle* and it is persisted, so the taps are conditional: ten
+ * more on a screen already showing the rows would put them away again.
+ *
+ * One flag stands in front of every half-finished feature, which is why this walk is
+ * here rather than copied into each suite that needs one of them on.
+ */
+export const setBetaFeatures = async (page, on) => {
+  await openSettings(page)
+  const beta = page.getByRole("switch", { name: /^Beta features/ })
+  if (!(await beta.isVisible())) {
+    for (let i = 0; i < 10; i++) {
+      await page.locator(".menu-title").click()
+    }
+    await expect(beta).toBeVisible()
+  }
+  await beta.click()
+  await expect(beta).toHaveAttribute("aria-checked", String(on))
+  await page.getByRole("button", { name: "Back to menu" }).click()
+}

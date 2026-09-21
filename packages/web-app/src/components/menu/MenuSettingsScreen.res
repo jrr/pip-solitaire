@@ -50,10 +50,9 @@ type model = {
   // area.
   notchDisplay: bool,
   // "Beta features": the one switch in front of what's built but not finished. Today it
-  // lists Spider in the Games menu (`Main`'s `betaGames`), read off storage at launch
-  // rather than off this field: an unfinished feature gates itself on the flag and takes
-  // the gate out when it graduates. A feature flag rather than a preference, which is
-  // why it is hidden and why it defaults off.
+  // lists Spider in the Games menu (`Main`'s `betaGames`): an unfinished feature gates
+  // itself on the flag and takes the gate out when it graduates. A feature flag rather
+  // than a preference, which is why it is hidden and why it defaults off.
   betaFeatures: bool,
   // The hidden settings and the run of taps that reveals them (`HiddenOptions`). Today
   // that is Wiggle Waggle and Beta features. A hidden row says nothing about whether its
@@ -84,9 +83,10 @@ type request =
 // whole model, so what a setting's write-through *is* stays one line in the writer
 // instead of a branch in here.
 type env = {
-  // The live values the board reads at the moment of use, and the app-wide motion
-  // state the debug scene reads. Idempotent: it publishes the snapshot it's given, so
-  // any branch that changed one of them can simply hand over the new model.
+  // The live values the board reads at the moment of use, the app-wide motion state the
+  // debug scene reads, and the flag the scene switcher files its menu rows by.
+  // Idempotent: it publishes the snapshot it's given, so any branch that changed one of
+  // them can simply hand over the new model.
   publish: model => unit,
   // The board on the table, when there is one. `Main` resolves that; a demo scene has
   // none and the request is dropped.
@@ -107,6 +107,7 @@ let liveEnv = (
   ~options: ref<Options.t>,
   ~tiltEnabled: ref<bool>,
   ~shakeActive: ref<bool>,
+  ~betaFeatures: ref<bool>,
   ~board: request => unit,
 ): env => {
   publish: model => {
@@ -116,6 +117,9 @@ let liveEnv = (
     // debug Motion scene shows it, and the board listens only while `shakeActive`.
     shakeActive := Motion.isOn(model.wiggle)
     Motion.current := model.wiggle
+    // Which games the menu lists, read by the scene switcher rather than by a component:
+    // the rows it files are built outside the chrome's render (see `Main`).
+    betaFeatures := model.betaFeatures
   },
   board,
   root: model => NotchDisplay.setEnabled(model.notchDisplay),
@@ -233,14 +237,20 @@ let update = (env: env, msg, model) =>
         env.persist(model)
       },
     )
-  // A feature flag, so storing the flip is the whole of the change: what it gates today
-  // (`Main`'s `menuGames`) is read off storage at launch, and the row says so. A feature
-  // that wants its flip to land sooner has to be published too — a menu screen
-  // re-renders from this model on the very next pass, but anything read outside the
-  // chrome's render, a ref the switcher files rows by, say, does not.
+  // Published as well as stored, which is what makes the flip land on the very next menu
+  // render rather than the next launch: what it gates today (`Main`'s `menuGames`) is
+  // read by the scene switcher, outside the chrome's render, so this model reaching the
+  // screen is not enough on its own. A feature gated on this field alone needs no
+  // publish — a menu screen re-renders from the model regardless.
   | ToggleBetaFeatures =>
     let model = {...model, betaFeatures: !model.betaFeatures}
-    (model, () => env.persist(model))
+    (
+      model,
+      () => {
+        env.publish(model)
+        env.persist(model)
+      },
+    )
   // Every tenth tap flips the settings that aren't ready to be found yet into or out of
   // view, and persists that so the gesture is performed once per device rather than once
   // per launch. Hiding them again leaves whatever they switched on running — see
@@ -321,7 +331,7 @@ let make = ({model, dispatch, onClose, onBackToMenu, onOpenDebug}) => <>
               />
               <MenuToggleRow
                 label="Beta features"
-                desc="Turn on the features still in development. Takes effect on the next launch."
+                desc="Turn on the features still in development."
                 on={model.betaFeatures}
                 onToggle={() => dispatch(ToggleBetaFeatures)}
               />
