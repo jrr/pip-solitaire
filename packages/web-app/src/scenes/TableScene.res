@@ -58,7 +58,7 @@ external onAnimation: (WebDom.element, string, unit => unit) => unit = "addEvent
 
 // An autoplay run starts on the *next* tick rather than inside the command that asked
 // for it, so the console's reply — the one sentence that describes the whole run — is
-// printed above the play-by-play instead of one move down it. See `autoplay` below.
+// printed above the play-by-play instead of one move down it. See `playLine` below.
 // The victory cascade's own timer — the panel raising itself part-way through the
 // run — is the other holder, and the one that has to be cleared (`endCascade`).
 @val external setTimeout: (unit => unit, int) => int = "setTimeout"
@@ -288,6 +288,17 @@ type shakeControl = {
   stop: unit => unit,
 }
 
+// What `controls.autoplay` hands back: whether the solver found a line — in which case
+// the board is already walking it — and the reply to show either way.
+//
+// The pair travels together because a caller that covers the board needs both halves at
+// once. A line found is something to get out of the way of; a refusal is the only thing
+// there will ever be to show, since a board that doesn't move says nothing by itself.
+type autoplayed = {
+  playing: bool,
+  reply: array<Render.line>,
+}
+
 // Everything a mounted board offers the chrome, handed over whole by `~publish`. Why
 // it is one record, why every field is mount-scoped, and why two of them are `option`
 // is `docs/board-driver.md` § What `~publish` hands back.
@@ -312,6 +323,10 @@ type controls = {
   // Not a second interpreter: the command goes to `Session.step` exactly as the
   // terminal's does, and what comes back is turned into cards moving on a screen.
   runCommand: Command.t => array<Render.line>,
+  // `autoplay` as a control rather than a typed line — the menu's Autoplay row. The
+  // command and the runner are the console's; what is extra is the answer, which a
+  // caller standing over the board has to read before deciding whether to stay there.
+  autoplay: unit => autoplayed,
   // Re-lay every resting card, so the tilt switch re-tilts the board in place rather
   // than only on the next move.
   relayout: unit => unit,
@@ -672,11 +687,12 @@ let make = (
     let dockFit: ref<float => bool> = ref(_ => false)
     let boardOps = ref({jostle: () => (), squareUp: () => ()})
     let readHistory: ref<unit => option<SaveState.t>> = ref(() => None)
-    // The three published actions that genuinely belong to a build. `controls`
-    // dispatches through these, which is what lets the chrome take the board's surface
-    // a single time instead of each of the three being re-published on every build.
+    // The published actions that genuinely belong to a build. `controls` dispatches
+    // through these, which is what lets the chrome take the board's surface a single
+    // time instead of each of them being re-published on every build.
     let liveUndo: ref<unit => unit> = ref(() => ())
     let liveRunCommand: ref<Command.t => array<Render.line>> = ref(_ => [])
+    let liveAutoplay: ref<unit => autoplayed> = ref(() => {playing: false, reply: []})
     let liveRelayout: ref<unit => unit> = ref(() => ())
 
     // The active `devicemotion` shake subscription, `Some` while Wiggle Waggle is on
@@ -1932,7 +1948,12 @@ let make = (
       // still for the better part of a minute reads as a hung page, whatever the search
       // is doing. It costs answers on the stubborn deals — `docs/solver.md` § What a
       // caller is willing to spend — and the trade is deliberate.
-      let runCommand = (command: Command.t): array<Render.line> => {
+      //
+      // Both published runners come through here. What the second one wants back is the
+      // *change*, not just the reply: a caller that is covering the board (the menu's
+      // Autoplay row) has to know whether there is now a line being played to get out
+      // of the way of.
+      let runAndReport = (command: Command.t): (Session.change, array<Render.line>) => {
         let before = state()
         let (next, outcome) = Session.step(~clock, ~patience=Solver.interactive, current(), command)
         switch outcome.change {
@@ -1957,10 +1978,31 @@ let make = (
         // resolved (`~currentDeal`) rather than the one the board can prove — a resumed
         // game really is a deal, and the chrome is what knows which. A refusal is already
         // in the log, with its reason under it, so repeating it here would say it twice.
-        switch outcome.change {
+        let reply = switch outcome.change {
         | Session.Shown => Render.stateLines(~game, ~deal=?currentDeal(), state())
         | Session.Rejected(_) => []
         | _ => outcome.reply
+        }
+        (outcome.change, reply)
+      }
+
+      let runCommand = (command: Command.t): array<Render.line> => {
+        let (_, reply) = runAndReport(command)
+        reply
+      }
+
+      // `autoplay`, asked for by a control rather than typed: the same verb, through the
+      // same runner, with the one fact a button needs and a typed line doesn't — whether
+      // the solver found a line. `Played` is the only change this verb can make, so it
+      // is the whole of the question.
+      let autoplay = (): autoplayed => {
+        let (change, reply) = runAndReport(Command.Autoplay)
+        {
+          playing: switch change {
+          | Session.Played(_) => true
+          | _ => false
+          },
+          reply,
         }
       }
 
@@ -2535,6 +2577,7 @@ let make = (
       // field dispatches through these refs.
       liveUndo := undo
       liveRunCommand := runCommand
+      liveAutoplay := autoplay
       liveRelayout := squareUp
       reportHistory()
 
@@ -2557,8 +2600,8 @@ let make = (
     //   - the four rebuilds (`newGame`, `loadDeal`, `restart`, `loadState`) and the
     //     share-link restore call `buildBoard` directly, which clears the host and
     //     builds a fresh board in place — so they're about the *scene*, not a build;
-    //   - `readHistory`, `undo`, `runCommand`, `relayout` and `dockFit` dispatch
-    //     through mount-scope refs that each build repoints at its own board;
+    //   - `readHistory`, `undo`, `runCommand`, `autoplay`, `relayout` and `dockFit`
+    //     dispatch through mount-scope refs that each build repoints at its own board;
     //   - `shake` drives the live board's nodes through `boardOps`, the same way.
     //
     // The two re-deals that open a board the caller names are the re-dealable game's: a
@@ -2599,6 +2642,7 @@ let make = (
         readHistory: () => readHistory.contents(),
         undo: () => liveUndo.contents(),
         runCommand: command => liveRunCommand.contents(command),
+        autoplay: () => liveAutoplay.contents(),
         relayout: () => liveRelayout.contents(),
         dockFit: inset => dockFit.contents(inset),
         shake: {start: startShake, stop: stopShake},

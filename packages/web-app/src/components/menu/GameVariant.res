@@ -8,12 +8,11 @@
 // — that is exactly what makes it a word — so it comes from the family.
 
 type mark =
-  // The suits in play and how many times each card is in the deck: "♠♥" and "×2". Two
-  // pieces because the stylesheet sets them differently, the pips being the content and
-  // the multiplier only a qualifier on it. `copies` is `None` on a single pack, where
-  // "×1" is a number a reader has to discard — four suits with nothing after them is the
-  // standard deck, and says so shorter.
-  | Pips({suits: string, copies: option<string>})
+  // The suits in play: "♠♥". How many times over the deck holds each of them is not
+  // drawn — a pack is told from its siblings by its suits alone, and "×2" beside them is
+  // arithmetic a reader has to do to learn nothing. The count is still said in `name`,
+  // which is where a number belongs.
+  | Pips(string)
   | Word(string)
 
 type t = {
@@ -29,10 +28,7 @@ type t = {
 let pips = (deck: Cards.deck): t => {
   let count = Array.length(deck.suits)
   {
-    mark: Pips({
-      suits: deck.suits->Array.map(Deck.suitSymbol)->Array.join(""),
-      copies: deck.copies > 1 ? Some("×" ++ Int.toString(deck.copies)) : None,
-    }),
+    mark: Pips(deck.suits->Array.map(Deck.suitSymbol)->Array.join("")),
     name: Int.toString(count) ++ (count == 1 ? " suit" : " suits"),
     noun: "pack",
   }

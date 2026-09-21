@@ -1,4 +1,4 @@
-// The mark that says **which board of a family** a control is offering — "♠♥ ×2",
+// The mark that says **which board of a family** a control is offering — "♠♥",
 // "Standard". It is drawn in two places: the segment beside a game's name in the Games
 // list (`MenuGameRow`) and the picker on that game's info screen
 // (`MenuVariantPicker`). A component rather than a few spans apiece, because a pack
@@ -15,12 +15,6 @@ type props = {mark: GameVariant.t}
 let make = ({mark}) =>
   switch mark.mark {
   | GameVariant.Word(word) => <span className="menu-variant-mark__word"> {Html.string(word)} </span>
-  | GameVariant.Pips({suits, copies}) =>
-    <>
-      <span className="menu-variant-mark__suits"> {Html.string(suits)} </span>
-      {switch copies {
-      | Some(copies) => <span className="menu-variant-mark__copies"> {Html.string(copies)} </span>
-      | None => Html.empty
-      }}
-    </>
+  | GameVariant.Pips(suits) =>
+    <span className="menu-variant-mark__suits"> {Html.string(suits)} </span>
   }

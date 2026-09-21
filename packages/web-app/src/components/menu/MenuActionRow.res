@@ -7,10 +7,10 @@
 // click at all — and the muted styling that goes with it (`.menu-row--action`,
 // the one kind of row that is ever disabled).
 //
-// The Debug screen's "Share game state" is the only one of these today. Its
-// caller folds the transient "where the link went" status into `desc` rather than
-// rendering a line of its own, so reporting the outcome doesn't change the row's
-// height: see `<MenuDebugScreen>`.
+// A row with something to report afterwards — where a link went, what the solver
+// found — folds that line into `desc` rather than rendering one of its own, so saying
+// it doesn't change the row's height and shove everything below it down the panel. The
+// Debug screen's Share and Autoplay rows are both that shape: see `<MenuDebugScreen>`.
 type props = {
   label: string,
   desc: string,
