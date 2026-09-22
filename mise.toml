@@ -1,7 +1,19 @@
+# Exact versions, not major ranges. `jdx/mise-action` keys its cache on a hash of
+# this file, so any edit here is a cache miss — and under a range a miss silently
+# installs whatever is newest that day instead of what the cache held. CI's green
+# history was resting on a warm cache: the same commit that passed on a hit would
+# have pulled a different toolchain on a miss, and nothing said so.
+#
+# That is not hypothetical. On 2026-09-22 a cache miss took pnpm 11.27.0 → 11.27.1
+# and node 26.9.0 → 26.10.0, and `mise run browsertest` stopped exiting: all 190
+# tests passed, Playwright never printed its summary, and the job ran to the
+# 20-minute cap leaving `vite preview` and its esbuild child orphaned. The versions
+# below are the pair CI is known green on. Bump them deliberately, and watch
+# `browser-tests` when you do.
 [tools]
-node = "26"
+node = "26.9.0"
 # Installing via npm because the default mechanism is blocked on claude cloud sandboxes.
-"npm:pnpm" = "11"
+"npm:pnpm" = "11.27.0"
 
 # Tasks are the set of actions available to developers and agents at the repo
 # root: `mise tasks` lists them, `mise run <task>` runs one. The "why" for a
