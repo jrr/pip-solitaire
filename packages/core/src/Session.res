@@ -296,6 +296,19 @@ let finish = (~clock: unit => float, s: t): (t, outcome) =>
 // of, so `autoplay` on a solvable deal ends on a won board rather than one with the
 // Finish button lit.
 //
+// **Written as two halves, because the halves cost differently.** Finding a line is a
+// search of hundreds of thousands of positions; making a session out of one is fifty
+// reductions. A driver that can think somewhere other than where it draws — the web
+// app sends the board to a worker thread — runs `Solver.autoplay` over there and this
+// back here, and arrives at the pair `autoplay` below returns. The seam is at
+// `Solver.autoplayed` because that value is plain data all the way down: no `Game.t`
+// in it and no function, so it is the widest thing that can cross a `postMessage`.
+//
+// `~ms` is the caller's own measurement of what getting `found` took. The solver keeps
+// no clock (`docs/solver.md` § No clock of its own), and a driver that thought on
+// another thread is timing a round trip rather than a search — which is the number a
+// player waited through either way.
+//
 // Every planned move is committed as its own undoable step, so a game the solver played
 // is as long as it looks and undo walks back through it a move at a time. It adopts the
 // solver's *states* rather than re-dispatching its actions, because `Solver.autoplay`
@@ -304,23 +317,11 @@ let finish = (~clock: unit => float, s: t): (t, outcome) =>
 //
 // The reach is counted once, *before* the first step, so the very first save already
 // carries "this game was autoplayed" even if a caller stops the run a move later.
-//
-// `~patience` is how long the driver is willing to wait, in milliseconds — the caller
-// supplies the number and the session supplies the clock, since it already holds one.
-// Left off, the search runs the whole ladder however long that takes, which is what
-// every test and every fold with a stopped clock wants.
-let autoplay = (~clock: unit => float, ~patience: option<float>=?, s: t): (t, outcome) => {
-  // This session's clock, not the solver's: it times the whole call, search plus
-  // replay. The replay is fifty reductions against a search of tens of thousands of
-  // positions, so the number describes the thinking.
-  let started = clock()
-  // The same clock, handed down — so the limit the driver set and the time this
-  // reports are read off one source and can't disagree.
-  let limit = switch patience {
-  | None => None
-  | Some(ms) => Some(({ms, clock}: Solver.patience))
-  }
-  switch Solver.autoplay(~game=s.game, ~patience=?limit, present(s)) {
+let adoptAutoplay = (~clock: unit => float, ~ms: float, s: t, found: Solver.autoplayed): (
+  t,
+  outcome,
+) =>
+  switch found {
   | Solver.UnknownBoard => (
       s,
       {change: Unchanged, reply: Render.text(Command.autoplayUnknownBoard)},
@@ -331,11 +332,10 @@ let autoplay = (~clock: unit => float, ~patience: option<float>=?, s: t): (t, ou
       s,
       {
         change: Unchanged,
-        reply: Render.text(Command.autoplayOutOfPatience(~ms=clock() -. started)),
+        reply: Render.text(Command.autoplayOutOfPatience(~ms)),
       },
     )
   | Solver.Played({steps, effort}) =>
-    let ms = clock() -. started
     let reached = {...s, stats: Stats.autoplay(s.stats)}
     // A caller walking this a step at a time is playing the same line returned whole.
     let trail: array<played> = []
@@ -363,6 +363,24 @@ let autoplay = (~clock: unit => float, ~patience: option<float>=?, s: t): (t, ou
       },
     )
   }
+
+// Both halves on one thread: what the terminal wants, and what a driver with nowhere
+// else to think falls back to.
+//
+// `~patience` is how long the driver is willing to wait, in milliseconds — the caller
+// supplies the number and the session supplies the clock, since it already holds one.
+// Left off, the search runs the whole ladder however long that takes, which is what
+// every test and every fold with a stopped clock wants.
+let autoplay = (~clock: unit => float, ~patience: option<float>=?, s: t): (t, outcome) => {
+  let started = clock()
+  // The session's own clock, handed down — so the limit the driver set and the time
+  // this reports are read off one source and can't disagree.
+  let limit = switch patience {
+  | None => None
+  | Some(ms) => Some(({ms, clock}: Solver.patience))
+  }
+  let found = Solver.autoplay(~game=s.game, ~patience=?limit, present(s))
+  adoptAutoplay(~clock, ~ms=clock() -. started, s, found)
 }
 
 // --- Stepping through history --------------------------------------------------

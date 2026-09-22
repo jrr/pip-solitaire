@@ -70,11 +70,17 @@ test("a press stops a running line, and leaves the board it stopped on playable"
         [...document.querySelectorAll(".stacking-card")].flatMap((el) => el.getAnimations())
           .length,
     )
-  // The solver thinks before it plays, so the run begins whenever it begins: wait for
-  // cards to actually be in the air rather than for a guessed number of milliseconds…
+  // The solver thinks before it plays, so the run begins whenever it begins — and the
+  // thinking is a worker's, so the board is live throughout it and a card in the air
+  // proves nothing: opening the console narrowed the board, and every card is sliding
+  // into its new column while the search is still going. What says the *line* has
+  // started is the line `playLine` writes as it starts, which is the plain word with no
+  // prompt in front of it and no summary around it.
   await page.waitForFunction(
     () =>
-      [...document.querySelectorAll(".stacking-card")].some((el) => el.getAnimations().length > 0),
+      [...document.querySelectorAll("#debug-console-lines .debug-console__label")].some(
+        (el) => el.textContent === "autoplay",
+      ),
     null,
     { timeout: 30_000 },
   )
