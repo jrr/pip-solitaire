@@ -9,6 +9,7 @@
     "test": "vitest run",
     "dev": "vite",
     "bundle": "vite build",
+    "bundle:profile": "vite build -c vite.config.profile.js",
     "preview": "vite preview"
   },
   "dependencies": {
