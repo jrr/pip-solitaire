@@ -55,21 +55,38 @@ type persistence =
   | Cards(float)
   | Fraction(float)
 
-// How the trail is dimmed: how long a stamp lasts, and the size of the bites it is taken
-// off in. Not larger and smaller versions of each other — the first is what the fade
-// looks like, the second is what it costs.
+// **What the fade waits for before it is taken.** It is never taken continuously — the
+// surface is filled or it isn't, so the trail sinks in steps whatever this says. All
+// that is chosen here is when a step falls due.
+type step =
+  // A share worth having. A fade spent in shares much below a tenth is mostly taken back
+  // by the rounding in `Canvas.dim`, so what is owed is saved up until it is worth this
+  // much — which also decides how often the surface is filled, and so what the fade costs
+  // to run. `docs/cascade.md` has both halves.
+  | Coin(float)
+  // The seats coming round: every card thrown since the last step is left at the strength
+  // it went on at, and the whole surface drops a step as the next round starts. What
+  // stands out is then the round just thrown rather than the stamp just laid — on a board,
+  // where the seats are foundations emptied rank by rank, that is a rank of cards at a
+  // time. The steps are as long as a round, which is the point and also the thing to
+  // watch: two rounds of persistence is a run that half-empties in front of you.
+  | Layer
+
+// How the trail is dimmed: how long a stamp lasts, and what takes it off. Not larger and
+// smaller versions of each other — the first is how long the trail is, the second is what
+// the fade costs and how steppy it looks getting there.
 type fade = {
   persistence: persistence,
-  // The smallest share worth taking off in one go. A fade spent in shares much below this
-  // is mostly taken back by the rounding in `Canvas.dim`, so what is owed is saved up
-  // until it is worth this much — which also decides how often the surface is filled, and
-  // so what the fade costs to run. `docs/cascade.md` has both halves.
-  coin: float,
+  step: step,
 }
+
+// The coin the fade was tuned at, named because two callers start their own control at
+// it and neither should have to take a variant apart to find it.
+let defaultCoin = 0.1
 
 // Nine cards of trail, taken off in tenths: 6.8 seconds at the default launch interval,
 // which is where the scene's sliders were dragged to.
-let defaultFade = {persistence: Cards(9.), coin: 0.1}
+let defaultFade = {persistence: Cards(9.), step: Coin(defaultCoin)}
 
 // Every setting in one value, so adjusting one is the same operation as adjusting none
 // (see `retune`).
@@ -176,6 +193,10 @@ type t = {
   mutable armed: int,
   // Simulated time the fade has not been paid for yet — see `dim`.
   mutable fadeOwedMs: float,
+  // Which round of the seats the fade was last taken in, so `Layer` can tell that one has
+  // gone by. Kept up to date whatever the step is, so switching to `Layer` mid-run starts
+  // from where the fade actually is rather than from the round the run began in.
+  mutable paidLayer: int,
   mutable framesSeen: int,
   mutable fpsSince: float,
   mutable fps: float,
@@ -348,6 +369,11 @@ let armedBy = (~launched, ~cards, ~seats, ~sinceLaunchMs, ~launchMs, ~readyMs) =
 let seatIsOccupied = (~launched, ~armed, ~seats, ~seat) =>
   seats > 0 && launched + mod(mod(seat - launched, seats) + seats, seats) < armed
 
+// Which time round the seats a run is in. `Cascade` deals them in order, so every `seats`
+// launches is one round — and on a board, whose piles are taken a slot at a time, one
+// round is one rank: all four Kings, then all four Queens.
+let layerOf = (~launched, ~seats) => seats <= 0 ? 0 : launched / seats
+
 // Wipe the trail off the seats with a card sitting on them. It is taken after the fade and
 // before the stamp, so the card going down *this* instant is drawn whole over the seat it
 // is leaving, and only the history behind it is cleared.
@@ -376,14 +402,18 @@ let clearSeats = player =>
     })
   }
 
-// The fade owed for the simulated time since it was last paid, spent once it is worth a
-// coin and left to accrue until then. It is taken just before a stamp, so the cards going
-// down this instant are the only thing on the surface at full strength.
+// The fade owed for the simulated time since it was last paid, left to accrue until the
+// step says take it. It is taken just before a stamp, so what goes down after it — this
+// card, or this whole rank of them — is on the surface at full strength.
+//
+// What is owed is a *share*, so accruing changes only when the fade lands and never how
+// much of it lands: a stretch of simulated time is worth the same whether it is taken in
+// one step or in ten (`fadeShare` compounds, which is what makes that true).
 //
 // The rect is the backing store's own size read back in CSS pixels rather than the
 // element's box: the same rectangle, without a layout read per stamp.
-let dim = player => {
-  let {persistence, coin} = player.options.fade
+let dim = (player, ~seats) => {
+  let {persistence, step} = player.options.fade
   // Derived here rather than held, so a persistence counted in cards or in runs follows
   // the launch interval while it is being dragged — and so `Cards(9)` is nine cards on a
   // short deck's victory as much as on a full one.
@@ -396,11 +426,17 @@ let dim = player => {
   )
   player.fadeOwedMs = player.fadeOwedMs +. player.options.stampMs
   let share = fadeShare(~rate, ~ms=player.fadeOwedMs)
+  let layer = layerOf(~launched=player.run.launched, ~seats)
+  let due = switch step {
+  | Coin(coin) => share >= coin
+  | Layer => layer > player.paidLayer
+  }
 
-  // `> 0.` as well as the coin: a rate of zero owes nothing, and a coin of zero would
+  // `> 0.` as well as the step: a rate of zero owes nothing, and a coin of zero would
   // otherwise buy a full-surface fill every stamp that takes nothing off.
-  if share > 0. && share >= coin {
+  if share > 0. && due {
     player.fadeOwedMs = 0.
+    player.paidLayer = layer
     Canvas.context2d(player.canvas)->Option.forEach(ctx => {
       let scale = ratio()
       Canvas.dim(
@@ -477,7 +513,7 @@ let advance = (player, ~stage) => {
   }
   player.sinceStamp = player.sinceStamp +. stepMs
   if player.sinceStamp >= player.options.stampMs {
-    dim(player)
+    dim(player, ~seats=Array.length(stage.seats))
     clearSeats(player)
     draw(player)
     player.sinceStamp = Math.max(player.sinceStamp -. player.options.stampMs, 0.)
@@ -551,6 +587,7 @@ let restart = player => {
   sizeStore(player)
   player.sinceStamp = 0.
   player.fadeOwedMs = 0.
+  player.paidLayer = 0
   player.armed = 0
   player.run = Cascade.make(~seed=player.options.seed, ~cards=?player.options.cards)
   switch player.intent {
@@ -725,6 +762,7 @@ let attach = (
     carryMs: 0.,
     sinceStamp: 0.,
     fadeOwedMs: 0.,
+    paidLayer: 0,
     armed: 0,
     framesSeen: 0,
     fpsSince: 0.,

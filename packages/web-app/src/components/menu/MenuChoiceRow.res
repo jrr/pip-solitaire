@@ -27,6 +27,10 @@ type props = {
   choices: array<choice>,
 }
 
+// A row as data, so a screen can take a list of these — the same alias as
+// `MenuSlider.spec`, for the same reason.
+type spec = props
+
 let make = ({label, ?readout, choices}) =>
   <div className="menu-choice" dataChoice=label>
     <div className="menu-choice__head">

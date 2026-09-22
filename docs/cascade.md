@@ -276,14 +276,29 @@ towards the transparency it started from — on the board, back to the table.
 Painting a translucent backdrop over the surface instead would dim the live DOM
 underneath along with the cards.
 
-**It is paid in coins, which is what makes the gentle fade the expensive one.**
-A fade in eight-bit alpha settles at a floor rather than at nothing, and the
-smaller the share the higher that floor — `Canvas.dim` has the arithmetic. Half a
-second's fade spread over sixty stamps is a hundredth apiece, and a hundredth
-settles at fifty alpha: the white sheet again, in grey. So what is owed is saved
-up and spent once it is worth the `coin`, a tenth by default, which settles under
-2%. At the default rate that is a payment every 152ms of simulated time, in steps
-the trail's own stamps hide.
+**It is taken in steps, never continuously**, because the surface is either
+filled or it isn't. What the `step` chooses is only what a payment waits for, and
+what is owed is a *share* — so a stretch of simulated time is worth the same
+taken in one step or in ten, and the choice changes how the fade looks and costs
+but not how long the trail is.
+
+`Coin` waits for a share worth having. A fade in eight-bit alpha settles at a
+floor rather than at nothing, and the smaller the share the higher that floor —
+`Canvas.dim` has the arithmetic. Half a second's fade spread over sixty stamps is
+a hundredth apiece, and a hundredth settles at fifty alpha: the white sheet
+again, in grey. So what is owed is saved up and spent once it is worth the coin,
+a tenth by default, which settles under 2%. At the default rate that is a payment
+every 152ms of simulated time, in steps the trail's own stamps hide.
+
+`Layer` waits for the seats to come round instead — every `seats` launches, which
+on a board is a rank, the foundations being taken a slot at a time. Nothing is
+taken off while a rank is in the air, so the whole rank stays at the strength it
+went on at and the surface drops in one as the next rank starts. What stands out
+is then the rank just thrown rather than the stamp just laid. The steps are as
+long as a round and as deep: two rounds of persistence is a run that half-empties
+in front of you, which is the knob to watch. The last rank never fades — there is
+no round left to come — and a stage with no seats never fades at all, which is
+why the demo scene stays on coins.
 
 The coin is also the whole of what the fade *costs*, which is why it is a knob
 rather than a constant. A payment is one full-surface fill and nothing between
@@ -360,7 +375,7 @@ chosen.
 | trail | 16 ms | of simulated time between stamps |
 | ready | 250 ms | how long a card sits on its seat before it is thrown |
 | fade | `Cards(9)` | how long a stamp lasts — 6.8s at the launch interval above, a sixth of the run |
-| fade coin | 0.1 | the smallest share worth taking off in one go — a fill every 154ms at that persistence |
+| fade step | `Coin(0.1)` | the smallest share worth taking off in one go — a fill every 154ms at that persistence |
 
 Not on a slider: the simulation step (1/120s), `maxStep`
 (50ms), `maxCatchUpMs` (100ms), the pose length (16 cards), and the scene's three
@@ -431,11 +446,13 @@ redo back into the winning move, raise the panel alone: the cascade is what a
 game being won looks like, not what a won position looks like.
 
 **The dimming is tunable from the menu, on a live board.** Debug → *cascade* holds
-the persistence's unit as chips (`MenuChoiceRow`) and the numbers as sliders
-(`MenuSlider`), fed by `Main`'s `debugScreen`. Picking a unit *re-says* the length
-in it rather than resetting it (`CascadePlayer.sameIn`), so the animation stays
-put while the words change; picking **never** takes the length slider away
-entirely, there being no length to set. They reach the board the way the tilt
+the two choices as chips (`MenuChoiceRow`) — the persistence's unit, and what the
+fade waits for — and the numbers as sliders (`MenuSlider`), fed by `Main`'s
+`debugScreen`. Picking a unit *re-says* the length in it rather than resetting it
+(`CascadePlayer.sameIn`), so the animation stays put while the words change. A
+control with nothing to set is taken away rather than left to lie: **never**
+leaves no sliders at all, and **per layer** leaves no coin, the layer being the
+step. They reach the board the way the tilt
 switch does: a live ref the board reads as a
 cascade starts (`~cascadeFade`), plus `controls.retuneCascade` for the one already
 falling — the menu opens over the canvas, so a slider dragged mid-celebration

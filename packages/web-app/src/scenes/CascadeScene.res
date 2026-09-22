@@ -105,7 +105,10 @@ let make = (~mode=Live, ~seed as initialSeed=1): Scene.t => {
     // …and the way to see the animation this one is against: the trail that keeps
     // everything, which no number of cards can say.
     let noFade = ref(false)
-    let coin = ref(CascadePlayer.defaults.fade.coin)
+    // The fade's steps are coins here and nothing else: a step *per layer* is about seats
+    // that mean something — a board's foundations, taken a rank at a time — and this
+    // scene's seats are a row with a shuffled deck coming off them (`docs/cascade.md`).
+    let coin = ref(CascadePlayer.defaultCoin)
 
     let persistence = () =>
       noFade.contents ? CascadePlayer.Forever : CascadePlayer.Cards(fadeCards.contents)
@@ -117,7 +120,7 @@ let make = (~mode=Live, ~seed as initialSeed=1): Scene.t => {
       knobs: knobs.contents,
       stampMs: stampMs.contents,
       snap: snap.contents,
-      fade: {persistence: persistence(), coin: coin.contents},
+      fade: {persistence: persistence(), step: CascadePlayer.Coin(coin.contents)},
     }
 
     let refresh = ref(() => ())

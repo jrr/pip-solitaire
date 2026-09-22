@@ -15,8 +15,8 @@ let debugStates: array<MenuDisclosure.entry> = [
   {label: "Almost won", onSelect: () => ()},
 ]
 
-// The cascade group as the driver hands it over: a unit picked out of four, and a knob
-// per number with the words it reads as and where a drag reports to.
+// The cascade group as the driver hands it over: a row of chips per choice and a slider
+// per number, each with the words it reads as and where a drag or a tap reports to.
 let knobs = (~log=[]): array<MenuSlider.spec> => [
   {
     label: "cards",
@@ -38,16 +38,29 @@ let knobs = (~log=[]): array<MenuSlider.spec> => [
   },
 ]
 
-let units = (~log=[]): array<MenuChoiceRow.choice> =>
-  ["never", "seconds", "cards", "run"]->Array.map(label => {
-    MenuChoiceRow.label,
-    selected: label == "cards",
-    onChoose: () => log->Array.push(`unit ${label}`),
-  })
+let choices = (~log=[]): array<MenuChoiceRow.spec> => {
+  let chips = (~selected, labels) =>
+    labels->Array.map(label => {
+      MenuChoiceRow.label,
+      selected: label == selected,
+      onChoose: () => log->Array.push(`chose ${label}`),
+    })
+  [
+    {
+      MenuChoiceRow.label: "persistence",
+      choices: chips(~selected="cards", ["never", "seconds", "cards", "run"]),
+    },
+    {
+      MenuChoiceRow.label: "steps",
+      readout: "as small as the coin allows",
+      choices: chips(~selected="smooth", ["smooth", "per layer"]),
+    },
+  ]
+}
 
 let render = (
   ~cascadeKnobs=knobs(),
-  ~cascadeUnits=units(),
+  ~cascadeChoices=choices(),
   ~debugScenesOpen=false,
   ~autoplayEnabled=true,
   ~autoplayStatus=None,
@@ -78,7 +91,7 @@ let render = (
       onShareGame,
       onClearStored,
       cascadeKnobs,
-      cascadeUnits,
+      cascadeChoices,
       debugScenes,
       debugScenesOpen,
       debugStates,
@@ -247,9 +260,10 @@ describe("MenuDebugScreen", () => {
       }
     expect(rowsIn(0))->toEqual(["Gallery", "Raster"])
     expect(rowsIn(1))->toEqual(["Mid-game", "Almost won"])
-    // The third's rows are the unit chips — which *are* `.menu-row`s, that being where
-    // their box and highlight come from — and nothing else: a slider is not one.
-    expect(rowsIn(2))->toEqual(["never", "seconds", "cards", "run"])
+    // The third's rows are the chips of both its pickers — which *are* `.menu-row`s,
+    // that being where their box and highlight come from — and nothing else: a slider is
+    // not one.
+    expect(rowsIn(2))->toEqual(["never", "seconds", "cards", "run", "smooth", "per layer"])
   })
 
   test("puts the cascade knobs on sliders, each reading out what its number means", () => {
@@ -278,9 +292,23 @@ describe("MenuDebugScreen", () => {
     ])
   })
 
+  test("draws a picker per choice the driver sends, each with its own readout", () => {
+    // Two of them now — what the trail's length is said in, and what the fade waits for —
+    // and neither is named here: a list is what lets the next one be a change in the
+    // driver alone.
+    let screen = render()
+    expect(screen->findAll(".menu-choice__label")->Array.map(text))->toEqual([
+      "persistence",
+      "steps",
+    ])
+    expect(screen->findAll(".menu-choice__readout")->Array.map(text))->toEqual([
+      "as small as the coin allows",
+    ])
+  })
+
   test("reports a drag to the knob it was on, and a tap to the chip it was on", () => {
     let log = []
-    let screen = render(~cascadeKnobs=knobs(~log), ~cascadeUnits=units(~log))
+    let screen = render(~cascadeKnobs=knobs(~log), ~cascadeChoices=choices(~log))
     let coin = screen->find(`input[data-knob="coin"]`)->Option.getOrThrow
     typeInto(coin, "0.25")
     let run =
@@ -289,7 +317,7 @@ describe("MenuDebugScreen", () => {
       ->Array.find(chip => text(chip) == "run")
       ->Option.getOrThrow
     click(run)
-    expect(log)->toEqual(["coin 0.25", "unit run"])
+    expect(log)->toEqual(["coin 0.25", "chose run"])
   })
 
   test("hands the browser the range the driver asked for", () => {

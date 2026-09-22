@@ -57,6 +57,10 @@ const openCascadeKnobs = async (page) => {
 const unit = (page, label) =>
   page.locator(`.menu-choice[data-choice="persistence"] .menu-choice__chip`, { hasText: label })
 
+/** …and one of the step group's, which is what the fade waits for before it lands. */
+const step = (page, label) =>
+  page.locator(`.menu-choice[data-choice="steps"] .menu-choice__chip`, { hasText: label })
+
 // The overlay stays in the document when it is put away — it is hidden, not unmounted —
 // so what a closed menu is, to a test, is one that can't be seen.
 const closeMenu = async (page) => {
@@ -170,7 +174,40 @@ test("the units are four ways of saying one length, not four lengths", async ({ 
     "17% of the run, whatever its deck",
   )
 
-  // Off has no length at all, so there is no length slider — only the coin's.
+  // Off has no length at all — and nothing to spend, so neither slider is left: a
+  // control that governed a fade which isn't running would be the one thing on this
+  // panel that lies.
   await unit(page, "never").click()
-  await expect(page.locator(".menu-slider__label")).toHaveText(["coin"])
+  await expect(page.locator(".menu-slider__label")).toHaveCount(0)
+})
+
+test("a layer step leaves a whole rank at full strength until the next one starts", async ({
+  page,
+}) => {
+  // The other thing the chips choose: not how long the trail lasts but what the fade
+  // waits for. On the board the seats are foundations emptied rank by rank, so a step
+  // per layer means everything thrown since the last rank is at the strength it went on
+  // at — which is the opposite of the smooth fade above, where all but the newest stamp
+  // has already sunk.
+  await page.goto("/?game=freecell&state=finish&animate=off")
+  await settleBoard(page)
+  await openCascadeKnobs(page)
+  await step(page, "per layer").click()
+  // Nothing left to size the steps with: the layer is the step.
+  await expect(page.locator('input[data-knob="coin"]')).toHaveCount(0)
+  await closeMenu(page)
+  await winAndWatch(page, { cards: 4 })
+
+  // Polled rather than sampled once, because where in a rank the sample lands is the
+  // run's business: just after a step the surface is as bare as the smooth fade leaves
+  // it, and the claim is about what builds up before the next one.
+  await expect
+    .poll(
+      async () => {
+        const now = await ink(page)
+        return now.painted === 0 ? 0 : now.full / now.painted
+      },
+      { timeout: 40_000 },
+    )
+    .toBeGreaterThan(0.25)
 })

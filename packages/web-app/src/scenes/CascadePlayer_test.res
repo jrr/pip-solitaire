@@ -180,7 +180,7 @@ describe("the fade behind the cards", () => {
     let paidAfter = ref(0)
     for stamp in 1 to 40 {
       let owed = player.fadeOwedMs
-      CascadePlayer.dim(player)
+      CascadePlayer.dim(player, ~seats=4)
       if player.fadeOwedMs < owed && paidAfter.contents == 0 {
         paidAfter := stamp
       }
@@ -194,12 +194,15 @@ describe("the fade behind the cards", () => {
     // A bigger bite is a longer wait between fills, which is what the cost is read off:
     // a fifth takes 322ms of simulated time to owe where a tenth takes 152.
     let player = ready(
-      ~options={...CascadePlayer.defaults, fade: {...CascadePlayer.defaultFade, coin: 0.2}},
+      ~options={
+        ...CascadePlayer.defaults,
+        fade: {...CascadePlayer.defaultFade, step: CascadePlayer.Coin(0.2)},
+      },
     )
     let paidAfter = ref(0)
     for stamp in 1 to 60 {
       let owed = player.fadeOwedMs
-      CascadePlayer.dim(player)
+      CascadePlayer.dim(player, ~seats=4)
       if player.fadeOwedMs < owed && paidAfter.contents == 0 {
         paidAfter := stamp
       }
@@ -269,12 +272,58 @@ describe("the fade behind the cards", () => {
     )
   })
 
+  test("counts a layer as one time round the seats, which is a rank off the foundations", () => {
+    // `Cascade` deals its seats in order and a board's piles come off a slot at a time,
+    // so with four foundations every fourth launch is a new rank starting.
+    expect(CascadePlayer.layerOf(~launched=0, ~seats=4))->toBe(0)
+    expect(CascadePlayer.layerOf(~launched=3, ~seats=4))->toBe(0)
+    expect(CascadePlayer.layerOf(~launched=4, ~seats=4))->toBe(1)
+    // A stage with no seats has no rounds to count, which is what keeps a layer step from
+    // paying anything on one.
+    expect(CascadePlayer.layerOf(~launched=9, ~seats=0))->toBe(0)
+  })
+
+  test("waits for the seats to come round when that is the step it is on", () => {
+    // Nothing is taken off while a rank is in the air, and the whole round's worth lands
+    // as the next rank starts — so the brightest thing on the surface is the rank just
+    // thrown rather than the stamp just laid.
+    let player = ready(
+      ~options={
+        ...CascadePlayer.defaults,
+        fade: {persistence: CascadePlayer.Cards(9.), step: CascadePlayer.Layer},
+      },
+    )
+    let paidAt = []
+    for stamp in 1 to 12 {
+      let owed = player.fadeOwedMs
+      CascadePlayer.dim(player, ~seats=4)
+      if player.fadeOwedMs < owed {
+        paidAt->Array.push(stamp)
+      }
+
+      // The run reaching its fourth and eighth card, which is where the seats come round.
+      if stamp == 4 || stamp == 8 {
+        player.run = {...player.run, launched: stamp}
+      }
+    }
+    after(
+      player,
+      () => {
+        expect(paidAt)->toEqual([5, 9])
+        // …and with no card left to launch there is no round left to come, so the last
+        // rank's trail stays where it is rather than sinking on a clock of its own. The
+        // debt is still counted, so a step picked up mid-run pays what it owes.
+        expect(player.fadeOwedMs)->toBe(3. *. CascadePlayer.defaults.stampMs)
+      },
+    )
+  })
+
   test("spends every coin in full, so a run of stamps is worth what the seconds say", () => {
     // The debt is cleared by what was paid, not by a fixed amount, so nothing drifts
     // between one payment and the next.
     let player = ready()
     for _ in 1 to 10 {
-      CascadePlayer.dim(player)
+      CascadePlayer.dim(player, ~seats=4)
     }
     after(player, () => expect(player.fadeOwedMs)->toBe(0.))
   })
@@ -354,7 +403,7 @@ describe("new settings, handed over mid-flight", () => {
     underway(player)
     CascadePlayer.retune(
       player,
-      {...player.options, fade: {persistence: CascadePlayer.Seconds(2.), coin: 0.2}},
+      {...player.options, fade: {persistence: CascadePlayer.Seconds(2.), step: Coin(0.2)}},
     )
     after(
       player,

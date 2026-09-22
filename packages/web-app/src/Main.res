@@ -61,26 +61,29 @@ external registerSW: registerSWOptions => bool => promise<unit> = "registerSW"
 // lifecycle (two booleans flip when their callbacks fire) and whether the menu is
 // open.
 
-// What the Debug screen's cascade group is set to. The persistence here is always a
-// *number* in one of its units: "nothing fades" rides beside it as `fades` rather than
-// as a fourth value, so there is always a length for the slider to show, and turning the
-// fade off and on again comes back to the one you had rather than to the default.
+// What the Debug screen's cascade group is set to. Every setting the player reads as a
+// choice is held here as a number *and* a flag, so a control that is off still has a
+// value to come back to: the persistence is always a number in one of its units, with
+// "nothing fades" beside it as `fades`; the step is always a coin, with `perLayer`
+// beside it. Turning either back on returns the setting you had rather than the default.
 type cascadeTuning = {
   length: CascadePlayer.persistence,
   fades: bool,
   coin: float,
+  perLayer: bool,
 }
 
 let defaultCascadeTuning = {
   length: CascadePlayer.defaultFade.persistence,
   fades: true,
-  coin: CascadePlayer.defaultFade.coin,
+  coin: CascadePlayer.defaultCoin,
+  perLayer: false,
 }
 
 // …and the same setting as the player reads it, which is where the two halves meet.
-let cascadeFadeOf = ({length, fades, coin}) => {
+let cascadeFadeOf = ({length, fades, coin, perLayer}) => {
   CascadePlayer.persistence: fades ? length : CascadePlayer.Forever,
-  coin,
+  step: perLayer ? CascadePlayer.Layer : CascadePlayer.Coin(coin),
 }
 
 type model = {
@@ -1618,14 +1621,16 @@ let debugScreen = (model, dispatch): MenuDebugScreen.props => {
   debugLog: model.debugLog,
   onToggleDebugLog: () => dispatch(ToggleDebugLog),
   // The victory cascade's dimming, dragged on a live board. The menu sits above the
-  // cascade's canvas, so these can be dragged over a celebration as it falls and land on
-  // it — and on the next one, which reads them as it starts. A list, so the next knob is
-  // an entry here and no new prop anywhere.
-  // Which unit the trail's length is said in — and "never", which is not a unit but is
-  // where the fade is off, so it belongs among the same chips rather than on a switch of
-  // its own. Picking a unit re-says the length in it (`CascadePlayer.sameIn`), so the
-  // animation stays put while the words change.
-  cascadeUnits: {
+  // cascade's canvas, so these land on the celebration as it falls — and on the next one,
+  // which reads them as it starts. Lists, so the next control is an entry here and no new
+  // prop anywhere.
+  //
+  // First the two things about the fade that are picked rather than measured: which unit
+  // the trail's length is said in, and what the fade waits for before it lands. "never" is
+  // not a unit but is where the fade is off, so it rides among the units rather than on a
+  // switch of its own. Picking a unit re-says the length in it (`CascadePlayer.sameIn`),
+  // so the animation stays put while the words change.
+  cascadeChoices: {
     let saidIn = like =>
       CascadePlayer.sameIn(
         model.cascade.length,
@@ -1638,34 +1643,64 @@ let debugScreen = (model, dispatch): MenuDebugScreen.props => {
       selected: model.cascade.fades && cascadeUnitOf(model.cascade.length) == cascadeUnitOf(like),
       onChoose: () => dispatch(SetCascade({...model.cascade, fades: true, length: saidIn(like)})),
     }
-    [
-      {
-        MenuChoiceRow.label: "never",
-        selected: !model.cascade.fades,
-        onChoose: () => dispatch(SetCascade({...model.cascade, fades: false})),
-      },
-      unit(CascadePlayer.Seconds(0.)),
-      unit(CascadePlayer.Cards(0.)),
-      unit(CascadePlayer.Fraction(0.)),
-    ]
+    let persistence = {
+      MenuChoiceRow.label: "persistence",
+      choices: [
+        {
+          MenuChoiceRow.label: "never",
+          selected: !model.cascade.fades,
+          onChoose: () => dispatch(SetCascade({...model.cascade, fades: false})),
+        },
+        unit(CascadePlayer.Seconds(0.)),
+        unit(CascadePlayer.Cards(0.)),
+        unit(CascadePlayer.Fraction(0.)),
+      ],
+    }
+    // The step. A rank of cards at a time on this board, because the foundations are
+    // emptied a slot at a time and the player's seats are those foundations — which is
+    // what the readout says, in the words of the thing being watched rather than the
+    // player's own `Layer`.
+    let steps = {
+      MenuChoiceRow.label: "steps",
+      readout: model.cascade.perLayer
+        ? "one step as the next rank starts"
+        : "as small as the coin allows",
+      choices: [
+        {
+          MenuChoiceRow.label: "smooth",
+          selected: !model.cascade.perLayer,
+          onChoose: () => dispatch(SetCascade({...model.cascade, perLayer: false})),
+        },
+        {
+          MenuChoiceRow.label: "per layer",
+          selected: model.cascade.perLayer,
+          onChoose: () => dispatch(SetCascade({...model.cascade, perLayer: true})),
+        },
+      ],
+    }
+    // Nothing fading is nothing to say about it: the step row goes with the length's
+    // slider rather than sitting there governing a fade that isn't running.
+    model.cascade.fades ? [persistence, steps] : [persistence]
   },
-  // …and the numbers themselves. The length's slider is left out entirely when nothing
-  // fades: there is no length to set then, and a control that did nothing would be the
-  // one thing on this panel that lies.
+  // …and the numbers themselves, each left out where it has nothing to set — a control
+  // that did nothing would be the one thing on this panel that lies. There is no length
+  // while nothing fades, and no coin while the steps are the layers'.
   cascadeKnobs: {
     Array.concat(
       model.cascade.fades ? [cascadeSlider(model.cascade, dispatch)] : [],
-      [
-        {
-          MenuSlider.label: "coin",
-          min: 0.01,
-          max: 0.4,
-          step: 0.01,
-          value: model.cascade.coin,
-          readout: cascadeCoinReadout(model.cascade),
-          onInput: coin => dispatch(SetCascade({...model.cascade, coin})),
-        },
-      ],
+      model.cascade.fades && !model.cascade.perLayer
+        ? [
+            {
+              MenuSlider.label: "coin",
+              min: 0.01,
+              max: 0.4,
+              step: 0.01,
+              value: model.cascade.coin,
+              readout: cascadeCoinReadout(model.cascade),
+              onInput: coin => dispatch(SetCascade({...model.cascade, coin})),
+            },
+          ]
+        : [],
     )
   },
   // Asked of the live board rather than the model: the row is live wherever a command
