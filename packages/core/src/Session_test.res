@@ -258,6 +258,20 @@ describe("Session autoplay", () => {
     expect(Stats.usedAutoplay(played.stats))->toBe(true)
   })
 
+  test("thinking and adopting are two halves of the one answer", () => {
+    // What a driver that thinks elsewhere leans on. The web app hands the board to a
+    // worker thread, gets `Solver.autoplayed` back — plain data, the only thing that
+    // survives the trip — and makes this board's move out of it with `adoptAutoplay`.
+    // That path has to land exactly where the single call lands, or the two front ends
+    // are playing the same line differently.
+    let start = open_(Scenario.freecellFinish(freecell))
+    let (whole, wholeOutcome) = Session.autoplay(~clock=stopped, start)
+    let found = Solver.autoplay(~game=start.game, Session.present(start))
+    let (halves, halvesOutcome) = Session.adoptAutoplay(~clock=stopped, ~ms=0., start, found)
+    expect(halves)->toEqual(whole)
+    expect(halvesOutcome)->toEqual(wholeOutcome)
+  })
+
   test("a driver out of patience says so, and leaves the board where it was", () => {
     // The wait is the *driver's*, and `Session` is where it becomes one: the caller says
     // how many milliseconds, the session supplies the clock it already holds. This one

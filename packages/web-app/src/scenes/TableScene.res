@@ -323,10 +323,16 @@ type controls = {
   // Not a second interpreter: the command goes to `Session.step` exactly as the
   // terminal's does, and what comes back is turned into cards moving on a screen.
   runCommand: Command.t => array<Render.line>,
-  // `autoplay` as a control rather than a typed line — the menu's Autoplay row. The
-  // command and the runner are the console's; what is extra is the answer, which a
-  // caller standing over the board has to read before deciding whether to stay there.
-  autoplay: unit => autoplayed,
+  // `autoplay` as a control rather than a typed line — the menu's Autoplay row, and the
+  // console's own verb too (`runCommand` forwards it here). The command and the runner
+  // are the console's; what is extra is the answer, which a caller standing over the
+  // board has to read before deciding whether to stay there.
+  //
+  // **It answers by callback, and may take seconds to.** The thinking happens on a
+  // worker thread (`Thinker`), so the press returns at once and this thread goes on
+  // drawing — which is what lets a caller paint "thinking" and be seen doing it.
+  // `~onAnswer` runs once per press, or not at all if the board moves on first.
+  autoplay: (~onAnswer: autoplayed => unit) => unit,
   // Re-lay every resting card, so the tilt switch re-tilts the board in place rather
   // than only on the next move.
   relayout: unit => unit,
@@ -652,6 +658,11 @@ let make = (
     let interruptPlay = () => {
       playToken := playToken.contents + 1
       stopPlay := None
+      // A line still being *thought about* is interrupted by the same things, and on the
+      // same reasoning: its plan is for a board that no longer exists. The token below
+      // is what makes a stale answer harmless; this is what stops a whole thread going
+      // on spending ten seconds earning one.
+      Thinker.cancel()
     }
 
     // **The stop gesture**: a press anywhere on the board ends a running line, and is
@@ -659,6 +670,10 @@ let make = (
     // double-tap. The board takes it rather than each card because it has to land on a
     // card *in flight* as readily as on bare table, and a flying card is over whichever
     // square its flight happens to have reached.
+    //
+    // A line still being thought about is a line for this purpose too: the search runs
+    // on a thread of its own, so the board is live and pressable throughout it, and the
+    // press that would stop the cards is the one that stops the thinking.
     boardHost->onPointerCapturing(
       "pointerdown",
       ev =>
@@ -692,7 +707,9 @@ let make = (
     // time instead of each of them being re-published on every build.
     let liveUndo: ref<unit => unit> = ref(() => ())
     let liveRunCommand: ref<Command.t => array<Render.line>> = ref(_ => [])
-    let liveAutoplay: ref<unit => autoplayed> = ref(() => {playing: false, reply: []})
+    let liveAutoplay: ref<(~onAnswer: autoplayed => unit) => unit> = ref((~onAnswer) =>
+      onAnswer({playing: false, reply: []})
+    )
     let liveRelayout: ref<unit => unit> = ref(() => ())
 
     // The active `devicemotion` shake subscription, `Some` while Wiggle Waggle is on
@@ -1943,19 +1960,15 @@ let make = (
         | Session.Played(_) => ()
         }
 
-      // `~patience` is what `autoplay` is allowed to spend thinking, and it is this
-      // layer's to set because this is the layer someone is watching: a board that sits
-      // still for the better part of a minute reads as a hung page, whatever the search
-      // is doing. It costs answers on the stubborn deals — `docs/solver.md` § What a
-      // caller is willing to spend — and the trade is deliberate.
-      //
-      // Both published runners come through here. What the second one wants back is the
-      // *change*, not just the reply: a caller that is covering the board (the menu's
-      // Autoplay row) has to know whether there is now a line being played to get out
-      // of the way of.
-      let runAndReport = (command: Command.t): (Session.change, array<Render.line>) => {
-        let before = state()
-        let (next, outcome) = Session.step(~clock, ~patience=Solver.interactive, current(), command)
+      // What a finished verb does to the board, and what it leaves to be said. Split
+      // from the running of it because `autoplay`'s answer arrives from another thread
+      // (see below) and still has to land here, the same way every other verb's does.
+      let adopt = (
+        ~before: GameState.t,
+        ~command: Command.t,
+        next: Session.t,
+        outcome: Session.outcome,
+      ): (Session.change, array<Render.line>) => {
         switch outcome.change {
         // A solver line is walked, not adopted: `next` is where it *ends up*, and getting
         // there a move at a time is the point (see `playLine`).
@@ -1986,25 +1999,89 @@ let make = (
         (outcome.change, reply)
       }
 
-      let runCommand = (command: Command.t): array<Render.line> => {
-        let (_, reply) = runAndReport(command)
-        reply
+      // Every verb but one, run and reported in the same breath.
+      let runAndReport = (command: Command.t): (Session.change, array<Render.line>) => {
+        let before = state()
+        let (next, outcome) = Session.step(~clock, current(), command)
+        adopt(~before, ~command, next, outcome)
       }
 
-      // `autoplay`, asked for by a control rather than typed: the same verb, through the
-      // same runner, with the one fact a button needs and a typed line doesn't — whether
-      // the solver found a line. `Played` is the only change this verb can make, so it
-      // is the whole of the question.
-      let autoplay = (): autoplayed => {
-        let (change, reply) = runAndReport(Command.Autoplay)
-        {
-          playing: switch change {
-          | Session.Played(_) => true
-          | _ => false
+      // `autoplay`, the one verb that takes real time and so the one that doesn't come
+      // back in the same breath.
+      //
+      // **The thinking is not on this thread.** `Thinker` sends the board to a worker,
+      // which is what lets the board go on painting — and go on being played, and go on
+      // answering the stop gesture — through a search that can run for seconds. What
+      // comes back is `Solver.autoplayed`, plain data with no session in it, and
+      // `Session.adoptAutoplay` makes this board's move out of it here.
+      //
+      // `~patience` is what the search is allowed to spend, and it is this layer's to
+      // set because this is the layer someone is watching. A watched board is no longer
+      // a *frozen* board, but ten seconds of a spinner is still a limit worth having,
+      // and it costs answers on the stubborn deals — `docs/solver.md` § What a caller is
+      // willing to spend.
+      let autoplay = (~onAnswer: autoplayed => unit) => {
+        // A press replaces whatever the last one started: a line still being played is
+        // ended where it stands, exactly as the stop gesture would end it, and a search
+        // still running is abandoned by `interruptPlay` below. Either way the board the
+        // solver is about to be handed is the board that is on the table now.
+        stopPlay.contents->Option.forEach(stop => stop())
+        interruptPlay()
+        let token = playToken.contents
+        let asked = current()
+        let before = state()
+        let started = clock()
+        // The board is live while it thinks, so the press that stops a running line
+        // stops this too — and says so, because a search that is abandoned leaves the
+        // board exactly as it found it and would otherwise go unmentioned.
+        stopPlay :=
+          Some(
+            () => {
+              interruptPlay()
+              DebugLog.message("autoplay stopped while thinking")
+            },
+          )
+        Thinker.think(
+          ~game=asked.game,
+          ~state=before,
+          ~patience=Some(Solver.interactive),
+          ~onAnswer=found => {
+            // The same re-check every step of a line makes: bumped since we asked, and
+            // the answer is a plan for a board that no longer exists.
+            if token == playToken.contents {
+              stopPlay := None
+              let (next, outcome) = Session.adoptAutoplay(
+                ~clock,
+                ~ms=clock() -. started,
+                asked,
+                found,
+              )
+              let (change, reply) = adopt(~before, ~command=Command.Autoplay, next, outcome)
+              onAnswer({
+                playing: switch change {
+                | Session.Played(_) => true
+                | _ => false
+                },
+                reply,
+              })
+            }
           },
-          reply,
-        }
+        )
       }
+
+      let runCommand = (command: Command.t): array<Render.line> =>
+        switch command {
+        // Forwarded rather than run. Letting it fall through would hand the search to
+        // `Session.step` on this thread, which is the whole thing `autoplay` above exists
+        // to avoid — and it has no answer to return by the time it returns anyway. A
+        // caller that wants the solver's words asks `autoplay` directly and is told.
+        | Command.Autoplay =>
+          autoplay(~onAnswer=_ => ())
+          []
+        | command =>
+          let (_, reply) = runAndReport(command)
+          reply
+        }
 
       // Build one draggable card and wire its pointer loop. It starts at 0,0 and is
       // positioned by the initial deal (below); returning `self` lets the caller
@@ -2642,7 +2719,7 @@ let make = (
         readHistory: () => readHistory.contents(),
         undo: () => liveUndo.contents(),
         runCommand: command => liveRunCommand.contents(command),
-        autoplay: () => liveAutoplay.contents(),
+        autoplay: (~onAnswer) => liveAutoplay.contents(~onAnswer),
         relayout: () => liveRelayout.contents(),
         dockFit: inset => dockFit.contents(inset),
         shake: {start: startShake, stop: stopShake},
@@ -2682,10 +2759,13 @@ let make = (
       observer->observe(boardHost)
       // The switcher clears the container on scene change, dropping the board host,
       // the New Game control and every listener with them. What outlives the DOM is
-      // everything hung off `window` or a clock: the `devicemotion` subscription, a
-      // cascade's frame loop, its own resize listener and a sprite build still in
-      // flight, and this observer. Each has to be detached explicitly.
+      // everything hung off `window`, a clock, or a thread of its own: the
+      // `devicemotion` subscription, a cascade's frame loop, its own resize listener
+      // and a sprite build still in flight, a line still being played or thought about
+      // (`interruptPlay`, which also terminates the search), and this observer. Each
+      // has to be detached explicitly.
       () => {
+        interruptPlay()
         unsubscribeShake()
         endCascade()
         dropHeldDeal()
@@ -2693,6 +2773,7 @@ let make = (
       }
     | None =>
       () => {
+        interruptPlay()
         unsubscribeShake()
         endCascade()
         dropHeldDeal()

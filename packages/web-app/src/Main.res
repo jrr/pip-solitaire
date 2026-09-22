@@ -1477,10 +1477,11 @@ let debugScreen = (model, dispatch): MenuDebugScreen.props => {
   // The console's `autoplay`, pressed instead of typed — and the two things a button
   // has to do that a typed line doesn't.
   //
-  // **It says it is thinking first.** `Solver.interactive` is ten seconds, and the
-  // search runs on this thread: a menu that freezes with nothing written on it reads
-  // as a crash. The status goes up, and the search waits a tick so the render carrying
-  // it is painted before the thread is taken.
+  // **It says it is thinking first, and is seen doing it.** `Solver.interactive` is ten
+  // seconds and a search routinely spends seconds of it, but the search is on a worker
+  // thread (`TableScene`'s `autoplay`, and `Thinker` behind it), so this one is free to
+  // paint the row it just wrote and keep painting while the answer is worked out. The
+  // press returns at once; what follows arrives whenever it arrives.
   //
   // **Then it gets out of the way, or explains itself.** A line found is played on the
   // board a move at a time, and the board is behind this panel — so the menu closes on
@@ -1490,9 +1491,8 @@ let debugScreen = (model, dispatch): MenuDebugScreen.props => {
   // where the play-by-play is about to appear under it.
   onAutoplay: () => {
     dispatch(AutoplayStatus(Some(MenuDebugScreen.thinking)))
-    setTimeout(() =>
-      liveBoard.contents->Option.forEach(board => {
-        let {playing, reply} = board.autoplay()
+    liveBoard.contents->Option.forEach(board =>
+      board.autoplay(~onAnswer=({playing, reply}) => {
         DebugConsole.say(reply)
         if playing {
           dispatch(CloseMenu)
@@ -1500,7 +1500,7 @@ let debugScreen = (model, dispatch): MenuDebugScreen.props => {
           dispatch(AutoplayStatus(Some(Render.toPlain(reply))))
         }
       })
-    , 0)->ignore
+    )
   },
   shareEnabled: model.shareUrl->Option.isSome,
   shareStatus: model.shareStatus,
@@ -1835,6 +1835,19 @@ DebugConsole.setRunner(line => {
       table.restart()
       []
     | None => Render.text("Nothing to restart on this scene.")
+    }
+  // The one board verb whose answer doesn't arrive in time to be returned. The search
+  // is on a worker thread, so the line is echoed, the prompt comes back, and the
+  // solver's sentence lands in the scrollback whenever the thinking is done — where a
+  // play-by-play is about to appear under it, exactly as before. Typed at a board with
+  // an autoplay already running, it stops that one and thinks again, which is what the
+  // board does with a second press of the row.
+  | Command.Autoplay =>
+    switch liveBoard.contents {
+    | Some(table) =>
+      table.autoplay(~onAnswer=({reply}) => DebugConsole.say(reply))
+      []
+    | None => Render.text("No board on this scene.")
     }
   | board =>
     switch liveBoard.contents {

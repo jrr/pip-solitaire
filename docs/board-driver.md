@@ -196,13 +196,20 @@ button that then has no deal to share is the one failure a share button can't
 afford, so the record makes it a type error rather than a convention two call
 sites keep.
 
-`autoplay` answers with a pair on the same argument, and it is the one field that
-exists because of *where* its caller stands. It runs the console's `autoplay` through
-the same runner a typed line takes; what it adds is whether the solver found a line
+`autoplay` answers with a pair, and it is the one field that exists because of *where*
+its caller stands. What it adds over a typed line is whether the solver found a line
 (`autoplayed.playing`). A caller covering the board — the menu's Debug screen, whose
 panel is the width of a phone — has to know: a line found is played out on the board
 behind it and is something to get out of the way of, while a refusal moves nothing at
 all, which makes the reply the only thing there will ever be to show.
+
+**And it is the one field that answers by callback**, because it is the one verb whose
+answer does not arrive in the same breath as the press: the search runs on a worker
+thread, so the call returns at once and `~onAnswer` fires seconds later, or never if the
+board moves on first. That is why `runCommand` forwards `Command.Autoplay` here rather
+than running it — the verb has no reply to return by the time it would have to — and why
+the Debug screen can write "Thinking…" and actually be seen writing it. `Thinker`'s
+header has the thread, the cancel and what may cross the boundary.
 
 ## Which opens touch storage
 

@@ -1145,6 +1145,16 @@ describe("TableScene win time", () => {
 // the solver has nothing left to think about (`freecellFinish` is already finishable),
 // so these run in milliseconds and still go through the whole path.
 describe("TableScene autoplay", () => {
+  // The control answers by callback, because in a browser the thinking is a worker's
+  // and arrives whenever it arrives. Here there is no `Worker` at all, so `Thinker`
+  // solves on the spot and the callback has already run by the time the press returns
+  // — which is what lets these stay the plain synchronous tests they were.
+  let solved = (board): TableScene.autoplayed => {
+    let answer = ref(None)
+    live(board).autoplay(~onAnswer=a => answer := Some(a))
+    answer.contents->Option.getOrThrow
+  }
+
   let statsOf = (saved: ref<option<SaveState.t>>) => saved.contents->Option.map(s => s.stats)
   let hasWinOverlay = (container): bool => container->find(".win-overlay")->Option.isSome
 
@@ -1342,9 +1352,7 @@ describe("TableScene autoplay", () => {
     let container = host("div")
     let scene = TableScene.make(~publish=published => board := Some(published), game)
     let _teardown = scene.mount(container)
-    expect(Render.toPlain(live(board).runCommand(Command.Autoplay)))->toBe(
-      Command.autoplayUnknownBoard,
-    )
+    expect(Render.toPlain(solved(board).reply))->toBe(Command.autoplayUnknownBoard)
   })
 
   test("autoplay says a line was found, so a caller covering the board can uncover it", () => {
@@ -1357,7 +1365,7 @@ describe("TableScene autoplay", () => {
       game,
     )
     let _teardown = scene.mount(container)
-    expect(live(board).autoplay().playing)->toBe(true)
+    expect(solved(board).playing)->toBe(true)
   })
 
   test("autoplay hands a refusal back instead, since the board won't be showing one", () => {
@@ -1369,9 +1377,9 @@ describe("TableScene autoplay", () => {
     let container = host("div")
     let scene = TableScene.make(~publish=published => board := Some(published), game)
     let _teardown = scene.mount(container)
-    let solved = live(board).autoplay()
-    expect(solved.playing)->toBe(false)
-    expect(Render.toPlain(solved.reply))->toBe(Command.autoplayUnknownBoard)
+    let answer = solved(board)
+    expect(answer.playing)->toBe(false)
+    expect(Render.toPlain(answer.reply))->toBe(Command.autoplayUnknownBoard)
   })
 })
 

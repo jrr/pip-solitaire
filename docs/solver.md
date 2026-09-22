@@ -84,9 +84,17 @@ Two are named in `Solver`, for **who is waiting** rather than for how long:
 interactive wait costs measures how many, and § Why the unsolved count stands is
 the decision that came out of it. `patient` is a **backstop**: it sits above the
 worst climb any board's ladder makes, so it bites only on a machine far slower
-than the one the record was measured on. `mise run solve` passes whatever
-`--limit` says, and nothing at all by default, which is what makes the benchmark
-record a measurement of the ladder rather than of a wait.
+than the one the record was measured on.
+
+**Neither front end waits on the thread it draws with.** The terminal has nothing
+to draw; the web app sends the board to a worker (`web-app/src/platform/Thinker.res`)
+and goes on painting, so `interactive` bounds a spinner rather than a freeze. It is
+still a policy about a person's patience and still costs the answers measured below —
+what it stopped being is the difference between a page and a hung page.
+
+`mise run solve` passes whatever `--limit` says, and nothing at all by default,
+which is what makes the benchmark record a measurement of the ladder rather than
+of a wait.
 
 **The wait bounds the whole climb, not a rung of it.** It is resolved into a
 deadline once, when the caller asks, and every rung is measured against that one
@@ -307,7 +315,7 @@ time, and the one that solved took 206 moves. Five deals is a probe, not a recor
 and the honest reading is only that the numbers above do not carry over — a board
 twice the size is not the same search at the same cap. Whoever measures it properly
 owes a range and a row; until then the Debug screen's Autoplay row on a Spider board
-is ten seconds of a held thread and then a refusal, which is the designed path
+is ten seconds of thinking and then a refusal, which is the designed path
 (`Solver.ranOutOfTime`) and not a wait anyone should be asked to like.
 
 ### Why the unsolved count stands
@@ -320,9 +328,9 @@ rather than tuning the heuristic or widening the ladder to move them.
 **The cost that made them a defect is gone.** What was wrong with an unanswered
 deal was never the gap in the table — it was that reaching it took the whole
 ladder, nearly forty seconds, wherever `autoplay` had been typed. A player now
-waits ten (§ What a caller is willing to spend). The deal is still unanswered
-and the board still can't say whether it is winnable, but neither of those is
-something anyone sits through.
+waits ten (§ What a caller is willing to spend), on a page that is still a page
+while they do. The deal is still unanswered and the board still can't say whether
+it is winnable, but neither of those is something anyone sits through.
 
 **And the answer they give is now true.** These deals used to come back
 "couldn't find a way to win from here", which reads as a verdict on the board.
@@ -578,8 +586,9 @@ JIT — and it costs the thing having the solver in `core` buys:
   `Reducer` precisely because both sides are one build.
 - It puts a second toolchain in `mise.toml`.
 - It makes `Solver.autoplay` async. Browsers cap synchronous WebAssembly
-  compilation at 4 KB on the main thread, and both front ends call it from inside
-  a command that answers synchronously.
+  compilation at 4 KB on the main thread — which the web app's worker thread is
+  not, so this one has softened since it was written; the CLI still calls
+  `Session.autoplay` from inside a command that answers synchronously.
 
 **Deferred deliberately: nothing is waiting on it.** If the budget is ever
 wanted, spend it at the cheap end of that list first — and note that the reason
