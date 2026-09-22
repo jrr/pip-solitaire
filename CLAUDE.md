@@ -128,6 +128,14 @@ instead of a minute, so it's what you measure a solver change with before playin
 one for real. `docs/solver.md` has the contract, the heuristic, and the benchmark
 record to beat.
 
+`mise run profile -- <deal>` drives that same browser harness with the CPU
+throttled and a Chrome trace running, and ranks where the main thread's time
+went — including the app's own call sites that forced style or layout, which a
+flame chart charges to the function that happened to be running instead. It is
+to a main-thread change what `solve` is to a solver change: run it before
+deciding what to move off the thread, and again after. `docs/profiling.md` has
+what the numbers mean and the record to compare against.
+
 The game can also be *typed* — `mise run cli -- play`, or the web app's debug
 console behind `` ` ``. Both take the same lines, because the grammar lives in
 `core` (`Command.res`); `docs/command-grammar.md` is the reference.
