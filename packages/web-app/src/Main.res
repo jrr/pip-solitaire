@@ -92,6 +92,11 @@ type model = {
   // `cutoutDebug`) so the switch opens in the right position; the logging itself is
   // driven by the shared `DebugLog.enabled` gate the toggle flips.
   debugLog: bool,
+  // The mirror the Debug screen's cascade sliders render from; `cascadeFade` (above) is
+  // the copy the board reads, written through on every drag. Two copies for the reason
+  // the settings switches have two — a control renders from the model, and the board
+  // reads a ref — and `SetCascadeFade` is what keeps them one value.
+  cascade: CascadePlayer.fade,
   // Which scene is mounted. The menu's games rows render their highlight from
   // this, so a scene change moves it through the diff rather than through a class
   // rewritten on a button the switcher kept hold of. Seeded from `switcher.active`
@@ -183,6 +188,7 @@ type msg =
   | ClearStoredState // the Debug screen's "Clear saved data" — forget the device, reopen
   | ToggleCutoutDebug // the menu's safe-area overlay switch (debug)
   | ToggleDebugLog // the Debug screen's console-logging switch
+  | SetCascadeFade(CascadePlayer.fade) // a Debug-screen cascade slider, dragged
   | SceneActivated(string) // the switcher mounted a scene — which one the menu highlights
   | VariantChosen(string) // a family's segment tapped, with no board of it up
   | HistoryChanged(bool) // whether the board can undo after a move
@@ -325,6 +331,17 @@ let reportScene: ref<string => unit> = ref(_ => ())
 
 let options: ref<Options.t> = ref(Preferences.load())
 let tiltEnabled: ref<bool> = ref(Preferences.loadCardTilt())
+
+// How the victory cascade dims its trail, read by the board the moment a game is won.
+// A ref for the reason the two above are — the board is not rebuilt when a slider moves,
+// and a run started from a stale value would be the wrong animation for the length of a
+// celebration.
+//
+// **Nothing loads or saves it.** It is a debug knob, not a preference: the Debug screen
+// is where it is dragged and a reload is how it is reset, which is the whole of what
+// "in memory" buys — no storage key to migrate, and no way to leave the app permanently
+// tuned to something nobody meant to keep.
+let cascadeFade: ref<CascadePlayer.fade> = ref(CascadePlayer.defaultFade)
 
 // The "Beta features" flag, a ref for a reason of its own — nothing on the board reads
 // it. It is read where the Elm model can't reach: the switcher's `~primary` (`menuGames`
@@ -646,6 +663,18 @@ let update = (msg, model) =>
       // for the session; the model state carries it across rotations regardless.
       () => CutoutDebug.setVisible(cutoutDebug),
     )
+  | SetCascadeFade(fade) => (
+      {...model, cascade: fade},
+      // Through to the board's copy at once — the next victory is the one this is for,
+      // and it could be the next move — and then to the celebration on screen, if there
+      // is one, so a slider dragged over a falling cascade moves *that* cascade. The
+      // same pair the tilt switch makes with `relayout`. Nothing is written to storage;
+      // see the ref.
+      () => {
+        cascadeFade := fade
+        liveBoard.contents->Option.forEach(board => board.retuneCascade())
+      },
+    )
   | ToggleDebugLog =>
     let debugLog = !model.debugLog
     (
@@ -945,6 +974,7 @@ let gameScene = (game: Game.t) => {
     },
     ~options,
     ~tiltEnabled,
+    ~cascadeFade,
     // `?animate=off` stills the whole board — every flight, not just the opening
     // one — so a shot or a scripted run reads a settled position at every step.
     ~skipFlights=!url.animate,
@@ -1461,6 +1491,25 @@ let settingsScreen = (model, dispatch): MenuSettingsScreen.props => {
   },
 }
 
+// The cascade sliders' readouts. Two numbers a developer might copy into
+// `CascadePlayer.defaultFade`, each with what it *means* beside it: a rate is a length of
+// memory, and a coin is how often the surface is filled, which is the whole of what the
+// fade costs to run (`docs/cascade.md`). The arithmetic behind both is the player's; the
+// words are this screen's.
+let hundredth = value => (Math.round(value *. 100.) /. 100.)->Float.toString
+
+let fadeRateReadout = (rate: float) =>
+  rate <= 0.
+    ? "off · nothing fades"
+    : `${hundredth(rate)} /s · half gone in ${hundredth(CascadePlayer.fadeHalfLife(rate))}s`
+
+let fadeCoinReadout = (fade: CascadePlayer.fade) => {
+  let every = CascadePlayer.fadePayment(fade, ~stampMs=CascadePlayer.defaults.stampMs)
+  every == infinity
+    ? `${hundredth(fade.coin)} · nothing to pay`
+    : `${hundredth(fade.coin)} · a fill every ${Math.round(every *. 1000.)->Float.toString} ms`
+}
+
 // The Debug screen: developer tools, a level below Settings.
 let debugScreen = (model, dispatch): MenuDebugScreen.props => {
   onClose: () => dispatch(CloseMenu),
@@ -1469,6 +1518,30 @@ let debugScreen = (model, dispatch): MenuDebugScreen.props => {
   onToggleCutoutDebug: () => dispatch(ToggleCutoutDebug),
   debugLog: model.debugLog,
   onToggleDebugLog: () => dispatch(ToggleDebugLog),
+  // The victory cascade's dimming, dragged on a live board. The menu sits above the
+  // cascade's canvas, so these can be dragged over a celebration as it falls and land on
+  // it — and on the next one, which reads them as it starts. A list, so the next knob is
+  // an entry here and no new prop anywhere.
+  cascadeKnobs: [
+    {
+      label: "fade",
+      min: 0.,
+      max: 0.95,
+      step: 0.01,
+      value: model.cascade.rate,
+      readout: fadeRateReadout(model.cascade.rate),
+      onInput: rate => dispatch(SetCascadeFade({...model.cascade, rate})),
+    },
+    {
+      label: "coin",
+      min: 0.01,
+      max: 0.4,
+      step: 0.01,
+      value: model.cascade.coin,
+      readout: fadeCoinReadout(model.cascade),
+      onInput: coin => dispatch(SetCascadeFade({...model.cascade, coin})),
+    },
+  ],
   // Asked of the live board rather than the model: the row is live wherever a command
   // has somewhere to land, which is the same question the console answers with "no board
   // on this scene".
@@ -1689,6 +1762,8 @@ let dispatch = Html.mount(
     // Debug overlay starts off each session (not persisted); the model keeps it
     // across rotations.
     cutoutDebug: false,
+    // The cascade's own defaults, which is what a reload resets the sliders to.
+    cascade: cascadeFade.contents,
     // Mirror the persisted console-logging preference so the switch opens in
     // the right position; the `DebugLog` gate itself was seeded above.
     debugLog: debugLogEnabled,

@@ -227,9 +227,17 @@ A fade in eight-bit alpha settles at a floor rather than at nothing, and the
 smaller the share the higher that floor — `Canvas.dim` has the arithmetic. Half a
 second's fade spread over sixty stamps is a hundredth apiece, and a hundredth
 settles at fifty alpha: the white sheet again, in grey. So what is owed is saved
-up and spent once it is worth `minFadeShare`, a tenth, which settles under 2%.
-At the default rate that is a payment every 152ms of simulated time, in steps the
-trail's own stamps hide.
+up and spent once it is worth the `coin`, a tenth by default, which settles under
+2%. At the default rate that is a payment every 152ms of simulated time, in steps
+the trail's own stamps hide.
+
+The coin is also the whole of what the fade *costs*, which is why it is a knob
+rather than a constant. A payment is one full-surface fill and nothing between
+them, so the bill is the fill's price times `CascadePlayer.fadePayment` a second
+— about 6.6 of them at the defaults. Paying every stamp instead, the obvious way
+to write this, is sixty: measured on a software rasterizer (a slow device's
+ceiling) a fill on a desktop-sized store is 2.6ms, or a hundred card blits, so
+the obvious way spends 16% of the main thread where this spends under 2%.
 
 **Per second of simulated time**, like the stamp interval and for the same
 reason: a fade counted per frame would leave a shorter trail on a 120Hz display
@@ -297,10 +305,11 @@ chosen.
 | launchInterval | 750 ms | so a 52-card deck takes ~39s |
 | trail | 16 ms | of simulated time between stamps |
 | fade | 0.5 /s | the share of its brightness the trail gives up per simulated second — a one-second half-life |
+| fade coin | 0.1 | the smallest share worth taking off in one go — a fill every 152ms at that rate |
 
 Not on a slider: the simulation step (1/120s), `maxStep`
-(50ms), `maxCatchUpMs` (100ms), `minFadeShare` (a tenth), the pose length (16
-cards), and the scene's three card sizes (40/90/140px).
+(50ms), `maxCatchUpMs` (100ms), the pose length (16 cards), and the scene's three
+card sizes (40/90/140px).
 
 At earth gravity the trail knob has to come down with it — spacing is speed ×
 interval, and raising one without the other turns the smear into a scatter.
@@ -330,7 +339,8 @@ already scaled to its stage.
 | `Cascade_test.res` | the arithmetic: framerate independence, the clamp, the floor, the walls, cards meeting, energy loss, the bounce budget, the aim, the spreads, seeded replay |
 | `CascadePlayer_test.res` | the mechanics a jsdom can reach |
 | `CascadeScene_test.res` | the chrome: which knobs exist, what they read out |
-| `browser-tests/cascade.spec.mjs` | the pixels: the store, the trail, the snap, a seeded pose repeating to the byte, the resize policy |
+| `browser-tests/cascade.spec.mjs` | the pixels: the store, the trail, the fade, the snap, a seeded pose repeating to the byte, the resize policy |
+| `browser-tests/cascade-tuning.spec.mjs` | the menu's knobs on the real thing: the next victory, the one already falling, and the reload that forgets them |
 | `TableScene_test.res` | which wins play one, and that every way out of a run still ends at the panel |
 | `browser-tests/win.spec.mjs` | the board's own: real sprites, foundations emptying, a real tap ending it |
 
@@ -359,6 +369,15 @@ which is what makes a card fall from the pile it was on — and each
 **Only a win as it happens plays one.** A victory restored from storage, and a
 redo back into the winning move, raise the panel alone: the cascade is what a
 game being won looks like, not what a won position looks like.
+
+**The dimming is tunable from the menu, on a live board.** Debug → *cascade* holds
+the two numbers as sliders (`MenuSlider`, fed by `Main`'s `debugScreen`), and they
+reach the board the way the tilt switch does: a live ref the board reads as a
+cascade starts (`~cascadeFade`), plus `controls.retuneCascade` for the one already
+falling — the menu opens over the canvas, so a slider dragged mid-celebration
+moves that celebration. Nothing is stored. They are a debug aid rather than a
+preference, and a reload puts `CascadePlayer.defaultFade` back, which is also what
+keeps a tuned-and-forgotten build from being what someone ships.
 
 **`prefers-reduced-motion` is the one way out.** A cascade is nothing but
 movement, so an OS asking for less of it gets the panel alone — which is also

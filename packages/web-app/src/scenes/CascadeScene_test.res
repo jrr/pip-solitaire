@@ -63,6 +63,7 @@ describe("the cascade scene, on an engine that can't draw", () => {
       "launchInterval",
       "trail",
       "fade",
+      "fadeCoin",
     ])
   })
 
@@ -112,6 +113,20 @@ describe("the cascade scene, on an engine that can't draw", () => {
     // reading out a half-life of forever.
     TestDom.typeInto(fade, "0")
     expect(readout(host, "fade"))->toBe("off · the trail keeps everything")
+  })
+
+  test("reads a fade coin out as how often the surface is filled, which is its cost", () => {
+    // The knob that decides both halves of the trade — the haze a fade too small to
+    // survive rounding leaves, and the one full-surface fill each payment costs.
+    let (host, _) = mount()
+    expect(readout(host, "fadeCoin"))->toBe("0.1 · a fill every 152 ms")
+    let coin = TestDom.find(host, `input[data-knob="fadeCoin"]`)->Option.getOrThrow
+    TestDom.typeInto(coin, "0.3")
+    expect(readout(host, "fadeCoin"))->toBe("0.3 · a fill every 515 ms")
+    // With the fade off there is nothing to pay, whatever the coin says.
+    let fade = TestDom.find(host, `input[data-knob="fade"]`)->Option.getOrThrow
+    TestDom.typeInto(fade, "0")
+    expect(readout(host, "fadeCoin"))->toBe("0.3 · never, with the fade off")
   })
 
   test("won't offer a card a negative number of bounces, however wide the ± is dragged", () => {

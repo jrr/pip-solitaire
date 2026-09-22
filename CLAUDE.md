@@ -197,7 +197,7 @@ names `./src/Main.res.mjs` and `./src/styles/index.css`, and
 ## The board and its driver
 
 `Main.res` and `scenes/TableScene.res` are the widest seam in the app, and the
-only one told from two files at once: fifteen arguments in, one `controls`
+only one told from two files at once: sixteen arguments in, one `controls`
 record back. The split is that the board owns the cards and the driver owns
 everything a card can't answer — storage, the URL, the menu's preferences.
 

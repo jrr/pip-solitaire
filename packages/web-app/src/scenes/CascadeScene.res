@@ -96,7 +96,8 @@ let make = (~mode=Live, ~seed as initialSeed=1): Scene.t => {
     let cardWidth = ref(CascadePlayer.defaults.cardWidth)
     let seed = ref(initialSeed)
     let snap = ref(true)
-    let fade = ref(CascadePlayer.defaults.fade)
+    let fade = ref(CascadePlayer.defaults.fade.rate)
+    let coin = ref(CascadePlayer.defaults.fade.coin)
 
     let options = () => {
       ...CascadePlayer.defaults,
@@ -105,7 +106,7 @@ let make = (~mode=Live, ~seed as initialSeed=1): Scene.t => {
       knobs: knobs.contents,
       stampMs: stampMs.contents,
       snap: snap.contents,
-      fade: fade.contents,
+      fade: {rate: fade.contents, coin: coin.contents},
     }
 
     let refresh = ref(() => ())
@@ -336,6 +337,28 @@ let make = (~mode=Live, ~seed as initialSeed=1): Scene.t => {
           ? "off · the trail keeps everything"
           : `${hundredth(value)} /s · ${hundredth(CascadePlayer.fadeHalfLife(value))}s half-life`,
       ~onChange=value => fade := value,
+    )
+    // How big a bite each fade takes — and so, at a given rate, how often the surface is
+    // filled, which is the whole of what the fade costs. Left of about a twentieth the
+    // rounding in `Canvas.dim` eats most of it and the run ends in a grey sheet: the point
+    // of having this on a slider is that the haze is a thing you can watch arrive.
+    knob(
+      ~label="fadeCoin",
+      ~min=0.01,
+      ~max=0.4,
+      ~step=0.01,
+      ~value=coin.contents,
+      ~wide=true,
+      ~format=value => {
+        let every = CascadePlayer.fadePayment(
+          {rate: fade.contents, coin: value},
+          ~stampMs=stampMs.contents,
+        )
+        every == infinity
+          ? `${hundredth(value)} · never, with the fade off`
+          : `${hundredth(value)} · a fill every ${whole(every *. 1000.)} ms`
+      },
+      ~onChange=value => coin := value,
     )
 
     // ---- What the chrome says ----

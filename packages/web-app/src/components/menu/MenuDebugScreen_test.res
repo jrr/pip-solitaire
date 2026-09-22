@@ -15,7 +15,31 @@ let debugStates: array<MenuDisclosure.entry> = [
   {label: "Almost won", onSelect: () => ()},
 ]
 
+// Two knobs, as the driver hands them over: a value, the words it reads as, and where a
+// drag reports to.
+let knobs = (~log=[]): array<MenuSlider.spec> => [
+  {
+    label: "fade",
+    min: 0.,
+    max: 0.95,
+    step: 0.01,
+    value: 0.5,
+    readout: "0.5 /s · half gone in 1s",
+    onInput: rate => log->Array.push(`fade ${Float.toString(rate)}`),
+  },
+  {
+    label: "coin",
+    min: 0.01,
+    max: 0.4,
+    step: 0.01,
+    value: 0.1,
+    readout: "0.1 · a fill every 152 ms",
+    onInput: coin => log->Array.push(`coin ${Float.toString(coin)}`),
+  },
+]
+
 let render = (
+  ~cascadeKnobs=knobs(),
   ~debugScenesOpen=false,
   ~autoplayEnabled=true,
   ~autoplayStatus=None,
@@ -45,6 +69,7 @@ let render = (
       shareStatus,
       onShareGame,
       onClearStored,
+      cascadeKnobs,
       debugScenes,
       debugScenesOpen,
       debugStates,
@@ -197,13 +222,14 @@ describe("MenuDebugScreen", () => {
     )->toEqual(["Autoplay", "Share game state", "Clear saved data"])
   })
 
-  test("renders the two groups, scenes first, each with its own entries", () => {
+  test("renders the three groups, scenes first, each with its own entries", () => {
     // Every group is the same component (`<MenuDisclosure>`), which is why the entries
     // are read back per group: calls that differ only in their data can be crossed.
     let screen = render()
     expect(screen->findAll(".scene-menu__group > summary")->Array.map(text))->toEqual([
       "scenes",
       "states",
+      "cascade",
     ])
     let rowsIn = index =>
       switch screen->findAll(".scene-menu__group")->Array.get(index) {
@@ -212,6 +238,40 @@ describe("MenuDebugScreen", () => {
       }
     expect(rowsIn(0))->toEqual(["Gallery", "Raster"])
     expect(rowsIn(1))->toEqual(["Mid-game", "Almost won"])
+    // The third holds no rows at all: a slider is not one (`MenuSlider`).
+    expect(rowsIn(2))->toEqual([])
+  })
+
+  test("puts the cascade knobs on sliders, each reading out what its number means", () => {
+    // The group that governs the *game's* victory animation rather than a demo of one.
+    // What the words say is the driver's business; that each knob arrives with its own
+    // is this screen's.
+    let screen = render()
+    expect(screen->findAll(".menu-slider__label")->Array.map(text))->toEqual(["fade", "coin"])
+    expect(screen->findAll(".menu-slider__readout")->Array.map(text))->toEqual([
+      "0.5 /s · half gone in 1s",
+      "0.1 · a fill every 152 ms",
+    ])
+  })
+
+  test("reports a drag to the knob it was on, and to no other", () => {
+    let log = []
+    let screen = render(~cascadeKnobs=knobs(~log))
+    let coin = screen->find(`input[data-knob="coin"]`)->Option.getOrThrow
+    typeInto(coin, "0.25")
+    expect(log)->toEqual(["coin 0.25"])
+  })
+
+  test("hands the browser the range the driver asked for", () => {
+    // A slider whose bounds came from somewhere else would quietly tune something else.
+    let screen = render()
+    let fade = screen->find(`input[data-knob="fade"]`)->Option.getOrThrow
+    expect((attrOr(fade, "min"), attrOr(fade, "max"), attrOr(fade, "step")))->toEqual((
+      "0",
+      "0.95",
+      "0.01",
+    ))
+    expect(attrOr(fade, "type"))->toBe("range")
   })
 
   test("opens whichever group the switcher says the app landed inside", () => {
@@ -219,8 +279,8 @@ describe("MenuDebugScreen", () => {
     // than hidden behind a collapsed disclosure. The states group is unaffected.
     let open_ = screen =>
       screen->findAll(".scene-menu__group")->Array.map(group => group->hasAttr("open"))
-    expect(render(~debugScenesOpen=true)->open_)->toEqual([true, false])
-    expect(render(~debugScenesOpen=false)->open_)->toEqual([false, false])
+    expect(render(~debugScenesOpen=true)->open_)->toEqual([true, false, false])
+    expect(render(~debugScenesOpen=false)->open_)->toEqual([false, false, false])
   })
 
   test("goes back one step, to Settings — not all the way out", () => {

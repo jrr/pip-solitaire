@@ -330,6 +330,12 @@ type controls = {
   // Re-lay every resting card, so the tilt switch re-tilts the board in place rather
   // than only on the next move.
   relayout: unit => unit,
+  // Hand `~cascadeFade`'s current value to a celebration already in the air, which is
+  // `relayout`'s trick for the other live ref: a run started before the slider moved
+  // would otherwise keep the dimming it launched with for the length of a cascade, and
+  // forty seconds is a long time to watch the wrong one. Nothing to do when no cascade
+  // is running.
+  retuneCascade: unit => unit,
   // Could you give up this many px of stage width and still deal cards above
   // `minScale`? What the console's dock toggle consults, so the refusal is the
   // layout's own verdict rather than a guessed breakpoint.
@@ -547,6 +553,12 @@ let make = (
   // Both read *live*, so a menu toggle lands without rebuilding the board.
   ~options: ref<Options.t>=ref(Options.default),
   ~tiltEnabled: ref<bool>=ref(true),
+  // How a victory dims its trail. Read live for the reason the two above are, at the
+  // moment a cascade starts — and handed to one already falling through
+  // `controls.retuneCascade`, since the menu that drags it sits above the canvas and a
+  // celebration lasts forty seconds. A default, so a board built by a test or a demo
+  // needs no say. `docs/cascade.md` has what the two numbers do.
+  ~cascadeFade: ref<CascadePlayer.fade>=ref(CascadePlayer.defaultFade),
   // Drops the cards straight into their resting places — the URL's `?animate=off`, for
   // a shot of the already-dealt board. The layout is identical either way; only the
   // cosmetic flight is suppressed, as "reduce motion" already does. **Every** flight:
@@ -1444,6 +1456,9 @@ let make = (
             // The deal the board is showing, so one game's victory always falls the
             // same way; a board with no number to name takes the demo's own seed.
             seed: currentDeal()->Option.getOr(CascadePlayer.defaults.seed),
+            // Read here rather than held from mount: the slider that moved it is on the
+            // menu, and the board it is about is this one, up all the while.
+            fade: cascadeFade.contents,
             cardWidth: TableLayout.cardW *. scale.contents,
             launchpad: CascadePlayer.At(piles->Array.map(((seat, _)) => seat)),
           },
@@ -2644,6 +2659,13 @@ let make = (
         runCommand: command => liveRunCommand.contents(command),
         autoplay: () => liveAutoplay.contents(),
         relayout: () => liveRelayout.contents(),
+        // Mount scope, like the cascade it reaches: a run belongs to the scene rather
+        // than to any one build, and a re-deal ends it (`endCascade`) rather than
+        // handing it on.
+        retuneCascade: () =>
+          cascade.contents->Option.forEach(run =>
+            CascadePlayer.retune(run.player, {...run.player.options, fade: cascadeFade.contents})
+          ),
         dockFit: inset => dockFit.contents(inset),
         shake: {start: startShake, stop: stopShake},
       })

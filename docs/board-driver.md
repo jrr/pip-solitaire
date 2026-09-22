@@ -1,6 +1,6 @@
 # The board and its driver
 
-`TableScene.make` takes fifteen arguments and publishes a record back. That is a
+`TableScene.make` takes sixteen arguments and publishes a record back. That is a
 wide seam for one call site, and the width is not accidental: the board owns the
 cards and the driver owns everything a card can't answer. This page is the
 contract between them — what each side may know, why an argument is the shape it
@@ -26,7 +26,7 @@ shape:
 value      ~initial ~newDeal ~winShare ~skipFlights ~skipDealFlyIn
            settled before the board is built, and true for its whole life
 
-live ref   ~options ~tiltEnabled
+live ref   ~options ~tiltEnabled ~cascadeFade
            read at the moment of use, so a menu toggle lands without a rebuild
 
 channel    ~onHistory ~onDeal          board → driver, after every change
@@ -60,6 +60,13 @@ The rule the refs imply: **a preference the board consults belongs in a ref, a
 preference only the CSS consults does not.** "Display content around notch" has
 no ref here for exactly that reason — it reaches the page as a document-root
 attribute and the board never reads it.
+
+`~cascadeFade` is the same shape for something that is not a preference at all:
+the victory animation's dimming, dragged on the Debug screen and stored nowhere
+(`docs/cascade.md` § *Nothing is ever cleared*). It is a ref rather than a value
+because the board outlives every drag — a win reads it at the moment a cascade
+starts, so the sliders govern the next celebration rather than the next deal, and
+a menu opened over a run already falling is tuning the one after it.
 
 ## Why the reverse channels are refs *in the driver*
 

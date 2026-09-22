@@ -76,6 +76,12 @@ type elementProps = {
   // Lower-case: the DOM property is `inputMode`, so Preact finds no property of
   // this name and sets the attribute, which is what the browser reads.
   @as("inputmode") inputMode?: string,
+  // `<input type="range">`: the menu's sliders (`MenuSlider`). Strings, like the SVG
+  // geometry below — they are attributes the browser parses, and a float here would
+  // print `0.30000000000000004` into the DOM as readily as `0.3`.
+  min?: string,
+  max?: string,
+  step?: string,
   autocomplete?: string,
   onInput?: domEvent => unit,
   onSubmit?: domEvent => unit,
@@ -101,6 +107,9 @@ type elementProps = {
   // --- data-*, read by the browser tests and by CSS ---
   @as("data-rendering") dataRendering?: string,
   @as("data-raster") dataRaster?: string,
+  // What a slider is called, on the slider — the same attribute the demo scenes write
+  // onto theirs by hand, so one selector finds a knob wherever it is drawn.
+  @as("data-knob") dataKnob?: string,
   // --- SVG. The card art, the app icon and the spinner are all real vector
   // nodes (see CardArt), so the geometry lives here rather than in a stylesheet.
   xmlns?: string,

@@ -114,21 +114,35 @@ describe("the fade behind the cards", () => {
   test("is the share of a second the caller asked for, whatever it is paid in", () => {
     // Two half-seconds have to leave the surface where one second does, or the fade
     // would be a different trail at every stamp interval.
-    expect(CascadePlayer.fadeShare(~fade=0.5, ~ms=1000.))->toBeCloseToWithin(0.5, 6)
-    let half = CascadePlayer.fadeShare(~fade=0.5, ~ms=500.)
+    expect(CascadePlayer.fadeShare(~rate=0.5, ~ms=1000.))->toBeCloseToWithin(0.5, 6)
+    let half = CascadePlayer.fadeShare(~rate=0.5, ~ms=500.)
     expect(1. -. (1. -. half) *. (1. -. half))->toBeCloseToWithin(0.5, 6)
   })
 
   test("is off at zero, which is the trail that keeps everything", () => {
-    expect(CascadePlayer.fadeShare(~fade=0., ~ms=1000.))->toBe(0.)
-    // And `fadeHalfLife` agrees rather than dividing by zero behind the readout.
+    expect(CascadePlayer.fadeShare(~rate=0., ~ms=1000.))->toBe(0.)
+    // And the two readouts agree rather than dividing by zero behind a slider.
     expect(CascadePlayer.fadeHalfLife(0.))->toBe(infinity)
+    expect(CascadePlayer.fadePayment({rate: 0., coin: 0.1}, ~stampMs=16.))->toBe(infinity)
+  })
+
+  test("comes due on the stretch whose share is one coin", () => {
+    // The number a coin is read by: one full-surface fill this often is the whole of
+    // what the fade costs to run.
+    let every = CascadePlayer.fadePayment(CascadePlayer.defaultFade, ~stampMs=16.)
+    expect(Math.round(every *. 1000.))->toBe(152.)
+    // A bigger bite is a rarer fill…
+    let bigger = CascadePlayer.fadePayment({rate: 0.5, coin: 0.3}, ~stampMs=16.)
+    expect(bigger > every)->toBe(true)
+    // …and one smaller than a stamp's worth is still only paid at a stamp, which is the
+    // only moment there is to pay it at.
+    expect(CascadePlayer.fadePayment({rate: 0.5, coin: 0.001}, ~stampMs=16.))->toBe(0.016)
   })
 
   test("is saved up until it is worth a coin, instead of being spent on a rounding error", () => {
     // At the default trail interval half a second's fade is a hundredth of a stamp,
     // which an eight-bit alpha rounds straight back to where it was — so the player
-    // holds the debt and spends it once it is worth `minFadeShare` (see `Canvas.dim`).
+    // holds the debt and spends it once it is worth a coin (see `Canvas.dim`).
     let player = ready()
     let paidAfter = ref(0)
     for stamp in 1 to 40 {
@@ -141,6 +155,21 @@ describe("the fade behind the cards", () => {
     // 152ms is what a tenth costs at half a second, which is ten 16ms stamps.
     expect(paidAfter.contents)->toBe(10)
     after(player, () => expect(player.fadeOwedMs < 160.)->toBe(true))
+  })
+
+  test("takes its coin from the options, so a debug slider can move it on a live board", () => {
+    // A bigger bite is a longer wait between fills, which is what the cost is read off:
+    // a fifth takes 322ms of simulated time to owe where a tenth takes 152.
+    let player = ready(~options={...CascadePlayer.defaults, fade: {rate: 0.5, coin: 0.2}})
+    let paidAfter = ref(0)
+    for stamp in 1 to 60 {
+      let owed = player.fadeOwedMs
+      CascadePlayer.dim(player)
+      if player.fadeOwedMs < owed && paidAfter.contents == 0 {
+        paidAfter := stamp
+      }
+    }
+    after(player, () => expect(paidAfter.contents)->toBe(21))
   })
 
   test("spends every coin in full, so a run of stamps is worth what the seconds say", () => {
@@ -181,12 +210,12 @@ describe("new settings, handed over mid-flight", () => {
   test("a fade is one of those: what you dim is the trail in front of you", () => {
     let player = ready()
     underway(player)
-    CascadePlayer.retune(player, {...player.options, fade: 0.9})
+    CascadePlayer.retune(player, {...player.options, fade: {rate: 0.9, coin: 0.2}})
     after(
       player,
       () => {
         expect(player.run.launched)->toBe(1)
-        expect(player.options.fade)->toBe(0.9)
+        expect(player.options.fade.rate)->toBe(0.9)
       },
     )
   })

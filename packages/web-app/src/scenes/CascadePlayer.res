@@ -31,6 +31,24 @@ type launchpad =
   | Spread(int)
   | At(array<(float, float)>)
 
+// How the trail is dimmed, in two numbers that are not larger and smaller versions of
+// each other: `rate` is how fast the picture forgets, and `coin` is the size of the
+// payments it forgets in.
+type fade = {
+  // The share of its brightness the trail gives up per second of simulated time — the
+  // same clock as `stampMs`, so the fade keeps pace with the cards rather than with the
+  // frames. 0 is the trail that keeps everything.
+  rate: float,
+  // The smallest share worth taking off in one go. A fade spent in shares much below this
+  // is mostly taken back by the rounding in `Canvas.dim`, so what is owed is saved up
+  // until it is worth this much — which also decides how often the surface is filled, and
+  // so what the fade costs to run. `docs/cascade.md` has both halves.
+  coin: float,
+}
+
+// Half a second's worth per second — about a one-second half-life — paid in tenths.
+let defaultFade = {rate: 0.5, coin: 0.1}
+
 // Every setting in one value, so adjusting one is the same operation as adjusting none
 // (see `retune`).
 type options = {
@@ -48,10 +66,9 @@ type options = {
   // Whether a blit is put on the device-pixel grid. On everywhere except where the point is
   // to see what it buys.
   snap: bool,
-  // The share of its brightness the trail gives up per second of simulated time — in the
-  // same clock as `stampMs`, so the fade keeps pace with the cards rather than with the
-  // frames. 0 is the trail that keeps everything.
-  fade: float,
+  // How the trail behind the cards is dimmed (see `fade` above). Two numbers rather than
+  // a knob and a constant because the debug menu tunes both on a live board.
+  fade: fade,
 }
 
 let defaults = {
@@ -62,7 +79,7 @@ let defaults = {
   knobs: Cascade.defaults,
   stampMs: 16.,
   snap: true,
-  fade: 0.5,
+  fade: defaultFade,
 }
 
 // `Building` and `Failed` are the sprite sheet's: it decodes asynchronously, and there is
@@ -199,35 +216,46 @@ let sizeStore = player => {
   Canvas.context2d(player.canvas)->Option.forEach(ctx => ctx->Canvas.scale(scale, scale))
 }
 
-// What a stretch of simulated time takes off the surface, from the share of a second the
-// caller asked for. A share of what is left, rather than a fixed amount, is the only fade
-// that treats every moment alike: whatever is on the surface loses `fade` of itself per
+// What a stretch of simulated time takes off the surface, from the rate a second of it is
+// asked for at. A share of what is left, rather than a fixed amount, is the only fade that
+// treats every moment alike: whatever is on the surface loses `rate` of itself per
 // simulated second, however many stamps that second is made of, so the trail knob changes
 // the spacing and not the length.
-let fadeShare = (~fade, ~ms) =>
-  fade <= 0. ? 0. : 1. -. Math.pow(1. -. Math.min(fade, 1.), ~exp=ms /. 1000.)
+let fadeShare = (~rate, ~ms) =>
+  rate <= 0. ? 0. : 1. -. Math.pow(1. -. Math.min(rate, 1.), ~exp=ms /. 1000.)
 
-// The smallest fade worth paying in one go. A fade spent in shares much below this is
-// mostly taken back by the rounding in `Canvas.dim`, which is why what is owed is saved up
-// rather than paid off every stamp — `docs/cascade.md` has what a coin this size buys, and
-// why the gentle fade is the expensive one.
-let minFadeShare = 0.1
+// How long a stamp takes to lose half its brightness: the rate in the unit an eye can look
+// for on the stage, which is what the sliders read out beside it.
+let fadeHalfLife = rate =>
+  rate <= 0. ? infinity : Math.log(0.5) /. Math.log(1. -. Math.min(rate, 1.))
 
-// How long a stamp takes to lose half its brightness: the fade in the unit an eye can look
-// for on the stage, which is what the scene reads out beside the slider.
-let fadeHalfLife = fade =>
-  fade <= 0. ? infinity : Math.log(0.5) /. Math.log(1. -. Math.min(fade, 1.))
+// How often the fade comes due, in seconds — the stretch whose share is one coin, and
+// never oftener than a stamp, which is the only moment it is ever paid at. One
+// full-surface fill this often is the whole of what a fade costs to run, so this is the
+// number to read a coin by.
+let fadePayment = ({rate, coin}, ~stampMs) =>
+  if rate <= 0. {
+    infinity
+  } else {
+    let owed =
+      coin <= 0. ? 0. : Math.log(1. -. Math.min(coin, 1.)) /. Math.log(1. -. Math.min(rate, 1.))
+    Math.max(owed, stampMs /. 1000.)
+  }
 
 // The fade owed for the simulated time since it was last paid, spent once it is worth a
-// coin (see `minFadeShare`) and left to accrue until then. It is taken just before a stamp,
-// so the cards going down this instant are the only thing on the surface at full strength.
+// coin and left to accrue until then. It is taken just before a stamp, so the cards going
+// down this instant are the only thing on the surface at full strength.
 //
 // The rect is the backing store's own size read back in CSS pixels rather than the
 // element's box: the same rectangle, without a layout read per stamp.
 let dim = player => {
+  let {rate, coin} = player.options.fade
   player.fadeOwedMs = player.fadeOwedMs +. player.options.stampMs
-  let share = fadeShare(~fade=player.options.fade, ~ms=player.fadeOwedMs)
-  if share >= minFadeShare {
+  let share = fadeShare(~rate, ~ms=player.fadeOwedMs)
+
+  // `> 0.` as well as the coin: a rate of zero owes nothing, and a coin of zero would
+  // otherwise buy a full-surface fill every stamp that takes nothing off.
+  if share > 0. && share >= coin {
     player.fadeOwedMs = 0.
     Canvas.context2d(player.canvas)->Option.forEach(ctx => {
       let scale = ratio()
