@@ -58,8 +58,14 @@ source claude-cloud-dev-env.sh
 
 It installs `mise`, trusts the repo, installs the pinned tools, and activates
 them for the current shell — after which `mise tasks` / `mise run ci` work as
-normal. This only fixes the current session; wiring it into the environment's
-setup script is a human decision, so flag it rather than assuming it.
+normal.
+
+A Claude Code on the web session gets this for free:
+`.claude/hooks/session-start.sh` is a `SessionStart` hook that sources the same
+script, installs the workspace, and puts mise's shims on `PATH` for every shell
+in the session — so `mise run` works from the first prompt. The hook has to be
+on the branch the session checks out to fire, so a shell it hasn't reached is
+what the manual `source` above is still for.
 
 ## Permissions (for CI agents)
 
