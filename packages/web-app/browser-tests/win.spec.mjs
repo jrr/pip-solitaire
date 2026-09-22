@@ -143,6 +143,15 @@ for (const input of inputs) {
 // foundations, and a real tap really ends it. The motion is `Cascade_test`'s, the surface
 // `browser-tests/cascade.spec.mjs`'s, and which wins take this path at all is
 // `TableScene_test`'s.
+/**
+ * How many cards the run has put in the air, as the board publishes it (`data-flown`).
+ * The class on a card can't answer this: a foundation shows one card at a time, so every
+ * card below the top is hidden from the moment the cascade starts and comes back out for
+ * the moment before it is thrown.
+ */
+const flown = async (page) =>
+  Number((await page.locator(".table-board").getAttribute("data-flown")) ?? 0)
+
 test.describe("the victory cascade", () => {
   test.use({ viewport: { width: 800, height: 1000 } })
 
@@ -167,10 +176,11 @@ test.describe("the victory cascade", () => {
     await expect(overlay).toHaveCount(0)
 
     // The foundations empty a card at a time: each node stops being drawn as its sprite
-    // takes over, which is the half of the effect that isn't on the canvas at all.
-    await expect
-      .poll(() => page.locator(".stacking-card--flown").count(), { timeout: 30_000 })
-      .toBeGreaterThan(0)
+    // takes over, which is the half of the effect that isn't on the canvas at all. Read
+    // off the board's own count rather than by counting hidden cards — a card is hidden
+    // from the start and comes back out for the moment before it is thrown, so the class
+    // says where a card *is*, not how far the run has got.
+    await expect.poll(() => flown(page), { timeout: 30_000 }).toBeGreaterThan(0)
 
     // …and the board never offers to finish a game it is already celebrating, though
     // draining an already-won board would win it again.
@@ -194,10 +204,8 @@ test.describe("the victory cascade", () => {
     await expect(cascade).toHaveCount(1)
 
     // The run really is still going: more cards have left the foundations since.
-    const flownBefore = await page.locator(".stacking-card--flown").count()
-    await expect
-      .poll(() => page.locator(".stacking-card--flown").count(), { timeout: 30_000 })
-      .toBeGreaterThan(flownBefore)
+    const flownBefore = await flown(page)
+    await expect.poll(() => flown(page), { timeout: 30_000 }).toBeGreaterThan(flownBefore)
 
     // Left alone, the panel comes up by itself six seconds into the run, easing in rather
     // than snapping — the same peek a tap raises, so a tap puts it away again and the
@@ -208,69 +216,72 @@ test.describe("the victory cascade", () => {
     await tap()
     await expect(overlay).toHaveCount(0)
     await expect(cascade).toHaveCount(1)
-    const flownAtTen = await page.locator(".stacking-card--flown").count()
-    await expect
-      .poll(() => page.locator(".stacking-card--flown").count(), { timeout: 30_000 })
-      .toBeGreaterThan(flownAtTen)
+    const flownAtTen = await flown(page)
+    await expect.poll(() => flown(page), { timeout: 30_000 }).toBeGreaterThan(flownAtTen)
   })
 
-  test("the trail stays off a foundation that still has cards on it", async ({ page }) => {
-    // A pile that hasn't launched yet is a real card *under* the canvas, and a fading
-    // trail silting up over it reads as dirt on the pile rather than as a card that flew
-    // past. So the seats are cleared each stamp and the card shows through — with the
-    // shadow and the hand-placed angle a blitted sprite would have to imitate.
+  test("the trail stays off the card waiting on its seat", async ({ page }) => {
+    // A card is put out a moment before it is thrown, and for that moment it is a real
+    // card *under* the canvas. A fading trail silting up over it is what made a pile read
+    // as dirt rather than as a card that flew past, so the seats are cleared each stamp
+    // and the card shows through — shadow, hand-placed angle and all.
     await page.goto("/?game=freecell&state=finish&animate=off")
     await expect(page.locator(".finish-button")).toBeVisible()
     await settleBoard(page)
     await page.locator(".finish-button").click()
     await expect(page.locator(".table-cascade")).toHaveCount(1)
 
-    // Part way in, so there is plenty of trail about and cards still on every foundation:
-    // a 52-card deck off four piles is thirteen rounds, and this is one of them.
-    await expect
-      .poll(() => page.locator(".stacking-card--flown").count(), { timeout: 60_000 })
-      .toBeGreaterThanOrEqual(6)
+    // Part way in, so there is plenty of trail about for a seat to be smeared by.
+    await expect.poll(() => flown(page), { timeout: 60_000 }).toBeGreaterThanOrEqual(6)
 
-    // How much of each remaining pile the canvas has painted over. The *cards'* own boxes,
-    // not their drop zones': a zone is the larger slot a card sits in, and its margins are
-    // fair game for a trail. On a won board every card left is on a foundation, so one box
-    // per column is one box per pile.
-    const boxes = await page.evaluate(() => {
-      const seen = new Map()
-      for (const card of document.querySelectorAll(".stacking-card:not(.stacking-card--flown)")) {
-        const box = card.getBoundingClientRect()
-        seen.set(Math.round(box.x), { x: box.x, y: box.y, width: box.width, height: box.height })
-      }
-      return [...seen.values()]
-    })
-    expect(boxes.length).toBeGreaterThanOrEqual(3)
-
-    const covered = await page.evaluate((boxes) => {
-      const canvas = document.querySelector(".table-cascade")
-      const frame = canvas.getBoundingClientRect()
-      const ratio = canvas.width / frame.width
-      const ctx = canvas.getContext("2d")
-      return boxes.map((box) => {
-        const w = Math.round(box.width * ratio)
-        const h = Math.round(box.height * ratio)
-        const { data } = ctx.getImageData(
-          Math.round((box.x - frame.x) * ratio),
-          Math.round((box.y - frame.y) * ratio),
-          w,
-          h,
-        )
-        let painted = 0
-        for (let i = 3; i < data.length; i += 4) if (data[i] > 8) painted++
-        return painted / (w * h)
+    // How much of the canvas is painted over whatever is out on a seat, measured in one
+    // go: a card is only out for a fraction of each launch interval, so reading the boxes
+    // and the pixels in separate calls would race the card off the table. `out: 0` is the
+    // rest of the time — the poll simply waits for the next card to come out.
+    const clearance = () =>
+      page.evaluate(() => {
+        const canvas = document.querySelector(".table-cascade")
+        if (!canvas) return { out: 0, worst: 1 }
+        const frame = canvas.getBoundingClientRect()
+        const ratio = canvas.width / frame.width
+        const ctx = canvas.getContext("2d")
+        // The cards' own boxes, not their drop zones': a zone is the larger slot a card
+        // sits in, and its margins are fair game for a trail.
+        const seats = new Map()
+        for (const card of document.querySelectorAll(
+          ".stacking-card:not(.stacking-card--flown)",
+        )) {
+          const box = card.getBoundingClientRect()
+          seats.set(Math.round(box.x), box)
+        }
+        let worst = 0
+        for (const box of seats.values()) {
+          const w = Math.round(box.width * ratio)
+          const h = Math.round(box.height * ratio)
+          const { data } = ctx.getImageData(
+            Math.round((box.x - frame.x) * ratio),
+            Math.round((box.y - frame.y) * ratio),
+            w,
+            h,
+          )
+          let painted = 0
+          for (let i = 3; i < data.length; i += 4) if (data[i] > 8) painted++
+          worst = Math.max(worst, painted / (w * h))
+        }
+        return { out: seats.size, worst }
       })
-    }, boxes)
 
-    // All but one are untouched; the odd one out may hold the card on its way off it,
-    // which is drawn over the clear in its own right. Without the clearing they are all
-    // buried — the stamps a card leaves as it starts moving land right on the pile.
-    expect(covered.filter((share) => share < 0.05).length).toBeGreaterThanOrEqual(
-      boxes.length - 1,
-    )
+    // The next card to come out is clean. Without the clearing it wears whatever the last
+    // card off that seat left behind, which three seconds of fading has not taken away.
+    await expect
+      .poll(
+        async () => {
+          const { out, worst } = await clearance()
+          return out > 0 ? worst : null
+        },
+        { timeout: 30_000 },
+      )
+      .toBeLessThan(0.05)
   })
 
   test("the panel's own buttons still work with cards falling behind them", async ({ page }) => {

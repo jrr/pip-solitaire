@@ -75,8 +75,12 @@ const closeMenu = async (page) => {
 const winAndWatch = async (page, { cards = 8 } = {}) => {
   await page.locator(".finish-button").click()
   await expect(page.locator(".table-cascade")).toHaveCount(1)
+  // The board's own count of what it has thrown (`data-flown`): a foundation shows one
+  // card at a time, so the cards *hidden* are no measure of how far the run has got.
   await expect
-    .poll(() => page.locator(".stacking-card--flown").count(), { timeout: 60_000 })
+    .poll(async () => Number((await page.locator(".table-board").getAttribute("data-flown")) ?? 0), {
+      timeout: 60_000,
+    })
     .toBeGreaterThanOrEqual(cards)
 }
 

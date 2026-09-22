@@ -638,6 +638,7 @@ let make = (
         run.reveal()
         // The panel is a modal again the moment there is nothing falling behind it.
         classList(boardHost)->removeClass("table-board--cascading")
+        boardHost->WebDom.removeAttribute("data-flown")
       | None => ()
       }
 
@@ -1441,12 +1442,43 @@ let make = (
         // from a modal into a peek: the scrim stops hit-testing so a tap on it reaches
         // the canvas underneath (see `.table-board--cascading`).
         classList(boardHost)->addClass("table-board--cascading")
+        // How many cards have actually left, published for the browser suite the way the
+        // demo scene publishes its own state. It needs saying because the class on a card
+        // no longer answers it: `stacking-card--flown` means "not on the table *now*",
+        // and a card comes back out of it for the moment before it is thrown.
+        let launched = ref(0)
+        let countLaunch = () => {
+          launched := launched.contents + 1
+          boardHost->WebDom.setAttribute("data-flown", Int.toString(launched.contents))
+        }
 
         // The nodes the run has hidden, so ending it anywhere puts every one of them
         // back — an undo mid-cascade returns to a board with all its cards on it.
         let flown: array<card> = []
         let reveal = () =>
           flown->Array.forEach(c => classList(c.wrapper)->removeClass("stacking-card--flown"))
+
+        // **A foundation shows one card at a time.** Everything under each pile's top
+        // goes now, and comes back one card at a time as the run calls for it
+        // (`~onReady`) — so what a seat holds is the card about to be thrown, and not a
+        // stack for the trail to silt up against. A pile left whole under a fading trail
+        // is the thing this is against: crisp card and faded copies of it, one on top of
+        // the other, reading as dirt rather than as a card that has gone.
+        //
+        // The tops stay put rather than being hidden and re-shown on the first step,
+        // which would blink the foundations empty for as long as the sprite sheet takes.
+        piles->Array.forEach(((_, cards)) =>
+          cards
+          ->Array.slice(~start=0, ~end=-1)
+          ->Array.forEach(card =>
+            nodeFor(card)->Option.forEach(
+              c => {
+                flown->Array.push(c)
+                classList(c.wrapper)->addClass("stacking-card--flown")
+              },
+            )
+          )
+        )
 
         let player = CascadePlayer.attach(
           ~canvas,
@@ -1468,11 +1500,20 @@ let make = (
           },
           // Hide each card as its copy leaves, so the foundation empties under the
           // cascade rather than sitting full behind it.
-          ~onLaunch=card =>
+          ~onLaunch=card => {
+            countLaunch()
             nodeFor(card)->Option.forEach(c => {
               flown->Array.push(c)
               classList(c.wrapper)->addClass("stacking-card--flown")
-            }),
+            })
+          },
+          // …and put the next one out a moment before it goes, which is the other half of
+          // showing one card at a time. Already-visible for the opening tops, so this is
+          // a no-op until a pile has given one up.
+          ~onReady=card =>
+            nodeFor(card)->Option.forEach(c =>
+              classList(c.wrapper)->removeClass("stacking-card--flown")
+            ),
           ~onChange=status =>
             switch status.phase {
             // The three ways a run stops without being skipped, and they all end the

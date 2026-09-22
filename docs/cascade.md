@@ -198,11 +198,12 @@ the pose is for.
 
 ## The surface
 
-**A card is handed back as it launches** (`~onLaunch`), which is the second half
-of the effect on a real board: the foundation under the canvas empties a card at
-a time as its sprites take over. It can't ride on `~onChange`, which is a
-half-second heartbeat — a node left on the table that long after its copy has
-flown off it is a card in two places.
+**A card is handed back twice**: `~onReady` when it is put out on its seat, and
+`~onLaunch` as it leaves — the second half of the effect on a real board, where
+the foundation shows one card at a time and empties as its sprites take over.
+Neither can ride on `~onChange`, which is a half-second heartbeat: a node left on
+the table that long after its copy has flown off it is a card in two places, and
+one put out that late is a card thrown from nowhere.
 
 **Nothing is ever cleared — the surface is dimmed instead.** The trail *is* the
 effect, and it's why this is a canvas rather than DOM nodes: per-frame cost
@@ -238,13 +239,25 @@ which is the one way to make all four units wrong at once. The default, nine
 cards, is 6.8 seconds at the default launch interval, which is a sixth of a
 52-card run.
 
-**The seats stay clear where something is under them.** A card's first stamps
-are all in nearly the same place — it has barely moved — so a seat collects a
-stack of near-identical ghosts right where the pile it came from is still
-sitting. Opaque, those stamps read as the pile; faded, they read as dirt on it.
-So each stamp clears the seats that still have cards to launch
-(`CascadePlayer.clearSeats`), before drawing and after fading: the card leaving
-*this* instant is still drawn whole, and only the history behind it goes.
+**A seat shows one card at a time, and only just before it goes.** A card's first
+stamps are all in nearly the same place — it has barely moved — so a seat
+collects a stack of near-identical ghosts right where the pile it came from is
+sitting. Opaque, those stamps read as the pile; faded, they read as dirt on it,
+and the crisp card underneath is what makes them read that way: a real card with
+fading copies of itself piled against it.
+
+So the pile isn't there. The board hides everything under each pile's top when
+the cascade starts, and the player puts the next card out `readyMs` before it
+launches (`~onReady`) and takes it away as it goes (`~onLaunch`). What a seat
+holds is the card about to be thrown; the rest of the time it is empty table, and
+a trail crossing it is unmistakably a trail. `CascadePlayer.armedBy` is the
+arithmetic — how many cards are out — and it starts at one per seat, which is
+exactly a board's opening tops.
+
+**The seats stay clear while a card is on them.** Each stamp clears the occupied
+seats (`CascadePlayer.clearSeats`), before drawing and after fading: the card
+leaving *this* instant is still drawn whole, and only the history behind it
+goes.
 
 Erasing rather than re-drawing the pile, because what sits under a board's seat
 is the real resting card: clearing shows it with the drop shadow and the
@@ -345,6 +358,7 @@ chosen.
 | speed | 0.4 ± 0.1 m/s | the sideways throw |
 | launchInterval | 750 ms | so a 52-card deck takes ~39s |
 | trail | 16 ms | of simulated time between stamps |
+| ready | 250 ms | how long a card sits on its seat before it is thrown |
 | fade | `Cards(9)` | how long a stamp lasts — 6.8s at the launch interval above, a sixth of the run |
 | fade coin | 0.1 | the smallest share worth taking off in one go — a fill every 154ms at that persistence |
 

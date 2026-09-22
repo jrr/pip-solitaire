@@ -88,6 +88,36 @@ describe("where a cascade launches from", () => {
     CascadePlayer.pose(player, ~seconds=2.)
     after(player, () => expect(launched)->toEqual(cards))
   })
+
+  test("puts each one out before it throws it, and never the other way round", () => {
+    // The board shows one card per seat: `onReady` is its cue to put a card out and
+    // `onLaunch` its cue to take it away, so a card announced the wrong way round would
+    // be shown after it had already gone — and stay on the table for the whole run.
+    let cards: array<Deck.card> = [
+      {suit: Deck.Spades, rank: Deck.King},
+      {suit: Deck.Hearts, rank: Deck.Queen},
+    ]
+    let log = []
+    let player = CascadePlayer.attach(
+      ~canvas=Canvas.make(),
+      ~options={...CascadePlayer.defaults, cards: Some(cards), launchpad: CascadePlayer.Spread(2)},
+      ~onLaunch=card => log->Array.push(("gone", card)),
+      ~onReady=card => log->Array.push(("out", card)),
+    )
+    player.sprites = Some(sheet(~cssWidth=CascadePlayer.defaults.cardWidth))
+    CascadePlayer.pose(player, ~seconds=2.)
+    after(
+      player,
+      () =>
+        expect(log)->toEqual([
+          // Both seats' tops are out from the first step, which is a board's opening piles.
+          ("out", cards->Array.getUnsafe(0)),
+          ("out", cards->Array.getUnsafe(1)),
+          ("gone", cards->Array.getUnsafe(0)),
+          ("gone", cards->Array.getUnsafe(1)),
+        ]),
+    )
+  })
 })
 
 describe("the sprite sheet in hand", () => {
@@ -250,30 +280,48 @@ describe("the fade behind the cards", () => {
   })
 })
 
-describe("the seats the trail is kept off", () => {
-  // Which seats still have a card on them, which is what the board's foundations are
-  // until their last card leaves. The drawing itself is `browser-tests/win.spec.mjs`'s.
-  let loaded = (~launched, ~cards, ~seats) =>
-    Array.make(~length=seats, 0)->Array.mapWithIndex((_, seat) =>
-      CascadePlayer.seatIsLoaded(~launched, ~cards, ~seats, ~seat)
-    )
+describe("the cards out on their seats", () => {
+  // A foundation shows one card at a time: the one about to be thrown. What is *out* is
+  // what a caller has been told to show, and what the trail is kept off.
+  let armed = (~launched, ~sinceLaunchMs, ~readyMs=250.) =>
+    CascadePlayer.armedBy(~launched, ~cards=52, ~seats=4, ~sinceLaunchMs, ~launchMs=750., ~readyMs)
 
-  test("is all of them before anything has launched, and none once the deck is up", () => {
-    expect(loaded(~launched=0, ~cards=52, ~seats=4))->toEqual([true, true, true, true])
-    expect(loaded(~launched=52, ~cards=52, ~seats=4))->toEqual([false, false, false, false])
+  test("starts with one on every seat, which is a board's opening pile tops", () => {
+    expect(armed(~launched=0, ~sinceLaunchMs=0.))->toBe(4)
   })
 
-  test("empties in the round-robin the cards leave in", () => {
-    // `Cascade` launches card `i` from seat `i mod seats`, so a deck one short of done
-    // has a card left on exactly the seat that card belongs to.
-    expect(loaded(~launched=51, ~cards=52, ~seats=4))->toEqual([false, false, false, true])
-    expect(loaded(~launched=50, ~cards=52, ~seats=4))->toEqual([false, false, true, true])
-    // …and a seat is loaded again as soon as a whole round is still to come.
-    expect(loaded(~launched=48, ~cards=52, ~seats=4))->toEqual([true, true, true, true])
+  test("puts the next one out once its launch is within the notice it was given", () => {
+    // Nothing new at half an interval; the next card at 500ms, which is 250 from going.
+    expect(armed(~launched=4, ~sinceLaunchMs=375.))->toBe(4)
+    expect(armed(~launched=4, ~sinceLaunchMs=500.))->toBe(5)
+  })
+
+  test("hands a caller no notice at all when it asked for none", () => {
+    // A card out only as it goes: `armed` never runs ahead of `launched` past the seats.
+    expect(armed(~launched=4, ~sinceLaunchMs=740., ~readyMs=0.))->toBe(4)
+  })
+
+  test("never runs past the deck it was given", () => {
+    expect(armed(~launched=52, ~sinceLaunchMs=740.))->toBe(52)
+  })
+
+  let occupied = (~launched, ~armed) =>
+    Array.make(~length=4, 0)->Array.mapWithIndex((_, seat) =>
+      CascadePlayer.seatIsOccupied(~launched, ~armed, ~seats=4, ~seat)
+    )
+
+  test("sits them on the seats in the round-robin the cards leave in", () => {
+    // `Cascade` launches card `i` from seat `i mod seats`, so the four out at the start
+    // are one per seat, and each seat empties as its own card goes.
+    expect(occupied(~launched=0, ~armed=4))->toEqual([true, true, true, true])
+    expect(occupied(~launched=1, ~armed=4))->toEqual([false, true, true, true])
+    expect(occupied(~launched=4, ~armed=4))->toEqual([false, false, false, false])
+    // …and the next card out lands on the seat it belongs to, not on the next one along.
+    expect(occupied(~launched=4, ~armed=5))->toEqual([true, false, false, false])
   })
 
   test("is nothing at all when there are no seats to speak of", () => {
-    expect(CascadePlayer.seatIsLoaded(~launched=0, ~cards=52, ~seats=0, ~seat=0))->toBe(false)
+    expect(CascadePlayer.seatIsOccupied(~launched=0, ~armed=4, ~seats=0, ~seat=0))->toBe(false)
   })
 })
 

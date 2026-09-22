@@ -95,6 +95,11 @@ type options = {
   // nothing under them, so clearing there would cut card-shaped holes in its own trail.
   // Off unless a caller says there is something to keep clear. See `clearSeats`.
   keepSeatsClear: bool,
+  // How much notice a card gets before it leaves, in simulated milliseconds. A caller
+  // with a real pile puts the card out then (`~onReady`) and takes it away as it goes
+  // (`~onLaunch`), so a seat holds a card just long enough to be seen thrown rather than
+  // holding the whole pile for the run to smear a trail over. See `armedBy`.
+  readyMs: float,
   // How the trail behind the cards is dimmed (see `fade` above). Two numbers rather than
   // a knob and a constant because the debug menu tunes both on a live board.
   fade: fade,
@@ -109,6 +114,7 @@ let defaults = {
   stampMs: 16.,
   snap: true,
   keepSeatsClear: false,
+  readyMs: 250.,
   fade: defaultFade,
 }
 
@@ -149,6 +155,10 @@ type t = {
   // leave each one sitting on the table for up to half a second after its copy had left
   // it. The player still knows nothing about what a caller does with the card.
   onLaunch: Deck.card => unit,
+  // …and the other half of the same idea: a card is *put out* on its seat this long
+  // before it leaves (`options.readyMs`), which is a caller's cue to show it. Every card
+  // is announced this way before it launches, the first one per seat included.
+  onReady: Deck.card => unit,
   mutable options: options,
   mutable intent: intent,
   mutable run: Cascade.t,
@@ -160,6 +170,10 @@ type t = {
   mutable lastFrameAt: option<float>,
   mutable carryMs: float,
   mutable sinceStamp: float,
+  // How many cards have been put out on their seats — see `armedBy`. Ahead of
+  // `run.launched` by whatever is waiting to go, and what `clearSeats` reads to know
+  // which seats have a card sitting on them.
+  mutable armed: int,
   // Simulated time the fade has not been paid for yet — see `dim`.
   mutable fadeOwedMs: float,
   mutable framesSeen: int,
@@ -320,15 +334,23 @@ let fadePayment = (~rate, ~coin, ~stampMs) =>
     Math.max(owed, stampMs /. 1000.)
   }
 
-// Whether seat `seat` still has a card to launch. `Cascade` deals its seats round-robin —
-// card `i` leaves seat `i mod seats` — so the first index at or after `launched` that
-// lands on this seat says whether anything is left on it.
-let seatIsLoaded = (~launched, ~cards, ~seats, ~seat) =>
-  seats > 0 && launched + mod(mod(seat - launched, seats) + seats, seats) < cards
+// How many cards are out on their seats: one per seat to begin with — a board's piles
+// show their tops — and after that, every card whose launch is within `readyMs`. It only
+// ever grows, which is what lets a caller be told about each card exactly once.
+let armedBy = (~launched, ~cards, ~seats, ~sinceLaunchMs, ~launchMs, ~readyMs) => {
+  let ahead = launchMs <= 0. ? 0 : Float.toInt((sinceLaunchMs +. readyMs) /. launchMs)
+  Math.Int.min(cards, Math.Int.max(launched + ahead, Math.Int.min(seats, cards)))
+}
 
-// Wipe the trail off the seats that have not finished launching. It is taken after the
-// fade and before the stamp, so the card going down *this* instant is drawn whole over a
-// seat it is still leaving, and only the history behind it is cleared.
+// Whether a card is sitting on seat `seat` right now. `Cascade` deals its seats
+// round-robin — card `i` leaves seat `i mod seats` — so the first index at or after
+// `launched` that lands on this seat is out if it has been armed.
+let seatIsOccupied = (~launched, ~armed, ~seats, ~seat) =>
+  seats > 0 && launched + mod(mod(seat - launched, seats) + seats, seats) < armed
+
+// Wipe the trail off the seats with a card sitting on them. It is taken after the fade and
+// before the stamp, so the card going down *this* instant is drawn whole over the seat it
+// is leaving, and only the history behind it is cleared.
 //
 // Erasing rather than re-drawing the pile: what sits under a board's seat is the real
 // resting card, so clearing shows it with the drop shadow and the hand-placed angle
@@ -342,14 +364,7 @@ let clearSeats = player =>
       let seats = Array.length(stage.seats)
       let cardWidth = player.options.cardWidth
       stage.seats->Array.forEachWithIndex(((x, y), seat) =>
-        if (
-          seatIsLoaded(
-            ~launched=player.run.launched,
-            ~cards=Array.length(player.run.cards),
-            ~seats,
-            ~seat,
-          )
-        ) {
+        if seatIsOccupied(~launched=player.run.launched, ~armed=player.armed, ~seats, ~seat) {
           ctx->Canvas.clearRect(
             x *. cardWidth,
             y *. cardWidth,
@@ -438,6 +453,23 @@ let stop = player => {
 let advance = (player, ~stage) => {
   let launchedBefore = player.run.launched
   player.run = Cascade.step(player.run, ~knobs=player.options.knobs, ~stage, ~dt=stepSeconds)
+
+  // Put out whatever is now within `readyMs` of going, *before* announcing what has gone:
+  // a card armed and launched in the same step has to be put out and taken away in that
+  // order, or a caller showing it would be showing a card that has already left.
+  let armedNow = armedBy(
+    ~launched=player.run.launched,
+    ~cards=Array.length(player.run.cards),
+    ~seats=Array.length(stage.seats),
+    ~sinceLaunchMs=player.run.sinceLaunch *. 1000.,
+    ~launchMs=player.options.knobs.launchMs,
+    ~readyMs=player.options.readyMs,
+  )
+  for i in player.armed to armedNow - 1 {
+    player.run.cards->Array.get(i)->Option.forEach(player.onReady)
+  }
+  player.armed = armedNow
+
   // A step can launch more than one card — a launch interval shorter than the step, or a
   // frame that owed several steps — so this is a range rather than a comparison.
   for i in launchedBefore to player.run.launched - 1 {
@@ -519,6 +551,7 @@ let restart = player => {
   sizeStore(player)
   player.sinceStamp = 0.
   player.fadeOwedMs = 0.
+  player.armed = 0
   player.run = Cascade.make(~seed=player.options.seed, ~cards=?player.options.cards)
   switch player.intent {
   | Idle => ()
@@ -673,11 +706,13 @@ let attach = (
   ~options=defaults,
   ~onChange=(_: status) => (),
   ~onLaunch=(_: Deck.card) => (),
+  ~onReady=(_: Deck.card) => (),
 ) => {
   let player = {
     canvas,
     onChange,
     onLaunch,
+    onReady,
     options,
     intent: Idle,
     run: Cascade.make(~seed=options.seed, ~cards=?options.cards),
@@ -690,6 +725,7 @@ let attach = (
     carryMs: 0.,
     sinceStamp: 0.,
     fadeOwedMs: 0.,
+    armed: 0,
     framesSeen: 0,
     fpsSince: 0.,
     fps: 0.,
