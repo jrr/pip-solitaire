@@ -88,6 +88,13 @@ type options = {
   // Whether a blit is put on the device-pixel grid. On everywhere except where the point is
   // to see what it buys.
   snap: bool,
+  // Whether the trail is kept off the seats that still have cards to launch. A question
+  // about the caller's *surface*, not about taste: a board's seats are piles that have
+  // not left yet — real cards, under the canvas — and a fading trail silting up over them
+  // reads as dirt on the pile rather than as a card that flew past. The demo's seats have
+  // nothing under them, so clearing there would cut card-shaped holes in its own trail.
+  // Off unless a caller says there is something to keep clear. See `clearSeats`.
+  keepSeatsClear: bool,
   // How the trail behind the cards is dimmed (see `fade` above). Two numbers rather than
   // a knob and a constant because the debug menu tunes both on a live board.
   fade: fade,
@@ -101,6 +108,7 @@ let defaults = {
   knobs: Cascade.defaults,
   stampMs: 16.,
   snap: true,
+  keepSeatsClear: false,
   fade: defaultFade,
 }
 
@@ -312,6 +320,47 @@ let fadePayment = (~rate, ~coin, ~stampMs) =>
     Math.max(owed, stampMs /. 1000.)
   }
 
+// Whether seat `seat` still has a card to launch. `Cascade` deals its seats round-robin —
+// card `i` leaves seat `i mod seats` — so the first index at or after `launched` that
+// lands on this seat says whether anything is left on it.
+let seatIsLoaded = (~launched, ~cards, ~seats, ~seat) =>
+  seats > 0 && launched + mod(mod(seat - launched, seats) + seats, seats) < cards
+
+// Wipe the trail off the seats that have not finished launching. It is taken after the
+// fade and before the stamp, so the card going down *this* instant is drawn whole over a
+// seat it is still leaving, and only the history behind it is cleared.
+//
+// Erasing rather than re-drawing the pile: what sits under a board's seat is the real
+// resting card, so clearing shows it with the drop shadow and the hand-placed angle
+// (`docs/card-tilt.md`) that a square unrotated sprite would have to imitate — and
+// imitate a couple of degrees out. The cost is a rect per loaded seat per stamp, against
+// the fade's own full-surface fill.
+let clearSeats = player =>
+  if player.options.keepSeatsClear {
+    Canvas.context2d(player.canvas)->Option.forEach(ctx => {
+      let stage = stageOf(player)
+      let seats = Array.length(stage.seats)
+      let cardWidth = player.options.cardWidth
+      stage.seats->Array.forEachWithIndex(((x, y), seat) =>
+        if (
+          seatIsLoaded(
+            ~launched=player.run.launched,
+            ~cards=Array.length(player.run.cards),
+            ~seats,
+            ~seat,
+          )
+        ) {
+          ctx->Canvas.clearRect(
+            x *. cardWidth,
+            y *. cardWidth,
+            cardWidth,
+            cardWidth *. CardArt.aspect,
+          )
+        }
+      )
+    })
+  }
+
 // The fade owed for the simulated time since it was last paid, spent once it is worth a
 // coin and left to accrue until then. It is taken just before a stamp, so the cards going
 // down this instant are the only thing on the surface at full strength.
@@ -397,6 +446,7 @@ let advance = (player, ~stage) => {
   player.sinceStamp = player.sinceStamp +. stepMs
   if player.sinceStamp >= player.options.stampMs {
     dim(player)
+    clearSeats(player)
     draw(player)
     player.sinceStamp = Math.max(player.sinceStamp -. player.options.stampMs, 0.)
   }

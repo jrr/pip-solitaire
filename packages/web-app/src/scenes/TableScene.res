@@ -1459,6 +1459,10 @@ let make = (
             // Read here rather than held from mount: the slider that moved it is on the
             // menu, and the board it is about is this one, up all the while.
             fade: cascadeFade.contents,
+            // The seats here are foundations with cards still on them, and those cards
+            // are real nodes under the canvas — so the trail is kept off them and the
+            // pile shows through, shadow and tilt and all, until its last card leaves.
+            keepSeatsClear: true,
             cardWidth: TableLayout.cardW *. scale.contents,
             launchpad: CascadePlayer.At(piles->Array.map(((seat, _)) => seat)),
           },

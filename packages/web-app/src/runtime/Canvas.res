@@ -106,3 +106,9 @@ let dim = (ctx, ~width, ~height, ~share) => {
   ctx->fillRect(0., 0., width, height)
   ctx->setCompositeOperation("source-over")
 }
+
+// Erase a rectangle back to transparency — which on an overlay means back to whatever is
+// underneath it, not to a colour. That is the whole use here: a card still resting on the
+// board is *under* the canvas, so clearing the pixels over it shows the real card, with
+// the shadow and the tilt a blitted sprite would have to imitate.
+@send external clearRect: (context, float, float, float, float) => unit = "clearRect"

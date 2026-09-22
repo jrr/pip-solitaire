@@ -238,6 +238,25 @@ which is the one way to make all four units wrong at once. The default, nine
 cards, is 6.8 seconds at the default launch interval, which is a sixth of a
 52-card run.
 
+**The seats stay clear where something is under them.** A card's first stamps
+are all in nearly the same place — it has barely moved — so a seat collects a
+stack of near-identical ghosts right where the pile it came from is still
+sitting. Opaque, those stamps read as the pile; faded, they read as dirt on it.
+So each stamp clears the seats that still have cards to launch
+(`CascadePlayer.clearSeats`), before drawing and after fading: the card leaving
+*this* instant is still drawn whole, and only the history behind it goes.
+
+Erasing rather than re-drawing the pile, because what sits under a board's seat
+is the real resting card: clearing shows it with the drop shadow and the
+hand-placed angle (`docs/card-tilt.md`) that a square, unrotated sprite would
+have to imitate — and imitate a couple of degrees out. It costs a rect per loaded
+seat per stamp, against the fade's own full-surface fill.
+
+`keepSeatsClear` is off by default, because it is a question about the caller's
+surface rather than about taste. The board turns it on; the demo scene has
+nothing under its seats, so clearing there would cut card-shaped holes in its own
+trail.
+
 **The fade takes alpha, not colour.** `destination-out` with a flat fill
 multiplies every pixel's alpha and leaves the pixel alone, so a stamp thins back
 towards the transparency it started from — on the board, back to the table.
@@ -369,7 +388,7 @@ already scaled to its stage.
 | `browser-tests/cascade.spec.mjs` | the pixels: the store, the trail, the fade, the snap, a seeded pose repeating to the byte, the resize policy |
 | `browser-tests/cascade-tuning.spec.mjs` | the menu's knobs on the real thing: the next victory, the one already falling, and the reload that forgets them |
 | `TableScene_test.res` | which wins play one, and that every way out of a run still ends at the panel |
-| `browser-tests/win.spec.mjs` | the board's own: real sprites, foundations emptying, a real tap ending it |
+| `browser-tests/win.spec.mjs` | the board's own: real sprites, foundations emptying, the trail kept off a pile that hasn't left, a real tap ending it |
 
 ## Before you retune
 

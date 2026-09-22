@@ -250,6 +250,33 @@ describe("the fade behind the cards", () => {
   })
 })
 
+describe("the seats the trail is kept off", () => {
+  // Which seats still have a card on them, which is what the board's foundations are
+  // until their last card leaves. The drawing itself is `browser-tests/win.spec.mjs`'s.
+  let loaded = (~launched, ~cards, ~seats) =>
+    Array.make(~length=seats, 0)->Array.mapWithIndex((_, seat) =>
+      CascadePlayer.seatIsLoaded(~launched, ~cards, ~seats, ~seat)
+    )
+
+  test("is all of them before anything has launched, and none once the deck is up", () => {
+    expect(loaded(~launched=0, ~cards=52, ~seats=4))->toEqual([true, true, true, true])
+    expect(loaded(~launched=52, ~cards=52, ~seats=4))->toEqual([false, false, false, false])
+  })
+
+  test("empties in the round-robin the cards leave in", () => {
+    // `Cascade` launches card `i` from seat `i mod seats`, so a deck one short of done
+    // has a card left on exactly the seat that card belongs to.
+    expect(loaded(~launched=51, ~cards=52, ~seats=4))->toEqual([false, false, false, true])
+    expect(loaded(~launched=50, ~cards=52, ~seats=4))->toEqual([false, false, true, true])
+    // …and a seat is loaded again as soon as a whole round is still to come.
+    expect(loaded(~launched=48, ~cards=52, ~seats=4))->toEqual([true, true, true, true])
+  })
+
+  test("is nothing at all when there are no seats to speak of", () => {
+    expect(CascadePlayer.seatIsLoaded(~launched=0, ~cards=52, ~seats=0, ~seat=0))->toBe(false)
+  })
+})
+
 describe("new settings, handed over mid-flight", () => {
   // One step, so the run has got somewhere and a restart is visible as one.
   let underway = (player: CascadePlayer.t) =>

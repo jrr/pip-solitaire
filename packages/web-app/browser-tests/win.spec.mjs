@@ -214,6 +214,65 @@ test.describe("the victory cascade", () => {
       .toBeGreaterThan(flownAtTen)
   })
 
+  test("the trail stays off a foundation that still has cards on it", async ({ page }) => {
+    // A pile that hasn't launched yet is a real card *under* the canvas, and a fading
+    // trail silting up over it reads as dirt on the pile rather than as a card that flew
+    // past. So the seats are cleared each stamp and the card shows through — with the
+    // shadow and the hand-placed angle a blitted sprite would have to imitate.
+    await page.goto("/?game=freecell&state=finish&animate=off")
+    await expect(page.locator(".finish-button")).toBeVisible()
+    await settleBoard(page)
+    await page.locator(".finish-button").click()
+    await expect(page.locator(".table-cascade")).toHaveCount(1)
+
+    // Part way in, so there is plenty of trail about and cards still on every foundation:
+    // a 52-card deck off four piles is thirteen rounds, and this is one of them.
+    await expect
+      .poll(() => page.locator(".stacking-card--flown").count(), { timeout: 60_000 })
+      .toBeGreaterThanOrEqual(6)
+
+    // How much of each remaining pile the canvas has painted over. The *cards'* own boxes,
+    // not their drop zones': a zone is the larger slot a card sits in, and its margins are
+    // fair game for a trail. On a won board every card left is on a foundation, so one box
+    // per column is one box per pile.
+    const boxes = await page.evaluate(() => {
+      const seen = new Map()
+      for (const card of document.querySelectorAll(".stacking-card:not(.stacking-card--flown)")) {
+        const box = card.getBoundingClientRect()
+        seen.set(Math.round(box.x), { x: box.x, y: box.y, width: box.width, height: box.height })
+      }
+      return [...seen.values()]
+    })
+    expect(boxes.length).toBeGreaterThanOrEqual(3)
+
+    const covered = await page.evaluate((boxes) => {
+      const canvas = document.querySelector(".table-cascade")
+      const frame = canvas.getBoundingClientRect()
+      const ratio = canvas.width / frame.width
+      const ctx = canvas.getContext("2d")
+      return boxes.map((box) => {
+        const w = Math.round(box.width * ratio)
+        const h = Math.round(box.height * ratio)
+        const { data } = ctx.getImageData(
+          Math.round((box.x - frame.x) * ratio),
+          Math.round((box.y - frame.y) * ratio),
+          w,
+          h,
+        )
+        let painted = 0
+        for (let i = 3; i < data.length; i += 4) if (data[i] > 8) painted++
+        return painted / (w * h)
+      })
+    }, boxes)
+
+    // All but one are untouched; the odd one out may hold the card on its way off it,
+    // which is drawn over the clear in its own right. Without the clearing they are all
+    // buried — the stamps a card leaves as it starts moving land right on the pile.
+    expect(covered.filter((share) => share < 0.05).length).toBeGreaterThanOrEqual(
+      boxes.length - 1,
+    )
+  })
+
   test("the panel's own buttons still work with cards falling behind them", async ({ page }) => {
     // The other half of a click-through scrim: the panel keeps its own pointer events,
     // or peeking would put an unusable New Game in front of a forty-second cascade.
