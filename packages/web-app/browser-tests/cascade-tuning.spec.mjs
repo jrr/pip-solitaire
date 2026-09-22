@@ -50,8 +50,12 @@ const openCascadeKnobs = async (page) => {
   // Playwright won't drag a control it can't see — so the group is opened rather than
   // the input reached for directly.
   await page.locator(".scene-menu__group-label", { hasText: "cascade" }).click()
-  await expect(page.locator('input[data-knob="fade"]')).toBeVisible()
+  await expect(page.locator(".menu-choice__chip").first()).toBeVisible()
 }
+
+/** One of the persistence group's unit chips, by its word. */
+const unit = (page, label) =>
+  page.locator(`.menu-choice[data-choice="persistence"] .menu-choice__chip`, { hasText: label })
 
 // The overlay stays in the document when it is put away — it is hidden, not unmounted —
 // so what a closed menu is, to a test, is one that can't be seen.
@@ -91,7 +95,7 @@ test("the fade the Debug screen holds is the fade the board's victory plays", as
   await page.goto("/?game=freecell&state=finish&animate=off")
   await settleBoard(page)
   await openCascadeKnobs(page)
-  await page.locator('input[data-knob="fade"]').fill("0")
+  await unit(page, "never").click()
   await closeMenu(page)
   await winAndWatch(page)
   const flat = await ink(page)
@@ -104,18 +108,18 @@ test("a slider dragged over a falling cascade lands on that cascade", async ({ p
   await page.goto("/?game=freecell&state=finish&animate=off")
   await settleBoard(page)
   await openCascadeKnobs(page)
-  await page.locator('input[data-knob="fade"]').fill("0")
+  await unit(page, "never").click()
   await closeMenu(page)
   await winAndWatch(page, { cards: 4 })
 
   const before = await ink(page)
   expect(before.full).toBeGreaterThan(before.painted * 0.9)
 
-  // Now turn it up, with the cards still in the air. The run takes it on its next stamp
-  // (`CascadePlayer.retune` through `controls.retuneCascade`), so the trail that was
-  // uniformly bright starts sinking within a stamp or two.
+  // Now give it a length, with the cards still in the air. The run takes it on its next
+  // stamp (`CascadePlayer.retune` through `controls.retuneCascade`), so the trail that
+  // was uniformly bright starts sinking within a stamp or two.
   await openCascadeKnobs(page)
-  await page.locator('input[data-knob="fade"]').fill("0.5")
+  await unit(page, "cards").click()
   await expect
     .poll(
       async () => {
@@ -133,14 +137,36 @@ test("the knobs live in memory, so a reload is the reset", async ({ page }) => {
   await page.goto("/?game=freecell&animate=off")
   await settleBoard(page)
   await openCascadeKnobs(page)
-  const readout = page.locator('.menu-slider:has(input[data-knob="fade"]) .menu-slider__readout')
-  await expect(readout).toHaveText("0.5 /s · half gone in 1s")
+  const readout = page.locator('.menu-slider:has(input[data-knob="cards"]) .menu-slider__readout')
+  await expect(readout).toHaveText("9 cards · 6.8s")
 
-  await page.locator('input[data-knob="fade"]').fill("0")
-  await expect(readout).toHaveText("off · nothing fades")
+  await page.locator('input[data-knob="cards"]').fill("30")
+  await expect(readout).toHaveText("30 cards · 22.5s")
 
   await page.reload()
   await settleBoard(page)
   await openCascadeKnobs(page)
-  await expect(readout).toHaveText("0.5 /s · half gone in 1s")
+  await expect(readout).toHaveText("9 cards · 6.8s")
+})
+
+test("the units are four ways of saying one length, not four lengths", async ({ page }) => {
+  // The picker converts rather than resets: nine cards *is* 6.8 seconds, so walking
+  // round the units and back has to leave the animation exactly where it started.
+  await page.goto("/?game=freecell&animate=off")
+  await settleBoard(page)
+  await openCascadeKnobs(page)
+
+  await unit(page, "seconds").click()
+  await expect(page.locator(`.menu-slider:has(input[data-knob="seconds"])`)).toBeVisible()
+  await expect(page.locator(".menu-slider__readout").first()).toHaveText("6.8s · 9 cards")
+
+  // …and a fraction of the run, which is the one unit that says nothing about a deck.
+  await unit(page, "run").click()
+  await expect(page.locator(".menu-slider__readout").first()).toHaveText(
+    "17% of the run, whatever its deck",
+  )
+
+  // Off has no length at all, so there is no length slider — only the coin's.
+  await unit(page, "never").click()
+  await expect(page.locator(".menu-slider__label")).toHaveText(["coin"])
 })

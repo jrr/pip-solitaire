@@ -60,6 +60,29 @@ external registerSW: registerSWOptions => bool => promise<unit> = "registerSW"
 // The chrome is a pure model + update + view. The reactive bits: service-worker
 // lifecycle (two booleans flip when their callbacks fire) and whether the menu is
 // open.
+
+// What the Debug screen's cascade group is set to. The persistence here is always a
+// *number* in one of its units: "nothing fades" rides beside it as `fades` rather than
+// as a fourth value, so there is always a length for the slider to show, and turning the
+// fade off and on again comes back to the one you had rather than to the default.
+type cascadeTuning = {
+  length: CascadePlayer.persistence,
+  fades: bool,
+  coin: float,
+}
+
+let defaultCascadeTuning = {
+  length: CascadePlayer.defaultFade.persistence,
+  fades: true,
+  coin: CascadePlayer.defaultFade.coin,
+}
+
+// …and the same setting as the player reads it, which is where the two halves meet.
+let cascadeFadeOf = ({length, fades, coin}) => {
+  CascadePlayer.persistence: fades ? length : CascadePlayer.Forever,
+  coin,
+}
+
 type model = {
   version: string,
   buildTime: string,
@@ -92,11 +115,11 @@ type model = {
   // `cutoutDebug`) so the switch opens in the right position; the logging itself is
   // driven by the shared `DebugLog.enabled` gate the toggle flips.
   debugLog: bool,
-  // The mirror the Debug screen's cascade sliders render from; `cascadeFade` (above) is
+  // The mirror the Debug screen's cascade controls render from; `cascadeFade` (above) is
   // the copy the board reads, written through on every drag. Two copies for the reason
   // the settings switches have two — a control renders from the model, and the board
-  // reads a ref — and `SetCascadeFade` is what keeps them one value.
-  cascade: CascadePlayer.fade,
+  // reads a ref — and `SetCascade` is what keeps them one value.
+  cascade: cascadeTuning,
   // Which scene is mounted. The menu's games rows render their highlight from
   // this, so a scene change moves it through the diff rather than through a class
   // rewritten on a button the switcher kept hold of. Seeded from `switcher.active`
@@ -188,7 +211,7 @@ type msg =
   | ClearStoredState // the Debug screen's "Clear saved data" — forget the device, reopen
   | ToggleCutoutDebug // the menu's safe-area overlay switch (debug)
   | ToggleDebugLog // the Debug screen's console-logging switch
-  | SetCascadeFade(CascadePlayer.fade) // a Debug-screen cascade slider, dragged
+  | SetCascade(cascadeTuning) // a Debug-screen cascade control, moved
   | SceneActivated(string) // the switcher mounted a scene — which one the menu highlights
   | VariantChosen(string) // a family's segment tapped, with no board of it up
   | HistoryChanged(bool) // whether the board can undo after a move
@@ -663,15 +686,15 @@ let update = (msg, model) =>
       // for the session; the model state carries it across rotations regardless.
       () => CutoutDebug.setVisible(cutoutDebug),
     )
-  | SetCascadeFade(fade) => (
-      {...model, cascade: fade},
+  | SetCascade(tuning) => (
+      {...model, cascade: tuning},
       // Through to the board's copy at once — the next victory is the one this is for,
       // and it could be the next move — and then to the celebration on screen, if there
       // is one, so a slider dragged over a falling cascade moves *that* cascade. The
       // same pair the tilt switch makes with `relayout`. Nothing is written to storage;
       // see the ref.
       () => {
-        cascadeFade := fade
+        cascadeFade := cascadeFadeOf(tuning)
         liveBoard.contents->Option.forEach(board => board.retuneCascade())
       },
     )
@@ -1491,23 +1514,99 @@ let settingsScreen = (model, dispatch): MenuSettingsScreen.props => {
   },
 }
 
-// The cascade sliders' readouts. Two numbers a developer might copy into
-// `CascadePlayer.defaultFade`, each with what it *means* beside it: a rate is a length of
-// memory, and a coin is how often the surface is filled, which is the whole of what the
-// fade costs to run (`docs/cascade.md`). The arithmetic behind both is the player's; the
-// words are this screen's.
+// --- The Debug screen's cascade controls -------------------------------------------
+// Numbers a developer might copy into `CascadePlayer.defaultFade`, each with what it
+// *means* beside it: a persistence is a length of trail, and a coin is how often the
+// surface is filled, which is the whole of what the fade costs to run
+// (`docs/cascade.md`). The arithmetic behind both is the player's; the words are this
+// screen's.
 let hundredth = value => (Math.round(value *. 100.) /. 100.)->Float.toString
+let tenth = value => (Math.round(value *. 10.) /. 10.)->Float.toString
 
-let fadeRateReadout = (rate: float) =>
-  rate <= 0.
-    ? "off · nothing fades"
-    : `${hundredth(rate)} /s · half gone in ${hundredth(CascadePlayer.fadeHalfLife(rate))}s`
+// The board's cascade falls at the knobs' own launch interval, which is what lets a
+// length in cards be read out in seconds here without asking the board anything. *How
+// many* cards it will fall is the game's business and none of this screen's — which is
+// why a fraction reads out as a share and converts to nothing.
+let cascadePace = Cascade.defaults.launchMs
 
-let fadeCoinReadout = (fade: CascadePlayer.fade) => {
-  let every = CascadePlayer.fadePayment(fade, ~stampMs=CascadePlayer.defaults.stampMs)
+let cascadeSeconds = length =>
+  CascadePlayer.persistenceSeconds(
+    length,
+    ~launchMs=cascadePace,
+    ~cards=Array.length(Deck.allCards),
+  )
+
+// Which unit a length is written in, as the word its chip carries. A constructor is the
+// only honest way to ask: the same length converted and back can land a hair off itself
+// — a third of a 39-second run is 12.87s, and 12.87 over 39 is not exactly a third — and
+// a chip that unlit itself on the rounding would be maddening.
+let cascadeUnitOf = length =>
+  switch length {
+  | CascadePlayer.Seconds(_) => "seconds"
+  | Cards(_) => "cards"
+  | Fraction(_) => "run"
+  | Forever => "never"
+  }
+
+// The length's slider, unit and all. Its label *is* the unit, so the chips above pick
+// which of these three rows is showing rather than changing what one row means.
+let cascadeSlider = (tuning, dispatch): MenuSlider.spec => {
+  let set = length => dispatch(SetCascade({...tuning, length}))
+  let label = cascadeUnitOf(tuning.length)
+  switch tuning.length {
+  | CascadePlayer.Seconds(seconds) => {
+      label,
+      min: 0.,
+      max: 30.,
+      step: 0.5,
+      value: seconds,
+      readout: `${tenth(seconds)}s · ${tenth(seconds *. 1000. /. cascadePace)} cards`,
+      onInput: value => set(CascadePlayer.Seconds(value)),
+    }
+  | Cards(cards) => {
+      label,
+      min: 0.,
+      max: 52.,
+      step: 1.,
+      value: cards,
+      readout: `${tenth(cards)} cards · ${tenth(cascadeSeconds(CascadePlayer.Cards(cards)))}s`,
+      onInput: value => set(CascadePlayer.Cards(value)),
+    }
+  | Fraction(share) => {
+      label,
+      min: 0.,
+      max: 1.,
+      step: 0.01,
+      value: share,
+      readout: `${Math.round(share *. 100.)->Float.toString}% of the run, whatever its deck`,
+      onInput: value => set(CascadePlayer.Fraction(value)),
+    }
+  // Unreachable: a tuning's `length` is always one of the three above, and "nothing
+  // fades" rides beside it as `fades`. Answered rather than left to throw — a debug panel
+  // that took the menu down with it would be the worse failure — and answered with a row
+  // the caller drops anyway, since it only asks while something fades.
+  | Forever => {
+      label: "cards",
+      min: 0.,
+      max: 52.,
+      step: 1.,
+      value: 9.,
+      readout: "nothing fades",
+      onInput: value => set(CascadePlayer.Cards(value)),
+    }
+  }
+}
+
+let cascadeCoinReadout = (tuning: cascadeTuning) => {
+  let rate = CascadePlayer.fadeRate(~seconds=cascadeSeconds(cascadeFadeOf(tuning).persistence))
+  let every = CascadePlayer.fadePayment(
+    ~rate,
+    ~coin=tuning.coin,
+    ~stampMs=CascadePlayer.defaults.stampMs,
+  )
   every == infinity
-    ? `${hundredth(fade.coin)} · nothing to pay`
-    : `${hundredth(fade.coin)} · a fill every ${Math.round(every *. 1000.)->Float.toString} ms`
+    ? `${hundredth(tuning.coin)} · nothing to pay`
+    : `${hundredth(tuning.coin)} · a fill every ${Math.round(every *. 1000.)->Float.toString} ms`
 }
 
 // The Debug screen: developer tools, a level below Settings.
@@ -1522,26 +1621,53 @@ let debugScreen = (model, dispatch): MenuDebugScreen.props => {
   // cascade's canvas, so these can be dragged over a celebration as it falls and land on
   // it — and on the next one, which reads them as it starts. A list, so the next knob is
   // an entry here and no new prop anywhere.
-  cascadeKnobs: [
-    {
-      label: "fade",
-      min: 0.,
-      max: 0.95,
-      step: 0.01,
-      value: model.cascade.rate,
-      readout: fadeRateReadout(model.cascade.rate),
-      onInput: rate => dispatch(SetCascadeFade({...model.cascade, rate})),
-    },
-    {
-      label: "coin",
-      min: 0.01,
-      max: 0.4,
-      step: 0.01,
-      value: model.cascade.coin,
-      readout: fadeCoinReadout(model.cascade),
-      onInput: coin => dispatch(SetCascadeFade({...model.cascade, coin})),
-    },
-  ],
+  // Which unit the trail's length is said in — and "never", which is not a unit but is
+  // where the fade is off, so it belongs among the same chips rather than on a switch of
+  // its own. Picking a unit re-says the length in it (`CascadePlayer.sameIn`), so the
+  // animation stays put while the words change.
+  cascadeUnits: {
+    let saidIn = like =>
+      CascadePlayer.sameIn(
+        model.cascade.length,
+        ~like,
+        ~launchMs=cascadePace,
+        ~cards=Array.length(Deck.allCards),
+      )
+    let unit = like => {
+      MenuChoiceRow.label: cascadeUnitOf(like),
+      selected: model.cascade.fades && cascadeUnitOf(model.cascade.length) == cascadeUnitOf(like),
+      onChoose: () => dispatch(SetCascade({...model.cascade, fades: true, length: saidIn(like)})),
+    }
+    [
+      {
+        MenuChoiceRow.label: "never",
+        selected: !model.cascade.fades,
+        onChoose: () => dispatch(SetCascade({...model.cascade, fades: false})),
+      },
+      unit(CascadePlayer.Seconds(0.)),
+      unit(CascadePlayer.Cards(0.)),
+      unit(CascadePlayer.Fraction(0.)),
+    ]
+  },
+  // …and the numbers themselves. The length's slider is left out entirely when nothing
+  // fades: there is no length to set then, and a control that did nothing would be the
+  // one thing on this panel that lies.
+  cascadeKnobs: {
+    Array.concat(
+      model.cascade.fades ? [cascadeSlider(model.cascade, dispatch)] : [],
+      [
+        {
+          MenuSlider.label: "coin",
+          min: 0.01,
+          max: 0.4,
+          step: 0.01,
+          value: model.cascade.coin,
+          readout: cascadeCoinReadout(model.cascade),
+          onInput: coin => dispatch(SetCascade({...model.cascade, coin})),
+        },
+      ],
+    )
+  },
   // Asked of the live board rather than the model: the row is live wherever a command
   // has somewhere to land, which is the same question the console answers with "no board
   // on this scene".
@@ -1762,8 +1888,8 @@ let dispatch = Html.mount(
     // Debug overlay starts off each session (not persisted); the model keeps it
     // across rotations.
     cutoutDebug: false,
-    // The cascade's own defaults, which is what a reload resets the sliders to.
-    cascade: cascadeFade.contents,
+    // The cascade's own defaults, which is what a reload resets the controls to.
+    cascade: defaultCascadeTuning,
     // Mirror the persisted console-logging preference so the switch opens in
     // the right position; the `DebugLog` gate itself was seeded above.
     debugLog: debugLogEnabled,

@@ -110,6 +110,9 @@ type elementProps = {
   // What a slider is called, on the slider — the same attribute the demo scenes write
   // onto theirs by hand, so one selector finds a knob wherever it is drawn.
   @as("data-knob") dataKnob?: string,
+  // …and the same for a row of chips (`MenuChoiceRow`), which a test reaches by the
+  // setting's name rather than by counting buttons.
+  @as("data-choice") dataChoice?: string,
   // --- SVG. The card art, the app icon and the spinner are all real vector
   // nodes (see CardArt), so the geometry lives here rather than in a stylesheet.
   xmlns?: string,

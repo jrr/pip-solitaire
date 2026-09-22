@@ -64,6 +64,9 @@ type props = {
   // A list rather than a prop apiece, because the group is expected to grow: another
   // knob is an entry in the driver and no change on this screen at all.
   cascadeKnobs: array<MenuSlider.spec>,
+  // Which unit the length above is said in, and "never" among them — the group's one
+  // control that picks rather than measures (`MenuChoiceRow`).
+  cascadeUnits: array<MenuChoiceRow.choice>,
   // The demo scenes, one entry per scene, with the mounted one `selected`.
   debugScenes: array<MenuDisclosure.entry>,
   // Whether that group opens expanded — `SceneSwitcher`'s call, made when the app
@@ -115,6 +118,7 @@ let make = ({
   onShareGame,
   onClearStored,
   cascadeKnobs,
+  cascadeUnits,
   debugScenes,
   debugScenesOpen,
   debugStates,
@@ -177,20 +181,23 @@ let make = ({
       <MenuDisclosure
         summary="cascade"
         entries=[]
-        content={cascadeKnobs
-        ->Array.map(knob =>
-          <MenuSlider
-            label={knob.label}
-            min={knob.min}
-            max={knob.max}
-            step={knob.step}
-            value={knob.value}
-            readout={knob.readout}
-            onInput={knob.onInput}
-            key={knob.label}
-          />
-        )
-        ->Html.array}
+        content={<>
+          <MenuChoiceRow label="persistence" choices=cascadeUnits />
+          {cascadeKnobs
+          ->Array.map(knob =>
+            <MenuSlider
+              label={knob.label}
+              min={knob.min}
+              max={knob.max}
+              step={knob.step}
+              value={knob.value}
+              readout={knob.readout}
+              onInput={knob.onInput}
+              key={knob.label}
+            />
+          )
+          ->Html.array}
+        </>}
       />
     </MenuSection>
   </div>

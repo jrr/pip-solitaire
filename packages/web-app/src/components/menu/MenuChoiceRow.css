@@ -1,0 +1,61 @@
+@layer components {
+  /* The menu's choice row (see MenuChoiceRow.res): a label and its states, stacked the
+     way `.menu-slider` stacks a label and its track, so a debug group of both reads as
+     one run of controls rather than two kinds of thing. The box is the `--control-*`
+     tokens, like every other row on the panel. */
+  .menu-choice {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    width: 100%;
+    padding: var(--control-pad);
+    font: var(--control-font);
+    color: var(--control-ink);
+    background: var(--control-bg);
+    border: var(--control-border);
+    border-radius: var(--control-radius);
+  }
+
+  .menu-choice__head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 0.75rem;
+  }
+
+  .menu-choice__label {
+    font-weight: 600;
+  }
+
+  .menu-choice__readout {
+    flex: 1 1 auto;
+    color: var(--control-ink-muted);
+    font-variant-numeric: tabular-nums;
+    text-align: right;
+  }
+
+  /* The chips. Not `<MenuVariantPicker>`'s seamless segment: that control holds three
+     marks of a known width, where these hold words of whatever length a caller chose, so
+     they wrap rather than squeeze — four units on a phone's panel is two rows of two, and
+     a squeezed segment would clip the longest word instead. */
+  .menu-choice__chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.3rem;
+  }
+
+  /* Each chip grows from its own word to fill the row it lands on, and centres it.
+     `1 1 auto` rather than a zero basis: with a zero basis "seconds" and "run" come out
+     the same width even when they wrap onto rows of different counts.
+
+     **`width: auto` is what makes them a row at all.** They are `.menu-row`s, and a menu
+     row is a full-width control — left at 100% each chip claims a line of its own and
+     the wrap never happens. The padding comes down with the width for the same reason:
+     four words to a panel this narrow. */
+  .menu-choice__chip {
+    flex: 1 1 auto;
+    width: auto;
+    justify-content: center;
+    padding: 0.35rem 0.6rem;
+  }
+}

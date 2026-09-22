@@ -43,6 +43,7 @@ let debug: MenuDebugScreen.props = {
   onClearStored: () => (),
   // The debug groups; empty stand-ins here.
   cascadeKnobs: [],
+  cascadeUnits: [],
   debugScenes: [],
   debugScenesOpen: false,
   debugStates: [],

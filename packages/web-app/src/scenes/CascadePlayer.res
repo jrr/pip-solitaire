@@ -31,14 +31,35 @@ type launchpad =
   | Spread(int)
   | At(array<(float, float)>)
 
-// How the trail is dimmed, in two numbers that are not larger and smaller versions of
-// each other: `rate` is how fast the picture forgets, and `coin` is the size of the
-// payments it forgets in.
+// **How long a stamp stays on the canvas** — one length of time, said in whichever unit
+// the person deciding it is actually thinking in. They are not four settings: each says
+// the same kind of thing and converts to the same seconds (`persistenceSeconds`) through
+// the launch schedule, from which a fade rate is derived at the moment of use.
+//
+// Which unit you want depends on what you want held constant when the run is not the one
+// you tuned on — a short deck's victory, or the demo's launch-interval slider:
+//
+//   `Cards`     the picture. Nine cards of trail is nine streaks on the stage whether
+//               the deck is 52 or 16, because it is the launch *rate* that decides how
+//               much is in the air at once. The default, for that reason.
+//   `Fraction`  the story. A third of the run is a third of it on any deck, so a board
+//               with a quarter of the cards still empties the same way.
+//   `Seconds`   the clock and nothing else — how long, in a unit no other knob can move
+//               underneath you.
+//   `Forever`   the Windows 3.1 original: nothing fades, and a long run ends a white
+//               sheet with a few cards somewhere in it. Kept because it is what the
+//               fade is *against*, and one tap away when you want to see that.
+type persistence =
+  | Forever
+  | Seconds(float)
+  | Cards(float)
+  | Fraction(float)
+
+// How the trail is dimmed: how long a stamp lasts, and the size of the bites it is taken
+// off in. Not larger and smaller versions of each other — the first is what the fade
+// looks like, the second is what it costs.
 type fade = {
-  // The share of its brightness the trail gives up per second of simulated time — the
-  // same clock as `stampMs`, so the fade keeps pace with the cards rather than with the
-  // frames. 0 is the trail that keeps everything.
-  rate: float,
+  persistence: persistence,
   // The smallest share worth taking off in one go. A fade spent in shares much below this
   // is mostly taken back by the rounding in `Canvas.dim`, so what is owed is saved up
   // until it is worth this much — which also decides how often the surface is filled, and
@@ -46,8 +67,9 @@ type fade = {
   coin: float,
 }
 
-// Half a second's worth per second — about a one-second half-life — paid in tenths.
-let defaultFade = {rate: 0.5, coin: 0.1}
+// Nine cards of trail, taken off in tenths: 6.8 seconds at the default launch interval,
+// which is where the scene's sliders were dragged to.
+let defaultFade = {persistence: Cards(9.), coin: 0.1}
 
 // Every setting in one value, so adjusting one is the same operation as adjusting none
 // (see `retune`).
@@ -224,16 +246,64 @@ let sizeStore = player => {
 let fadeShare = (~rate, ~ms) =>
   rate <= 0. ? 0. : 1. -. Math.pow(1. -. Math.min(rate, 1.), ~exp=ms /. 1000.)
 
-// How long a stamp takes to lose half its brightness: the rate in the unit an eye can look
-// for on the stage, which is what the sliders read out beside it.
-let fadeHalfLife = rate =>
-  rate <= 0. ? infinity : Math.log(0.5) /. Math.log(1. -. Math.min(rate, 1.))
+// How long the deck takes to leave, in seconds: one card per `launchMs`. The *schedule*
+// rather than the physics — the last card is still falling for a second or two after
+// this — which is what makes it a number that can be had before the run starts.
+let runSeconds = (~launchMs, ~cards) => launchMs *. Int.toFloat(cards) /. 1000.
+
+// The one conversion: whichever unit a persistence is said in, as the seconds it comes
+// to. `Forever` is infinity rather than a case every caller has to answer, which is what
+// lets the rate below fall out of the same arithmetic as the rest.
+let persistenceSeconds = (persistence, ~launchMs, ~cards) =>
+  switch persistence {
+  | Forever => infinity
+  | Seconds(seconds) => Math.max(seconds, 0.)
+  | Cards(count) => Math.max(count, 0.) *. launchMs /. 1000.
+  | Fraction(share) => Math.max(share, 0.) *. runSeconds(~launchMs, ~cards)
+  }
+
+// The same length of time, said in the unit of `like` — what a unit picker does. Nine
+// cards and 6.8 seconds are one setting, so changing which unit it is written in must
+// not change the animation; the constructor handed in carries no number of its own, only
+// the choice of unit.
+//
+// `Forever` has no length to convert, so leaving it lands on the default in the chosen
+// unit rather than on an infinity no slider could show.
+let sameIn = (persistence, ~like, ~launchMs, ~cards) => {
+  let seconds = persistenceSeconds(persistence, ~launchMs, ~cards)
+  let settled = Float.isFinite(seconds)
+    ? seconds
+    : persistenceSeconds(defaultFade.persistence, ~launchMs, ~cards)
+  switch like {
+  | Forever => Forever
+  | Seconds(_) => Seconds(settled)
+  | Cards(_) => Cards(launchMs <= 0. ? 0. : settled *. 1000. /. launchMs)
+  | Fraction(_) =>
+    let whole = runSeconds(~launchMs, ~cards)
+    Fraction(whole <= 0. ? 0. : settled /. whole)
+  }
+}
+
+// **What "gone" means.** An exponential fade never reaches nothing, so a persistence has
+// to be measured to a line, and this is it: a stamp is spent once it is down to a
+// hundredth of the strength it went on at. Below that it is a smudge the table's own
+// colour swallows — and in practice `Canvas.dim`'s floor has taken it before then.
+//
+// A definition rather than a tuned number: move it and every persistence means a
+// different length, which is the one way to make all four units wrong at once.
+let spentAt = 0.01
+
+// The rate a persistence comes to — the share of itself the surface gives up per second
+// of simulated time, which is what `fadeShare` asks for. Zero seconds takes everything at
+// the first stamp (no trail at all), and `Forever` falls out as a rate of zero with no
+// case of its own: `spentAt` to the power of nothing is one.
+let fadeRate = (~seconds) => seconds <= 0. ? 1. : 1. -. Math.pow(spentAt, ~exp=1. /. seconds)
 
 // How often the fade comes due, in seconds — the stretch whose share is one coin, and
 // never oftener than a stamp, which is the only moment it is ever paid at. One
 // full-surface fill this often is the whole of what a fade costs to run, so this is the
 // number to read a coin by.
-let fadePayment = ({rate, coin}, ~stampMs) =>
+let fadePayment = (~rate, ~coin, ~stampMs) =>
   if rate <= 0. {
     infinity
   } else {
@@ -249,7 +319,17 @@ let fadePayment = ({rate, coin}, ~stampMs) =>
 // The rect is the backing store's own size read back in CSS pixels rather than the
 // element's box: the same rectangle, without a layout read per stamp.
 let dim = player => {
-  let {rate, coin} = player.options.fade
+  let {persistence, coin} = player.options.fade
+  // Derived here rather than held, so a persistence counted in cards or in runs follows
+  // the launch interval while it is being dragged — and so `Cards(9)` is nine cards on a
+  // short deck's victory as much as on a full one.
+  let rate = fadeRate(
+    ~seconds=persistenceSeconds(
+      persistence,
+      ~launchMs=player.options.knobs.launchMs,
+      ~cards=Array.length(player.run.cards),
+    ),
+  )
   player.fadeOwedMs = player.fadeOwedMs +. player.options.stampMs
   let share = fadeShare(~rate, ~ms=player.fadeOwedMs)
 

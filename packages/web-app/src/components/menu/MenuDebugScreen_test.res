@@ -15,17 +15,17 @@ let debugStates: array<MenuDisclosure.entry> = [
   {label: "Almost won", onSelect: () => ()},
 ]
 
-// Two knobs, as the driver hands them over: a value, the words it reads as, and where a
-// drag reports to.
+// The cascade group as the driver hands it over: a unit picked out of four, and a knob
+// per number with the words it reads as and where a drag reports to.
 let knobs = (~log=[]): array<MenuSlider.spec> => [
   {
-    label: "fade",
+    label: "cards",
     min: 0.,
-    max: 0.95,
-    step: 0.01,
-    value: 0.5,
-    readout: "0.5 /s · half gone in 1s",
-    onInput: rate => log->Array.push(`fade ${Float.toString(rate)}`),
+    max: 52.,
+    step: 1.,
+    value: 9.,
+    readout: "9 cards · 6.8s",
+    onInput: cards => log->Array.push(`cards ${Float.toString(cards)}`),
   },
   {
     label: "coin",
@@ -33,13 +33,21 @@ let knobs = (~log=[]): array<MenuSlider.spec> => [
     max: 0.4,
     step: 0.01,
     value: 0.1,
-    readout: "0.1 · a fill every 152 ms",
+    readout: "0.1 · a fill every 155 ms",
     onInput: coin => log->Array.push(`coin ${Float.toString(coin)}`),
   },
 ]
 
+let units = (~log=[]): array<MenuChoiceRow.choice> =>
+  ["never", "seconds", "cards", "run"]->Array.map(label => {
+    MenuChoiceRow.label,
+    selected: label == "cards",
+    onChoose: () => log->Array.push(`unit ${label}`),
+  })
+
 let render = (
   ~cascadeKnobs=knobs(),
+  ~cascadeUnits=units(),
   ~debugScenesOpen=false,
   ~autoplayEnabled=true,
   ~autoplayStatus=None,
@@ -70,6 +78,7 @@ let render = (
       onShareGame,
       onClearStored,
       cascadeKnobs,
+      cascadeUnits,
       debugScenes,
       debugScenesOpen,
       debugStates,
@@ -238,8 +247,9 @@ describe("MenuDebugScreen", () => {
       }
     expect(rowsIn(0))->toEqual(["Gallery", "Raster"])
     expect(rowsIn(1))->toEqual(["Mid-game", "Almost won"])
-    // The third holds no rows at all: a slider is not one (`MenuSlider`).
-    expect(rowsIn(2))->toEqual([])
+    // The third's rows are the unit chips — which *are* `.menu-row`s, that being where
+    // their box and highlight come from — and nothing else: a slider is not one.
+    expect(rowsIn(2))->toEqual(["never", "seconds", "cards", "run"])
   })
 
   test("puts the cascade knobs on sliders, each reading out what its number means", () => {
@@ -247,31 +257,52 @@ describe("MenuDebugScreen", () => {
     // What the words say is the driver's business; that each knob arrives with its own
     // is this screen's.
     let screen = render()
-    expect(screen->findAll(".menu-slider__label")->Array.map(text))->toEqual(["fade", "coin"])
+    expect(screen->findAll(".menu-slider__label")->Array.map(text))->toEqual(["cards", "coin"])
     expect(screen->findAll(".menu-slider__readout")->Array.map(text))->toEqual([
-      "0.5 /s · half gone in 1s",
-      "0.1 · a fill every 152 ms",
+      "9 cards · 6.8s",
+      "0.1 · a fill every 155 ms",
     ])
   })
 
-  test("reports a drag to the knob it was on, and to no other", () => {
+  test("offers the units as chips, with the one in effect marked", () => {
+    // The persistence is one length said four ways, so which way is a choice rather than
+    // a number — and `aria-current` is what says which, as on every other row here.
+    let screen = render()
+    let chips = screen->findAll(`.menu-choice[data-choice="persistence"] .menu-choice__chip`)
+    expect(chips->Array.map(text))->toEqual(["never", "seconds", "cards", "run"])
+    expect(chips->Array.map(chip => attrOr(chip, "aria-current")))->toEqual([
+      "<missing>",
+      "<missing>",
+      "true",
+      "<missing>",
+    ])
+  })
+
+  test("reports a drag to the knob it was on, and a tap to the chip it was on", () => {
     let log = []
-    let screen = render(~cascadeKnobs=knobs(~log))
+    let screen = render(~cascadeKnobs=knobs(~log), ~cascadeUnits=units(~log))
     let coin = screen->find(`input[data-knob="coin"]`)->Option.getOrThrow
     typeInto(coin, "0.25")
-    expect(log)->toEqual(["coin 0.25"])
+    let run =
+      screen
+      ->findAll(".menu-choice__chip")
+      ->Array.find(chip => text(chip) == "run")
+      ->Option.getOrThrow
+    click(run)
+    expect(log)->toEqual(["coin 0.25", "unit run"])
   })
 
   test("hands the browser the range the driver asked for", () => {
-    // A slider whose bounds came from somewhere else would quietly tune something else.
+    // A slider whose bounds came from somewhere else would quietly tune something else —
+    // and these bounds change with the unit, so they are the driver's to say every time.
     let screen = render()
-    let fade = screen->find(`input[data-knob="fade"]`)->Option.getOrThrow
-    expect((attrOr(fade, "min"), attrOr(fade, "max"), attrOr(fade, "step")))->toEqual((
+    let cards = screen->find(`input[data-knob="cards"]`)->Option.getOrThrow
+    expect((attrOr(cards, "min"), attrOr(cards, "max"), attrOr(cards, "step")))->toEqual((
       "0",
-      "0.95",
-      "0.01",
+      "52",
+      "1",
     ))
-    expect(attrOr(fade, "type"))->toBe("range")
+    expect(attrOr(cards, "type"))->toBe("range")
   })
 
   test("opens whichever group the switcher says the app landed inside", () => {

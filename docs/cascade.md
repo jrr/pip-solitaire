@@ -212,9 +212,31 @@ retained nodes it would be one to two thousand SVGs by the end of a run.
 Kept at full strength, though, the trail wins. A stamp from thirty seconds ago is
 exactly as bright as the one going down now, so by the last third of a 52-card
 run the stage is a white sheet with a few cards somewhere in it. The surface
-gives up a share of itself per second instead (`fade`), and that is what sorts
-the picture into depth: the card in the air is white, the second behind it is
-grey, and what fell half a minute ago is a ghost the table shows through.
+gives up a share of itself as it goes instead, and that is what sorts the picture
+into depth: the card in the air is white, the second behind it is grey, and what
+fell half a minute ago is a ghost the table shows through.
+
+**How long a stamp lasts is a `persistence`, and it can be said four ways.** They
+are not four settings — three are units of one length, converted through the
+launch schedule, and the fourth is no length at all; the rate the surface
+actually fades at is derived from whichever it is at the moment of use. Which one
+you reach for is a question of what should stay put when the run *isn't* the one
+you tuned on:
+
+| | holds constant | |
+|---|---|---|
+| `Cards(9)` | the picture | nine streaks on the stage whether the deck is 52 or 16, because the launch rate is what decides how much is in the air at once. The default |
+| `Fraction(0.33)` | the story | a third of the run is a third of it on any deck, so a board with a quarter of the cards still empties the same way |
+| `Seconds(6.8)` | the clock | how long, in a unit no other knob can move underneath you |
+| `Forever` | everything | nothing fades: the Windows 3.1 original, kept because it is what the fade is *against* |
+
+A persistence has to be measured to a line, since an exponential fade never
+reaches nothing: a stamp is **spent** once it is down to a hundredth of the
+strength it went on at (`CascadePlayer.spentAt`). That is a definition rather
+than a tuned number — move it and every persistence means a different length,
+which is the one way to make all four units wrong at once. The default, nine
+cards, is 6.8 seconds at the default launch interval, which is a sixth of a
+52-card run.
 
 **The fade takes alpha, not colour.** `destination-out` with a flat fill
 multiplies every pixel's alpha and leaves the pixel alone, so a stamp thins back
@@ -304,8 +326,8 @@ chosen.
 | speed | 0.4 ± 0.1 m/s | the sideways throw |
 | launchInterval | 750 ms | so a 52-card deck takes ~39s |
 | trail | 16 ms | of simulated time between stamps |
-| fade | 0.5 /s | the share of its brightness the trail gives up per simulated second — a one-second half-life |
-| fade coin | 0.1 | the smallest share worth taking off in one go — a fill every 152ms at that rate |
+| fade | `Cards(9)` | how long a stamp lasts — 6.8s at the launch interval above, a sixth of the run |
+| fade coin | 0.1 | the smallest share worth taking off in one go — a fill every 154ms at that persistence |
 
 Not on a slider: the simulation step (1/120s), `maxStep`
 (50ms), `maxCatchUpMs` (100ms), the pose length (16 cards), and the scene's three
@@ -313,6 +335,11 @@ card sizes (40/90/140px).
 
 At earth gravity the trail knob has to come down with it — spacing is speed ×
 interval, and raising one without the other turns the smear into a scatter.
+
+The demo scene counts the persistence in **cards** and nothing else, with a *no
+fade* toggle beside the card-size ones. The other units are unobservable there —
+one deck, one stage, and all four coincide — so the picker belongs where a run
+can be a different shape, which is the board.
 
 ## The demo scene
 
@@ -371,8 +398,12 @@ redo back into the winning move, raise the panel alone: the cascade is what a
 game being won looks like, not what a won position looks like.
 
 **The dimming is tunable from the menu, on a live board.** Debug → *cascade* holds
-the two numbers as sliders (`MenuSlider`, fed by `Main`'s `debugScreen`), and they
-reach the board the way the tilt switch does: a live ref the board reads as a
+the persistence's unit as chips (`MenuChoiceRow`) and the numbers as sliders
+(`MenuSlider`), fed by `Main`'s `debugScreen`. Picking a unit *re-says* the length
+in it rather than resetting it (`CascadePlayer.sameIn`), so the animation stays
+put while the words change; picking **never** takes the length slider away
+entirely, there being no length to set. They reach the board the way the tilt
+switch does: a live ref the board reads as a
 cascade starts (`~cascadeFade`), plus `controls.retuneCascade` for the one already
 falling — the menu opens over the canvas, so a slider dragged mid-celebration
 moves that celebration. Nothing is stored. They are a debug aid rather than a

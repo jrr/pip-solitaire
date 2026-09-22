@@ -96,8 +96,19 @@ let make = (~mode=Live, ~seed as initialSeed=1): Scene.t => {
     let cardWidth = ref(CascadePlayer.defaults.cardWidth)
     let seed = ref(initialSeed)
     let snap = ref(true)
-    let fade = ref(CascadePlayer.defaults.fade.rate)
+    // In cards, which is the unit `CascadePlayer.defaultFade` is written in — so a number
+    // dragged to here is the number to copy there. The other three units say the same
+    // lengths and none of them is visible on this stage: one deck, one launch interval,
+    // and they all coincide. Where they don't is a board whose deck is a different size,
+    // which is the menu's picker (`docs/cascade.md`).
+    let fadeCards = ref(9.)
+    // …and the way to see the animation this one is against: the trail that keeps
+    // everything, which no number of cards can say.
+    let noFade = ref(false)
     let coin = ref(CascadePlayer.defaults.fade.coin)
+
+    let persistence = () =>
+      noFade.contents ? CascadePlayer.Forever : CascadePlayer.Cards(fadeCards.contents)
 
     let options = () => {
       ...CascadePlayer.defaults,
@@ -106,7 +117,7 @@ let make = (~mode=Live, ~seed as initialSeed=1): Scene.t => {
       knobs: knobs.contents,
       stampMs: stampMs.contents,
       snap: snap.contents,
-      fade: {rate: fade.contents, coin: coin.contents},
+      fade: {persistence: persistence(), coin: coin.contents},
     }
 
     let refresh = ref(() => ())
@@ -143,6 +154,10 @@ let make = (~mode=Live, ~seed as initialSeed=1): Scene.t => {
     // (`Cascade.snapToDevice`): a chip that names a topic leaves a reader working out which
     // way "on" points.
     let snapButton = button(~parent=toolbar, ~className="cascade-toggle", ~label="whole pixels")
+    // Named for what it produces, like the one beside it: on, the trail keeps everything
+    // and a long run silts up into a white sheet — which is the picture the fade is
+    // against, and the only way to see it is to turn the fade off and watch.
+    let noFadeButton = button(~parent=toolbar, ~className="cascade-toggle", ~label="no fade")
 
     // A knob: its name, a range input, and the value it is at — a slider alone says
     // "somewhere in the middle", and what you want to leave with is a number to put in the
@@ -321,22 +336,26 @@ let make = (~mode=Live, ~seed as initialSeed=1): Scene.t => {
       ~format=value => `${whole(value)} ms`,
       ~onChange=value => stampMs := value,
     )
-    // The knob a long run needs and a short one never shows: at zero the last seconds of a
-    // 52-card cascade are a white sheet with cards somewhere in it. A half-life is what is
-    // read out, because a share per second is not something an eye can look for on the
-    // stage, and "the faintest stamp you can still see went down a second ago" is.
+    // How long a stamp lasts, counted in cards launched — nine cards of trail is nine
+    // streaks on the stage, which is a thing an eye can check by counting them. The
+    // seconds beside it move when the launch interval does, and that is the point: what
+    // is held fixed here is the picture, not the clock.
     knob(
       ~label="fade",
       ~min=0.,
-      ~max=0.95,
-      ~step=0.01,
-      ~value=fade.contents,
+      ~max=52.,
+      ~step=1.,
+      ~value=fadeCards.contents,
       ~wide=true,
-      ~format=value =>
-        value <= 0.
-          ? "off · the trail keeps everything"
-          : `${hundredth(value)} /s · ${hundredth(CascadePlayer.fadeHalfLife(value))}s half-life`,
-      ~onChange=value => fade := value,
+      ~format=value => {
+        let seconds = CascadePlayer.persistenceSeconds(
+          CascadePlayer.Cards(value),
+          ~launchMs=knobs.contents.launchMs,
+          ~cards=Array.length(CascadePlayer.status(player).run.cards),
+        )
+        `${whole(value)} cards · ${tenth(seconds)}s`
+      },
+      ~onChange=value => fadeCards := value,
     )
     // How big a bite each fade takes — and so, at a given rate, how often the surface is
     // filled, which is the whole of what the fade costs. Left of about a twentieth the
@@ -350,12 +369,17 @@ let make = (~mode=Live, ~seed as initialSeed=1): Scene.t => {
       ~value=coin.contents,
       ~wide=true,
       ~format=value => {
-        let every = CascadePlayer.fadePayment(
-          {rate: fade.contents, coin: value},
-          ~stampMs=stampMs.contents,
+        let state = CascadePlayer.status(player)
+        let rate = CascadePlayer.fadeRate(
+          ~seconds=CascadePlayer.persistenceSeconds(
+            persistence(),
+            ~launchMs=knobs.contents.launchMs,
+            ~cards=Array.length(state.run.cards),
+          ),
         )
+        let every = CascadePlayer.fadePayment(~rate, ~coin=value, ~stampMs=stampMs.contents)
         every == infinity
-          ? `${hundredth(value)} · never, with the fade off`
+          ? `${hundredth(value)} · never, with no fade`
           : `${hundredth(value)} · a fill every ${whole(every *. 1000.)} ms`
       },
       ~onChange=value => coin := value,
@@ -375,6 +399,10 @@ let make = (~mode=Live, ~seed as initialSeed=1): Scene.t => {
           snapButton->WebDom.setAttribute(
             "class",
             snap.contents ? "cascade-toggle cascade-toggle--on" : "cascade-toggle",
+          )
+          noFadeButton->WebDom.setAttribute(
+            "class",
+            noFade.contents ? "cascade-toggle cascade-toggle--on" : "cascade-toggle",
           )
           pauseButton->WebDom.setTextContent(state.paused ? "Resume" : "Pause")
           // Pausing a pose would pause nothing: there is no loop to stop.
@@ -453,6 +481,13 @@ let make = (~mode=Live, ~seed as initialSeed=1): Scene.t => {
         }
       )
     )
+    noFadeButton->WebDom.addEventListener("click", () => {
+      noFade := !noFade.contents
+      // Live, like the snap: what is on the surface stays, and what happens to it next
+      // changes. Turning the fade off mid-run leaves the trail where it faded to.
+      CascadePlayer.retune(player, options())
+      redraws->Array.forEach(repaint => repaint())
+    })
     snapButton->WebDom.addEventListener("click", () => {
       snap := !snap.contents
       // Live, the trail keeps what it has, which is the comparison worth having: both kinds

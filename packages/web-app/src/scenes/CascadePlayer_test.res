@@ -119,24 +119,27 @@ describe("the fade behind the cards", () => {
     expect(1. -. (1. -. half) *. (1. -. half))->toBeCloseToWithin(0.5, 6)
   })
 
-  test("is off at zero, which is the trail that keeps everything", () => {
+  test("is off for `Forever`, which is the trail that keeps everything", () => {
+    // No case of its own anywhere below this: an infinite persistence is a rate of zero,
+    // and a rate of zero takes nothing off.
+    let seconds = CascadePlayer.persistenceSeconds(CascadePlayer.Forever, ~launchMs=750., ~cards=52)
+    expect(seconds)->toBe(infinity)
+    expect(CascadePlayer.fadeRate(~seconds))->toBe(0.)
     expect(CascadePlayer.fadeShare(~rate=0., ~ms=1000.))->toBe(0.)
-    // And the two readouts agree rather than dividing by zero behind a slider.
-    expect(CascadePlayer.fadeHalfLife(0.))->toBe(infinity)
-    expect(CascadePlayer.fadePayment({rate: 0., coin: 0.1}, ~stampMs=16.))->toBe(infinity)
+    expect(CascadePlayer.fadePayment(~rate=0., ~coin=0.1, ~stampMs=16.))->toBe(infinity)
   })
 
   test("comes due on the stretch whose share is one coin", () => {
     // The number a coin is read by: one full-surface fill this often is the whole of
     // what the fade costs to run.
-    let every = CascadePlayer.fadePayment(CascadePlayer.defaultFade, ~stampMs=16.)
-    expect(Math.round(every *. 1000.))->toBe(152.)
+    let rate = CascadePlayer.fadeRate(~seconds=6.75)
+    let every = CascadePlayer.fadePayment(~rate, ~coin=0.1, ~stampMs=16.)
+    expect(Math.round(every *. 1000.))->toBe(154.)
     // A bigger bite is a rarer fill…
-    let bigger = CascadePlayer.fadePayment({rate: 0.5, coin: 0.3}, ~stampMs=16.)
-    expect(bigger > every)->toBe(true)
+    expect(CascadePlayer.fadePayment(~rate, ~coin=0.3, ~stampMs=16.) > every)->toBe(true)
     // …and one smaller than a stamp's worth is still only paid at a stamp, which is the
     // only moment there is to pay it at.
-    expect(CascadePlayer.fadePayment({rate: 0.5, coin: 0.001}, ~stampMs=16.))->toBe(0.016)
+    expect(CascadePlayer.fadePayment(~rate, ~coin=0.001, ~stampMs=16.))->toBe(0.016)
   })
 
   test("is saved up until it is worth a coin, instead of being spent on a rounding error", () => {
@@ -152,7 +155,7 @@ describe("the fade behind the cards", () => {
         paidAfter := stamp
       }
     }
-    // 152ms is what a tenth costs at half a second, which is ten 16ms stamps.
+    // 154ms is what a tenth costs at nine cards of persistence, which is ten 16ms stamps.
     expect(paidAfter.contents)->toBe(10)
     after(player, () => expect(player.fadeOwedMs < 160.)->toBe(true))
   })
@@ -160,7 +163,9 @@ describe("the fade behind the cards", () => {
   test("takes its coin from the options, so a debug slider can move it on a live board", () => {
     // A bigger bite is a longer wait between fills, which is what the cost is read off:
     // a fifth takes 322ms of simulated time to owe where a tenth takes 152.
-    let player = ready(~options={...CascadePlayer.defaults, fade: {rate: 0.5, coin: 0.2}})
+    let player = ready(
+      ~options={...CascadePlayer.defaults, fade: {...CascadePlayer.defaultFade, coin: 0.2}},
+    )
     let paidAfter = ref(0)
     for stamp in 1 to 60 {
       let owed = player.fadeOwedMs
@@ -170,6 +175,68 @@ describe("the fade behind the cards", () => {
       }
     }
     after(player, () => expect(paidAfter.contents)->toBe(21))
+  })
+
+  test("is one length of time whichever of the four units says it", () => {
+    // The units are a way of writing the setting down, not four settings: at the default
+    // launch interval nine cards, 6.75 seconds and a 52nd-of-a-run-times-nine are the
+    // same trail, and only a run of another shape tells them apart.
+    let at = persistence => CascadePlayer.persistenceSeconds(persistence, ~launchMs=750., ~cards=52)
+    expect(at(CascadePlayer.Cards(9.)))->toBe(6.75)
+    expect(at(CascadePlayer.Seconds(6.75)))->toBe(6.75)
+    expect(at(CascadePlayer.Fraction(9. /. 52.)))->toBeCloseToWithin(6.75, 6)
+  })
+
+  test("and the units part company on a deck of another size, which is the point", () => {
+    // A short deck's victory: the same nine cards of trail, which is the same picture on
+    // the stage, where the same *fraction* would be a trail four times shorter.
+    let short = persistence =>
+      CascadePlayer.persistenceSeconds(persistence, ~launchMs=750., ~cards=13)
+    expect(short(CascadePlayer.Cards(9.)))->toBe(6.75)
+    expect(short(CascadePlayer.Fraction(9. /. 52.)))->toBeCloseToWithin(6.75 /. 4., 6)
+  })
+
+  test("says the same length in another unit when the unit changes under it", () => {
+    // What a unit picker does. Nine cards *is* 6.75 seconds, so switching which unit it
+    // is written in must leave the animation exactly where it was.
+    let converted = CascadePlayer.sameIn(
+      CascadePlayer.Cards(9.),
+      ~like=CascadePlayer.Seconds(0.),
+      ~launchMs=750.,
+      ~cards=52,
+    )
+    expect(converted)->toEqual(CascadePlayer.Seconds(6.75))
+
+    // `Forever` has no length to carry over, so leaving it lands on the default in the
+    // unit asked for rather than on an infinity no slider could show.
+    let leaving = CascadePlayer.sameIn(
+      CascadePlayer.Forever,
+      ~like=CascadePlayer.Cards(0.),
+      ~launchMs=750.,
+      ~cards=52,
+    )
+    expect(leaving)->toEqual(CascadePlayer.Cards(9.))
+  })
+
+  test("takes a persistence in cards from the run it is in, not from the deck it isn't", () => {
+    // The conversion reads the cards the *player* was given, so a board emptying four
+    // foundations of a short deck fades by its own run's length.
+    let cards: array<Deck.card> = [
+      {suit: Deck.Spades, rank: Deck.Ace},
+      {suit: Deck.Hearts, rank: Deck.Two},
+    ]
+    let player = ready(~options={...CascadePlayer.defaults, cards: Some(cards)})
+    after(
+      player,
+      () =>
+        expect(
+          CascadePlayer.persistenceSeconds(
+            CascadePlayer.Fraction(0.5),
+            ~launchMs=player.options.knobs.launchMs,
+            ~cards=Array.length(player.run.cards),
+          ),
+        )->toBe(0.75),
+    )
   })
 
   test("spends every coin in full, so a run of stamps is worth what the seconds say", () => {
@@ -210,12 +277,15 @@ describe("new settings, handed over mid-flight", () => {
   test("a fade is one of those: what you dim is the trail in front of you", () => {
     let player = ready()
     underway(player)
-    CascadePlayer.retune(player, {...player.options, fade: {rate: 0.9, coin: 0.2}})
+    CascadePlayer.retune(
+      player,
+      {...player.options, fade: {persistence: CascadePlayer.Seconds(2.), coin: 0.2}},
+    )
     after(
       player,
       () => {
         expect(player.run.launched)->toBe(1)
-        expect(player.options.fade.rate)->toBe(0.9)
+        expect(player.options.fade.persistence)->toEqual(CascadePlayer.Seconds(2.))
       },
     )
   })

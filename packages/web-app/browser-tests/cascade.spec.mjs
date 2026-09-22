@@ -19,6 +19,16 @@ async function open(page, query = "") {
 
 const scene = (page) => page.locator(".cascade-scene")
 
+/**
+ * Turn the fade off — the trail that keeps everything, which is what the fade is against.
+ * A toggle rather than a knob because a persistence is a length, and "never" is not one.
+ */
+const noFade = async (page) => {
+  const toggle = page.locator(".cascade-toggle", { hasText: "no fade" })
+  await toggle.click()
+  await expect(toggle).toHaveClass(/cascade-toggle--on/)
+}
+
 /** The overlay's backing store and the box it covers, as the page sees them. */
 const surface = (page) =>
   page.evaluate(() => {
@@ -118,9 +128,7 @@ test.describe("the fade behind the cards", () => {
 
     // The same pose with the fade off, which is the trail this animation started with.
     // Nothing else about the run changes, so what the two differ in is brightness.
-    const fade = page.locator('.cascade-knob[data-knob="fade"]')
-    await fade.locator("input").fill("0")
-    await expect(fade.locator(".cascade-knob__value")).toContainText("off")
+    await noFade(page)
     const flat = await ink(page)
     expect(flat.full).toBeGreaterThan(flat.painted * 0.95)
 
@@ -137,7 +145,7 @@ test.describe("the device-pixel snap", () => {
     // With the fade on, every pixel behind the cards is partially lit and `partial` counts
     // the trail rather than its edges — which is the instrument this test is holding. So
     // the fade comes off first, for both halves of the comparison.
-    await page.locator('input[data-knob="fade"]').fill("0")
+    await noFade(page)
     const snapped = await ink(page)
 
     // The same cascade with the snap off: the only difference is where the blits land.
