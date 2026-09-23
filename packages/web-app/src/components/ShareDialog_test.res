@@ -48,7 +48,7 @@ describe("ShareDialog", () => {
     expect(dialog->has(".share-dialog__qr .qr-code"))->toBe(true)
     expect(dialog->hint)->toBe(ShareDialog.hint)
     expect(dialog->textIn(".share-dialog__truncated"))->toBe(
-      "QR code's undo history was truncated to 93/300 steps.",
+      "QR code discarded history. (94/301 states kept)",
     )
   })
 

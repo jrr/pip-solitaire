@@ -40,8 +40,9 @@ let tooLong = "This game's link is too long for a QR code — copy it instead."
 
 // Said only when the code had to leave history out. A line of its own rather than part
 // of the hint, so a Copy's status taking the hint's place doesn't take this with it.
+// Counted in states, the present included, so the total is every board the save holds.
 let truncated = ({kept, total}: ShareLink.trimmed): string =>
-  `QR code's undo history was truncated to ${Int.toString(kept)}/${Int.toString(total)} steps.`
+  `QR code discarded history. (${Int.toString(kept + 1)}/${Int.toString(total + 1)} states kept)`
 
 let make = ({scan, status, onCopy, onClose}) => {
   let qr = scan->Option.flatMap(({url}) => QrCode.matrix(url))

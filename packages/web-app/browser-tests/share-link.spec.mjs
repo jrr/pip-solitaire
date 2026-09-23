@@ -296,7 +296,7 @@ test("a history too long for a QR code is trimmed in the code, and Copy keeps al
   const copied = await shareFromDebugScreen(page)
   await expect(shareDialog(page).getByRole("img", { name: /QR code/ })).toBeVisible()
   await expect(shareDialog(page).locator(".share-dialog__truncated")).toHaveText(
-    new RegExp(`truncated to \\d+/${save.past.length} steps`),
+    new RegExp(`\\(\\d+/${save.past.length + 1} states kept\\)`),
   )
   expect((await inflate(page, copied)).past.length).toBe(save.past.length)
 })

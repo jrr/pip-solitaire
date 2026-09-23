@@ -124,7 +124,7 @@ is paid for. A game's history outgrows that at around 150 moves of Spider, or 20
 FreeCell. So the code can carry a *trimmed* history (`ShareLink.linksFor`): the redo
 branch goes first, then `past` from its oldest end, until it fits. The present always
 survives, and so does the tally. When the code is trimmed, the dialog says how many
-steps it kept, out of how many.
+states it kept, out of how many, the present included.
 
 Copy always carries the whole thing. A trimmed code is a convenience for picking a game
 up on a phone, not a debugging record. A trimmed line's `oldest` is the earliest state
