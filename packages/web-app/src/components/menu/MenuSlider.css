@@ -1,0 +1,64 @@
+@layer components {
+  /* The menu's slider row (see MenuSlider.res). The same `--control-*` box the rows
+     wear, so a group of sliders reads as part of the panel rather than as a form that
+     wandered in — what differs is that its contents stack: label and readout on one
+     line, the track under them full width.
+
+     No `min-height` floor like `.menu-row`'s: the track carries its own thumb height
+     and the two lines together clear 44px on every size this panel is drawn at. */
+  .menu-slider {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    width: 100%;
+    padding: var(--control-pad);
+    font: var(--control-font);
+    color: var(--control-ink);
+    background: var(--control-bg);
+    border: var(--control-border);
+    border-radius: var(--control-radius);
+  }
+
+  .menu-slider__head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 0.75rem;
+  }
+
+  .menu-slider__label {
+    font-weight: 600;
+  }
+
+  /* The value in words. Muted and allowed to wrap: these readouts carry two facts
+     ("0.5 /s · 1s half-life") and a phone's panel is narrow enough to need the second
+     line rather than a clipped first one. `text-align: right` is what keeps it on the
+     label's far side when it does wrap. */
+  .menu-slider__readout {
+    flex: 1 1 auto;
+    color: var(--control-ink-muted);
+    font-variant-numeric: tabular-nums;
+    text-align: right;
+  }
+
+  /* The track, drawn by the browser: a range input is a control every engine already
+     makes draggable, keyboard-reachable and the right size for a finger, and none of
+     that survives being rebuilt out of divs. Under the app's `color-scheme: dark`
+     (`styles/base.css`) it comes out dark of its own accord.
+
+     **Don't reach for `accent-color`** to match the switch's green. Chromium takes an
+     accent as a licence to paint the *light* track whatever the colour scheme says, so
+     the fill turns green and the empty half turns white — the brightest thing on the
+     panel, on its least important control. The blue fill is the browser's own and the
+     price of leaving the rest of it alone.
+
+     `width: 100%` because an unstyled range input has a fixed intrinsic width that
+     ignores its box, and `min-width: 0` so it may shrink inside the flex column on a
+     narrow panel. */
+  .menu-slider__track {
+    width: 100%;
+    min-width: 0;
+    margin: 0;
+    cursor: pointer;
+  }
+}

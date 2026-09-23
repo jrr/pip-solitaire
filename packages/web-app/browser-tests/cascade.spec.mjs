@@ -19,6 +19,16 @@ async function open(page, query = "") {
 
 const scene = (page) => page.locator(".cascade-scene")
 
+/**
+ * Turn the fade off — the trail that keeps everything, which is what the fade is against.
+ * A toggle rather than a knob because a persistence is a length, and "never" is not one.
+ */
+const noFade = async (page) => {
+  const toggle = page.locator(".cascade-toggle", { hasText: "no fade" })
+  await toggle.click()
+  await expect(toggle).toHaveClass(/cascade-toggle--on/)
+}
+
 /** The overlay's backing store and the box it covers, as the page sees them. */
 const surface = (page) =>
   page.evaluate(() => {
@@ -32,9 +42,13 @@ const surface = (page) =>
   })
 
 /**
- * How many device pixels are painted at all, and how many *partially* — the second being
- * the instrument for the snap: a blit on the grid is a copy with the bitmap's own hard
- * edges, and one off it smears every edge across two columns of half-lit pixels.
+ * How many device pixels are painted at all, how many *partially*, and how many at full
+ * strength.
+ *
+ * `partial` is the instrument for the snap: a blit on the grid is a copy with the
+ * bitmap's own hard edges, and one off it smears every edge across two columns of
+ * half-lit pixels. `full` is the instrument for the fade: everything but the stamp that
+ * went down last has been dimmed at least once.
  */
 const ink = (page) =>
   page.evaluate(() => {
@@ -42,11 +56,13 @@ const ink = (page) =>
     const { data } = canvas.getContext("2d").getImageData(0, 0, canvas.width, canvas.height)
     let painted = 0
     let partial = 0
+    let full = 0
     for (let i = 3; i < data.length; i += 4) {
       if (data[i] > 0) painted++
       if (data[i] > 8 && data[i] < 247) partial++
+      if (data[i] >= 250) full++
     }
-    return { painted, partial }
+    return { painted, partial, full }
   })
 
 /** The overlay's pixels as an opaque string, for "is this the same picture" questions. */
@@ -66,7 +82,7 @@ test.describe("the cascade's surface", () => {
     await expect(page.locator(".cascade-status")).toContainText("@1.5×")
   })
 
-  test("keeps the whole trail, because nothing is ever cleared", async ({ page }) => {
+  test("keeps the whole trail, dimmed rather than cleared", async ({ page }) => {
     await open(page, "&cascade=pose")
     const { painted } = await ink(page)
     const flying = Number((await page.locator(".cascade-status").innerText()).match(/(\d+) in flight/)[1])
@@ -102,9 +118,34 @@ test.describe("a seeded cascade", () => {
   })
 })
 
+test.describe("the fade behind the cards", () => {
+  test("leaves the newest stamp the brightest thing on the surface", async ({ page }) => {
+    await open(page, "&cascade=pose&seed=7")
+    const faded = await ink(page)
+    // What is still at full strength is the stamp that went down last and no more: a
+    // twentieth of the drawing would be a fade that isn't reaching most of it.
+    expect(faded.full).toBeLessThan(faded.painted * 0.05)
+
+    // The same pose with the fade off, which is the trail this animation started with.
+    // Nothing else about the run changes, so what the two differ in is brightness.
+    await noFade(page)
+    const flat = await ink(page)
+    expect(flat.full).toBeGreaterThan(flat.painted * 0.95)
+
+    // Dimmed, not erased. A fade multiplies alpha and eight-bit alpha rounds, so a stamp
+    // settles at a residue rather than at nothing — the pixels a cascade has touched stay
+    // touched, and the trail is still the drawing. `Canvas.dim` has the arithmetic.
+    expect(faded.painted).toBeGreaterThan(flat.painted * 0.99)
+  })
+})
+
 test.describe("the device-pixel snap", () => {
   test("costs a card its resampled edges at a fractional ratio", async ({ page }) => {
     await open(page, "&cascade=pose&seed=4")
+    // With the fade on, every pixel behind the cards is partially lit and `partial` counts
+    // the trail rather than its edges — which is the instrument this test is holding. So
+    // the fade comes off first, for both halves of the comparison.
+    await noFade(page)
     const snapped = await ink(page)
 
     // The same cascade with the snap off: the only difference is where the blits land.

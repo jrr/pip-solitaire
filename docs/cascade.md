@@ -198,16 +198,120 @@ the pose is for.
 
 ## The surface
 
-**A card is handed back as it launches** (`~onLaunch`), which is the second half
-of the effect on a real board: the foundation under the canvas empties a card at
-a time as its sprites take over. It can't ride on `~onChange`, which is a
-half-second heartbeat — a node left on the table that long after its copy has
-flown off it is a card in two places.
+**A card is handed back twice**: `~onReady` when it is put out on its seat, and
+`~onLaunch` as it leaves — the second half of the effect on a real board, where
+the foundation shows one card at a time and empties as its sprites take over.
+Neither can ride on `~onChange`, which is a half-second heartbeat: a node left on
+the table that long after its copy has flown off it is a card in two places, and
+one put out that late is a card thrown from nowhere.
 
-**Nothing is ever cleared.** The trail *is* the effect, and it's why this is a
-canvas rather than DOM nodes: per-frame cost tracks the cards in flight, not the
-length of the trail behind them. With retained nodes it would be one to two
-thousand SVGs by the end of a run.
+**Nothing is ever cleared — the surface is dimmed instead.** The trail *is* the
+effect, and it's why this is a canvas rather than DOM nodes: per-frame cost
+tracks the cards in flight, not the length of the trail behind them. With
+retained nodes it would be one to two thousand SVGs by the end of a run.
+
+Kept at full strength, though, the trail wins. A stamp from thirty seconds ago is
+exactly as bright as the one going down now, so by the last third of a 52-card
+run the stage is a white sheet with a few cards somewhere in it. The surface
+gives up a share of itself as it goes instead, and that is what sorts the picture
+into depth: the card in the air is white, the second behind it is grey, and what
+fell half a minute ago is a ghost the table shows through.
+
+**How long a stamp lasts is a `persistence`, and it can be said four ways.** They
+are not four settings — three are units of one length, converted through the
+launch schedule, and the fourth is no length at all; the rate the surface
+actually fades at is derived from whichever it is at the moment of use. Which one
+you reach for is a question of what should stay put when the run *isn't* the one
+you tuned on:
+
+| | holds constant | |
+|---|---|---|
+| `Cards(9)` | the picture | nine streaks on the stage whether the deck is 52 or 16, because the launch rate is what decides how much is in the air at once. The default |
+| `Fraction(0.33)` | the story | a third of the run is a third of it on any deck, so a board with a quarter of the cards still empties the same way |
+| `Seconds(6.8)` | the clock | how long, in a unit no other knob can move underneath you |
+| `Forever` | everything | nothing fades: the Windows 3.1 original, kept because it is what the fade is *against* |
+
+A persistence has to be measured to a line, since an exponential fade never
+reaches nothing: a stamp is **spent** once it is down to a hundredth of the
+strength it went on at (`CascadePlayer.spentAt`). That is a definition rather
+than a tuned number — move it and every persistence means a different length,
+which is the one way to make all four units wrong at once. The default, nine
+cards, is 6.8 seconds at the default launch interval, which is a sixth of a
+52-card run.
+
+**A seat shows one card at a time, and only just before it goes.** A card's first
+stamps are all in nearly the same place — it has barely moved — so a seat
+collects a stack of near-identical ghosts right where the pile it came from is
+sitting. Opaque, those stamps read as the pile; faded, they read as dirt on it,
+and the crisp card underneath is what makes them read that way: a real card with
+fading copies of itself piled against it.
+
+So the pile isn't there. The board hides everything under each pile's top when
+the cascade starts, and the player puts the next card out `readyMs` before it
+launches (`~onReady`) and takes it away as it goes (`~onLaunch`). What a seat
+holds is the card about to be thrown; the rest of the time it is empty table, and
+a trail crossing it is unmistakably a trail. `CascadePlayer.armedBy` is the
+arithmetic — how many cards are out — and it starts at one per seat, which is
+exactly a board's opening tops.
+
+**The seats stay clear while a card is on them.** Each stamp clears the occupied
+seats (`CascadePlayer.clearSeats`), before drawing and after fading: the card
+leaving *this* instant is still drawn whole, and only the history behind it
+goes.
+
+Erasing rather than re-drawing the pile, because what sits under a board's seat
+is the real resting card: clearing shows it with the drop shadow and the
+hand-placed angle (`docs/card-tilt.md`) that a square, unrotated sprite would
+have to imitate — and imitate a couple of degrees out. It costs a rect per loaded
+seat per stamp, against the fade's own full-surface fill.
+
+`keepSeatsClear` is off by default, because it is a question about the caller's
+surface rather than about taste. The board turns it on; the demo scene has
+nothing under its seats, so clearing there would cut card-shaped holes in its own
+trail.
+
+**The fade takes alpha, not colour.** `destination-out` with a flat fill
+multiplies every pixel's alpha and leaves the pixel alone, so a stamp thins back
+towards the transparency it started from — on the board, back to the table.
+Painting a translucent backdrop over the surface instead would dim the live DOM
+underneath along with the cards.
+
+**It is taken in steps, never continuously**, because the surface is either
+filled or it isn't. What the `step` chooses is only what a payment waits for, and
+what is owed is a *share* — so a stretch of simulated time is worth the same
+taken in one step or in ten, and the choice changes how the fade looks and costs
+but not how long the trail is.
+
+`Coin` waits for a share worth having. A fade in eight-bit alpha settles at a
+floor rather than at nothing, and the smaller the share the higher that floor —
+`Canvas.dim` has the arithmetic. Half a second's fade spread over sixty stamps is
+a hundredth apiece, and a hundredth settles at fifty alpha: the white sheet
+again, in grey. So what is owed is saved up and spent once it is worth the coin,
+a tenth by default, which settles under 2%. At the default rate that is a payment
+every 152ms of simulated time, in steps the trail's own stamps hide.
+
+`Layer` waits for the seats to come round instead — every `seats` launches, which
+on a board is a rank, the foundations being taken a slot at a time. Nothing is
+taken off while a rank is in the air, so the whole rank stays at the strength it
+went on at and the surface drops in one as the next rank starts. What stands out
+is then the rank just thrown rather than the stamp just laid. The steps are as
+long as a round and as deep: two rounds of persistence is a run that half-empties
+in front of you, which is the knob to watch. The last rank never fades — there is
+no round left to come — and a stage with no seats never fades at all, which is
+why the demo scene stays on coins.
+
+The coin is also the whole of what the fade *costs*, which is why it is a knob
+rather than a constant. A payment is one full-surface fill and nothing between
+them, so the bill is the fill's price times `CascadePlayer.fadePayment` a second
+— about 6.6 of them at the defaults. Paying every stamp instead, the obvious way
+to write this, is sixty: measured on a software rasterizer (a slow device's
+ceiling) a fill on a desktop-sized store is 2.6ms, or a hundred card blits, so
+the obvious way spends 16% of the main thread where this spends under 2%.
+
+**Per second of simulated time**, like the stamp interval and for the same
+reason: a fade counted per frame would leave a shorter trail on a 120Hz display
+than on a 60Hz one. It also means the two trail knobs are independent — dragging
+`trail` changes the spacing of the stamps and not how long they last.
 
 **One ratio, two consumers.** The backing store is `css × CardRaster.displayPixelRatio()`
 and the sprite sheet is built at that same number. `CascadePlayer.spritesStale`
@@ -269,6 +373,9 @@ chosen.
 | speed | 0.4 ± 0.1 m/s | the sideways throw |
 | launchInterval | 750 ms | so a 52-card deck takes ~39s |
 | trail | 16 ms | of simulated time between stamps |
+| ready | 250 ms | how long a card sits on its seat before it is thrown |
+| fade | `Cards(9)` | how long a stamp lasts — 6.8s at the launch interval above, a sixth of the run |
+| fade step | `Coin(0.1)` | the smallest share worth taking off in one go — a fill every 154ms at that persistence |
 
 Not on a slider: the simulation step (1/120s), `maxStep`
 (50ms), `maxCatchUpMs` (100ms), the pose length (16 cards), and the scene's three
@@ -276,6 +383,11 @@ card sizes (40/90/140px).
 
 At earth gravity the trail knob has to come down with it — spacing is speed ×
 interval, and raising one without the other turns the smear into a scatter.
+
+The demo scene counts the persistence in **cards** and nothing else, with a *no
+fade* toggle beside the card-size ones. The other units are unobservable there —
+one deck, one stage, and all four coincide — so the picker belongs where a run
+can be a different shape, which is the board.
 
 ## The demo scene
 
@@ -302,9 +414,10 @@ already scaled to its stage.
 | `Cascade_test.res` | the arithmetic: framerate independence, the clamp, the floor, the walls, cards meeting, energy loss, the bounce budget, the aim, the spreads, seeded replay |
 | `CascadePlayer_test.res` | the mechanics a jsdom can reach |
 | `CascadeScene_test.res` | the chrome: which knobs exist, what they read out |
-| `browser-tests/cascade.spec.mjs` | the pixels: the store, the trail, the snap, a seeded pose repeating to the byte, the resize policy |
+| `browser-tests/cascade.spec.mjs` | the pixels: the store, the trail, the fade, the snap, a seeded pose repeating to the byte, the resize policy |
+| `browser-tests/cascade-tuning.spec.mjs` | the menu's knobs on the real thing: the next victory, the one already falling, and the reload that forgets them |
 | `TableScene_test.res` | which wins play one, and that every way out of a run still ends at the panel |
-| `browser-tests/win.spec.mjs` | the board's own: real sprites, foundations emptying, a real tap ending it |
+| `browser-tests/win.spec.mjs` | the board's own: real sprites, foundations emptying, the trail kept off a pile that hasn't left, a real tap ending it |
 
 ## Before you retune
 
@@ -331,6 +444,21 @@ which is what makes a card fall from the pile it was on — and each
 **Only a win as it happens plays one.** A victory restored from storage, and a
 redo back into the winning move, raise the panel alone: the cascade is what a
 game being won looks like, not what a won position looks like.
+
+**The dimming is tunable from the menu, on a live board.** Debug → *cascade* holds
+the two choices as chips (`MenuChoiceRow`) — the persistence's unit, and what the
+fade waits for — and the numbers as sliders (`MenuSlider`), fed by `Main`'s
+`debugScreen`. Picking a unit *re-says* the length in it rather than resetting it
+(`CascadePlayer.sameIn`), so the animation stays put while the words change. A
+control with nothing to set is taken away rather than left to lie: **never**
+leaves no sliders at all, and **per layer** leaves no coin, the layer being the
+step. They reach the board the way the tilt
+switch does: a live ref the board reads as a
+cascade starts (`~cascadeFade`), plus `controls.retuneCascade` for the one already
+falling — the menu opens over the canvas, so a slider dragged mid-celebration
+moves that celebration. Nothing is stored. They are a debug aid rather than a
+preference, and a reload puts `CascadePlayer.defaultFade` back, which is also what
+keeps a tuned-and-forgotten build from being what someone ships.
 
 **`prefers-reduced-motion` is the one way out.** A cascade is nothing but
 movement, so an OS asking for less of it gets the panel alone — which is also

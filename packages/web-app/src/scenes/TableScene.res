@@ -336,6 +336,12 @@ type controls = {
   // Re-lay every resting card, so the tilt switch re-tilts the board in place rather
   // than only on the next move.
   relayout: unit => unit,
+  // Hand `~cascadeFade`'s current value to a celebration already in the air, which is
+  // `relayout`'s trick for the other live ref: a run started before the slider moved
+  // would otherwise keep the dimming it launched with for the length of a cascade, and
+  // forty seconds is a long time to watch the wrong one. Nothing to do when no cascade
+  // is running.
+  retuneCascade: unit => unit,
   // Could you give up this many px of stage width and still deal cards above
   // `minScale`? What the console's dock toggle consults, so the refusal is the
   // layout's own verdict rather than a guessed breakpoint.
@@ -553,6 +559,12 @@ let make = (
   // Both read *live*, so a menu toggle lands without rebuilding the board.
   ~options: ref<Options.t>=ref(Options.default),
   ~tiltEnabled: ref<bool>=ref(true),
+  // How a victory dims its trail. Read live for the reason the two above are, at the
+  // moment a cascade starts — and handed to one already falling through
+  // `controls.retuneCascade`, since the menu that drags it sits above the canvas and a
+  // celebration lasts forty seconds. A default, so a board built by a test or a demo
+  // needs no say. `docs/cascade.md` has what the two numbers do.
+  ~cascadeFade: ref<CascadePlayer.fade>=ref(CascadePlayer.defaultFade),
   // Drops the cards straight into their resting places — the URL's `?animate=off`, for
   // a shot of the already-dealt board. The layout is identical either way; only the
   // cosmetic flight is suppressed, as "reduce motion" already does. **Every** flight:
@@ -632,6 +644,7 @@ let make = (
         run.reveal()
         // The panel is a modal again the moment there is nothing falling behind it.
         classList(boardHost)->removeClass("table-board--cascading")
+        boardHost->WebDom.removeAttribute("data-flown")
       | None => ()
       }
 
@@ -1446,12 +1459,43 @@ let make = (
         // from a modal into a peek: the scrim stops hit-testing so a tap on it reaches
         // the canvas underneath (see `.table-board--cascading`).
         classList(boardHost)->addClass("table-board--cascading")
+        // How many cards have actually left, published for the browser suite the way the
+        // demo scene publishes its own state. It needs saying because the class on a card
+        // no longer answers it: `stacking-card--flown` means "not on the table *now*",
+        // and a card comes back out of it for the moment before it is thrown.
+        let launched = ref(0)
+        let countLaunch = () => {
+          launched := launched.contents + 1
+          boardHost->WebDom.setAttribute("data-flown", Int.toString(launched.contents))
+        }
 
         // The nodes the run has hidden, so ending it anywhere puts every one of them
         // back — an undo mid-cascade returns to a board with all its cards on it.
         let flown: array<card> = []
         let reveal = () =>
           flown->Array.forEach(c => classList(c.wrapper)->removeClass("stacking-card--flown"))
+
+        // **A foundation shows one card at a time.** Everything under each pile's top
+        // goes now, and comes back one card at a time as the run calls for it
+        // (`~onReady`) — so what a seat holds is the card about to be thrown, and not a
+        // stack for the trail to silt up against. A pile left whole under a fading trail
+        // is the thing this is against: crisp card and faded copies of it, one on top of
+        // the other, reading as dirt rather than as a card that has gone.
+        //
+        // The tops stay put rather than being hidden and re-shown on the first step,
+        // which would blink the foundations empty for as long as the sprite sheet takes.
+        piles->Array.forEach(((_, cards)) =>
+          cards
+          ->Array.slice(~start=0, ~end=-1)
+          ->Array.forEach(card =>
+            nodeFor(card)->Option.forEach(
+              c => {
+                flown->Array.push(c)
+                classList(c.wrapper)->addClass("stacking-card--flown")
+              },
+            )
+          )
+        )
 
         let player = CascadePlayer.attach(
           ~canvas,
@@ -1461,16 +1505,32 @@ let make = (
             // The deal the board is showing, so one game's victory always falls the
             // same way; a board with no number to name takes the demo's own seed.
             seed: currentDeal()->Option.getOr(CascadePlayer.defaults.seed),
+            // Read here rather than held from mount: the slider that moved it is on the
+            // menu, and the board it is about is this one, up all the while.
+            fade: cascadeFade.contents,
+            // The seats here are foundations with cards still on them, and those cards
+            // are real nodes under the canvas — so the trail is kept off them and the
+            // pile shows through, shadow and tilt and all, until its last card leaves.
+            keepSeatsClear: true,
             cardWidth: TableLayout.cardW *. scale.contents,
             launchpad: CascadePlayer.At(piles->Array.map(((seat, _)) => seat)),
           },
           // Hide each card as its copy leaves, so the foundation empties under the
           // cascade rather than sitting full behind it.
-          ~onLaunch=card =>
+          ~onLaunch=card => {
+            countLaunch()
             nodeFor(card)->Option.forEach(c => {
               flown->Array.push(c)
               classList(c.wrapper)->addClass("stacking-card--flown")
-            }),
+            })
+          },
+          // …and put the next one out a moment before it goes, which is the other half of
+          // showing one card at a time. Already-visible for the opening tops, so this is
+          // a no-op until a pile has given one up.
+          ~onReady=card =>
+            nodeFor(card)->Option.forEach(c =>
+              classList(c.wrapper)->removeClass("stacking-card--flown")
+            ),
           ~onChange=status =>
             switch status.phase {
             // The three ways a run stops without being skipped, and they all end the
@@ -2721,6 +2781,13 @@ let make = (
         runCommand: command => liveRunCommand.contents(command),
         autoplay: (~onAnswer) => liveAutoplay.contents(~onAnswer),
         relayout: () => liveRelayout.contents(),
+        // Mount scope, like the cascade it reaches: a run belongs to the scene rather
+        // than to any one build, and a re-deal ends it (`endCascade`) rather than
+        // handing it on.
+        retuneCascade: () =>
+          cascade.contents->Option.forEach(run =>
+            CascadePlayer.retune(run.player, {...run.player.options, fade: cascadeFade.contents})
+          ),
         dockFit: inset => dockFit.contents(inset),
         shake: {start: startShake, stop: stopShake},
       })

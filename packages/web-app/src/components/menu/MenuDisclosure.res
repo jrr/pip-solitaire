@@ -27,11 +27,17 @@
 type entry = MenuRow.entry
 
 type props = {
-  // The disclosure's own label: "scenes", "states".
+  // The disclosure's own label: "scenes", "states", "cascade".
   summary: string,
   // With no entries the group is empty but harmless; the caller simply doesn't
   // place it. (`Main` always has some for both groups.)
   entries: array<entry>,
+  // A group whose contents aren't rows, drawn after them: the Debug screen's cascade
+  // knobs are `<MenuSlider>`s, and a slider is not a `<MenuRow>` (see that file). This
+  // is the prop the header above promises — a third *kind* of group belongs here,
+  // where every group keeps the one `<details>` tree, rather than as a second way of
+  // drawing a disclosure in a screen.
+  content?: Html.vnode,
   // Start the group open. `SceneSwitcher` asks for this when the initial scene is
   // one of its own rows (a `?scene=gallery` deep link), so the highlighted row
   // isn't hidden behind a collapsed disclosure.
@@ -58,6 +64,7 @@ let make = (props: props) => {
         />
       )
       ->Html.array}
+      {props.content->Option.getOr(Html.empty)}
     </div>
   </details>
 }

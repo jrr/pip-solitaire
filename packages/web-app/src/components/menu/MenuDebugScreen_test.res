@@ -15,7 +15,52 @@ let debugStates: array<MenuDisclosure.entry> = [
   {label: "Almost won", onSelect: () => ()},
 ]
 
+// The cascade group as the driver hands it over: a row of chips per choice and a slider
+// per number, each with the words it reads as and where a drag or a tap reports to.
+let knobs = (~log=[]): array<MenuSlider.spec> => [
+  {
+    label: "cards",
+    min: 0.,
+    max: 52.,
+    step: 1.,
+    value: 9.,
+    readout: "9 cards · 6.8s",
+    onInput: cards => log->Array.push(`cards ${Float.toString(cards)}`),
+  },
+  {
+    label: "coin",
+    min: 0.01,
+    max: 0.4,
+    step: 0.01,
+    value: 0.1,
+    readout: "0.1 · a fill every 155 ms",
+    onInput: coin => log->Array.push(`coin ${Float.toString(coin)}`),
+  },
+]
+
+let choices = (~log=[]): array<MenuChoiceRow.spec> => {
+  let chips = (~selected, labels) =>
+    labels->Array.map(label => {
+      MenuChoiceRow.label,
+      selected: label == selected,
+      onChoose: () => log->Array.push(`chose ${label}`),
+    })
+  [
+    {
+      MenuChoiceRow.label: "persistence",
+      choices: chips(~selected="cards", ["never", "seconds", "cards", "run"]),
+    },
+    {
+      MenuChoiceRow.label: "steps",
+      readout: "as small as the coin allows",
+      choices: chips(~selected="smooth", ["smooth", "per layer"]),
+    },
+  ]
+}
+
 let render = (
+  ~cascadeKnobs=knobs(),
+  ~cascadeChoices=choices(),
   ~debugScenesOpen=false,
   ~autoplayEnabled=true,
   ~autoplayStatus=None,
@@ -43,6 +88,8 @@ let render = (
       shareEnabled,
       onShareGame,
       onClearStored,
+      cascadeKnobs,
+      cascadeChoices,
       debugScenes,
       debugScenesOpen,
       debugStates,
@@ -183,13 +230,14 @@ describe("MenuDebugScreen", () => {
     )->toEqual(["Autoplay", "Share game state", "Clear saved data"])
   })
 
-  test("renders the two groups, scenes first, each with its own entries", () => {
+  test("renders the three groups, scenes first, each with its own entries", () => {
     // Every group is the same component (`<MenuDisclosure>`), which is why the entries
     // are read back per group: calls that differ only in their data can be crossed.
     let screen = render()
     expect(screen->findAll(".scene-menu__group > summary")->Array.map(text))->toEqual([
       "scenes",
       "states",
+      "cascade",
     ])
     let rowsIn = index =>
       switch screen->findAll(".scene-menu__group")->Array.get(index) {
@@ -198,6 +246,77 @@ describe("MenuDebugScreen", () => {
       }
     expect(rowsIn(0))->toEqual(["Gallery", "Raster"])
     expect(rowsIn(1))->toEqual(["Mid-game", "Almost won"])
+    // The third's rows are the chips of both its pickers — which *are* `.menu-row`s,
+    // that being where their box and highlight come from — and nothing else: a slider is
+    // not one.
+    expect(rowsIn(2))->toEqual(["never", "seconds", "cards", "run", "smooth", "per layer"])
+  })
+
+  test("puts the cascade knobs on sliders, each reading out what its number means", () => {
+    // The group that governs the *game's* victory animation rather than a demo of one.
+    // What the words say is the driver's business; that each knob arrives with its own
+    // is this screen's.
+    let screen = render()
+    expect(screen->findAll(".menu-slider__label")->Array.map(text))->toEqual(["cards", "coin"])
+    expect(screen->findAll(".menu-slider__readout")->Array.map(text))->toEqual([
+      "9 cards · 6.8s",
+      "0.1 · a fill every 155 ms",
+    ])
+  })
+
+  test("offers the units as chips, with the one in effect marked", () => {
+    // The persistence is one length said four ways, so which way is a choice rather than
+    // a number — and `aria-current` is what says which, as on every other row here.
+    let screen = render()
+    let chips = screen->findAll(`.menu-choice[data-choice="persistence"] .menu-choice__chip`)
+    expect(chips->Array.map(text))->toEqual(["never", "seconds", "cards", "run"])
+    expect(chips->Array.map(chip => attrOr(chip, "aria-current")))->toEqual([
+      "<missing>",
+      "<missing>",
+      "true",
+      "<missing>",
+    ])
+  })
+
+  test("draws a picker per choice the driver sends, each with its own readout", () => {
+    // Two of them now — what the trail's length is said in, and what the fade waits for —
+    // and neither is named here: a list is what lets the next one be a change in the
+    // driver alone.
+    let screen = render()
+    expect(screen->findAll(".menu-choice__label")->Array.map(text))->toEqual([
+      "persistence",
+      "steps",
+    ])
+    expect(screen->findAll(".menu-choice__readout")->Array.map(text))->toEqual([
+      "as small as the coin allows",
+    ])
+  })
+
+  test("reports a drag to the knob it was on, and a tap to the chip it was on", () => {
+    let log = []
+    let screen = render(~cascadeKnobs=knobs(~log), ~cascadeChoices=choices(~log))
+    let coin = screen->find(`input[data-knob="coin"]`)->Option.getOrThrow
+    typeInto(coin, "0.25")
+    let run =
+      screen
+      ->findAll(".menu-choice__chip")
+      ->Array.find(chip => text(chip) == "run")
+      ->Option.getOrThrow
+    click(run)
+    expect(log)->toEqual(["coin 0.25", "chose run"])
+  })
+
+  test("hands the browser the range the driver asked for", () => {
+    // A slider whose bounds came from somewhere else would quietly tune something else —
+    // and these bounds change with the unit, so they are the driver's to say every time.
+    let screen = render()
+    let cards = screen->find(`input[data-knob="cards"]`)->Option.getOrThrow
+    expect((attrOr(cards, "min"), attrOr(cards, "max"), attrOr(cards, "step")))->toEqual((
+      "0",
+      "52",
+      "1",
+    ))
+    expect(attrOr(cards, "type"))->toBe("range")
   })
 
   test("opens whichever group the switcher says the app landed inside", () => {
@@ -205,8 +324,8 @@ describe("MenuDebugScreen", () => {
     // than hidden behind a collapsed disclosure. The states group is unaffected.
     let open_ = screen =>
       screen->findAll(".scene-menu__group")->Array.map(group => group->hasAttr("open"))
-    expect(render(~debugScenesOpen=true)->open_)->toEqual([true, false])
-    expect(render(~debugScenesOpen=false)->open_)->toEqual([false, false])
+    expect(render(~debugScenesOpen=true)->open_)->toEqual([true, false, false])
+    expect(render(~debugScenesOpen=false)->open_)->toEqual([false, false, false])
   })
 
   test("goes back one step, to Settings — not all the way out", () => {

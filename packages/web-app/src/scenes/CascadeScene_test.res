@@ -62,6 +62,8 @@ describe("the cascade scene, on an engine that can't draw", () => {
       "speedVariance",
       "launchInterval",
       "trail",
+      "fade",
+      "fadeCoin",
     ])
   })
 
@@ -97,6 +99,45 @@ describe("the cascade scene, on an engine that can't draw", () => {
     let collisions = TestDom.find(host, `input[data-knob="collisions"]`)->Option.getOrThrow
     TestDom.typeInto(collisions, "0")
     expect(readout(host, "collisions"))->toBe("off")
+  })
+
+  test("reads a fade out in cards and in the seconds they come to", () => {
+    // Cards is the unit the stage can be counted in, and the seconds beside it are what
+    // that comes to at the launch interval in force — which is why both are shown.
+    let (host, _) = mount()
+    expect(readout(host, "fade"))->toBe("9 cards · 6.8s")
+    let fade = TestDom.find(host, `input[data-knob="fade"]`)->Option.getOrThrow
+    TestDom.typeInto(fade, "20")
+    expect(readout(host, "fade"))->toBe("20 cards · 15s")
+    // …and dragging the launch interval moves the seconds without moving the cards,
+    // which is the whole of what counting in cards buys.
+    let launch = TestDom.find(host, `input[data-knob="launchInterval"]`)->Option.getOrThrow
+    TestDom.typeInto(launch, "300")
+    expect(readout(host, "fade"))->toBe("20 cards · 6s")
+  })
+
+  test("reads a fade coin out as how often the surface is filled, which is its cost", () => {
+    // The knob that decides both halves of the trade — the haze a fade too small to
+    // survive rounding leaves, and the one full-surface fill each payment costs.
+    let (host, _) = mount()
+    expect(readout(host, "fadeCoin"))->toBe("0.1 · a fill every 154 ms")
+    let coin = TestDom.find(host, `input[data-knob="fadeCoin"]`)->Option.getOrThrow
+    TestDom.typeInto(coin, "0.3")
+    expect(readout(host, "fadeCoin"))->toBe("0.3 · a fill every 523 ms")
+  })
+
+  test("turns the fade off on a toggle, because no number of cards can say never", () => {
+    // The picture the fade is against, one tap away: a persistence is a length, and
+    // "nothing fades" is not a length.
+    let (host, _) = mount()
+    let noFade =
+      TestDom.findAll(host, ".cascade-toggle")
+      ->Array.find(button => TestDom.text(button) == "no fade")
+      ->Option.getOrThrow
+    TestDom.click(noFade)
+    expect(TestDom.classes(noFade)->String.includes("cascade-toggle--on"))->toBe(true)
+    // …and with nothing fading there is no fill to pay for, whatever the coin says.
+    expect(readout(host, "fadeCoin"))->toBe("0.1 · never, with no fade")
   })
 
   test("won't offer a card a negative number of bounces, however wide the ± is dragged", () => {

@@ -9,9 +9,12 @@
 //   - the three action rows: **Autoplay** (the console's verb of the same name, as a
 //     button), **Share game state** (`ShareLink`) and **Clear saved data**
 //     (`StoredState`);
-//   - the collapsible groups: the demo scenes (`debugScenes`, labelled "scenes") and
-//     the named starting positions (`debugStates`, "states") a tap drops the board
-//     into (`Scenario`), the menu twin of `?state=`.
+//   - the collapsible groups: the demo scenes (`debugScenes`, labelled "scenes"), the
+//     named starting positions (`debugStates`, "states") a tap drops the board into
+//     (`Scenario`, the menu twin of `?state=`), and the victory cascade's dimming
+//     (`cascadeChoices` and `cascadeKnobs`, "cascade" — chips and sliders rather than
+//     rows, and the one group here that governs the real game's animation rather than
+//     a demo of it).
 //
 // The groups arrive the same way and are drawn by the same component: a list of
 // `<MenuDisclosure>` entries each, one from `SceneSwitcher` and one from `Main`.
@@ -51,6 +54,18 @@ type props = {
   // and storage with nothing in it is a clear that finds nothing rather than a row
   // that has to go dark.
   onClearStored: unit => unit,
+  // The victory cascade's dimming, as sliders — the one group here that governs the
+  // *game's* animation rather than a demo of it, which is why it is on this screen and
+  // not in a scene: the board behind this panel is the one it is about, and its next win
+  // is the one being tuned. Nothing here stores them (`Main`'s `cascadeFade`).
+  //
+  // A list rather than a prop apiece, because the group is expected to grow: another
+  // knob is an entry in the driver and no change on this screen at all.
+  cascadeKnobs: array<MenuSlider.spec>,
+  // …and the same group's controls that pick rather than measure (`MenuChoiceRow`),
+  // above the sliders: which unit the length is said in, and what the fade waits for.
+  // A list for the same reason the knobs are one.
+  cascadeChoices: array<MenuChoiceRow.spec>,
   // The demo scenes, one entry per scene, with the mounted one `selected`.
   debugScenes: array<MenuDisclosure.entry>,
   // Whether that group opens expanded — `SceneSwitcher`'s call, made when the app
@@ -93,6 +108,8 @@ let make = ({
   shareEnabled,
   onShareGame,
   onClearStored,
+  cascadeKnobs,
+  cascadeChoices,
   debugScenes,
   debugScenesOpen,
   debugStates,
@@ -147,6 +164,38 @@ let make = ({
       />
       <MenuDisclosure summary="scenes" entries=debugScenes open_=debugScenesOpen />
       <MenuDisclosure summary="states" entries=debugStates />
+      // No rows in this one: its contents are sliders, which are not `<MenuRow>`s (see
+      // `MenuSlider`). Same `<details>` tree as the two above it regardless — a group
+      // that needs its own markup takes the `content` prop rather than a second way of
+      // drawing a disclosure here. Last of the three because it is the one nothing
+      // navigates with: the lists above it are how a developer gets somewhere.
+      <MenuDisclosure
+        summary="cascade"
+        entries=[]
+        content={<>
+          {cascadeChoices
+          ->Array.map(row =>
+            <MenuChoiceRow
+              label={row.label} readout=?{row.readout} choices={row.choices} key={row.label}
+            />
+          )
+          ->Html.array}
+          {cascadeKnobs
+          ->Array.map(knob =>
+            <MenuSlider
+              label={knob.label}
+              min={knob.min}
+              max={knob.max}
+              step={knob.step}
+              value={knob.value}
+              readout={knob.readout}
+              onInput={knob.onInput}
+              key={knob.label}
+            />
+          )
+          ->Html.array}
+        </>}
+      />
     </MenuSection>
   </div>
 </>

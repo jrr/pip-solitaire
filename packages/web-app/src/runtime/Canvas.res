@@ -80,3 +80,35 @@ external drawPart: (
   float,
   float,
 ) => unit = "drawImage"
+
+// Fading a surface rather than clearing it. `destination-out` with a flat fill takes a
+// share of every pixel's **alpha** and leaves its colour alone, so a drawing thins back
+// towards the transparency it started from — which is the only thing an overlay over live
+// DOM can fade *to*. Painting a translucent backdrop over it instead would dim the
+// document underneath along with the drawing.
+//
+// The mode is put back to `source-over` here rather than left for the caller: everything
+// else written to this context is an ordinary blit, and a caller that had to remember
+// would eventually not.
+//
+// **A fade has a floor.** Alpha is eight bits and this is a multiplication, so a pixel
+// too faint for `alpha × share` to reach half a unit rounds back to where it was and
+// stays there — whatever is drawn settles at about `0.5 / share` of 255 and no amount of
+// further fading takes it off. The gentler the share the higher that floor, so fade in the
+// largest steps the effect can stand rather than the smoothest.
+@set external setCompositeOperation: (context, string) => unit = "globalCompositeOperation"
+@set external setFillStyle: (context, string) => unit = "fillStyle"
+@send external fillRect: (context, float, float, float, float) => unit = "fillRect"
+
+let dim = (ctx, ~width, ~height, ~share) => {
+  ctx->setCompositeOperation("destination-out")
+  ctx->setFillStyle(`rgba(0,0,0,${Float.toString(share)})`)
+  ctx->fillRect(0., 0., width, height)
+  ctx->setCompositeOperation("source-over")
+}
+
+// Erase a rectangle back to transparency — which on an overlay means back to whatever is
+// underneath it, not to a colour. That is the whole use here: a card still resting on the
+// board is *under* the canvas, so clearing the pixels over it shows the real card, with
+// the shadow and the tilt a blitted sprite would have to imitate.
+@send external clearRect: (context, float, float, float, float) => unit = "clearRect"

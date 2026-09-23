@@ -107,9 +107,10 @@ test("every released game is listed up top, and the withheld ones nowhere at all
   await expect(gameRow(page, "Simple Simon")).not.toHaveAttribute("aria-current", "true")
 
   await openDebugScreen(page)
-  // Two disclosures, neither of them a home for a game: the withheld Spiders are on no
-  // row here, and the short decks aren't filed as demos either.
-  await expect(groupSummaries(page)).toHaveText(["scenes", "states"])
+  // Three disclosures, none of them a home for a game: the withheld Spiders are on no
+  // row here, and the short decks aren't filed as demos either. (The third holds the
+  // cascade's dimming knobs, which are sliders rather than rows at all.)
+  await expect(groupSummaries(page)).toHaveText(["scenes", "states", "cascade"])
   await sceneGroup(page).locator("summary").click()
   await expect(sceneGroup(page).getByRole("button", { name: /Spider/ })).toHaveCount(0)
   await expect(sceneGroup(page).getByRole("button", { name: "Micro FreeCell" })).toHaveCount(0)
