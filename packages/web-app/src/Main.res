@@ -12,8 +12,9 @@
 //     game** one (New Deal · Enter Seed), the debug/demo scene list as tappable rows,
 //     and the About footer (build/version info plus the conditional "Update" button
 //     beside it).
-//   - `<SeedDialog>` — the modal Enter Seed raises, over the menu and over
-//     everything else; it is in the tree only while it's showing.
+//   - `<SeedDialog>` — the modal Enter Seed raises, and `<ShareDialog>` — the one the
+//     Debug screen's Share game state raises; both over the menu and over everything
+//     else, and in the tree only while they're showing.
 // The scene area underneath is still the imperative `SceneSwitcher`, and its scene
 // container is spliced into the scene band untouched with `Html.node`, which is
 // exactly how a JSX chrome wraps a subtree it doesn't own. That container is now the
@@ -49,7 +50,7 @@ external registerSW: registerSWOptions => bool => promise<unit> = "registerSW"
 
 // --- Chrome components -------------------------------------------------------
 // The capitalized components used by the view below — `<TopBar/>`, `<Menu/>`,
-// `<DebugConsole/>` and `<SeedDialog/>` — live under
+// `<DebugConsole/>`, `<SeedDialog/>` and `<ShareDialog/>` — live under
 // `src/components/` (the menu's own under `components/menu/`). Each is a
 // `props => vnode` function; capitalized JSX lowers
 // `<TopBar .../>` to `Html.jsx(TopBar.make, props)`, filling the module's `props`
@@ -119,13 +120,18 @@ type model = {
   refreshBusy: bool,
   // The Debug screen's "Share game state" row (`ShareLink`). `shareUrl` is the
   // encoded link for the board as it stood when the screen opened — computed *then*,
-  // not on the press, because `navigator.share` needs the click's transient
-  // activation and would lose it behind the compression's `await` (see
-  // `ShareLink.deliver`). The board can't move while the menu covers it, so a link
-  // built on open is still current when the button is pressed. `None` means there's
-  // nothing to share (a demo scene) or the encode hasn't finished yet, and the row
-  // renders disabled. `shareStatus` is the transient line reporting what happened.
+  // not on the press, so the dialog can go up on the tap and its Copy can reach the
+  // clipboard with the click's transient activation, which the compression's `await`
+  // would lose (see `ShareLink.deliver`). The board can't move while the menu covers
+  // it, so a link built on open is still current when the button is pressed. `None`
+  // means there's nothing to share (a demo scene) or the encode hasn't finished yet,
+  // and the row renders disabled.
+  //
+  // `shareDialogOpen` is whether the dialog showing that link is up, and
+  // `shareStatus` the transient line in it reporting where Copy put it. Like the seed
+  // dialog, it belongs to the open menu: closing the menu takes it down.
   shareUrl: option<string>,
+  shareDialogOpen: bool,
   shareStatus: option<string>,
   // The Debug screen's "Autoplay" row: what the solver had to say, standing in for the
   // row's description until the screen is left. Only ever a refusal or the word that
@@ -190,7 +196,9 @@ type msg =
   | RefreshStarted // the refresh button was tapped — start spinning the button
   | RefreshChecked // an update check finished — stop the spinner (a found update surfaces as the About button)
   | ShareLinkReady(option<string>) // the open Debug screen's board, encoded into a link (`ShareLink`)
-  | ShareStatus(option<string>) // the share row's transient status line; `None` clears it
+  | OpenShareDialog // the Debug screen's Share game state — raise the modal over the menu
+  | CloseShareDialog // its Close, or a tap on the dim behind it
+  | ShareStatus(option<string>) // the share dialog's transient status line; `None` clears it
   | AutoplayStatus(option<string>) // what the solver said, in the Autoplay row's description
   | DealChanged(option<int>) // the board reported which deal it's showing
   | ShareDealStatus(option<string>) // the Share button's transient status line; `None` clears it
@@ -533,7 +541,7 @@ let update = (msg, model) =>
   // about both for that reason: a dialog up over a menu already gone would otherwise
   // survive the very message meant to clear the screen.
   | CloseMenu =>
-    model.menuOpen || model.seedDialogOpen
+    model.menuOpen || model.seedDialogOpen || model.shareDialogOpen
       ? (
           {
             ...model,
@@ -543,6 +551,8 @@ let update = (msg, model) =>
             settings: MenuSettingsScreen.freshVisit(model.settings),
             seedDialogOpen: false,
             seedInput: "",
+            shareDialogOpen: false,
+            shareStatus: None,
           },
           Html.noEffect,
         )
@@ -551,6 +561,10 @@ let update = (msg, model) =>
   // left half-typed for the next open to offer back.
   | OpenSeedDialog => ({...model, seedDialogOpen: true, seedInput: ""}, Html.noEffect)
   | CloseSeedDialog => ({...model, seedDialogOpen: false, seedInput: ""}, Html.noEffect)
+  // Each opening starts without a status, so a "copied" from the last one isn't read
+  // as news about this one.
+  | OpenShareDialog => ({...model, shareDialogOpen: true, shareStatus: None}, Html.noEffect)
+  | CloseShareDialog => ({...model, shareDialogOpen: false, shareStatus: None}, Html.noEffect)
   // Enter Settings clean: clear any stale spinner from a prior visit. The label
   // itself is re-detected on open (see the view's `onOpenSettings`).
   | OpenSettings => (
@@ -586,6 +600,7 @@ let update = (msg, model) =>
         menuScreen: Menu.Debug,
         settings: MenuSettingsScreen.freshVisit(model.settings),
         shareUrl: None,
+        shareDialogOpen: false,
         shareStatus: None,
         autoplayStatus: None,
       },
@@ -1433,6 +1448,24 @@ let seedDialog = (model, dispatch): SeedDialog.props => {
   onCancel: () => dispatch(CloseSeedDialog),
 }
 
+// The "Share game state" modal, raised over the Debug screen with the link that screen
+// encoded when it opened.
+let shareDialog = (model, dispatch, url): ShareDialog.props => {
+  url,
+  status: model.shareStatus,
+  // Straight into the clipboard with nothing awaited first, which is what keeps the
+  // click's transient activation for the write. The status line clears itself a few
+  // seconds later so it doesn't sit there stale.
+  onCopy: () =>
+    ShareLink.copy(url)
+    ->Promise.thenResolve(outcome => {
+      dispatch(ShareStatus(Some(ShareLink.message(outcome))))
+      setTimeout(() => dispatch(ShareStatus(None)), shareStatusMs)->ignore
+    })
+    ->ignore,
+  onClose: () => dispatch(CloseShareDialog),
+}
+
 // The Settings screen: its own state and its own messages, plus the three ways out of
 // it that are the *pane's* business rather than a setting's. There is no per-switch
 // field here by construction — a new preference is declared on the screen and reaches
@@ -1503,20 +1536,7 @@ let debugScreen = (model, dispatch): MenuDebugScreen.props => {
     )
   },
   shareEnabled: model.shareUrl->Option.isSome,
-  shareStatus: model.shareStatus,
-  onShareGame: () =>
-    // Straight into `deliver` with the link encoded on screen-open: no `await`
-    // between the click and `navigator.share`, which is what keeps the gesture's
-    // transient activation intact for the OS share sheet. The status line clears
-    // itself a few seconds later so it doesn't sit there stale.
-    model.shareUrl->Option.forEach(url =>
-      ShareLink.deliver(url)
-      ->Promise.thenResolve(outcome => {
-        dispatch(ShareStatus(Some(ShareLink.message(outcome))))
-        setTimeout(() => dispatch(ShareStatus(None)), shareStatusMs)->ignore
-      })
-      ->ignore
-    ),
+  onShareGame: () => dispatch(OpenShareDialog),
   onClearStored: () => dispatch(ClearStoredState),
   // Asked afresh on every render: the entry for the scene that's mounted now is the
   // `selected` one, and that's what puts the highlight in the menu.
@@ -1642,6 +1662,10 @@ let view = (model, dispatch) => <>
   // takes focus as it mounts, so a dialog that were merely hidden between opens would
   // have taken focus once, at startup, and never again.
   {model.seedDialogOpen ? SeedDialog.make(seedDialog(model, dispatch)) : Html.empty}
+  {switch (model.shareDialogOpen, model.shareUrl) {
+  | (true, Some(url)) => ShareDialog.make(shareDialog(model, dispatch, url))
+  | _ => Html.empty
+  }}
 </>
 
 // --- Wire it up --------------------------------------------------------------
@@ -1714,6 +1738,7 @@ let dispatch = Html.mount(
     // The share row is filled in when the Debug screen opens (`ShareLink`), not at
     // startup — there's no point encoding a board nobody has asked to share.
     shareUrl: None,
+    shareDialogOpen: false,
     shareStatus: None,
     // …and the Autoplay row has nothing to report until it is pressed.
     autoplayStatus: None,

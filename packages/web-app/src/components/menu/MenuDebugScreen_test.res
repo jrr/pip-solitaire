@@ -21,7 +21,6 @@ let render = (
   ~autoplayStatus=None,
   ~onAutoplay=() => (),
   ~shareEnabled=true,
-  ~shareStatus=None,
   ~cutoutDebug=false,
   ~debugLog=false,
   ~onToggleCutoutDebug=() => (),
@@ -42,7 +41,6 @@ let render = (
       autoplayStatus,
       onAutoplay,
       shareEnabled,
-      shareStatus,
       onShareGame,
       onClearStored,
       debugScenes,
@@ -128,20 +126,8 @@ describe("MenuDebugScreen", () => {
 
   test("explains what a game-state share hands over", () => {
     expect(render(~shareEnabled=true)->shareDesc)->toBe(
-      "Copy a link that reopens this exact game, undo history and all.",
+      "Show a link and QR code that reopen this exact game, undo history and all.",
     )
-  })
-
-  test("reports where the link went in the row's own description", () => {
-    // Not a line of its own: the row would change height as the status came and
-    // went, shoving the scene lists below it down the panel.
-    let screen = render(~shareEnabled=true, ~shareStatus=Some("Link copied to clipboard."))
-    expect(screen->shareDesc)->toBe("Link copied to clipboard.")
-    expect(
-      screen
-      ->actionRow(share)
-      ->Option.mapOr(0, row => row->findAll(".menu-row__desc")->Array.length),
-    )->toBe(1)
   })
 
   test("is really disabled with no game to share, and says so", () => {
@@ -159,7 +145,7 @@ describe("MenuDebugScreen", () => {
     }
   })
 
-  test("shares the game state when the row is live", () => {
+  test("asks for the share dialog when the row is live", () => {
     let taps = ref(0)
     let screen = render(~shareEnabled=true, ~onShareGame=() => taps := taps.contents + 1)
     screen->actionRow(share)->Option.forEach(click)

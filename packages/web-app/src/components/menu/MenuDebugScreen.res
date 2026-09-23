@@ -42,11 +42,8 @@ type props = {
   // "Share game state" (`ShareLink`): whether a link has been encoded for the board
   // behind this screen — false on a scene with no game, and for the moment between
   // opening the screen and the encode resolving, which is what the disabled state
-  // covers.
+  // covers. The press raises `ShareDialog`, which is where the link is handed over.
   shareEnabled: bool,
-  // The transient line reporting where the link went; it replaces the row's
-  // description while it's up, so the row doesn't change height as it comes and goes.
-  shareStatus: option<string>,
   onShareGame: unit => unit,
   // "Clear saved data": throw away everything the app has stored on this device and
   // reopen it, which is the only way to see a first launch without devtools or a new
@@ -70,25 +67,18 @@ type props = {
 // a thing being waited out rather than a hang.
 let thinking = "Thinking…"
 
-// The "Autoplay" row's description — the solver's own words once it has any, on the
-// same substitution as the share row below.
+// The "Autoplay" row's description — the solver's own words once it has any, standing
+// in for the description so the row doesn't change height as they come and go.
 let autoplayDesc = (~enabled, ~status) =>
   switch status {
   | Some(status) => status
   | None => enabled ? "Solve the current game for me." : "No game on screen to solve."
   }
 
-// The "Share game state" row's description. The status line takes over the
-// description while it's up, so reporting where the link went doesn't reflow the
-// rows around it.
-let shareDesc = (~enabled, ~status) =>
-  switch status {
-  | Some(status) => status
-  | None =>
-    enabled
-      ? "Copy a link that reopens this exact game, undo history and all."
-      : "No game on screen to share."
-  }
+let shareDesc = (~enabled) =>
+  enabled
+    ? "Show a link and QR code that reopen this exact game, undo history and all."
+    : "No game on screen to share."
 
 let make = ({
   onClose,
@@ -101,7 +91,6 @@ let make = ({
   autoplayStatus,
   onAutoplay,
   shareEnabled,
-  shareStatus,
   onShareGame,
   onClearStored,
   debugScenes,
@@ -139,11 +128,11 @@ let make = ({
         enabled=autoplayEnabled
         onClick=onAutoplay
       />
-      // "Share game state" (`ShareLink`): encode the board behind this screen into a
-      // link and hand it to the OS share sheet, or failing that the clipboard.
+      // "Share game state" (`ShareLink`): the board behind this screen as a link, shown
+      // in `ShareDialog` as a QR code and a Copy button.
       <MenuActionRow
         label="Share game state"
-        desc={shareDesc(~enabled=shareEnabled, ~status=shareStatus)}
+        desc={shareDesc(~enabled=shareEnabled)}
         enabled=shareEnabled
         onClick=onShareGame
       />

@@ -19,9 +19,8 @@ import { settleBoard } from "./lib/board.mjs"
 
 test.use({
   viewport: { width: 800, height: 1000 },
-  // The share row falls back to the clipboard when the platform has no OS share
-  // sheet, which is the case in headless Chromium — so that's the path under test,
-  // and reading the result back needs the grant.
+  // The share dialog's Copy is the path under test, and reading what it wrote back
+  // needs the grant.
   permissions: ["clipboard-read", "clipboard-write"],
 })
 
@@ -61,7 +60,10 @@ async function openDebugScreen(page) {
   return page.getByRole("button", { name: /Share game state/ })
 }
 
-// Press "Share game state" and hand back the URL it put on the clipboard.
+const shareDialog = (page) => page.getByRole("dialog", { name: "Share game state" })
+
+// Press "Share game state", then the dialog's Copy, and hand back the URL it put on
+// the clipboard.
 async function shareFromDebugScreen(page) {
   const share = await openDebugScreen(page)
   // The link is encoded when the screen opens, not on the press — the row stays
@@ -69,9 +71,25 @@ async function shareFromDebugScreen(page) {
   // that the encode succeeded.
   await expect(share).toBeEnabled()
   await share.click()
+  await shareDialog(page).getByRole("button", { name: "Copy link" }).click()
   await expect(page.getByText("Link copied to clipboard.")).toBeVisible()
   return await page.evaluate(() => navigator.clipboard.readText())
 }
+
+test("the row raises the link as a QR code and as text, and Copy copies that text", async ({
+  page,
+}) => {
+  await page.goto(MIDGAME)
+  await settleBoard(page)
+  const url = await shareFromDebugScreen(page)
+  await expect(shareDialog(page).getByRole("img", { name: /QR code/ })).toBeVisible()
+  await expect(shareDialog(page).locator(".share-dialog__url")).toHaveText(url)
+
+  // Close lands back on the Debug screen the dialog was raised from.
+  await shareDialog(page).getByRole("button", { name: "Close" }).click()
+  await expect(shareDialog(page)).toBeHidden()
+  await expect(page.getByRole("button", { name: /Share game state/ })).toBeVisible()
+})
 
 test("a shared link reopens the same board", async ({ page }) => {
   await page.goto(MIDGAME)
