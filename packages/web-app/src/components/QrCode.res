@@ -5,10 +5,10 @@
 // a run of dark modules per subpath, which keeps a version-40 code to a few thousand
 // path commands instead of one element per square.
 //
-// **Encoding can fail, and the caller has to be told.** A QR code holds about 2,900
-// bytes at most, and a game-state link carries the whole undo history, so a long game
-// can outgrow it. `matrix` answers `None` for that rather than throwing, and the caller
-// decides what goes on screen in its place.
+// **Encoding can fail, and the caller has to be told.** A QR code holds `capacity` bytes
+// at most, and a game-state link carries the whole undo history, so a long game can
+// outgrow it. `matrix` answers `None` for that rather than throwing, and the caller
+// decides what goes on screen in its place — or asks `fits` first.
 
 type matrix = {size: int, data: array<array<bool>>}
 
@@ -27,6 +27,20 @@ let matrix = (text: string): option<matrix> =>
   } catch {
   | _ => None
   }
+
+// The most bytes a code holds: version 40, the largest the standard has, at level `L`,
+// in byte mode. A link is plain ASCII with lowercase in it, so byte mode is what it's
+// encoded in.
+let capacity = 2953
+
+type textEncoder
+@new external makeTextEncoder: unit => textEncoder = "TextEncoder"
+@send external encodeText: (textEncoder, string) => Uint8Array.t = "encode"
+
+// Whether `matrix` would succeed, without encoding. **Cheap on purpose**: a caller trimming
+// a link to fit asks this once per try, and a version-40 encode is tens of milliseconds.
+let fits = (text: string): bool =>
+  makeTextEncoder()->encodeText(text)->TypedArray.length <= capacity
 
 // One `M x y h n v1 h-n z` per horizontal run of dark modules.
 let path = ({data}: matrix): string => {

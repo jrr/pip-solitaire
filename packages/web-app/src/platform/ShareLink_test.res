@@ -307,3 +307,76 @@ describe("ShareLink.victoryMessage", () => {
     )->toBe(true)
   })
 })
+
+// The QR code's link, cut down to fit. `fits` is the caller's ceiling, so a length check
+// stands in for the QR code's here: what's pinned is the search, not the code.
+describe("ShareLink.linksFor", () => {
+  let game = Game.freecell
+  let opening = GameState.initial(game)
+  let cards = opening.piles->Array.flat
+  // Forty steps, each a different position, so every state the link keeps costs it
+  // something.
+  let history =
+    Array.fromInitializer(~length=40, i => i + 1)->Array.reduce(History.make(opening), (h, n) =>
+      h->History.record({...opening, loose: cards->Array.slice(~start=0, ~end=n)})
+    )
+  let saved: SaveState.t = {
+    history,
+    stats: {moves: 40, undos: 0, autoplays: 0},
+    timing: Timing.dealt(~at=1_700_000_000_000.),
+    gameId: Some(game.id),
+  }
+  let under = ceiling => url => String.length(url) <= ceiling
+  let restored = async url =>
+    switch await ShareLink.savedFrom(
+      url->String.split("#" ++ ShareLink.fragmentKey ++ "=")->Array.getUnsafe(1),
+    ) {
+    | Some({saved}) => saved
+    | None => throw(Failure("the link didn't restore"))
+    }
+
+  testAsync("a history that fits is scanned whole, as the same link Copy gets", async () => {
+    let links = (await ShareLink.linksFor(saved, ~fits=_ => true))->Option.getOrThrow
+    expect(links.scan)->toEqual(Some({url: links.full, dropped: 0}))
+  })
+
+  testAsync("a history that doesn't fit is trimmed for the code alone", async () => {
+    let full = (await ShareLink.urlFor(saved))->Option.getOrThrow
+    let ceiling = String.length(full) - 200
+    let links = (await ShareLink.linksFor(saved, ~fits=under(ceiling)))->Option.getOrThrow
+    expect(links.full)->toBe(full)
+    let {url, dropped} = links.scan->Option.getOrThrow
+    expect(String.length(url) <= ceiling)->toBe(true)
+    expect(dropped > 0)->toBe(true)
+    let scanned = await restored(url)
+    expect(scanned.history)->toEqual(saved.history->History.within(~steps=40 - dropped))
+    // The tally is the game's, not the trimmed line's.
+    expect(scanned.stats)->toEqual(saved.stats)
+  })
+
+  testAsync("the trimmed code keeps as much history as fits", async () => {
+    let full = (await ShareLink.urlFor(saved))->Option.getOrThrow
+    let ceiling = String.length(full) - 200
+    let {dropped} =
+      (await ShareLink.linksFor(saved, ~fits=under(ceiling)))
+      ->Option.getOrThrow
+      ->(links => links.ShareLink.scan)
+      ->Option.getOrThrow
+    let oneMore = (
+      await ShareLink.urlFor({
+        ...saved,
+        history: saved.history->History.within(~steps=40 - dropped + 1),
+      })
+    )->Option.getOrThrow
+    expect(String.length(oneMore) > ceiling)->toBe(true)
+  })
+
+  testAsync(
+    "a code with no room even for the present is no code, and Copy still has the lot",
+    async () => {
+      let links = (await ShareLink.linksFor(saved, ~fits=_ => false))->Option.getOrThrow
+      expect(links.scan)->toEqual(None)
+      expect(await restored(links.full))->toEqual(saved)
+    },
+  )
+})

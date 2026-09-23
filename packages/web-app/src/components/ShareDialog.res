@@ -11,6 +11,11 @@
 // and Copy reaches the clipboard with the click's transient activation intact (see
 // `ShareLink.deliver`).
 //
+// **The code and the text can be different links.** The code has a ceiling (`QrCode`)
+// that a long game's history outgrows, so `Main` hands over a second link cut down to
+// fit it (`ShareLink.linksFor`), and the hint says what the cut cost. The text and Copy
+// always carry the whole game: a clipboard has no ceiling to fit.
+//
 // **The status line stands in for the hint** rather than appearing under it, the same
 // substitution the menu's rows make, so reporting where the link went doesn't grow the
 // panel and shift the code a phone is pointed at.
@@ -18,7 +23,11 @@
 %%raw(`import "./ShareDialog.css"`)
 
 type props = {
+  // The whole game, for the text and for Copy.
   url: string,
+  // What the code says, when anything fits in one: `url` itself, or `url` with the
+  // history trimmed.
+  scan: option<ShareLink.trimmed>,
   // Where the last Copy went; `None` shows the hint in its place.
   status: option<string>,
   onCopy: unit => unit,
@@ -31,8 +40,15 @@ let title = "Share game state"
 let hint = "Scan to open this exact game on another device, undo history and all."
 let tooLong = "This game's link is too long for a QR code — copy it instead."
 
-let make = ({url, status, onCopy, onClose}) => {
-  let qr = QrCode.matrix(url)
+// The hint for a code that had to leave some of the history out, which the hint above
+// promises it doesn't.
+let trimmedHint = (~dropped: int): string =>
+  "Scan to open this game on another device. To fit, the code leaves out " ++
+  Int.toString(dropped) ++
+  (dropped == 1 ? " step" : " steps") ++ " of undo history; Copy link keeps all of it."
+
+let make = ({url, scan, status, onCopy, onClose}) => {
+  let qr = scan->Option.flatMap(({url}) => QrCode.matrix(url))
   <div id="share-dialog" role="dialog" ariaModal="true" ariaLabel=title>
     <div className="share-dialog__backdrop" onClick={_ => onClose()} />
     <div className="share-dialog__panel">
@@ -48,7 +64,11 @@ let make = ({url, status, onCopy, onClose}) => {
         {Html.string(
           switch (status, qr) {
           | (Some(status), _) => status
-          | (None, Some(_)) => hint
+          | (None, Some(_)) =>
+            switch scan {
+            | Some({dropped}) if dropped > 0 => trimmedHint(~dropped)
+            | _ => hint
+            }
           | (None, None) => tooLong
           },
         )}

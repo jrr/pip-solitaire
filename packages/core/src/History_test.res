@@ -116,3 +116,38 @@ describe("History.oldest", () => {
     expect(History.oldest(History.record(back, 9)))->toBe(1)
   })
 })
+
+// `within` is how a history is cut down to fit somewhere small. The present is what's
+// being handed over, so it always survives; the order the rest goes in is the claim.
+describe("History.within", () => {
+  // Past 1, 2, 3 behind a present of 4, with 5 and 6 undone away ahead of it.
+  let h =
+    History.make(1)
+    ->History.record(_, 2)
+    ->History.record(_, 3)
+    ->History.record(_, 4)
+    ->History.record(_, 5)
+    ->History.record(_, 6)
+    ->History.undo
+    ->History.undo
+
+  test("keeps everything when there's room for it", () => {
+    expect(History.length(h))->toBe(5)
+    expect(History.within(h, ~steps=5))->toEqual(h)
+    expect(History.within(h, ~steps=99))->toEqual(h)
+  })
+
+  test("drops the redo branch first, farthest state first", () => {
+    expect(History.within(h, ~steps=4))->toEqual({past: [1, 2, 3], present: 4, future: [5]})
+    expect(History.within(h, ~steps=3))->toEqual({past: [1, 2, 3], present: 4, future: []})
+  })
+
+  test("then drops the past from its oldest end", () => {
+    expect(History.within(h, ~steps=1))->toEqual({past: [3], present: 4, future: []})
+  })
+
+  test("never drops the present", () => {
+    expect(History.within(h, ~steps=0))->toEqual(History.make(4))
+    expect(History.within(h, ~steps=-1))->toEqual(History.make(4))
+  })
+})

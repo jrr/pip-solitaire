@@ -248,3 +248,55 @@ test("the share row is disabled on a scene with no game", async ({ page }) => {
   await expect(share).toBeDisabled()
   await expect(page.getByText("No game on screen to share.")).toBeVisible()
 })
+
+// A `#g=` blob and back, in the page, with the codec `Compression` uses — so the test
+// can grow a real link's history past what a QR code holds.
+const inflate = (page, url) =>
+  page.evaluate(async (url) => {
+    const blob = url.split("#g=")[1].replaceAll("-", "+").replaceAll("_", "/")
+    const bytes = Uint8Array.from(atob(blob), (c) => c.charCodeAt(0))
+    const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream("deflate-raw"))
+    return JSON.parse(await new Response(stream).text())
+  }, url)
+
+const deflate = (page, save) =>
+  page.evaluate(async (save) => {
+    const bytes = new TextEncoder().encode(JSON.stringify(save))
+    const stream = new Blob([bytes]).stream().pipeThrough(new CompressionStream("deflate-raw"))
+    const out = new Uint8Array(await new Response(stream).arrayBuffer())
+    const blob = btoa(String.fromCharCode(...out))
+    const url = blob.replaceAll("+", "-").replaceAll("/", "_").replaceAll("=", "")
+    return `${location.origin}/#g=${url}`
+  }, save)
+
+test("a history too long for a QR code is trimmed in the code, and Copy keeps all of it", async ({
+  page,
+}) => {
+  await page.goto(MIDGAME)
+  await settleBoard(page)
+  const save = await inflate(page, await shareFromDebugScreen(page))
+
+  // Three hundred positions behind the present, each the board's piles in a different
+  // order: far more history than a code holds, and none of it compressing to nothing.
+  let seed = 1
+  const random = () => (seed = (seed * 16807) % 2147483647) / 2147483647
+  const shuffled = (piles) =>
+    piles
+      .map((pile) => [random(), pile])
+      .sort((a, b) => a[0] - b[0])
+      .map(([, pile]) => pile)
+  const padding = Array.from({ length: 300 }, () => ({
+    ...save.present,
+    piles: shuffled(save.present.piles),
+  }))
+  save.past = [...save.past, ...padding]
+  const long = await deflate(page, save)
+  expect(long.length).toBeGreaterThan(2953)
+
+  await page.goto(long)
+  await settleBoard(page)
+  const copied = await shareFromDebugScreen(page)
+  await expect(shareDialog(page).getByRole("img", { name: /QR code/ })).toBeVisible()
+  await expect(shareDialog(page).locator(".share-dialog__hint")).toHaveText(/leaves out \d+ steps/)
+  expect((await inflate(page, copied)).past.length).toBe(save.past.length)
+})

@@ -6,8 +6,13 @@ open TestDom
 
 let url = "https://example.test/pip/#g=abc"
 
-let render = (~url=url, ~status=None, ~onCopy=() => (), ~onClose=() => ()) =>
-  Html.create(ShareDialog.make({url, status, onCopy, onClose}))
+let render = (
+  ~url=url,
+  ~scan=Some({ShareLink.url, dropped: 0}),
+  ~status=None,
+  ~onCopy=() => (),
+  ~onClose=() => (),
+) => Html.create(ShareDialog.make({url, scan, status, onCopy, onClose}))
 
 let buttons = (dialog): array<element> => dialog->findAll(".share-dialog__button")
 let hint = dialog => dialog->textIn(".share-dialog__hint")
@@ -33,10 +38,18 @@ describe("ShareDialog", () => {
   })
 
   test("says so and still offers the copy when the link won't fit in a QR code", () => {
-    let dialog = render(~url=String.repeat("x", 5000))
+    let dialog = render(~url=String.repeat("x", 5000), ~scan=None)
     expect(dialog->has(".qr-code"))->toBe(false)
     expect(dialog->hint)->toBe(ShareDialog.tooLong)
     expect(dialog->buttons->Array.map(text))->toEqual(["Close", "Copy link"])
+  })
+
+  test("says what a trimmed code left out, and still shows the whole link as text", () => {
+    let full = url ++ String.repeat("x", 5000)
+    let dialog = render(~url=full, ~scan=Some({url, dropped: 12}))
+    expect(dialog->has(".share-dialog__qr .qr-code"))->toBe(true)
+    expect(dialog->hint)->toBe(ShareDialog.trimmedHint(~dropped=12))
+    expect(dialog->textIn(".share-dialog__url"))->toBe(full)
   })
 
   test("closes from its button and from the dim behind it", () => {
