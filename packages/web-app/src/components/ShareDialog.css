@@ -71,30 +71,11 @@
     height: 100%;
   }
 
-  .share-dialog__hint {
+  .share-dialog__hint,
+  .share-dialog__truncated {
     margin: 0;
     font: 14px "Libre Franklin", sans-serif;
     color: var(--panel-ink-quiet);
-  }
-
-  /* A game-state link runs to hundreds of characters, so it wraps anywhere and scrolls
-     inside three lines rather than pushing the buttons off the panel. `user-select:
-     all` makes one click select the whole link, which is what anyone clicking it
-     wants. */
-  .share-dialog__url {
-    margin: 0;
-    /* Three lines, plus the padding the border-box takes out of them. */
-    max-height: calc(4.5em + 12px);
-    overflow-y: auto;
-    padding: 6px 8px;
-    font: 12px/1.5 ui-monospace, "SF Mono", Menlo, monospace;
-    text-align: left;
-    overflow-wrap: anywhere;
-    user-select: all;
-    color: var(--panel-ink-quiet);
-    background: #0b1220;
-    border: 1px solid #334155;
-    border-radius: 8px;
   }
 
   .share-dialog__actions {

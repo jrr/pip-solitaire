@@ -100,3 +100,25 @@ let redo = (h: t<'a>): t<'a> =>
       future: h.future->Array.slice(~start=1, ~end=Array.length(h.future)),
     }
   }
+
+// How many states lie either side of the present — what `within` counts against.
+let length = (h: t<'a>): int => Array.length(h.past) + Array.length(h.future)
+
+// The same history holding at most `steps` states besides the present, for a caller that
+// has to fit one into a fixed space. **The redo branch goes first**, farthest state first,
+// then `past` from its oldest end: the present is the position being handed over, and
+// what led up to it is worth more than what was undone away from it.
+//
+// Cutting `past` from the front moves `oldest`, so a trimmed line's Restart lands on the
+// earliest state it kept rather than on the deal.
+let within = (h: t<'a>, ~steps: int): t<'a> => {
+  let steps = Math.Int.max(steps, 0)
+  let pastLength = Array.length(h.past)
+  let keptPast = Math.Int.min(steps, pastLength)
+  let keptFuture = Math.Int.min(steps - keptPast, Array.length(h.future))
+  {
+    past: h.past->Array.slice(~start=pastLength - keptPast, ~end=pastLength),
+    present: h.present,
+    future: h.future->Array.slice(~start=0, ~end=keptFuture),
+  }
+}

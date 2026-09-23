@@ -22,6 +22,16 @@ describe("QrCode", () => {
     expect(QrCode.matrix(String.repeat("x", 5000)))->toBe(None)
   })
 
+  test("fits exactly as much as it can encode", () => {
+    // The ceiling `fits` answers from, pinned against the encoder that has the final say.
+    let full = String.repeat("x", QrCode.capacity)
+    let over = full ++ "x"
+    expect(QrCode.fits(full))->toBe(true)
+    expect(QrCode.matrix(full)->Option.isSome)->toBe(true)
+    expect(QrCode.fits(over))->toBe(false)
+    expect(QrCode.matrix(over))->toBe(None)
+  })
+
   test("sizes the image to the grid, quiet zone included", () => {
     let matrix = QrCode.matrix("pip")->Option.getOrThrow
     let svg = Html.create(QrCode.make({matrix, label: "code"}))

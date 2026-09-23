@@ -118,8 +118,9 @@ type model = {
   // indicator rather than a status line beneath it.
   refreshMode: option<Refresh.mode>,
   refreshBusy: bool,
-  // The Debug screen's "Share game state" row (`ShareLink`). `shareUrl` is the
-  // encoded link for the board as it stood when the screen opened — computed *then*,
+  // The Debug screen's "Share game state" row (`ShareLink`). `shareLinks` is the
+  // board as it stood when the screen opened, encoded whole for Copy and trimmed to fit
+  // for the QR code (`ShareLink.linksFor`) — computed *then*,
   // not on the press, so the dialog can go up on the tap and its Copy can reach the
   // clipboard with the click's transient activation, which the compression's `await`
   // would lose (see `ShareLink.deliver`). The board can't move while the menu covers
@@ -130,7 +131,7 @@ type model = {
   // `shareDialogOpen` is whether the dialog showing that link is up, and
   // `shareStatus` the transient line in it reporting where Copy put it. Like the seed
   // dialog, it belongs to the open menu: closing the menu takes it down.
-  shareUrl: option<string>,
+  shareLinks: option<ShareLink.links>,
   shareDialogOpen: bool,
   shareStatus: option<string>,
   // The Debug screen's "Autoplay" row: what the solver had to say, standing in for the
@@ -142,7 +143,7 @@ type model = {
   // heading names and Share hands over a link to, reported by the scene (`~onDeal`
   // below) — and the transient line under the buttons
   // reporting where its link went. `None` greys the button out — a demo scene, or a
-  // game resumed from a save with no deal number recorded. Unlike `shareUrl` above
+  // game resumed from a save with no deal number recorded. Unlike `shareLinks` above
   // there's nothing to prepare: the link is a `?seed=` string built on the press
   // (`ShareLink.urlForDeal`), so only the number has to be to hand — that, and the game
   // it's a deal of, which the press reads off `liveGame` rather than the model.
@@ -195,7 +196,7 @@ type msg =
   | RefreshDetected(Refresh.mode) // service-worker presence detected — sets the button's shape
   | RefreshStarted // the refresh button was tapped — start spinning the button
   | RefreshChecked // an update check finished — stop the spinner (a found update surfaces as the About button)
-  | ShareLinkReady(option<string>) // the open Debug screen's board, encoded into a link (`ShareLink`)
+  | ShareLinkReady(option<ShareLink.links>) // the open Debug screen's board, encoded into links (`ShareLink`)
   | OpenShareDialog // the Debug screen's Share game state — raise the modal over the menu
   | CloseShareDialog // its Close, or a tap on the dim behind it
   | ShareStatus(option<string>) // the share dialog's transient status line; `None` clears it
@@ -599,7 +600,7 @@ let update = (msg, model) =>
         ...model,
         menuScreen: Menu.Debug,
         settings: MenuSettingsScreen.freshVisit(model.settings),
-        shareUrl: None,
+        shareLinks: None,
         shareDialogOpen: false,
         shareStatus: None,
         autoplayStatus: None,
@@ -687,7 +688,7 @@ let update = (msg, model) =>
   // An update check finished. Stop the spinner; a pending update surfaces itself
   // through the onNeedRefresh → About "Update" flow, so there's nothing more to do.
   | RefreshChecked => ({...model, refreshBusy: false}, Html.noEffect)
-  | ShareLinkReady(shareUrl) => ({...model, shareUrl}, Html.noEffect)
+  | ShareLinkReady(shareLinks) => ({...model, shareLinks}, Html.noEffect)
   | ShareStatus(shareStatus) => ({...model, shareStatus}, Html.noEffect)
   | AutoplayStatus(autoplayStatus) => ({...model, autoplayStatus}, Html.noEffect)
   // A new deal reached the table. Whatever status line the previous deal's
@@ -1450,8 +1451,8 @@ let seedDialog = (model, dispatch): SeedDialog.props => {
 
 // The "Share game state" modal, raised over the Debug screen with the link that screen
 // encoded when it opened.
-let shareDialog = (model, dispatch, url): ShareDialog.props => {
-  url,
+let shareDialog = (model, dispatch, {full: url, scan}: ShareLink.links): ShareDialog.props => {
+  scan,
   status: model.shareStatus,
   // Straight into the clipboard with nothing awaited first, which is what keeps the
   // click's transient activation for the write. The status line clears itself a few
@@ -1487,7 +1488,8 @@ let settingsScreen = (model, dispatch): MenuSettingsScreen.props => {
     (
       async () =>
         switch currentHistory() {
-        | Some(saved) => dispatch(ShareLinkReady(await ShareLink.urlFor(saved)))
+        | Some(saved) =>
+          dispatch(ShareLinkReady(await ShareLink.linksFor(saved, ~fits=QrCode.fits)))
         | None => dispatch(ShareLinkReady(None))
         }
     )()->ignore
@@ -1535,7 +1537,7 @@ let debugScreen = (model, dispatch): MenuDebugScreen.props => {
       })
     )
   },
-  shareEnabled: model.shareUrl->Option.isSome,
+  shareEnabled: model.shareLinks->Option.isSome,
   onShareGame: () => dispatch(OpenShareDialog),
   onClearStored: () => dispatch(ClearStoredState),
   // Asked afresh on every render: the entry for the scene that's mounted now is the
@@ -1662,8 +1664,8 @@ let view = (model, dispatch) => <>
   // takes focus as it mounts, so a dialog that were merely hidden between opens would
   // have taken focus once, at startup, and never again.
   {model.seedDialogOpen ? SeedDialog.make(seedDialog(model, dispatch)) : Html.empty}
-  {switch (model.shareDialogOpen, model.shareUrl) {
-  | (true, Some(url)) => ShareDialog.make(shareDialog(model, dispatch, url))
+  {switch (model.shareDialogOpen, model.shareLinks) {
+  | (true, Some(links)) => ShareDialog.make(shareDialog(model, dispatch, links))
   | _ => Html.empty
   }}
 </>
@@ -1737,7 +1739,7 @@ let dispatch = Html.mount(
     refreshBusy: false,
     // The share row is filled in when the Debug screen opens (`ShareLink`), not at
     // startup — there's no point encoding a board nobody has asked to share.
-    shareUrl: None,
+    shareLinks: None,
     shareDialogOpen: false,
     shareStatus: None,
     // …and the Autoplay row has nothing to report until it is pressed.
