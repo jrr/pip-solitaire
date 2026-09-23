@@ -103,6 +103,27 @@ description = "Play a deal in a browser, end to end: `mise run autoplay -- 24680
 depends = ["bundle"]
 run = "node packages/web-app/scripts/autoplay/play.mjs"
 
+# The same bundle with two settings changed so a stack frame carries a name and a
+# module (vite.config.profile.js says which, and why neither alone is enough).
+# Its own outDir because every other browser task serves `dist/` and none of them
+# should be handed a build that isn't the one that ships.
+[tasks.bundle-profile]
+description = "Build the web-app with readable stack frames (packages/web-app/dist-profile)"
+depends = ["icons"]
+run = "pnpm --filter web-app run bundle:profile"
+
+# What you measure a main-thread change with, the way `solve` is what you measure
+# a solver change with: it plays a deal's opening drags under CPU throttling with
+# a trace running and ranks where the thread's time went — including the app's own
+# call sites that forced style or layout, which a flame chart charges to the
+# function that ran instead. Takes the deal and `--game` that `autoplay` does,
+# plus `--throttle`, `--moves` and `--headed`. `docs/profiling.md` is the
+# reference.
+[tasks.profile]
+description = "Profile a deal's opening drags under throttling: `mise run profile -- 24680`"
+depends = ["bundle-profile"]
+run = "node packages/web-app/scripts/profile/profile.mjs"
+
 # The browser-driven checks (packages/web-app/browser-tests): the things jsdom
 # can't answer — real layout, `calc()`, media queries, transform matrices, live
 # transitions, pointer input. Kept out of `ci` on purpose (`ci` stays

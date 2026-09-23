@@ -43,14 +43,19 @@ export function resolveChromiumExecutable() {
 }
 
 /**
- * Fail early, with the fix in the message, when dist/ isn't there. Every caller
- * is behind a mise task that `depends = ["bundle"]`, so this only fires when a
- * script is run by hand.
+ * Fail early, with the fix in the message, when the build isn't there. Every
+ * caller is behind a mise task that `depends` on the task that produces it, so
+ * this only fires when a script is run by hand.
+ *
+ * `outDir` names which build: `dist` for everything that drives the site as it
+ * ships, `dist-profile` for the readable-frames build `mise run profile` makes
+ * (vite.config.profile.js).
  */
-export function assertBundled(taskName) {
-  if (!fs.existsSync(path.join(webAppRoot, "dist", "index.html"))) {
+export function assertBundled(taskName, outDir = "dist") {
+  if (!fs.existsSync(path.join(webAppRoot, outDir, "index.html"))) {
+    const task = outDir === "dist" ? "bundle" : "bundle-profile"
     throw new Error(
-      `packages/web-app/dist is not built — run \`mise run bundle\` first (the ${taskName} task depends on it).`,
+      `packages/web-app/${outDir} is not built — run \`mise run ${task}\` first (the ${taskName} task depends on it).`,
     )
   }
 }
@@ -58,10 +63,15 @@ export function assertBundled(taskName) {
 /**
  * Serve the built site on an ephemeral port. Returns the base URL (no trailing
  * slash) and a `close` that shuts the server down.
+ *
+ * `outDir` picks the build to serve, as in `assertBundled`. It is passed as
+ * inline config rather than by loading a different config file, so the server
+ * is the same one in either case and only the directory differs.
  */
-export async function startPreview() {
+export async function startPreview({ outDir = "dist" } = {}) {
   const server = await preview({
     root: webAppRoot,
+    build: { outDir },
     preview: { port: 0, strictPort: false, open: false },
     logLevel: "warn",
   })

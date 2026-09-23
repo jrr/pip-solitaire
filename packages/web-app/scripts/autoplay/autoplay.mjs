@@ -137,10 +137,26 @@ export async function dragMove(page, view, step) {
  * `page` needs a `baseURL` (the Playwright fixture has one; the CLI sets one on
  * the context). Returns a report: how many drags it took, how many times the
  * screen disagreed with the plan, and whether the app declared a win.
+ *
+ * Two options exist for `mise run profile`, which wants a fixed stretch of
+ * opening play rather than a game, and wants it measured:
+ *   - `onReady` runs once, on a settled opening board, before anything is
+ *     planned or dragged — the seam a caller needs to start measuring from a
+ *     board at rest rather than from a page load;
+ *   - `maxMoves` stops after that many drags. A run that stops this way reports
+ *     `stopped: true`, which is how a caller tells "played what I asked" from
+ *     the `won: false` of a game that ran out of moves.
  */
 export async function playGame(
   page,
-  { seed, game = "freecell", log = () => {}, onMove = () => {} } = {},
+  {
+    seed,
+    game = "freecell",
+    log = () => {},
+    onMove = () => {},
+    onReady = () => {},
+    maxMoves = Infinity,
+  } = {},
 ) {
   const layout = layoutOf(game)
   // `animate=off` skips the opening fly-in (see `AppUrl`), so the board is at its
@@ -148,14 +164,16 @@ export async function playGame(
   // real footprints instead of racing the deal.
   await page.goto(`/?game=${game}&seed=${seed}&animate=off`)
   await settle(page)
+  await onReady(page)
 
   const started = Date.now()
   let played = 0
   let replans = 0
   let planned = null
+  let stopped = false
   let view = await look(page, layout)
 
-  for (;;) {
+  planning: for (;;) {
     view = await look(page, layout)
     if (Position.hasWon(view.state)) break
 
@@ -191,6 +209,10 @@ export async function playGame(
       if (!sameCards(lifted, step.lifts))
         log(`  ! grabbed ${lifted.join("+") || "nothing"}, meant to grab ${step.lifts.join("+")}`)
       onMove({ index: played, step, description: step.description })
+      if (played >= maxMoves) {
+        stopped = true
+        break planning
+      }
 
       view = await look(page, layout)
       // The check that makes this harness evidence about the app: does the board
@@ -204,19 +226,24 @@ export async function playGame(
     }
   }
 
-  // Both ways out of the loop leave the game won but the panel still to come:
-  // the Finish sweep has only just been asked for, and a board that won on its
-  // own — every Simple Simon win, since it has no Finish — read as won while the
-  // last collection was still flying. Either way the victory cascades for six
+  // Both ways out of the loop that end a game leave it won but the panel still to
+  // come: the Finish sweep has only just been asked for, and a board that won on
+  // its own — every Simple Simon win, since it has no Finish — read as won while
+  // the last collection was still flying. Either way the victory cascades for six
   // seconds before the panel eases in (`winPanelDelayMs`, `docs/cascade.md`), so
   // the wait belongs here, past both exits, or the count below asks too early and
   // a won deal reports NOT WON. A panel that never rises is the report's answer
   // to give, not this line's: swallow the timeout and let the count say so.
-  await page
-    .locator(".win-overlay")
-    .waitFor({ timeout: 15_000 })
-    .catch(() => {})
-  await settle(page)
+  //
+  // A `maxMoves` caller is the third exit and wants none of it: there is no panel
+  // coming, and waiting fifteen seconds for one would be the bulk of a short run.
+  if (!stopped) {
+    await page
+      .locator(".win-overlay")
+      .waitFor({ timeout: 15_000 })
+      .catch(() => {})
+    await settle(page)
+  }
 
   const won = (await page.locator(".win-overlay").count()) > 0
   const title = won ? await page.locator(".win-panel__title").textContent() : null
@@ -227,6 +254,7 @@ export async function playGame(
     planned,
     played,
     replans,
+    stopped,
     seconds: (Date.now() - started) / 1000,
     won: won && Position.hasWon(finalState),
     title,

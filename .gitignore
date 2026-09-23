@@ -6,8 +6,11 @@ node_modules/
 packages/*/lib/
 *.res.mjs
 
-# Vite build output
+# Vite build output. `dist-profile/` is the readable-frames build `mise run
+# profile` measures (vite.config.profile.js) — same status as `dist/`, and named
+# separately because the pattern above matches a directory called exactly `dist`.
 dist/
+packages/web-app/dist-profile/
 
 # Generated screenshot report — a CI artifact, not source. Anchored for the same
 # reason as `packages/*/lib/` above: unanchored, it also swallowed the

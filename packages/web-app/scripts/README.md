@@ -12,6 +12,7 @@ The directories split by **purpose**, not by mechanism:
 | `generate/` | asset generators — they write committed files into `public/` or `src/` |
 | `screenshots/` | the screenshot report: rendering it, and the two pieces that publish it |
 | `autoplay/` | playing the game: read the board off the page, plan, and drag the moves |
+| `profile/` | measuring the game: drive `autoplay/` under throttling with a trace running, and rank where the main thread's time went |
 
 `generate/og-image.mjs` is the awkward one: an asset generator by purpose, a
 browser-driver by mechanism. Purpose wins — it writes a committed
@@ -30,6 +31,7 @@ imports the shared browser boot from `lib/`.
 | `screenshots/stage.mjs` | `mise run stage-screenshots -- <dir> <stamp>` | a local staging dir for `peaceiris/actions-gh-pages` to publish |
 | `screenshots/hub.mjs` | `mise run screenshots-hub -- <dir>` | `<dir>/index.html` — the `/screenshots/` hub listing every published report |
 | `autoplay/play.mjs` | `mise run autoplay -- <seed…>` | nothing on disk — a game played to the win overlay, and a play-by-play on stdout (`--shots <dir>` also writes screenshots; `--game simplesimon` plays the other game the solver knows) |
+| `profile/profile.mjs` | `mise run profile -- <seed>` | nothing on disk — a ranked summary on stdout of where a throttled main thread's time went over a deal's opening drags (`docs/profiling.md`) |
 
 The three `generate/` outputs are **committed**, so those tasks only need
 re-running when their inputs change. The `screenshots/` outputs are not — CI
@@ -66,6 +68,23 @@ which meant two copies of the rules and only a browser run to catch a drift
 between them; now there is one copy, and `core`'s own tests hold the packed
 search position against `Reducer` move for move. `mise run solve -- <deal>` runs
 that brain with no browser attached.
+
+## profile/
+
+`mise run profile` — the same drags as `autoplay/`, under CPU throttling with a
+Chrome trace running, ranked into where the main thread's time went. It adds no
+driving of its own: it passes `onReady` and `maxMoves` to the same `playGame`,
+so a profile plays the game exactly the way `mise run autoplay` does.
+
+| module | what it is |
+| --- | --- |
+| `trace.mjs` | starting and stopping the trace, and the summaries read back out of it |
+| `frames.mjs` | a stack frame turned back into source, through the build's sourcemap |
+| `profile.mjs` | the `mise run profile` CLI over the above |
+
+It serves `dist-profile/` rather than `dist/` — the shipped bundle is minified,
+and a ranked list of frames called `i` and `wb` is unreadable.
+`docs/profiling.md` is the reference; `../vite.config.profile.js` is the build.
 
 `autoplay.mjs` is imported from outside `scripts/` too:
 `browser-tests/autoplay.spec.mjs` plays a fixed deal end to end as a test, and
