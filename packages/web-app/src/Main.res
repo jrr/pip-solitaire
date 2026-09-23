@@ -988,9 +988,9 @@ let gameScene = (game: Game.t) => {
 }
 // The games still in development: dealt by `Game.all`, reached by `?game=`, saved and
 // resumed like any other, and withheld from the main menu until **Beta features** is
-// on. Spider is there while its finer points are polished — a whole family, so that
-// the row it will get is the row it is judged on. A game graduates by leaving this list.
-let betaGames: array<string> = Game.spiderFamily.variants->Array.map(v => v.game.id)
+// on. Empty while nothing is in beta; a game in development goes in as a whole family,
+// so that the row it will get is the row it is judged on, and graduates by leaving.
+let betaGames: array<string> = []
 
 // The games the menu offers, as its top-level Games rows: every game `Game.all` deals,
 // in `Game.all`'s order, less `betaGames` while the flag is off. A game joins the menu by

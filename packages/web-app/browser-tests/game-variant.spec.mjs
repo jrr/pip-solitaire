@@ -48,9 +48,9 @@ test("offers a family as one row, and cycles it in place", async ({ page }) => {
   await settleBoard(page)
   await openMenu(page)
 
-  // Three rows for the seven released boards: the families are one row each, with the
+  // Four rows for the ten released boards: the families are one row each, with the
   // rest of their boards on the segment rather than in a row of their own.
-  await expect(gameNames(page)).toHaveText(["FreeCell", "Simple Simon", "Spiderette"])
+  await expect(gameNames(page)).toHaveText(["FreeCell", "Simple Simon", "Spiderette", "Spider"])
   await expect(packs(page)).toHaveCount(1)
   await expect(packs(page)).toHaveAttribute("aria-label", "Spiderette pack: 2 suits")
   await expect(packs(page)).toHaveText("♠♥")
@@ -84,7 +84,7 @@ test("offers a family as one row, and cycles it in place", async ({ page }) => {
   expect(size.x).toBe(boxes[0].x)
   // …and each is level with the name beside it, which is the segment taking the row's
   // height rather than the pips' (`MenuGameRow.css`).
-  const name = await gameNames(page).last().boundingBox()
+  const name = await gameRow(page, "Spiderette").boundingBox()
   expect(boxes[0].height).toBe(name.height)
   expect(boxes[0].y).toBe(name.y)
 })
@@ -94,7 +94,7 @@ test("draws the pips in the app's own suit face, not the platform's", async ({ p
   await settleBoard(page)
   await openMenu(page)
 
-  const suits = page.locator(".menu-variant-mark__suits")
+  const suits = packs(page).locator(".menu-variant-mark__suits")
   await expect(suits).toHaveCSS("font-family", /^"Pip Suits"/)
   // …and the face is really there to be used: the same subset the cards are drawn with
   // (`styles/fonts.css`), which carries the four pips and nothing else.

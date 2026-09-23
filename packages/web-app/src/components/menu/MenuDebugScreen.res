@@ -19,8 +19,8 @@
 // on `<MenuDisclosure>`, not a third way of drawing a disclosure here.
 //
 // **A game the main menu withholds is listed on no screen, this one included** (`Main`'s
-// `menuGames` — Spider, until the Beta features switch or its release lists it). It is
-// reached by `?game=` and nothing else, which is the whole of what withholding a game
+// `menuGames` — a game in beta, until the Beta features switch or its release lists
+// it). It is reached by `?game=` and nothing else, which is the whole of what withholding a game
 // means; a board already on the table when the switch goes off stays up, with no row
 // anywhere to bring it back.
 type props = {

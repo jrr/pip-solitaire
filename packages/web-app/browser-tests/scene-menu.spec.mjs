@@ -60,8 +60,8 @@ const sceneGroup = (page) => page.locator(".scene-menu__group").filter({ hasText
 const sceneRow = (page, name) => sceneGroup(page).getByRole("button", { name })
 
 // …and the disclosures this screen places, by the summary each opens under. A game
-// withheld from the main menu has no group of its own to land in (`more-games.spec.mjs`
-// walks both states of the flag), so what this names is the whole of what's here.
+// withheld from the main menu has no group of its own to land in, so what this names is
+// the whole of what's here.
 const groupSummaries = (page) => page.locator(".scene-menu__group > summary")
 
 // Activation tears the live scene down and builds it afresh, so a re-mount throws
@@ -87,11 +87,11 @@ test("tapping the game you're already playing doesn't re-deal it", async ({ page
   await expect(page.locator("#scene-container .table-board[data-pinned='yes']")).toHaveCount(1)
 })
 
-// The placement rule: ten boards in `Game.all`, three rows. `SceneSwitcher_test` pins
+// The placement rule: ten boards in `Game.all`, four rows. `SceneSwitcher_test` pins
 // the grouping rule against fake scenes; what it can't say is where the *real* boards
-// land — every released one up top, a family's on its row's segment, and the withheld
-// ones on no row at all, under "scenes" least of all.
-test("every released game is listed up top, and the withheld ones nowhere at all", async ({
+// land — every released one up top, a family's on its row's segment, and none of them
+// under "scenes".
+test("every released game is listed up top, and none among the demos", async ({
   page,
 }) => {
   await page.goto("/?game=micro&animate=off")
@@ -99,16 +99,16 @@ test("every released game is listed up top, and the withheld ones nowhere at all
 
   await openMenu(page)
   // One row per game in `Game.all`'s order — not one per board: the short decks are
-  // FreeCell's segment, the packs Spiderette's.
-  await expect(gameRows(page)).toHaveText(["FreeCell", "Simple Simon", "Spiderette"])
+  // FreeCell's segment, the packs Spiderette's, the suit counts Spider's.
+  await expect(gameRows(page)).toHaveText(["FreeCell", "Simple Simon", "Spiderette", "Spider"])
   // The board showing is Micro, so FreeCell's row is current with Micro on its segment.
   await expect(gameRow(page, "FreeCell")).toHaveAttribute("aria-current", "true")
   await expect(page.getByRole("button", { name: "FreeCell size: Micro" })).toBeVisible()
   await expect(gameRow(page, "Simple Simon")).not.toHaveAttribute("aria-current", "true")
 
   await openDebugScreen(page)
-  // Two disclosures, neither of them a home for a game: the withheld Spiders are on no
-  // row here, and the short decks aren't filed as demos either.
+  // Two disclosures, neither of them a home for a game: Spider's boards are on its row
+  // up top, and the short decks aren't filed as demos either.
   await expect(groupSummaries(page)).toHaveText(["scenes", "states"])
   await sceneGroup(page).locator("summary").click()
   await expect(sceneGroup(page).getByRole("button", { name: /Spider/ })).toHaveCount(0)
@@ -170,7 +170,7 @@ test("the games rows walk between FreeCell and Simple Simon, keeping each game",
   await expect(undo(page)).toBeEnabled()
 
   await openMenu(page)
-  await expect(gameRows(page)).toHaveText(["FreeCell", "Simple Simon", "Spiderette"])
+  await expect(gameRows(page)).toHaveText(["FreeCell", "Simple Simon", "Spiderette", "Spider"])
   await expect(gameRow(page, "FreeCell")).toHaveAttribute("aria-current", "true")
   await expect(gameRow(page, "Simple Simon")).not.toHaveAttribute("aria-current", "true")
   await expect(menuSeed(page)).toHaveText("#24680")

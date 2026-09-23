@@ -49,9 +49,10 @@ type model = {
   // into the corner wings beside the notch; off clamps every control inside the safe
   // area.
   notchDisplay: bool,
-  // "Beta features": the one switch in front of what's built but not finished. Today it
-  // lists Spider in the Games menu (`Main`'s `betaGames`): an unfinished feature gates
-  // itself on the flag and takes the gate out when it graduates. A feature flag rather
+  // "Beta features": the one switch in front of what's built but not finished. Nothing
+  // stands behind it today; a game in development would list itself in the Games menu
+  // through it (`Main`'s `betaGames`). An unfinished feature gates itself on the flag and
+  // takes the gate out when it graduates. A feature flag rather
   // than a preference, which is why it is hidden and why it defaults off.
   betaFeatures: bool,
   // The hidden settings and the run of taps that reveals them (`HiddenOptions`). Today
@@ -238,7 +239,7 @@ let update = (env: env, msg, model) =>
       },
     )
   // Published as well as stored, which is what makes the flip land on the very next menu
-  // render rather than the next launch: what it gates today (`Main`'s `menuGames`) is
+  // render rather than the next launch: what it gates (`Main`'s `menuGames`) is
   // read by the scene switcher, outside the chrome's render, so this model reaching the
   // screen is not enough on its own. A feature gated on this field alone needs no
   // publish — a menu screen re-renders from the model regardless.

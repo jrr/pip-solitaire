@@ -30,9 +30,10 @@ const openMenu = async (page) => {
   await expect(page.locator("#menu-overlay")).toBeVisible()
 }
 
-// FreeCell's row carries a variant segment between its name and its "i", and so does
-// Spiderette's (`game-variant.spec.mjs`). The measured claims here are about the *plain*
-// row, so they are taken on Simple Simon, the game with no family to collapse.
+// FreeCell's row carries a variant segment between its name and its "i", and so do
+// Spiderette's and Spider's (`game-variant.spec.mjs`). The measured claims here are
+// about the *plain* row, so they are taken on Simple Simon, the game with no family to
+// collapse.
 const infoRow = (page, game) =>
   page
     .locator(".menu-game-row")
@@ -46,7 +47,8 @@ test("puts an info button beside each game, named for it", async ({ page }) => {
   await expect(page.getByRole("button", { name: "About FreeCell" })).toBeVisible()
   await expect(page.getByRole("button", { name: "About Simple Simon" })).toBeVisible()
   await expect(page.getByRole("button", { name: "About Spiderette" })).toBeVisible()
-  await expect(page.locator(".menu-game-row__info")).toHaveCount(3)
+  await expect(page.getByRole("button", { name: "About Spider", exact: true })).toBeVisible()
+  await expect(page.locator(".menu-game-row__info")).toHaveCount(4)
 })
 
 test("gives the i a target bigger than the mark, without disturbing the row", async ({ page }) => {
