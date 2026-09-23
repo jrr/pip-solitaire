@@ -1,19 +1,19 @@
-// The action row (the Debug screen's "Share game state"), exercised in isolation. What
+// The action row (the Debug screen's "Autoplay"), exercised in isolation. What
 // separates it from `<MenuToggleRow>` is that it does something once rather than
 // holding a state, and everything below follows from that.
 open Vitest
 open TestDom
 
-let render = (~enabled, ~desc="Copy a link that reopens this exact game.", ~onClick=() => ()) =>
-  Html.create(MenuActionRow.make({label: "Share game state", desc, enabled, onClick}))
+let render = (~enabled, ~desc="Solve the current game for me.", ~onClick=() => ()) =>
+  Html.create(MenuActionRow.make({label: "Autoplay", desc, enabled, onClick}))
 
 let text = (row, selector) => row->textIn(selector)
 
 describe("MenuActionRow", () => {
   test("shows the label and its description in the toggle row's stack", () => {
     let row = render(~enabled=true)
-    expect(row->text(".menu-row__label"))->toBe("Share game state")
-    expect(row->text(".menu-row__desc"))->toBe("Copy a link that reopens this exact game.")
+    expect(row->text(".menu-row__label"))->toBe("Autoplay")
+    expect(row->text(".menu-row__desc"))->toBe("Solve the current game for me.")
   })
 
   test("carries no switch, since it does something once rather than holding a state", () => {
@@ -23,12 +23,10 @@ describe("MenuActionRow", () => {
   })
 
   test("takes the caller's line as its description, so a status doesn't add a row", () => {
-    // The Debug screen folds "where the link went" into `desc` rather than rendering
+    // The Debug screen folds what the solver said into `desc` rather than rendering
     // a line of its own — that's what keeps the row's height fixed as the status
     // comes and goes.
-    expect(render(~enabled=true, ~desc="Link copied to clipboard.")->text(".menu-row__desc"))->toBe(
-      "Link copied to clipboard.",
-    )
+    expect(render(~enabled=true, ~desc="Thinking…")->text(".menu-row__desc"))->toBe("Thinking…")
   })
 
   test("runs its action when tapped", () => {

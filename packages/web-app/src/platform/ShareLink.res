@@ -106,6 +106,21 @@ external makeShareData: (~title: string=?, ~text: string=?, ~url: string=?) => s
 @val @scope("navigator") external navigatorShare: shareData => promise<unit> = "share"
 @val @scope(("navigator", "clipboard")) external writeText: string => promise<unit> = "writeText"
 
+// The clipboard alone, for a caller that has put the link on screen itself (the Debug
+// screen's `ShareDialog`) and wants no share sheet raised over it. The same rule as
+// `deliver` below: call it from the click, with nothing awaited first.
+let copy = async (text: string): outcome =>
+  if canCopy {
+    try {
+      await writeText(text)
+      Copied
+    } catch {
+    | _ => Failed
+    }
+  } else {
+    Failed
+  }
+
 // **Call this straight out of the click handler, with nothing awaited first.**
 // `navigator.share` requires transient activation, and Safari in particular rejects it
 // when reached after an `await` — so any compression must already have happened. That
@@ -138,19 +153,13 @@ let deliver = async (~text: option<string>=?, url: string): outcome => {
   }
   if shared {
     Shared
-  } else if canCopy {
-    let payload = switch text {
-    | Some(message) => message ++ "\n\n" ++ url
-    | None => url
-    }
-    try {
-      await writeText(payload)
-      Copied
-    } catch {
-    | _ => Failed
-    }
   } else {
-    Failed
+    await copy(
+      switch text {
+      | Some(message) => message ++ "\n\n" ++ url
+      | None => url
+      },
+    )
   }
 }
 

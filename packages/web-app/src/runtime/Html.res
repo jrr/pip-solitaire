@@ -122,6 +122,7 @@ type elementProps = {
   stroke?: string,
   @as("stroke-width") strokeWidth?: string,
   @as("stroke-linejoin") strokeLinejoin?: string,
+  @as("shape-rendering") shapeRendering?: string,
   transform?: string,
   filter?: string,
   offset?: string,

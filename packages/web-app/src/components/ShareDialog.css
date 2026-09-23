@@ -1,0 +1,128 @@
+@layer components {
+  /* The "share game state" modal (see ShareDialog.res). Its frame — scrim, panel,
+     buttons — is the seed dialog's (SeedDialog.css), stated again because each sheet
+     styles only its own component; the look itself comes from the `--panel-*` tokens
+     in styles/base.css, which is where a change to it goes. */
+
+  #share-dialog {
+    position: fixed;
+    inset: 0;
+    /* Over the menu (z-index: 20 — see Menu.css), which stays up behind the dim. */
+    z-index: 30;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: calc(env(safe-area-inset-top) + 1rem) 1rem
+      calc(env(safe-area-inset-bottom) + 1rem);
+    animation: share-dialog-in 0.15s ease-out;
+  }
+
+  @keyframes share-dialog-in {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+
+  .share-dialog__backdrop {
+    position: absolute;
+    inset: 0;
+    background: rgba(2, 6, 16, 0.7);
+  }
+
+  .share-dialog__panel {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    width: min(22rem, 100%);
+    max-height: 100%;
+    overflow-y: auto;
+    padding: 24px;
+    background: var(--panel-bg);
+    border: var(--panel-border);
+    border-radius: var(--panel-radius);
+    box-shadow: var(--panel-shadow);
+    text-align: center;
+  }
+
+  .share-dialog__title {
+    margin: 0;
+    font: 600 22px "Libre Franklin", sans-serif;
+    color: var(--panel-accent);
+  }
+
+  /* Square, and capped by the viewport's height as well as the panel's width, so a
+     landscape phone still shows the buttons under it. The white is the code's own
+     quiet zone (QrCode.res); the radius only rounds its outer corners. */
+  .share-dialog__qr {
+    align-self: center;
+    width: min(100%, 45vh);
+    aspect-ratio: 1;
+    border-radius: 8px;
+    overflow: hidden;
+  }
+
+  .qr-code {
+    display: block;
+    width: 100%;
+    height: 100%;
+  }
+
+  .share-dialog__hint {
+    margin: 0;
+    font: 14px "Libre Franklin", sans-serif;
+    color: var(--panel-ink-quiet);
+  }
+
+  /* A game-state link runs to hundreds of characters, so it wraps anywhere and scrolls
+     inside three lines rather than pushing the buttons off the panel. `user-select:
+     all` makes one click select the whole link, which is what anyone clicking it
+     wants. */
+  .share-dialog__url {
+    margin: 0;
+    /* Three lines, plus the padding the border-box takes out of them. */
+    max-height: calc(4.5em + 12px);
+    overflow-y: auto;
+    padding: 6px 8px;
+    font: 12px/1.5 ui-monospace, "SF Mono", Menlo, monospace;
+    text-align: left;
+    overflow-wrap: anywhere;
+    user-select: all;
+    color: var(--panel-ink-quiet);
+    background: #0b1220;
+    border: 1px solid #334155;
+    border-radius: 8px;
+  }
+
+  .share-dialog__actions {
+    display: flex;
+    gap: 12px;
+  }
+
+  .share-dialog__button {
+    flex: 1 1 0;
+    padding: var(--panel-button-pad);
+    font: var(--panel-button-font);
+    color: var(--panel-ink);
+    background: var(--panel-button-bg);
+    border: none;
+    border-radius: var(--panel-button-radius);
+    cursor: pointer;
+  }
+
+  .share-dialog__button:hover {
+    background: var(--panel-button-bg-hover);
+  }
+
+  .share-dialog__button--close {
+    background: var(--panel-button-alt-bg);
+  }
+
+  /* The same specificity as the green hover above, so it wins by coming after it. */
+  .share-dialog__button--close:hover {
+    background: var(--panel-button-alt-bg-hover);
+  }
+}
