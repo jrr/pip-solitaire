@@ -76,14 +76,12 @@ async function shareFromDebugScreen(page) {
   return await page.evaluate(() => navigator.clipboard.readText())
 }
 
-test("the row raises the link as a QR code and as text, and Copy copies that text", async ({
-  page,
-}) => {
+test("the row raises the link as a QR code, and Copy copies it", async ({ page }) => {
   await page.goto(MIDGAME)
   await settleBoard(page)
   const url = await shareFromDebugScreen(page)
   await expect(shareDialog(page).getByRole("img", { name: /QR code/ })).toBeVisible()
-  await expect(shareDialog(page).locator(".share-dialog__url")).toHaveText(url)
+  expect(url).toContain("#g=")
 
   // Close lands back on the Debug screen the dialog was raised from.
   await shareDialog(page).getByRole("button", { name: "Close" }).click()
@@ -297,6 +295,8 @@ test("a history too long for a QR code is trimmed in the code, and Copy keeps al
   await settleBoard(page)
   const copied = await shareFromDebugScreen(page)
   await expect(shareDialog(page).getByRole("img", { name: /QR code/ })).toBeVisible()
-  await expect(shareDialog(page).locator(".share-dialog__hint")).toHaveText(/leaves out \d+ steps/)
+  await expect(shareDialog(page).locator(".share-dialog__truncated")).toHaveText(
+    new RegExp(`truncated to \\d+/${save.past.length} steps`),
+  )
   expect((await inflate(page, copied)).past.length).toBe(save.past.length)
 })

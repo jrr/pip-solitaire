@@ -337,7 +337,7 @@ describe("ShareLink.linksFor", () => {
 
   testAsync("a history that fits is scanned whole, as the same link Copy gets", async () => {
     let links = (await ShareLink.linksFor(saved, ~fits=_ => true))->Option.getOrThrow
-    expect(links.scan)->toEqual(Some({url: links.full, dropped: 0}))
+    expect(links.scan)->toEqual(Some({url: links.full, kept: 40, total: 40}))
   })
 
   testAsync("a history that doesn't fit is trimmed for the code alone", async () => {
@@ -345,11 +345,12 @@ describe("ShareLink.linksFor", () => {
     let ceiling = String.length(full) - 200
     let links = (await ShareLink.linksFor(saved, ~fits=under(ceiling)))->Option.getOrThrow
     expect(links.full)->toBe(full)
-    let {url, dropped} = links.scan->Option.getOrThrow
+    let {url, kept, total} = links.scan->Option.getOrThrow
     expect(String.length(url) <= ceiling)->toBe(true)
-    expect(dropped > 0)->toBe(true)
+    expect(total)->toBe(40)
+    expect(kept < total)->toBe(true)
     let scanned = await restored(url)
-    expect(scanned.history)->toEqual(saved.history->History.within(~steps=40 - dropped))
+    expect(scanned.history)->toEqual(saved.history->History.within(~steps=kept))
     // The tally is the game's, not the trimmed line's.
     expect(scanned.stats)->toEqual(saved.stats)
   })
@@ -357,7 +358,7 @@ describe("ShareLink.linksFor", () => {
   testAsync("the trimmed code keeps as much history as fits", async () => {
     let full = (await ShareLink.urlFor(saved))->Option.getOrThrow
     let ceiling = String.length(full) - 200
-    let {dropped} =
+    let {kept} =
       (await ShareLink.linksFor(saved, ~fits=under(ceiling)))
       ->Option.getOrThrow
       ->(links => links.ShareLink.scan)
@@ -365,7 +366,7 @@ describe("ShareLink.linksFor", () => {
     let oneMore = (
       await ShareLink.urlFor({
         ...saved,
-        history: saved.history->History.within(~steps=40 - dropped + 1),
+        history: saved.history->History.within(~steps=kept + 1),
       })
     )->Option.getOrThrow
     expect(String.length(oneMore) > ceiling)->toBe(true)

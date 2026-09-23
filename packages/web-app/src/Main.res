@@ -1452,7 +1452,6 @@ let seedDialog = (model, dispatch): SeedDialog.props => {
 // The "Share game state" modal, raised over the Debug screen with the link that screen
 // encoded when it opened.
 let shareDialog = (model, dispatch, {full: url, scan}: ShareLink.links): ShareDialog.props => {
-  url,
   scan,
   status: model.shareStatus,
   // Straight into the clipboard with nothing awaited first, which is what keeps the

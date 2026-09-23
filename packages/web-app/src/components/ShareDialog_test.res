@@ -7,21 +7,20 @@ open TestDom
 let url = "https://example.test/pip/#g=abc"
 
 let render = (
-  ~url=url,
-  ~scan=Some({ShareLink.url, dropped: 0}),
+  ~scan=Some({ShareLink.url, kept: 40, total: 40}),
   ~status=None,
   ~onCopy=() => (),
   ~onClose=() => (),
-) => Html.create(ShareDialog.make({url, scan, status, onCopy, onClose}))
+) => Html.create(ShareDialog.make({scan, status, onCopy, onClose}))
 
 let buttons = (dialog): array<element> => dialog->findAll(".share-dialog__button")
 let hint = dialog => dialog->textIn(".share-dialog__hint")
 
 describe("ShareDialog", () => {
-  test("shows the link as a QR code and as text", () => {
+  test("shows the link as a QR code, with nothing said about history when it's all there", () => {
     let dialog = render()
     expect(dialog->has(".share-dialog__qr .qr-code"))->toBe(true)
-    expect(dialog->textIn(".share-dialog__url"))->toBe(url)
+    expect(dialog->has(".share-dialog__truncated"))->toBe(false)
   })
 
   test("copies when Copy is pressed", () => {
@@ -38,18 +37,28 @@ describe("ShareDialog", () => {
   })
 
   test("says so and still offers the copy when the link won't fit in a QR code", () => {
-    let dialog = render(~url=String.repeat("x", 5000), ~scan=None)
+    let dialog = render(~scan=None)
     expect(dialog->has(".qr-code"))->toBe(false)
     expect(dialog->hint)->toBe(ShareDialog.tooLong)
     expect(dialog->buttons->Array.map(text))->toEqual(["Close", "Copy link"])
   })
 
-  test("says what a trimmed code left out, and still shows the whole link as text", () => {
-    let full = url ++ String.repeat("x", 5000)
-    let dialog = render(~url=full, ~scan=Some({url, dropped: 12}))
+  test("says how much history a trimmed code kept, beside the hint rather than in it", () => {
+    let dialog = render(~scan=Some({url, kept: 93, total: 300}))
     expect(dialog->has(".share-dialog__qr .qr-code"))->toBe(true)
-    expect(dialog->hint)->toBe(ShareDialog.trimmedHint(~dropped=12))
-    expect(dialog->textIn(".share-dialog__url"))->toBe(full)
+    expect(dialog->hint)->toBe(ShareDialog.hint)
+    expect(dialog->textIn(".share-dialog__truncated"))->toBe(
+      "QR code's undo history was truncated to 93/300 steps.",
+    )
+  })
+
+  test("keeps the truncation note up while a Copy's status stands in for the hint", () => {
+    let dialog = render(
+      ~scan=Some({url, kept: 93, total: 300}),
+      ~status=Some("Link copied to clipboard."),
+    )
+    expect(dialog->hint)->toBe("Link copied to clipboard.")
+    expect(dialog->has(".share-dialog__truncated"))->toBe(true)
   })
 
   test("closes from its button and from the dim behind it", () => {

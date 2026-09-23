@@ -123,13 +123,12 @@ fragment doesn't: `QrCode.capacity`, about 2,900 characters of blob once the add
 is paid for. A game's history outgrows that at around 150 moves of Spider, or 200 of
 FreeCell. So the code can carry a *trimmed* history (`ShareLink.linksFor`): the redo
 branch goes first, then `past` from its oldest end, until it fits. The present always
-survives, and so does the tally. The dialog's hint says how many steps the code left
-out.
+survives, and so does the tally. When the code is trimmed, the dialog says how many
+steps it kept, out of how many.
 
-Copy and the link written out as text always carry the whole thing. A trimmed code is
-a convenience for picking a game up on a phone, not a debugging record. A trimmed
-line's `oldest` is the earliest state it kept, so a Restart after scanning one lands
-there rather than on the deal.
+Copy always carries the whole thing. A trimmed code is a convenience for picking a game
+up on a phone, not a debugging record. A trimmed line's `oldest` is the earliest state
+it kept, so a Restart after scanning one lands there rather than on the deal.
 
 ## Why `deflate-raw` and base64url
 

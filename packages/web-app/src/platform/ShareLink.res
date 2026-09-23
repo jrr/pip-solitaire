@@ -27,8 +27,9 @@ let urlFor = async (saved: SaveState.t): option<string> =>
     origin ++ pathname ++ "#" ++ fragmentKey ++ "=" ++ blob
   )
 
-// A link cut down to fit somewhere small, and how many history states it left out.
-type trimmed = {url: string, dropped: int}
+// A link cut down to fit somewhere small: how many of the history's states besides the
+// present it kept, out of how many there were.
+type trimmed = {url: string, kept: int, total: int}
 
 // `saved` as a full link (for Copy) and as the longest link `fits` accepts (for the QR
 // code), which is the same link whenever the whole history fits.
@@ -43,16 +44,16 @@ type links = {full: string, scan: option<trimmed>}
 // rather than one per state. Deflate's output grows with its input closely enough for the
 // search to be sound, and the answer is checked against `fits` regardless, never assumed.
 // `scan` is `None` only when even the present on its own won't fit.
-let linksFor = async (saved: SaveState.t, ~fits: string => bool): option<links> =>
+let linksFor = async (saved: SaveState.t, ~fits: string => bool): option<links> => {
+  let total = History.length(saved.history)
   switch await urlFor(saved) {
   | None => None
-  | Some(full) if fits(full) => Some({full, scan: Some({url: full, dropped: 0})})
+  | Some(full) if fits(full) => Some({full, scan: Some({url: full, kept: total, total})})
   | Some(full) =>
-    let total = History.length(saved.history)
     let keeping = async steps =>
       (
         await urlFor({...saved, history: saved.history->History.within(~steps)})
-      )->Option.flatMap(url => fits(url) ? Some({url, dropped: total - steps}) : None)
+      )->Option.flatMap(url => fits(url) ? Some({url, kept: steps, total}) : None)
     // `best` fits at `low`; nothing above `high` does.
     let rec search = async (~low, ~high, ~best) =>
       if low >= high {
@@ -70,6 +71,7 @@ let linksFor = async (saved: SaveState.t, ~fits: string => bool): option<links> 
     }
     Some({full, scan})
   }
+}
 
 // **Synchronous, unlike `urlFor`**: there is nothing to compress. That matters at the
 // call site — the share can be attempted inside the click handler itself, with the
@@ -150,8 +152,8 @@ external makeShareData: (~title: string=?, ~text: string=?, ~url: string=?) => s
 @val @scope("navigator") external navigatorShare: shareData => promise<unit> = "share"
 @val @scope(("navigator", "clipboard")) external writeText: string => promise<unit> = "writeText"
 
-// The clipboard alone, for a caller that has put the link on screen itself (the Debug
-// screen's `ShareDialog`) and wants no share sheet raised over it. The same rule as
+// The clipboard alone, for a caller that has put the game on screen itself (the Debug
+// screen's `ShareDialog`, as a QR code) and wants no share sheet raised over it. The same rule as
 // `deliver` below: call it from the click, with nothing awaited first.
 let copy = async (text: string): outcome =>
   if canCopy {

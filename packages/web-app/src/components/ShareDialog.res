@@ -1,5 +1,5 @@
 // "Share game state": the Debug screen's link to the board, on a panel raised over
-// everything — as a QR code, as the text of the link, and as a button that copies it.
+// everything — as a QR code, and as a button that copies it.
 //
 // **A modal rather than a row's description.** A QR code is only any use large enough
 // to scan, and the slide-over has no room for one; raised over the screen instead, it
@@ -11,10 +11,10 @@
 // and Copy reaches the clipboard with the click's transient activation intact (see
 // `ShareLink.deliver`).
 //
-// **The code and the text can be different links.** The code has a ceiling (`QrCode`)
-// that a long game's history outgrows, so `Main` hands over a second link cut down to
-// fit it (`ShareLink.linksFor`), and the hint says what the cut cost. The text and Copy
-// always carry the whole game: a clipboard has no ceiling to fit.
+// **The code and Copy can be different links.** The code has a ceiling (`QrCode`) that a
+// long game's history outgrows, so `Main` hands over a link cut down to fit it
+// (`ShareLink.linksFor`), and a note under the hint says what the cut cost. Copy always
+// carries the whole game, and is `Main`'s: a clipboard has no ceiling to fit.
 //
 // **The status line stands in for the hint** rather than appearing under it, the same
 // substitution the menu's rows make, so reporting where the link went doesn't grow the
@@ -23,9 +23,7 @@
 %%raw(`import "./ShareDialog.css"`)
 
 type props = {
-  // The whole game, for the text and for Copy.
-  url: string,
-  // What the code says, when anything fits in one: `url` itself, or `url` with the
+  // What the code says, when anything fits in one: the whole game, or the game with its
   // history trimmed.
   scan: option<ShareLink.trimmed>,
   // Where the last Copy went; `None` shows the hint in its place.
@@ -37,17 +35,15 @@ type props = {
 }
 
 let title = "Share game state"
-let hint = "Scan to open this exact game on another device, undo history and all."
+let hint = "Scan to open this game on another device."
 let tooLong = "This game's link is too long for a QR code — copy it instead."
 
-// The hint for a code that had to leave some of the history out, which the hint above
-// promises it doesn't.
-let trimmedHint = (~dropped: int): string =>
-  "Scan to open this game on another device. To fit, the code leaves out " ++
-  Int.toString(dropped) ++
-  (dropped == 1 ? " step" : " steps") ++ " of undo history; Copy link keeps all of it."
+// Said only when the code had to leave history out. A line of its own rather than part
+// of the hint, so a Copy's status taking the hint's place doesn't take this with it.
+let truncated = ({kept, total}: ShareLink.trimmed): string =>
+  `QR code's undo history was truncated to ${Int.toString(kept)}/${Int.toString(total)} steps.`
 
-let make = ({url, scan, status, onCopy, onClose}) => {
+let make = ({scan, status, onCopy, onClose}) => {
   let qr = scan->Option.flatMap(({url}) => QrCode.matrix(url))
   <div id="share-dialog" role="dialog" ariaModal="true" ariaLabel=title>
     <div className="share-dialog__backdrop" onClick={_ => onClose()} />
@@ -64,17 +60,16 @@ let make = ({url, scan, status, onCopy, onClose}) => {
         {Html.string(
           switch (status, qr) {
           | (Some(status), _) => status
-          | (None, Some(_)) =>
-            switch scan {
-            | Some({dropped}) if dropped > 0 => trimmedHint(~dropped)
-            | _ => hint
-            }
+          | (None, Some(_)) => hint
           | (None, None) => tooLong
           },
         )}
       </p>
-      // The link itself, for a desktop reader who'd rather select it than scan it.
-      <p className="share-dialog__url"> {Html.string(url)} </p>
+      {switch (qr, scan) {
+      | (Some(_), Some(trimmed)) if trimmed.kept < trimmed.total =>
+        <p className="share-dialog__truncated"> {Html.string(truncated(trimmed))} </p>
+      | _ => Html.empty
+      }}
       // Copy is the primary and sits on the right, where the seed dialog puts Deal.
       <div className="share-dialog__actions">
         <button
