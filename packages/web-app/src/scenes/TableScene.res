@@ -227,6 +227,11 @@ type card = {
   // Whether the node shows its back. Read at reflow to tell a card *turning over*
   // from one that was face up already, which is the only moment the flip animates.
   down: ref<bool>,
+  // Pick this card up with the run it heads, as a press on it would, from a press that
+  // landed elsewhere: a back above it in its column (see the `pointerdown` in
+  // `makeCard`). The float is how far to carry the run up first, so it arrives under
+  // the finger that pressed the back. Filled in once the card's pointer loop exists.
+  grabFrom: ref<(pointerEvent, float) => unit>,
 }
 
 // Turn a node face down or face up. The back is a sibling of the face inside the
@@ -1120,6 +1125,11 @@ let make = (
             headsRun
               ? classList(c.wrapper)->removeClass("stacking-card--buried")
               : classList(c.wrapper)->addClass("stacking-card--buried")
+            // A cascade's backs lift the run the column shows (`handleFor` in
+            // `makeCard`), so they offer the grab too, as long as there is one to lift.
+            role == Game.Cascade && i < down && down < count
+              ? classList(c.wrapper)->addClass("stacking-card--handle")
+              : classList(c.wrapper)->removeClass("stacking-card--handle")
             // Take the cards this pile *hides* out of the accessible tree.
             // Every card is a `role="img"` with an `aria-label` (see `CardArt`), and a
             // Squared pile draws its whole contents on one spot — so a screen reader
@@ -2109,6 +2119,7 @@ let make = (
           y: ref(0.),
           draggable: ref(true),
           down: ref(false),
+          grabFrom: ref((_, _) => ()),
         }
         // Register the node so a pile derived from `state` can be laid out onto it.
         nodes->Array.push(self)
@@ -2213,39 +2224,72 @@ let make = (
           })
         }
 
+        // Take hold of this card and the span it heads. `lift` carries the span up
+        // before the drag starts; it is zero for a press on the card itself.
+        let startGrab = (ev, lift) => {
+          // A fresh press: assume a tap until the pointer travels far enough
+          // (below) to be a drag, which is what tells the double-tap apart.
+          movedFar := false
+          // Capture so the cards keep getting moves/up even if the pointer leaves
+          // their bounds — or never pressed them: a press on a back hands its pointer
+          // to the run head here.
+          wrapper->setPointerCapture(pointerId(ev))
+          // Gather the span this card heads: itself and every card resting above
+          // it in its pile, bottom-first. A lone card is a span of one.
+          let span = switch GameState.locationOf(state(), self.data) {
+          | Some(GameState.InPile(pileIdx, slot)) =>
+            let pile = GameState.cardsInPile(state(), pileIdx)
+            pile->Array.slice(~start=slot, ~end=Array.length(pile))->Array.filterMap(nodeFor)
+          | _ => nodeFor(self.data)->Option.mapOr([], c => [c])
+          }
+          // Raise the whole span above the rest of the board, keeping bottom-first
+          // order so the run stays coherently stacked while it's carried. `dragging`
+          // goes on before the lift, so the span jumps to the finger rather than
+          // sliding there behind it.
+          span->Array.forEach(c => {
+            classList(c.wrapper)->addClass("dragging")
+            bringToFront(c.wrapper)
+            c.y := c.y.contents -. lift
+            place(c)
+          })
+          grab :=
+            Some((clientX(ev), clientY(ev), span->Array.map(c => (c, c.x.contents, c.y.contents))))
+        }
+        self.grabFrom := startGrab
+
+        // The run head a press on this card's back picks up instead: the deepest card
+        // that still heads a run in its cascade, which is `moverun`'s reading of a
+        // place (`Command.runShowing`), so the pointer and the typed line can't come
+        // to lift different cards. `None` off a cascade, and on one with no face-up
+        // card to grab.
+        let handleFor = () =>
+          switch GameState.locationOf(state(), self.data) {
+          | Some(GameState.InPile(i, _))
+            if game.piles
+            ->Array.get(i)
+            ->Option.mapOr(false, (p: Game.pile) => p.role == Game.Cascade) =>
+            Command.runShowing(~game, state(), i)->Array.get(0)->Option.flatMap(nodeFor)
+          | _ => None
+          }
+
         wrapper->onPointer("pointerdown", ev =>
           // Only a card that heads a legal run can be picked up; every other buried
           // card ignores the pointer (its `draggable` is false, set each reflow) —
-          // except the stock's, whose press is the start of a tap.
+          // except the stock's, whose press is the start of a tap, and a cascade's
+          // backs, which are a handle for the run the column shows.
           if !self.draggable.contents && inStock() {
             stockPress := Some((clientX(ev), clientY(ev)))
           } else if self.draggable.contents {
-            // A fresh press: assume a tap until the pointer travels far enough
-            // (below) to be a drag, which is what tells the double-tap apart.
-            movedFar := false
-            // Capture so the cards keep getting moves/up even if the pointer leaves
-            // their bounds.
-            wrapper->setPointerCapture(pointerId(ev))
-            // Gather the span this card heads: itself and every card resting above
-            // it in its pile, bottom-first. A lone card is a span of one.
-            let span = switch GameState.locationOf(state(), self.data) {
-            | Some(GameState.InPile(pileIdx, slot)) =>
-              let pile = GameState.cardsInPile(state(), pileIdx)
-              pile->Array.slice(~start=slot, ~end=Array.length(pile))->Array.filterMap(nodeFor)
-            | _ => nodeFor(self.data)->Option.mapOr([], c => [c])
+            startGrab(ev, 0.)
+          } else if GameState.isFaceDown(state(), self.data) {
+            // The drop hit-test aims by the grabbed card's rect, not the pointer, so a
+            // run carried from where it lies — a back or two below the finger — would
+            // land that far below every aim. Lifted onto the pressed back, it sits
+            // where a press on the head itself would have put it.
+            switch handleFor() {
+            | Some(head) => head.grabFrom.contents(ev, head.y.contents -. self.y.contents)
+            | None => ()
             }
-            grab :=
-              Some((
-                clientX(ev),
-                clientY(ev),
-                span->Array.map(c => (c, c.x.contents, c.y.contents)),
-              ))
-            // Raise the whole span above the rest of the board, keeping bottom-first
-            // order so the run stays coherently stacked while it's carried.
-            span->Array.forEach(c => {
-              classList(c.wrapper)->addClass("dragging")
-              bringToFront(c.wrapper)
-            })
           }
         )
 
