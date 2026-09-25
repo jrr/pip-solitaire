@@ -572,6 +572,13 @@
     cursor: default;
   }
 
+  /* A cascade's face-down cards pick up the run the column shows
+     (TableScene.res's `handleFor`), so they offer the grab. After `--buried`, so it
+     wins for the backs, which are buried too. */
+  .stacking-card--handle {
+    cursor: grab;
+  }
+
   /* The stock is tapped, not dragged: a tap deals the next row (TableScene.res's
      `playDeal`), and the pointer says so over every card in it. After `--buried`, so
      it wins for the stock's covered cards too. */
