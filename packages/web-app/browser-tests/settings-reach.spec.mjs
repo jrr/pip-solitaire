@@ -156,3 +156,55 @@ test("the hidden switches write through like any other", async ({ page }) => {
   await expect(toggle(page, "Wiggle Waggle")).toHaveAttribute("aria-checked", "false")
   expect(await stored(page, "pip.wantsShake")).toBe("false")
 })
+
+test("the foundation house rule pins a card already home, without waiting for a move", async ({
+  page,
+}) => {
+  // Each foundation holds its Ace and Two, so each Two is a card a hand could lift.
+  await page.goto("/?game=freecell&state=sendhome&animate=off")
+  await settleBoard(page)
+  const two = page.locator(".stacking-card", { has: page.getByRole("img", { name: "Two of Spades" }) })
+  await expect(two).not.toHaveClass(/stacking-card--buried/)
+
+  await openSettings(page)
+  await expect(toggle(page, "Pull cards back down")).toHaveAttribute("aria-checked", "true")
+  await toggle(page, "Pull cards back down").click()
+  await expect(toggle(page, "Pull cards back down")).toHaveAttribute("aria-checked", "false")
+  expect(await stored(page, "pip.foundationReturn")).toBe("false")
+  await expect(two).toHaveClass(/stacking-card--buried/)
+
+  await page.reload()
+  await settleBoard(page)
+  await expect(two).toHaveClass(/stacking-card--buried/)
+})
+
+test("the empty-column deal writes through to storage, and survives the reload", async ({
+  page,
+}) => {
+  // What the flip does to a deal is `spiderette.spec.mjs`'s; this is the switch's reach.
+  await openBoardAndSettings(page)
+  await expect(toggle(page, "Deal despite empty columns")).toHaveAttribute("aria-checked", "false")
+  await toggle(page, "Deal despite empty columns").click()
+  expect(await stored(page, "pip.emptyColumnDeal")).toBe("true")
+
+  await page.reload()
+  await settleBoard(page)
+  await openSettings(page)
+  await expect(toggle(page, "Deal despite empty columns")).toHaveAttribute("aria-checked", "true")
+})
+
+test("column reordering is a hidden house rule, and writes through like the others", async ({
+  page,
+}) => {
+  await openBoardAndSettings(page)
+  await expect(toggle(page, "Reorder columns")).toHaveCount(0)
+  await revealHidden(page)
+  await expect(toggle(page, "Reorder columns")).toHaveAttribute("aria-checked", "true")
+  await toggle(page, "Reorder columns").click()
+  expect(await stored(page, "pip.columnReorder")).toBe("false")
+
+  await page.reload()
+  await settleBoard(page)
+  await openSettings(page)
+  await expect(toggle(page, "Reorder columns")).toHaveAttribute("aria-checked", "false")
+})

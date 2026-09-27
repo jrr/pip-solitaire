@@ -8,7 +8,7 @@
 // `update` is a pure function of `(env, msg, model)` returning the next model and an
 // effect, which is what lets it be unit-tested the way `core`'s `Reducer` is.
 //
-// **None of these fields is the real value.** Auto-collect is read off the shared
+// **None of these fields is the real value.** Auto-collect and the house rules are read off the shared
 // `Options` ref at each move and the tilt at each relayout; the notch preference is a
 // document-root attribute the CSS reads; all of them are persisted. What's held here is
 // the mirror the switch draws itself from, and the write-through in `update` is what
@@ -27,12 +27,22 @@
 //   - the preference toggles, one per row with a one-line description under
 //     its label; no section heading — the "Settings" title in the header already
 //     names them;
+//   - the **House rules**, under a heading of their own: the switches that change
+//     what the game allows rather than how it looks or helps, so a player can tell a
+//     rule from a convenience at a glance;
 //   - a **Debug** nav row (`onOpenDebug`) that opens the Debug screen — the debug
 //     tools live on a screen of their own so the player preferences stand alone here.
 
 // --- What the screen holds ----------------------------------------------------
 type model = {
   autoCollect: bool,
+  // "Pull cards back down": `Options.allowFoundationReturn`.
+  foundationReturn: bool,
+  // "Deal despite empty columns": `Options.allowDealWithEmptyColumns`.
+  emptyColumnDeal: bool,
+  // "Reorder columns": `Options.allowColumnReorder`. A hidden setting, since the board
+  // has no gesture for a reorder yet — only the console's `movecol` makes one.
+  columnReorder: bool,
   // "Sloppy placement" — the slight resting-card tilt, for players who'd
   // rather see cards stacked dead-square.
   cardTilt: bool,
@@ -63,6 +73,9 @@ type model = {
 
 type msg =
   | ToggleAutoCollect
+  | ToggleFoundationReturn
+  | ToggleEmptyColumnDeal
+  | ToggleColumnReorder
   | ToggleCardTilt
   | WiggleOff // the Wiggle Waggle switch turned off — stop listening, square up
   | WiggleResolved(Motion.state) // a motion-permission request resolved to a new state
@@ -112,7 +125,13 @@ let liveEnv = (
   ~board: request => unit,
 ): env => {
   publish: model => {
-    options := {...options.contents, autoCollect: model.autoCollect}
+    options := {
+        ...options.contents,
+        autoCollect: model.autoCollect,
+        allowFoundationReturn: model.foundationReturn,
+        allowDealWithEmptyColumns: model.emptyColumnDeal,
+        allowColumnReorder: model.columnReorder,
+      }
     tiltEnabled := model.cardTilt
     // Settings is the owner of the app-wide motion state (see `Motion.current`): the
     // debug Motion scene shows it, and the board listens only while `shakeActive`.
@@ -126,6 +145,9 @@ let liveEnv = (
   root: model => NotchDisplay.setEnabled(model.notchDisplay),
   persist: model => {
     Preferences.saveAutoCollect(model.autoCollect)
+    Preferences.saveFoundationReturn(model.foundationReturn)
+    Preferences.saveEmptyColumnDeal(model.emptyColumnDeal)
+    Preferences.saveColumnReorder(model.columnReorder)
     Preferences.saveCardTilt(model.cardTilt)
     Preferences.saveWantsShake(model.wantsShake)
     Preferences.saveNotchDisplay(model.notchDisplay)
@@ -140,8 +162,12 @@ let liveEnv = (
 // deferred to a real user gesture (`Motion.initialState`).
 let init = (): model => {
   let wantsShake = Preferences.loadWantsShake()
+  let options = Preferences.load()
   {
-    autoCollect: Preferences.load().autoCollect,
+    autoCollect: options.autoCollect,
+    foundationReturn: options.allowFoundationReturn,
+    emptyColumnDeal: options.allowDealWithEmptyColumns,
+    columnReorder: options.allowColumnReorder,
     cardTilt: Preferences.loadCardTilt(),
     wiggle: Motion.initialState(~wantsShake),
     wantsShake,
@@ -169,6 +195,39 @@ let update = (env: env, msg, model) =>
   switch msg {
   | ToggleAutoCollect =>
     let model = {...model, autoCollect: !model.autoCollect}
+    (
+      model,
+      () => {
+        env.publish(model)
+        env.persist(model)
+      },
+    )
+  // The board decides which cards a hand may lift at each relayout, so ask for one: a
+  // foundation's top card stops (or starts) answering the pointer now, not after the
+  // next move.
+  | ToggleFoundationReturn =>
+    let model = {...model, foundationReturn: !model.foundationReturn}
+    (
+      model,
+      () => {
+        env.publish(model)
+        env.persist(model)
+        env.board(Relayout)
+      },
+    )
+  // Nothing on the board to redraw: the stock is tapped rather than dragged, and the
+  // deal reads the flag at the moment of the tap.
+  | ToggleEmptyColumnDeal =>
+    let model = {...model, emptyColumnDeal: !model.emptyColumnDeal}
+    (
+      model,
+      () => {
+        env.publish(model)
+        env.persist(model)
+      },
+    )
+  | ToggleColumnReorder =>
+    let model = {...model, columnReorder: !model.columnReorder}
     (
       model,
       () => {
@@ -345,6 +404,32 @@ let make = ({model, dispatch, onClose, onBackToMenu, onOpenDebug}) => <>
         on={model.notchDisplay}
         onToggle={() => dispatch(ToggleNotchDisplay)}
       />
+    </MenuSection>
+    <MenuSection label="House rules" heading="House rules">
+      <MenuToggleRow
+        label="Pull cards back down"
+        desc="In FreeCell you can move cards out of foundations."
+        on={model.foundationReturn}
+        onToggle={() => dispatch(ToggleFoundationReturn)}
+      />
+      <MenuToggleRow
+        label="Deal despite empty columns"
+        desc="Empty spaces do not prevent dealing from stock."
+        on={model.emptyColumnDeal}
+        onToggle={() => dispatch(ToggleEmptyColumnDeal)}
+      />
+      {
+        // Hidden like the settings above, and as they are: a hidden row leaves its
+        // setting running (`HiddenOptions`).
+        model.hidden.revealed
+          ? <MenuToggleRow
+              label="Reorder columns"
+              desc="Let a whole column be moved between two others."
+              on={model.columnReorder}
+              onToggle={() => dispatch(ToggleColumnReorder)}
+            />
+          : Html.empty
+      }
     </MenuSection>
     <MenuSection label="More" tag=Nav>
       <MenuNavRow label="Debug" onClick=onOpenDebug />

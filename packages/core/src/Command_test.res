@@ -490,7 +490,9 @@ describe("Command.parse — set", () => {
     switch Command.parse("set frobnicate on") {
     | Command.Usage({verb, message}) =>
       expect(verb)->toBe("set")
-      expect(message)->toBe(`Not a setting: "frobnicate" (autocollect, reorder).`)
+      expect(
+        message,
+      )->toBe(`Not a setting: "frobnicate" (autocollect, reorder, worryback, gapdeal).`)
     | _ => expect("not a usage")->toBe("usage")
     }
     switch Command.parse("set autocollect maybe") {
@@ -513,6 +515,8 @@ describe("Command.parse — set", () => {
     let shown = Command.describeSettings(Options.default)
     expect(shown->String.includes("autocollect  on"))->toBe(true)
     expect(shown->String.includes("reorder      on"))->toBe(true)
+    expect(shown->String.includes("worryback    on"))->toBe(true)
+    expect(shown->String.includes("gapdeal      off"))->toBe(true)
     expect(
       Command.describeSettings(
         Options.apply(Options.default, ~setting=Options.AutoCollect, ~on=false),
@@ -528,7 +532,7 @@ describe("Options", () => {
     expect(off.autoCollect)->toBe(Options.default.autoCollect)
   })
 
-  test("read is apply's inverse, for both settings", () =>
+  test("read is apply's inverse, for every setting", () =>
     Options.all->Array.forEach(
       setting => {
         expect(Options.read(Options.apply(Options.default, ~setting, ~on=false), setting))->toBe(

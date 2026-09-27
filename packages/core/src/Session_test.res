@@ -177,6 +177,67 @@ describe("Session house rules", () => {
     expect(Session.canUndo(s))->toBe(false)
   })
 
+  // The Three of Spades played home by hand, auto-collect off so the other Threes stay
+  // in their cells, and then asked back up into the cell it just left.
+  let takeBack = (~allowed) => {
+    let options = {...Options.default, autoCollect: false, allowFoundationReturn: allowed}
+    let (home, _) = Session.step(
+      ~clock=stopped,
+      open_(~options, Scenario.freecellSendHome(freecell)),
+      Command.Home({card: threeOfSpades}),
+    )
+    let cell = Game.pileIndices(freecell, Game.FreeCell)->Array.getUnsafe(0)
+    Session.step(
+      ~clock=stopped,
+      home,
+      Command.Dispatch(Reducer.Move({card: threeOfSpades, to: Reducer.ToPile(cell)})),
+    )
+  }
+
+  test("a card played home can be taken back off its foundation by default", () => {
+    let (_, outcome) = takeBack(~allowed=true)
+    switch outcome.change {
+    | Session.Settled(_) => ()
+    | _ => expect("settled")->toBe("something else")
+    }
+  })
+
+  test("with foundation take-backs off, a card played home stays home", () => {
+    let (s, outcome) = takeBack(~allowed=false)
+    switch outcome.change {
+    | Session.Blocked({reason}) => expect(reason)->toBe(Session.foundationReturnOff)
+    | _ => expect("blocked")->toBe("something else")
+    }
+    expect(s.stats.moves)->toBe(1)
+  })
+
+  test("dealing with empty columns on lets the stock deal a row over a gap", () => {
+    let game = Game.spiderette
+    let stuck = Scenario.spideretteStuck(game)
+    let deal = options =>
+      Session.step(
+        ~clock=stopped,
+        Session.open_(~clock=stopped, ~options, ~seed=None, game, stuck),
+        Command.Draw,
+      )
+    let (_, refused) = deal(Options.default)
+    switch refused.change {
+    | Session.Rejected({error}) => expect(error)->toBe(Reducer.CascadeEmpty)
+    | _ => expect("rejected")->toBe("something else")
+    }
+    let (s, dealt) = deal({...Options.default, allowDealWithEmptyColumns: true})
+    switch dealt.change {
+    | Session.Settled({moved}) =>
+      expect(Array.length(moved))->toBe(Game.pileIndices(game, Game.Cascade)->Array.length)
+    | _ => expect("settled")->toBe("something else")
+    }
+    expect(
+      Game.pileIndices(game, Game.Cascade)->Array.every(
+        i => Array.length(GameState.cardsInPile(Session.present(s), i)) > 0,
+      ),
+    )->toBe(true)
+  })
+
   test("auto-collect off leaves the reducer's result exactly as it came", () => {
     let off = Options.apply(Options.default, ~setting=Options.AutoCollect, ~on=false)
     let state = Scenario.freecellSendHome(freecell)

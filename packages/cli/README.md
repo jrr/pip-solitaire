@@ -112,7 +112,7 @@ finish                   sweep every card home to win, when the board is drainab
 autoplay                 let the solver play the rest of the game (and finish it)
 undo / redo              step back and forth over the accepted moves
 set                      show the driver settings
-set <setting> on|off     change one (autocollect, reorder)
+set <setting> on|off     change one (autocollect, reorder, worryback, gapdeal)
 clear                    wipe the screen (a live prompt only)
 print                    re-print the current board
 games                    list the available games

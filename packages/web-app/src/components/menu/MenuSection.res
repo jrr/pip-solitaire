@@ -37,8 +37,9 @@ type props = {
   // purely a layout band, like the bottom-anchored one holding the Settings
   // button — an unnamed group is better than one named for its position.
   label?: string,
-  // A visible `<h2>` at the top of the section. Only the main screen's groups
-  // carry one; Settings and Debug are labelled but unheaded.
+  // A visible `<h2>` at the top of the section. The main screen's groups carry one,
+  // and so do Settings' house rules, to set them apart from the preferences above
+  // them; the rest of Settings and Debug are labelled but unheaded.
   heading?: string,
   // A number the heading names *as data* rather than prose — the seed of the board
   // the section's controls act on. It rides on the heading rather than on one of the

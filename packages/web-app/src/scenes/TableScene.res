@@ -1115,7 +1115,14 @@ let make = (
             // play is unchanged; a deeper run-head lifts its whole span as a
             // supermove. Every other buried card stays pinned — and so does a face-down
             // one, whatever the cards above it happen to make with it.
-            let headsRun = i >= down && Rules.isRun(rule, cards->Array.slice(~start=i, ~end=count))
+            //
+            // A foundation's cards are pinned too while the house rule keeps them home
+            // (`Options.allowFoundationReturn`), so a press on one is inert rather than
+            // a drag the session would refuse.
+            let headsRun =
+              i >= down &&
+              Rules.isRun(rule, cards->Array.slice(~start=i, ~end=count)) &&
+              (role != Game.Foundation || options.contents.allowFoundationReturn)
             c.draggable := headsRun
             headsRun
               ? classList(c.wrapper)->removeClass("stacking-card--buried")
@@ -2152,6 +2159,9 @@ let make = (
         // deal is one undoable step, settled by auto-collect like any move (a dealt card
         // can complete a run), and then flown from the stock to the columns.
         //
+        // The refusal is read off the session's answer rather than asked of the board
+        // again, because only the session knows whether a house rule waived it.
+        //
         // A refusal is already in the log with its reason, but a log is not something a
         // player reads: on screen a refused tap is indistinguishable from one that
         // missed. So the one refusal the board can point at answers on the board — see
@@ -2161,11 +2171,8 @@ let make = (
           let before = state()
           switch dispatch(Reducer.Deal) {
           | Session.Settled({moved, collected}) => flySettled(~before, ~moved, ~collected)
-          | _ =>
-            switch Reducer.dealRefusal(~game, before) {
-            | Some(Reducer.CascadeEmpty) => flashEmptyColumns()
-            | Some(_) | None => ()
-            }
+          | Session.Rejected({error: Reducer.CascadeEmpty}) => flashEmptyColumns()
+          | _ => ()
           }
         }
 
