@@ -24,6 +24,8 @@ type pointerEvent
 @get external clientX: pointerEvent => float = "clientX"
 @get external clientY: pointerEvent => float = "clientY"
 @get external pointerId: pointerEvent => int = "pointerId"
+// "touch", "mouse" or "pen": a finger hides what it presses and a cursor doesn't.
+@get external pointerType: pointerEvent => string = "pointerType"
 // The event's timestamp (ms since page load); the send-home double-tap is timed
 // off this rather than a `dblclick`, which mobile Safari never fires for a
 // double-tap (see the pointer loop below).
@@ -2286,13 +2288,15 @@ let make = (
           } else {
             // The drop hit-test aims by the grabbed card's rect, not the pointer, so a
             // run carried from where it lies — a card or two below the finger — would
-            // land that far below every aim. It is lifted to the finger instead, its top
-            // edge held just above the touch (`TableLayout.grabClearance`) so the card
-            // being carried is the one thing the fingertip doesn't cover.
+            // land that far below every aim. It is lifted to the pointer instead, and
+            // for a finger held clear above it (`TableLayout.grabClearance`), so the
+            // card being carried is the one thing the fingertip doesn't cover.
             switch handleFor() {
             | Some(head) =>
               let touch = clientY(ev) -. boundingRect(playfield).top
-              let top = touch -. TableLayout.grabClearance(~scale=scale.contents)
+              let top =
+                touch -.
+                TableLayout.grabClearance(~finger=pointerType(ev) == "touch", ~scale=scale.contents)
               head.grabFrom.contents(ev, head.y.contents -. top)
             | None => ()
             }

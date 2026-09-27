@@ -319,12 +319,17 @@ describe("TableLayout — laying out a fan", () => {
 })
 
 describe("TableLayout — holding a run above the finger", () => {
-  test("clears one face-up step at a size where that step outreaches a fingertip", () => {
-    expect(TableLayout.grabClearance(~scale=1.))->toBe(TableLayout.fanStep)
+  test("holds a finger's run a fingertip clear, whatever the board's scale", () => {
+    expect(TableLayout.grabClearance(~finger=true, ~scale=TableLayout.minScale))->toBe(
+      TableLayout.fingertip,
+    )
+    expect(TableLayout.grabClearance(~finger=true, ~scale=TableLayout.maxScale))->toBe(
+      TableLayout.fingertip,
+    )
   })
 
-  test("never less than a fingertip, however small the board is scaled", () => {
-    expect(TableLayout.grabClearance(~scale=TableLayout.minScale))->toBe(TableLayout.fingertip)
+  test("holds a cursor's run with the pointer inside the index strip", () => {
+    expect(TableLayout.grabClearance(~finger=false, ~scale=1.))->toBe(TableLayout.fanStep /. 2.)
   })
 })
 

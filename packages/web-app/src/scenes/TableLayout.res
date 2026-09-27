@@ -279,13 +279,22 @@ let cardTilt = (~card: Deck.card, ~pile, ~slot) => {
 
 // --- Taking hold of a run from above it ---------------------------------------------
 
-// How far above the touch a run's top edge is held when a press on a card above it
-// took hold (`handleFor` in `TableScene`): one face-up step, the strip that shows a
-// card's index, so it shows past the fingertip rather than under it. A fingertip is a
-// physical size, not a board one, so the clearance has a floor in CSS pixels that a
-// small scale can't shrink it under.
-let fingertip = 24.
-let grabClearance = (~scale: float) => Math.max(fanStep *. scale, fingertip)
+// How far above the pointer a run's top edge is held when a press on a card above it
+// took hold (`handleFor` in `TableScene`).
+//
+// **A finger is held clear by a physical size, not a board one.** A touch is reported
+// at the middle of the contact patch, and a finger covers the screen from there to its
+// tip: about 8mm for an index finger and 12mm for a thumb, plus the index strip (~11px
+// on a phone) that has to show above it. On an iPhone 13 mini (6.25 CSS px per mm)
+// that is ~60px for a finger and ~86px for a thumb; this is sized for the thumb a
+// one-handed phone is held with. It doesn't scale with the board — the board shrinks
+// on a phone and the thumb doesn't — and CSS `mm` can't state it, being a nominal
+// 3.78px everywhere.
+//
+// A cursor hides nothing, so a mouse or pen press holds the run as a press on its head
+// would: the pointer in the middle of the index strip.
+let fingertip = 80.
+let grabClearance = (~finger: bool, ~scale: float) => finger ? fingertip : fanStep *. scale /. 2.
 
 // --- Hit-testing --------------------------------------------------------------
 
