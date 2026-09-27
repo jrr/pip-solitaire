@@ -36,9 +36,9 @@
 // --- What the screen holds ----------------------------------------------------
 type model = {
   autoCollect: bool,
-  // "Take back from foundations": `Options.allowFoundationReturn`.
+  // "Pull cards back down": `Options.allowFoundationReturn`.
   foundationReturn: bool,
-  // "Deal with empty columns": `Options.allowDealWithEmptyColumns`.
+  // "Deal despite empty columns": `Options.allowDealWithEmptyColumns`.
   emptyColumnDeal: bool,
   // "Reorder columns": `Options.allowColumnReorder`. A hidden setting, since the board
   // has no gesture for a reorder yet — only the console's `movecol` makes one.
@@ -407,14 +407,14 @@ let make = ({model, dispatch, onClose, onBackToMenu, onOpenDebug}) => <>
     </MenuSection>
     <MenuSection label="House rules" heading="House rules">
       <MenuToggleRow
-        label="Take back from foundations"
-        desc="Let cards move off the foundations and back into play."
+        label="Pull cards back down"
+        desc="In FreeCell you can move cards out of foundations."
         on={model.foundationReturn}
         onToggle={() => dispatch(ToggleFoundationReturn)}
       />
       <MenuToggleRow
-        label="Deal with empty columns"
-        desc="Let the stock deal a row while a column stands empty."
+        label="Deal despite empty columns"
+        desc="Empty spaces do not prevent dealing from stock."
         on={model.emptyColumnDeal}
         onToggle={() => dispatch(ToggleEmptyColumnDeal)}
       />

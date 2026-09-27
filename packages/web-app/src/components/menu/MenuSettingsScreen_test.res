@@ -135,7 +135,7 @@ describe("MenuSettingsScreen", () => {
       screen
       ->findAll("[aria-label=\"House rules\"] .menu-row--switch .menu-row__label")
       ->Array.map(text),
-    )->toEqual(["Take back from foundations", "Deal with empty columns"])
+    )->toEqual(["Pull cards back down", "Deal despite empty columns"])
   })
 
   test("keeps column reordering among the hidden settings, since the board can't do it yet", () => {
@@ -145,8 +145,8 @@ describe("MenuSettingsScreen", () => {
       ->Array.map(text)
     expect(houseRules(model(~revealed=false))->Array.includes("Reorder columns"))->toBe(false)
     expect(houseRules(model(~revealed=true)))->toEqual([
-      "Take back from foundations",
-      "Deal with empty columns",
+      "Pull cards back down",
+      "Deal despite empty columns",
       "Reorder columns",
     ])
     let (screen, sent) = renderRecording(~model=model(~revealed=true, ~columnReorder=true))
@@ -167,8 +167,8 @@ describe("MenuSettingsScreen", () => {
       render(~model=m)
       ->findAll("[aria-label=\"House rules\"] .menu-row--on .menu-row__label")
       ->Array.map(text)
-    expect(houseRulesOn(model(~foundationReturn=true)))->toEqual(["Take back from foundations"])
-    expect(houseRulesOn(model(~emptyColumnDeal=true)))->toEqual(["Deal with empty columns"])
+    expect(houseRulesOn(model(~foundationReturn=true)))->toEqual(["Pull cards back down"])
+    expect(houseRulesOn(model(~emptyColumnDeal=true)))->toEqual(["Deal despite empty columns"])
     let (screen, sent) = renderRecording()
     screen->findAll("[aria-label=\"House rules\"] .menu-row--switch")->Array.forEach(click)
     expect(sent)->toEqual([MenuSettingsScreen.ToggleFoundationReturn, ToggleEmptyColumnDeal])

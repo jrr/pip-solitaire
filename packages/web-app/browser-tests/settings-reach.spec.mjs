@@ -167,9 +167,9 @@ test("the foundation house rule pins a card already home, without waiting for a 
   await expect(two).not.toHaveClass(/stacking-card--buried/)
 
   await openSettings(page)
-  await expect(toggle(page, "Take back from foundations")).toHaveAttribute("aria-checked", "true")
-  await toggle(page, "Take back from foundations").click()
-  await expect(toggle(page, "Take back from foundations")).toHaveAttribute("aria-checked", "false")
+  await expect(toggle(page, "Pull cards back down")).toHaveAttribute("aria-checked", "true")
+  await toggle(page, "Pull cards back down").click()
+  await expect(toggle(page, "Pull cards back down")).toHaveAttribute("aria-checked", "false")
   expect(await stored(page, "pip.foundationReturn")).toBe("false")
   await expect(two).toHaveClass(/stacking-card--buried/)
 
@@ -183,14 +183,14 @@ test("the empty-column deal writes through to storage, and survives the reload",
 }) => {
   // What the flip does to a deal is `spiderette.spec.mjs`'s; this is the switch's reach.
   await openBoardAndSettings(page)
-  await expect(toggle(page, "Deal with empty columns")).toHaveAttribute("aria-checked", "false")
-  await toggle(page, "Deal with empty columns").click()
+  await expect(toggle(page, "Deal despite empty columns")).toHaveAttribute("aria-checked", "false")
+  await toggle(page, "Deal despite empty columns").click()
   expect(await stored(page, "pip.emptyColumnDeal")).toBe("true")
 
   await page.reload()
   await settleBoard(page)
   await openSettings(page)
-  await expect(toggle(page, "Deal with empty columns")).toHaveAttribute("aria-checked", "true")
+  await expect(toggle(page, "Deal despite empty columns")).toHaveAttribute("aria-checked", "true")
 })
 
 test("column reordering is a hidden house rule, and writes through like the others", async ({
