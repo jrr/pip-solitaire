@@ -184,6 +184,22 @@ test.describe("a deal refused by an empty column", () => {
     expect(await flashed()).toEqual(empty)
   })
 
+  test("deals over the gaps instead, with the house rule on", async ({ page }) => {
+    await page.addInitScript(() => localStorage.setItem("pip.emptyColumnDeal", "true"))
+    const game = Game.spiderette
+    const cascades = Game.pileIndices(game, "Cascade")
+    await page.goto("/?game=spiderette&state=stuck&animate=off")
+    await settle(page)
+    await expect(stock(page)).toHaveCount(24)
+
+    const flashed = await watchFlashes(page)
+    await tapStock(page)
+    await expect(stock(page)).toHaveCount(24 - cascades.length)
+    expect(await flashed()).toEqual([])
+    const piles = assignPiles(await readGeometry(page))
+    expect(cascades.every((i) => piles[i].length > 0)).toBe(true)
+  })
+
   test("says nothing on a board whose stock is empty", async ({ page }) => {
     // Every run collected but the last: five columns stand empty and the stock is out,
     // so the deal is refused for a reason no column is to blame for — and there is no

@@ -234,7 +234,8 @@ let dispatch = (~clock: unit => float, s: t, action: Reducer.action): (t, change
       Blocked({reason: foundationReturnOff}),
     )
   | _ =>
-    switch Reducer.reduce(~game=s.game, present(s), action) {
+    let allowEmptyColumns = s.options.allowDealWithEmptyColumns
+    switch Reducer.reduceWith(~game=s.game, ~allowEmptyColumns, present(s), action) {
     | Ok(next) =>
       let (settled, collected) = switch action {
       | Reducer.MoveColumn(_) => (next, [])
@@ -248,7 +249,7 @@ let dispatch = (~clock: unit => float, s: t, action: Reducer.action): (t, change
       | Reducer.MoveColumn(_) => []
       // A deal names no card; the row it dropped is read off the board it was dealt
       // from — `present(s)` is still that board here.
-      | Reducer.Deal => Reducer.nextDeal(~game=s.game, present(s))
+      | Reducer.Deal => Reducer.nextDeal(~game=s.game, ~allowEmptyColumns, present(s))
       }
       (commit(~clock, s, settled), Settled({action, moved, collected}))
     | Error(error) => (s, Rejected({action, error}))

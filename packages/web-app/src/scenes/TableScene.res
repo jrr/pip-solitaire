@@ -2159,6 +2159,9 @@ let make = (
         // deal is one undoable step, settled by auto-collect like any move (a dealt card
         // can complete a run), and then flown from the stock to the columns.
         //
+        // The refusal is read off the session's answer rather than asked of the board
+        // again, because only the session knows whether a house rule waived it.
+        //
         // A refusal is already in the log with its reason, but a log is not something a
         // player reads: on screen a refused tap is indistinguishable from one that
         // missed. So the one refusal the board can point at answers on the board — see
@@ -2168,11 +2171,8 @@ let make = (
           let before = state()
           switch dispatch(Reducer.Deal) {
           | Session.Settled({moved, collected}) => flySettled(~before, ~moved, ~collected)
-          | _ =>
-            switch Reducer.dealRefusal(~game, before) {
-            | Some(Reducer.CascadeEmpty) => flashEmptyColumns()
-            | Some(_) | None => ()
-            }
+          | Session.Rejected({error: Reducer.CascadeEmpty}) => flashEmptyColumns()
+          | _ => ()
           }
         }
 

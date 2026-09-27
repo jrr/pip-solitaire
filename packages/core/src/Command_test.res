@@ -490,7 +490,9 @@ describe("Command.parse — set", () => {
     switch Command.parse("set frobnicate on") {
     | Command.Usage({verb, message}) =>
       expect(verb)->toBe("set")
-      expect(message)->toBe(`Not a setting: "frobnicate" (autocollect, reorder, worryback).`)
+      expect(
+        message,
+      )->toBe(`Not a setting: "frobnicate" (autocollect, reorder, worryback, gapdeal).`)
     | _ => expect("not a usage")->toBe("usage")
     }
     switch Command.parse("set autocollect maybe") {
@@ -514,6 +516,7 @@ describe("Command.parse — set", () => {
     expect(shown->String.includes("autocollect  on"))->toBe(true)
     expect(shown->String.includes("reorder      on"))->toBe(true)
     expect(shown->String.includes("worryback    on"))->toBe(true)
+    expect(shown->String.includes("gapdeal      off"))->toBe(true)
     expect(
       Command.describeSettings(
         Options.apply(Options.default, ~setting=Options.AutoCollect, ~on=false),

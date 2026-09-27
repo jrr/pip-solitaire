@@ -17,6 +17,8 @@ open TestDom
 let model = (
   ~autoCollect=false,
   ~foundationReturn=false,
+  ~emptyColumnDeal=false,
+  ~columnReorder=false,
   ~cardTilt=false,
   ~wiggle=Motion.Off,
   ~wantsShake=false,
@@ -27,6 +29,8 @@ let model = (
 ): MenuSettingsScreen.model => {
   autoCollect,
   foundationReturn,
+  emptyColumnDeal,
+  columnReorder,
   cardTilt,
   wiggle,
   wantsShake,
@@ -131,18 +135,43 @@ describe("MenuSettingsScreen", () => {
       screen
       ->findAll("[aria-label=\"House rules\"] .menu-row--switch .menu-row__label")
       ->Array.map(text),
-    )->toEqual(["Take back from foundations"])
+    )->toEqual(["Take back from foundations", "Deal with empty columns"])
   })
 
-  test("sends the foundation house rule's own message, in the state it was handed", () => {
-    let (screen, sent) = renderRecording(~model=model(~foundationReturn=true))
+  test("keeps column reordering among the hidden settings, since the board can't do it yet", () => {
+    let houseRules = m =>
+      render(~model=m)
+      ->findAll("[aria-label=\"House rules\"] .menu-row--switch .menu-row__label")
+      ->Array.map(text)
+    expect(houseRules(model(~revealed=false))->Array.includes("Reorder columns"))->toBe(false)
+    expect(houseRules(model(~revealed=true)))->toEqual([
+      "Take back from foundations",
+      "Deal with empty columns",
+      "Reorder columns",
+    ])
+    let (screen, sent) = renderRecording(~model=model(~revealed=true, ~columnReorder=true))
     expect(
       screen
       ->findAll("[aria-label=\"House rules\"] .menu-row--on .menu-row__label")
       ->Array.map(text),
-    )->toEqual(["Take back from foundations"])
+    )->toEqual(["Reorder columns"])
+    screen
+    ->findAll("[aria-label=\"House rules\"] .menu-row--switch")
+    ->Array.at(-1)
+    ->Option.forEach(click)
+    expect(sent)->toEqual([MenuSettingsScreen.ToggleColumnReorder])
+  })
+
+  test("sends each house rule's own message, in the state it was handed", () => {
+    let houseRulesOn = m =>
+      render(~model=m)
+      ->findAll("[aria-label=\"House rules\"] .menu-row--on .menu-row__label")
+      ->Array.map(text)
+    expect(houseRulesOn(model(~foundationReturn=true)))->toEqual(["Take back from foundations"])
+    expect(houseRulesOn(model(~emptyColumnDeal=true)))->toEqual(["Deal with empty columns"])
+    let (screen, sent) = renderRecording()
     screen->findAll("[aria-label=\"House rules\"] .menu-row--switch")->Array.forEach(click)
-    expect(sent)->toEqual([MenuSettingsScreen.ToggleFoundationReturn])
+    expect(sent)->toEqual([MenuSettingsScreen.ToggleFoundationReturn, ToggleEmptyColumnDeal])
   })
 
   test("puts Debug in a section below the preferences, not among them", () => {
@@ -228,6 +257,27 @@ describe("MenuSettingsScreen.update", () => {
     expect(log)->toEqual(["publish", "persist", "board:relayout"])
     expect(saved->Option.map(s => s.foundationReturn))->toEqual(Some(false))
   })
+
+  test(
+    "writes the empty-column deal into the live options and storage, and asks the board nothing",
+    () => {
+      // The stock is tapped, not dragged, and the deal reads the flag at the tap.
+      let (next, log, saved) = run(~model=model(), ToggleEmptyColumnDeal)
+      expect(next.emptyColumnDeal)->toBe(true)
+      expect(log)->toEqual(["publish", "persist"])
+      expect(saved->Option.map(s => s.emptyColumnDeal))->toEqual(Some(true))
+    },
+  )
+
+  test(
+    "writes column reordering into the live options and storage, and asks the board nothing",
+    () => {
+      let (next, log, saved) = run(~model=model(~columnReorder=true), ToggleColumnReorder)
+      expect(next.columnReorder)->toBe(false)
+      expect(log)->toEqual(["publish", "persist"])
+      expect(saved->Option.map(s => s.columnReorder))->toEqual(Some(false))
+    },
+  )
 
   test("re-lays the board when the tilt flips, rather than waiting for the next move", () => {
     let (_, log, _) = run(~model=model(~cardTilt=true), ToggleCardTilt)

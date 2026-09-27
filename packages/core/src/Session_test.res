@@ -211,6 +211,33 @@ describe("Session house rules", () => {
     expect(s.stats.moves)->toBe(1)
   })
 
+  test("dealing with empty columns on lets the stock deal a row over a gap", () => {
+    let game = Game.spiderette
+    let stuck = Scenario.spideretteStuck(game)
+    let deal = options =>
+      Session.step(
+        ~clock=stopped,
+        Session.open_(~clock=stopped, ~options, ~seed=None, game, stuck),
+        Command.Draw,
+      )
+    let (_, refused) = deal(Options.default)
+    switch refused.change {
+    | Session.Rejected({error}) => expect(error)->toBe(Reducer.CascadeEmpty)
+    | _ => expect("rejected")->toBe("something else")
+    }
+    let (s, dealt) = deal({...Options.default, allowDealWithEmptyColumns: true})
+    switch dealt.change {
+    | Session.Settled({moved}) =>
+      expect(Array.length(moved))->toBe(Game.pileIndices(game, Game.Cascade)->Array.length)
+    | _ => expect("settled")->toBe("something else")
+    }
+    expect(
+      Game.pileIndices(game, Game.Cascade)->Array.every(
+        i => Array.length(GameState.cardsInPile(Session.present(s), i)) > 0,
+      ),
+    )->toBe(true)
+  })
+
   test("auto-collect off leaves the reducer's result exactly as it came", () => {
     let off = Options.apply(Options.default, ~setting=Options.AutoCollect, ~on=false)
     let state = Scenario.freecellSendHome(freecell)

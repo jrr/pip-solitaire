@@ -1100,6 +1100,26 @@ describe("Game", () => {
     )
 
     test(
+      "a deal onto an empty column goes through when the house rule waives the refusal",
+      () => {
+        let gap = posed(~stockCards=spades([Ace, Two]), [spades([King]), [], spades([Queen])])
+        switch Reducer.reduceWith(~game=board, ~allowEmptyColumns=true, gap, Reducer.Deal) {
+        | Ok(dealt) =>
+          // The stock's top card lands on the gap like on any other column.
+          let cascades = Game.pileIndices(board, Game.Cascade)
+          expect(GameState.cardsInPile(dealt, cascades->Array.getUnsafe(1)))->toEqual(
+            Reducer.nextDeal(~game=board, ~allowEmptyColumns=true, gap)->Array.slice(
+              ~start=1,
+              ~end=2,
+            ),
+          )
+        | Error(_) => expect("dealt")->toBe("refused")
+        }
+        expect(Reducer.nextDeal(~game=board, ~allowEmptyColumns=true, gap)->Array.length)->toBe(2)
+      },
+    )
+
+    test(
       "a deal is refused while a column stands empty, and on a board with no stock",
       () => {
         let gap = posed(~stockCards=spades([Ace, Two]), [spades([King]), [], spades([Queen])])
@@ -4018,6 +4038,10 @@ describe("Options", () => {
 
   test("defaults column reorder on (our variant's house rule)", () => {
     expect(Options.default.allowColumnReorder)->toBe(true)
+  })
+
+  test("defaults dealing with empty columns off, as Spider plays it", () => {
+    expect(Options.default.allowDealWithEmptyColumns)->toBe(false)
   })
 
   test("defaults foundation take-backs on (a house rule the game has always played by)", () => {

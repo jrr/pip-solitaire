@@ -353,13 +353,21 @@ let stockOf = (game: Game.t): option<int> => Game.pileIndices(game, Game.Stock)-
 
 // Why a `Deal` would be refused from here, or `None` when one may be dealt: no stock on
 // this board, nothing left in it, or a cascade standing empty.
-let dealRefusal = (~game: Game.t, state: GameState.t): option<moveError> =>
+//
+// The last is the one a house rule lifts (`Options.allowDealWithEmptyColumns`), so it
+// is the one refusal a caller can waive: `~allowEmptyColumns`, off unless said, which
+// keeps the solver and every other caller on the standard game. The same flag rides
+// through `nextDeal`, `dealRow` and `reduce` so the three can't disagree on a board.
+let dealRefusal = (~game: Game.t, ~allowEmptyColumns=false, state: GameState.t): option<
+  moveError,
+> =>
   switch stockOf(game) {
   | None => Some(NoStock)
   | Some(stock) =>
     if Array.length(GameState.cardsInPile(state, stock)) == 0 {
       Some(StockEmpty)
     } else if (
+      !allowEmptyColumns &&
       Game.pileIndices(game, Game.Cascade)->Array.some(i =>
         Array.length(GameState.cardsInPile(state, i)) == 0
       )
@@ -373,8 +381,8 @@ let dealRefusal = (~game: Game.t, state: GameState.t): option<moveError> =>
 // The cards the next `Deal` drops, in the order they land — the stock's top first, one
 // per cascade left to right, as many as the stock still holds. Empty when the deal
 // would be refused. What a driver flies, since the action itself names no card.
-let nextDeal = (~game: Game.t, state: GameState.t): array<card> =>
-  switch (dealRefusal(~game, state), stockOf(game)) {
+let nextDeal = (~game: Game.t, ~allowEmptyColumns=false, state: GameState.t): array<card> =>
+  switch (dealRefusal(~game, ~allowEmptyColumns, state), stockOf(game)) {
   | (None, Some(stock)) =>
     let cards = GameState.cardsInPile(state, stock)
     let count = Math.Int.min(
@@ -391,8 +399,13 @@ let nextDeal = (~game: Game.t, state: GameState.t): array<card> =>
 // top of its cascade face up. The cascades' face-down counts don't move (a dealt
 // card lands above them), and the stock's stays its whole length — every card left
 // in it is still face down.
-let dealRow = (~game: Game.t, state: GameState.t, ~stock: int): GameState.t => {
-  let dealt = nextDeal(~game, state)
+let dealRow = (
+  ~game: Game.t,
+  ~allowEmptyColumns=false,
+  state: GameState.t,
+  ~stock: int,
+): GameState.t => {
+  let dealt = nextDeal(~game, ~allowEmptyColumns, state)
   let cascades = Game.pileIndices(game, Game.Cascade)
   let remaining = {
     let cards = GameState.cardsInPile(state, stock)
@@ -425,7 +438,17 @@ let dealRow = (~game: Game.t, state: GameState.t, ~stock: int): GameState.t => {
 // `Ok(state)` on a lawful move — including the identity re-drop of a card onto
 // where it already rests — or `Error(moveError)` on an illegal one. The input
 // `state` is never mutated.
-let reduce = (~game: Game.t, state: GameState.t, action: action): result<GameState.t, moveError> =>
+//
+// `reduceWith` is the same transition with the deal's waivable refusal said out loud
+// (see `dealRefusal`); `reduce` is the standard game. Two names rather than one optional
+// argument because `reduce` is also called from JavaScript (the browser tests replay
+// lines through it), where an optional argument is a positional one.
+let reduceWith = (
+  ~game: Game.t,
+  ~allowEmptyColumns: bool,
+  state: GameState.t,
+  action: action,
+): result<GameState.t, moveError> =>
   switch action {
   | Move({card, to: ToPile(i)}) =>
     switch GameState.locationOf(state, card) {
@@ -522,12 +545,15 @@ let reduce = (~game: Game.t, state: GameState.t, action: action): result<GameSta
   // The next row off the stock. Every refusal is the board's: `dealRefusal` says which,
   // and `dealRow` only ever runs on a board it said nothing about.
   | Deal =>
-    switch (dealRefusal(~game, state), stockOf(game)) {
+    switch (dealRefusal(~game, ~allowEmptyColumns, state), stockOf(game)) {
     | (Some(error), _) => Error(error)
-    | (None, Some(stock)) => Ok(dealRow(~game, state, ~stock))
+    | (None, Some(stock)) => Ok(dealRow(~game, ~allowEmptyColumns, state, ~stock))
     | (None, None) => Error(NoStock) // unreachable: no stock is a refusal
     }
   }
+
+let reduce = (~game: Game.t, state: GameState.t, action: action): result<GameState.t, moveError> =>
+  reduceWith(~game, ~allowEmptyColumns=false, state, action)
 
 // --- Safe auto-collect ------------------------------------------------
 // Auto-collect sends *safe* cards home after each move, so a player never has to

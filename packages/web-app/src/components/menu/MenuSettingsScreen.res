@@ -38,6 +38,11 @@ type model = {
   autoCollect: bool,
   // "Take back from foundations": `Options.allowFoundationReturn`.
   foundationReturn: bool,
+  // "Deal with empty columns": `Options.allowDealWithEmptyColumns`.
+  emptyColumnDeal: bool,
+  // "Reorder columns": `Options.allowColumnReorder`. A hidden setting, since the board
+  // has no gesture for a reorder yet — only the console's `movecol` makes one.
+  columnReorder: bool,
   // "Sloppy placement" — the slight resting-card tilt, for players who'd
   // rather see cards stacked dead-square.
   cardTilt: bool,
@@ -69,6 +74,8 @@ type model = {
 type msg =
   | ToggleAutoCollect
   | ToggleFoundationReturn
+  | ToggleEmptyColumnDeal
+  | ToggleColumnReorder
   | ToggleCardTilt
   | WiggleOff // the Wiggle Waggle switch turned off — stop listening, square up
   | WiggleResolved(Motion.state) // a motion-permission request resolved to a new state
@@ -122,6 +129,8 @@ let liveEnv = (
         ...options.contents,
         autoCollect: model.autoCollect,
         allowFoundationReturn: model.foundationReturn,
+        allowDealWithEmptyColumns: model.emptyColumnDeal,
+        allowColumnReorder: model.columnReorder,
       }
     tiltEnabled := model.cardTilt
     // Settings is the owner of the app-wide motion state (see `Motion.current`): the
@@ -137,6 +146,8 @@ let liveEnv = (
   persist: model => {
     Preferences.saveAutoCollect(model.autoCollect)
     Preferences.saveFoundationReturn(model.foundationReturn)
+    Preferences.saveEmptyColumnDeal(model.emptyColumnDeal)
+    Preferences.saveColumnReorder(model.columnReorder)
     Preferences.saveCardTilt(model.cardTilt)
     Preferences.saveWantsShake(model.wantsShake)
     Preferences.saveNotchDisplay(model.notchDisplay)
@@ -155,6 +166,8 @@ let init = (): model => {
   {
     autoCollect: options.autoCollect,
     foundationReturn: options.allowFoundationReturn,
+    emptyColumnDeal: options.allowDealWithEmptyColumns,
+    columnReorder: options.allowColumnReorder,
     cardTilt: Preferences.loadCardTilt(),
     wiggle: Motion.initialState(~wantsShake),
     wantsShake,
@@ -200,6 +213,26 @@ let update = (env: env, msg, model) =>
         env.publish(model)
         env.persist(model)
         env.board(Relayout)
+      },
+    )
+  // Nothing on the board to redraw: the stock is tapped rather than dragged, and the
+  // deal reads the flag at the moment of the tap.
+  | ToggleEmptyColumnDeal =>
+    let model = {...model, emptyColumnDeal: !model.emptyColumnDeal}
+    (
+      model,
+      () => {
+        env.publish(model)
+        env.persist(model)
+      },
+    )
+  | ToggleColumnReorder =>
+    let model = {...model, columnReorder: !model.columnReorder}
+    (
+      model,
+      () => {
+        env.publish(model)
+        env.persist(model)
       },
     )
   | ToggleCardTilt =>
@@ -379,6 +412,24 @@ let make = ({model, dispatch, onClose, onBackToMenu, onOpenDebug}) => <>
         on={model.foundationReturn}
         onToggle={() => dispatch(ToggleFoundationReturn)}
       />
+      <MenuToggleRow
+        label="Deal with empty columns"
+        desc="Let the stock deal a row while a column stands empty."
+        on={model.emptyColumnDeal}
+        onToggle={() => dispatch(ToggleEmptyColumnDeal)}
+      />
+      {
+        // Hidden like the settings above, and as they are: a hidden row leaves its
+        // setting running (`HiddenOptions`).
+        model.hidden.revealed
+          ? <MenuToggleRow
+              label="Reorder columns"
+              desc="Let a whole column be moved between two others."
+              on={model.columnReorder}
+              onToggle={() => dispatch(ToggleColumnReorder)}
+            />
+          : Html.empty
+      }
     </MenuSection>
     <MenuSection label="More" tag=Nav>
       <MenuNavRow label="Debug" onClick=onOpenDebug />

@@ -16,9 +16,9 @@
 // `allowColumnReorder`: a **house rule** for our variant — may the player
 // pull a cascade column out and drop it into the gap between two others, the rest
 // sliding over (a `Reducer.MoveColumn`)? Strict FreeCell doesn't sanction moving
-// whole columns around, so it's opt-in, defaulting *on* for our game with no UI
-// toggle surfaced yet. Gated exactly like `autoCollect`: when off, a driver never
-// dispatches the reorder, so it's an exact no-op.
+// whole columns around, so it's opt-in, defaulting *on* for our game. The board has no
+// gesture for it yet, so its switch is among the hidden settings. Gated exactly like
+// `autoCollect`: when off, a driver never dispatches the reorder, so it's an exact no-op.
 //
 // `allowFoundationReturn`: a **house rule** — may a card that has gone home be
 // taken back off its foundation and played again ("worrying back")? Strict FreeCell
@@ -27,10 +27,28 @@
 // answers the moves out of a *playable* foundation only: a `Sealed` one (Simple
 // Simon's) is refused by the reducer whatever this says. Gated like
 // `allowColumnReorder`, before the reducer (`Session.dispatch`).
-type t = {autoCollect: bool, allowColumnReorder: bool, allowFoundationReturn: bool}
+//
+// `allowDealWithEmptyColumns`: a **house rule** for the games that deal from a stock —
+// may a row be dealt while a column stands empty? Spider refuses it, and so does this
+// game by default, so it's opt-in. Unlike the two above it *loosens* a board rule, so it
+// can't be a gate in front of the reducer: `Session.dispatch` hands it to the reducer,
+// which waives that one refusal (`Reducer.dealRefusal`). The solver plays the standard
+// game regardless, and its plans stay legal under either.
+type t = {
+  autoCollect: bool,
+  allowColumnReorder: bool,
+  allowFoundationReturn: bool,
+  allowDealWithEmptyColumns: bool,
+}
 
-// The shipped default: auto-collect on, and both house rules allowed.
-let default = {autoCollect: true, allowColumnReorder: true, allowFoundationReturn: true}
+// The shipped default: auto-collect on, the two house rules the game has always played
+// by allowed, and the deal kept to the standard game.
+let default = {
+  autoCollect: true,
+  allowColumnReorder: true,
+  allowFoundationReturn: true,
+  allowDealWithEmptyColumns: false,
+}
 
 // --- Addressing a flag by name -----------------------------------------------
 // The fields above, as a value a *command* can name: what `set autocollect off` sets.
@@ -38,15 +56,15 @@ let default = {autoCollect: true, allowColumnReorder: true, allowFoundationRetur
 // so this lives here beside the record rather than in either front end — and the shared
 // parser can hand over a typed setting instead of a string each driver re-checks.
 //
-// It's also the only way to reach `allowColumnReorder` at all: the menu has no switch for
-// it, so without a name a command can say the flag would be reachable only by editing
-// `default`.
+// It's also the only way to reach `allowColumnReorder` from the CLI, and from a web
+// menu whose hidden settings haven't been revealed.
 type setting =
   | AutoCollect
   | ColumnReorder
   | FoundationReturn
+  | EmptyColumnDeal
 
-let all = [AutoCollect, ColumnReorder, FoundationReturn]
+let all = [AutoCollect, ColumnReorder, FoundationReturn, EmptyColumnDeal]
 
 // The canonical name of a setting — what `set` takes and what a listing shows.
 let name = (s: setting): string =>
@@ -54,6 +72,7 @@ let name = (s: setting): string =>
   | AutoCollect => "autocollect"
   | ColumnReorder => "reorder"
   | FoundationReturn => "worryback"
+  | EmptyColumnDeal => "gapdeal"
   }
 
 let parse = (token: string): option<setting> =>
@@ -61,6 +80,7 @@ let parse = (token: string): option<setting> =>
   | "autocollect" | "auto-collect" | "collect" => Some(AutoCollect)
   | "reorder" | "columnreorder" | "movecol" => Some(ColumnReorder)
   | "worryback" | "worry" | "takeback" => Some(FoundationReturn)
+  | "gapdeal" | "emptydeal" | "dealempty" => Some(EmptyColumnDeal)
   | _ => None
   }
 
@@ -78,6 +98,7 @@ let read = (o: t, s: setting): bool =>
   | AutoCollect => o.autoCollect
   | ColumnReorder => o.allowColumnReorder
   | FoundationReturn => o.allowFoundationReturn
+  | EmptyColumnDeal => o.allowDealWithEmptyColumns
   }
 
 let apply = (o: t, ~setting: setting, ~on: bool): t =>
@@ -85,6 +106,7 @@ let apply = (o: t, ~setting: setting, ~on: bool): t =>
   | AutoCollect => {...o, autoCollect: on}
   | ColumnReorder => {...o, allowColumnReorder: on}
   | FoundationReturn => {...o, allowFoundationReturn: on}
+  | EmptyColumnDeal => {...o, allowDealWithEmptyColumns: on}
   }
 
 // Every setting and its value, as rows for a front end to render (`Command.renderHelp`

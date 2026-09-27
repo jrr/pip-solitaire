@@ -739,8 +739,8 @@ describe("Repl set", () => {
     }
   })
 
-  // Typing it off is the only way to reach the reducer's refusal at all: the house rule
-  // has no other control — not a switch in the web menu, not a flag on the CLI.
+  // Typing it off is the CLI's only way to reach the reducer's refusal: the house rule
+  // has no flag here.
   test("reorder off gates the reducer, and back on ungates it", () => {
     let off = Repl.run(["deal freecell", "set reorder off", "movecol 8 9"])
     expect(has(off, "Column reordering is off"))->toBe(true)

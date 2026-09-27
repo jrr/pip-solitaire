@@ -17,6 +17,8 @@
 // Namespaced, so they can't collide with anything else the app persists later.
 let autoCollectKey = "pip.autoCollect"
 let foundationReturnKey = "pip.foundationReturn"
+let emptyColumnDealKey = "pip.emptyColumnDeal"
+let columnReorderKey = "pip.columnReorder"
 let cardTiltKey = "pip.cardTilt"
 let wantsShakeKey = "pip.wantsShake"
 let notchDisplayKey = "pip.notchDisplay"
@@ -55,9 +57,17 @@ let load = (): Options.t => {
     foundationReturnKey,
     ~fallback=Options.default.allowFoundationReturn,
   )
-  // `allowColumnReorder` has no UI toggle yet, so it isn't persisted and always takes
-  // the shipped default. A settings control would start saving its own key here.
-  {autoCollect, allowColumnReorder: Options.default.allowColumnReorder, allowFoundationReturn}
+  let allowDealWithEmptyColumns = loadFlag(
+    emptyColumnDealKey,
+    ~fallback=Options.default.allowDealWithEmptyColumns,
+  )
+  let allowColumnReorder = loadFlag(columnReorderKey, ~fallback=Options.default.allowColumnReorder)
+  {
+    autoCollect,
+    allowColumnReorder,
+    allowFoundationReturn,
+    allowDealWithEmptyColumns,
+  }
 }
 
 // The stored fields of the driver's `Options.t` have two ways in each: the whole
@@ -65,10 +75,14 @@ let load = (): Options.t => {
 // holds only its own mirror.
 let saveAutoCollect = (enabled: bool) => saveFlag(autoCollectKey, enabled)
 let saveFoundationReturn = (enabled: bool) => saveFlag(foundationReturnKey, enabled)
+let saveEmptyColumnDeal = (enabled: bool) => saveFlag(emptyColumnDealKey, enabled)
+let saveColumnReorder = (enabled: bool) => saveFlag(columnReorderKey, enabled)
 
 let save = (options: Options.t) => {
   saveAutoCollect(options.autoCollect)
   saveFoundationReturn(options.allowFoundationReturn)
+  saveEmptyColumnDeal(options.allowDealWithEmptyColumns)
+  saveColumnReorder(options.allowColumnReorder)
 }
 
 let loadCardTilt = (): bool => loadFlag(cardTiltKey, ~fallback=true)
