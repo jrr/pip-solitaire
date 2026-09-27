@@ -150,7 +150,8 @@ test.describe("a press on a column's buried cards", () => {
 // On a phone the finger covers what it presses, so once a press becomes a drag the run
 // comes up clear of it — pressed directly or from above: its top edge a thumb's reach
 // above the touch (`TableLayout.fingertip`, 80px), the whole card in sight above the
-// fingertip. A touch that stays a tap lifts nothing.
+// fingertip. A finger held still becomes a drag too; a touch that stays a tap lifts
+// nothing.
 test.describe("a finger's press in a column", () => {
   test.use(contextOptions(devices["iPhone 13 Mini"]))
 
@@ -225,6 +226,48 @@ test.describe("a finger's press in a column", () => {
     expect(rise.some((r) => r > 8 && r < 72)).toBe(true)
     rise.slice(1).forEach((r, i) => expect(r).toBeGreaterThanOrEqual(rise[i] - 1))
     expect(Math.abs(hand.at.y - (before.y - rise.at(-1)) - 80)).toBeLessThan(4)
+  })
+
+  test("lifts the run for a finger held still, and puts it back if it never moves", async ({
+    page,
+  }) => {
+    const hand = await touch(page, 8)
+    await hand.start()
+    // Past `holdToDragMs` (250ms), without a single move.
+    await expect(page.locator(".stacking-card.dragging")).toHaveCount(12)
+    await expect
+      .poll(async () => Math.abs(hand.at.y - (await headNow(page)).y - 80), { timeout: 2000 })
+      .toBeLessThan(4)
+    await hand.end()
+    await settle(page)
+    const after = assignPiles(await readGeometry(page))[cascades[0]]
+    expect(after.map((c) => c.name)).toEqual(hand.deep.map((c) => c.name))
+  })
+
+  test("drops a held run where it is carried once the finger does move", async ({ page }) => {
+    // The Ace on top of the second column, held until it rises, then carried onto the
+    // first column's Two.
+    await page.goto("/?game=spider&state=deep&animate=off")
+    await settle(page)
+    const geom = await readGeometry(page)
+    const piles = assignPiles(geom)
+    const ace = piles[cascades[1]].at(-1)
+    const at = { x: ace.cx, y: ace.cy }
+    const target = geom.zones[cascades[0]]
+    const cdp = await page.context().newCDPSession(page)
+    const finger = (x, y) => [{ x, y, radiusX: 1, radiusY: 1, force: 1 }]
+    const send = (type, points) => cdp.send("Input.dispatchTouchEvent", { type, touchPoints: points })
+    await send("touchStart", finger(at.x, at.y))
+    await page.waitForTimeout(400)
+    for (let i = 1; i <= 8; i++) {
+      await send("touchMove", finger(at.x + ((target.cx - at.x) * i) / 8, at.y + ((target.cy - at.y) * i) / 8))
+    }
+    await send("touchEnd", [])
+    await cdp.detach()
+    await settle(page)
+    const after = assignPiles(await readGeometry(page))
+    expect(after[cascades[0]].length).toBe(piles[cascades[0]].length + 1)
+    expect(after[cascades[0]].at(-1).name).toBe(ace.name)
   })
 
   test("lifts nothing for a touch that stays a tap", async ({ page }) => {

@@ -521,6 +521,11 @@ let clock = () => Date.now()
 // that an 80px rise is seen to travel.
 let liftSlideMs = 120.
 
+// How long a finger held still on a card takes to become a drag, so the card rises clear
+// of it without the finger having to move first. Past a tap's press (a double-tap's
+// halves are each far shorter) and short of iOS's own long-press.
+let holdToDragMs = 250
+
 // Build a scene that plays `game`: its id and label name it in the picker, its piles
 // and opening deal drive everything below.
 //
@@ -2238,12 +2243,22 @@ let make = (
         // changes its mind — neither flickers the card nor, released where the lift
         // put it, drops it on a zone above the one it rests in.
         let pendingLift = ref(0.)
+        // Filled in below, once the slide it starts exists.
+        let beginDrag = ref(() => ())
         // When the drag began, and so how far into its slide the lift is (`liftNow`);
         // `None` until the press becomes a drag.
         let liftSince = ref(None)
         // The pointer's travel since the press, kept so the slide can move the span on
         // frames with no `pointermove` — a finger held still while its card rises.
         let travel = ref((0., 0.))
+        // Whether the pointer has actually travelled past the tap tolerance, as opposed
+        // to the press becoming a drag by being held (`holdToDragMs`).
+        let travelled = ref(false)
+        let holdTimer = ref(None)
+        let cancelHold = () => {
+          holdTimer.contents->Option.forEach(clearTimeout)
+          holdTimer := None
+        }
 
         // The part of the lift applied by now: eased in over `liftSlideMs` so a thumb's
         // worth of jump reads as the card rising to the finger, not teleporting. Whole
@@ -2268,6 +2283,19 @@ let make = (
           pendingLift := lift
           liftSince := None
           travel := (0., 0.)
+          travelled := false
+          cancelHold()
+
+          // A finger held still becomes a drag in its own time (`beginDrag`, below); a
+          // cursor hides nothing, so a slow click stays a click.
+          if pointerType(ev) == "touch" {
+            holdTimer := Some(setTimeout(() => {
+                  holdTimer := None
+                  if grab.contents != None && !movedFar.contents {
+                    beginDrag.contents()
+                  }
+                }, holdToDragMs))
+          }
           // Capture so the cards keep getting moves/up even if the pointer leaves
           // their bounds — or never pressed them: a press on a back hands its pointer
           // to the run head here.
@@ -2368,21 +2396,31 @@ let make = (
           | None => ()
           }
 
+        // The press is a drag, not a tap, and so can't be half of a double-tap — and the
+        // span starts rising by the lift the press set (`pendingLift`). Reached by
+        // travelling past the tap tolerance, or by a finger held still.
+        beginDrag :=
+          (
+            () => {
+              cancelHold()
+              movedFar := true
+              liftSince := Some(clock())
+              if pendingLift.contents != 0. {
+                requestAnimationFrame(slide)->ignore
+              }
+            }
+          )
+
         wrapper->onPointer("pointermove", ev =>
           switch grab.contents {
           | Some((startPX, startPY, _)) =>
             let dx = clientX(ev) -. startPX
             let dy = clientY(ev) -. startPY
             travel := (dx, dy)
-
-            // Once the pointer has travelled past the tap tolerance this press is a
-            // drag, not a tap, and so can't be half of a double-tap — and the span starts
-            // rising by the lift the press set (`pendingLift`).
-            if !movedFar.contents && Math.abs(dx) +. Math.abs(dy) > doubleTapMoveTol {
-              movedFar := true
-              liftSince := Some(clock())
-              if pendingLift.contents != 0. {
-                requestAnimationFrame(slide)->ignore
+            if !travelled.contents && Math.abs(dx) +. Math.abs(dy) > doubleTapMoveTol {
+              travelled := true
+              if !movedFar.contents {
+                beginDrag.contents()
               }
             }
             follow()
@@ -2503,6 +2541,7 @@ let make = (
           | Some((_, _, spanStarts)) =>
             wrapper->releasePointerCapture(pointerId(ev))
             grab := None
+            cancelHold()
             spanStarts->Array.forEach(((c, _, _)) => classList(c.wrapper)->removeClass("dragging"))
             let spanCards = spanStarts->Array.map(((c, _, _)) => c.data)
             // Where the grabbed card's centre was released decides the *action*:
@@ -2510,7 +2549,10 @@ let make = (
             // at all there is no move to make — a card only ever rests in a pile —
             // so nothing is dispatched and the span reflows home. Every drop that
             // *is* a move goes to the reducer, so `core` owns every rest position.
-            switch zoneAt(boundingRect(wrapper)) {
+            //
+            // A press that never travelled has nowhere to go, even held until it rose:
+            // the lift put it over whatever sits above its pile, not the player.
+            switch travelled.contents ? zoneAt(boundingRect(wrapper)) : None {
             | None => reflowAll()
             | Some(zone) =>
               let target = Reducer.ToPile(zone.index)
