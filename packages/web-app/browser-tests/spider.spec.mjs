@@ -159,8 +159,8 @@ test.describe("a finger's press in a column", () => {
   const run = Command.runShowing(game, Scenario.spideretteDeep(game), cascades[0])
   const headCode = CardText.format(run[0])
 
-  async function touch(page, idx) {
-    await page.goto("/?game=spider&state=deep&animate=off")
+  async function touch(page, idx, { animate = false } = {}) {
+    await page.goto(`/?game=spider&state=deep${animate ? "" : "&animate=off"}`)
     await settle(page)
     const deep = assignPiles(await readGeometry(page))[cascades[0]]
     const card = deep[idx]
@@ -198,6 +198,34 @@ test.describe("a finger's press in a column", () => {
       await hand.end()
     })
   }
+
+  test("slides the run up to the finger rather than jumping there", async ({ page }) => {
+    const hand = await touch(page, 8, { animate: true })
+    const before = await headNow(page)
+    // The top of the carried span, every frame: the head is its highest card.
+    await page.evaluate(() => {
+      window.__tops = []
+      const sample = () => {
+        const dragging = [...document.querySelectorAll(".stacking-card.dragging")]
+        if (dragging.length) window.__tops.push(Math.min(...dragging.map((el) => el.getBoundingClientRect().top)))
+        if (!window.__stopSampling) requestAnimationFrame(sample)
+      }
+      requestAnimationFrame(sample)
+    })
+    await hand.start()
+    await hand.move(20)
+    await page.waitForTimeout(400)
+    const tops = await page.evaluate(() => {
+      window.__stopSampling = true
+      return window.__tops
+    })
+    await hand.end()
+    const rise = tops.map((top) => before.y - top)
+    // Seen partway up on the way, never back down, and whole in the end.
+    expect(rise.some((r) => r > 8 && r < 72)).toBe(true)
+    rise.slice(1).forEach((r, i) => expect(r).toBeGreaterThanOrEqual(rise[i] - 1))
+    expect(Math.abs(hand.at.y - (before.y - rise.at(-1)) - 80)).toBeLessThan(4)
+  })
 
   test("lifts nothing for a touch that stays a tap", async ({ page }) => {
     const hand = await touch(page, 8)

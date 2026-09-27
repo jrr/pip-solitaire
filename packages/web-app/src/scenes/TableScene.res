@@ -516,6 +516,11 @@ let tiltFor = (~enabled, ~card, ~pile, ~slot) =>
 // line the terminal draws — see the comment above `Cli.randomSeed`.
 let clock = () => Date.now()
 
+// How long a dragged card takes to rise to the finger (`liftNow` in `makeCard`): short
+// enough that the card is where the hand aims before the hand has gone far, long enough
+// that an 80px rise is seen to travel.
+let liftSlideMs = 120.
+
 // Build a scene that plays `game`: its id and label name it in the picker, its piles
 // and opening deal drive everything below.
 //
@@ -2228,19 +2233,41 @@ let make = (
           })
         }
 
-        // Take hold of this card and the span it heads. `lift` carries the span up
-        // before the drag starts; it is zero for a press on the card itself.
         // How far the span is carried up once a press becomes a drag, set at the press.
         // Deferred to the drag so a tap — a double-tap's half, or a press that
         // changes its mind — neither flickers the card nor, released where the lift
         // put it, drops it on a zone above the one it rests in.
         let pendingLift = ref(0.)
+        // When the drag began, and so how far into its slide the lift is (`liftNow`);
+        // `None` until the press becomes a drag.
+        let liftSince = ref(None)
+        // The pointer's travel since the press, kept so the slide can move the span on
+        // frames with no `pointermove` — a finger held still while its card rises.
+        let travel = ref((0., 0.))
 
+        // The part of the lift applied by now: eased in over `liftSlideMs` so a thumb's
+        // worth of jump reads as the card rising to the finger, not teleporting. Whole
+        // at once under reduced motion or `?animate=off`, like every cosmetic motion.
+        let liftNow = () =>
+          switch liftSince.contents {
+          | None => 0.
+          | Some(since) =>
+            let t =
+              skipFlights || matchMedia("(prefers-reduced-motion: reduce)")["matches"]
+                ? 1.
+                : Math.min(1., (clock() -. since) /. liftSlideMs)
+            pendingLift.contents *. (1. -. Math.pow(1. -. t, ~exp=3.))
+          }
+
+        // Take hold of this card and the span it heads. `lift` is how far to carry the
+        // span up once the press becomes a drag; zero for a cursor on the card itself.
         let startGrab = (ev, lift) => {
           // A fresh press: assume a tap until the pointer travels far enough
           // (below) to be a drag, which is what tells the double-tap apart.
           movedFar := false
           pendingLift := lift
+          liftSince := None
+          travel := (0., 0.)
           // Capture so the cards keep getting moves/up even if the pointer leaves
           // their bounds — or never pressed them: a press on a back hands its pointer
           // to the run head here.
@@ -2313,32 +2340,52 @@ let make = (
           }
         )
 
-        wrapper->onPointer("pointermove", ev =>
+        // Put the span where the pointer's travel and the lift so far say, and outline
+        // the zone that puts it over.
+        let follow = () =>
           switch grab.contents {
-          | Some((startPX, startPY, spanStarts)) =>
-            let dx = clientX(ev) -. startPX
-            let dy = clientY(ev) -. startPY
-
-            // Once the pointer has travelled past the tap tolerance this press is a
-            // drag, not a tap, and so can't be half of a double-tap — and the span takes
-            // the lift the press set (`pendingLift`), from here to the drop.
-            let spanStarts = if (
-              !movedFar.contents && Math.abs(dx) +. Math.abs(dy) > doubleTapMoveTol
-            ) {
-              movedFar := true
-              let lifted =
-                spanStarts->Array.map(((c, sx, sy)) => (c, sx, sy -. pendingLift.contents))
-              grab := Some((startPX, startPY, lifted))
-              lifted
-            } else {
-              spanStarts
-            }
+          | Some((_, _, spanStarts)) =>
+            let (dx, dy) = travel.contents
+            let lift = liftNow()
             spanStarts->Array.forEach(((c, sx, sy)) => {
               c.x := sx +. dx
-              c.y := sy +. dy
+              c.y := sy +. dy -. lift
               place(c)
             })
             highlightHover(spanStarts->Array.map(((c, _, _)) => c.data))
+          | None => ()
+          }
+
+        // Carry the slide on frames the pointer doesn't move, until the lift is whole or
+        // the drag is over.
+        let rec slide = () =>
+          switch grab.contents {
+          | Some(_) =>
+            follow()
+            if liftNow() != pendingLift.contents {
+              requestAnimationFrame(slide)->ignore
+            }
+          | None => ()
+          }
+
+        wrapper->onPointer("pointermove", ev =>
+          switch grab.contents {
+          | Some((startPX, startPY, _)) =>
+            let dx = clientX(ev) -. startPX
+            let dy = clientY(ev) -. startPY
+            travel := (dx, dy)
+
+            // Once the pointer has travelled past the tap tolerance this press is a
+            // drag, not a tap, and so can't be half of a double-tap — and the span starts
+            // rising by the lift the press set (`pendingLift`).
+            if !movedFar.contents && Math.abs(dx) +. Math.abs(dy) > doubleTapMoveTol {
+              movedFar := true
+              liftSince := Some(clock())
+              if pendingLift.contents != 0. {
+                requestAnimationFrame(slide)->ignore
+              }
+            }
+            follow()
           | None => ()
           }
         )
