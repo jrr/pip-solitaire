@@ -3,8 +3,8 @@
 // can say is that a hundred and four cards lay out on the stage at all, with the
 // opening's backs where the snapshot says and the stock a tap deals from until it is
 // out; the compressed column is judged on Spiderette (`spiderette.spec.mjs`) and Spider
-// is laid out by the same fan. And that a press on a column's backs picks up the run
-// below them, which only a pointer on a laid-out fan can try.
+// is laid out by the same fan. And that a press on a column's buried cards picks up the
+// run below them, which only a pointer on a laid-out fan can try.
 //
 // The deal is played from `seed=1`, so every tap lands on the same board.
 
@@ -54,15 +54,16 @@ test("deals 54 cards with only the tops up, and the stock deals its five rows by
   await expect(cards(page)).toHaveCount(104)
 })
 
-// A cascade's backs are a handle for the run the column shows: a press on one lifts
-// what `moverun` would off that place (`Command.runShowing`), onto the back that was
-// pressed, so the drop lands where the finger aims rather than a fan-step below it.
-test.describe("a press on a column's backs", () => {
+// A cascade's buried cards — backs, and face-up cards heading no run — are a handle for
+// the run the column shows: a press on one lifts what `moverun` would off that place
+// (`Command.runShowing`), onto the card that was pressed, so the drop lands where the
+// finger aims rather than a fan-step or two below it.
+test.describe("a press on a column's buried cards", () => {
   const game = Game.spider
   const cascades = Game.pileIndices(game, "Cascade")
   const posed = Scenario.spideretteDeep(game)
   const headOf = (i) => Command.runShowing(game, posed, i)
-  // Where a hand presses a back: the middle of the strip the next card leaves showing.
+  // Where a hand presses a buried card: the middle of the strip the next card leaves showing.
   const pressOn = (pile, idx) => {
     const card = pile[idx]
     return { x: card.cx, y: card.y + Math.min((pile[idx + 1].y - card.y) / 2, card.h / 2) }
@@ -73,31 +74,39 @@ test.describe("a press on a column's backs", () => {
     await settle(page)
   })
 
-  test("carries the run of twelve under the six backs, from under the finger", async ({ page }) => {
-    const run = headOf(cascades[0])
-    expect(run.length).toBe(12)
-    const deep = assignPiles(await readGeometry(page))[cascades[0]]
-    expect(deep.slice(0, 6).every((c) => c.name === "face-down card")).toBe(true)
-    const back = deep[2]
-    const at = pressOn(deep, 2)
+  // The deep column is six backs, two face-up strays that head no run, then the twelve.
+  for (const { what, idx } of [
+    { what: "a back", idx: 2 },
+    { what: "a face-up stray", idx: 6 },
+  ]) {
+    test(`carries the run of twelve from under the finger on ${what} above it`, async ({ page }) => {
+      const run = headOf(cascades[0])
+      expect(run.length).toBe(12)
+      const deep = assignPiles(await readGeometry(page))[cascades[0]]
+      expect(deep.slice(0, 6).every((c) => c.name === "face-down card")).toBe(true)
+      expect(deep[6].name).not.toBe("face-down card")
+      expect(deep[idx].liftable).toBe(false)
+      const pressed = deep[idx]
+      const at = pressOn(deep, idx)
 
-    await page.mouse.move(at.x, at.y)
-    await page.mouse.down()
-    for (let i = 1; i <= 4; i++) await page.mouse.move(at.x + 10 * i, at.y)
-    const dragging = page.locator(".stacking-card.dragging")
-    await expect(dragging).toHaveCount(12)
-    // The head sits where the pressed back does, moved only as far as the pointer.
-    const carried = await readGeometry(page)
-    const head = carried.cards.find((c) => cardCodeOf(c.name) === CardText.format(run[0]))
-    expect(Math.abs(head.cy - back.cy)).toBeLessThan(6)
-    expect(Math.abs(head.cx - (back.cx + 40))).toBeLessThan(6)
-    // Released over its own column, the run goes back where it lay.
-    await page.mouse.up()
-    await settle(page)
-    await expect(dragging).toHaveCount(0)
-    const after = assignPiles(await readGeometry(page))[cascades[0]]
-    expect(after.map((c) => c.name)).toEqual(deep.map((c) => c.name))
-  })
+      await page.mouse.move(at.x, at.y)
+      await page.mouse.down()
+      for (let i = 1; i <= 4; i++) await page.mouse.move(at.x + 10 * i, at.y)
+      const dragging = page.locator(".stacking-card.dragging")
+      await expect(dragging).toHaveCount(12)
+      // The head sits where the pressed card does, moved only as far as the pointer.
+      const carried = await readGeometry(page)
+      const head = carried.cards.find((c) => cardCodeOf(c.name) === CardText.format(run[0]))
+      expect(Math.abs(head.cy - pressed.cy)).toBeLessThan(6)
+      expect(Math.abs(head.cx - (pressed.cx + 40))).toBeLessThan(6)
+      // Released over its own column, the run goes back where it lay.
+      await page.mouse.up()
+      await settle(page)
+      await expect(dragging).toHaveCount(0)
+      const after = assignPiles(await readGeometry(page))[cascades[0]]
+      expect(after.map((c) => c.name)).toEqual(deep.map((c) => c.name))
+    })
+  }
 
   test("drops a run of one where the finger aims, as a press on the card itself would", async ({
     page,

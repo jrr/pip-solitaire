@@ -572,9 +572,9 @@
     cursor: default;
   }
 
-  /* A cascade's face-down cards pick up the run the column shows
+  /* A cascade's buried cards, face down or up, pick up the run the column shows
      (TableScene.res's `handleFor`), so they offer the grab. After `--buried`, so it
-     wins for the backs, which are buried too. */
+     wins for them. */
   .stacking-card--handle {
     cursor: grab;
   }

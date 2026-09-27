@@ -1125,9 +1125,10 @@ let make = (
             headsRun
               ? classList(c.wrapper)->removeClass("stacking-card--buried")
               : classList(c.wrapper)->addClass("stacking-card--buried")
-            // A cascade's backs lift the run the column shows (`handleFor` in
-            // `makeCard`), so they offer the grab too, as long as there is one to lift.
-            role == Game.Cascade && i < down && down < count
+            // The rest of a cascade — backs, and face-up cards that head no run — lifts
+            // the run the column shows (`handleFor` in `makeCard`), so it offers the
+            // grab too, as long as there is a run to lift.
+            role == Game.Cascade && !headsRun && down < count
               ? classList(c.wrapper)->addClass("stacking-card--handle")
               : classList(c.wrapper)->removeClass("stacking-card--handle")
             // Take the cards this pile *hides* out of the accessible tree.
@@ -2257,7 +2258,8 @@ let make = (
         }
         self.grabFrom := startGrab
 
-        // The run head a press on this card's back picks up instead: the deepest card
+        // The run head a press on this card picks up when it heads no run itself: the
+        // deepest card
         // that still heads a run in its cascade, which is `moverun`'s reading of a
         // place (`Command.runShowing`), so the pointer and the typed line can't come
         // to lift different cards. `None` off a cascade, and on one with no face-up
@@ -2275,16 +2277,16 @@ let make = (
         wrapper->onPointer("pointerdown", ev =>
           // Only a card that heads a legal run can be picked up; every other buried
           // card ignores the pointer (its `draggable` is false, set each reflow) —
-          // except the stock's, whose press is the start of a tap, and a cascade's
-          // backs, which are a handle for the run the column shows.
+          // except the stock's, whose press is the start of a tap, and a cascade's,
+          // which are a handle for the run the column shows below them.
           if !self.draggable.contents && inStock() {
             stockPress := Some((clientX(ev), clientY(ev)))
           } else if self.draggable.contents {
             startGrab(ev, 0.)
-          } else if GameState.isFaceDown(state(), self.data) {
+          } else {
             // The drop hit-test aims by the grabbed card's rect, not the pointer, so a
-            // run carried from where it lies — a back or two below the finger — would
-            // land that far below every aim. Lifted onto the pressed back, it sits
+            // run carried from where it lies — a card or two below the finger — would
+            // land that far below every aim. Lifted onto the pressed card, it sits
             // where a press on the head itself would have put it.
             switch handleFor() {
             | Some(head) => head.grabFrom.contents(ev, head.y.contents -. self.y.contents)
