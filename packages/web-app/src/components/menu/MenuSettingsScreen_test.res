@@ -16,6 +16,7 @@ open TestDom
 // A settings model, everything off unless a case says otherwise.
 let model = (
   ~autoCollect=false,
+  ~foundationReturn=false,
   ~cardTilt=false,
   ~wiggle=Motion.Off,
   ~wantsShake=false,
@@ -25,6 +26,7 @@ let model = (
   ~taps=0,
 ): MenuSettingsScreen.model => {
   autoCollect,
+  foundationReturn,
   cardTilt,
   wiggle,
   wantsShake,
@@ -120,6 +122,29 @@ describe("MenuSettingsScreen", () => {
     ])
   })
 
+  test("sets the house rules apart under a heading of their own", () => {
+    let screen = render()
+    expect(screen->textIn("[aria-label=\"House rules\"] .menu-section__heading"))->toBe(
+      "House rules",
+    )
+    expect(
+      screen
+      ->findAll("[aria-label=\"House rules\"] .menu-row--switch .menu-row__label")
+      ->Array.map(text),
+    )->toEqual(["Take back from foundations"])
+  })
+
+  test("sends the foundation house rule's own message, in the state it was handed", () => {
+    let (screen, sent) = renderRecording(~model=model(~foundationReturn=true))
+    expect(
+      screen
+      ->findAll("[aria-label=\"House rules\"] .menu-row--on .menu-row__label")
+      ->Array.map(text),
+    )->toEqual(["Take back from foundations"])
+    screen->findAll("[aria-label=\"House rules\"] .menu-row--switch")->Array.forEach(click)
+    expect(sent)->toEqual([MenuSettingsScreen.ToggleFoundationReturn])
+  })
+
   test("puts Debug in a section below the preferences, not among them", () => {
     // The debug tools moved off this screen entirely; what's left is a way in.
     let screen = render()
@@ -195,6 +220,13 @@ describe("MenuSettingsScreen.update", () => {
     let (_, log, saved) = run(~model=model(), ToggleAutoCollect)
     expect(log)->toEqual(["publish", "persist"])
     expect(saved->Option.map(s => s.autoCollect))->toEqual(Some(true))
+  })
+
+  test("re-lays the board when the foundation rule flips, so a home card pins or frees now", () => {
+    let (next, log, saved) = run(~model=model(~foundationReturn=true), ToggleFoundationReturn)
+    expect(next.foundationReturn)->toBe(false)
+    expect(log)->toEqual(["publish", "persist", "board:relayout"])
+    expect(saved->Option.map(s => s.foundationReturn))->toEqual(Some(false))
   })
 
   test("re-lays the board when the tilt flips, rather than waiting for the next move", () => {

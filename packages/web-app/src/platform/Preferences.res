@@ -16,6 +16,7 @@
 
 // Namespaced, so they can't collide with anything else the app persists later.
 let autoCollectKey = "pip.autoCollect"
+let foundationReturnKey = "pip.foundationReturn"
 let cardTiltKey = "pip.cardTilt"
 let wantsShakeKey = "pip.wantsShake"
 let notchDisplayKey = "pip.notchDisplay"
@@ -50,17 +51,25 @@ let saveFlag = (key, value) =>
 
 let load = (): Options.t => {
   let autoCollect = loadFlag(autoCollectKey, ~fallback=Options.default.autoCollect)
+  let allowFoundationReturn = loadFlag(
+    foundationReturnKey,
+    ~fallback=Options.default.allowFoundationReturn,
+  )
   // `allowColumnReorder` has no UI toggle yet, so it isn't persisted and always takes
   // the shipped default. A settings control would start saving its own key here.
-  {autoCollect, allowColumnReorder: Options.default.allowColumnReorder}
+  {autoCollect, allowColumnReorder: Options.default.allowColumnReorder, allowFoundationReturn}
 }
 
-// Auto-collect is one field of the driver's `Options.t` and the only one stored, so
-// there are two ways in: the whole record, for a caller that holds one, and the flag
-// alone, for the settings switch that holds only its own mirror.
+// The stored fields of the driver's `Options.t` have two ways in each: the whole
+// record, for a caller that holds one, and the flag alone, for the settings switch that
+// holds only its own mirror.
 let saveAutoCollect = (enabled: bool) => saveFlag(autoCollectKey, enabled)
+let saveFoundationReturn = (enabled: bool) => saveFlag(foundationReturnKey, enabled)
 
-let save = (options: Options.t) => saveAutoCollect(options.autoCollect)
+let save = (options: Options.t) => {
+  saveAutoCollect(options.autoCollect)
+  saveFoundationReturn(options.allowFoundationReturn)
+}
 
 let loadCardTilt = (): bool => loadFlag(cardTiltKey, ~fallback=true)
 let saveCardTilt = (enabled: bool) => saveFlag(cardTiltKey, enabled)

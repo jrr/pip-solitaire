@@ -14,6 +14,7 @@ open TestDom
 let settings: MenuSettingsScreen.props = {
   model: {
     autoCollect: true,
+    foundationReturn: true,
     cardTilt: true,
     wiggle: Motion.Off,
     wantsShake: false,

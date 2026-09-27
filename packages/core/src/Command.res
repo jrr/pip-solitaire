@@ -839,11 +839,11 @@ let boardHelp: array<helpRow> = [
 ]
 
 // The driver's flags (`Options`). Shared for the same reason the board verbs are: the
-// two front ends have the same two settings, and one of them — the column-reorder house
+// two front ends have the same settings, and one of them — the column-reorder house
 // rule — has no other control anywhere.
 let driverHelp: array<helpRow> = [
   ("set", "show the driver settings"),
-  ("set <setting> on|off", "change one (autocollect, reorder)"),
+  ("set <setting> on|off", "change one (autocollect, reorder, worryback)"),
 ]
 
 // The `deal` family. Shared rows, because both front ends read the argument the same way

@@ -196,10 +196,27 @@ let commit = (~clock: unit => float, s: t, next: GameState.t): t =>
 // and all get the same treatment: the house-rule gate, the reducer's verdict, the
 // settle, the undoable step, the tally and the clock.
 
-// The one house rule answered *before* the reducer rather than by it: with reordering
-// off nothing is dispatched at all, so the command is an exact no-op. Said here so both
+// The house rules are answered *before* the reducer rather than by it: with one off,
+// nothing is dispatched at all, so the command is an exact no-op. Said here so both
 // front ends say it the same way.
 let columnReorderOff = "Column reordering is off for this game."
+let foundationReturnOff = "Cards played to a foundation stay there in this game."
+
+// Does `action` lift a card off a foundation? A move between two foundations counts:
+// the rule is that a card played home stays where it was played.
+let leavesFoundation = (~game: Game.t, state: GameState.t, action: Reducer.action): bool => {
+  let onFoundation = card =>
+    switch GameState.locationOf(state, card) {
+    | Some(GameState.InPile(i, _)) =>
+      game.piles->Array.get(i)->Option.mapOr(false, p => p.role == Game.Foundation)
+    | _ => false
+    }
+  switch action {
+  | Reducer.Move({card}) => onFoundation(card)
+  | Reducer.MoveRun({cards}) => cards->Array.some(onFoundation)
+  | Reducer.MoveColumn(_) | Reducer.Deal => false
+  }
+}
 
 // The reducer is the sole judge of legality; what's left here is the gate, the
 // settling and the bookkeeping.
@@ -211,6 +228,10 @@ let dispatch = (~clock: unit => float, s: t, action: Reducer.action): (t, change
   | Reducer.MoveColumn(_) if !s.options.allowColumnReorder => (
       s,
       Blocked({reason: columnReorderOff}),
+    )
+  | _ if !s.options.allowFoundationReturn && leavesFoundation(~game=s.game, present(s), action) => (
+      s,
+      Blocked({reason: foundationReturnOff}),
     )
   | _ =>
     switch Reducer.reduce(~game=s.game, present(s), action) {

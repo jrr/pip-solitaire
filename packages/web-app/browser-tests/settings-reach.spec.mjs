@@ -156,3 +156,24 @@ test("the hidden switches write through like any other", async ({ page }) => {
   await expect(toggle(page, "Wiggle Waggle")).toHaveAttribute("aria-checked", "false")
   expect(await stored(page, "pip.wantsShake")).toBe("false")
 })
+
+test("the foundation house rule pins a card already home, without waiting for a move", async ({
+  page,
+}) => {
+  // Each foundation holds its Ace and Two, so each Two is a card a hand could lift.
+  await page.goto("/?game=freecell&state=sendhome&animate=off")
+  await settleBoard(page)
+  const two = page.locator(".stacking-card", { has: page.getByRole("img", { name: "Two of Spades" }) })
+  await expect(two).not.toHaveClass(/stacking-card--buried/)
+
+  await openSettings(page)
+  await expect(toggle(page, "Take back from foundations")).toHaveAttribute("aria-checked", "true")
+  await toggle(page, "Take back from foundations").click()
+  await expect(toggle(page, "Take back from foundations")).toHaveAttribute("aria-checked", "false")
+  expect(await stored(page, "pip.foundationReturn")).toBe("false")
+  await expect(two).toHaveClass(/stacking-card--buried/)
+
+  await page.reload()
+  await settleBoard(page)
+  await expect(two).toHaveClass(/stacking-card--buried/)
+})

@@ -19,11 +19,18 @@
 // whole columns around, so it's opt-in, defaulting *on* for our game with no UI
 // toggle surfaced yet. Gated exactly like `autoCollect`: when off, a driver never
 // dispatches the reorder, so it's an exact no-op.
-type t = {autoCollect: bool, allowColumnReorder: bool}
+//
+// `allowFoundationReturn`: a **house rule** — may a card that has gone home be
+// taken back off its foundation and played again ("worrying back")? Strict FreeCell
+// says a card played home stays home, and so does the solver, which never plans a
+// move off a foundation; this game has always allowed it, so it defaults *on*. It
+// answers the moves out of a *playable* foundation only: a `Sealed` one (Simple
+// Simon's) is refused by the reducer whatever this says. Gated like
+// `allowColumnReorder`, before the reducer (`Session.dispatch`).
+type t = {autoCollect: bool, allowColumnReorder: bool, allowFoundationReturn: bool}
 
-// The shipped default: auto-collect on and column reordering allowed (our
-// variant's house rule).
-let default = {autoCollect: true, allowColumnReorder: true}
+// The shipped default: auto-collect on, and both house rules allowed.
+let default = {autoCollect: true, allowColumnReorder: true, allowFoundationReturn: true}
 
 // --- Addressing a flag by name -----------------------------------------------
 // The fields above, as a value a *command* can name: what `set autocollect off` sets.
@@ -31,26 +38,29 @@ let default = {autoCollect: true, allowColumnReorder: true}
 // so this lives here beside the record rather than in either front end — and the shared
 // parser can hand over a typed setting instead of a string each driver re-checks.
 //
-// It's also the only way to reach `allowColumnReorder` at all: the menu has a switch for
-// auto-collect and none for the house rule, so without a name a command can say the flag
-// would be reachable only by editing `default`.
+// It's also the only way to reach `allowColumnReorder` at all: the menu has no switch for
+// it, so without a name a command can say the flag would be reachable only by editing
+// `default`.
 type setting =
   | AutoCollect
   | ColumnReorder
+  | FoundationReturn
 
-let all = [AutoCollect, ColumnReorder]
+let all = [AutoCollect, ColumnReorder, FoundationReturn]
 
 // The canonical name of a setting — what `set` takes and what a listing shows.
 let name = (s: setting): string =>
   switch s {
   | AutoCollect => "autocollect"
   | ColumnReorder => "reorder"
+  | FoundationReturn => "worryback"
   }
 
 let parse = (token: string): option<setting> =>
   switch token->String.toLowerCase {
   | "autocollect" | "auto-collect" | "collect" => Some(AutoCollect)
   | "reorder" | "columnreorder" | "movecol" => Some(ColumnReorder)
+  | "worryback" | "worry" | "takeback" => Some(FoundationReturn)
   | _ => None
   }
 
@@ -67,12 +77,14 @@ let read = (o: t, s: setting): bool =>
   switch s {
   | AutoCollect => o.autoCollect
   | ColumnReorder => o.allowColumnReorder
+  | FoundationReturn => o.allowFoundationReturn
   }
 
 let apply = (o: t, ~setting: setting, ~on: bool): t =>
   switch setting {
   | AutoCollect => {...o, autoCollect: on}
   | ColumnReorder => {...o, allowColumnReorder: on}
+  | FoundationReturn => {...o, allowFoundationReturn: on}
   }
 
 // Every setting and its value, as rows for a front end to render (`Command.renderHelp`

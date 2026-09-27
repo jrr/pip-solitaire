@@ -4019,4 +4019,8 @@ describe("Options", () => {
   test("defaults column reorder on (our variant's house rule)", () => {
     expect(Options.default.allowColumnReorder)->toBe(true)
   })
+
+  test("defaults foundation take-backs on (a house rule the game has always played by)", () => {
+    expect(Options.default.allowFoundationReturn)->toBe(true)
+  })
 })

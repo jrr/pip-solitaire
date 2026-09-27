@@ -1115,7 +1115,14 @@ let make = (
             // play is unchanged; a deeper run-head lifts its whole span as a
             // supermove. Every other buried card stays pinned — and so does a face-down
             // one, whatever the cards above it happen to make with it.
-            let headsRun = i >= down && Rules.isRun(rule, cards->Array.slice(~start=i, ~end=count))
+            //
+            // A foundation's cards are pinned too while the house rule keeps them home
+            // (`Options.allowFoundationReturn`), so a press on one is inert rather than
+            // a drag the session would refuse.
+            let headsRun =
+              i >= down &&
+              Rules.isRun(rule, cards->Array.slice(~start=i, ~end=count)) &&
+              (role != Game.Foundation || options.contents.allowFoundationReturn)
             c.draggable := headsRun
             headsRun
               ? classList(c.wrapper)->removeClass("stacking-card--buried")

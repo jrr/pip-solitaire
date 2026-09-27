@@ -1797,9 +1797,9 @@ DebugConsole.setRunner(line => {
     []
   | Command.Games => Render.text(Command.gamesList())
   | Command.Settings => Render.text(Command.describeSettings(options.contents))
-  // The driver's flags, typed rather than switched. Auto-collect goes through the menu's
-  // own action rather than straight to the ref, so the switch and the saved preference
-  // stay in step with a typed change — it *toggles*, hence the guard. The column-reorder
+  // The driver's flags, typed rather than switched. A flag with a menu switch goes through
+  // the menu's own action rather than straight to the ref, so the switch and the saved
+  // preference stay in step with a typed change — it *toggles*, hence the guard. The column-reorder
   // house rule has no switch anywhere, so the console is the only way to reach it:
   // the board reads the ref live at each move, so it takes hold on the very next one.
   | Command.Set({setting, on}) =>
@@ -1807,6 +1807,10 @@ DebugConsole.setRunner(line => {
     | Options.AutoCollect =>
       if options.contents.autoCollect != on {
         dispatch(SettingsMsg(MenuSettingsScreen.ToggleAutoCollect))
+      }
+    | Options.FoundationReturn =>
+      if options.contents.allowFoundationReturn != on {
+        dispatch(SettingsMsg(MenuSettingsScreen.ToggleFoundationReturn))
       }
     | Options.ColumnReorder => options := Options.apply(options.contents, ~setting, ~on)
     }
