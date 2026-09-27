@@ -231,8 +231,9 @@ type card = {
   down: ref<bool>,
   // Pick this card up with the run it heads, as a press on it would, from a press that
   // landed elsewhere: a card above it in its column (see the `pointerdown` in
-  // `makeCard`). The float is how far to carry the run up first, so it arrives at the
-  // finger that pressed there. Filled in once the card's pointer loop exists.
+  // `makeCard`). The float is how far to carry the run up once the press becomes a drag,
+  // so it arrives at the finger that pressed there. Filled in once the card's pointer
+  // loop exists.
   grabFrom: ref<(pointerEvent, float) => unit>,
 }
 
@@ -2229,10 +2230,17 @@ let make = (
 
         // Take hold of this card and the span it heads. `lift` carries the span up
         // before the drag starts; it is zero for a press on the card itself.
+        // How far the span is carried up once a press becomes a drag, set at the press.
+        // Deferred to the drag so a tap — a double-tap's half, or a press that
+        // changes its mind — neither flickers the card nor, released where the lift
+        // put it, drops it on a zone above the one it rests in.
+        let pendingLift = ref(0.)
+
         let startGrab = (ev, lift) => {
           // A fresh press: assume a tap until the pointer travels far enough
           // (below) to be a drag, which is what tells the double-tap apart.
           movedFar := false
+          pendingLift := lift
           // Capture so the cards keep getting moves/up even if the pointer leaves
           // their bounds — or never pressed them: a press on a back hands its pointer
           // to the run head here.
@@ -2247,18 +2255,25 @@ let make = (
           }
           // Raise the whole span above the rest of the board, keeping bottom-first
           // order so the run stays coherently stacked while it's carried. `dragging`
-          // goes on before the lift, so the span jumps to the finger rather than
-          // sliding there behind it.
+          // switches the snap transition off, so the lift jumps to the finger rather
+          // than sliding there behind it.
           span->Array.forEach(c => {
             classList(c.wrapper)->addClass("dragging")
             bringToFront(c.wrapper)
-            c.y := c.y.contents -. lift
-            place(c)
           })
           grab :=
             Some((clientX(ev), clientY(ev), span->Array.map(c => (c, c.x.contents, c.y.contents))))
         }
         self.grabFrom := startGrab
+
+        // The lift that brings `head`'s top edge to the pointer: for a finger, held clear
+        // above it (`TableLayout.grabClearance`), so the card being carried is the one
+        // thing the fingertip doesn't cover.
+        let liftTo = (ev, head) => {
+          let pointer = clientY(ev) -. boundingRect(playfield).top
+          let finger = pointerType(ev) == "touch"
+          head.y.contents -. (pointer -. TableLayout.grabClearance(~finger, ~scale=scale.contents))
+        }
 
         // The run head a press on this card picks up when it heads no run itself: the
         // deepest card
@@ -2284,20 +2299,15 @@ let make = (
           if !self.draggable.contents && inStock() {
             stockPress := Some((clientX(ev), clientY(ev)))
           } else if self.draggable.contents {
-            startGrab(ev, 0.)
+            // A cursor carries the card from where it was pressed; a finger would hide
+            // it there, so it is held clear.
+            startGrab(ev, pointerType(ev) == "touch" ? liftTo(ev, self) : 0.)
           } else {
             // The drop hit-test aims by the grabbed card's rect, not the pointer, so a
-            // run carried from where it lies — a card or two below the finger — would
-            // land that far below every aim. It is lifted to the pointer instead, and
-            // for a finger held clear above it (`TableLayout.grabClearance`), so the
-            // card being carried is the one thing the fingertip doesn't cover.
+            // run carried from where it lies — a card or two below the pointer — would
+            // land that far below every aim. It is lifted to the pointer instead.
             switch handleFor() {
-            | Some(head) =>
-              let touch = clientY(ev) -. boundingRect(playfield).top
-              let top =
-                touch -.
-                TableLayout.grabClearance(~finger=pointerType(ev) == "touch", ~scale=scale.contents)
-              head.grabFrom.contents(ev, head.y.contents -. top)
+            | Some(head) => head.grabFrom.contents(ev, liftTo(ev, head))
             | None => ()
             }
           }
@@ -2310,9 +2320,18 @@ let make = (
             let dy = clientY(ev) -. startPY
 
             // Once the pointer has travelled past the tap tolerance this press is a
-            // drag, not a tap, and so can't be half of a double-tap.
-            if Math.abs(dx) +. Math.abs(dy) > doubleTapMoveTol {
+            // drag, not a tap, and so can't be half of a double-tap — and the span takes
+            // the lift the press set (`pendingLift`), from here to the drop.
+            let spanStarts = if (
+              !movedFar.contents && Math.abs(dx) +. Math.abs(dy) > doubleTapMoveTol
+            ) {
               movedFar := true
+              let lifted =
+                spanStarts->Array.map(((c, sx, sy)) => (c, sx, sy -. pendingLift.contents))
+              grab := Some((startPX, startPY, lifted))
+              lifted
+            } else {
+              spanStarts
             }
             spanStarts->Array.forEach(((c, sx, sy)) => {
               c.x := sx +. dx
