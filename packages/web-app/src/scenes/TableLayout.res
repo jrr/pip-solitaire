@@ -277,6 +277,16 @@ let cardTilt = (~card: Deck.card, ~pile, ~slot) => {
   (unit *. 2. -. 1.) *. maxCardTilt
 }
 
+// --- Taking hold of a run from above it ---------------------------------------------
+
+// How far above the touch a run's top edge is held when a press on a card above it
+// took hold (`handleFor` in `TableScene`): one face-up step, the strip that shows a
+// card's index, so it shows past the fingertip rather than under it. A fingertip is a
+// physical size, not a board one, so the clearance has a floor in CSS pixels that a
+// small scale can't shrink it under.
+let fingertip = 24.
+let grabClearance = (~scale: float) => Math.max(fanStep *. scale, fingertip)
+
 // --- Hit-testing --------------------------------------------------------------
 
 // One primitive for both the hover highlight and the snap-on-drop decision, so the

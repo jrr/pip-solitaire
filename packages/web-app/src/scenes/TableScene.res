@@ -228,9 +228,9 @@ type card = {
   // from one that was face up already, which is the only moment the flip animates.
   down: ref<bool>,
   // Pick this card up with the run it heads, as a press on it would, from a press that
-  // landed elsewhere: a back above it in its column (see the `pointerdown` in
-  // `makeCard`). The float is how far to carry the run up first, so it arrives under
-  // the finger that pressed the back. Filled in once the card's pointer loop exists.
+  // landed elsewhere: a card above it in its column (see the `pointerdown` in
+  // `makeCard`). The float is how far to carry the run up first, so it arrives at the
+  // finger that pressed there. Filled in once the card's pointer loop exists.
   grabFrom: ref<(pointerEvent, float) => unit>,
 }
 
@@ -2286,10 +2286,14 @@ let make = (
           } else {
             // The drop hit-test aims by the grabbed card's rect, not the pointer, so a
             // run carried from where it lies — a card or two below the finger — would
-            // land that far below every aim. Lifted onto the pressed card, it sits
-            // where a press on the head itself would have put it.
+            // land that far below every aim. It is lifted to the finger instead, its top
+            // edge held just above the touch (`TableLayout.grabClearance`) so the card
+            // being carried is the one thing the fingertip doesn't cover.
             switch handleFor() {
-            | Some(head) => head.grabFrom.contents(ev, head.y.contents -. self.y.contents)
+            | Some(head) =>
+              let touch = clientY(ev) -. boundingRect(playfield).top
+              let top = touch -. TableLayout.grabClearance(~scale=scale.contents)
+              head.grabFrom.contents(ev, head.y.contents -. top)
             | None => ()
             }
           }

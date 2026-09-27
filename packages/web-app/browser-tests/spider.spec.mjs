@@ -56,8 +56,9 @@ test("deals 54 cards with only the tops up, and the stock deals its five rows by
 
 // A cascade's buried cards — backs, and face-up cards heading no run — are a handle for
 // the run the column shows: a press on one lifts what `moverun` would off that place
-// (`Command.runShowing`), onto the card that was pressed, so the drop lands where the
-// finger aims rather than a fan-step or two below it.
+// (`Command.runShowing`), up to the finger with its top edge just clear of it, so the
+// card is in sight and the drop lands where the finger aims rather than a fan-step or
+// two below it.
 test.describe("a press on a column's buried cards", () => {
   const game = Game.spider
   const cascades = Game.pileIndices(game, "Cascade")
@@ -79,7 +80,7 @@ test.describe("a press on a column's buried cards", () => {
     { what: "a back", idx: 2 },
     { what: "a face-up stray", idx: 6 },
   ]) {
-    test(`carries the run of twelve from under the finger on ${what} above it`, async ({ page }) => {
+    test(`carries the run of twelve held just above the finger, from ${what} above it`, async ({ page }) => {
       const run = headOf(cascades[0])
       expect(run.length).toBe(12)
       const deep = assignPiles(await readGeometry(page))[cascades[0]]
@@ -94,10 +95,16 @@ test.describe("a press on a column's buried cards", () => {
       for (let i = 1; i <= 4; i++) await page.mouse.move(at.x + 10 * i, at.y)
       const dragging = page.locator(".stacking-card.dragging")
       await expect(dragging).toHaveCount(12)
-      // The head sits where the pressed card does, moved only as far as the pointer.
+      // The head is held with its top edge above the touch and the finger still on it,
+      // moved across only as far as the pointer.
       const carried = await readGeometry(page)
       const head = carried.cards.find((c) => cardCodeOf(c.name) === CardText.format(run[0]))
-      expect(Math.abs(head.cy - pressed.cy)).toBeLessThan(6)
+      // `TableLayout.grabClearance`: at least a fingertip (24px), at most a face-up step
+      // at the largest scale (26 × 1.35). Stated here because a browser test can't
+      // import a module that reaches a stylesheet.
+      const clearance = at.y - head.y
+      expect(clearance).toBeGreaterThanOrEqual(21)
+      expect(clearance).toBeLessThanOrEqual(26 * 1.35 + 3)
       expect(Math.abs(head.cx - (pressed.cx + 40))).toBeLessThan(6)
       // Released over its own column, the run goes back where it lay.
       await page.mouse.up()
@@ -119,9 +126,10 @@ test.describe("a press on a column's buried cards", () => {
     const column = piles[cascades[1]]
     expect(column[0].name).toBe("face-down card")
     const at = pressOn(column, 0)
-    // The Ace arrives on the back, so the finger holds it where it held the back.
+    // The Ace arrives with its top just above the finger, so aiming the finger at the
+    // column's middle aims the card there too.
     const target = geom.zones[cascades[0]]
-    const aim = { x: target.cx, y: target.cy - (column[0].cy - at.y) }
+    const aim = { x: target.cx, y: target.cy }
 
     await page.mouse.move(at.x, at.y)
     await page.mouse.down()
