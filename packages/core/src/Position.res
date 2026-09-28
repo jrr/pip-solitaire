@@ -712,6 +712,14 @@ let applyMove = (s: t, move: move): t => {
   }
 }
 
+// Small numbers — a card id (0–51), a rank, a face-down count — one character each,
+// from "0" up. **One character, not digits and a comma**: the search keeps a key for
+// every position it generates, over a million on a Spider board, and on a board that
+// size the separators were half of every key. Fixed width is what makes it
+// unambiguous without them; none of these ever reaches the "|", "/" or "!" a key is
+// punctuated with, all of which sort below "0".
+let spell = (ns: array<int>): string => String.fromCharCodeMany(ns->Array.map(n => n + 48))
+
 // A canonical key for a search's visited set: two positions that differ only in
 // *which* free cell or *which* column holds what are the same position, so the
 // cells and the columns are both sorted before they're spelled out.
@@ -727,10 +735,10 @@ let key = (s: t): string => {
   // only where there is one, since this is the hottest string in the search and every
   // board but a Klondike-dealt one has none.
   let cols = s.casc->Array.mapWithIndex((pile, col) => {
-    let cards = pile->Array.joinUnsafe(",")
+    let cards = spell(pile)
     switch s.down->Array.getUnsafe(col) {
     | 0 => cards
-    | down => `${Int.toString(down)}:${cards}`
+    | down => `!${spell([down])}${cards}`
     }
   })
   cols->Array.sort(String.compare)
@@ -742,12 +750,7 @@ let key = (s: t): string => {
   | 0 => ""
   | n => `|${Int.toString(n)}`
   }
-  s.found->Array.joinUnsafe(".") ++
-  "|" ++
-  cells->Array.joinUnsafe(",") ++
-  "|" ++
-  cols->Array.join("/") ++
-  stock
+  spell(s.found) ++ "|" ++ spell(cells) ++ "|" ++ cols->Array.join("/") ++ stock
 }
 
 // A move in words, for a play-by-play. A deal names no card because it has none to
