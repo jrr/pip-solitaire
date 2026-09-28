@@ -299,6 +299,18 @@ type autoplayed = {
   reply: array<Render.line>,
 }
 
+// What `controls.solve` hands back: the solver's reply, and — when it found a line — a
+// way to play it. The line is not walked until `play` is called, so a caller can show
+// the answer first and let the player decide.
+//
+// `play` is a plan for the board the solver was handed. Called after that board has
+// moved on (a card played, a new deal), it does nothing, the same rule every step of a
+// line already plays by.
+type solved = {
+  reply: array<Render.line>,
+  play: option<unit => unit>,
+}
+
 // Everything a mounted board offers the chrome, handed over whole by `~publish`. Why
 // it is one record, why every field is mount-scoped, and why two of them are `option`
 // is `docs/board-driver.md` § What `~publish` hands back.
@@ -333,6 +345,10 @@ type controls = {
   // drawing — which is what lets a caller paint "thinking" and be seen doing it.
   // `~onAnswer` runs once per press, or not at all if the board moves on first.
   autoplay: (~onAnswer: autoplayed => unit) => unit,
+  // The thinking half of `autoplay` on its own — the menu's Solve row. Answers the same
+  // way, by callback from the worker, but leaves the board where it is until the
+  // answer's `play` is called.
+  solve: (~onAnswer: solved => unit) => unit,
   // Re-lay every resting card, so the tilt switch re-tilts the board in place rather
   // than only on the next move.
   relayout: unit => unit,
@@ -709,6 +725,9 @@ let make = (
     let liveRunCommand: ref<Command.t => array<Render.line>> = ref(_ => [])
     let liveAutoplay: ref<(~onAnswer: autoplayed => unit) => unit> = ref((~onAnswer) =>
       onAnswer({playing: false, reply: []})
+    )
+    let liveSolve: ref<(~onAnswer: solved => unit) => unit> = ref((~onAnswer) =>
+      onAnswer({reply: [], play: None})
     )
     let liveRelayout: ref<unit => unit> = ref(() => ())
 
@@ -2027,7 +2046,7 @@ let make = (
       // a *frozen* board, but ten seconds of a spinner is still a limit worth having,
       // and it costs answers on the stubborn deals — `docs/solver.md` § What a caller is
       // willing to spend.
-      let autoplay = (~onAnswer: autoplayed => unit) => {
+      let solve = (~onAnswer: solved => unit) => {
         // A press replaces whatever the last one started: a line still being played is
         // ended where it stands, exactly as the stop gesture would end it, and a search
         // still running is abandoned by `interruptPlay` below. Either way the board the
@@ -2063,18 +2082,33 @@ let make = (
                 asked,
                 found,
               )
-              let (change, reply) = adopt(~before, ~command=Command.Autoplay, next, outcome)
+              // A refusal moves nothing, so there is nothing to adopt — only the words.
+              // A line is held back as `play`, with the same token re-check at the
+              // moment it is called: the answer is a plan for this board and no other.
               onAnswer({
-                playing: switch change {
-                | Session.Played(_) => true
-                | _ => false
+                reply: outcome.reply,
+                play: switch outcome.change {
+                | Session.Played(_) =>
+                  Some(
+                    () =>
+                      if token == playToken.contents {
+                        adopt(~before, ~command=Command.Autoplay, next, outcome)->ignore
+                      },
+                  )
+                | _ => None
                 },
-                reply,
               })
             }
           },
         )
       }
+
+      // `solve`, and the line played the moment it is found.
+      let autoplay = (~onAnswer: autoplayed => unit) =>
+        solve(~onAnswer=({reply, play}) => {
+          play->Option.forEach(play => play())
+          onAnswer({playing: play->Option.isSome, reply})
+        })
 
       let runCommand = (command: Command.t): array<Render.line> =>
         switch command {
@@ -2662,6 +2696,7 @@ let make = (
       liveUndo := undo
       liveRunCommand := runCommand
       liveAutoplay := autoplay
+      liveSolve := solve
       liveRelayout := squareUp
       reportHistory()
 
@@ -2727,6 +2762,7 @@ let make = (
         undo: () => liveUndo.contents(),
         runCommand: command => liveRunCommand.contents(command),
         autoplay: (~onAnswer) => liveAutoplay.contents(~onAnswer),
+        solve: (~onAnswer) => liveSolve.contents(~onAnswer),
         relayout: () => liveRelayout.contents(),
         dockFit: inset => dockFit.contents(inset),
         shake: {start: startShake, stop: stopShake},

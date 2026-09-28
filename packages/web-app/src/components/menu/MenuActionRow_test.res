@@ -1,18 +1,18 @@
-// The action row (the Debug screen's "Autoplay"), exercised in isolation. What
+// The action row (the Debug screen's "Solve"), exercised in isolation. What
 // separates it from `<MenuToggleRow>` is that it does something once rather than
 // holding a state, and everything below follows from that.
 open Vitest
 open TestDom
 
 let render = (~enabled, ~desc="Solve the current game for me.", ~onClick=() => ()) =>
-  Html.create(MenuActionRow.make({label: "Autoplay", desc, enabled, onClick}))
+  Html.create(MenuActionRow.make({label: "Solve", desc, enabled, onClick}))
 
 let text = (row, selector) => row->textIn(selector)
 
 describe("MenuActionRow", () => {
   test("shows the label and its description in the toggle row's stack", () => {
     let row = render(~enabled=true)
-    expect(row->text(".menu-row__label"))->toBe("Autoplay")
+    expect(row->text(".menu-row__label"))->toBe("Solve")
     expect(row->text(".menu-row__desc"))->toBe("Solve the current game for me.")
   })
 

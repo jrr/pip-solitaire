@@ -17,9 +17,9 @@ let debugStates: array<MenuDisclosure.entry> = [
 
 let render = (
   ~debugScenesOpen=false,
-  ~autoplayEnabled=true,
-  ~autoplayStatus=None,
-  ~onAutoplay=() => (),
+  ~solveEnabled=true,
+  ~solving=false,
+  ~onSolve=() => (),
   ~shareEnabled=true,
   ~cutoutDebug=false,
   ~debugLog=false,
@@ -37,9 +37,9 @@ let render = (
       onToggleCutoutDebug,
       debugLog,
       onToggleDebugLog,
-      autoplayEnabled,
-      autoplayStatus,
-      onAutoplay,
+      solveEnabled,
+      solving,
+      onSolve,
       shareEnabled,
       onShareGame,
       onClearStored,
@@ -54,7 +54,7 @@ let render = (
 // about the wrong row. Anchored to the section rather than to the class alone, because
 // a row with nothing at its right-hand end is an action row (`MenuRow.classesFor`) and
 // every scene and state entry inside the disclosures below is one too.
-let autoplay = 0
+let solve = 0
 let share = 1
 let clearData = 2
 
@@ -67,7 +67,7 @@ let actionDesc = (screen, which) =>
   ->Option.mapOr("<no such action row>", row => row->textIn(".menu-row__desc"))
 
 let shareDesc = screen => screen->actionDesc(share)
-let autoplayDesc = screen => screen->actionDesc(autoplay)
+let solveDesc = screen => screen->actionDesc(solve)
 
 describe("MenuDebugScreen", () => {
   test("offers the two developer toggles", () => {
@@ -87,39 +87,38 @@ describe("MenuDebugScreen", () => {
     expect(log)->toEqual(["cutout", "debug-log"])
   })
 
-  test("offers, in a player's own words, to solve the game that is on the table", () => {
-    expect(render(~autoplayEnabled=true)->autoplayDesc)->toBe("Solve the current game for me.")
+  test("offers to look for a win in the game that is on the table", () => {
+    expect(render(~solveEnabled=true)->solveDesc)->toBe(
+      "Look for a way to win the current game, then offer to play it.",
+    )
   })
 
   test("hands the board over when the row is live", () => {
     let taps = ref(0)
-    let screen = render(~autoplayEnabled=true, ~onAutoplay=() => taps := taps.contents + 1)
-    screen->actionRow(autoplay)->Option.forEach(click)
+    let screen = render(~solveEnabled=true, ~onSolve=() => taps := taps.contents + 1)
+    screen->actionRow(solve)->Option.forEach(click)
     expect(taps.contents)->toBe(1)
   })
 
   test("is really disabled with no board to solve, and says so", () => {
     let taps = ref(0)
-    let screen = render(~autoplayEnabled=false, ~onAutoplay=() => taps := taps.contents + 1)
-    expect(screen->autoplayDesc)->toBe("No game on screen to solve.")
-    switch screen->actionRow(autoplay) {
+    let screen = render(~solveEnabled=false, ~onSolve=() => taps := taps.contents + 1)
+    expect(screen->solveDesc)->toBe("No game on screen to solve.")
+    switch screen->actionRow(solve) {
     | Some(row) =>
       expect(row->hasAttr("disabled"))->toBe(true)
       row->click
       expect(taps.contents)->toBe(0)
-    | None => expect("autoplay row")->toBe("missing")
+    | None => expect("solve row")->toBe("missing")
     }
   })
 
-  test("gives the solver the row's own description to answer in", () => {
-    // A refusal is the whole of what a declined solve leaves behind — the board itself
-    // doesn't move — so it has to be readable where the press happened, and without
-    // growing the row.
-    let screen = render(~autoplayStatus=Some("Autoplay couldn't find a way to win from here."))
-    expect(screen->autoplayDesc)->toBe("Autoplay couldn't find a way to win from here.")
+  test("says it is thinking in the description's place, so the row keeps its height", () => {
+    let screen = render(~solving=true)
+    expect(screen->solveDesc)->toBe(MenuDebugScreen.thinking)
     expect(
       screen
-      ->actionRow(autoplay)
+      ->actionRow(solve)
       ->Option.mapOr(0, row => row->findAll(".menu-row__desc")->Array.length),
     )->toBe(1)
   })
@@ -180,7 +179,7 @@ describe("MenuDebugScreen", () => {
     // order.
     expect(
       render()->findAll(".menu-section > .menu-row--action .menu-row__label")->Array.map(text),
-    )->toEqual(["Autoplay", "Share game state", "Clear saved data"])
+    )->toEqual(["Solve", "Share game state", "Clear saved data"])
   })
 
   test("renders the two groups, scenes first, each with its own entries", () => {

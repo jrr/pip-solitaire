@@ -12,9 +12,10 @@
 //     game** one (New Deal · Enter Seed), the debug/demo scene list as tappable rows,
 //     and the About footer (build/version info plus the conditional "Update" button
 //     beside it).
-//   - `<SeedDialog>` — the modal Enter Seed raises, and `<ShareDialog>` — the one the
-//     Debug screen's Share game state raises; both over the menu and over everything
-//     else, and in the tree only while they're showing.
+//   - `<SeedDialog>` — the modal Enter Seed raises, and `<ShareDialog>` and
+//     `<SolveDialog>` — the ones the Debug screen's Share game state and Solve raise;
+//     all over the menu and over everything else, and in the tree only while they're
+//     showing.
 // The scene area underneath is still the imperative `SceneSwitcher`, and its scene
 // container is spliced into the scene band untouched with `Html.node`, which is
 // exactly how a JSX chrome wraps a subtree it doesn't own. That container is now the
@@ -50,7 +51,7 @@ external registerSW: registerSWOptions => bool => promise<unit> = "registerSW"
 
 // --- Chrome components -------------------------------------------------------
 // The capitalized components used by the view below — `<TopBar/>`, `<Menu/>`,
-// `<DebugConsole/>`, `<SeedDialog/>` and `<ShareDialog/>` — live under
+// `<DebugConsole/>`, `<SeedDialog/>`, `<ShareDialog/>` and `<SolveDialog/>` — live under
 // `src/components/` (the menu's own under `components/menu/`). Each is a
 // `props => vnode` function; capitalized JSX lowers
 // `<TopBar .../>` to `Html.jsx(TopBar.make, props)`, filling the module's `props`
@@ -134,11 +135,12 @@ type model = {
   shareLinks: option<ShareLink.links>,
   shareDialogOpen: bool,
   shareStatus: option<string>,
-  // The Debug screen's "Autoplay" row: what the solver had to say, standing in for the
-  // row's description until the screen is left. Only ever a refusal or the word that
-  // the search has started — a line the solver *found* takes the menu down with it, so
-  // there is nothing left here to read it on.
-  autoplayStatus: option<string>,
+  // The Debug screen's "Solve" row: whether a search is running, and the answer once it
+  // is in — which is what raises `SolveDialog`. Like the other dialogs it belongs to the
+  // open menu: closing the menu takes it down, and an answer that arrives after the
+  // menu has gone is dropped rather than raised over a board nobody is asking about.
+  solving: bool,
+  solved: option<TableScene.solved>,
   // The main menu's "this game" section: the seed of the board on the table, which the
   // heading names and Share hands over a link to, reported by the scene (`~onDeal`
   // below) — and the transient line under the buttons
@@ -200,7 +202,9 @@ type msg =
   | OpenShareDialog // the Debug screen's Share game state — raise the modal over the menu
   | CloseShareDialog // its Close, or a tap on the dim behind it
   | ShareStatus(option<string>) // the share dialog's transient status line; `None` clears it
-  | AutoplayStatus(option<string>) // what the solver said, in the Autoplay row's description
+  | SolveStarted // the Debug screen's Solve — a search is running
+  | SolveAnswered(TableScene.solved) // what it found; raises the modal over the menu
+  | CloseSolveDialog // its Close, or a tap on the dim behind it
   | DealChanged(option<int>) // the board reported which deal it's showing
   | ShareDealStatus(option<string>) // the Share button's transient status line; `None` clears it
   | OpenSeedDialog // the main menu's Enter Seed button — raise the modal over the menu
@@ -542,7 +546,7 @@ let update = (msg, model) =>
   // about both for that reason: a dialog up over a menu already gone would otherwise
   // survive the very message meant to clear the screen.
   | CloseMenu =>
-    model.menuOpen || model.seedDialogOpen || model.shareDialogOpen
+    model.menuOpen || model.seedDialogOpen || model.shareDialogOpen || model.solved->Option.isSome
       ? (
           {
             ...model,
@@ -554,6 +558,8 @@ let update = (msg, model) =>
             seedInput: "",
             shareDialogOpen: false,
             shareStatus: None,
+            solving: false,
+            solved: None,
           },
           Html.noEffect,
         )
@@ -603,7 +609,8 @@ let update = (msg, model) =>
         shareLinks: None,
         shareDialogOpen: false,
         shareStatus: None,
-        autoplayStatus: None,
+        solving: false,
+        solved: None,
       },
       Html.noEffect,
     )
@@ -690,7 +697,12 @@ let update = (msg, model) =>
   | RefreshChecked => ({...model, refreshBusy: false}, Html.noEffect)
   | ShareLinkReady(shareLinks) => ({...model, shareLinks}, Html.noEffect)
   | ShareStatus(shareStatus) => ({...model, shareStatus}, Html.noEffect)
-  | AutoplayStatus(autoplayStatus) => ({...model, autoplayStatus}, Html.noEffect)
+  | SolveStarted => ({...model, solving: true, solved: None}, Html.noEffect)
+  | SolveAnswered(solved) =>
+    model.menuOpen && model.solving
+      ? ({...model, solving: false, solved: Some(solved)}, Html.noEffect)
+      : (model, Html.noEffect)
+  | CloseSolveDialog => ({...model, solved: None}, Html.noEffect)
   // A new deal reached the table. Whatever status line the previous deal's
   // share left up goes with it — "Link copied to clipboard." must not sit under a
   // number it no longer refers to.
@@ -1496,6 +1508,20 @@ let settingsScreen = (model, dispatch): MenuSettingsScreen.props => {
   },
 }
 
+// The Solve modal, raised over the Debug screen with the solver's answer. A line found
+// is played on the board, which is behind this panel — so Autoplay closes the menu on
+// it, the way New Game and Restart do.
+let solveDialog = (dispatch, {reply, play}: TableScene.solved): SolveDialog.props => {
+  message: Render.toPlain(reply),
+  onAutoplay: play->Option.map(play =>
+    () => {
+      dispatch(CloseMenu)
+      play()
+    }
+  ),
+  onClose: () => dispatch(CloseSolveDialog),
+}
+
 // The Debug screen: developer tools, a level below Settings.
 let debugScreen = (model, dispatch): MenuDebugScreen.props => {
   onClose: () => dispatch(CloseMenu),
@@ -1507,33 +1533,23 @@ let debugScreen = (model, dispatch): MenuDebugScreen.props => {
   // Asked of the live board rather than the model: the row is live wherever a command
   // has somewhere to land, which is the same question the console answers with "no board
   // on this scene".
-  autoplayEnabled: liveBoard.contents->Option.isSome,
-  autoplayStatus: model.autoplayStatus,
-  // The console's `autoplay`, pressed instead of typed — and the two things a button
-  // has to do that a typed line doesn't.
+  solveEnabled: liveBoard.contents->Option.isSome,
+  solving: model.solving,
+  // The console's `autoplay`, pressed instead of typed, with the playing held back for a
+  // second press (`SolveDialog`).
   //
   // **It says it is thinking first, and is seen doing it.** `Solver.interactive` is ten
   // seconds and a search routinely spends seconds of it, but the search is on a worker
-  // thread (`TableScene`'s `autoplay`, and `Thinker` behind it), so this one is free to
+  // thread (`TableScene`'s `solve`, and `Thinker` behind it), so this one is free to
   // paint the row it just wrote and keep painting while the answer is worked out. The
-  // press returns at once; what follows arrives whenever it arrives.
-  //
-  // **Then it gets out of the way, or explains itself.** A line found is played on the
-  // board a move at a time, and the board is behind this panel — so the menu closes on
-  // it, the way New Game and Restart do. A refusal moves nothing, which is a board that
-  // says nothing by itself, so the menu stays up and the solver's words take over the
-  // row. Either way the reply also goes to the log, where the typed verb's does and
-  // where the play-by-play is about to appear under it.
-  onAutoplay: () => {
-    dispatch(AutoplayStatus(Some(MenuDebugScreen.thinking)))
+  // press returns at once; what follows arrives whenever it arrives. The reply also goes
+  // to the log, where the typed verb's does.
+  onSolve: () => {
+    dispatch(SolveStarted)
     liveBoard.contents->Option.forEach(board =>
-      board.autoplay(~onAnswer=({playing, reply}) => {
-        DebugConsole.say(reply)
-        if playing {
-          dispatch(CloseMenu)
-        } else {
-          dispatch(AutoplayStatus(Some(Render.toPlain(reply))))
-        }
+      board.solve(~onAnswer=solved => {
+        DebugConsole.say(solved.reply)
+        dispatch(SolveAnswered(solved))
       })
     )
   },
@@ -1668,6 +1684,10 @@ let view = (model, dispatch) => <>
   | (true, Some(links)) => ShareDialog.make(shareDialog(model, dispatch, links))
   | _ => Html.empty
   }}
+  {switch model.solved {
+  | Some(solved) => SolveDialog.make(solveDialog(dispatch, solved))
+  | None => Html.empty
+  }}
 </>
 
 // --- Wire it up --------------------------------------------------------------
@@ -1742,8 +1762,9 @@ let dispatch = Html.mount(
     shareLinks: None,
     shareDialogOpen: false,
     shareStatus: None,
-    // …and the Autoplay row has nothing to report until it is pressed.
-    autoplayStatus: None,
+    // …and the Solve row has nothing to report until it is pressed.
+    solving: false,
+    solved: None,
     // Seeded from the board's opening deal report, for the same reason
     // `canUndo` is: it fired during the switcher's initial mount above, before
     // `dispatch` existed. On a plain open that report *is* the deal number the Share

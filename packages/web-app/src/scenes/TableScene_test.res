@@ -1182,6 +1182,35 @@ describe("TableScene autoplay", () => {
     }
   })
 
+  testAsync("a solve leaves the board alone until its line is played", async () => {
+    let game = Game.freecell
+    let saved = ref(None)
+    let board = ref(None)
+    let container = host("div")
+    let scene = TableScene.make(
+      ~initial=Scenario.freecellFinish(game),
+      ~persist=s => saved := Some(s),
+      ~publish=published => board := Some(published),
+      game,
+    )
+    let _teardown = scene.mount(container)
+    let before = statsOf(saved)
+    let answer = ref(None)
+    live(board).solve(~onAnswer=a => answer := Some(a))
+    await nextTick()
+    // Found, but not played: nothing saved since, so not even the reach is counted.
+    expect(statsOf(saved))->toEqual(before)
+    expect(hasWinOverlay(container))->toBe(false)
+    switch answer.contents->Option.flatMap(a => a.play) {
+    | Some(play) =>
+      play()
+      await nextTick()
+      expect(statsOf(saved)->Option.map(stats => stats.autoplays))->toEqual(Some(1))
+      expect(hasWinOverlay(container))->toBe(true)
+    | None => expect("a line to play")->toBe("none offered")
+    }
+  })
+
   testAsync("an autoplayed win keeps its Share button to itself, undo or no undo", async () => {
     // The requirement, end to end: autoplay, undo back out of everything it did, win
     // the game by hand from there — the victory is still not shareable, because the

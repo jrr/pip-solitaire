@@ -314,7 +314,7 @@ interactive ten seconds, four of the first five two-suit deals came back out of
 time, and the one that solved took 206 moves. Five deals is a probe, not a record,
 and the honest reading is only that the numbers above do not carry over — a board
 twice the size is not the same search at the same cap. Whoever measures it properly
-owes a range and a row; until then the Debug screen's Autoplay row on a Spider board
+owes a range and a row; until then the Debug screen's Solve row on a Spider board
 is ten seconds of thinking and then a refusal, which is the designed path
 (`Solver.ranOutOfTime`) and not a wait anyone should be asked to like.
 

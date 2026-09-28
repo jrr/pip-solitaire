@@ -1,0 +1,91 @@
+@layer components {
+  /* The "solve" modal (see SolveDialog.res). Its frame — scrim, panel,
+     buttons — is the seed dialog's (SeedDialog.css), stated again because each sheet
+     styles only its own component; the look itself comes from the `--panel-*` tokens
+     in styles/base.css, which is where a change to it goes. */
+
+  #solve-dialog {
+    position: fixed;
+    inset: 0;
+    /* Over the menu (z-index: 20 — see Menu.css), which stays up behind the dim. */
+    z-index: 30;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: calc(env(safe-area-inset-top) + 1rem) 1rem
+      calc(env(safe-area-inset-bottom) + 1rem);
+    animation: solve-dialog-in 0.15s ease-out;
+  }
+
+  @keyframes solve-dialog-in {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+
+  .solve-dialog__backdrop {
+    position: absolute;
+    inset: 0;
+    background: rgba(2, 6, 16, 0.7);
+  }
+
+  .solve-dialog__panel {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    width: min(22rem, 100%);
+    max-height: 100%;
+    overflow-y: auto;
+    padding: 24px;
+    background: var(--panel-bg);
+    border: var(--panel-border);
+    border-radius: var(--panel-radius);
+    box-shadow: var(--panel-shadow);
+    text-align: center;
+  }
+
+  .solve-dialog__title {
+    margin: 0;
+    font: 600 22px "Libre Franklin", sans-serif;
+    color: var(--panel-accent);
+  }
+
+  .solve-dialog__message {
+    margin: 0;
+    font: 14px "Libre Franklin", sans-serif;
+    color: var(--panel-ink-quiet);
+  }
+
+  .solve-dialog__actions {
+    display: flex;
+    gap: 12px;
+  }
+
+  .solve-dialog__button {
+    flex: 1 1 0;
+    padding: var(--panel-button-pad);
+    font: var(--panel-button-font);
+    color: var(--panel-ink);
+    background: var(--panel-button-bg);
+    border: none;
+    border-radius: var(--panel-button-radius);
+    cursor: pointer;
+  }
+
+  .solve-dialog__button:hover {
+    background: var(--panel-button-bg-hover);
+  }
+
+  .solve-dialog__button--close {
+    background: var(--panel-button-alt-bg);
+  }
+
+  /* The same specificity as the green hover above, so it wins by coming after it. */
+  .solve-dialog__button--close:hover {
+    background: var(--panel-button-alt-bg-hover);
+  }
+}

@@ -1,12 +1,13 @@
-// The Debug screen's "Autoplay" row: the console's `autoplay`, pressed instead of
-// typed. The board goes to the solver, and the menu that was covering it comes down so
-// the line can be watched being played.
+// The Debug screen's "Solve" row: the console's `autoplay`, pressed instead of typed,
+// with the playing held back. The board goes to the solver, the answer comes up in a
+// modal, and its Autoplay button takes the menu down so the line can be watched being
+// played.
 //
 // Browser-only for the same reason the row exists at all. `MenuDebugScreen_test` pins
 // what the row says and `TableScene_test` what the board answers; what neither can
-// reach is the thing in between — a real search on a real worker thread, a menu that
-// takes itself down when one comes back with a line, and a board that plays it through
-// to a win with nobody typing anything.
+// reach is the thing in between — a real search on a real worker thread, a modal that
+// comes up with its answer, and a board that plays it through to a win with nobody
+// typing anything.
 //
 // Nor can either of them reach what a *thread* is for. jsdom has no `Worker` at all, so
 // the unit suite is answered on the spot by `Thinker`'s fallback and a search there is
@@ -45,31 +46,52 @@ const THINKING = "Thinking…"
 const WATCH_MS = 1000
 const FRAMES_EXPECTED = 15
 
-const autoplayRow = (page) =>
+const solveRow = (page) =>
   page.locator(".menu-row--action", {
-    has: page.locator('.menu-row__label:text-is("Autoplay")'),
+    has: page.locator('.menu-row__label:text-is("Solve")'),
   })
+
+const solveDialog = (page) => page.locator("#solve-dialog")
 
 const openDebug = async (page) => {
   await page.getByRole("button", { name: "Open menu" }).click()
   await openSettings(page)
   await page.getByRole("button", { name: "Debug" }).first().click()
-  await expect(autoplayRow(page)).toBeVisible()
+  await expect(solveRow(page)).toBeVisible()
 }
 
-test("the row hands the board to the solver, gets out of the way, and the line is played", async ({
+test("the row hands the board to the solver, says what it found, and plays it on request", async ({
   page,
 }) => {
   await page.goto(DEAL)
   await settleBoard(page)
   await openDebug(page)
-  await expect(autoplayRow(page)).toHaveText(/Solve the current game/)
+  await expect(solveRow(page)).toHaveText(/Look for a way to win/)
 
-  await autoplayRow(page).click()
-  // The menu goes when — and only when — there is a line to watch, so this is the press's
-  // answer as much as the cards are.
+  await solveRow(page).click()
+  // Found, not played: the answer is up over the menu, which is still there behind it.
+  await expect(solveDialog(page)).toHaveText(/solution found/, { timeout: 30_000 })
+  await expect(page.locator("#menu-overlay")).toBeVisible()
+
+  await solveDialog(page).getByRole("button", { name: "Autoplay" }).click()
+  await expect(solveDialog(page)).toBeHidden()
   await expect(page.locator("#menu-overlay")).toBeHidden()
   await expect(page.locator(".win-overlay")).toBeVisible({ timeout: 60_000 })
+})
+
+test("an answer with no line to play offers only Close, back to the Debug screen", async ({
+  page,
+}) => {
+  // Out of patience after ten seconds (see `SLOW_DEAL`), which is a refusal.
+  await page.goto(SLOW_DEAL)
+  await settleBoard(page)
+  await openDebug(page)
+  await solveRow(page).click()
+  await expect(solveDialog(page)).toHaveText(/gave up|couldn't|no way/, { timeout: 30_000 })
+  await expect(solveDialog(page).getByRole("button")).toHaveText(["Close"])
+  await solveDialog(page).getByRole("button", { name: "Close" }).click()
+  await expect(solveDialog(page)).toBeHidden()
+  await expect(solveRow(page)).toBeVisible()
 })
 
 test("the page keeps painting while the solver thinks, and the row says so", async ({ page }) => {
@@ -77,11 +99,11 @@ test("the page keeps painting while the solver thinks, and the row says so", asy
   await settleBoard(page)
   await openDebug(page)
 
-  await autoplayRow(page).click()
+  await solveRow(page).click()
   // The complaint this whole arrangement answers: the row writes "Thinking…" and the
   // search used to take the thread before the paint carrying it ever happened, so the
   // word was never on screen. Now it is.
-  await expect(autoplayRow(page)).toHaveText(new RegExp(THINKING))
+  await expect(solveRow(page)).toHaveText(new RegExp(THINKING))
 
   // Counted from inside the page, because the question is about the page's own main
   // thread: `requestAnimationFrame` only fires between tasks, so a thread sitting in the
@@ -102,7 +124,7 @@ test("the page keeps painting while the solver thinks, and the row says so", asy
   expect(frames).toBeGreaterThan(FRAMES_EXPECTED)
   // …and the search those frames were drawn during is the one still running, rather than
   // one that finished before the counting started.
-  await expect(autoplayRow(page)).toHaveText(new RegExp(THINKING))
+  await expect(solveRow(page)).toHaveText(new RegExp(THINKING))
 })
 
 test("a scene with no board to solve says so, and the row can't be pressed", async ({ page }) => {
@@ -110,6 +132,6 @@ test("a scene with no board to solve says so, and the row can't be pressed", asy
   // "no board on this scene" — and a row that can't act is dark rather than sorry.
   await page.goto("/?scene=gallery")
   await openDebug(page)
-  await expect(autoplayRow(page)).toHaveText(/No game on screen to solve\./)
-  await expect(autoplayRow(page)).toBeDisabled()
+  await expect(solveRow(page)).toHaveText(/No game on screen to solve\./)
+  await expect(solveRow(page)).toBeDisabled()
 })
