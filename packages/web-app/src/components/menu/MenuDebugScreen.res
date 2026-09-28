@@ -6,8 +6,8 @@
 //     step back up, not all the way out — beside the ✕;
 //   - the **Safe-area overlay** toggle (`cutoutDebug`) and the **Console logging**
 //     toggle (`debugLog` — narrates the UI↔core traffic to the JS console);
-//   - the three action rows: **Autoplay** (the console's verb of the same name, as a
-//     button), **Share game state** (`ShareLink`) and **Clear saved data**
+//   - the three action rows: **Solve** (the console's `autoplay`, split into asking and
+//     playing — `SolveDialog` holds the answer), **Share game state** (`ShareLink`) and **Clear saved data**
 //     (`StoredState`);
 //   - the collapsible groups: the demo scenes (`debugScenes`, labelled "scenes") and
 //     the named starting positions (`debugStates`, "states") a tap drops the board
@@ -30,15 +30,14 @@ type props = {
   onToggleCutoutDebug: unit => unit,
   debugLog: bool,
   onToggleDebugLog: unit => unit,
-  // "Autoplay": whether there is a board behind this screen to hand to the solver.
+  // "Solve": whether there is a board behind this screen to hand to the solver.
   // False on a scene with no game, where the row goes dark rather than answering a tap
   // with a refusal.
-  autoplayEnabled: bool,
-  // What the solver said. It takes over the row's description the way a share's status
-  // does, and for the same reason — a row that grew a line of its own would shove the
-  // scene lists below it down the panel.
-  autoplayStatus: option<string>,
-  onAutoplay: unit => unit,
+  solveEnabled: bool,
+  // Whether a search is running. The answer itself goes up in `SolveDialog`; what the
+  // row carries meanwhile takes over its description, so it doesn't change height.
+  solving: bool,
+  onSolve: unit => unit,
   // "Share game state" (`ShareLink`): whether a link has been encoded for the board
   // behind this screen — false on a scene with no game, and for the moment between
   // opening the screen and the encode resolving, which is what the disabled state
@@ -61,18 +60,17 @@ type props = {
   debugStates: array<MenuDisclosure.entry>,
 }
 
-// What the row says while the solver is searching. The search holds the thread for as
-// long as it runs, so this is the last thing the panel paints before it stops answering
-// — which is what makes a word here worth painting at all, and the freeze that follows
-// a thing being waited out rather than a hang.
+// What the row says while the solver is searching, on a worker thread, for up to ten
+// seconds — long enough that a row that said nothing would read as a tap that missed.
 let thinking = "Thinking…"
 
-// The "Autoplay" row's description — the solver's own words once it has any, standing
-// in for the description so the row doesn't change height as they come and go.
-let autoplayDesc = (~enabled, ~status) =>
-  switch status {
-  | Some(status) => status
-  | None => enabled ? "Solve the current game for me." : "No game on screen to solve."
+let solveDesc = (~enabled, ~solving) =>
+  if solving {
+    thinking
+  } else if enabled {
+    "Look for a way to win the current game, then offer to play it."
+  } else {
+    "No game on screen to solve."
   }
 
 let shareDesc = (~enabled) =>
@@ -87,9 +85,9 @@ let make = ({
   onToggleCutoutDebug,
   debugLog,
   onToggleDebugLog,
-  autoplayEnabled,
-  autoplayStatus,
-  onAutoplay,
+  solveEnabled,
+  solving,
+  onSolve,
   shareEnabled,
   onShareGame,
   onClearStored,
@@ -118,15 +116,11 @@ let make = ({
         on=debugLog
         onToggle=onToggleDebugLog
       />
-      // The console's `autoplay` without the console: the solver takes the board and
-      // plays its line out a move at a time. A line found takes this menu down with it —
-      // the run is the answer, and it is behind the panel — so the status line only ever
-      // carries a refusal, or the word that the thinking has started.
       <MenuActionRow
-        label="Autoplay"
-        desc={autoplayDesc(~enabled=autoplayEnabled, ~status=autoplayStatus)}
-        enabled=autoplayEnabled
-        onClick=onAutoplay
+        label="Solve"
+        desc={solveDesc(~enabled=solveEnabled, ~solving)}
+        enabled=solveEnabled
+        onClick=onSolve
       />
       // "Share game state" (`ShareLink`): the board behind this screen as a link, shown
       // in `ShareDialog` as a QR code and a Copy button.

@@ -314,7 +314,7 @@ interactive ten seconds, four of the first five two-suit deals came back out of
 time, and the one that solved took 206 moves. Five deals is a probe, not a record,
 and the honest reading is only that the numbers above do not carry over — a board
 twice the size is not the same search at the same cap. Whoever measures it properly
-owes a range and a row; until then the Debug screen's Autoplay row on a Spider board
+owes a range and a row; until then the Debug screen's Solve row on a Spider board
 is ten seconds of thinking and then a refusal, which is the designed path
 (`Solver.ranOutOfTime`) and not a wait anyone should be asked to like.
 
@@ -571,7 +571,18 @@ imply.
 
 Changing only those two — an FNV-1a-per-column numeric key, and parent pointers
 instead of copied paths — measured ~1.9× over deals 1–60, finding the identical
-line on every one of them. Re-profiled after that, the collector was still ~23%,
+line on every one of them.
+
+**Parent pointers went in, for memory rather than speed** — along with the frontier
+holding each node's *parent* and replaying its last move when it is taken off, and a
+key spelled one character per card. On a Spider board a pass generates fifteen
+positions for every one it grows, and holding each of those whole, with its own copy
+of a two-hundred-move path, took ten seconds of `Solver.interactive` past a gigabyte —
+which iOS answers by killing the tab, worker and all, and reloading it. The three
+together measured 1,518 MB → 379 MB of live heap over 100,000 nodes of a Spider
+position, a little faster, and the identical line on every deal of 1–40 on five
+boards. The key stays exact: a hash would be smaller still, but a collision prunes a
+position, and `Exhausted` is only a proof while nothing is pruned that wasn't seen. Re-profiled after that, the collector was still ~23%,
 now behind `applyMove`'s `copy`; make/unmake against one mutable board would take
 most of that too. **Call it 3–4× available without leaving the language, and the
 rules untouched by any of it.**

@@ -258,8 +258,38 @@ type ending =
 // into (every one of them is an `applyMove`, a `key` and a `canFinish`).
 type outcome = {path: option<array<Position.move>>, nodes: int, applied: int, ending: ending}
 
-// One node of the open list: a position and the moves that reached it.
-type node = {position: Position.t, path: array<Position.move>}
+// The moves that reached a node, newest first, each link shared by every position
+// grown from it. **Not an array per node**: a copied path costs its whole length at every
+// position on the frontier, and on a board whose lines run to two hundred moves that is
+// most of the heap — enough, in ten seconds of Spider, for iOS to kill the tab.
+type rec trail = {move: Position.move, from: option<trail>}
+
+// One node of the open list: how many moves reached it, and which — and the position
+// *before* the last of them, which is played again when the node is taken off. **Not the
+// position itself**: the frontier holds an order of magnitude more nodes than are ever
+// grown, and a parent is shared by all its children where a child's own board is not.
+// Holding each child's board is what fills the heap; replaying one move on the way out
+// is cheap next to the fifteen-odd the search plays out to look at every node it grows.
+type node = {parent: Position.t, g: int, trail: option<trail>}
+
+let positionOf = ({parent, trail}: node): Position.t =>
+  switch trail {
+  | None => parent
+  | Some({move}) => Position.applyMove(parent, move)
+  }
+
+// A trail as the line it records, oldest move first.
+let lineOf = (trail: option<trail>): array<Position.move> => {
+  let line = []
+  let at = ref(trail)
+  while Option.isSome(at.contents) {
+    let {move, from} = Option.getUnsafe(at.contents)
+    line->Array.push(move)
+    at := from
+  }
+  line->Array.reverse
+  line
+}
 
 // Weighted best-first search from `start` to the first position that
 // `Position.canFinish`.
@@ -277,7 +307,7 @@ let search = (
     let seen = Map.make()
     seen->Map.set(Position.key(start), 0)
     frontier->Heap.push(
-      {position: start, path: []},
+      {parent: start, g: 0, trail: None},
       ~priority=Int.toFloat(heuristic(start, weights)) *. attempt.weight,
     )
     let nodes = ref(0)
@@ -294,7 +324,8 @@ let search = (
     ) {
       switch Heap.pop(frontier) {
       | None => ()
-      | Some({position, path}) =>
+      | Some({g: depth, trail} as node) =>
+        let position = positionOf(node)
         nodes := nodes.contents + 1
         if mod(nodes.contents, clockEvery) == 0 {
           expired := past(deadline)
@@ -306,18 +337,18 @@ let search = (
           let next = Position.applyMove(position, move)
           applied := applied.contents + 1
           let key = Position.key(next)
-          let g = Array.length(path) + 1
+          let g = depth + 1
           // A position reached no more cheaply than before teaches nothing new.
           switch seen->Map.get(key) {
           | Some(prior) if prior <= g => ()
           | _ =>
             seen->Map.set(key, g)
-            let nextPath = Array.concat(path, [move])
+            let nextTrail = Some({move, from: trail})
             if Position.canFinish(next) {
-              found := Some(nextPath)
+              found := Some(lineOf(nextTrail))
             } else {
               frontier->Heap.push(
-                {position: next, path: nextPath},
+                {parent: position, g, trail: nextTrail},
                 ~priority=Int.toFloat(g) +. Int.toFloat(heuristic(next, weights)) *. attempt.weight,
               )
             }
