@@ -191,6 +191,33 @@ apart. A deal that ran out of a `--limit` is unsolved like any other — the lim
 what the caller chose to spend, not a verdict on the board — and the summary says how
 many of the unsolved were that.
 
+**Every deal is also weighed.** Beside its time, each deal reports what the search
+*held*, and the summary gives the mean over the range and the deal that held most —
+the "Held" column in every table below. It is the live JavaScript heap at the largest
+point of the climb, less what was live before the call: the collector is run at the
+last clock read of each rung, where that rung's frontier and visited set are as big as
+they get and still in hand, and the biggest of those readings is the figure. A rung
+that spends its budget is released for the next, so the heap at the moment of the
+answer is not the figure — a capped Spider deal can hold 400 MB in its first rung and
+14 MB when the limit stops its second.
+
+That collection can't be charged to the time, so each deal is solved **twice**: the
+timed run, and a repeat that replays the timed run's clock reading for reading — the
+same search, cap included — and is the only one collected. So the task runs Node with
+`--expose-gc`, and a soak's wall time is about twice what its rows add up to.
+
+What it counts: every position, frontier entry and map key the search can still
+reach. What it doesn't: the garbage made along the way (the collector's time shows in
+the milliseconds instead), anything a larger heap costs a process beyond the heap
+itself, and whatever happens between two reads — they are `Solver.clockEvery`
+positions apart, so the figure is within that many positions of the true peak. It is
+in megabytes of a million bytes.
+
+It is the same *kind* of number as the 379 MB in § On making this faster — V8's live
+heap after a full collection — but not the same measurement: that was a browser heap
+snapshot over a fixed 100,000 nodes of one Spider position, and this is a whole deal's
+climb in Node.
+
 ## The benchmark record
 
 Deals are dealt by `Game.freecellDeal` and `Game.simpleSimonDeal`, so this is
@@ -199,64 +226,71 @@ core's own shuffle, not Microsoft's numbering. "Moves" counts moves to the
 
 **FreeCell**
 
-| Date | Deals | Solved | Mean | Mean moves | Worst | Environment |
-|---|---|---|---|---|---|---|
-| 2026-08-29 | 1–1000 | 1000/1000 | 101 ms | 54 | #582 at 7.2 s | Node v26.7.0, CI runner |
-| 2026-09-10 | 1–1000 | 1000/1000 | 62 ms | 54 | #582 at 4.6 s | Node v26.7.0, Apple Silicon laptop |
-| 2026-09-19 | 1–1000 | 1000/1000 | 107 ms | 54 | #582 at 7.4 s | Node v26.7.0, CI runner |
-| 2026-09-20 | 1–1000 | 1000/1000 | 123 ms | 54 | #582 at 8.5 s | Node v26.9.0, cloud sandbox |
+| Date | Deals | Solved | Mean | Mean moves | Worst | Held | Environment |
+|---|---|---|---|---|---|---|---|
+| 2026-08-29 | 1–1000 | 1000/1000 | 101 ms | 54 | #582 at 7.2 s | — | Node v26.7.0, CI runner |
+| 2026-09-10 | 1–1000 | 1000/1000 | 62 ms | 54 | #582 at 4.6 s | — | Node v26.7.0, Apple Silicon laptop |
+| 2026-09-19 | 1–1000 | 1000/1000 | 107 ms | 54 | #582 at 7.4 s | — | Node v26.7.0, CI runner |
+| 2026-09-20 | 1–1000 | 1000/1000 | 123 ms | 54 | #582 at 8.5 s | — | Node v26.9.0, cloud sandbox |
+| 2026-09-29 | 1–1000 | 1000/1000 | 85 ms | 54 | #403 at 6.7 s | 4 MB, #582 at 334 MB | Node v26.9.0, cloud sandbox, two soaks at once |
 
 **Simple Simon.** "Unwinnable" is the deals the search *proved* have no line
 (`exhausted`); "unsolved" is the ones the ladder gave up on, which is the number
 a heuristic change is trying to reduce.
 
-| Date | Deals | Solved | Unwinnable | Unsolved | Mean | Mean moves | Worst | Environment |
-|---|---|---|---|---|---|---|---|---|
-| 2026-09-10 | 1–1000 | 941/1000 | 54 | 5 | 458 ms | 85 | #964 at 13.2 s | Node v26.7.0, Apple Silicon laptop |
-| 2026-09-19 | 1–1000 | 941/1000 | 54 | 5 | 732 ms | 85 | #964 at 20.8 s | Node v26.7.0, CI runner |
-| 2026-09-20 | 1–1000 | 941/1000 | 54 | 5 | 855 ms | 85 | #964 at 25.1 s | Node v26.9.0, cloud sandbox |
+| Date | Deals | Solved | Unwinnable | Unsolved | Mean | Mean moves | Worst | Held | Environment |
+|---|---|---|---|---|---|---|---|---|---|
+| 2026-09-10 | 1–1000 | 941/1000 | 54 | 5 | 458 ms | 85 | #964 at 13.2 s | — | Node v26.7.0, Apple Silicon laptop |
+| 2026-09-19 | 1–1000 | 941/1000 | 54 | 5 | 732 ms | 85 | #964 at 20.8 s | — | Node v26.7.0, CI runner |
+| 2026-09-20 | 1–1000 | 941/1000 | 54 | 5 | 855 ms | 85 | #964 at 25.1 s | — | Node v26.9.0, cloud sandbox |
+| 2026-09-29 | 1–1000 | 941/1000 | 54 | 5 | 628 ms | 85 | #964 at 19.2 s | 21 MB, #964 at 533 MB | Node v26.9.0, cloud sandbox, two soaks at once |
 
 **Spiderette · 4 suits**, over 1–200 rather than the thousand: a deal the ladder
 gives up on costs it the whole budget, so this soak is half an hour where Simple
-Simon's is eight minutes. The unsolved count is not zero and is not a target —
+Simon's is twenty minutes. The unsolved count is not zero and is not a target —
 `mise run solve` exits non-zero on this board today, and on the two-suit pack
 below it. Why it stands: § Why the unsolved count stands.
 
-| Date | Deals | Solved | Unwinnable | Unsolved | Mean | Mean moves | Worst | Environment |
-|---|---|---|---|---|---|---|---|---|
-| 2026-09-19 | 1–200 | 159/200 | 8 | 33 | 5.4 s | 105 | #147 at 38.6 s | Node v26.7.0, CI runner |
-| 2026-09-20 | 1–200 | 159/200 | 8 | 33 | 5.9 s | 105 | #147 at 30.2 s | Node v26.9.0, cloud sandbox |
+| Date | Deals | Solved | Unwinnable | Unsolved | Mean | Mean moves | Worst | Held | Environment |
+|---|---|---|---|---|---|---|---|---|---|
+| 2026-09-19 | 1–200 | 159/200 | 8 | 33 | 5.4 s | 105 | #147 at 38.6 s | — | Node v26.7.0, CI runner |
+| 2026-09-20 | 1–200 | 159/200 | 8 | 33 | 5.9 s | 105 | #147 at 30.2 s | — | Node v26.9.0, cloud sandbox |
+| 2026-09-29 | 1–200 | 159/200 | 8 | 33 | 4.3 s | 105 | #147 at 22.2 s | 188 MB, #162 at 897 MB | Node v26.9.0, cloud sandbox, two soaks at once |
 
 **Spiderette · 1 suit and · 2 suits**, over the same 1–200. The same law, ladder
 and weights on a cheaper deck — these are the repeated packs, where `found`
 counts a suit's runs rather than naming one (§ The packed position). One suit
-has nothing to build wrong, so every deal is answered and the soak is under a
-minute; two suits sits between it and the four-suit board — a ten-minute soak,
+has nothing to build wrong, so every deal is answered and the soak is about a
+minute; two suits sits between it and the four-suit board — a quarter-hour soak,
 and an unsolved count of its own.
 
-| Date | Board | Deals | Solved | Unwinnable | Unsolved | Mean | Mean moves | Worst | Environment |
-|---|---|---|---|---|---|---|---|---|---|
-| 2026-09-19 | 1 suit | 1–200 | 198/200 | 2 | 0 | 252 ms | 71 | #143 at 17.7 s | Node v26.9.0, cloud sandbox |
-| 2026-09-19 | 2 suits | 1–200 | 183/200 | 5 | 12 | 2.8 s | 86 | #42 at 38.3 s | Node v26.9.0, cloud sandbox |
-| 2026-09-20 | 1 suit | 1–200 | 198/200 | 2 | 0 | 262 ms | 71 | #143 at 17.8 s | Node v26.9.0, cloud sandbox |
-| 2026-09-20 | 2 suits | 1–200 | 183/200 | 5 | 12 | 3.0 s | 86 | #42 at 40.2 s | Node v26.9.0, cloud sandbox |
+| Date | Board | Deals | Solved | Unwinnable | Unsolved | Mean | Mean moves | Worst | Held | Environment |
+|---|---|---|---|---|---|---|---|---|---|---|
+| 2026-09-19 | 1 suit | 1–200 | 198/200 | 2 | 0 | 252 ms | 71 | #143 at 17.7 s | — | Node v26.9.0, cloud sandbox |
+| 2026-09-19 | 2 suits | 1–200 | 183/200 | 5 | 12 | 2.8 s | 86 | #42 at 38.3 s | — | Node v26.9.0, cloud sandbox |
+| 2026-09-20 | 1 suit | 1–200 | 198/200 | 2 | 0 | 262 ms | 71 | #143 at 17.8 s | — | Node v26.9.0, cloud sandbox |
+| 2026-09-20 | 2 suits | 1–200 | 183/200 | 5 | 12 | 3.0 s | 86 | #42 at 40.2 s | — | Node v26.9.0, cloud sandbox |
+| 2026-09-29 | 1 suit | 1–200 | 198/200 | 2 | 0 | 178 ms | 71 | #143 at 12.5 s | 8 MB, #143 at 472 MB | Node v26.9.0, cloud sandbox, two soaks at once |
+| 2026-09-29 | 2 suits | 1–200 | 183/200 | 5 | 12 | 2.2 s | 86 | #42 at 30.0 s | 86 MB, #100 at 963 MB | Node v26.9.0, cloud sandbox, two soaks at once |
 
 **Mini and Micro**, under FreeCell's law and its weights. Every deal is
 *answered* — the ladder's first rung either finds a line or empties its frontier
 — so the number to watch here is "unsolved", and it is zero.
 
-| Date | Board | Deals | Solved | Unwinnable | Unsolved | Mean | Mean moves | Worst | Environment |
-|---|---|---|---|---|---|---|---|---|---|
-| 2026-09-17 | Mini | 1–1000 | 992/1000 | 8 | 0 | <1 ms | 11 | #10 at 49 ms | Node v26.7.0, CI runner |
-| 2026-09-17 | Micro | 1–1000 | 981/1000 | 19 | 0 | <1 ms | 10 | #699 at 8 ms | Node v26.7.0, CI runner |
-| 2026-09-19 | Mini | 1–1000 | 992/1000 | 8 | 0 | <1 ms | 11 | #10 at 38 ms | Node v26.7.0, CI runner |
-| 2026-09-19 | Micro | 1–1000 | 981/1000 | 19 | 0 | <1 ms | 10 | #699 at 7 ms | Node v26.7.0, CI runner |
-| 2026-09-20 | Mini | 1–1000 | 992/1000 | 8 | 0 | <1 ms | 11 | #10 at 35 ms | Node v26.9.0, cloud sandbox |
-| 2026-09-20 | Micro | 1–1000 | 981/1000 | 19 | 0 | <1 ms | 10 | #699 at 8 ms | Node v26.9.0, cloud sandbox |
+| Date | Board | Deals | Solved | Unwinnable | Unsolved | Mean | Mean moves | Worst | Held | Environment |
+|---|---|---|---|---|---|---|---|---|---|---|
+| 2026-09-17 | Mini | 1–1000 | 992/1000 | 8 | 0 | <1 ms | 11 | #10 at 49 ms | — | Node v26.7.0, CI runner |
+| 2026-09-17 | Micro | 1–1000 | 981/1000 | 19 | 0 | <1 ms | 10 | #699 at 8 ms | — | Node v26.7.0, CI runner |
+| 2026-09-19 | Mini | 1–1000 | 992/1000 | 8 | 0 | <1 ms | 11 | #10 at 38 ms | — | Node v26.7.0, CI runner |
+| 2026-09-19 | Micro | 1–1000 | 981/1000 | 19 | 0 | <1 ms | 10 | #699 at 7 ms | — | Node v26.7.0, CI runner |
+| 2026-09-20 | Mini | 1–1000 | 992/1000 | 8 | 0 | <1 ms | 11 | #10 at 35 ms | — | Node v26.9.0, cloud sandbox |
+| 2026-09-20 | Micro | 1–1000 | 981/1000 | 19 | 0 | <1 ms | 10 | #699 at 8 ms | — | Node v26.9.0, cloud sandbox |
+| 2026-09-29 | Mini | 1–1000 | 992/1000 | 8 | 0 | <1 ms | 11 | #10 at 39 ms | <1 MB | Node v26.9.0, cloud sandbox, two soaks at once |
+| 2026-09-29 | Micro | 1–1000 | 981/1000 | 19 | 0 | <1 ms | 10 | #699 at 13 ms | <1 MB | Node v26.9.0, cloud sandbox, two soaks at once |
 
 Over deals 1–200 that is 198 and 196 solved — the same counts `Game.res` records
 from an exhaustive single-card search when it chose two free cells for each
-board, arrived at by a different method. A soak of a short pack costs about two
+board, arrived at by a different method. A soak of a short pack costs a few
 seconds for the thousand, so it is worth running beside the other two.
 
 Method: `mise run solve -- --quiet 1-1000` (with `--game simplesimon` for the
@@ -278,22 +312,32 @@ comparison — the slowest of the 54 took 6.6 s, and most take a millisecond.
 Every row above is the ladder with nothing in its way, and that is what those
 tables are for. This is the same ladder under `Solver.interactive` — the ten
 seconds a watched board gets — over the same ranges, each capped row beside the
-uncapped one it should be read against. All six rows were measured in one sitting
-on one machine, so here the times compare as well as the counts; read across any
-other pair of rows in this page and only the counts do.
+uncapped one it should be read against. Each date's six rows were measured in one
+sitting on one machine, so within a date the times compare as well as the counts;
+read across dates, or any other pair of rows in this page, and only the counts do —
+and under a cap not even those, since a faster machine gets further in ten seconds.
 
-| Board | Deals | Wait | Solved | Unwinnable | Unsolved | Mean | Worst |
-|---|---|---|---|---|---|---|---|
-| Simple Simon | 1–1000 | none | 941 | 54 | 5 | 855 ms | #964 at 25.1 s |
-| Simple Simon | 1–1000 | 10 s | 914 | 53 | 33 | 714 ms | #34 at 10.1 s |
-| Spiderette · 2 suits | 1–200 | none | 183 | 5 | 12 | 3.0 s | #42 at 40.2 s |
-| Spiderette · 2 suits | 1–200 | 10 s | 175 | 4 | 21 | 1.7 s | #120 at 10.3 s |
-| Spiderette · 4 suits | 1–200 | none | 159 | 8 | 33 | 5.9 s | #147 at 30.2 s |
-| Spiderette · 4 suits | 1–200 | 10 s | 149 | 7 | 44 | 3.6 s | #141 at 10.1 s |
+| Date | Board | Deals | Wait | Solved | Unwinnable | Unsolved | Mean | Worst | Held |
+|---|---|---|---|---|---|---|---|---|---|
+| 2026-09-20 | Simple Simon | 1–1000 | none | 941 | 54 | 5 | 855 ms | #964 at 25.1 s | — |
+| 2026-09-20 | Simple Simon | 1–1000 | 10 s | 914 | 53 | 33 | 714 ms | #34 at 10.1 s | — |
+| 2026-09-20 | Spiderette · 2 suits | 1–200 | none | 183 | 5 | 12 | 3.0 s | #42 at 40.2 s | — |
+| 2026-09-20 | Spiderette · 2 suits | 1–200 | 10 s | 175 | 4 | 21 | 1.7 s | #120 at 10.3 s | — |
+| 2026-09-20 | Spiderette · 4 suits | 1–200 | none | 159 | 8 | 33 | 5.9 s | #147 at 30.2 s | — |
+| 2026-09-20 | Spiderette · 4 suits | 1–200 | 10 s | 149 | 7 | 44 | 3.6 s | #141 at 10.1 s | — |
+| 2026-09-29 | Simple Simon | 1–1000 | none | 941 | 54 | 5 | 628 ms | #964 at 19.2 s | 21 MB, #964 at 533 MB |
+| 2026-09-29 | Simple Simon | 1–1000 | 10 s | 930 | 54 | 16 | 588 ms | #686 at 10.1 s | 20 MB, #103 at 352 MB |
+| 2026-09-29 | Spiderette · 2 suits | 1–200 | none | 183 | 5 | 12 | 2.2 s | #42 at 30.0 s | 86 MB, #100 at 963 MB |
+| 2026-09-29 | Spiderette · 2 suits | 1–200 | 10 s | 178 | 4 | 18 | 1.5 s | #42 at 10.0 s | 62 MB, #94 at 517 MB |
+| 2026-09-29 | Spiderette · 4 suits | 1–200 | none | 159 | 8 | 33 | 4.3 s | #147 at 22.2 s | 188 MB, #162 at 897 MB |
+| 2026-09-29 | Spiderette · 4 suits | 1–200 | 10 s | 155 | 7 | 38 | 3.1 s | #107 at 10.4 s | 136 MB, #6 at 565 MB |
 
 So the wait costs **twenty-seven Simple Simon deals in the thousand, and eight
-two-suit and ten four-suit in the two hundred** — and one proof on each board,
-because a rung that would have emptied its frontier is stopped before it does.
+two-suit and ten four-suit in the two hundred** on the 2026-09-20 machine — and one
+proof on each board, because a rung that would have emptied its frontier is stopped
+before it does. The faster 2026-09-29 machine lost eleven, five and four, and kept
+Simple Simon's proof: what a cap costs is a fact about the machine as much as the
+board.
 That is what not making someone watch a still board for forty seconds is worth,
 and it is the number to argue with if `interactive` should be five seconds or
 twenty.
@@ -304,14 +348,22 @@ the CI runner and 8.5 s on a cloud sandbox, which is close enough to ten that a
 slower machine loses it. Spiderette's stubborn deals are already lost either way;
 FreeCell's worst is the one a smaller `interactive` would take first.
 
-All six rows: 2026-09-20, Node v26.9.0, cloud sandbox, the capped half with
-`--limit 10`.
+**The wait is also a ceiling on memory**, which is the half of it a phone cares
+about. Uncapped, one two-suit Spiderette deal holds 963 MB; under ten seconds no deal
+on any of these boards held more than 565 MB — because the ladder's second rung, the
+one that grows past half a gigabyte, is the rung a watched board rarely reaches.
+
+The 2026-09-20 rows: Node v26.9.0, cloud sandbox. The 2026-09-29 rows: Node
+v26.9.0, cloud sandbox, two soaks at once. The capped half of each with `--limit 10`.
 
 **Spider has no row here, and a probe is why.** `Position.ofGameState` reads all
 three packs — nothing in the model assumes one pack or four foundations — so the
 search runs on 104 cards without an edit. What it does *not* do is answer: at the
 interactive ten seconds, four of the first five two-suit deals came back out of
-time, and the one that solved took 206 moves. Five deals is a probe, not a record,
+time, and the one that solved took 206 moves. Each of the four held 400 to 436 MB
+when the limit stopped it, and the one that solved about 80 MB (2026-09-29, the
+command in § Measuring it). That is the figure the memory work is about: ten seconds
+of a Spider search is a heap a phone may not give a tab. Five deals is a probe, not a record,
 and the honest reading is only that the numbers above do not carry over — a board
 twice the size is not the same search at the same cap. Whoever measures it properly
 owes a range and a row; until then the Debug screen's Solve row on a Spider board
@@ -612,13 +664,13 @@ to want it is more likely a *shorter line* than a faster one, which is the trade
   `--game simplesimon`, `--game mini` and `--game micro`, and add a row to each
   table above. A change that helps the mean and doubles the worst case is not an
   improvement, and a change to the search or a shared term moves every board at
-  once. The two short packs take about two seconds each, so there is no excuse.
+  once. The two short packs take a few seconds each, so there is no excuse.
   Spiderette is the expensive one — `--game spiderette4 --quiet 1-200` is half an
   hour, because the deals it gives up on each cost the whole ladder — so soak it
   over 1–200 rather than the thousand, and leave it running. Its repeated packs
   (`spiderette1`, `spiderette`) are the same board with a cheaper deck and are
-  worth the same range: the one-suit soak is under a minute, the two-suit one
-  about ten. **Don't reach for `--limit` to make that cheaper**: a capped run
+  worth the same range: the one-suit soak is about a minute, the two-suit one
+  a quarter of an hour. **Don't reach for `--limit` to make that cheaper**: a capped run
   measures the cap, and a cap is exactly what would hide a regression in the rungs
   it stopped short of.
 - **Check the mirror.** If you touched `Position`, `Position_test` plays a solved
