@@ -108,7 +108,7 @@ function heldBy(position, readings, passes) {
   return held - baseline
 }
 
-const mb = (bytes) => `${(bytes / 1e6).toFixed(0)} MB`
+const mb = (bytes) => (bytes < 1e6 ? "<1 MB" : `${(bytes / 1e6).toFixed(0)} MB`)
 
 for (const seed of opts.seeds) {
   const deal = Game.dealt(game, seed)
