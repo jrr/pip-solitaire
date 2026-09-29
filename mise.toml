@@ -90,7 +90,7 @@ run = "node packages/web-app/scripts/screenshots/hub.mjs"
 [tasks.solve]
 description = "Solve a deal without playing it: `mise run solve -- 24680`"
 depends = ["build"]
-run = "node packages/core/scripts/solve.mjs"
+run = "node --expose-gc packages/core/scripts/solve.mjs"
 
 # Plays the built site to a win in a real browser, every move a pointer drag —
 # no reaching into game state (packages/web-app/scripts/autoplay). Takes deal

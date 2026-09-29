@@ -191,6 +191,33 @@ apart. A deal that ran out of a `--limit` is unsolved like any other — the lim
 what the caller chose to spend, not a verdict on the board — and the summary says how
 many of the unsolved were that.
 
+**Every deal is also weighed.** Beside its time, each deal reports what the search
+*held*, and the summary gives the mean over the range and the deal that held most —
+the "Held" column in every table below. It is the live JavaScript heap at the largest
+point of the climb, less what was live before the call: the collector is run at the
+last clock read of each rung, where that rung's frontier and visited set are as big as
+they get and still in hand, and the biggest of those readings is the figure. A rung
+that spends its budget is released for the next, so the heap at the moment of the
+answer is not the figure — a capped Spider deal can hold 400 MB in its first rung and
+14 MB when the limit stops its second.
+
+That collection can't be charged to the time, so each deal is solved **twice**: the
+timed run, and a repeat that replays the timed run's clock reading for reading — the
+same search, cap included — and is the only one collected. So the task runs Node with
+`--expose-gc`, and a soak's wall time is about twice what its rows add up to.
+
+What it counts: every position, frontier entry and map key the search can still
+reach. What it doesn't: the garbage made along the way (the collector's time shows in
+the milliseconds instead), anything a larger heap costs a process beyond the heap
+itself, and whatever happens between two reads — they are `Solver.clockEvery`
+positions apart, so the figure is within that many positions of the true peak. It is
+in megabytes of a million bytes.
+
+It is the same *kind* of number as the 379 MB in § On making this faster — V8's live
+heap after a full collection — but not the same measurement: that was a browser heap
+snapshot over a fixed 100,000 nodes of one Spider position, and this is a whole deal's
+climb in Node.
+
 ## The benchmark record
 
 Deals are dealt by `Game.freecellDeal` and `Game.simpleSimonDeal`, so this is
