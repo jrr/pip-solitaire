@@ -11,7 +11,7 @@
 // guessed — `search` takes them as an argument, which is how these were chosen
 // and how a new tuning is compared against them. What each term charges for, and
 // why the two mobility terms are load-bearing, is in `docs/solver.md`.
-type weights = {
+type weights = Board.weights = {
   remaining: int,
   buried: int,
   seam: int,

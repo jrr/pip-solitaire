@@ -603,6 +603,13 @@ off would leave the board a card behind the plan, and every later move would
 bounce off a pile the plan thought was empty. The flag governs what the
 *player's* moves trigger, not what the solver's plan means.
 
+`Board` is the same position laid out for a search to play forward and back in
+place — `play`, `takeBack`, and a hash in place of `key` — rather than copied per
+move as `applyMove` does. It re-reads every row above on its own layout, and
+`Board_test` holds it against `Position` the way `Position_test` holds `Position`
+against `Reducer`: random walks on every board the picker offers, every legal move
+played and taken back at every step.
+
 ## On making this faster — measured, then deferred
 
 Asked in passing: would a WASM module be significantly faster? Profiled rather
