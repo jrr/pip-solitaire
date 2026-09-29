@@ -3,8 +3,9 @@
 A design for replacing the search in `core/src/Solver.res` with one that can be
 paused and resumed, that keeps what it has learned when the board changes, and
 that knows how much memory it is holding. `docs/solver.md` describes the solver
-this replaces and the record it has to match; this page is the proposal, and it
-will become an umbrella issue once reviewed.
+this replaces and the record it has to match. This page is the mechanism; the
+plan that builds it — the steps, their order, what is out of scope and what is
+still open — is issue #497, and is not repeated here.
 
 ## Why
 
@@ -21,9 +22,11 @@ Three things a player can't do today, and one thing the app can't know.
   player returns to has a handful of moves, and one of them was just searched
   to exhaustion or to a line.
 - **Say how big it is.** The search holds a JavaScript object per frontier node
-  and a string per position seen. On a Spider board that was 1.5 GB before the
-  last round of work and is 379 MB after it, and iOS answers a tab that size by
-  killing it. The solver cannot report what it holds, so nothing can budget it.
+  and a string per position seen. The "Held" column in `docs/solver.md` is what
+  that comes to: the worst uncapped deal holds 334 MB on FreeCell, 533 MB on
+  Simple Simon and 963 MB on two-suit Spiderette, and ten seconds of Spider holds
+  400 MB and more — which iOS answers by killing the tab. The solver cannot report
+  what it holds, so nothing can budget it.
 - **The ladder throws work away.** Each rung starts with an empty frontier and an
   empty visited set. A four-suit Spiderette deal that beats both rungs pays for
   700,000 positions, and at ten seconds a player gets the first rung entire and
@@ -107,10 +110,11 @@ and `trail`, made in bytes instead of objects.
 **Lookup is by hash, membership is exact.** A hash table maps a 64-bit hash of a
 position's canonical form to a node index. A hit is *verified* by rebuilding the
 node's position (a closed node has it; an open node replays one move on its
-parent's) and comparing card for card. Two 32-bit hashes over the canonical
-spelling are enough; the hash only has to be good enough that verification is
-rare, since correctness never depends on it. This is how the visited set costs a
-few bytes per position rather than a string, while "seen" still means seen.
+parent's) and comparing card for card. The hash is `Board.hash`: two 32-bit lanes
+over what `Position.key` spells, and it only has to be good enough that
+verification is rare, since correctness never depends on it. This is how the
+visited set costs a few bytes per position rather than a string, while "seen"
+still means seen.
 
 **The canonical form is today's.** Cells sorted, columns sorted, the face-down
 count on the column it belongs to, the stock as its length. Two positions that
@@ -121,11 +125,11 @@ recomputable from the node whenever the weight is known. There may be more than
 one heap over the one graph (§ The ladder, replaced); a node popped from a heap
 after it has already been closed by another is skipped.
 
-**Estimated cost, to be measured and recorded:** the ten-second Spider search
-that holds 379 MB today is about 100,000 closed and 1.5 million open nodes. At
-twenty bytes a node plus 135 bytes a closed position that is under 50 MB. The
-number to write down in `docs/solver.md` is bytes per node, per board, beside
-the milliseconds.
+**Estimated cost, to be measured and recorded:** a ten-second Spider search is
+about 100,000 closed and 1.5 million open nodes, and holds 400 MB and more today.
+At twenty bytes a node plus 135 bytes a closed position that is under 50 MB. The
+number to add to `docs/solver.md` is bytes per node, per board, beside the
+"Held" column that already measures the whole.
 
 ## Re-rooting
 
@@ -204,6 +208,14 @@ is soaked against the record. A second heap is added where the soak loses deals
 the ladder used to find, and not otherwise: each extra heap is one more index and
 priority per open node.
 
+**The ladder was also a memory ceiling, and a continuous search gives that up.**
+A rung that spends its budget releases its frontier before the next begins, which
+is why a capped Spiderette deal holds 565 MB at most where an uncapped one holds
+963 (`docs/solver.md` § What the interactive wait costs). One graph that only grows
+has no such release, so from the day the ladder goes the cap on the graph is the
+only thing bounding what a solve holds — and the soak's "Held" column is how a
+change to the search is checked against that, not only its counts.
+
 ## Budgets and time
 
 The search takes **node budgets only**. Patience — a wait, and the clock to
@@ -246,8 +258,8 @@ Where the cap comes from, in order:
 The three tiers are three numbers in one place. What they should be is measured,
 not reasoned: bytes per node from `solve.mjs` in Node, from Chrome on the dev
 server, and the small tier tried on an old phone. Until the compact layout lands
-(§ Order of work) the cap is expressed in nodes at today's budgets, so nothing
-holds more than the present search does.
+the cap is expressed in nodes at today's ladder budgets, so nothing holds more
+than the present search does.
 
 ## The worker, as a service
 
@@ -287,16 +299,30 @@ search. `Position.applyMove` copies the whole position each time, and the copy
 and the string key are, with the collector they feed, most of the runtime
 (`docs/solver.md` § On making this faster).
 
-The search therefore expands on a **mutable board with make and unmake**: play a
-move, hash the canonical form, look it up, compute `h`, insert, take the move
-back. No copy per child; the arena copy happens only when a node is *closed* and
-its position stored. `Position.res` keeps its job at the seam — `ofGameState`,
-`toAction`, `describeMove`, `key` — and gains a second one: **the oracle**. A
-differential test walks random move sequences through the mutable board and
-through `Position`, asserting the same legal moves, the same position after each,
-and the same `canFinish`, on every board the picker offers. That is a stronger
-mirror than one solved game replayed, and it is what would let this board be
-written in another language later without the rules coming loose.
+The search therefore expands on **`Board`** (`core/src/Board.res`), the same
+position laid out to be played forward and back in place: play a move, hash the
+canonical form, look it up, compute `h`, insert, take the move back. No copy per
+child; the arena copy happens only when a node is *closed* and its position
+stored. Three of its choices matter to the search above it:
+
+- **Unmake is a journal, not an undo record.** Every write logs what it
+  overwrote, and `takeBack` replays a move's writes in reverse — so a settle that
+  sent several cards home, lifted two runs and turned a card over is undone by the
+  same code as a plain move. The re-rooting walk leans on this: it plays and takes
+  back arbitrary moves and never has to know what each one did.
+- **Moves are packed ints**, so listing a node's moves allocates one array; the
+  node record's `move` field is that int.
+- **The hash is not exact and says so**, which is why membership verifies.
+
+`Position.res` keeps its job at the seam — `ofGameState`, `toAction`,
+`describeMove`, `key` — and has a second one: **the oracle**. `Board_test` walks
+every board the picker offers along a solver's line with random excursions off it,
+playing and taking back every legal move at every step against
+`Position.applyMove`, and demanding the same legal moves, position, `canFinish`,
+heuristic and hash. That is a stronger mirror than one solved game replayed, and
+it is what would let this board be written in another language later without the
+rules coming loose. `Solver.weights` is a re-export of `Board.weights` so the
+search can depend on `Board` without a cycle.
 
 ## WebAssembly, later
 
@@ -309,64 +335,3 @@ snapshots by copying bytes. What it costs is the second toolchain in `mise.toml`
 and the rules crossing the seam — which is what the oracle test above is for.
 Measure the ReScript engine against the record first; if it falls short, the
 interface does not change.
-
-## Order of work
-
-Each step is a PR of its own with a soak beside it; each gets its own issue when
-it is next.
-
-1. **The graph, in `core`.** Node table, hash-verified membership, one heap,
-   `open`/`think`/`line`/`effort`, expanding via today's `Position.applyMove`.
-   The ladder replaced. `Solver.solveWithEffort` and `autoplay` reimplemented on
-   top so every caller and test is unchanged. Soaked on every board against the
-   record; rows added.
-2. **Re-rooting.** `moved`, the walk, the re-parenting, the copying collection.
-   Property tests: resume equivalence; re-root then continue agrees with a fresh
-   search from the new root on `Exhausted` and on whether a line exists, over a
-   spread of deals and random move prefixes; move then undo re-expands nothing.
-3. **The worker as a service**, `TableScene` sending `moved`, and the "try for
-   ten more seconds" affordance where the Debug screen's Solve modal shows
-   `OutOfPatience` today. Memory capped in nodes at today's budgets. Browser test
-   for the second ask.
-4. **The mutable board and the compact arena.** Make and unmake, packed
-   positions, the differential oracle test. Bytes per node recorded per board;
-   the cap becomes bytes; the tiers and the reload flag.
-5. Then, as their own directions: a second heap where the soak wants one, the
-   Spider-family heuristic, background thinking for a hint, eviction with a
-   proof-lost flag, and the WebAssembly port if the measurements ask for it.
-
-Steps 3 and 4 could swap: 4 first is safer on a phone, 3 first is the feature.
-The cap in nodes is what makes 3 first no worse than today.
-
-## Done when
-
-- A Spider or four-suit Spiderette deal that comes back `OutOfPatience` can be
-  asked again and continues where it stopped, and `effort` reports both asks.
-- After a move and an undo, `effort` shows no positions re-grown under the
-  move that was taken back.
-- `mise run solve` on every board lands on the counts in `docs/solver.md`, or
-  better, with rows added; the browser suite's three Spiderette autoplays still
-  finish inside `Solver.interactive`.
-- `think(a)` then `think(b)` equals `think(a + b)`, as a test.
-- Bytes per node is a number in `docs/solver.md`, per board, and the ten-second
-  Spider search holds an order of magnitude less than 379 MB.
-
-## Not in scope
-
-- WebAssembly (§ above).
-- Retuning weights or the heuristic; the one-heap soak decides whether a second
-  is needed, nothing more. The Spider-family heuristic is its own direction.
-- A player-facing hint or autoplay button, and whether a Klondike-dealt board may
-  offer one (#410 holds that question).
-- Shortening lines.
-
-## Open questions
-
-- One heap or several, per board — answered by the step-1 soak, not in advance.
-- Whether the app thinks between requests, or only when asked.
-- Child links in the node, or regeneration during the walk — after the walk is
-  measured.
-- What the three memory tiers are, in bytes, and on which old phone the small one
-  was tried.
-- Whether `Solver.patient` and `Solver.interactive` stay as the two named waits, or
-  the second ask gets a name of its own.
