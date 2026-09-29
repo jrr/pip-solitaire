@@ -1,0 +1,337 @@
+# The next solver: a search that follows the player
+
+A design for replacing the search in `core/src/Solver.res` with one that can be
+paused and resumed, that keeps what it has learned when the board changes, and
+that knows how much memory it is holding. `docs/solver.md` describes the solver
+this replaces and the record it has to match. This page is the mechanism; the
+plan that builds it — the steps, their order, what is out of scope and what is
+still open — is issue #497, and is not repeated here.
+
+## Why
+
+Three things a player can't do today, and one thing the app can't know.
+
+- **"Try for ten more seconds."** A watched board gets `Solver.interactive`, ten
+  seconds, and a stubborn deal comes back `OutOfPatience`. The search that ran
+  out is gone the moment it answers: there is nothing to continue, so the only
+  offer is to start again from nothing and spend the same ten seconds reaching
+  the same place.
+- **Keep what was learned when the board moves.** A player who asks, plays a
+  move, and asks again starts the solver from scratch, though most of what it
+  found a moment ago is still true. Undo is the sharpest case: the position the
+  player returns to has a handful of moves, and one of them was just searched
+  to exhaustion or to a line.
+- **Say how big it is.** The search holds a JavaScript object per frontier node
+  and a string per position seen. The "Held" column in `docs/solver.md` is what
+  that comes to: the worst uncapped deal holds 334 MB on FreeCell, 533 MB on
+  Simple Simon and 963 MB on two-suit Spiderette, and ten seconds of Spider holds
+  400 MB and more — which iOS answers by killing the tab. The solver cannot report
+  what it holds, so nothing can budget it.
+- **The ladder throws work away.** Each rung starts with an empty frontier and an
+  empty visited set. A four-suit Spiderette deal that beats both rungs pays for
+  700,000 positions, and at ten seconds a player gets the first rung entire and
+  a fraction of the second.
+
+The first two are one mechanism, not two features, and the third is what makes
+the mechanism safe to ship on a phone. The fourth falls out of the first.
+
+## What stays
+
+The parts of the present design that were right, and that this keeps on
+purpose:
+
+- **`Position.res` is the mirror of the rules**, held against `Reducer` by
+  `Position_test`, and every predicate the search needs is the packed reading
+  of one in `Rules`/`Reducer`. Nothing here is a second set of rules.
+- **Three refusals, and one of them is a proof.** `Exhausted` means every
+  position reachable from the start was seen and none finishes. It stays a
+  proof, which constrains everything below: nothing may be pruned that wasn't
+  seen, and a lookup that says "seen" has to be exact.
+- **No clock of its own.** Determinism with a stopped clock is what lets a test
+  pin a plan; the new search keeps it, and strengthens it (§ Budgets and time).
+- **The goal is `Position.canFinish`**, a plan is a plan for a game played with
+  auto-collect on, and `Solver.autoplay` does the settling.
+- **Plain data across the worker seam**, a `Game.t` without its `deal`, and the
+  answer `Solver.autoplayed` with `Session.adoptAutoplay` on the near side.
+- **Every board the picker offers**: FreeCell, Mini, Micro, Simple Simon, the
+  three Spiderettes and the three Spiders all read into the same position and
+  search under the same loop. A law, a pack and a stock are data on the
+  position, never a branch on a game id.
+
+## The shape
+
+The search stops being a call and becomes a **value**: a graph of positions the
+solver has seen, rooted at the board the player is standing on, that can be
+asked to grow for a while and asked again later. One instance lives for as long
+as a game does.
+
+Its interface, in `core`, is five operations:
+
+| | |
+|---|---|
+| `open(position)` | a fresh graph rooted here |
+| `moved(position)` | the board is now this; nothing else happens yet |
+| `think(~nodes)` | re-root if the board moved, then grow the graph by up to that many expansions |
+| `line()` | the moves from the current root to a finishable board, if one is known |
+| `effort()` | what has been spent so far, and what is held |
+
+`think` answers one of four ways:
+
+| answer | meaning | today's equivalent |
+|---|---|---|
+| `Found` | `line()` has the moves from the current root | `Found` |
+| `Exhausted` | the frontier is empty: every position reachable from the root is closed and none finishes. A proof. | `Exhausted` |
+| `Paused` | this call's budget is spent and the frontier is not | `OutOfTime`, from the driver's point of view |
+| `Full` | the memory cap is reached with positions still waiting | `OutOfNodes` |
+
+The rest of this page is what it takes to make those five operations true.
+
+## The graph
+
+Every position the search has generated is a **node**. A node is *open* while it
+sits on the frontier and *closed* once it has been expanded, and the invariant
+the whole design rests on is:
+
+> **A closed node's children are all in the graph.** Every one of them is a node,
+> open or closed.
+
+That is what makes an empty frontier a proof: if every reachable position is
+closed and none finishes, none can. It is also what re-rooting has to preserve.
+
+**Nodes are records in typed arrays, not objects.** Each node carries its parent's
+index, the move that reached it from that parent, its depth `g`, its heuristic
+`h`, a status flag, and the hash of its canonical form. That is about twenty
+bytes. Positions are stored for closed nodes only, packed one byte per card in a
+separate arena, because an open node's position is its parent's position with
+one move played, and open nodes outnumber closed ones by more than ten to one on
+a Spider board. This is the same trade the present search makes with `parent`
+and `trail`, made in bytes instead of objects.
+
+**Lookup is by hash, membership is exact.** A hash table maps a 64-bit hash of a
+position's canonical form to a node index. A hit is *verified* by rebuilding the
+node's position (a closed node has it; an open node replays one move on its
+parent's) and comparing card for card. The hash is `Board.hash`: two 32-bit lanes
+over what `Position.key` spells, and it only has to be good enough that
+verification is rare, since correctness never depends on it. This is how the
+visited set costs a few bytes per position rather than a string, while "seen"
+still means seen.
+
+**The canonical form is today's.** Cells sorted, columns sorted, the face-down
+count on the column it belongs to, the stock as its length. Two positions that
+differ only in which cell or which column holds what are one node.
+
+**The frontier is a binary heap of node indices** ordered by `g + weight · h`,
+recomputable from the node whenever the weight is known. There may be more than
+one heap over the one graph (§ The ladder, replaced); a node popped from a heap
+after it has already been closed by another is skipped.
+
+**Estimated cost, to be measured and recorded:** a ten-second Spider search is
+about 100,000 closed and 1.5 million open nodes, and holds 400 MB and more today.
+At twenty bytes a node plus 135 bytes a closed position that is under 50 MB. The
+number to add to `docs/solver.md` is bytes per node, per board, beside the
+"Held" column that already measures the whole.
+
+## Re-rooting
+
+`moved` records the board; the next `think` makes it the root. The rule is one
+rule whatever moved the board:
+
+1. Canonicalise the new board and look it up.
+2. **Found:** it becomes the root.
+   **Missing:** it is inserted as a new closed node, its children generated and
+   looked up; any child already present keeps everything under it, and the rest
+   join the frontier as open nodes.
+3. Walk the graph from the root and keep what is reachable; discard the rest.
+
+Every event the board can produce goes through that door, and undo is not a
+special case:
+
+| the player… | lookup | what survives |
+|---|---|---|
+| plays the move the line said | found | almost everything |
+| plays a move the search ranked low | found | whatever that branch had explored |
+| plays a move the search never generates (the second empty column) | found — the canonical form is the same | as above |
+| deals, on a Spiderette | found — a deal is a move | as above |
+| undoes or redoes | missing, then one child is the old root | everything under the old root, untouched |
+| starts a new game, or loads a link | missing, no child found | nothing |
+| plays with auto-collect off, onto an unsettled board | missing | nothing — the search only ever visits settled positions |
+
+**The walk.** A depth-first traversal from the root over closed nodes, with one
+mutable board played forward and back along the way. At each closed node the
+moves are generated, each child looked up, and each child not yet reached in this
+walk is marked kept and, if closed, descended into. Open nodes are leaves. When
+the walk is done, kept nodes are copied into a fresh arena, the hash table is
+rebuilt over them, and the heaps are rebuilt from the kept open nodes — a copying
+collection with the root as its only root, which is also how the memory actually
+comes back. Regenerating a closed node's moves costs about what expanding it
+cost, without the heuristic or the heap; storing child links to avoid it is a
+trade of memory for time to make once the walk has been measured, not before.
+
+**Transpositions need one repair.** A kept node may have been discovered first
+through a branch that is now being discarded, so its parent is gone. When the
+walk reaches a node whose parent is not kept, it re-parents the node to the node
+it arrived from. The line reconstructed through the new parent is a different
+route and still a valid one.
+
+**Depth is relative, and that is fine.** A new root inserted above an existing
+child takes that child's `g` less one, which may be negative; a search that never
+promised the shortest line uses `g` only to order the frontier and to drop a
+position reached no more cheaply than before, and both of those want `g` values
+comparable to each other, not to zero.
+
+**The proof survives.** Every kept closed node's children were in the graph when
+it was closed and are reachable from it, so they are kept too: the invariant
+holds after the walk, and an empty frontier from the new root is a proof about
+the new root. What would break it is evicting an open node to make room, so the
+first version never does — § Memory.
+
+**What it buys beyond reuse.** A subgraph under a move that emptied its frontier
+is a move proved to lead nowhere, and after an undo the search never re-enters
+it; the app could say so. A line found from the position after a move is, after
+the undo, that line with one move in front of it, known at once.
+
+## The ladder, replaced
+
+A restart cannot be resumed — "ten more seconds" has no meaning across one — so
+the rungs of `Solver.ladderFor` go, and one continuous search takes their place.
+
+`docs/solver.md` § The ladder records that different weights catch different
+deals: FreeCell's first rung is greedy because almost every deal falls to it, and
+Simple Simon's is not because 1.0 solved more than 2.0. If that still holds, the
+continuous form is **several heaps over one graph**, one per weight, taking turns
+at expansion; a node is closed once, whichever heap popped it first, and its
+children are pushed to all of them. Every heap sees every closed node's
+children, so the proof property is unchanged.
+
+The first version starts with **one heap at each board's first-rung weight** and
+is soaked against the record. A second heap is added where the soak loses deals
+the ladder used to find, and not otherwise: each extra heap is one more index and
+priority per open node.
+
+**The ladder was also a memory ceiling, and a continuous search gives that up.**
+A rung that spends its budget releases its frontier before the next begins, which
+is why a capped Spiderette deal holds 565 MB at most where an uncapped one holds
+963 (`docs/solver.md` § What the interactive wait costs). One graph that only grows
+has no such release, so from the day the ladder goes the cap on the graph is the
+only thing bounding what a solve holds — and the soak's "Held" column is how a
+change to the search is checked against that, not only its counts.
+
+## Budgets and time
+
+The search takes **node budgets only**. Patience — a wait, and the clock to
+measure it on — moves out to the caller, who turns time into slices: run
+`think(~nodes=1024)`, read the clock, repeat until the answer or the deadline.
+That is today's `clockEvery` made explicit at the boundary, and it makes the
+determinism property stronger than it was:
+
+> `think(a)` then `think(b)` reaches exactly the graph `think(a + b)` reaches.
+
+Which is the whole of what "resume" means, and a property a test can state.
+`solve.mjs` and the tests, holding a stopped clock, get the same plans on every
+machine as they do now; the record in `docs/solver.md` remains a measurement of
+budgets rather than of waits.
+
+`effort()` accumulates across calls: positions grown, moves tried, and now the
+bytes held. `passes` goes with the ladder.
+
+## Memory
+
+The graph has a **cap in bytes**, and reaching it is the answer `Full` — today's
+`OutOfNodes`, honestly named. The first version does not evict to stay under it,
+because dropping an open node is the one thing that would turn `Exhausted` into a
+lie; an eviction policy that marks the proof lost is future work, once there is a
+measured reason to want it.
+
+Where the cap comes from, in order:
+
+1. `navigator.deviceMemory` where a browser gives it (Chromium anywhere): under
+   4 GB small, 4 to 8 medium, above that large.
+2. Otherwise an Apple touch device (a Macintosh or iPhone user agent with more
+   than one touch point) is small. It is the platform that kills a tab without
+   warning and exposes no memory figure at all.
+3. Otherwise medium.
+4. A setting overrides all three.
+5. **The reload is the pressure signal.** A flag set when a solve starts and
+   cleared when it ends; found still set on load, the last solve killed the tab,
+   and the tier drops persistently. It is the only adaptive signal iOS offers.
+
+The three tiers are three numbers in one place. What they should be is measured,
+not reasoned: bytes per node from `solve.mjs` in Node, from Chrome on the dev
+server, and the small tier tried on an old phone. Until the compact layout lands
+the cap is expressed in nodes at today's ladder budgets, so nothing holds more
+than the present search does.
+
+## The worker, as a service
+
+`Thinker` spawns a worker per question and terminates it to cancel. The graph has
+to outlive a question, so the worker becomes **one per tab, held open**, and the
+five operations become its protocol:
+
+| to the worker | from the worker |
+|---|---|
+| `open {game, state}` | `progress {positions, frontier, bytes}` between slices, for a spinner that can say something |
+| `moved {state}` | `answer {autoplayed, effort}` |
+| `think {ms}` | |
+| `stop` | |
+| `forget` | |
+
+The worker turns `think {ms}` into slices against its own clock, checks its inbox
+between slices, and answers. **Cancel is a message**, honoured at the next slice
+boundary; terminating the worker remains the fallback for one that has stopped
+answering, and costs the graph. `Thinker.here` stays for a runtime with no
+worker: the same five operations on the calling thread, with the whole budget in
+one slice, which is what the unit suite under jsdom wants.
+
+`TableScene` sends `moved` on every committed state — a move, an undo, a redo, a
+deal, a new game — and nothing happens until someone asks. Whether the app should
+*think between requests*, keeping a line warm for a hint that is a lookup, is a
+product question the design leaves open and supports.
+
+"Try for ten more seconds" is then `think {ms: 10000}` again: same graph, same
+root, ten more seconds of slices, and an `effort` that says what the two asks
+cost together.
+
+## The board the search plays on
+
+Expanding a node means playing each of its moves and canonicalising the result,
+some fifteen times per node on Spider and hundreds of thousands of times a
+search. `Position.applyMove` copies the whole position each time, and the copy
+and the string key are, with the collector they feed, most of the runtime
+(`docs/solver.md` § On making this faster).
+
+The search therefore expands on **`Board`** (`core/src/Board.res`), the same
+position laid out to be played forward and back in place: play a move, hash the
+canonical form, look it up, compute `h`, insert, take the move back. No copy per
+child; the arena copy happens only when a node is *closed* and its position
+stored. Three of its choices matter to the search above it:
+
+- **Unmake is a journal, not an undo record.** Every write logs what it
+  overwrote, and `takeBack` replays a move's writes in reverse — so a settle that
+  sent several cards home, lifted two runs and turned a card over is undone by the
+  same code as a plain move. The re-rooting walk leans on this: it plays and takes
+  back arbitrary moves and never has to know what each one did.
+- **Moves are packed ints**, so listing a node's moves allocates one array; the
+  node record's `move` field is that int.
+- **The hash is not exact and says so**, which is why membership verifies.
+
+`Position.res` keeps its job at the seam — `ofGameState`, `toAction`,
+`describeMove`, `key` — and has a second one: **the oracle**. `Board_test` walks
+every board the picker offers along a solver's line with random excursions off it,
+playing and taking back every legal move at every step against
+`Position.applyMove`, and demanding the same legal moves, position, `canFinish`,
+heuristic and hash. That is a stronger mirror than one solved game replayed, and
+it is what would let this board be written in another language later without the
+rules coming loose. `Solver.weights` is a re-export of `Board.weights` so the
+search can depend on `Board` without a cycle.
+
+## WebAssembly, later
+
+Not part of this effort, and the design keeps the door open rather than
+deciding. The compact board and the node arena are exactly the part that ports:
+integer loops over typed arrays behind five operations. What a port would add is
+the usual factor on those loops, a linear memory whose size is set rather than
+inferred and whose `grow` fails where it can be caught, and a state that
+snapshots by copying bytes. What it costs is the second toolchain in `mise.toml`
+and the rules crossing the seam — which is what the oracle test above is for.
+Measure the ReScript engine against the record first; if it falls short, the
+interface does not change.

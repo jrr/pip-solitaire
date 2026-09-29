@@ -21,7 +21,9 @@ twenty-four cards still to come are. **A deal is a move like any other**, and
 the search takes one when it chooses to, not when it may.
 
 This page carries the contract, the benchmark record, the heuristic, and the
-measured case for making it faster. The code keeps the knobs.
+measured case for making it faster. The code keeps the knobs. The search that is
+to replace this one — resumable, following the board, budgeted in bytes — is
+designed in `docs/solver-next.md`.
 
 ## The contract
 
