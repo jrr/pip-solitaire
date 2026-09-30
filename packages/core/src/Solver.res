@@ -248,7 +248,7 @@ type budget = {heaps: array<float>, maxNodes: int}
 // the one that catches most of what the first misses.
 let freecellBudget = {heaps: [2., 1.], maxNodes: 2_000_000}
 let simonBudget = {heaps: [1., 0.3], maxNodes: 1_600_000}
-let spideretteBudget = {heaps: [2., 1.], maxNodes: 3_600_000}
+let spideretteBudget = {heaps: [2., 1.], maxNodes: 6_000_000}
 
 // The budget a board gets — picked the same way its weights are, and for the same
 // reason: a stock is a longer game, not another law.
