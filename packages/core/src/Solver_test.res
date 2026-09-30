@@ -441,6 +441,31 @@ describe("Solver", () => {
     )
 
     test(
+      "every node's position reads back as its line from the start plays out, kept or not",
+      () =>
+        [Game.freecellDeal(~seed=582), Game.spideretteDeal(~seed=3)]->Array.forEach(
+          game => {
+            let start = startOf(game)
+            let search = Solver.Search.make(start)
+            ignore(search->Solver.Search.think(~nodes=2000))
+            let graph = search.graph
+            let wrong = ref(0)
+            for node in 0 to graph.size - 1 {
+              let played =
+                Graph.lineTo(graph, node)->Array.reduce(
+                  start,
+                  (s, move) => Position.applyMove(s, move),
+                )
+              if Graph.positionOf(graph, node) != played {
+                wrong := wrong.contents + 1
+              }
+            }
+            expect(wrong.contents)->toBe(0)
+          },
+        ),
+    )
+
+    test(
       "the bytes an effort reports are the search's own arrays, and grow as it does",
       () => {
         let search = Solver.Search.make(startOf(Game.freecellDeal(~seed=582)))

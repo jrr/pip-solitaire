@@ -93,7 +93,18 @@ let bytes = (graph: t): int =>
 
 // --- Nodes --------------------------------------------------------------------
 
-let isClosed = (graph: t, node: int): bool => graph.stored->at(node) >= 0
+// `stored` says three things: -1 is an open node, -2 a closed one whose position is
+// not kept, and anything else where a closed one's position begins in `arena`.
+let isOpen = -1
+let unkept = -2
+
+let isClosed = (graph: t, node: int): bool => graph.stored->at(node) != isOpen
+
+// How many closed nodes in a row may go without a position of their own. Each one
+// kept costs a whole board in `arena`, more than all its columns besides; each one
+// skipped costs a move replayed whenever it is read back. Measured in
+// `docs/solver.md` § The search.
+let keepEvery = 4
 
 let add = (graph: t, ~parent: int, ~move: int, ~depth: int, ~h: int, ~hash: int): int => {
   let node = graph.size
@@ -110,7 +121,7 @@ let add = (graph: t, ~parent: int, ~move: int, ~depth: int, ~h: int, ~hash: int)
   graph.move->put(node, move)
   graph.depth->put(node, depth)
   graph.h->put(node, h)
-  graph.stored->put(node, -1)
+  graph.stored->put(node, isOpen)
   graph.hashes->put(node, hash)
   graph.size = node + 1
   node
@@ -126,8 +137,8 @@ let reparent = (graph: t, node: int, ~parent: int, ~move: int, ~depth: int) => {
   graph.depth->put(node, depth)
 }
 
-// Keep a node's position, now that it is being grown.
-let close = (graph: t, node: int, s: Position.t) => {
+// Pack a closed node's position into the arena.
+let keep = (graph: t, node: int, s: Position.t) => {
   let need = Array.length(s.cells) + 5 + 2 * Array.length(s.casc) + s.pack.size
   if graph.arenaSize + need > TypedArray.length(graph.arena) {
     graph.arena = widened(
@@ -154,7 +165,23 @@ let close = (graph: t, node: int, s: Position.t) => {
   graph.arenaSize = cursor.contents
 }
 
-// The position a closed node was grown from, read back out of the arena.
+// Close a node, now that it is being grown — keeping its position if the last
+// `keepEvery - 1` closed nodes above it all went without.
+let close = (graph: t, node: int, s: Position.t) => {
+  let run = ref(0)
+  let above = ref(graph.parent->at(node))
+  while above.contents >= 0 && graph.stored->at(above.contents) == unkept {
+    run := run.contents + 1
+    above := graph.parent->at(above.contents)
+  }
+  if above.contents >= 0 && run.contents < keepEvery - 1 {
+    graph.stored->put(node, unkept)
+  } else {
+    keep(graph, node, s)
+  }
+}
+
+// The position a kept node was grown from, read back out of the arena.
 let unpack = (graph: t, node: int): Position.t => {
   let {start, arena} = graph
   let cursor = ref(graph.stored->at(node))
@@ -182,16 +209,17 @@ let unpack = (graph: t, node: int): Position.t => {
   }
 }
 
-// Any node's position: a closed one's from the arena, an open one's by playing its
-// move on its parent's. The root, open, is the start.
-let positionOf = (graph: t, node: int): Position.t =>
-  if isClosed(graph, node) {
+// Any node's position: a kept one's from the arena, any other's by playing its move
+// on its parent's — a few moves at most, since a parent is always closed and a run of
+// closed nodes is broken by a kept one every `keepEvery`. The root, open, is the start.
+let rec positionOf = (graph: t, node: int): Position.t =>
+  if graph.stored->at(node) >= 0 {
     unpack(graph, node)
   } else {
     let parent = graph.parent->at(node)
     parent < 0
       ? graph.start
-      : Position.applyMove(unpack(graph, parent), Board.toMove(graph.move->at(node)))
+      : Position.applyMove(positionOf(graph, parent), Board.toMove(graph.move->at(node)))
   }
 
 // The moves from the root to a node, oldest first.
@@ -268,7 +296,7 @@ let file = (graph: t, slot: int, node: int) => {
     graph.tableCount = graph.tableCount + 1
   }
   graph.table->put(slot, node)
-  if graph.tableCount * 10 > TypedArray.length(graph.table) * 7 {
+  if graph.tableCount * 10 > TypedArray.length(graph.table) * 8 {
     rehash(graph)
   }
 }
