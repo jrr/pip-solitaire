@@ -753,6 +753,77 @@ let key = (s: t): string => {
   spell(s.found) ++ "|" ++ spell(cells) ++ "|" ++ cols->Array.join("/") ++ stock
 }
 
+// Whether two positions of one deal `key` alike, without spelling either: the same
+// foundations and stock length, and the cells and the columns the same *multisets*.
+// What a search asks to be sure a hash that matched meant the same position.
+let alike = (a: t, b: t): bool => {
+  let columnsEqual = (x: t, i: int, y: t, j: int): bool =>
+    x.down->Array.getUnsafe(i) == y.down->Array.getUnsafe(j) && {
+        let p = x.casc->Array.getUnsafe(i)
+        let q = y.casc->Array.getUnsafe(j)
+        let n = Array.length(p)
+        n == Array.length(q) && {
+            let k = ref(0)
+            while (
+              k.contents < n && p->Array.getUnsafe(k.contents) == q->Array.getUnsafe(k.contents)
+            ) {
+              k := k.contents + 1
+            }
+            k.contents == n
+          }
+      }
+  // Each column of `a` as often in `a` as in `b` — with as many columns on each side,
+  // that is the two multisets equal. Ten columns at most, so the square is cheap.
+  let sameColumns = () => {
+    let n = Array.length(a.casc)
+    let ok = ref(true)
+    let i = ref(0)
+    while ok.contents && i.contents < n {
+      let inA = ref(0)
+      let inB = ref(0)
+      for j in 0 to n - 1 {
+        if columnsEqual(a, i.contents, a, j) {
+          inA := inA.contents + 1
+        }
+        if columnsEqual(a, i.contents, b, j) {
+          inB := inB.contents + 1
+        }
+      }
+      ok := inA.contents == inB.contents
+      i := i.contents + 1
+    }
+    ok.contents
+  }
+  // The cells likewise, counting empties as a value like any other.
+  let sameCells = () => {
+    let n = Array.length(a.cells)
+    let ok = ref(true)
+    let i = ref(0)
+    while ok.contents && i.contents < n {
+      let card = a.cells->Array.getUnsafe(i.contents)
+      let inA = ref(0)
+      let inB = ref(0)
+      for j in 0 to n - 1 {
+        if a.cells->Array.getUnsafe(j) == card {
+          inA := inA.contents + 1
+        }
+        if b.cells->Array.getUnsafe(j) == card {
+          inB := inB.contents + 1
+        }
+      }
+      ok := inA.contents == inB.contents
+      i := i.contents + 1
+    }
+    ok.contents
+  }
+  Array.length(a.stock) == Array.length(b.stock) &&
+  Array.length(a.cells) == Array.length(b.cells) &&
+  Array.length(a.casc) == Array.length(b.casc) &&
+  a.found->Array.everyWithIndex((n, suit) => b.found->Array.getUnsafe(suit) == n) &&
+  sameCells() &&
+  sameColumns()
+}
+
 // A move in words, for a play-by-play. A deal names no card because it has none to
 // name; which cards this one drops is a question for the board it is played on.
 let describeMove = (move: move): string =>

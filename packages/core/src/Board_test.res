@@ -66,6 +66,8 @@ let walk = (~game: Game.t, ~seed: int, ~reached: reached, ~failures: array<strin
   | None => fail("the opening doesn't pack")
   | Some(start) =>
     let board = Board.load(start)
+    // A second board, only ever `reload`ed — the way a search hashes a position.
+    let scratch = Board.load(start)
     // Every board the walk stands on, the one it stands on now last.
     let history = [start]
     let here = () => history->Array.getUnsafe(Array.length(history) - 1)
@@ -126,6 +128,16 @@ let walk = (~game: Game.t, ~seed: int, ~reached: reached, ~failures: array<strin
           fail(`${said}: the heuristic differs`)
         }
         checkHash(after, Board.hash(board))
+        Board.reload(scratch, after)
+        if Board.hash(scratch) != Board.hash(board) {
+          fail(`${said}: a reloaded board hashes differently`)
+        }
+        if !Position.alike(after, shuffled(after)) {
+          fail(`${said}: the same board in another order isn't alike`)
+        }
+        if Position.alike(s, after) != (Position.key(s) == Position.key(after)) {
+          fail(`${said}: alike and key disagree`)
+        }
         Board.takeBack(board)
         if Board.toPosition(board) != s {
           fail(`${said}: doesn't take back`)

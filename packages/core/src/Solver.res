@@ -118,45 +118,56 @@ let heuristic = (s: Position.t, w: weights): int => {
   h.contents + Array.length(s.stock) * w.stock
 }
 
-// --- A tiny binary heap, keyed by numeric priority ---------------------------
+// --- A binary heap of node indices -------------------------------------------
 // Its own little module rather than a sorted array — `docs/solver.md` § The search
-// has what that is worth.
+// has what that is worth. It holds indices into a `Graph`, not entries: a priority is
+// read off the node whenever two are compared, so an open node costs each heap four
+// bytes and nothing more.
 
 module Heap = {
-  type entry<'a> = {item: 'a, priority: float}
-  type t<'a> = array<entry<'a>>
+  type t = {mutable items: Graph.ints, mutable size: int}
 
-  let make = (): t<'a> => []
-  let size = (heap: t<'a>): int => Array.length(heap)
+  let make = (): t => {items: Int32Array.fromLength(0), size: 0}
+  let size = (heap: t): int => heap.size
+  let bytes = (heap: t): int => TypedArray.byteLength(heap.items)
 
-  let swap = (heap: t<'a>, i: int, j: int) => {
-    let atI = heap->Array.getUnsafe(i)
-    heap->Array.setUnsafe(i, heap->Array.getUnsafe(j))
-    heap->Array.setUnsafe(j, atI)
+  let swap = (items: Graph.ints, i: int, j: int) => {
+    let atI = items->Graph.at(i)
+    items->Graph.put(i, items->Graph.at(j))
+    items->Graph.put(j, atI)
   }
 
-  let push = (heap: t<'a>, item: 'a, ~priority: float) => {
-    heap->Array.push({item, priority})
-    let i = ref(Array.length(heap) - 1)
+  let push = (heap: t, item: int, ~priority: int => float) => {
+    if heap.size == TypedArray.length(heap.items) {
+      heap.items = Graph.widened(heap.items, Int32Array.fromLength, Graph.grow(heap.size))
+    }
+    let items = heap.items
+    items->Graph.put(heap.size, item)
+    heap.size = heap.size + 1
+    let i = ref(heap.size - 1)
     let sifting = ref(true)
     while sifting.contents && i.contents > 0 {
       let parent = (i.contents - 1) / 2
-      if (heap->Array.getUnsafe(parent)).priority <= (heap->Array.getUnsafe(i.contents)).priority {
+      if priority(items->Graph.at(parent)) <= priority(items->Graph.at(i.contents)) {
         sifting := false
       } else {
-        swap(heap, parent, i.contents)
+        swap(items, parent, i.contents)
         i := parent
       }
     }
   }
 
-  let pop = (heap: t<'a>): option<'a> =>
-    switch heap->Array.get(0) {
-    | None => None
-    | Some(top) =>
-      switch heap->Array.pop {
-      | Some(last) if Array.length(heap) > 0 =>
-        heap->Array.setUnsafe(0, last)
+  // The item of least priority, taken off — or -1 from an empty heap.
+  let pop = (heap: t, ~priority: int => float): int =>
+    if heap.size == 0 {
+      -1
+    } else {
+      let items = heap.items
+      let top = items->Graph.at(0)
+      heap.size = heap.size - 1
+      let size = heap.size
+      if size > 0 {
+        items->Graph.put(0, items->Graph.at(size))
         let i = ref(0)
         let sifting = ref(true)
         while sifting.contents {
@@ -164,29 +175,26 @@ module Heap = {
           let right = left + 1
           let smallest = ref(i.contents)
           if (
-            left < Array.length(heap) &&
-              (heap->Array.getUnsafe(left)).priority <
-              (heap->Array.getUnsafe(smallest.contents)).priority
+            left < size &&
+              priority(items->Graph.at(left)) < priority(items->Graph.at(smallest.contents))
           ) {
             smallest := left
           }
           if (
-            right < Array.length(heap) &&
-              (heap->Array.getUnsafe(right)).priority <
-              (heap->Array.getUnsafe(smallest.contents)).priority
+            right < size &&
+              priority(items->Graph.at(right)) < priority(items->Graph.at(smallest.contents))
           ) {
             smallest := right
           }
           if smallest.contents == i.contents {
             sifting := false
           } else {
-            swap(heap, smallest.contents, i.contents)
+            swap(items, smallest.contents, i.contents)
             i := smallest.contents
           }
         }
-      | _ => () // the heap held one entry, and popping it emptied the array
       }
-      Some(top.item)
+      top
     }
 }
 
@@ -254,42 +262,6 @@ let clockEvery = 1024
 
 // --- The search --------------------------------------------------------------
 
-// The moves that reached a node, newest first, each link shared by every position
-// grown from it. **Not an array per node**: a copied path costs its whole length at every
-// position on the frontier, and on a board whose lines run to two hundred moves that is
-// most of the heap — enough, in ten seconds of Spider, for iOS to kill the tab.
-type rec trail = {move: Position.move, from: option<trail>}
-
-// One node of the open list: how many moves reached it, and which — and the position
-// *before* the last of them, which is played again when the node is taken off. **Not the
-// position itself**: the frontier holds an order of magnitude more nodes than are ever
-// grown, and a parent is shared by all its children where a child's own board is not.
-// Holding each child's board is what fills the heap; replaying one move on the way out
-// is cheap next to the fifteen-odd the search plays out to look at every node it grows.
-//
-// `closed` is set when a node is grown. A search with several heaps pushes one node to
-// all of them, and whichever pops it first grows it; the others throw it away.
-type node = {parent: Position.t, g: int, trail: option<trail>, mutable closed: bool}
-
-let positionOf = ({parent, trail}: node): Position.t =>
-  switch trail {
-  | None => parent
-  | Some({move}) => Position.applyMove(parent, move)
-  }
-
-// A trail as the line it records, oldest move first.
-let lineOf = (trail: option<trail>): array<Position.move> => {
-  let line = []
-  let at = ref(trail)
-  while Option.isSome(at.contents) {
-    let {move, from} = Option.getUnsafe(at.contents)
-    line->Array.push(move)
-    at := from
-  }
-  line->Array.reverse
-  line
-}
-
 // Weighted best-first search from a start to the first position that
 // `Position.canFinish` — as a value rather than a call. **It keeps its frontier and its
 // visited set between `think`s**, so a caller can grow it for a while, look, and grow it
@@ -304,6 +276,9 @@ let lineOf = (trail: option<trail>): array<Position.move> => {
 // node is grown once, by whichever pops it first — so an empty set of heaps still means
 // every reachable position was grown, and `Exhausted` is still a proof. What a second
 // heap buys, and on which boards: `docs/solver.md` § The budget.
+//
+// What it grows into is a `Graph`: a node per position pushed, in typed arrays, and a
+// visited set that answers by hash and checks the answer.
 module Search = {
   // How a `think` came back. **Three of these mean "no line", and only one of them
   // means "there is none".**
@@ -322,26 +297,24 @@ module Search = {
 
   // `grown` counts the positions taken off the frontier and grown; `tried` the moves
   // played out to see where they led, which is the bigger number and the one most of the
-  // time goes into (every one of them is an `applyMove`, a `key` and a `canFinish`). Both
+  // time goes into (every one of them is an `applyMove`, a hash and a `canFinish`). Both
   // count from `make`, across every `think`.
   type t = {
     weights: weights,
     budget: budget,
-    frontiers: array<Heap.t<node>>,
+    graph: Graph.t,
+    frontiers: array<Heap.t>,
+    priorities: array<int => float>, // each heap's order, read off the graph
     mutable turn: int, // the heap that grows the next position
-    seen: Map.t<string, int>,
     mutable grown: int,
     mutable tried: int,
     mutable line: option<array<Position.move>>,
   }
 
   // A node onto every heap, each at its own weight.
-  let push = (search: t, node: node, ~h: int) =>
+  let push = (search: t, node: int) =>
     search.frontiers->Array.forEachWithIndex((frontier, i) =>
-      frontier->Heap.push(
-        node,
-        ~priority=Int.toFloat(node.g) +. Int.toFloat(h) *. search.budget.heaps->Array.getUnsafe(i),
-      )
+      frontier->Heap.push(node, ~priority=search.priorities->Array.getUnsafe(i))
     )
 
   let waiting = (search: t): bool =>
@@ -349,15 +322,18 @@ module Search = {
 
   // The next node still open, from the heap whose turn it is — or from the next one that
   // has anything, when that one is empty. Nodes another heap already grew are dropped on
-  // the way.
-  let next = (search: t): option<node> => {
-    let found = ref(None)
-    while Option.isNone(found.contents) && waiting(search) {
-      let frontier = search.frontiers->Array.getUnsafe(search.turn)
+  // the way. -1 when every heap is empty.
+  let next = (search: t): int => {
+    let found = ref(-1)
+    while found.contents < 0 && waiting(search) {
+      let i = search.turn
       search.turn = mod(search.turn + 1, Array.length(search.frontiers))
-      switch Heap.pop(frontier) {
-      | Some(node) if !node.closed => found := Some(node)
-      | _ => ()
+      let node =
+        search.frontiers
+        ->Array.getUnsafe(i)
+        ->Heap.pop(~priority=search.priorities->Array.getUnsafe(i))
+      if node >= 0 && !Graph.isClosed(search.graph, node) {
+        found := node
       }
     }
     found.contents
@@ -366,12 +342,17 @@ module Search = {
   let make = (start: Position.t, ~budget: option<budget>=?, ~weights: option<weights>=?): t => {
     let budget = budget->Option.getOr(budgetFor(start))
     let weights = weights->Option.getOr(weightsFor(start))
+    let graph = Graph.make(start)
     let search = {
       weights,
       budget,
+      graph,
       frontiers: budget.heaps->Array.map(_ => Heap.make()),
+      priorities: budget.heaps->Array.map(weight =>
+        node =>
+          Int.toFloat(graph.depth->Graph.at(node)) +. Int.toFloat(graph.h->Graph.at(node)) *. weight
+      ),
       turn: 0,
-      seen: Map.make(),
       grown: 0,
       tried: 0,
       line: None,
@@ -379,11 +360,28 @@ module Search = {
     if Position.canFinish(start) {
       search.line = Some([])
     } else {
-      search.seen->Map.set(Position.key(start), 0)
-      search->push({parent: start, g: 0, trail: None, closed: false}, ~h=heuristic(start, weights))
+      let (hashA, hashB) = Graph.hash(graph, start)
+      let slot = Graph.slotOf(graph, start, ~hashA, ~hashB)
+      let root =
+        graph->Graph.add(
+          ~parent=-1,
+          ~move=0,
+          ~depth=0,
+          ~h=heuristic(start, weights),
+          ~hashA,
+          ~hashB,
+        )
+      graph->Graph.file(slot, root)
+      search->push(root)
     }
     search
   }
+
+  // What the search holds, in bytes: its graph and its heaps, read off the arrays.
+  let bytes = (search: t): int =>
+    search.frontiers->Array.reduce(Graph.bytes(search.graph), (sum, frontier) =>
+      sum + Heap.bytes(frontier)
+    )
 
   // What the search knows now, without growing it — the answer a `think` of nothing
   // gives. An emptied frontier is a proof whatever else was running out, so it is read
@@ -401,7 +399,7 @@ module Search = {
 
   // Grow the search by up to `nodes` more positions, and say where that left it.
   let think = (search: t, ~nodes: int): answer => {
-    let {weights, budget: {maxNodes}, seen} = search
+    let {weights, budget: {maxNodes}, graph} = search
     let until = search.grown + nodes
     while (
       Option.isNone(search.line) &&
@@ -409,33 +407,38 @@ module Search = {
       search.grown < maxNodes &&
       search.grown < until
     ) {
-      switch next(search) {
-      | None => ()
-      | Some({g: depth, trail} as node) =>
-        node.closed = true
-        let position = positionOf(node)
+      let node = next(search)
+      if node >= 0 {
+        let position = Graph.positionOf(graph, node)
+        Graph.close(graph, node, position)
         search.grown = search.grown + 1
+        let g = graph.depth->Graph.at(node) + 1
         let moves = Position.legalMoves(position)
         let i = ref(0)
         while Option.isNone(search.line) && i.contents < Array.length(moves) {
           let move = moves->Array.getUnsafe(i.contents)
           let next = Position.applyMove(position, move)
           search.tried = search.tried + 1
-          let key = Position.key(next)
-          let g = depth + 1
+          let (hashA, hashB) = Graph.hash(graph, next)
+          let slot = Graph.slotOf(graph, next, ~hashA, ~hashB)
+          let prior = Graph.nodeAt(graph, slot)
+
           // A position reached no more cheaply than before teaches nothing new.
-          switch seen->Map.get(key) {
-          | Some(prior) if prior <= g => ()
-          | _ =>
-            seen->Map.set(key, g)
-            let nextTrail = Some({move, from: trail})
+          if prior < 0 || graph.depth->Graph.at(prior) > g {
             if Position.canFinish(next) {
-              search.line = Some(lineOf(nextTrail))
+              search.line = Some(Array.concat(Graph.lineTo(graph, node), [move]))
             } else {
-              search->push(
-                {parent: position, g, trail: nextTrail, closed: false},
-                ~h=heuristic(next, weights),
-              )
+              let child =
+                graph->Graph.add(
+                  ~parent=node,
+                  ~move=Board.ofMove(move),
+                  ~depth=g,
+                  ~h=heuristic(next, weights),
+                  ~hashA,
+                  ~hashB,
+                )
+              graph->Graph.file(slot, child)
+              search->push(child)
             }
           }
           i := i.contents + 1
@@ -476,12 +479,15 @@ type ending =
 //                 count; several per position, and the bigger number by far).
 //   `ending`    — how the last ask stopped. The three kinds of "no" are told apart
 //                 there rather than here.
+//   `bytes`     — what the search holds, read off its own arrays (`Search.bytes`). A
+//                 search never releases what it has grown, so this is also the most it
+//                 held.
 //
 // **Deliberately no elapsed time.** `patience` is a limit handed in, not a clock the
 // solver keeps, and nothing here reports how long anything took: a caller times its own
 // call, the way `solve.mjs` and `Session.autoplay` do. What that buys:
 // `docs/solver.md` § The contract.
-type effort = {positions: int, moves: int, ending: ending}
+type effort = {positions: int, moves: int, ending: ending, bytes: int}
 
 // The two readings of `ending` a driver outside ReScript needs: `solve.mjs` counts its
 // deals by them and gates its exit code on the first. *Asked* rather than compared,
@@ -518,6 +524,7 @@ let solveOn = (search: Search.t, ~patience: option<patience>=?): (
       | Search.Full => OutOfNodes
       | Search.Paused => OutOfTime
       },
+      bytes: Search.bytes(search),
     },
   )
 }

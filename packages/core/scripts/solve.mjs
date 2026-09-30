@@ -71,13 +71,17 @@ let totalMoves = 0
 let worst = { seed: null, ms: 0 }
 let totalHeld = 0
 let most = { seed: null, bytes: 0 }
+let totalArrays = 0
 
 // The collector has to be callable to read a live heap rather than a live heap plus
 // whatever garbage happened not to be swept yet — the mise task passes the flag.
 if (typeof globalThis.gc !== "function") throw new Error("run with node --expose-gc (mise run solve does)")
+// A typed array's contents live outside the JavaScript heap, in the backing stores
+// `arrayBuffers` counts — which is where the search keeps its graph.
 const liveHeap = () => {
   globalThis.gc()
-  return process.memoryUsage().heapUsed
+  const { heapUsed, arrayBuffers } = process.memoryUsage()
+  return heapUsed + arrayBuffers
 }
 
 // Ask one search every wait in turn, stopping at the first that isn't cut short by the
@@ -104,6 +108,9 @@ function think(position) {
 }
 
 const mb = (bytes) => (bytes < 1e6 ? "<1 MB" : `${(bytes / 1e6).toFixed(0)} MB`)
+// Held, and beside it what the search says its own arrays hold (`effort.bytes`) — the
+// two should agree to within what the arrays don't count.
+const holding = (held, effort) => `holding ${mb(held)} (arrays ${mb(effort.bytes)})`
 
 for (const seed of opts.seeds) {
   const deal = Game.dealt(game, seed)
@@ -126,7 +133,8 @@ for (const seed of opts.seeds) {
   totalMs += took
   if (took > worst.ms) worst = { seed, ms: took }
   totalHeld += held
-  if (held > most.bytes) most = { seed, bytes: held }
+  if (held > most.bytes) most = { seed, bytes: held, arrays: effort.bytes }
+  totalArrays += effort.bytes
   // Three ways to come back without a line, and they are three different facts: a proof
   // the deal can't be won, the budget spent, and the caller's own limit reached.
   const proved = Solver.provedUnwinnable(effort)
@@ -140,16 +148,16 @@ for (const seed of opts.seeds) {
   const why = proved ? "every line was tried" : ranOut ? limitSaid : "the budget ran out"
   if (!opts.quiet) {
     console.log(`\n=== deal #${seed} ===`)
-    if (!plan) console.log(`  no solution — ${why}${onAsk}, ${took}ms of thinking holding ${mb(held)}`)
+    if (!plan) console.log(`  no solution — ${why}${onAsk}, ${took}ms of thinking ${holding(held, effort)}`)
     else {
       plan.forEach((step, i) => console.log(`  ${String(i + 1).padStart(3)}. ${step.description}`))
       console.log(
-        `  ${plan.length} moves to a finishable board${onAsk}, ${took}ms of thinking holding ${mb(held)}`,
+        `  ${plan.length} moves to a finishable board${onAsk}, ${took}ms of thinking ${holding(held, effort)}`,
       )
     }
   } else if (!plan)
     console.log(
-      `deal ${seed}: ${proved ? "unwinnable" : ranOut ? "out of time" : "no solution"} (${took}ms, ${mb(held)})`,
+      `deal ${seed}: ${proved ? "unwinnable" : ranOut ? "out of time" : "no solution"} (${took}ms, ${mb(held)}, arrays ${mb(effort.bytes)})`,
     )
 }
 
@@ -163,8 +171,8 @@ console.log(
     (outOfTime ? ` (${outOfTime} out of time)` : "") +
     ` — ${per(totalMs)}ms and ${(totalMoves / Math.max(solved, 1)).toFixed(0)} moves a deal on average` +
     (worst.seed === null ? "" : `, worst deal #${worst.seed} at ${worst.ms}ms`) +
-    ` — ${mb(totalHeld / Math.max(n, 1))} held a deal on average` +
-    (most.seed === null ? "" : `, most by #${most.seed} at ${mb(most.bytes)}`),
+    ` — ${mb(totalHeld / Math.max(n, 1))} held a deal on average (arrays ${mb(totalArrays / Math.max(n, 1))})` +
+    (most.seed === null ? "" : `, most by #${most.seed} at ${mb(most.bytes)} (arrays ${mb(most.arrays)})`),
 )
 
 process.exit(unsolved === 0 ? 0 : 1)
