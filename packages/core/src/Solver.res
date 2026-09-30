@@ -121,39 +121,68 @@ let heuristic = (s: Position.t, w: weights): int => {
 // --- A binary heap of node indices -------------------------------------------
 // Its own little module rather than a sorted array — `docs/solver.md` § The search
 // has what that is worth. It holds indices into a `Graph`, not entries: a priority is
-// read off the node whenever two are compared, so an open node costs each heap four
-// bytes and nothing more.
+// read off the node whenever two are compared, so a node's place in the heap is all it
+// costs — four bytes for the slot, four for `where`.
+//
+// **A node is in a heap at most once.** A node reached again more cheaply has its
+// priority lowered where it stands (`push` of an item already in), which is what `where`
+// is for: the slot each node occupies, or -1.
 
 module Heap = {
-  type t = {mutable items: Graph.ints, mutable size: int}
+  type t = {mutable items: Graph.ints, mutable size: int, mutable where: Graph.ints}
 
-  let make = (): t => {items: Int32Array.fromLength(0), size: 0}
+  let make = (): t => {
+    items: Int32Array.fromLength(0),
+    size: 0,
+    where: Int32Array.fromLength(0),
+  }
   let size = (heap: t): int => heap.size
-  let bytes = (heap: t): int => TypedArray.byteLength(heap.items)
+  let bytes = (heap: t): int =>
+    TypedArray.byteLength(heap.items) + TypedArray.byteLength(heap.where)
 
-  let swap = (items: Graph.ints, i: int, j: int) => {
-    let atI = items->Graph.at(i)
-    items->Graph.put(i, items->Graph.at(j))
-    items->Graph.put(j, atI)
+  let place = (heap: t, i: int, item: int) => {
+    heap.items->Graph.put(i, item)
+    heap.where->Graph.put(item, i)
   }
 
-  let push = (heap: t, item: int, ~priority: int => float) => {
-    if heap.size == TypedArray.length(heap.items) {
-      heap.items = Graph.widened(heap.items, Int32Array.fromLength, Graph.grow(heap.size))
-    }
-    let items = heap.items
-    items->Graph.put(heap.size, item)
-    heap.size = heap.size + 1
-    let i = ref(heap.size - 1)
+  // The item at `i` up towards the root, past every parent it now outranks.
+  let siftUp = (heap: t, i: int, ~priority: int => float) => {
+    let item = heap.items->Graph.at(i)
+    let rank = priority(item)
+    let i = ref(i)
     let sifting = ref(true)
     while sifting.contents && i.contents > 0 {
       let parent = (i.contents - 1) / 2
-      if priority(items->Graph.at(parent)) <= priority(items->Graph.at(i.contents)) {
+      let above = heap.items->Graph.at(parent)
+      if priority(above) <= rank {
         sifting := false
       } else {
-        swap(items, parent, i.contents)
+        place(heap, i.contents, above)
         i := parent
       }
+    }
+    place(heap, i.contents, item)
+  }
+
+  // Into the heap, or — for an item already in it whose priority has fallen — up to
+  // where it now belongs. A priority only ever falls: a node is reached again only when
+  // it is reached more cheaply.
+  let push = (heap: t, item: int, ~priority: int => float) => {
+    if item >= TypedArray.length(heap.where) {
+      let old = TypedArray.length(heap.where)
+      heap.where = Graph.widened(heap.where, Int32Array.fromLength, Graph.grow(item))
+      heap.where->Graph.fillFrom(-1, ~start=old)
+    }
+    let at = heap.where->Graph.at(item)
+    if at >= 0 {
+      siftUp(heap, at, ~priority)
+    } else {
+      if heap.size == TypedArray.length(heap.items) {
+        heap.items = Graph.widened(heap.items, Int32Array.fromLength, Graph.grow(heap.size))
+      }
+      heap.items->Graph.put(heap.size, item)
+      heap.size = heap.size + 1
+      siftUp(heap, heap.size - 1, ~priority)
     }
   }
 
@@ -164,35 +193,37 @@ module Heap = {
     } else {
       let items = heap.items
       let top = items->Graph.at(0)
+      heap.where->Graph.put(top, -1)
       heap.size = heap.size - 1
       let size = heap.size
       if size > 0 {
-        items->Graph.put(0, items->Graph.at(size))
+        let item = items->Graph.at(size)
+        let rank = priority(item)
         let i = ref(0)
         let sifting = ref(true)
         while sifting.contents {
           let left = 2 * i.contents + 1
           let right = left + 1
           let smallest = ref(i.contents)
-          if (
-            left < size &&
-              priority(items->Graph.at(left)) < priority(items->Graph.at(smallest.contents))
-          ) {
-            smallest := left
+          let least = ref(rank)
+          if left < size {
+            let p = priority(items->Graph.at(left))
+            if p < least.contents {
+              smallest := left
+              least := p
+            }
           }
-          if (
-            right < size &&
-              priority(items->Graph.at(right)) < priority(items->Graph.at(smallest.contents))
-          ) {
+          if right < size && priority(items->Graph.at(right)) < least.contents {
             smallest := right
           }
           if smallest.contents == i.contents {
             sifting := false
           } else {
-            swap(items, smallest.contents, i.contents)
+            place(heap, i.contents, items->Graph.at(smallest.contents))
             i := smallest.contents
           }
         }
+        place(heap, i.contents, item)
       }
       top
     }
@@ -360,17 +391,10 @@ module Search = {
     if Position.canFinish(start) {
       search.line = Some([])
     } else {
-      let (hashA, hashB) = Graph.hash(graph, start)
-      let slot = Graph.slotOf(graph, start, ~hashA, ~hashB)
+      let hash = Graph.hash(graph, start)
+      let slot = Graph.slotOf(graph, start, ~hash)
       let root =
-        graph->Graph.add(
-          ~parent=-1,
-          ~move=0,
-          ~depth=0,
-          ~h=heuristic(start, weights),
-          ~hashA,
-          ~hashB,
-        )
+        graph->Graph.add(~parent=-1, ~move=0, ~depth=0, ~h=heuristic(start, weights), ~hash)
       graph->Graph.file(slot, root)
       search->push(root)
     }
@@ -419,27 +443,30 @@ module Search = {
           let move = moves->Array.getUnsafe(i.contents)
           let next = Position.applyMove(position, move)
           search.tried = search.tried + 1
-          let (hashA, hashB) = Graph.hash(graph, next)
-          let slot = Graph.slotOf(graph, next, ~hashA, ~hashB)
+          let hash = Graph.hash(graph, next)
+          let slot = Graph.slotOf(graph, next, ~hash)
           let prior = Graph.nodeAt(graph, slot)
-
-          // A position reached no more cheaply than before teaches nothing new.
-          if prior < 0 || graph.depth->Graph.at(prior) > g {
-            if Position.canFinish(next) {
-              search.line = Some(Array.concat(Graph.lineTo(graph, node), [move]))
-            } else {
-              let child =
-                graph->Graph.add(
-                  ~parent=node,
-                  ~move=Board.ofMove(move),
-                  ~depth=g,
-                  ~h=heuristic(next, weights),
-                  ~hashA,
-                  ~hashB,
-                )
-              graph->Graph.file(slot, child)
-              search->push(child)
+          if prior >= 0 {
+            // Seen. A closed position stays as it was grown; an open one reached more
+            // cheaply takes the cheaper way, and moves up every heap to match. A
+            // position reached no more cheaply than before teaches nothing new.
+            if !Graph.isClosed(graph, prior) && graph.depth->Graph.at(prior) > g {
+              graph->Graph.reparent(prior, ~parent=node, ~move=Board.ofMove(move), ~depth=g)
+              search->push(prior)
             }
+          } else if Position.canFinish(next) {
+            search.line = Some(Array.concat(Graph.lineTo(graph, node), [move]))
+          } else {
+            let child =
+              graph->Graph.add(
+                ~parent=node,
+                ~move=Board.ofMove(move),
+                ~depth=g,
+                ~h=heuristic(next, weights),
+                ~hash,
+              )
+            graph->Graph.file(slot, child)
+            search->push(child)
           }
           i := i.contents + 1
         }

@@ -1,18 +1,17 @@
 // The positions a search has generated, as records in typed arrays rather than an
-// object apiece — the graph `Solver.Search` grows. What each part costs and why it is
-// laid out this way is `docs/solver-next.md` § The graph; the measured bytes are in
-// `docs/solver.md` § The budget.
+// object apiece — the graph `Solver.Search` grows. What each part is for is
+// `docs/solver-next.md` § The graph; what it measures, `docs/solver.md` § The search.
 //
-// **A node is an index.** Its parent, the move that reached it from there, its depth
-// `g`, its heuristic `h` and the two lanes of its hash are one slot each in a column
-// of their own. A node is *open* until the search grows it and *closed* after, and
-// only a closed node's position is kept — packed into `arena`, one byte per card —
-// because an open node's position is its parent's with one move played.
+// **A node is a position, and an index.** Its parent, the move that reached it from
+// there, its depth `g`, its heuristic `h` and its hash are one slot each in a column of
+// their own. A node is *open* until the search grows it and *closed* after, and only a
+// closed node's position is kept — packed into `arena`, one byte per card — because an
+// open node's position is its parent's with one move played.
 //
-// **Membership is by hash and exact.** `table` maps `Board.hash` to a node, and a
-// hit counts only once the node's position has been rebuilt and found `alike` the one
-// asked about. A collision taken for "seen" would prune a position nobody visited, and
-// `Exhausted` would stop being a proof.
+// **Membership is by hash and exact.** `table` maps a hash to a node, and a hit counts
+// only once the node's position has been rebuilt and found `alike` the one asked about.
+// A collision taken for "seen" would prune a position nobody visited, and `Exhausted`
+// would stop being a proof.
 
 type ints = TypedArray.t<int>
 
@@ -20,6 +19,7 @@ type ints = TypedArray.t<int>
 @set_index external put: (ints, int, int) => unit = ""
 @send external copyFrom: (ints, ints) => unit = "set"
 @send external fillWith: (ints, int) => unit = "fill"
+@send external fillFrom: (ints, int, ~start: int) => unit = "fill"
 
 // A column the same kind as `old`, `length` long, with `old` copied into its front.
 let widened = (old: ints, make: int => ints, length: int): ints => {
@@ -28,9 +28,10 @@ let widened = (old: ints, make: int => ints, length: int): ints => {
   wider
 }
 
-// How far a full column grows: by half, not double, because the slack a column
-// carries after growing is memory a search holds and never uses.
-let grow = (n: int): int => n + n / 2 + 16
+// How far a full column grows: by a quarter, not double, because the slack a column
+// carries after growing is memory a search holds and never uses. The copying that
+// costs is a few passes over the column, spread across every node it holds.
+let grow = (n: int): int => n + n / 4 + 1024
 
 // --- The arena ----------------------------------------------------------------
 // A closed node's position, as bytes: the cells (a card plus one, so an empty cell
@@ -48,11 +49,10 @@ type t = {
   mutable depth: ints,
   mutable h: ints,
   mutable stored: ints, // where a closed node's position begins in `arena`; -1 while open
-  mutable hashA: ints,
-  mutable hashB: ints,
+  mutable hashes: ints, // the first lane of `Board.hash`, which is all `table` files by
   mutable arena: ints,
   mutable arenaSize: int,
-  mutable table: ints, // node indices, open-addressed by `hashA`; -1 is an empty slot
+  mutable table: ints, // node indices, open-addressed by `hashes`; -1 is an empty slot
   mutable tableCount: int,
 }
 
@@ -66,11 +66,10 @@ let make = (start: Position.t): t => {
     size: 0,
     parent: Int32Array.fromLength(nodes),
     move: Int32Array.fromLength(nodes),
-    depth: Int32Array.fromLength(nodes),
+    depth: Int16Array.fromLength(nodes),
     h: Int16Array.fromLength(nodes),
     stored: Int32Array.fromLength(nodes),
-    hashA: Int32Array.fromLength(nodes),
-    hashB: Int32Array.fromLength(nodes),
+    hashes: Int32Array.fromLength(nodes),
     arena: Uint8Array.fromLength(0),
     arenaSize: 0,
     table: Int32Array.fromLength(0),
@@ -87,8 +86,7 @@ let bytes = (graph: t): int =>
     graph.depth,
     graph.h,
     graph.stored,
-    graph.hashA,
-    graph.hashB,
+    graph.hashes,
     graph.arena,
     graph.table,
   ]->Array.reduce(0, (sum, column) => sum + TypedArray.byteLength(column))
@@ -97,35 +95,35 @@ let bytes = (graph: t): int =>
 
 let isClosed = (graph: t, node: int): bool => graph.stored->at(node) >= 0
 
-let add = (
-  graph: t,
-  ~parent: int,
-  ~move: int,
-  ~depth: int,
-  ~h: int,
-  ~hashA: int,
-  ~hashB: int,
-): int => {
+let add = (graph: t, ~parent: int, ~move: int, ~depth: int, ~h: int, ~hash: int): int => {
   let node = graph.size
   if node == TypedArray.length(graph.parent) {
     let length = grow(node)
     graph.parent = widened(graph.parent, Int32Array.fromLength, length)
     graph.move = widened(graph.move, Int32Array.fromLength, length)
-    graph.depth = widened(graph.depth, Int32Array.fromLength, length)
+    graph.depth = widened(graph.depth, Int16Array.fromLength, length)
     graph.h = widened(graph.h, Int16Array.fromLength, length)
     graph.stored = widened(graph.stored, Int32Array.fromLength, length)
-    graph.hashA = widened(graph.hashA, Int32Array.fromLength, length)
-    graph.hashB = widened(graph.hashB, Int32Array.fromLength, length)
+    graph.hashes = widened(graph.hashes, Int32Array.fromLength, length)
   }
   graph.parent->put(node, parent)
   graph.move->put(node, move)
   graph.depth->put(node, depth)
   graph.h->put(node, h)
   graph.stored->put(node, -1)
-  graph.hashA->put(node, hashA)
-  graph.hashB->put(node, hashB)
+  graph.hashes->put(node, hash)
   graph.size = node + 1
   node
+}
+
+// A shorter way to an open node: the parent and move that reach it, and its depth.
+// **Never a closed node** — its children were generated from its position as its own
+// parent reached it, and the moves recorded against them name that layout's columns;
+// a new parent might lay the same position out in another order.
+let reparent = (graph: t, node: int, ~parent: int, ~move: int, ~depth: int) => {
+  graph.parent->put(node, parent)
+  graph.move->put(node, move)
+  graph.depth->put(node, depth)
 }
 
 // Keep a node's position, now that it is being grown.
@@ -210,10 +208,13 @@ let lineTo = (graph: t, node: int): array<Position.move> => {
 
 // --- Lookup -------------------------------------------------------------------
 
-// `Board.hash` of a position, by way of the scratch board.
-let hash = (graph: t, s: Position.t): (int, int) => {
+// `Board.hash` of a position, by way of the scratch board — its first lane alone. The
+// second would only spare a comparison the table almost never makes: a match is
+// compared card for card whatever the hash says, and a 32-bit match on a different
+// position is about one probe in four billion.
+let hash = (graph: t, s: Position.t): int => {
   Board.reload(graph.board, s)
-  Board.hash(graph.board)
+  Pair.first(Board.hash(graph.board))
 }
 
 let mask = (graph: t) => TypedArray.length(graph.table) - 1
@@ -228,7 +229,7 @@ let rehash = (graph: t) => {
   for i in 0 to TypedArray.length(old) - 1 {
     let node = old->at(i)
     if node >= 0 {
-      let slot = ref(graph.hashA->at(node)->Int.bitwiseAnd(mask))
+      let slot = ref(graph.hashes->at(node)->Int.bitwiseAnd(mask))
       while table->at(slot.contents) >= 0 {
         slot := (slot.contents + 1)->Int.bitwiseAnd(mask)
       }
@@ -239,21 +240,17 @@ let rehash = (graph: t) => {
 
 // The slot a position is filed under: holding its node if it has one, or the empty
 // slot it would go in if it hasn't. Read it with `nodeAt`, fill it with `file`.
-let slotOf = (graph: t, s: Position.t, ~hashA: int, ~hashB: int): int => {
+let slotOf = (graph: t, s: Position.t, ~hash: int): int => {
   if TypedArray.length(graph.table) == 0 {
     rehash(graph)
   }
   let {table} = graph
   let mask = mask(graph)
-  let slot = ref(hashA->Int.bitwiseAnd(mask))
+  let slot = ref(hash->Int.bitwiseAnd(mask))
   let found = ref(false)
   while !found.contents && table->at(slot.contents) >= 0 {
     let node = table->at(slot.contents)
-    if (
-      graph.hashA->at(node) == hashA &&
-      graph.hashB->at(node) == hashB &&
-      Position.alike(positionOf(graph, node), s)
-    ) {
+    if graph.hashes->at(node) == hash && Position.alike(positionOf(graph, node), s) {
       found := true
     } else {
       slot := (slot.contents + 1)->Int.bitwiseAnd(mask)

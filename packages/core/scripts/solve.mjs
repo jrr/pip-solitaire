@@ -77,11 +77,23 @@ let totalArrays = 0
 // whatever garbage happened not to be swept yet — the mise task passes the flag.
 if (typeof globalThis.gc !== "function") throw new Error("run with node --expose-gc (mise run solve does)")
 // A typed array's contents live outside the JavaScript heap, in the backing stores
-// `arrayBuffers` counts — which is where the search keeps its graph.
+// `arrayBuffers` counts — which is where the search keeps its graph. A buffer the
+// collector has found dead can still be counted there for a collection or two, so
+// collect until two readings agree: a column outgrown just before the search stopped
+// otherwise reads as held.
 const liveHeap = () => {
-  globalThis.gc()
-  const { heapUsed, arrayBuffers } = process.memoryUsage()
-  return heapUsed + arrayBuffers
+  const read = () => {
+    globalThis.gc()
+    const { heapUsed, arrayBuffers } = process.memoryUsage()
+    return heapUsed + arrayBuffers
+  }
+  let last = read()
+  for (let i = 0; i < 5; i++) {
+    const now = read()
+    if (now === last) break
+    last = now
+  }
+  return last
 }
 
 // Ask one search every wait in turn, stopping at the first that isn't cut short by the
