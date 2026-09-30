@@ -567,13 +567,29 @@ reach it. So a search with an empty set of lists has still grown every position 
 could reach, and `Exhausted` is still a proof. Why each board has two, and what the
 second buys: § The budget.
 
-- **The open list is a binary heap** (`Solver.Heap`), not a sorted array: it's
-  pushed and popped hundreds of thousands of times per deal, and re-sorting it
-  that often is the whole cost of the search.
-- **The visited set is keyed by `Position.key`**, which sorts the cells and the
-  columns first — two positions that differ only in *which* free cell or *which*
-  column holds what are the same position. A position reached no more cheaply
-  than before teaches nothing new and is dropped.
+- **The graph is typed arrays, not objects** (`Graph.res`). A node is an index: its
+  parent, the move from there, its depth, its heuristic and its hash are a slot each
+  in a column of their own, about twenty bytes. Only a *grown* node's position is
+  kept, packed one byte per card into an arena; an open node's is its parent's with
+  its move played again, the trade `parent` and `trail` objects used to make. What
+  that holds per board is § The budget's to say.
+- **The open list is a binary heap** (`Solver.Heap`) of node indices, not a sorted
+  array: it's pushed and popped hundreds of thousands of times per deal, and
+  re-sorting it that often is the whole cost of the search. A priority is read off
+  the node when two are compared, so a heap stores nothing but the index and where
+  each node sits in it.
+- **The visited set is a hash table, and a hit is checked.** It files each node by
+  `Board.hash`, which agrees with `Position.key` — two positions that differ only in
+  *which* free cell or *which* column holds what are the same position — and a hash
+  that matches counts as seen only once the node's position, rebuilt, is
+  `Position.alike` the one asked about. A collision taken for "seen" would prune a
+  position nobody visited, and `Exhausted` would stop being a proof. No string is
+  built for a position anywhere on this path.
+- **One node per position, and `closed` is on the node.** A position reached no more
+  cheaply than before teaches nothing new and is dropped. One reached more cheaply
+  while still open takes the cheaper parent and moves up each heap where it stands;
+  one already grown is left as it was grown, because its children's moves name
+  the columns of the layout it was grown in.
 - **Three prunings in `legalMoves`** that only ever cost time, all of them
   symmetries the key already collapses: a card may go to the *first* empty free
   cell and a run to the *first* empty column (the other empties are the same
@@ -738,8 +754,12 @@ of a two-hundred-move path, took ten seconds of `Solver.interactive` past a giga
 which iOS answers by killing the tab, worker and all, and reloading it. The three
 together measured 1,518 MB → 379 MB of live heap over 100,000 nodes of a Spider
 position, a little faster, and the identical line on every deal of 1–40 on five
-boards. The key stays exact: a hash would be smaller still, but a collision prunes a
-position, and `Exhausted` is only a proof while nothing is pruned that wasn't seen. Re-profiled after that, the collector was still ~23%,
+boards. **The key went next, and the objects with it** (§ The search): nodes as typed
+arrays and a visited set that files by hash and checks every match, which is how a
+hash can be smaller without a collision ever pruning a position — `Exhausted` is only
+a proof while nothing is pruned that wasn't seen. That too found the identical line on
+every deal of 1–40 on five boards before anything else about the search changed.
+Re-profiled before it, the collector was still ~23%,
 now behind `applyMove`'s `copy`; make/unmake against one mutable board would take
 most of that too. **Call it 3–4× available without leaving the language, and the
 rules untouched by any of it.**

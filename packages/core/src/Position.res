@@ -713,27 +713,24 @@ let applyMove = (s: t, move: move): t => {
 }
 
 // Small numbers — a card id (0–51), a rank, a face-down count — one character each,
-// from "0" up. **One character, not digits and a comma**: the search keeps a key for
-// every position it generates, over a million on a Spider board, and on a board that
-// size the separators were half of every key. Fixed width is what makes it
-// unambiguous without them; none of these ever reaches the "|", "/" or "!" a key is
-// punctuated with, all of which sort below "0".
+// from "0" up. Fixed width is what makes a key unambiguous without separators; none
+// of these ever reaches the "|", "/" or "!" a key is punctuated with, all of which
+// sort below "0".
 let spell = (ns: array<int>): string => String.fromCharCodeMany(ns->Array.map(n => n + 48))
 
-// A canonical key for a search's visited set: two positions that differ only in
-// *which* free cell or *which* column holds what are the same position, so the
-// cells and the columns are both sorted before they're spelled out.
-//
-// **Spelling them out is the solver's single largest cost**, and so the first thing
-// to change if it is ever wanted faster. `docs/solver.md` § On making this faster
-// has the profile, and what a replacement measured.
+// A position's canonical form, spelled: two positions that differ only in *which*
+// free cell or *which* column holds what are the same position, so the cells and the
+// columns are both sorted before they're spelled out. It is the definition the
+// search's own tests of sameness answer to — `alike` below and `Board.hash` — and
+// what a driver compares a board it has read with. **Not for the search's hot path**:
+// a string per position was most of what a search held (`docs/solver.md` § The
+// search).
 let key = (s: t): string => {
   let cells = s.cells->Array.filter(c => c >= 0)
   cells->Array.sort(Int.compare)
   // How many of a column's cards are face down is part of the column: the same cards
   // with one more of them turned over is a board a hand can play less of. Written
-  // only where there is one, since this is the hottest string in the search and every
-  // board but a Klondike-dealt one has none.
+  // only where there is one.
   let cols = s.casc->Array.mapWithIndex((pile, col) => {
     let cards = spell(pile)
     switch s.down->Array.getUnsafe(col) {
@@ -744,8 +741,7 @@ let key = (s: t): string => {
   cols->Array.sort(String.compare)
   // The stock as its *length*: its order is fixed at the deal and it only ever
   // shortens from the top, so within one search two boards holding the same number of
-  // undealt cards are holding the same cards. Written only where there is a stock, for
-  // the same reason the face-down count is — this is the hottest string in the search.
+  // undealt cards are holding the same cards. Written only where there is a stock.
   let stock = switch Array.length(s.stock) {
   | 0 => ""
   | n => `|${Int.toString(n)}`

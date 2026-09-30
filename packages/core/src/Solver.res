@@ -308,7 +308,7 @@ let clockEvery = 1024
 // every reachable position was grown, and `Exhausted` is still a proof. What a second
 // heap buys, and on which boards: `docs/solver.md` § The budget.
 //
-// What it grows into is a `Graph`: a node per position pushed, in typed arrays, and a
+// What it grows into is a `Graph`: a node per position, in typed arrays, and a
 // visited set that answers by hash and checks the answer.
 module Search = {
   // How a `think` came back. **Three of these mean "no line", and only one of them
