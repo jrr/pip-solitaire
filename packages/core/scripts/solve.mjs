@@ -8,6 +8,7 @@
 //   mise run solve -- --game mini 1-200     # …a short-deck one, likewise
 //   mise run solve -- --limit 10 1-200      # give up on a deal after ten seconds
 //   mise run solve -- --limit 10+10 147     # …then ask the same search for ten more
+//   mise run solve -- --nodes 5000000 147   # a bigger budget than the board's own
 //
 // What it's for, and what to measure with it: docs/solver.md § Measuring it. That
 // section also says what the "held" figure is and isn't.
@@ -19,6 +20,10 @@
 // Several waits joined by `+` are asked one after another of the *same* search, the
 // way a driver that ran out of patience would ask for more: each carries on from where
 // the last stopped, and the effort reported is all of them together.
+//
+// `--nodes` replaces the board's cap on positions grown, keeping its heaps. A board's
+// own cap is about thirty seconds of search, the most anything waits by default; this is
+// how a run that means to wait longer says so.
 //
 // It runs core's *compiled* output directly (ReScript compiles in-source to
 // `.res.mjs`), which is also the proof that the solver is reachable from plain
@@ -35,11 +40,15 @@ import * as Position from "../src/Position.res.mjs"
 import * as Solver from "../src/Solver.res.mjs"
 
 function parseArgs(argv) {
-  const opts = { seeds: [], quiet: false, game: "freecell", limits: null }
+  const opts = { seeds: [], quiet: false, game: "freecell", limits: null, nodes: null }
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i]
     if (arg === "--quiet") opts.quiet = true
     else if (arg === "--game") opts.game = argv[++i]
+    else if (arg === "--nodes") {
+      opts.nodes = Number(argv[++i])
+      if (!(Number.isInteger(opts.nodes) && opts.nodes > 0)) throw new Error("--nodes takes a whole number of positions")
+    }
     else if (arg === "--limit") {
       opts.limits = String(argv[++i]).split("+").map(Number)
       if (!opts.limits.every((limit) => limit > 0))
@@ -106,9 +115,10 @@ const liveHeap = () => {
 function think(position) {
   const baseline = liveHeap()
   const started = Date.now()
-  // The two `undefined`s are `~budget` and `~weights`, left to the board's own: a
-  // ReScript optional argument is positional by the time it reaches here.
-  const search = Solver.Search.make(position, undefined, undefined)
+  // `~budget` and `~weights`, positionally — a ReScript optional argument is by the time
+  // it reaches here. The board's own for both, unless `--nodes` raised the cap.
+  const budget = opts.nodes === null ? undefined : { ...Solver.budgetFor(position), maxNodes: opts.nodes }
+  const search = Solver.Search.make(position, budget, undefined)
   let line, effort
   let asked = 0
   do [line, effort] = Solver.solveOn(search, asks[asked++])

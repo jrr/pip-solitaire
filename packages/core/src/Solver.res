@@ -236,19 +236,19 @@ module Heap = {
 // more than one takes turns between them over a single graph (`Search`, below).
 // `maxNodes` is the positions it grows, over all of them, before it answers `Full`.
 //
-// **The cap is the only thing bounding what a search holds.** A search never releases
-// what it has grown, so this is a memory ceiling as much as an effort one, and each
-// board's is the most it can grow without holding more than the restart ladder it
-// replaced did. Raising one is a change to what a solve holds: soak it and read the Held
-// column before believing otherwise. Why each pair of heaps, and what each cap costs in
-// deals: `docs/solver.md` § The budget.
+// **A default cap is about thirty seconds of search**, whoever calls: a deal that spends
+// it takes that long on a cloud sandbox, and nothing that runs by default should take
+// longer. A caller who will wait longer passes a budget of its own (`solve.mjs --nodes`).
+// It is a memory ceiling too — a search never releases what it has grown — and each
+// default holds well under what the restart ladder it replaced did. Why each pair of
+// heaps, and what each cap costs in deals: `docs/solver.md` § The budget.
 type budget = {heaps: array<float>, maxNodes: int}
 
 // The first weight on each board is the one almost every deal falls to; the second is
 // the one that catches most of what the first misses.
-let freecellBudget = {heaps: [2., 1.], maxNodes: 2_000_000}
-let simonBudget = {heaps: [1., 0.3], maxNodes: 1_600_000}
-let spideretteBudget = {heaps: [2., 1.], maxNodes: 5_500_000}
+let freecellBudget = {heaps: [2., 1.], maxNodes: 500_000}
+let simonBudget = {heaps: [1., 0.3], maxNodes: 500_000}
+let spideretteBudget = {heaps: [2., 1.], maxNodes: 1_000_000}
 
 // The budget a board gets — picked the same way its weights are, and for the same
 // reason: a stock is a longer game, not another law.
@@ -269,8 +269,9 @@ type patience = {ms: float, clock: unit => float}
 
 // The two waits the drivers use, named here so neither front end invents its own —
 // `interactive` for a board someone is watching, `patient` for a terminal or a script.
+// Thirty seconds is the most anything waits by default; longer is a caller's to ask for.
 let interactive = 10_000.
-let patient = 120_000.
+let patient = 30_000.
 
 // `patience` resolved against the clock once, at the moment the caller asked.
 type deadline = {at: float, clock: unit => float}

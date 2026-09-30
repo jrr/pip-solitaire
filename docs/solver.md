@@ -67,9 +67,9 @@ costs, is the next section.
 ## What a caller is willing to spend
 
 The budget is in *positions*, and a position is not a unit anyone waits
-in. Two hundred thousand of them is a fifth of a second of Mini and most of a
-minute of four-suit Spiderette, and the same number again is one wait on a CI
-runner and another on a phone. So the budget says how hard to try, and `patience`
+in. A million of them is half a minute of four-suit Spiderette on a cloud sandbox,
+more than Mini ever needs, and the same number again is one wait on a CI runner and
+another on a phone. So the budget says how hard to try, and `patience`
 says how long the caller will let that take:
 
 ```rescript
@@ -81,13 +81,20 @@ Two are named in `Solver`, for **who is waiting** rather than for how long:
 | | | |
 |---|---|---|
 | `interactive` | 10 s | a board someone is watching — passed by `TableScene` |
-| `patient` | 120 s | a terminal or a script, where the waiting is the point — passed by `Cli` |
+| `patient` | 30 s | a terminal or a script, where the waiting is the point — passed by `Cli` and the autoplay harness |
 
 `interactive` is a **policy**, and it really does cost answers — § What the
 interactive wait costs measures how many, and § Why the unsolved count stands is
-the decision that came out of it. `patient` is a **backstop**: it sits above the
-worst search any board's budget allows, so it bites only on a machine far slower
-than the one the record was measured on.
+the decision that came out of it. `patient` is a **backstop**: it sits at the worst
+search any board's budget allows, so it bites only on a machine slower than the one
+the record was measured on.
+
+**Nothing waits longer than thirty seconds by default.** Each board's cap is about
+thirty seconds of search on a cloud sandbox (§ The budget), and `patient` is thirty
+seconds of clock, so a default solve — `mise run solve` with no flags, the CLI's
+`autoplay`, the browser harness — gives up by then whatever it was asked. Waiting
+longer is something a caller asks for, never something it gets: `--nodes` raises
+`mise run solve`'s cap, and `--limit` sets its wait.
 
 **Neither front end waits on the thread it draws with.** The terminal has nothing
 to draw; the web app sends the board to a worker (`web-app/src/platform/Thinker.res`)
@@ -97,7 +104,7 @@ what it stopped being is the difference between a page and a hung page.
 
 `mise run solve` passes whatever `--limit` says, and nothing at all by default,
 which is what makes the benchmark record a measurement of the budget rather than
-of a wait.
+of a wait. A row measured with `--nodes` says so.
 
 **The search keeps no time; the caller cuts it into slices.** `Solver.Search.think`
 takes a number of positions and nothing else, and `Solver.solveOn` is the one place a
@@ -268,7 +275,8 @@ a heuristic change is trying to reduce.
 | 2026-09-20 | 1–1000 | 941/1000 | 54 | 5 | 855 ms | 85 | #964 at 25.1 s | — | Node v26.9.0, cloud sandbox |
 | 2026-09-29 | 1–1000 | 941/1000 | 54 | 5 | 628 ms | 85 | #964 at 19.2 s | 21 MB, #964 at 533 MB | Node v26.9.0, cloud sandbox, two soaks at once |
 | 2026-09-30 | 1–1000 | 931/1000 | 54 | 15 | 407 ms | 80 | #60 at 9.7 s | 21 MB, #60 at 447 MB | Node v26.9.0, cloud sandbox, up to four soaks at once |
-| 2026-09-30 | 1–1000 | 944/1000 | 56 | 0 | 791 ms | 80 | #766 at 100.9 s | 2 MB, #766 at 164 MB | Node v26.9.0, cloud sandbox, up to four soaks at once; the graph in typed arrays |
+| 2026-09-30 | 1–1000 | 944/1000 | 56 | 0 | 791 ms | 80 | #766 at 100.9 s | 2 MB, #766 at 164 MB | Node v26.9.0, cloud sandbox, up to four soaks at once; the graph in typed arrays; `--nodes 1600000` |
+SIMON_DEFAULT
 
 **Spiderette · 4 suits**, over 1–200 rather than the thousand: a deal the search
 gives up on costs it the whole budget — five minutes each at the 2026-09-30 cap — so
@@ -282,7 +290,8 @@ below it. Why it stands: § Why the unsolved count stands.
 | 2026-09-20 | 1–200 | 159/200 | 8 | 33 | 5.9 s | 105 | #147 at 30.2 s | — | Node v26.9.0, cloud sandbox |
 | 2026-09-29 | 1–200 | 159/200 | 8 | 33 | 4.3 s | 105 | #147 at 22.2 s | 188 MB, #162 at 897 MB | Node v26.9.0, cloud sandbox, two soaks at once |
 | 2026-09-30 | 1–200 | 150/200 | 7 | 43 | 3.2 s | 100 | #71 at 13.4 s | 156 MB, #41 at 619 MB | Node v26.9.0, cloud sandbox, up to four soaks at once |
-| 2026-09-30 | 1–200 | 180/200 | 8 | 12 | 23.1 s | 102 | #90 at 344.9 s | 55 MB, #199 at 779 MB | Node v26.9.0, cloud sandbox, up to four soaks at once; the graph in typed arrays |
+| 2026-09-30 | 1–200 | 180/200 | 8 | 12 | 23.1 s | 102 | #90 at 344.9 s | 55 MB, #199 at 779 MB | Node v26.9.0, cloud sandbox, up to four soaks at once; the graph in typed arrays; `--nodes 5500000` |
+S4_DEFAULT
 
 **Spiderette · 1 suit and · 2 suits**, over the same 1–200. The same law, budget
 and weights on a cheaper deck — these are the repeated packs, where `found`
@@ -302,7 +311,8 @@ and an unsolved count of its own.
 | 2026-09-30 | 1 suit | 1–200 | 198/200 | 2 | 0 | 293 ms | 70 | #143 at 11.7 s | 11 MB, #143 at 425 MB | Node v26.9.0, cloud sandbox, up to four soaks at once |
 | 2026-09-30 | 2 suits | 1–200 | 181/200 | 4 | 15 | 1.9 s | 84 | #94 at 21.6 s | 82 MB, #94 at 795 MB | Node v26.9.0, cloud sandbox, up to four soaks at once |
 | 2026-09-30 | 1 suit | 1–200 | 198/200 | 2 | 0 | 221 ms | 71 | #143 at 6.5 s | <1 MB, #143 at 11 MB | Node v26.9.0, cloud sandbox, up to four soaks at once; the graph in typed arrays |
-| 2026-09-30 | 2 suits | 1–200 | 195/200 | 5 | 0 | 4.2 s | 86 | #168 at 182.6 s | 11 MB, #168 at 429 MB | Node v26.9.0, cloud sandbox, up to four soaks at once; the graph in typed arrays; measured at a 6,000,000 cap, which no deal here reaches |
+| 2026-09-30 | 2 suits | 1–200 | 195/200 | 5 | 0 | 4.2 s | 86 | #168 at 182.6 s | 11 MB, #168 at 429 MB | Node v26.9.0, cloud sandbox, up to four soaks at once; the graph in typed arrays; `--nodes 6000000` |
+S2_DEFAULT
 
 **Mini and Micro**, under FreeCell's law and its weights. Every deal is
 *answered* — the search either finds a line or empties its frontier long before
