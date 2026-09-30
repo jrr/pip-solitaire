@@ -28,9 +28,9 @@ test.setTimeout(90_000)
 const DEAL = "/?game=freecell&seed=24680&animate=off"
 
 // A second deal, chosen for how long it thinks rather than for what it finds: four-suit
-// Spiderette #147 beats the whole ladder in half a minute (`docs/solver.md`), so under
-// the ten seconds a watched board gets it is a search that is *certainly* still running
-// a moment after the press. That is what makes the painting test below race-free — a
+// Spiderette #147 spends the search's whole budget without an answer (`docs/solver.md`),
+// so under the ten seconds a watched board gets it is a search that is *certainly* still
+// running a moment after the press. That is what makes the painting test below race-free — a
 // board that answered in 50 ms could pass it by accident.
 const SLOW_DEAL = "/?game=spiderette4&seed=147&animate=off"
 

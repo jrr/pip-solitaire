@@ -43,7 +43,7 @@ describe("Solver", () => {
     "plays deal #1 to a board the Finish button wins",
     () =>
       switch Solver.plan(~game, opening) {
-      | None => expect("deal 1 solved")->toBe("but the ladder ran out")
+      | None => expect("deal 1 solved")->toBe("but the budget ran out")
       | Some(moves) =>
         expect(Array.length(moves) > 20)->toBe(true) // a real game, not a shortcut
         switch play(~game, opening, moves) {
@@ -92,7 +92,7 @@ describe("Solver", () => {
     // `canFinish` is the goal, so a position that already meets it is solved by
     // the empty plan — not by `None`, which would mean "no line from here".
     switch Solver.plan(~game, opening) {
-    | None => expect("deal 1 solved")->toBe("but the ladder ran out")
+    | None => expect("deal 1 solved")->toBe("but the budget ran out")
     | Some(moves) =>
       switch play(~game, opening, moves) {
       | Error(why) => expect("the game played out")->toBe(why)
@@ -185,10 +185,9 @@ describe("Solver", () => {
           expect(Array.length(steps) > 20)->toBe(true) // a real game, not a shortcut
           // …and it says what the thinking cost, which is a fact about the search
           // rather than about the clock: a deal takes positions off the frontier, and
-          // several moves out of each, on at least one rung of the ladder.
+          // several moves out of each.
           expect(effort.positions > 0)->toBe(true)
           expect(effort.moves > effort.positions)->toBe(true)
-          expect(effort.passes >= 1)->toBe(true)
           // Every step's state is the one the step before it left, reduced by the
           // action it carries — so a driver that adopts these states in order is
           // playing the very moves it's recording, not two things that agree by luck.
@@ -244,13 +243,13 @@ describe("Solver", () => {
         // treats them differently: one hands over to the finish sweep, the other says
         // it couldn't. Spelled out in full because the effort is part of the answer,
         // and because it's the one board where every number in it is knowable: the
-        // search recognises a finishable position before it grows anything, so the
-        // first pass returns having spent nothing.
+        // search recognises a finishable position before it grows anything, so it
+        // returns having spent nothing.
         let finishable = Scenario.freecellFinish(game)
         expect(Solver.autoplay(~game, finishable))->toEqual(
           Solver.Played({
             steps: [],
-            effort: {positions: 0, moves: 0, passes: 1, ending: Solver.Found},
+            effort: {positions: 0, moves: 0, ending: Solver.Found},
           }),
         )
       },
@@ -310,26 +309,40 @@ describe("Solver", () => {
     )
 
     test(
-      "a spent clock ends the climb, where a spent budget only ends the rung",
+      "a spent clock and a spent budget are two different endings",
       () =>
         switch Position.ofGameState(~game, opening) {
         | None => expect("a FreeCell board packs")->toBe("but it didn't")
         | Some(start) =>
-          // Two rungs, each far too small to find anything on a full deal.
-          let ladder: array<Solver.attempt> = [
-            {weight: 2., maxNodes: 10},
-            {weight: 1., maxNodes: 10},
-          ]
-          // With time to spare, a rung that merely spent its budget leaves the next one
-          // something to do, and `passes` counts both.
-          let (_, budget) = Solver.solveWithEffort(start, ~ladder)
-          expect(budget.passes)->toBe(2)
-          expect(budget.ending)->toEqual(Solver.OutOfNodes)
-          // Out of time, the rung above is never climbed at all — which is the whole
-          // reason the two aren't one ending with a bit of colour on it.
-          let (_, clock) = Solver.solveWithEffort(start, ~ladder, ~patience=spent())
-          expect(clock.passes)->toBe(1)
+          // Far too small to find anything on a full deal.
+          let budget: Solver.budget = {heaps: [2.], maxNodes: 10}
+          // With time to spare, the search grows its whole budget and says it is full.
+          let (_, full) = Solver.solveWithEffort(start, ~budget)
+          expect(full.positions)->toBe(10)
+          expect(full.ending)->toEqual(Solver.OutOfNodes)
+          // Out of time, it never grows a position — and a more patient caller could
+          // still have had those ten, which is why the two aren't one ending.
+          let (_, clock) = Solver.solveWithEffort(start, ~budget, ~patience=spent())
+          expect(clock.positions)->toBe(0)
           expect(clock.ending)->toEqual(Solver.OutOfTime)
+        },
+    )
+
+    test(
+      "a search asked again carries on from where the wait stopped it",
+      () =>
+        switch Position.ofGameState(~game, opening) {
+        | None => expect("a FreeCell board packs")->toBe("but it didn't")
+        | Some(start) =>
+          let search = Solver.Search.make(start)
+          let (none, first) = Solver.solveOn(search, ~patience=spent())
+          expect((none, first.ending))->toEqual((None, Solver.OutOfTime))
+          // The second ask reports both asks' effort, and finds the line one uninterrupted
+          // solve does.
+          let (line, both) = Solver.solveOn(search)
+          let (once, alone) = Solver.solveWithEffort(start)
+          expect(line)->toEqual(once)
+          expect(both)->toEqual(alone)
         },
     )
 
@@ -346,6 +359,67 @@ describe("Solver", () => {
             GameState.initial(dead),
           ),
         )->toEqual(Solver.Unwinnable)
+      },
+    )
+  })
+
+  // The search as a value. Everything above asks it through `solveOn`; what's pinned
+  // here is the property that makes asking twice mean anything.
+  describe("Search", () => {
+    // Everything a search holds, as one comparable value.
+    let graphOf = (search: Solver.Search.t) => (
+      search.grown,
+      search.tried,
+      search.line,
+      search.frontiers,
+      search.turn,
+      search.seen->Map.entries->Iterator.toArray,
+    )
+
+    let startOf = (game: Game.t) =>
+      Position.ofGameState(~game, GameState.initial(game))->Option.getOrThrow
+
+    test(
+      "thinking twice reaches the graph thinking once for the sum does",
+      () =>
+        [Game.freecellDeal(~seed=582), Game.simpleSimonDeal(~seed=1)]->Array.forEach(
+          game => {
+            let start = startOf(game)
+            let twice = Solver.Search.make(start)
+            expect(twice->Solver.Search.think(~nodes=300))->toEqual(Solver.Search.Paused)
+            expect(twice->Solver.Search.think(~nodes=700))->toEqual(Solver.Search.Paused)
+            let once = Solver.Search.make(start)
+            expect(once->Solver.Search.think(~nodes=1000))->toEqual(Solver.Search.Paused)
+            expect(graphOf(twice))->toEqual(graphOf(once))
+          },
+        ),
+    )
+
+    testWithin(
+      "and so reaches the answer thinking once does, however the thinking is sliced",
+      () => {
+        let start = startOf(game)
+        let sliced = Solver.Search.make(start)
+        let answer = ref(Solver.Search.Paused)
+        while answer.contents == Solver.Search.Paused {
+          answer := sliced->Solver.Search.think(~nodes=777)
+        }
+        let whole = Solver.Search.make(start)
+        expect(whole->Solver.Search.think(~nodes=1_000_000))->toEqual(answer.contents)
+        expect(answer.contents)->toEqual(Solver.Search.Found)
+        expect(graphOf(sliced))->toEqual(graphOf(whole))
+      },
+      ~timeout=60_000,
+    )
+
+    test(
+      "a search that knows its answer gives it again without growing",
+      () => {
+        let dead = Solver.Search.make(startOf(Game.simpleSimonDeal(~seed=2)))
+        expect(dead->Solver.Search.think(~nodes=1_000_000))->toEqual(Solver.Search.Exhausted)
+        let grown = dead.grown
+        expect(dead->Solver.Search.think(~nodes=1_000_000))->toEqual(Solver.Search.Exhausted)
+        expect(dead.grown)->toBe(grown)
       },
     )
   })
@@ -391,7 +465,7 @@ describe("Solver", () => {
     )
 
     test(
-      "a deal with no line is told apart from one the ladder gave up on",
+      "a deal with no line is told apart from one the budget gave up on",
       () => {
         // Deal #2 is stuck within a few dozen positions: every one reachable from it is
         // searched, and none wins. That's a proof, and it reads differently from a
@@ -409,7 +483,7 @@ describe("Solver", () => {
           let game = Game.simpleSimonDeal(~seed)
           switch Solver.autoplay(~game, GameState.initial(game)) {
           | Solver.UnknownBoard => problems->Array.push(`deal ${Int.toString(seed)}: not read`)
-          | Solver.NoLine => problems->Array.push(`deal ${Int.toString(seed)}: the ladder ran out`)
+          | Solver.NoLine => problems->Array.push(`deal ${Int.toString(seed)}: the budget ran out`)
           | Solver.OutOfPatience =>
             problems->Array.push(`deal ${Int.toString(seed)}: the patience ran out`)
           | Solver.Unwinnable => ()
@@ -597,7 +671,7 @@ describe("Solver", () => {
               let deal = `${game.name} #${Int.toString(seed)}`
               switch Solver.autoplay(~game, opening) {
               | Solver.UnknownBoard => problems->Array.push(`${deal}: not a board it read`)
-              | Solver.NoLine => problems->Array.push(`${deal}: the ladder ran out`)
+              | Solver.NoLine => problems->Array.push(`${deal}: the budget ran out`)
               | Solver.OutOfPatience => problems->Array.push(`${deal}: the patience ran out`)
               | Solver.Unwinnable => ()
               | Solver.Played({steps}) =>

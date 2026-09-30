@@ -177,7 +177,7 @@ let dealFirstHint = "freecell"
 //
 // `~patience` rides alongside `~clock` and is there for the same reason: how long this
 // driver is willing to let `autoplay` think is the driver's to say, not `core`'s. Left
-// off — as every test leaves it — the search runs its whole ladder, which against the
+// off — as every test leaves it — the search runs to its whole budget, which against the
 // stopped clock above is the only answer that could be reproduced anyway.
 let stepCommand = (
   ~options: Options.t,
