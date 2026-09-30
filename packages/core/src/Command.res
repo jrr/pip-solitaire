@@ -756,8 +756,8 @@ let autoplayNoLine = "Autoplay couldn't find a way to win from here."
 // from here was tried.
 let autoplayUnwinnable = "There's no way to win from here — every line has been tried."
 
-// And said when it was patience that ran out — the wait the *driver* set, with rungs of
-// the ladder still unclimbed. That it is its own sentence is the whole point: the others
+// And said when it was patience that ran out — the wait the *driver* set, with the search
+// still short of its budget. That it is its own sentence is the whole point: the others
 // are answers about the board, and this one is an answer about the wait, so it has to
 // leave the board an open question rather than read as a verdict on it. It says the time
 // because the time is the part someone can do something about.
@@ -789,22 +789,13 @@ let thousands = (n: int): string => {
 // finishable needed no thinking at all.
 //
 // `ms` is the caller's own measurement around its `Solver.autoplay` call (the solver
-// keeps no clock); `positions` and `tried` are that search's `Solver.effort`, and
-// `passes` the rungs of the ladder it climbed — mentioned only when it took more than
-// one, since one is the ordinary case and saying so every time would be noise.
-let describeAutoplay = (
-  ~moves: int,
-  ~ms: float,
-  ~positions: int,
-  ~tried: int,
-  ~passes: int,
-): string =>
+// keeps no clock); `positions` and `tried` are that search's `Solver.effort`.
+let describeAutoplay = (~moves: int, ~ms: float, ~positions: int, ~tried: int): string =>
   switch moves {
   | 0 => "Autoplay: nothing left to think about — the board is already finishable."
   | n =>
-    let over = passes > 1 ? ` over ${Int.toString(passes)} passes` : ""
     `${Int.toString(n)}-move solution found in ${duration(ms)} — ` ++
-    `${thousands(positions)} positions, ${thousands(tried)} moves tried${over}.`
+    `${thousands(positions)} positions, ${thousands(tried)} moves tried.`
   }
 
 // --- Help ---------------------------------------------------------------------

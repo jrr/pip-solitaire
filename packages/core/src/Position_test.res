@@ -153,11 +153,11 @@ describe("Position", () => {
   test("the model offers every single-card move the reducer would accept", () => {
     // Completeness, the other direction: a move the reducer would take but the
     // model never generates is a move the solver can't plan, so the mirror has to
-    // list them all. Three prunings are deliberate and excluded here — the model
-    // sends a card only to the *first* empty free cell (the others are the same
-    // move), won't move a whole column into an empty one (that only renames the
-    // column), and won't shuffle a card between free cells (that changes nothing
-    // about what can be played next).
+    // list them all. Four prunings are deliberate and excluded here — the model
+    // sends a card only to the *first* empty free cell and the *first* empty column
+    // (the others are the same move), won't move a whole column into an empty one
+    // (that only renames the column), and won't shuffle a card between free cells
+    // (that changes nothing about what can be played next).
     let missing = []
     let real = ref(opening)
     switch Solver.plan(~game, opening) {
@@ -181,6 +181,7 @@ describe("Position", () => {
             let cells = Game.pileIndices(game, Game.FreeCell)
             let cascades = Game.pileIndices(game, Game.Cascade)
             let firstEmptyCell = position.cells->Array.indexOf(-1)
+            let firstEmptyColumn = position.casc->Array.findIndex(pile => Array.length(pile) == 0)
             // Every accessible card — the top of each cell and each column — against
             // every pile the reducer would let it land on.
             let accessible =
@@ -203,9 +204,12 @@ describe("Position", () => {
                         let (to_, pruned) = switch destination.role {
                         | Game.Foundation => ("foundation", false)
                         | Game.FreeCell => (`cell ${Int.toString(firstEmptyCell)}`, fromCell)
-                        | Game.Cascade => (
-                            `column ${Int.toString(cascades->Array.indexOf(dest))}`,
-                            alone && Array.length(GameState.cardsInPile(state, dest)) == 0,
+                        | Game.Cascade =>
+                          let col = cascades->Array.indexOf(dest)
+                          let empty = Array.length(GameState.cardsInPile(state, dest)) == 0
+                          (
+                            `column ${Int.toString(col)}`,
+                            empty && (alone || col != firstEmptyColumn),
                           )
                         // A stock is sealed, so the reducer never accepts a drop onto one,
                         // and the model has no word for it. Should either change, this

@@ -1031,26 +1031,15 @@ describe("Command.reason", () => {
 // interesting of the three.
 describe("Command.describeAutoplay", () => {
   test("says the length, the time and the cost", () =>
-    expect(
-      Command.describeAutoplay(~moves=58, ~ms=65., ~positions=1204, ~tried=18332, ~passes=1),
-    )->toBe("58-move solution found in 65ms — 1,204 positions, 18,332 moves tried.")
-  )
-
-  // A stubborn deal climbed the ladder, and that's worth saying — but only then, since
-  // one pass is what almost every deal takes and a sentence that says so every time is
-  // saying nothing.
-  test("mentions the extra passes only when there were some", () =>
-    expect(
-      Command.describeAutoplay(~moves=61, ~ms=1449., ~positions=312004, ~tried=4100211, ~passes=3),
-    )->toBe(
-      "61-move solution found in 1.4s — 312,004 positions, 4,100,211 moves tried over 3 passes.",
+    expect(Command.describeAutoplay(~moves=58, ~ms=65., ~positions=1204, ~tried=18332))->toBe(
+      "58-move solution found in 65ms — 1,204 positions, 18,332 moves tried.",
     )
   )
 
   // A board that was already finishable needed no thinking at all, so there's no time
   // and no cost to report — only that there was nothing to do.
   test("a board with nothing left to think about says so instead", () =>
-    expect(Command.describeAutoplay(~moves=0, ~ms=0., ~positions=0, ~tried=0, ~passes=1))->toBe(
+    expect(Command.describeAutoplay(~moves=0, ~ms=0., ~positions=0, ~tried=0))->toBe(
       "Autoplay: nothing left to think about — the board is already finishable.",
     )
   )

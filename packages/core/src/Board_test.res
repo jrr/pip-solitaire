@@ -22,8 +22,8 @@ type reached = {
   mutable finishes: int,
 }
 
-// One rung, cheap enough for a unit test, and every deal below has a line inside it.
-let rung: Solver.attempt = {weight: 8., maxNodes: 15_000}
+// A budget cheap enough for a unit test, and every deal below has a line inside it.
+let cheap: Solver.budget = {heaps: [8.], maxNodes: 15_000}
 let stopped: Solver.patience = {ms: Solver.interactive, clock: () => 0.}
 
 let deals = (game: Game.t): array<int> =>
@@ -178,7 +178,7 @@ let walk = (~game: Game.t, ~seed: int, ~reached: reached, ~failures: array<strin
     let line =
       lineless->Array.includes(game.id)
         ? None
-        : Solver.solve(start, ~ladder=[rung], ~patience=stopped)
+        : Solver.solve(start, ~budget=cheap, ~patience=stopped)
     switch line {
     | Some(line) =>
       line->Array.forEach(next => {

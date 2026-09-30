@@ -208,6 +208,9 @@ is soaked against the record. A second heap is added where the soak loses deals
 the ladder used to find, and not otherwise: each extra heap is one more index and
 priority per open node.
 
+Measured: every board wanted the second heap, and none a third to reach its cap.
+Which weights, and what each cap costs, is in `docs/solver.md` § The budget.
+
 **The ladder was also a memory ceiling, and a continuous search gives that up.**
 A rung that spends its budget releases its frontier before the next begins, which
 is why a capped Spiderette deal holds 565 MB at most where an uncapped one holds

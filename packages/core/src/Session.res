@@ -379,7 +379,6 @@ let adoptAutoplay = (~clock: unit => float, ~ms: float, s: t, found: Solver.auto
             ~ms,
             ~positions=effort.positions,
             ~tried=effort.moves,
-            ~passes=effort.passes,
           ),
         ),
       },
@@ -391,7 +390,7 @@ let adoptAutoplay = (~clock: unit => float, ~ms: float, s: t, found: Solver.auto
 //
 // `~patience` is how long the driver is willing to wait, in milliseconds — the caller
 // supplies the number and the session supplies the clock, since it already holds one.
-// Left off, the search runs the whole ladder however long that takes, which is what
+// Left off, the search runs to its whole budget however long that takes, which is what
 // every test and every fold with a stopped clock wants.
 let autoplay = (~clock: unit => float, ~patience: option<float>=?, s: t): (t, outcome) => {
   let started = clock()

@@ -7,15 +7,18 @@
 //   mise run solve -- --game simplesimon 7  # another board, by `Game.t` id
 //   mise run solve -- --game mini 1-200     # …a short-deck one, likewise
 //   mise run solve -- --limit 10 1-200      # give up on a deal after ten seconds
+//   mise run solve -- --limit 10+10 147     # …then ask the same search for ten more
 //
 // What it's for, and what to measure with it: docs/solver.md § Measuring it. That
-// section also says what the "held" figure is and isn't, and why each deal is solved
-// twice to take it.
+// section also says what the "held" figure is and isn't.
 //
 // `--limit` is the wait a *driver* would impose, in seconds, so a soak can be run the
 // way a front end actually calls the solver — and so the boards whose stubborn deals
-// cost the whole ladder can be soaked in an evening rather than half a day. Left off,
-// the ladder runs to its own end, which is what the benchmark record measures.
+// cost the whole budget can be soaked in an evening rather than half a day. Left off,
+// the search runs to its own budget, which is what the benchmark record measures.
+// Several waits joined by `+` are asked one after another of the *same* search, the
+// way a driver that ran out of patience would ask for more: each carries on from where
+// the last stopped, and the effort reported is all of them together.
 //
 // It runs core's *compiled* output directly (ReScript compiles in-source to
 // `.res.mjs`), which is also the proof that the solver is reachable from plain
@@ -32,14 +35,15 @@ import * as Position from "../src/Position.res.mjs"
 import * as Solver from "../src/Solver.res.mjs"
 
 function parseArgs(argv) {
-  const opts = { seeds: [], quiet: false, game: "freecell", limit: null }
+  const opts = { seeds: [], quiet: false, game: "freecell", limits: null }
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i]
     if (arg === "--quiet") opts.quiet = true
     else if (arg === "--game") opts.game = argv[++i]
     else if (arg === "--limit") {
-      opts.limit = Number(argv[++i])
-      if (!(opts.limit > 0)) throw new Error("--limit takes a number of seconds")
+      opts.limits = String(argv[++i]).split("+").map(Number)
+      if (!opts.limits.every((limit) => limit > 0))
+        throw new Error("--limit takes a number of seconds, or several joined by +")
     } else if (/^\d+-\d+$/.test(arg)) {
       const [from, to] = arg.split("-").map(Number)
       for (let s = from; s <= to; s++) opts.seeds.push(s)
@@ -54,10 +58,10 @@ const opts = parseArgs(process.argv.slice(2))
 const game = Game.byId(opts.game)
 if (!game) throw new Error(`no game called ${opts.game} — one of ${Game.all.map((g) => g.id).join(", ")}`)
 
-// The wait `Solver.patience` is handed, in milliseconds. The clock beside it is a
-// deal's own, below.
-const ms = opts.limit === null ? Infinity : opts.limit * 1000
-const limitSaid = opts.limit === null ? "" : `the ${opts.limit}s limit ran out`
+// The waits `Solver.patience` is handed, one per ask — or one ask with no patience at
+// all, which runs the search to its budget.
+const asks = opts.limits === null ? [undefined] : opts.limits.map((s) => ({ ms: s * 1000, clock: Date.now }))
+const limitSaid = opts.limits === null ? "" : `the ${opts.limits.join("+")}s limit ran out`
 
 let solved = 0
 let unwinnable = 0
@@ -76,36 +80,27 @@ const liveHeap = () => {
   return process.memoryUsage().heapUsed
 }
 
-// The most the search held, read from inside the call. The solver reads the clock it
-// is handed once at the start, once as each rung begins and once every
-// `Solver.clockEvery` positions, and a rung's frontier and visited set only grow — so
-// its graph is largest at its last read, within that many positions of where it
-// stopped. A collection there would be charged to the timed run, so the solve is
-// repeated with the first run's clock replayed: the same readings make the same search,
-// whatever the limit, and only the repeat is collected.
+// Ask one search every wait in turn, stopping at the first that isn't cut short by the
+// clock — and say what it cost, the most it held among that. A search never releases
+// what it has grown, so it holds the most when it stops: the heap is read *after* the
+// timed asks, with the search still in hand, so the collection is kept out of the time.
 //
-// Every rung, not just the one that answered: a rung that spends its budget is released
-// for the next, and the next may be stopped by the limit a few thousand positions in —
-// so the heap at the answer can be a tenth of what the climb held a second earlier.
-function heldBy(position, readings, passes) {
-  // Which reads end a rung. Every rung before the last spent its whole budget, so its
-  // count of reads is known; the last rung's final read is the call's.
-  const ends = new Set([readings.length - 1])
-  let read = 0
-  for (const { maxNodes } of Solver.ladderFor(position).slice(0, passes - 1)) {
-    read += 1 + Math.floor(maxNodes / Solver.clockEvery)
-    ends.add(read)
-  }
-  let i = 0
-  let held = 0
-  const replay = () => {
-    if (ends.has(i)) held = Math.max(held, liveHeap())
-    return readings[i++]
-  }
+// Its own function so the search goes out of reach when it returns: left in the loop
+// body below, the optimiser kept the last deal's alive into the next deal's baseline.
+function think(position) {
   const baseline = liveHeap()
-  Solver.solveWithEffort(position, undefined, { ms, clock: replay })
-  if (i !== readings.length) throw new Error(`the repeat read the clock ${i} times, the solve ${readings.length}`)
-  return held - baseline
+  const started = Date.now()
+  // The two `undefined`s are `~budget` and `~weights`, left to the board's own: a
+  // ReScript optional argument is positional by the time it reaches here.
+  const search = Solver.Search.make(position, undefined, undefined)
+  let line, effort
+  let asked = 0
+  do [line, effort] = Solver.solveOn(search, asks[asked++])
+  while (Solver.ranOutOfTime(effort) && asked < asks.length)
+  const took = Date.now() - started
+  const held = liveHeap() - baseline
+  if (search.grown !== effort.positions) throw new Error("the search and its effort disagree")
+  return { line, effort, took, held, asked }
 }
 
 const mb = (bytes) => (bytes < 1e6 ? "<1 MB" : `${(bytes / 1e6).toFixed(0)} MB`)
@@ -114,19 +109,9 @@ for (const seed of opts.seeds) {
   const deal = Game.dealt(game, seed)
   const position = Position.ofGameState(deal, GameState.initial(deal))
   if (!position) throw new Error(`${game.name} isn't a board the solver models`)
-  const readings = []
-  const clock = () => {
-    const now = Date.now()
-    readings.push(now)
-    return now
-  }
-  const started = Date.now()
-  // The middle argument is `~ladder`, left to the board's own: a ReScript optional
-  // argument is positional by the time it reaches here. No `--limit` is a wait of
-  // `Infinity`, which the search never reaches — the clock is still read, for `heldBy`.
-  const [line, effort] = Solver.solveWithEffort(position, undefined, { ms, clock })
-  const took = Date.now() - started
-  const held = heldBy(position, readings, effort.passes)
+  const { line, effort, took, held, asked } = think(position)
+  // Which ask answered, when there was more than one to make.
+  const onAsk = asks.length > 1 && !Solver.ranOutOfTime(effort) ? ` on ask ${asked} of ${asks.length}` : ""
   // The line as steps, the way `planSteps` says them — built here so the effort
   // (and with it whether a missing line was *proved* missing) is still to hand.
   let at = position
@@ -143,7 +128,7 @@ for (const seed of opts.seeds) {
   totalHeld += held
   if (held > most.bytes) most = { seed, bytes: held }
   // Three ways to come back without a line, and they are three different facts: a proof
-  // the deal can't be won, the ladder spent, and the caller's own limit reached.
+  // the deal can't be won, the budget spent, and the caller's own limit reached.
   const proved = Solver.provedUnwinnable(effort)
   const ranOut = Solver.ranOutOfTime(effort)
   if (plan) {
@@ -152,13 +137,15 @@ for (const seed of opts.seeds) {
   } else if (proved) unwinnable++
   else if (ranOut) outOfTime++
 
-  const why = proved ? "every line was tried" : ranOut ? limitSaid : "the ladder ran out"
+  const why = proved ? "every line was tried" : ranOut ? limitSaid : "the budget ran out"
   if (!opts.quiet) {
     console.log(`\n=== deal #${seed} ===`)
-    if (!plan) console.log(`  no solution — ${why}, ${took}ms of thinking holding ${mb(held)}`)
+    if (!plan) console.log(`  no solution — ${why}${onAsk}, ${took}ms of thinking holding ${mb(held)}`)
     else {
       plan.forEach((step, i) => console.log(`  ${String(i + 1).padStart(3)}. ${step.description}`))
-      console.log(`  ${plan.length} moves to a finishable board, ${took}ms of thinking holding ${mb(held)}`)
+      console.log(
+        `  ${plan.length} moves to a finishable board${onAsk}, ${took}ms of thinking holding ${mb(held)}`,
+      )
     }
   } else if (!plan)
     console.log(

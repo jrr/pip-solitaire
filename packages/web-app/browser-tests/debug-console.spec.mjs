@@ -335,9 +335,7 @@ test("autoplay plays the deal out and wins it", async ({ page }) => {
   // It says how long the line was, how long it took to find and what the search spent
   // finding it, and the moves it played are in the log in the same words a dragged move
   // is narrated in — a play-by-play, not a board that changed by itself. The numbers
-  // are real measurements, so what's pinned is the sentence's shape — and not its end,
-  // since this deal is one of the few that takes a second rung of the ladder and says
-  // so ("… 415,966 moves tried over 2 passes.").
+  // are real measurements, so what's pinned is the sentence's shape.
   await expect(
     consoleLines(page).filter({ hasText: /\d+-move solution found in .*moves tried/ }),
   ).toHaveCount(1)
