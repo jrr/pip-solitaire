@@ -271,8 +271,8 @@ a heuristic change is trying to reduce.
 | 2026-09-30 | 1–1000 | 944/1000 | 56 | 0 | 791 ms | 80 | #766 at 100.9 s | 2 MB, #766 at 164 MB | Node v26.9.0, cloud sandbox, up to four soaks at once; the graph in typed arrays |
 
 **Spiderette · 4 suits**, over 1–200 rather than the thousand: a deal the search
-gives up on costs it the whole budget, so this soak is half an hour where Simple
-Simon's is twenty minutes. The unsolved count is not zero and is not a target —
+gives up on costs it the whole budget — five minutes each at the 2026-09-30 cap — so
+this soak is over an hour in one process where Simple Simon's is a quarter of one. The unsolved count is not zero and is not a target —
 `mise run solve` exits non-zero on this board today, and on the two-suit pack
 below it. Why it stands: § Why the unsolved count stands.
 
@@ -282,7 +282,7 @@ below it. Why it stands: § Why the unsolved count stands.
 | 2026-09-20 | 1–200 | 159/200 | 8 | 33 | 5.9 s | 105 | #147 at 30.2 s | — | Node v26.9.0, cloud sandbox |
 | 2026-09-29 | 1–200 | 159/200 | 8 | 33 | 4.3 s | 105 | #147 at 22.2 s | 188 MB, #162 at 897 MB | Node v26.9.0, cloud sandbox, two soaks at once |
 | 2026-09-30 | 1–200 | 150/200 | 7 | 43 | 3.2 s | 100 | #71 at 13.4 s | 156 MB, #41 at 619 MB | Node v26.9.0, cloud sandbox, up to four soaks at once |
-S4_ROW
+| 2026-09-30 | 1–200 | 180/200 | 8 | 12 | 23.1 s | 102 | #90 at 344.9 s | 55 MB, #199 at 779 MB | Node v26.9.0, cloud sandbox, up to four soaks at once; the graph in typed arrays |
 
 **Spiderette · 1 suit and · 2 suits**, over the same 1–200. The same law, budget
 and weights on a cheaper deck — these are the repeated packs, where `found`
@@ -302,7 +302,7 @@ and an unsolved count of its own.
 | 2026-09-30 | 1 suit | 1–200 | 198/200 | 2 | 0 | 293 ms | 70 | #143 at 11.7 s | 11 MB, #143 at 425 MB | Node v26.9.0, cloud sandbox, up to four soaks at once |
 | 2026-09-30 | 2 suits | 1–200 | 181/200 | 4 | 15 | 1.9 s | 84 | #94 at 21.6 s | 82 MB, #94 at 795 MB | Node v26.9.0, cloud sandbox, up to four soaks at once |
 | 2026-09-30 | 1 suit | 1–200 | 198/200 | 2 | 0 | 221 ms | 71 | #143 at 6.5 s | <1 MB, #143 at 11 MB | Node v26.9.0, cloud sandbox, up to four soaks at once; the graph in typed arrays |
-S2_ROW
+| 2026-09-30 | 2 suits | 1–200 | 195/200 | 5 | 0 | 4.2 s | 86 | #168 at 182.6 s | 11 MB, #168 at 429 MB | Node v26.9.0, cloud sandbox, up to four soaks at once; the graph in typed arrays; measured at a 6,000,000 cap, which no deal here reaches |
 
 **Mini and Micro**, under FreeCell's law and its weights. Every deal is
 *answered* — the search either finds a line or empties its frontier long before
@@ -387,8 +387,8 @@ steps, each soaked on every board at the caps the one before it used:
 | FreeCell | 1000 · 331 MB | 1000 · 37 MB | 1000 · 28 MB | 1000 · 25 MB |
 | Simple Simon | 931 + 54 · 447 MB | 931 + 54 · 44 MB | 932 + 54 · 43 MB | 944 + 56 · 164 MB |
 | Spiderette · 1 suit | 198 + 2 · 425 MB | 198 + 2 · 47 MB | 198 + 2 · 16 MB | 198 + 2 · 11 MB |
-| Spiderette · 2 suits | 181 + 4 · 795 MB | 181 + 4 · 86 MB | 185 + 5 · 67 MB | S2_CELL |
-| Spiderette · 4 suits | 150 + 7 · 619 MB | 150 + 7 · 73 MB | 157 + 8 · 59 MB | S4_CELL |
+| Spiderette · 2 suits | 181 + 4 · 795 MB | 181 + 4 · 86 MB | 185 + 5 · 67 MB | 195 + 5 · 429 MB |
+| Spiderette · 4 suits | 150 + 7 · 619 MB | 150 + 7 · 73 MB | 157 + 8 · 59 MB | 180 + 8 · 779 MB |
 
 Each cell is solved + proved unwinnable, and the most any deal held.
 
@@ -411,7 +411,7 @@ Each cell is solved + proved unwinnable, and the most any deal held.
 Every row above is the ladder with nothing in its way, and that is what those
 tables are for. This is the same ladder under `Solver.interactive` — the ten
 seconds a watched board gets — over the same ranges, each capped row beside the
-uncapped one it should be read against. Each date's six rows were measured in one
+uncapped one it should be read against. Each date's rows were measured in one
 sitting on one machine, so within a date the times compare as well as the counts;
 read across dates, or any other pair of rows in this page, and only the counts do —
 and under a cap not even those, since a faster machine gets further in ten seconds.
@@ -438,9 +438,9 @@ and under a cap not even those, since a faster machine gets further in ten secon
 | 2026-09-30 | Spiderette · 4 suits | 1–200 | 10 s | 150 | 7 | 43 | 3.0 s | #157 at 10.0 s | 153 MB, #162 at 568 MB |
 | 2026-09-30 | Simple Simon | 1–1000 | none | 944 | 56 | 0 | 791 ms | #766 at 100.9 s | 2 MB, #766 at 164 MB |
 | 2026-09-30 | Simple Simon | 1–1000 | 10 s | 933 | 54 | 13 | 431 ms | #102 at 10.1 s | 1 MB, #946 at 32 MB |
-S2_NONE
+| 2026-09-30 | Spiderette · 2 suits | 1–200 | none | 195 | 5 | 0 | 4.2 s | #168 at 182.6 s | 11 MB, #168 at 429 MB |
 | 2026-09-30 | Spiderette · 2 suits | 1–200 | 10 s | 184 | 5 | 11 | 1.4 s | #94 at 10.1 s | 4 MB, #184 at 53 MB |
-S4_NONE
+| 2026-09-30 | Spiderette · 4 suits | 1–200 | none | 180 | 8 | 12 | 23.1 s | #90 at 344.9 s | 55 MB, #199 at 779 MB |
 | 2026-09-30 | Spiderette · 4 suits | 1–200 | 10 s | 156 | 8 | 36 | 2.9 s | #166 at 10.0 s | 10 MB, #184 at 51 MB |
 
 So the wait costs **twenty-seven Simple Simon deals in the thousand, and eight
@@ -503,10 +503,11 @@ not a wait anyone should be asked to like.
 
 ### Why the unsolved count stands
 
-Four-suit Spiderette leaves 43 of 200 deals unanswered and the two-suit pack 15,
-where every other board the solver models answers all of them. **Those numbers
-are the record, not a target**, and this is the argument for leaving them alone
-rather than tuning the heuristic or widening the budget to move them.
+Four-suit Spiderette leaves 12 of 200 deals unanswered with no wait, and under the
+ten seconds a watched board gets it leaves 36, and the two-suit pack 11 — where every
+other board, and two suits given the time, answers all of them. **Those numbers are
+the record, not a target**, and this is the argument for leaving them alone rather
+than tuning the heuristic or widening the budget to move them.
 
 **The cost that made them a defect is gone.** What was wrong with an unanswered
 deal was never the gap in the table — it was that reaching it took the whole
@@ -522,9 +523,9 @@ nobody finished looking. Part of what made the count feel like a defect was a
 sentence claiming more than the search had earned.
 
 **Nobody knows the count is too high.** Eight of the 200 four-suit deals were
-*proved* unwinnable by the ladder; the rest of the 43 were not proved either way. A
-deal with no line is not a deal the solver failed on, and no one has established how
-many of the 43 have lines at all. "Answer more of them" is only a goal for the ones that can be
+*proved* unwinnable by the ladder, and the search proves the same eight; the rest were
+not proved either way. A deal with no line is not a deal the solver failed on, and no
+one has established how many of the 12 have lines at all. "Answer more of them" is only a goal for the ones that can be
 answered, and that number is unknown.
 
 **A longer search is the wrong knob, and now for a second reason.** The budget is
@@ -535,11 +536,13 @@ that. On three stubborn four-suit deals — #3, #141, #147 — the old ladder sp
 700,000 of its positions and took 21 to 31 s, and ten seconds bought 217,000 to
 357,000 of them. A search a player would never finish is tuning for `mise run solve`
 and the CLI — worth doing only if those are who it is for, which should be said out
-loud rather than assumed.
+loud rather than assumed. The caps were raised on 2026-09-30 under exactly that
+reading: they answer more for a patient caller, cost a watched board nothing it would
+reach in ten seconds, and are held under the memory the ladder already spent.
 
 **What would actually help is a cheaper proof.** A search that empties its frontier
 answers a deal in milliseconds, which is well inside any wait; that is how Mini
-and Micro answer every deal in the first thousand. Converting some of the 43 into
+and Micro answer every deal in the first thousand. Converting some of the 36 into
 `Exhausted` would raise the answered count *within* the ten seconds, where a
 longer search cannot. That is a different piece of work from tuning weights, and
 it is the direction to take if this is picked up again.
@@ -669,7 +672,7 @@ the board deals.
 |---|---|---|
 | FreeCell, Mini, Micro | 2.0, 1.0 | 2,000,000 |
 | Simple Simon | 1.0, 0.3 | 1,600,000 |
-| Spiderette, every pack | 2.0, 1.0 | 6,000,000 |
+| Spiderette, every pack | 2.0, 1.0 | 5,500,000 |
 
 A high weight is greedy and dives; a low one searches wider and costs more per answer.
 The first weight on each board is the one almost every deal falls to — FreeCell's is
@@ -707,8 +710,11 @@ grown, which is what let the caps go back up:
   164 MB in 101 s; the cap was set when a Simple Simon position cost a third more, and
   is where a deal that spent it would still hold under 533 MB.
 - **Spiderette** is the one board where deals still spend the cap, so its cap is the
-  one the ceiling binds: 6,000,000 is where the four-suit deals that spend it hold
-  most of the 897 MB they are allowed. SPIDERETTE_CAP_RESULT
+  one the ceiling binds. At 6,000,000 four-suit #199 held 915 MB, over its 897; at
+  5,500,000 it holds 779 and the count is the same — 180 solved, 8 proved, 12 left,
+  where the ladder solved 159. Two suits answers all 200 (195 and 5) and none of them
+  comes near the cap: #168 is the longest and holds the most, 429 MB in 183 s. One
+  suit answers all 200 inside 11 MB.
 
 **A bigger cap is still paid for in memory** by every deal that spends it, which is
 every deal that goes unanswered — and now in time as well, since a deal that spends six
@@ -857,12 +863,12 @@ to want it is more likely a *shorter line* than a faster one, which is the trade
   table above. A change that helps the mean and doubles the worst case is not an
   improvement, and a change to the search or a shared term moves every board at
   once. The two short packs take a few seconds each, so there is no excuse.
-  Spiderette is the expensive one — `--game spiderette4 --quiet 1-200` is half an
+  Spiderette is the expensive one — `--game spiderette4 --quiet 1-200` is over an
   hour, because the deals it gives up on each cost the whole budget — so soak it
-  over 1–200 rather than the thousand, and leave it running. Its repeated packs
-  (`spiderette1`, `spiderette`) are the same board with a cheaper deck and are
-  worth the same range: the one-suit soak is about a minute, the two-suit one
-  a quarter of an hour. **Don't reach for `--limit` to make that cheaper**: a capped run
+  over 1–200 rather than the thousand, split the range across processes, and leave
+  it running. Its repeated packs (`spiderette1`, `spiderette`) are the same board
+  with a cheaper deck and are worth the same range: the one-suit soak is about a
+  minute, the two-suit one a quarter of an hour. **Don't reach for `--limit` to make that cheaper**: a capped run
   measures the cap, and a cap is exactly what would hide a regression in the
   positions it stopped short of.
 - **Read the Held column, not only the counts.** The node cap is the only thing
