@@ -4,9 +4,9 @@
 //
 // **A node is a position, and an index.** Its parent, the move that reached it from
 // there, its depth `g`, its heuristic `h` and its hash are one slot each in a column of
-// their own. A node is *open* until the search grows it and *closed* after, and only a
-// closed node's position is kept — packed into `arena`, one byte per card — because an
-// open node's position is its parent's with one move played.
+// their own. A node is *open* until the search grows it and *closed* after. Only some
+// closed nodes' positions are kept — packed into `arena`, one byte per card — and every
+// other position is read back by playing moves down from the nearest node that was.
 //
 // **Membership is by hash and exact.** `table` maps a hash to a node, and a hit counts
 // only once the node's position has been rebuilt and found `alike` the one asked about.

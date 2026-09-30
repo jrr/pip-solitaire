@@ -98,22 +98,28 @@ the whole design rests on is:
 That is what makes an empty frontier a proof: if every reachable position is
 closed and none finishes, none can. It is also what re-rooting has to preserve.
 
-**Nodes are records in typed arrays, not objects.** Each node carries its parent's
-index, the move that reached it from that parent, its depth `g`, its heuristic
-`h`, a status flag, and the hash of its canonical form. That is about twenty
-bytes. Positions are stored for closed nodes only, packed one byte per card in a
-separate arena, because an open node's position is its parent's position with
-one move played, and open nodes outnumber closed ones by more than ten to one on
-a Spider board. This is the same trade the present search makes with `parent`
-and `trail`, made in bytes instead of objects.
+**Nodes are records in typed arrays, not objects** (`core/src/Graph.res`). Each
+node carries its parent's index, the move that reached it from that parent, its
+depth `g`, its heuristic `h`, where its position is kept (which doubles as the
+status flag: open, closed, closed and kept), and its hash — twenty bytes. An open
+node stores no position, because its position is its parent's with one move
+played, and open nodes outnumber closed ones three to seven to one on a Spider
+board. Nor does every closed node: one in four is packed into a separate arena,
+one byte per card, and the rest replay the moves down from the nearest one that
+was. This is the same trade the earlier search made with `parent` and `trail`,
+made in bytes instead of objects, and taken one step further. **A node is a
+position**: one reached again more cheaply while open takes the cheaper parent and
+moves up each heap where it stands, and one already closed is left as it was
+grown, because its children's moves name the columns of the layout it was grown
+in.
 
-**Lookup is by hash, membership is exact.** A hash table maps a 64-bit hash of a
-position's canonical form to a node index. A hit is *verified* by rebuilding the
-node's position (a closed node has it; an open node replays one move on its
-parent's) and comparing card for card. The hash is `Board.hash`: two 32-bit lanes
-over what `Position.key` spells, and it only has to be good enough that
-verification is rare, since correctness never depends on it. This is how the
-visited set costs a few bytes per position rather than a string, while "seen"
+**Lookup is by hash, membership is exact.** A hash table maps the first 32-bit
+lane of `Board.hash` to a node index. A hit is *verified* by rebuilding the
+node's position and comparing card for card (`Position.alike`, which agrees with
+`Position.key` without spelling it). The second lane would only spare a
+comparison the table almost never makes, since every true match is compared
+anyway, so it is not filed. Correctness never depends on the hash, which is how
+the visited set costs a few bytes per position rather than a string, while "seen"
 still means seen.
 
 **The canonical form is today's.** Cells sorted, columns sorted, the face-down
@@ -121,15 +127,16 @@ count on the column it belongs to, the stock as its length. Two positions that
 differ only in which cell or which column holds what are one node.
 
 **The frontier is a binary heap of node indices** ordered by `g + weight · h`,
-recomputable from the node whenever the weight is known. There may be more than
-one heap over the one graph (§ The ladder, replaced); a node popped from a heap
-after it has already been closed by another is skipped.
+read off the node whenever two are compared. There may be more than one heap over
+the one graph (§ The ladder, replaced); a node popped from a heap after it has
+already been closed by another is skipped. Each heap keeps where each node sits in
+it, so a node reached more cheaply is moved up rather than pushed twice.
 
-**Estimated cost, to be measured and recorded:** a ten-second Spider search is
-about 100,000 closed and 1.5 million open nodes, and holds 400 MB and more today.
-At twenty bytes a node plus 135 bytes a closed position that is under 50 MB. The
-number to add to `docs/solver.md` is bytes per node, per board, beside the
-"Held" column that already measures the whole.
+**Measured cost.** A search holds about 60 bytes per node — its twenty, both heaps'
+slot and position, and the table's share — plus a quarter of a board per closed
+node. Ten seconds of a Spider search holds 6 to 50 MB where it held 54 to 471
+(§ What the interactive wait costs in `docs/solver.md`), and every board's bytes
+are reported beside its Held.
 
 ## Re-rooting
 
@@ -260,9 +267,9 @@ Where the cap comes from, in order:
 
 The three tiers are three numbers in one place. What they should be is measured,
 not reasoned: bytes per node from `solve.mjs` in Node, from Chrome on the dev
-server, and the small tier tried on an old phone. Until the compact layout lands
-the cap is expressed in nodes at today's ladder budgets, so nothing holds more
-than the present search does.
+server, and the small tier tried on an old phone. Until the tiers land the cap is
+expressed in nodes, each board's set so the most its soak holds stays under what
+the restart ladder held (`docs/solver.md` § The budget).
 
 ## The worker, as a service
 
