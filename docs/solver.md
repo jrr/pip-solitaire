@@ -678,11 +678,19 @@ Each board gets **two heaps over one search**, and a cap on the positions it gro
 `Solver.budgetFor` picks one the same way `weightsFor` does: the law, and then whether
 the board deals.
 
-| Board | `heaps` | `maxNodes` |
-|---|---|---|
-| FreeCell, Mini, Micro | 2.0, 1.0 | 2,000,000 |
-| Simple Simon | 1.0, 0.3 | 1,600,000 |
-| Spiderette, every pack | 2.0, 1.0 | 5,500,000 |
+| Board | `heaps` | `maxNodes` by default | …and the most the memory ceiling allows |
+|---|---|---|---|
+| FreeCell, Mini, Micro | 2.0, 1.0 | 500,000 | 2,000,000 |
+| Simple Simon | 1.0, 0.3 | 500,000 | 1,600,000 |
+| Spiderette, every pack | 2.0, 1.0 | 1,000,000 | 5,500,000 |
+
+**Two numbers, because two things bound a search.** The default is *time*: about
+thirty seconds of search on a cloud sandbox, which is as long as anything should run
+when nobody asked it to (§ What a caller is willing to spend), and what `mise run
+solve` measures with no flags. The larger figure is *memory*: the most the board can
+grow while the deal that holds most stays under what the restart ladder held, and what
+a caller who will wait minutes may ask for with `--nodes`. The benchmark record carries
+rows at both, and a row says which it is.
 
 A high weight is greedy and dives; a low one searches wider and costs more per answer.
 The first weight on each board is the one almost every deal falls to — FreeCell's is
@@ -698,38 +706,44 @@ Spiderette's 2.0 at 200,000 and 1.0 at 500,000. A restart cannot be resumed — 
 seconds" has no meaning across one — so one continuous search took its place, and the
 different weights that used to take turns *in time* take turns *in a graph* instead.
 
-**The cap is a memory ceiling, and that is what sets each one.** The ladder was a
-ceiling as well as a restart: a rung that spent its budget released its frontier
+**The cap is a memory ceiling, and that is what sets the larger figure.** The ladder
+was a ceiling as well as a restart: a rung that spent its budget released its frontier
 before the next began, so a deal held at most what its biggest rung did. A search that
-only grows has no such release. So **each cap is the most that board can grow without
-its soak's Held column rising above the ladder's 2026-09-29 figure** — 334 MB on
-FreeCell, 533 on Simple Simon, 963 and 897 on the two- and four-suit Spiderettes.
+only grows has no such release. So **the most a board may be asked to grow is the most
+it can without its soak's Held column rising above the ladder's 2026-09-29 figure** —
+334 MB on FreeCell, 533 on Simple Simon, 963 and 897 on the two- and four-suit
+Spiderettes.
 
-What a position costs is what moved the caps. The first continuous search held about
+What a position costs is what moved that figure. The first continuous search held about
 3 KB per position grown, an object per open node and a string per position seen, and
 that put the caps at 200,000, 150,000 and 300,000 — below the ladder's reach, which is
-where the 2026-09-30 rows lost ten Simple Simon deals, eleven Spiderette deals and two
-proofs. The graph in typed arrays (§ The search) holds 60 to 150 bytes per position
-grown, which is what let the caps go back up:
+where the first 2026-09-30 rows lost ten Simple Simon deals, eleven Spiderette deals
+and two proofs. The graph in typed arrays (§ The search) holds 60 to 150 bytes per
+position grown, which is what let the ceiling go back up:
 
-- **FreeCell** solves every deal in the thousand well inside 200,000, so its cap costs
-  nothing and changes nothing; 2,000,000 is where a deal at the cap would still hold
-  under 334 MB. #150 holds the most, 25 MB.
+- **FreeCell** solves every deal in the thousand well inside 200,000, so neither
+  number costs it anything; 2,000,000 is where a deal at the cap would still hold under
+  334 MB. #150 holds the most, 25 MB.
 - **Simple Simon** answers every deal in the thousand at 1,600,000 — 944 solved and 56
   proved, where the ladder gave up on five. #766 is the longest and holds the most,
-  164 MB in 101 s; the cap was set when a Simple Simon position cost a third more, and
-  is where a deal that spent it would still hold under 533 MB.
-- **Spiderette** is the one board where deals still spend the cap, so its cap is the
-  one the ceiling binds. At 6,000,000 four-suit #199 held 915 MB, over its 897; at
-  5,500,000 it holds 779 and the count is the same — 180 solved, 8 proved, 12 left,
-  where the ladder solved 159. Two suits answers all 200 (195 and 5) and none of them
-  comes near the cap: #168 is the longest and holds the most, 429 MB in 183 s. One
-  suit answers all 200 inside 11 MB.
+  164 MB in 101 s; the figure was set when a Simple Simon position cost a third more,
+  and is where a deal that spent it would still hold under 533 MB.
+- **Spiderette** is the one board where deals still spend what they are given, so its
+  figure is the one the ceiling binds. At 6,000,000 four-suit #199 held 915 MB, over its
+  897; at 5,500,000 it holds 779 and the count is the same — 180 solved, 8 proved, 12
+  left, where the ladder solved 159. Two suits answers all 200 (195 and 5) and none of
+  them comes near it: #168 is the longest and holds the most, 429 MB in 183 s. One suit
+  answers all 200 inside 11 MB.
 
-**A bigger cap is still paid for in memory** by every deal that spends it, which is
-every deal that goes unanswered — and now in time as well, since a deal that spends six
-million positions takes minutes. A watched board never gets there: § What the
-interactive wait costs has what ten seconds reaches, and how little it holds.
+**The default is set by time instead**, because a bigger cap is paid for by every deal
+that spends it — in memory, and now in minutes, since a deal that spends six million
+positions takes several. Half a million positions is about thirty seconds of Simple
+Simon on a cloud sandbox and a million about thirty of four-suit Spiderette, so those
+are the defaults, and `Solver.patient` is thirty seconds of clock to match. What the
+defaults answer, against what the ceiling would, is in the rows marked with neither
+`--nodes` nor `--limit` beside the ones marked `--nodes`. A watched board never reaches
+either: § What the interactive wait costs has what ten seconds reaches, and how little
+it holds.
 
 ## The packed position
 
