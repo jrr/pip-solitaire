@@ -80,6 +80,25 @@ let load = (s: Position.t): t => {
   }
 }
 
+// `load` again, into a board already made — no allocation, for a caller that hashes
+// a position at every child it generates. **Only a position of the same deal**: the
+// same pack and columns, and a stock that is a prefix of the one first loaded, which
+// every position a search reaches from its start is. Nothing may be in play.
+let reload = (b: t, s: Position.t) => {
+  for i in 0 to Array.length(s.cells) - 1 {
+    b.cells->Array.setUnsafe(i, s.cells->Array.getUnsafe(i))
+  }
+  for i in 0 to Array.length(s.found) - 1 {
+    b.found->Array.setUnsafe(i, s.found->Array.getUnsafe(i))
+  }
+  s.casc->Array.forEachWithIndex((pile, col) => {
+    pile->Array.forEachWithIndex((card, i) => b.cards->Array.setUnsafe(col * b.cap + i, card))
+    b.height->Array.setUnsafe(col, Array.length(pile))
+    b.down->Array.setUnsafe(col, s.down->Array.getUnsafe(col))
+  })
+  b.undealt = Array.length(s.stock)
+}
+
 let toPosition = (b: t): Position.t => {
   law: b.law,
   pack: b.pack,

@@ -249,7 +249,7 @@ describe("Solver", () => {
         expect(Solver.autoplay(~game, finishable))->toEqual(
           Solver.Played({
             steps: [],
-            effort: {positions: 0, moves: 0, ending: Solver.Found},
+            effort: {positions: 0, moves: 0, ending: Solver.Found, bytes: 0},
           }),
         )
       },
@@ -373,7 +373,7 @@ describe("Solver", () => {
       search.line,
       search.frontiers,
       search.turn,
-      search.seen->Map.entries->Iterator.toArray,
+      search.graph,
     )
 
     let startOf = (game: Game.t) =>
@@ -420,6 +420,62 @@ describe("Solver", () => {
         let grown = dead.grown
         expect(dead->Solver.Search.think(~nodes=1_000_000))->toEqual(Solver.Search.Exhausted)
         expect(dead.grown)->toBe(grown)
+      },
+    )
+
+    test(
+      "a hash that matches is not taken for seen until the boards are compared",
+      () => {
+        // Two boards filed under one hash, as a collision would file them: the second
+        // must find an empty slot, not the first board's node.
+        let start = startOf(Game.freecellDeal(~seed=1))
+        let other = Position.applyMove(start, Position.legalMoves(start)->Array.getUnsafe(0))
+        let graph = Graph.make(start)
+        let hash = Graph.hash(graph, start)
+        let slot = Graph.slotOf(graph, start, ~hash)
+        let root = graph->Graph.add(~parent=-1, ~move=0, ~depth=0, ~h=0, ~hash)
+        graph->Graph.file(slot, root)
+        expect(Graph.nodeAt(graph, Graph.slotOf(graph, start, ~hash)))->toBe(root)
+        expect(Graph.nodeAt(graph, Graph.slotOf(graph, other, ~hash)))->toBe(-1)
+      },
+    )
+
+    test(
+      "every node's position reads back as its line from the start plays out, kept or not",
+      () =>
+        [Game.freecellDeal(~seed=582), Game.spideretteDeal(~seed=3)]->Array.forEach(
+          game => {
+            let start = startOf(game)
+            let search = Solver.Search.make(start)
+            ignore(search->Solver.Search.think(~nodes=2000))
+            let graph = search.graph
+            let wrong = ref(0)
+            for node in 0 to graph.size - 1 {
+              let played =
+                Graph.lineTo(graph, node)->Array.reduce(
+                  start,
+                  (s, move) => Position.applyMove(s, move),
+                )
+              if Graph.positionOf(graph, node) != played {
+                wrong := wrong.contents + 1
+              }
+            }
+            expect(wrong.contents)->toBe(0)
+          },
+        ),
+    )
+
+    test(
+      "the bytes an effort reports are the search's own arrays, and grow as it does",
+      () => {
+        let search = Solver.Search.make(startOf(Game.freecellDeal(~seed=582)))
+        let spent = {Solver.ms: 0., clock: () => 0.}
+        let (_, first) = Solver.solveOn(search, ~patience=spent)
+        expect(first.bytes)->toBe(Solver.Search.bytes(search))
+        ignore(search->Solver.Search.think(~nodes=1000))
+        let (_, second) = Solver.solveOn(search, ~patience=spent)
+        expect(second.bytes)->toBe(Solver.Search.bytes(search))
+        expect(second.bytes > first.bytes)->toBe(true)
       },
     )
   })
