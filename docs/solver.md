@@ -761,6 +761,19 @@ second buys: § The budget.
   doesn't say *column order kept* were measured with the fold applied throughout — a
   position could be pruned as seen when the board it stood for was another — so
   their unwinnable deals were proved only under it.
+- **But a search on a board that deals looks with the columns folded, and proves with
+  them kept.** Keeping the order multiplies the graph by every seat a pile could sit
+  in, and a watched board pays for that in answers it doesn't reach in ten seconds.
+  The fold costs a line nothing: every node is still a real position its parent's move
+  leads to, so a line found under it is a line, played move by move against the
+  reducer like any other. What the fold can't give is a proof — a position pruned as
+  seen may have been another board — so a folded search whose frontier empties is
+  **grown again from its root with column order kept** (`Search.confirm`), and only
+  that search can answer `Exhausted`. Proofs under the fold are small, so the second
+  search is usually as quick; when it isn't, the deal comes back out of time or out of
+  room, never `Unwinnable`. The fold is a flag on the graph and every board it loads
+  (`Board.fold`), not a change to `Position`, whose key keeps column order whatever the
+  search does. Spiderette rows whose Environment says *folded to look* were measured so.
 
 ### The budget
 

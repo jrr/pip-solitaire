@@ -43,6 +43,9 @@ let grow = (n: int): int => n + n / 4 + 1024
 
 type t = {
   mutable start: Position.t, // the root's position, as the player's board lays it out
+  // Whether every board here is loaded to `Board.fold`, and so whether an emptied
+  // frontier is a proof on a board that deals. Changed only by `clear`.
+  mutable fold: bool,
   // The longest stock any node has had. Every position of one deal holds a prefix of it,
   // so a stored position keeps only its length; a re-root after an undo of a deal can
   // stand on a longer one than `start` first had (`widen`).
@@ -71,13 +74,14 @@ type t = {
 
 // Empty, and holding nothing until something is added: a search whose start already
 // finishes never grows, and says so by holding no bytes.
-let make = (start: Position.t): t => {
+let make = (~fold: bool=false, start: Position.t): t => {
   let nodes = 0
   {
     start,
+    fold,
     stock: start.stock,
-    board: Board.load(start),
-    probe: Board.load(start),
+    board: Board.load(~fold, start),
+    probe: Board.load(~fold, start),
     size: 0,
     parent: Int32Array.fromLength(nodes),
     move: Int32Array.fromLength(nodes),
@@ -432,8 +436,8 @@ let file = (graph: t, slot: int, node: int) => {
 let widen = (graph: t, s: Position.t) =>
   if Array.length(s.stock) > Array.length(graph.stock) {
     graph.stock = s.stock
-    graph.board = Board.load(s)
-    graph.probe = Board.load(s)
+    graph.board = Board.load(~fold=graph.fold, s)
+    graph.probe = Board.load(~fold=graph.fold, s)
   }
 
 // What a walk from a root found: which nodes it reached, the kept closed node each was
@@ -561,7 +565,7 @@ let walk = (graph: t, ~root: int, ~board: Board.t, ~reopened: ints): walked => {
           enter(child, board, ~borrows=true)
         } else {
           Board.takeBack(board)
-          enter(child, Board.load(positionOf(graph, child)), ~borrows=false)
+          enter(child, Board.load(~fold=graph.fold, positionOf(graph, child)), ~borrows=false)
         }
       }
     }
@@ -767,10 +771,11 @@ let collect = (graph: t, ~root: int, walked: walked, ~reopened: ints): option<in
 }
 
 // Let go of everything, and stand on `start` — `make` again, into the graph already
-// made, for a search whose closures read this one.
-let clear = (graph: t, start: Position.t) => {
-  let fresh = make(start)
+// made, for a search whose closures read this one. `fold` is the new graph's.
+let clear = (graph: t, ~fold: bool, start: Position.t) => {
+  let fresh = make(~fold, start)
   graph.start = fresh.start
+  graph.fold = fresh.fold
   graph.stock = fresh.stock
   graph.board = fresh.board
   graph.probe = fresh.probe

@@ -360,6 +360,13 @@ let clockEvery = 1024
 //
 // What it grows into is a `Graph`: a node per position, in typed arrays, and a
 // visited set that answers by hash and checks the answer.
+//
+// **On a board that deals it looks with the columns folded and proves with them kept.**
+// A fold takes the same piles in another column order for one position, which they
+// aren't while a deal is still to land on them — so a line found under it is a line, and
+// an emptied frontier under it is not a proof. That frontier is answered by searching
+// again from the root with column order kept, and only *that* search can say
+// `Exhausted`. Why both, and what each costs: `docs/solver.md` § The search.
 module Search = {
   // How a `think` came back. **Three of these mean "no line", and only one of them
   // means "there is none".**
@@ -367,7 +374,7 @@ module Search = {
   //   `Found`     — `line` has the moves from the root: the start, or the board it
   //                 was last `moved` to.
   //   `Exhausted` — the frontier is empty: every position reachable from the root was
-  //                 grown and none finishes. A proof.
+  //                 grown, with column order kept, and none finishes. A proof.
   //   `Paused`    — this call's slice is spent and the frontier is not. Ask again.
   //   `Full`      — the search holds its `maxBytes` with positions still
   //                 waiting. It proves nothing about the deal, and asking again changes
@@ -401,6 +408,10 @@ module Search = {
     mutable line: option<array<Position.move>>,
     mutable moved: option<Position.t>, // a board to re-root on at the next `think`
   }
+
+  // Whether a search from `start` folds: whenever there is a stock, since without one a
+  // fold changes nothing.
+  let foldsFrom = (start: Position.t): bool => Array.length(start.stock) > 0
 
   // A node onto every heap, each at its own weight.
   let push = (search: t, node: int) =>
@@ -449,7 +460,7 @@ module Search = {
   let make = (start: Position.t, ~budget: option<budget>=?, ~weights: option<weights>=?): t => {
     let budget = budget->Option.getOr(budgetFor(start))
     let weights = weights->Option.getOr(weightsFor(start))
-    let graph = Graph.make(start)
+    let graph = Graph.make(~fold=foldsFrom(start), start)
     let search = {
       weights,
       budget,
@@ -477,9 +488,10 @@ module Search = {
   // game is `docs/solver-next.md` § Re-rooting.
   let moved = (search: t, position: Position.t) => search.moved = Some(position)
 
-  // Everything let go of, and `start` planted — `make` again, keeping the effort.
-  let restart = (search: t, start: Position.t) => {
-    Graph.clear(search.graph, start)
+  // Everything let go of, and `start` planted — `make` again, keeping the effort. Folded as
+  // `make` would, unless told to keep column order.
+  let restart = (~fold: option<bool>=?, search: t, start: Position.t) => {
+    Graph.clear(search.graph, ~fold=fold->Option.getOr(foldsFrom(start)), start)
     search.frontiers->Array.forEach(Heap.clear)
     search.turn = 0
     search.closed = 0
@@ -576,7 +588,7 @@ module Search = {
       // Walked again for as long as `collect` reopens something, which changes what the
       // walk reaches.
       let rec reach = () => {
-        let walked = Graph.walk(graph, ~root, ~board=Board.load(s), ~reopened)
+        let walked = Graph.walk(graph, ~root, ~board=Board.load(~fold=graph.fold, s), ~reopened)
         switch Graph.collect(graph, ~root, walked, ~reopened) {
         | None => reach()
         | Some(renumbered) => (walked, renumbered)
@@ -599,6 +611,18 @@ module Search = {
       )
     }
   }
+
+  // A folded search whose frontier has emptied with no line, grown again from its root
+  // with column order kept — the search whose emptied frontier is a proof. A folded root
+  // with no stock left is already that search: with nothing to deal, a fold changes
+  // nothing.
+  let confirm = (search: t) =>
+    if search.graph.fold && Option.isNone(search.line) && !waiting(search) {
+      let start = search.graph.start
+      if Array.length(start.stock) > 0 {
+        search->restart(start, ~fold=false)
+      }
+    }
 
   // The board `moved` named, made the root — if there is one waiting.
   let follow = (search: t) =>
@@ -627,6 +651,7 @@ module Search = {
   // out, so it is read before either budget.
   let answer = (search: t): answer => {
     search->follow
+    search->confirm
     if Option.isSome(search.line) {
       Found
     } else if !waiting(search) {
@@ -644,7 +669,10 @@ module Search = {
     let {weights, budget: {maxBytes}, graph} = search
     let until = search.grown + nodes
     while (
-      Option.isNone(search.line) &&
+      {
+        search->confirm
+        Option.isNone(search.line)
+      } &&
       waiting(search) &&
       bytes(search) < maxBytes &&
       search.grown < until

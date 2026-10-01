@@ -449,6 +449,51 @@ describe("Solver", () => {
       ~timeout=60_000,
     )
 
+    describe(
+      "on a board that deals",
+      () => {
+        // One-suit deal #56 has no line, and a folded search says so in a few hundred
+        // positions.
+        let dead = () => startOf(Game.spiderette1Deal(~seed=56))
+
+        test(
+          "a search folds the columns to look, and a board with no stock has nothing to fold",
+          () => {
+            expect(Solver.Search.make(dead()).graph.fold)->toBe(true)
+            expect(Solver.Search.make(startOf(Game.simpleSimonDeal(~seed=2))).graph.fold)->toBe(
+              false,
+            )
+          },
+        )
+
+        test(
+          "an emptied frontier under the fold is searched again with column order kept, and only that one is a proof",
+          () => {
+            let search = Solver.Search.make(dead())
+            expect(search->Solver.Search.think(~nodes=1_000_000))->toEqual(Solver.Search.Exhausted)
+            expect(search.graph.fold)->toBe(false)
+            // The folded search's positions are counted and let go of: what the graph
+            // holds is the second search alone.
+            expect(search.grown > search.closed)->toBe(true)
+          },
+        )
+
+        test(
+          "thinking in slices crosses from the folded search to the kept one as thinking once does",
+          () => {
+            let sliced = Solver.Search.make(dead())
+            let answer = ref(Solver.Search.Paused)
+            while answer.contents == Solver.Search.Paused {
+              answer := sliced->Solver.Search.think(~nodes=7)
+            }
+            let whole = Solver.Search.make(dead())
+            expect(whole->Solver.Search.think(~nodes=1_000_000))->toEqual(answer.contents)
+            expect(graphOf(sliced))->toEqual(graphOf(whole))
+          },
+        )
+      },
+    )
+
     test(
       "a search that knows its answer gives it again without growing",
       () => {
