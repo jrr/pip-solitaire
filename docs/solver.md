@@ -272,6 +272,7 @@ core's own shuffle, not Microsoft's numbering. "Moves" counts moves to the
 | 2026-09-30 | 1–1000 | 1000/1000 | 73 ms | 52 | #658 at 5.9 s | <1 MB, #150 at 25 MB | Node v26.9.0, cloud sandbox, up to four soaks at once; the graph in typed arrays |
 | 2026-10-01 | 1–1000 | 1000/1000 | 83 ms | 52 | #658 at 6.5 s | <1 MB, #150 at 25 MB | Node v26.9.0, cloud sandbox, two soaks at once; the graph in typed arrays, re-run beside the row below |
 | 2026-10-01 | 1–1000 | 1000/1000 | 46 ms | 52 | #658 at 4.0 s | <1 MB, #150 at 25 MB | Node v26.9.0, cloud sandbox, two soaks at once; grown on a `Board` |
+| 2026-10-01 | 1–1000 | 1000/1000 | 28 ms | 52 | #658 at 2.3 s | <1 MB, #150 at 25 MB | Node v26.9.0, CI runner, 8 jobs at once; grown on a `Board` |
 
 **Simple Simon.** "Unwinnable" is the deals the search *proved* have no line
 (`exhausted`); "unsolved" is the ones the budget gave up on, which is the number
@@ -309,6 +310,7 @@ below it. Why it stands: § Why the unsolved count stands.
 | 2026-10-01 | 1–200 | 173/200 | 8 | 19 | 2.9 s | 101 | #171 at 20.0 s | 20 MB, #3 at 143 MB | Node v26.9.0, cloud sandbox, two soaks at once; grown on a `Board` |
 | 2026-10-01 | 1–200 | 171/200 | 8 | 21 | 5.0 s | 102 | #200 at 42.4 s | 24 MB, #120 at 188 MB | Node v26.9.0, cloud sandbox, three soaks at once; grown on a `Board`, column order kept |
 | 2026-10-01 | 1–200 | 176/200 | 8 | 16 | 5.8 s | 101 | #7 at 59.6 s | 35 MB, #147 at 289 MB | Node v26.9.0, cloud sandbox, three soaks at once; grown on a `Board`, folded to look and column order kept to prove |
+| 2026-10-01 | 1–200 | 176/200 | 8 | 16 | 3.3 s | 101 | #7 at 37.4 s | 35 MB, #108 at 289 MB | Node v26.9.0, CI runner, 8 jobs at once; grown on a `Board`, folded to look and column order kept to prove |
 
 **Spiderette · 1 suit and · 2 suits**, over the same 1–200. The same law, budget
 and weights on a cheaper deck — these are the repeated packs, where `found`
@@ -338,6 +340,8 @@ and an unsolved count of its own.
 | 2026-10-01 | 2 suits | 1–200 | 186/200 | 5 | 9 | 6.3 s | 85 | #1 at 159.7 s | 33 MB, #1 at 710 MB | Node v26.9.0, cloud sandbox, three soaks at once; grown on a `Board`, column order kept |
 | 2026-10-01 | 1 suit | 1–200 | 198/200 | 2 | 0 | 89 ms | 71 | #93 at 3.2 s | <1 MB, #143 at 11 MB | Node v26.9.0, cloud sandbox, three soaks at once; grown on a `Board`, folded to look and column order kept to prove |
 | 2026-10-01 | 2 suits | 1–200 | 193/200 | 5 | 2 | 1.6 s | 85 | #168 at 49.0 s | 9 MB, #168 at 265 MB | Node v26.9.0, cloud sandbox, three soaks at once; grown on a `Board`, folded to look and column order kept to prove |
+| 2026-10-01 | 1 suit | 1–200 | 198/200 | 2 | 0 | 62 ms | 71 | #93 at 1.9 s | <1 MB, #143 at 11 MB | Node v26.9.0, CI runner, 8 jobs at once; grown on a `Board`, folded to look and column order kept to prove |
+| 2026-10-01 | 2 suits | 1–200 | 193/200 | 5 | 2 | 951 ms | 85 | #168 at 24.4 s | 9 MB, #168 at 264 MB | Node v26.9.0, CI runner, 8 jobs at once; grown on a `Board`, folded to look and column order kept to prove |
 
 **Mini and Micro**, under FreeCell's law and its weights. Every deal is
 *answered* — the search either finds a line or empties its frontier long before
@@ -513,6 +517,9 @@ and under a cap not even those, since a faster machine gets further in ten secon
 | 2026-10-01 | Spiderette · 2 suits | 1–200 | 10 s | 187 | 5 | 8 | 919 ms | #42 at 10.0 s | 5 MB, #184 at 63 MB |
 | 2026-10-01 | Spiderette · 4 suits | 1–200 | none | 176 | 8 | 16 | 5.8 s | #7 at 59.6 s | 35 MB, #147 at 289 MB |
 | 2026-10-01 | Spiderette · 4 suits | 1–200 | 10 s | 164 | 8 | 28 | 2.3 s | #84 at 10.0 s | 14 MB, #116 at 75 MB |
+| 2026-10-01 | Spiderette · 1 suit | 1–200 | none | 198 | 2 | 0 | 62 ms | #93 at 1.9 s | <1 MB, #143 at 11 MB |
+| 2026-10-01 | Spiderette · 2 suits | 1–200 | none | 193 | 5 | 2 | 951 ms | #168 at 24.4 s | 9 MB, #168 at 264 MB |
+| 2026-10-01 | Spiderette · 4 suits | 1–200 | none | 176 | 8 | 16 | 3.3 s | #7 at 37.4 s | 35 MB, #108 at 289 MB |
 
 So the wait costs **twenty-seven Simple Simon deals in the thousand, and eight
 two-suit and ten four-suit in the two hundred** on the 2026-09-20 machine — and one
@@ -602,6 +609,12 @@ column order kept: the same 2, 5 and 8 deals come back unwinnable, the slowest o
 it answers more than either: seven more two-suit deals and five more four-suit than
 with column order kept throughout, and the one-suit mean back under a tenth of a
 second. Measured with three soaks at once, the capped three and then the uncapped.
+
+**The last three are the same uncapped soaks from the `solver-soak` workflow**, each
+pack split across eight CI runners: the same counts on all three packs, and the same
+worst deal on all three but the 4-suit Held (#108 rather than #147, both at 289 MB).
+They are another machine, so they confirm the counts, not the times. Each pack took
+under four minutes of wall clock where one process takes over an hour.
 
 ### Why the unsolved count stands
 
@@ -1158,8 +1171,10 @@ what it means to do.
   at once. Soaks run in CI, not in a session: the `solver-soak` workflow (Actions →
   solver-soak → Run workflow, on the PR's branch) takes a board, a range, an optional
   `--mb` cap and a number of jobs, splits the range across them, and prints the
-  row for that board's table on the run page — copy it in and finish its Environment
-  cell. The ranges are the record's: 1–1000 for FreeCell, Simple Simon and the two
+  row for that board's table on the run page — and, for Simple Simon and the
+  Spiderettes, its row in § What the interactive wait costs — copy them in and finish
+  the Environment cell. At the default eight jobs every board is done in under five
+  minutes. The ranges are the record's: 1–1000 for FreeCell, Simple Simon and the two
   short packs, 1–200 for each Spiderette pack. A change to the search wants a row at
   the medium tier, which is what a soak with no `--mb` runs at, and one at `--mb 128`,
   the small tier's cap, when it changes what a position costs (§ Memory tiers). **Don't reach for `--limit` to make that

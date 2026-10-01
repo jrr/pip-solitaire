@@ -36,7 +36,9 @@ const heaviest = most("held")
 
 const environment = [
   `Node ${node}, CI runner, ${records.length} job${records.length > 1 ? "s" : ""} at once`,
-  cap ? `capped at ${cap}` : null,
+  // The record names a cap only when it isn't the medium tier, which every soak in Node
+  // runs at unless told otherwise.
+  cap && !cap.startsWith("the medium tier") ? `capped at ${cap}` : null,
   limits ? `\`--limit ${limits.join("+")}\`` : null,
   note || null,
 ]
