@@ -137,6 +137,13 @@ module Heap = {
     where: Int32Array.fromLength(0),
   }
   let size = (heap: t): int => heap.size
+
+  // Empty again, and holding nothing.
+  let clear = (heap: t) => {
+    heap.items = Int32Array.fromLength(0)
+    heap.size = 0
+    heap.where = Int32Array.fromLength(0)
+  }
   let bytes = (heap: t): int =>
     TypedArray.byteLength(heap.items) + TypedArray.byteLength(heap.where)
 
@@ -234,14 +241,16 @@ module Heap = {
 // How hard a search leans on the heuristic, and how far it may grow. `heaps` is one
 // weight per open list — each scales the heuristic against depth, and a search with
 // more than one takes turns between them over a single graph (`Search`, below).
-// `maxNodes` is the positions it grows, over all of them, before it answers `Full`.
+// `maxNodes` is the grown positions it may hold, over all of them, before it answers
+// `Full` — every position it has grown, until a re-root lets some go.
 //
 // **A default cap is about thirty seconds of search**, whoever calls: a deal that spends
 // it takes that long on a cloud sandbox, and nothing that runs by default should take
 // longer. A caller who will wait longer passes a budget of its own (`solve.mjs --nodes`).
-// It is a memory ceiling too — a search never releases what it has grown — and each
-// default holds well under what the restart ladder it replaced did. Why each pair of
-// heaps, and what each cap costs in deals: `docs/solver.md` § The budget.
+// It is a memory ceiling too — a search lets go of nothing it has grown but what a
+// re-root leaves behind — and each default holds well under what the restart ladder it
+// replaced did. Why each pair of heaps, and what each cap costs in deals:
+// `docs/solver.md` § The budget.
 type budget = {heaps: array<float>, maxNodes: int}
 
 // The first weight on each board is the one almost every deal falls to; the second is
@@ -315,12 +324,14 @@ module Search = {
   // How a `think` came back. **Three of these mean "no line", and only one of them
   // means "there is none".**
   //
-  //   `Found`     — `line` has the moves from the start.
-  //   `Exhausted` — the frontier is empty: every position reachable from the start was
+  //   `Found`     — `line` has the moves from the root: the start, or the board it
+  //                 was last `moved` to.
+  //   `Exhausted` — the frontier is empty: every position reachable from the root was
   //                 grown and none finishes. A proof.
   //   `Paused`    — this call's slice is spent and the frontier is not. Ask again.
-  //   `Full`      — the search has grown its `maxNodes` with positions still waiting.
-  //                 It proves nothing about the deal, and asking again changes nothing.
+  //   `Full`      — the search holds its `maxNodes` grown positions with others still
+  //                 waiting. It proves nothing about the deal, and asking again changes
+  //                 nothing until the board moves.
   type answer =
     | Found
     | Exhausted
@@ -330,7 +341,9 @@ module Search = {
   // `grown` counts the positions taken off the frontier and grown; `tried` the moves
   // played out to see where they led, which is the bigger number and the one most of the
   // time goes into (every one of them is an `applyMove`, a hash and a `canFinish`). Both
-  // count from `make`, across every `think`.
+  // count from `make`, across every `think` and every re-root. `closed` is the grown
+  // positions the graph still holds — `grown` until a re-root lets some go — and is what
+  // `maxNodes` caps, since the cap is on what a search holds.
   type t = {
     weights: weights,
     budget: budget,
@@ -340,7 +353,9 @@ module Search = {
     mutable turn: int, // the heap that grows the next position
     mutable grown: int,
     mutable tried: int,
+    mutable closed: int,
     mutable line: option<array<Position.move>>,
+    mutable moved: option<Position.t>, // a board to re-root on at the next `think`
   }
 
   // A node onto every heap, each at its own weight.
@@ -371,6 +386,21 @@ module Search = {
     found.contents
   }
 
+  // A graph of one open node, `start` — or of none, with the line already known, when
+  // `start` already finishes.
+  let plant = (search: t, start: Position.t) =>
+    if Position.canFinish(start) {
+      search.line = Some([])
+    } else {
+      let graph = search.graph
+      let hash = Graph.hash(graph, start)
+      let slot = Graph.slotOf(graph, start, ~hash)
+      let root =
+        graph->Graph.add(~parent=-1, ~move=0, ~depth=0, ~h=heuristic(start, search.weights), ~hash)
+      graph->Graph.file(slot, root)
+      search->push(root)
+    }
+
   let make = (start: Position.t, ~budget: option<budget>=?, ~weights: option<weights>=?): t => {
     let budget = budget->Option.getOr(budgetFor(start))
     let weights = weights->Option.getOr(weightsFor(start))
@@ -387,20 +417,149 @@ module Search = {
       turn: 0,
       grown: 0,
       tried: 0,
+      closed: 0,
       line: None,
+      moved: None,
     }
-    if Position.canFinish(start) {
-      search.line = Some([])
-    } else {
-      let hash = Graph.hash(graph, start)
-      let slot = Graph.slotOf(graph, start, ~hash)
-      let root =
-        graph->Graph.add(~parent=-1, ~move=0, ~depth=0, ~h=heuristic(start, weights), ~hash)
-      graph->Graph.file(slot, root)
-      search->push(root)
-    }
+    search->plant(start)
     search
   }
+
+  // --- Re-rooting --------------------------------------------------------------
+  // The board is now `position`: the next `think` makes it the root and keeps only what
+  // is reachable from there. Nothing happens until then, so a board moved twice between
+  // asks is re-rooted once. The one rule it follows for a move, an undo, a deal or a new
+  // game is `docs/solver-next.md` § Re-rooting.
+  let moved = (search: t, position: Position.t) => search.moved = Some(position)
+
+  // Everything let go of, and `start` planted — `make` again, keeping the effort.
+  let restart = (search: t, start: Position.t) => {
+    Graph.clear(search.graph, start)
+    search.frontiers->Array.forEach(Heap.clear)
+    search.turn = 0
+    search.closed = 0
+    search.line = None
+    search->plant(start)
+  }
+
+  // The nodes the graph already holds for children of `s`.
+  let known = (search: t, s: Position.t): array<int> => {
+    let graph = search.graph
+    Position.legalMoves(s)->Array.filterMap(move => {
+      let child = Position.applyMove(s, move)
+      let node = Graph.nodeAt(graph, Graph.slotOf(graph, child, ~hash=Graph.hash(graph, child)))
+      node >= 0 ? Some(node) : None
+    })
+  }
+
+  // A child of a kept closed node the graph had no node for (`Graph.walked`): the line,
+  // if it finishes, and otherwise an open node like any other a growth would have added.
+  let adopt = (search: t, node: int, s: Position.t) => {
+    let graph = search.graph
+    let move =
+      Graph.moveBetween(Graph.positionOf(graph, node), s)->Option.getOrThrow(
+        ~message="a stray is not a child of the node it was found under",
+      )
+    search.tried = search.tried + 1
+    if Position.canFinish(s) {
+      if Option.isNone(search.line) {
+        search.line = Some(Graph.lineTo(graph, node, ~last=move))
+      }
+    } else {
+      let hash = Graph.hash(graph, s)
+      let slot = Graph.slotOf(graph, s, ~hash)
+      if Graph.nodeAt(graph, slot) < 0 {
+        let child =
+          graph->Graph.add(
+            ~parent=node,
+            ~move,
+            ~depth=graph.depth->Graph.at(node) + 1,
+            ~h=heuristic(s, search.weights),
+            ~hash,
+          )
+        graph->Graph.file(slot, child)
+        search->push(child)
+      }
+    }
+  }
+
+  // Make `s` the root. Found in the graph, it is the root; missing, it is grown as a new
+  // closed node above whatever of its children the graph holds, so an undo finds the root
+  // it left as a child — and missing with none of them held, nothing survives and the
+  // search starts again from `s`, as `make` would. Then everything reachable is kept
+  // (`Graph.walk`, `Graph.collect`), both heaps are filled again from the kept open
+  // nodes, and any line is found again from the new root: the line known before ran from
+  // the old one.
+  let reroot = (search: t, s: Position.t) => {
+    let graph = search.graph
+    Graph.widen(graph, s)
+    let hash = Graph.hash(graph, s)
+    let slot = Graph.slotOf(graph, s, ~hash)
+    let found = Graph.nodeAt(graph, slot)
+    let children = found >= 0 ? [] : known(search, s)
+    if Position.canFinish(s) || (found < 0 && Array.length(children) == 0) {
+      search->restart(s)
+    } else {
+      let root = if found >= 0 {
+        found
+      } else {
+        // A depth one less than the shallowest child it holds, which may be negative:
+        // depth only orders the frontier, so comparable is all it needs to be.
+        let depth =
+          children->Array.reduce(graph.depth->Graph.at(children->Array.getUnsafe(0)), (
+            least,
+            node,
+          ) => Math.Int.min(least, graph.depth->Graph.at(node))) - 1
+        let root =
+          graph->Graph.add(~parent=-1, ~move=0, ~depth, ~h=heuristic(s, search.weights), ~hash)
+        graph->Graph.file(Graph.slotOf(graph, s, ~hash), root)
+        Graph.keep(graph, root, s)
+        search.grown = search.grown + 1
+        root
+      }
+      // A found root grown in another column order, on a board with a stock, was dealt to
+      // that order (`Graph.dealsAlike`): what is under it is not what is under `s`, and it
+      // is grown again from `s`.
+      let reopened = Uint8Array.fromLength(graph.size)
+      if Graph.isClosed(graph, root) && !Graph.dealsAlike(Graph.positionOf(graph, root), s) {
+        reopened->Graph.put(root, 1)
+      }
+      // Walked again for as long as `collect` reopens something, which changes what the
+      // walk reaches.
+      let rec reach = () => {
+        let walked = Graph.walk(graph, ~root, ~board=Board.load(s), ~reopened)
+        switch Graph.collect(graph, ~root, walked, ~reopened) {
+        | None => reach()
+        | Some(renumbered) => (walked, renumbered)
+        }
+      }
+      let (walked, renumbered) = reach()
+      graph.start = s
+      graph.board = Board.load(s)
+      search.frontiers->Array.forEach(Heap.clear)
+      search.closed = 0
+      for node in 0 to graph.size - 1 {
+        if Graph.isClosed(graph, node) {
+          search.closed = search.closed + 1
+        } else {
+          search->push(node)
+        }
+      }
+      search.line = None
+      walked.strays->Array.forEach(((node, child)) =>
+        search->adopt(renumbered->Graph.at(node), child)
+      )
+    }
+  }
+
+  // The board `moved` named, made the root — if there is one waiting.
+  let follow = (search: t) =>
+    switch search.moved {
+    | None => ()
+    | Some(s) =>
+      search.moved = None
+      search->reroot(s)
+    }
 
   // What the search holds, in bytes: its graph and its heaps, read off the arrays.
   let bytes = (search: t): int =>
@@ -409,30 +568,33 @@ module Search = {
     )
 
   // Positions found and not yet grown: every node in the graph is one or the other.
-  let frontier = (search: t): int => search.graph.size - search.grown
+  let frontier = (search: t): int => search.graph.size - search.closed
 
   // What the search knows now, without growing it — the answer a `think` of nothing
-  // gives. An emptied frontier is a proof whatever else was running out, so it is read
-  // before either budget.
-  let answer = (search: t): answer =>
+  // gives, re-root included. An emptied frontier is a proof whatever else was running
+  // out, so it is read before either budget.
+  let answer = (search: t): answer => {
+    search->follow
     if Option.isSome(search.line) {
       Found
     } else if !waiting(search) {
       Exhausted
-    } else if search.grown >= search.budget.maxNodes {
+    } else if search.closed >= search.budget.maxNodes {
       Full
     } else {
       Paused
     }
+  }
 
   // Grow the search by up to `nodes` more positions, and say where that left it.
   let think = (search: t, ~nodes: int): answer => {
+    search->follow
     let {weights, budget: {maxNodes}, graph} = search
     let until = search.grown + nodes
     while (
       Option.isNone(search.line) &&
       waiting(search) &&
-      search.grown < maxNodes &&
+      search.closed < maxNodes &&
       search.grown < until
     ) {
       let node = next(search)
@@ -440,6 +602,7 @@ module Search = {
         let position = Graph.positionOf(graph, node)
         Graph.close(graph, node, position)
         search.grown = search.grown + 1
+        search.closed = search.closed + 1
         let g = graph.depth->Graph.at(node) + 1
         let moves = Position.legalMoves(position)
         let i = ref(0)
@@ -459,7 +622,7 @@ module Search = {
               search->push(prior)
             }
           } else if Position.canFinish(next) {
-            search.line = Some(Array.concat(Graph.lineTo(graph, node), [move]))
+            search.line = Some(Graph.lineTo(graph, node, ~last=Board.ofMove(move)))
           } else {
             let child =
               graph->Graph.add(
@@ -511,8 +674,8 @@ type ending =
 //   `ending`    — how the last ask stopped. The three kinds of "no" are told apart
 //                 there rather than here.
 //   `bytes`     — what the search holds, read off its own arrays (`Search.bytes`). A
-//                 search never releases what it has grown, so this is also the most it
-//                 held.
+//                 search lets go of nothing but what a re-root leaves behind, so since
+//                 the last one this is also the most it held.
 //
 // **Deliberately no elapsed time.** `patience` is a limit handed in, not a clock the
 // solver keeps, and nothing here reports how long anything took: a caller times its own

@@ -478,6 +478,278 @@ describe("Solver", () => {
         expect(second.bytes > first.bytes)->toBe(true)
       },
     )
+
+    // `moved`, and the `think` after it that makes the new board the root. A position is
+    // told by its `key` here, because a re-root renumbers every node it keeps.
+    describe(
+      "re-rooting",
+      () => {
+        let keyOf = (search: Solver.Search.t, node) =>
+          Position.key(Graph.positionOf(search.graph, node))
+
+        // The positions a search holds grown, by key.
+        let closedKeys = (search: Solver.Search.t) => {
+          let keys = Set.make()
+          for node in 0 to search.graph.size - 1 {
+            if Graph.isClosed(search.graph, node) {
+              keys->Set.add(keyOf(search, node))
+            }
+          }
+          keys
+        }
+
+        // The positions grown since `before`, that `before` already held grown.
+        let regrown = (search: Solver.Search.t, ~before: Set.t<string>, ~kept: Set.t<string>) => {
+          let again = ref(0)
+          closedKeys(search)->Set.forEach(
+            key =>
+              if !(kept->Set.has(key)) && before->Set.has(key) {
+                again := again.contents + 1
+              },
+          )
+          again.contents
+        }
+
+        // The move from `start` whose subtree holds the most grown positions — the branch
+        // a re-root onto it has the most to keep from.
+        let busiest = (search: Solver.Search.t, start: Position.t) => {
+          let graph = search.graph
+          let under = node => {
+            let n = ref(0)
+            for other in 0 to graph.size - 1 {
+              let cursor = ref(other)
+              while cursor.contents >= 0 && graph.parent->Graph.at(cursor.contents) != node {
+                cursor := graph.parent->Graph.at(cursor.contents)
+              }
+              if cursor.contents >= 0 && Graph.isClosed(graph, other) {
+                n := n.contents + 1
+              }
+            }
+            n.contents
+          }
+          let root = ref(0)
+          while graph.parent->Graph.at(root.contents) >= 0 {
+            root := root.contents + 1
+          }
+          let best = ref((-1, start))
+          for node in 0 to graph.size - 1 {
+            if graph.parent->Graph.at(node) == root.contents {
+              let n = under(node)
+              if n > Pair.first(best.contents) {
+                best := (n, Graph.positionOf(graph, node))
+              }
+            }
+          }
+          Pair.second(best.contents)
+        }
+
+        test(
+          "a move along a grown branch keeps it, and nothing under it is grown again",
+          () =>
+            [Game.freecellDeal(~seed=582), Game.simpleSimonDeal(~seed=1)]->Array.forEach(
+              game => {
+                let start = startOf(game)
+                let search = Solver.Search.make(start)
+                ignore(search->Solver.Search.think(~nodes=3000))
+                let before = closedKeys(search)
+                let bytes = Solver.Search.bytes(search)
+                let next = busiest(search, start)
+                search->Solver.Search.moved(next)
+                ignore(search->Solver.Search.think(~nodes=0))
+                let kept = closedKeys(search)
+                expect(kept->Set.size > 0)->toBe(true)
+                expect(Solver.Search.bytes(search) <= bytes)->toBe(true)
+                kept->Set.forEach(key => expect(before->Set.has(key))->toBe(true))
+                ignore(search->Solver.Search.think(~nodes=2000))
+                expect(regrown(search, ~before, ~kept))->toBe(0)
+              },
+            ),
+        )
+
+        test(
+          "an undo keeps everything under the move it takes back, and grows none of it again",
+          () =>
+            [Game.freecellDeal(~seed=582), Game.spideretteDeal(~seed=3)]->Array.forEach(
+              game => {
+                let start = startOf(game)
+                let search = Solver.Search.make(start)
+                ignore(search->Solver.Search.think(~nodes=1000))
+                let next = busiest(search, start)
+                search->Solver.Search.moved(next)
+                ignore(search->Solver.Search.think(~nodes=2000))
+                let before = closedKeys(search)
+                search->Solver.Search.moved(start)
+                ignore(search->Solver.Search.think(~nodes=0))
+                let kept = closedKeys(search)
+                before->Set.forEach(key => expect(kept->Set.has(key))->toBe(true))
+                ignore(search->Solver.Search.think(~nodes=2000))
+                expect(regrown(search, ~before, ~kept))->toBe(0)
+              },
+            ),
+        )
+
+        test(
+          "a board the graph has never seen starts the search again, as `make` would",
+          () => {
+            let search = Solver.Search.make(startOf(Game.freecellDeal(~seed=582)))
+            ignore(search->Solver.Search.think(~nodes=1500))
+            let elsewhere = startOf(Game.freecellDeal(~seed=7))
+            search->Solver.Search.moved(elsewhere)
+            let fresh = Solver.Search.make(elsewhere)
+            expect(search->Solver.Search.think(~nodes=800))->toEqual(
+              fresh->Solver.Search.think(~nodes=800),
+            )
+            expect(search.graph)->toEqual(fresh.graph)
+            expect(search.frontiers)->toEqual(fresh.frontiers)
+            expect(search.line)->toEqual(fresh.line)
+          },
+        )
+
+        test(
+          "a moved board with nothing thought since is followed by the answer, too",
+          () => {
+            let start = startOf(Game.microDeal(~seed=1))
+            let search = Solver.Search.make(start)
+            expect(search->Solver.Search.think(~nodes=1_000_000))->toEqual(Solver.Search.Found)
+            let after = Position.applyMove(
+              start,
+              Option.getOrThrow(search.line)->Array.getUnsafe(0),
+            )
+            search->Solver.Search.moved(after)
+            expect(Solver.Search.answer(search))->toEqual(Solver.Search.Found)
+            expect(Array.length(Option.getOrThrow(search.line)) > 0)->toBe(true)
+          },
+        )
+
+        // The property the proof rests on, over boards small enough to search to the end:
+        // a search walked along a game and back agrees with one opened where the game
+        // stands, on whether there is a line — and its line plays on the real board.
+        testWithin(
+          "a search moved along a game agrees with a fresh one opened where it stands",
+          () => {
+            let seed = ref(12345)
+            let random = n => {
+              seed := (Math.Int.imul(seed.contents, 1103515245) + 12345)->Int.bitwiseAnd(0x7fffffff)
+              mod(seed.contents / 65536, n)
+            }
+            let budget = {Solver.heaps: [2., 1.], maxNodes: 5_000_000}
+            let toEnd = search => {
+              let answer = ref(Solver.Search.Paused)
+              while answer.contents == Solver.Search.Paused {
+                answer := search->Solver.Search.think(~nodes=100_000)
+              }
+              answer.contents
+            }
+            let problems = []
+            let walks = ref(0)
+            for deal in 1 to 20 {
+              [Game.miniDeal(~seed=deal), Game.microDeal(~seed=deal)]->Array.forEach(
+                game => {
+                  let opening = GameState.initial(game)
+                  let positionOf = state => Position.ofGameState(~game, state)->Option.getOrThrow
+                  let search = Solver.Search.make(positionOf(opening), ~budget)
+                  ignore(search->Solver.Search.think(~nodes=random(400)))
+                  let history = [opening]
+                  for _ in 1 to 1 + random(8) {
+                    let state = history->Array.getUnsafe(Array.length(history) - 1)
+                    let moves = Position.legalMoves(positionOf(state))
+                    if Array.length(history) > 1 && (random(3) == 0 || Array.length(moves) == 0) {
+                      history->Array.pop->ignore // an undo
+                    } else if Array.length(moves) > 0 {
+                      let move = moves->Array.getUnsafe(random(Array.length(moves)))
+                      switch Position.toAction(~game, state, move) {
+                      | None => ()
+                      | Some(action) =>
+                        switch Reducer.reduce(~game, state, action) {
+                        | Error(_) => ()
+                        | Ok(next) => history->Array.push(settle(~game, next))
+                        }
+                      }
+                    }
+                    let state = history->Array.getUnsafe(Array.length(history) - 1)
+                    search->Solver.Search.moved(positionOf(state))
+                    ignore(search->Solver.Search.think(~nodes=random(300)))
+                  }
+                  walks := walks.contents + 1
+                  let here = history->Array.getUnsafe(Array.length(history) - 1)
+                  let followed = toEnd(search)
+                  let fresh = toEnd(Solver.Search.make(positionOf(here), ~budget))
+                  let said = `${game.name} #${Int.toString(deal)}`
+                  if followed != fresh {
+                    problems->Array.push(`${said}: re-rooted and fresh searches disagree`)
+                  }
+                  switch search.line {
+                  | None => ()
+                  | Some(line) =>
+                    switch play(~game, here, line) {
+                    | Error(why) => problems->Array.push(`${said}: ${why}`)
+                    | Ok(finished) =>
+                      if !Reducer.canFinish(~game, finished) {
+                        problems->Array.push(`${said}: the line ended short of a finish`)
+                      }
+                    }
+                  }
+                },
+              )
+            }
+            expect(problems)->toEqual([])
+            expect(walks.contents)->toBe(40)
+          },
+          ~timeout=60_000,
+        )
+
+        test(
+          "every node a re-rooted search holds is reached by its line, played on the real board",
+          () =>
+            [Game.freecellDeal(~seed=582), Game.spideretteDeal(~seed=3)]->Array.forEach(
+              game => {
+                let opening = GameState.initial(game)
+                let search = Solver.Search.make(startOf(game))
+                ignore(search->Solver.Search.think(~nodes=2000))
+                // Two moves along the game, a think, and both taken back. Each is the last
+                // move offered, which on a Spiderette's opening is the deal: an undo of a
+                // deal stands on a longer stock than the search was opened on.
+                let states = [opening]
+                for _ in 1 to 2 {
+                  let state = states->Array.getUnsafe(Array.length(states) - 1)
+                  let position = Position.ofGameState(~game, state)->Option.getOrThrow
+                  let move = Position.legalMoves(position)->Array.last->Option.getOrThrow
+                  let action = Position.toAction(~game, state, move)->Option.getOrThrow
+                  switch Reducer.reduce(~game, state, action) {
+                  | Ok(next) => states->Array.push(settle(~game, next))
+                  | Error(_) => ()
+                  }
+                }
+                let here = states->Array.getUnsafe(Array.length(states) - 1)
+                search->Solver.Search.moved(Position.ofGameState(~game, here)->Option.getOrThrow)
+                ignore(search->Solver.Search.think(~nodes=1000))
+                let back = opening
+                search->Solver.Search.moved(Position.ofGameState(~game, back)->Option.getOrThrow)
+                ignore(search->Solver.Search.think(~nodes=1000))
+                let graph = search.graph
+                let wrong = []
+                let node = ref(0)
+                while node.contents < graph.size {
+                  switch play(~game, back, Graph.lineTo(graph, node.contents)) {
+                  | Error(why) => wrong->Array.push(why)
+                  | Ok(reached) =>
+                    if (
+                      !Position.alike(
+                        Position.ofGameState(~game, reached)->Option.getOrThrow,
+                        Graph.positionOf(graph, node.contents),
+                      )
+                    ) {
+                      wrong->Array.push(`node ${Int.toString(node.contents)} reads back wrong`)
+                    }
+                  }
+                  node := node.contents + 37
+                }
+                expect(wrong)->toEqual([])
+              },
+            ),
+        )
+      },
+    )
   })
 
   // The other game the solver plays. The line runs to the win itself — there is no
