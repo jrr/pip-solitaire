@@ -14,9 +14,11 @@
 // section also says what the "held" figure is and isn't.
 //
 // `--limit` is the wait a *driver* would impose, in seconds, so a soak can be run the
-// way a front end actually calls the solver — and so the boards whose stubborn deals
-// cost the whole budget can be soaked in an evening rather than half a day. Left off,
-// the search runs to its own budget, which is what the benchmark record measures.
+// way a front end actually calls the solver. **Left off, it is thirty seconds**
+// (`Solver.patient`): nothing waits longer than that by default. The board's own budget
+// is sized to finish inside it on a cloud sandbox, so the clock bites only on a deal
+// that grows slowly or a machine that does; a run that means to wait longer passes a
+// bigger `--limit`, and `--nodes` to go with it.
 // Several waits joined by `+` are asked one after another of the *same* search, the
 // way a driver that ran out of patience would ask for more: each carries on from where
 // the last stopped, and the effort reported is all of them together.
@@ -67,10 +69,11 @@ const opts = parseArgs(process.argv.slice(2))
 const game = Game.byId(opts.game)
 if (!game) throw new Error(`no game called ${opts.game} — one of ${Game.all.map((g) => g.id).join(", ")}`)
 
-// The waits `Solver.patience` is handed, one per ask — or one ask with no patience at
-// all, which runs the search to its budget.
-const asks = opts.limits === null ? [undefined] : opts.limits.map((s) => ({ ms: s * 1000, clock: Date.now }))
-const limitSaid = opts.limits === null ? "" : `the ${opts.limits.join("+")}s limit ran out`
+// The waits `Solver.patience` is handed, one per ask — `Solver.patient` when none is
+// given.
+const limits = opts.limits ?? [Solver.patient / 1000]
+const asks = limits.map((s) => ({ ms: s * 1000, clock: Date.now }))
+const limitSaid = `the ${limits.join("+")}s limit ran out`
 
 let solved = 0
 let unwinnable = 0
