@@ -268,7 +268,7 @@ Where the cap comes from, in order:
 The three tiers are three numbers in one place. What they should be is measured,
 not reasoned: bytes per node from `solve.mjs` in Node, from Chrome on the dev
 server, and the small tier tried on an old phone. Until the tiers land the cap is
-expressed in nodes, each board's about thirty seconds of search, which holds a sixth
+expressed in nodes, each board's about thirty seconds of search, which holds a fifth
 of what the restart ladder did (`docs/solver.md` § The budget).
 
 ## The worker, as a service
