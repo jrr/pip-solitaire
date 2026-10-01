@@ -1,4 +1,7 @@
 name: solver-soak
+# Every dispatch is otherwise titled just "solver-soak", and several are usually run at
+# once — one per board.
+run-name: "solver-soak: ${{ inputs.game }} ${{ inputs.deals }}${{ inputs.mb && format(' at {0} MB', inputs.mb) || '' }} on ${{ github.ref_name }}"
 
 # A full soak for the benchmark record (docs/solver.md), split across jobs so an
 # hour of deals is a few minutes of wall clock and none of a session's. Run it from
