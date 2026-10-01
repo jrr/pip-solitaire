@@ -342,10 +342,20 @@ let lineTo = (graph: t, node: int, ~last: option<int>=?): array<Position.move> =
 
 // The move from `from` that leads to a position `alike` `to` — in `from`'s own layout,
 // which is what a node's recorded move has to be in. `None` when there is none.
-let moveBetween = (from: Position.t, to: Position.t): option<int> =>
-  Position.legalMoves(from)
-  ->Array.find(move => Position.alike(Position.applyMove(from, move), to))
-  ->Option.map(Board.ofMove)
+//
+// **Under a `fold`, one that lays `to` out in the same column order if there is one, and
+// any that leads to its columns in another order if not.** A folded graph's lookups
+// match the second, so a walk can reach a node from a parent whose moves only ever lay
+// it out otherwise; `collect` reopens such a node rather than hang it there unfaithfully.
+let moveBetween = (~fold: bool=false, from: Position.t, to: Position.t): option<int> => {
+  let moves = Position.legalMoves(from)
+  let leadingTo = (~fold) =>
+    moves->Array.find(move => Position.alike(~fold, Position.applyMove(from, move), to))
+  switch leadingTo(~fold=false) {
+  | Some(move) => Some(move)
+  | None => fold ? leadingTo(~fold=true) : None
+  }->Option.map(Board.ofMove)
+}
 
 // --- Lookup -------------------------------------------------------------------
 
@@ -659,7 +669,7 @@ let collect = (graph: t, ~root: int, walked: walked, ~reopened: ints): option<in
       let from = positionOf(graph, arrival->at(node))
       let own = positionOf(graph, node)
       let move =
-        moveBetween(from, own)->Option.getOrThrow(
+        moveBetween(~fold=graph.fold, from, own)->Option.getOrThrow(
           ~message="a kept node is not a child of the node it was reached from",
         )
       if (

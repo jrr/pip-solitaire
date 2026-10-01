@@ -832,6 +832,308 @@ describe("Solver", () => {
               },
             ),
         )
+
+        // A search on a board that deals folds column order to look, so one node can stand
+        // for two layouts of a position, and a re-root has to reopen a node it could only
+        // keep under a parent that lays it out in the other. The rule these make
+        // executable is `docs/solver-next.md` § Re-rooting as built.
+        describe(
+          "on a folded Spiderette search",
+          () => {
+            // A position as the folded graph tells it apart: its key with the columns in
+            // any order, and the stock as its length.
+            let foldedKey = (s: Position.t) =>
+              `${Position.key({...s, stock: []})}|${Int.toString(Array.length(s.stock))}`
+
+            let foldedClosed = (search: Solver.Search.t) => {
+              let keys = Set.make()
+              for node in 0 to search.graph.size - 1 {
+                if Graph.isClosed(search.graph, node) {
+                  keys->Set.add(foldedKey(Graph.positionOf(search.graph, node)))
+                }
+              }
+              keys
+            }
+
+            // The positions grown before a re-root that it left open: what a reopen leaves
+            // behind, since nothing else turns a grown position open again.
+            let reopened = (search: Solver.Search.t, ~before: Set.t<string>) => {
+              let keys = Set.make()
+              for node in 0 to search.graph.size - 1 {
+                if !Graph.isClosed(search.graph, node) {
+                  let key = foldedKey(Graph.positionOf(search.graph, node))
+                  if before->Set.has(key) {
+                    keys->Set.add(key)
+                  }
+                }
+              }
+              keys
+            }
+
+            let toEnd = search => {
+              let answer = ref(Solver.Search.Paused)
+              while answer.contents == Solver.Search.Paused {
+                answer := search->Solver.Search.think(~nodes=100_000)
+              }
+              answer.contents
+            }
+
+            let stepped = (~game, state, move) =>
+              switch play(~game, state, [move]) {
+              | Ok(next) => next
+              | Error(why) => throw(Failure(why))
+              }
+
+            // Searched to the end from where the game stands, against a search opened
+            // there: the same answer, and a line that plays on the real board to a finish.
+            // And every node the re-rooted search holds is reached by its line, played on
+            // the real board — in any column order, since a folded node is either.
+            let agrees = (~game, state, search: Solver.Search.t) => {
+              let problems = []
+              let here = Position.ofGameState(~game, state)->Option.getOrThrow
+              let fresh = Solver.Search.make(here)
+              let followed = toEnd(search)
+              if followed != toEnd(fresh) {
+                problems->Array.push("the re-rooted and fresh searches disagree")
+              }
+              if Option.isSome(search.line) != Option.isSome(fresh.line) {
+                problems->Array.push("one search has a line and the other none")
+              }
+              switch search.line {
+              | None => ()
+              | Some(line) =>
+                switch play(~game, state, line) {
+                | Error(why) => problems->Array.push(`the line: ${why}`)
+                | Ok(finished) =>
+                  if !Reducer.canFinish(~game, finished) {
+                    problems->Array.push("the line ended short of a finish")
+                  }
+                }
+              }
+              let graph = search.graph
+              let node = ref(0)
+              while node.contents < graph.size {
+                switch play(~game, state, Graph.lineTo(graph, node.contents)) {
+                | Error(why) => problems->Array.push(`node ${Int.toString(node.contents)}: ${why}`)
+                | Ok(reached) =>
+                  if (
+                    !Position.alike(
+                      ~fold=true,
+                      Position.ofGameState(~game, reached)->Option.getOrThrow,
+                      Graph.positionOf(graph, node.contents),
+                    )
+                  ) {
+                    problems->Array.push(`node ${Int.toString(node.contents)} reads back wrong`)
+                  }
+                }
+                node := node.contents + 7
+              }
+              problems
+            }
+
+            testWithin(
+              "moved along a game that deals and takes the deal back, it agrees with a fresh search and grows nothing it kept again",
+              () => {
+                let problems = []
+                [
+                  (Game.spiderette1Deal(~seed=16), true),
+                  (Game.spideretteDeal(~seed=3), true),
+                  (Game.spiderette4Deal(~seed=2), true),
+                  // Dead deals, thought to the end: what the search holds then is the
+                  // confirmation search's graph, which keeps column order — the other mode
+                  // a re-root arrives in.
+                  (Game.spiderette1Deal(~seed=56), false),
+                  (Game.spiderette4Deal(~seed=55), false),
+                ]->Array.forEach(
+                  ((game, folds)) => {
+                    let said = `${game.id} #${game.seed->Option.mapOr("", seed => Int.toString(seed))}`
+                    let opening = GameState.initial(game)
+                    let start = startOf(game)
+                    let search = Solver.Search.make(start)
+                    if folds {
+                      ignore(search->Solver.Search.think(~nodes=2000))
+                    } else {
+                      expect(toEnd(search))->toEqual(Solver.Search.Exhausted)
+                    }
+                    let mode = () =>
+                      if search.graph.fold != folds {
+                        problems->Array.push(`${said}: the re-root changed the search's mode`)
+                      }
+                    mode()
+                    // Along the busiest branch, then a deal, then the deal taken back.
+                    let along = busiest(search, start)
+                    let first =
+                      Position.legalMoves(start)
+                      ->Array.find(move => Position.applyMove(start, move) == along)
+                      ->Option.getOrThrow
+                    let played = stepped(~game, opening, first)
+                    search->Solver.Search.moved(
+                      Position.ofGameState(~game, played)->Option.getOrThrow,
+                    )
+                    ignore(search->Solver.Search.think(~nodes=1000))
+                    mode()
+                    let dealt = stepped(~game, played, Position.Deal)
+                    search->Solver.Search.moved(
+                      Position.ofGameState(~game, dealt)->Option.getOrThrow,
+                    )
+                    ignore(search->Solver.Search.think(~nodes=1000))
+                    mode()
+                    let before = closedKeys(search)
+                    search->Solver.Search.moved(
+                      Position.ofGameState(~game, played)->Option.getOrThrow,
+                    )
+                    ignore(search->Solver.Search.think(~nodes=0))
+                    mode()
+                    let kept = closedKeys(search)
+                    if (
+                      !(
+                        before->Set.values->Iterator.toArray->Array.every(key => kept->Set.has(key))
+                      )
+                    ) {
+                      problems->Array.push(`${said}: the undo let go of something under the deal`)
+                    }
+                    ignore(search->Solver.Search.think(~nodes=1000))
+                    if regrown(search, ~before, ~kept) > 0 {
+                      problems->Array.push(`${said}: a position kept was grown again`)
+                    }
+                    agrees(~game, played, search)->Array.forEach(
+                      problem => problems->Array.push(`${said}: ${problem}`),
+                    )
+                  },
+                )
+                expect(problems)->toEqual([])
+              },
+              ~timeout=60_000,
+            )
+
+            // Two-suit deal #3, thought on for a while: its folded graph holds positions
+            // that a move from some grown node lays out in another column order.
+            let game = Game.spideretteDeal(~seed=3)
+            let opening = GameState.initial(game)
+            let thought = () => {
+              let search = Solver.Search.make(startOf(game))
+              ignore(search->Solver.Search.think(~nodes=2000))
+              search
+            }
+
+            // Every grown node with a move to a grown position held in another column
+            // order: the node, the move, and the node that holds what it leads to.
+            let relaid = (search: Solver.Search.t) => {
+              let graph = search.graph
+              let found = []
+              for node in 0 to graph.size - 1 {
+                if Graph.isClosed(graph, node) {
+                  let s = Graph.positionOf(graph, node)
+                  Position.legalMoves(s)->Array.forEach(
+                    move => {
+                      let child = Position.applyMove(s, move)
+                      let held = Graph.nodeAt(
+                        graph,
+                        Graph.slotOf(
+                          graph,
+                          Graph.load(graph, child),
+                          ~hash=Graph.hash(Graph.load(graph, child)),
+                        ),
+                      )
+                      if (
+                        held >= 0 &&
+                        Graph.isClosed(graph, held) &&
+                        !Position.alike(Graph.positionOf(graph, held), child)
+                      ) {
+                        found->Array.push((node, move, held))
+                      }
+                    },
+                  )
+                }
+              }
+              found
+            }
+
+            testWithin(
+              "a board in the other layout of a grown position is grown again from that layout",
+              () => {
+                let search = thought()
+                let graph = search.graph
+                let (node, move, held) = relaid(search)->Array.get(0)->Option.getOrThrow
+                // The player's board: the line to `node` and `move`, played for real. It
+                // is the same position `held` stands for, in another column order.
+                let state =
+                  play(
+                    ~game,
+                    opening,
+                    Graph.lineTo(graph, node, ~last=Board.ofMove(move)),
+                  )->Result.getOrThrow
+                let board = Position.ofGameState(~game, state)->Option.getOrThrow
+                let first = Graph.positionOf(graph, held)
+                expect(Position.alike(~fold=true, first, board))->toBe(true)
+                expect(Position.alike(first, board))->toBe(false)
+                // On the layout it was grown in, the node keeps what it grew…
+                let twin = thought()
+                twin->Solver.Search.moved(first)
+                ignore(twin->Solver.Search.think(~nodes=0))
+                expect(twin.closed > 0)->toBe(true)
+                // …and on the other it is reopened: an open root, and nothing under it.
+                search->Solver.Search.moved(board)
+                ignore(search->Solver.Search.think(~nodes=0))
+                expect(search.graph.size)->toBe(1)
+                expect(search.closed)->toBe(0)
+                expect(Graph.positionOf(search.graph, 0))->toEqual(board)
+                expect(agrees(~game, state, search))->toEqual([])
+              },
+              ~timeout=60_000,
+            )
+
+            testWithin(
+              "a node the new root reaches only in another layout than it was grown in is reopened, not kept",
+              () => {
+                // A node the walk from `node` can reach by `move` in the other layout, and
+                // whose own parent is not under `node` — so the parent is let go of, and
+                // the node can be kept only by hanging it from `node`. The first of them
+                // the walk does not reach in its own layout first.
+                let candidates = {
+                  let search = thought()
+                  let graph = search.graph
+                  let under = (child, ancestor) => {
+                    let cursor = ref(child)
+                    while cursor.contents >= 0 && cursor.contents != ancestor {
+                      cursor := graph.parent->Graph.at(cursor.contents)
+                    }
+                    cursor.contents >= 0
+                  }
+                  relaid(search)->Array.filter(
+                    ((node, _, held)) => held != node && !under(held, node),
+                  )
+                }
+                expect(Array.length(candidates) > 0)->toBe(true)
+                let shown =
+                  candidates
+                  ->Array.slice(~start=0, ~end=20)
+                  ->Array.findMap(
+                    ((node, _, held)) => {
+                      let search = thought()
+                      let graph = search.graph
+                      let before = foldedClosed(search)
+                      let heldKey = foldedKey(Graph.positionOf(graph, held))
+                      let state = play(~game, opening, Graph.lineTo(graph, node))->Result.getOrThrow
+                      search->Solver.Search.moved(Graph.positionOf(graph, node))
+                      ignore(search->Solver.Search.think(~nodes=0))
+                      let reopened = reopened(search, ~before)
+                      reopened->Set.has(heldKey) ? Some((search, state, reopened)) : None
+                    },
+                  )
+                switch shown {
+                | None => expect("a node reopened under the new root")->toBe("but none was")
+                | Some((search, state, reopened)) =>
+                  expect(reopened->Set.size > 0)->toBe(true)
+                  // Reopened, and still everything else reachable kept.
+                  expect(search.closed > 0)->toBe(true)
+                  expect(agrees(~game, state, search))->toEqual([])
+                }
+              },
+              ~timeout=60_000,
+            )
+          },
+        )
       },
     )
   })

@@ -757,9 +757,10 @@ let key = (s: t): string => {
 
 // Whether two positions of one deal `key` alike, without spelling either: the same
 // foundations and stock length, the cells the same *multiset*, and the columns the
-// same multiset too — or, while there is a stock, the same columns in the same order.
+// same multiset too — or, while there is a stock, the same columns in the same order,
+// unless asked to `fold` them as `Board.fold` does.
 // What a search asks to be sure a hash that matched meant the same position.
-let alike = (a: t, b: t): bool => {
+let alike = (~fold: bool=false, a: t, b: t): bool => {
   let columnsEqual = (x: t, i: int, y: t, j: int): bool =>
     x.down->Array.getUnsafe(i) == y.down->Array.getUnsafe(j) && {
         let p = x.casc->Array.getUnsafe(i)
@@ -824,7 +825,7 @@ let alike = (a: t, b: t): bool => {
   Array.length(a.casc) == Array.length(b.casc) &&
   a.found->Array.everyWithIndex((n, suit) => b.found->Array.getUnsafe(suit) == n) &&
   sameCells() && (
-    Array.length(a.stock) > 0
+    Array.length(a.stock) > 0 && !fold
       ? a.casc->Array.everyWithIndex((_, i) => columnsEqual(a, i, b, i))
       : sameColumns()
   )

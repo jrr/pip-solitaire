@@ -256,7 +256,12 @@ re-rooting, that means:
 **They happen while a search folds.** A search on a board that deals looks with the
 columns folded (`docs/solver.md` § The search), so two layouts of a position with a stock
 can be one node, and `Graph.dealsAlike` is the guard that keeps a re-root of that search
-from hanging a node under a parent that lays it out otherwise. Once a search keeps column
+from hanging a node under a parent that lays it out otherwise. A folded walk can reach a
+node from a parent none of whose moves lays it out as it was grown — the lookup matched
+it in the other order — so `Graph.moveBetween` takes a move to it in either order when
+there is none in its own, and that is the node the guard reopens. `Solver_test`'s *on a
+folded Spiderette search* builds both reopens, the root's and one under it, on purpose.
+Once a search keeps column
 order — the search that confirms a proof — no two layouts are ever one node, the guard
 holds of every pair the walk and `collect` compare, and nothing is reopened.
 
