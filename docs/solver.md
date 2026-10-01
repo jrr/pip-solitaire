@@ -102,9 +102,10 @@ and goes on painting, so `interactive` bounds a spinner rather than a freeze. It
 still a policy about a person's patience and still costs the answers measured below —
 what it stopped being is the difference between a page and a hung page.
 
-`mise run solve` passes whatever `--limit` says, and nothing at all by default,
-which is what makes the benchmark record a measurement of the budget rather than
-of a wait. A row measured with `--nodes` says so.
+`mise run solve` passes whatever `--limit` says, and thirty seconds by default; the
+node budgets are what decide nearly every deal inside it, which keeps the benchmark
+record a measurement of the budget rather than of a wait. A row measured with
+`--nodes` or a longer `--limit` says so.
 
 **The search keeps no time; the caller cuts it into slices.** `Solver.Search.think`
 takes a number of positions and nothing else, and `Solver.solveOn` is the one place a
@@ -194,10 +195,12 @@ mise run solve -- --limit 10+10 --game spiderette4 147          # …and asks fo
 ```
 
 `--limit` is a wait in seconds — the `patience` a driver would impose, so a soak can
-be run the way a front end actually calls the solver. It is also how the expensive
-boards are soaked in an evening rather than half a day, since a deal that beats the
-budget stops costing the budget. Leave it off for anything destined for the benchmark
-record: that table is a measurement of the budget, and a capped run measures the cap.
+be run the way a front end actually calls the solver. **Left off it is thirty
+seconds**, `Solver.patient`, because nothing waits longer than that by default. Each
+board's node budget is sized to finish inside it, so on a cloud sandbox the clock
+decides only the odd deal that grows slowly — two-suit #42 is the one in the record —
+and the benchmark is still, nearly everywhere, a measurement of the budget. A row that
+waited longer says so: `--limit` and `--nodes` beside it.
 Several waits joined by `+` are asked one after another of the same search, each
 carrying on from where the last stopped; the deal's time, effort and Held are all of
 them together, and a deal that answers after the first says which ask it was.
@@ -875,8 +878,8 @@ to want it is more likely a *shorter line* than a faster one, which is the trade
   hour, because the deals it gives up on each cost the whole budget — so soak it
   over 1–200 rather than the thousand, and leave it running. Its repeated packs (`spiderette1`, `spiderette`) are the same board
   with a cheaper deck and are worth the same range: the one-suit soak is about a
-  minute, the two-suit one a quarter of an hour. **Don't reach for `--limit` to make that cheaper**: a capped run
-  measures the cap, and a cap is exactly what would hide a regression in the
+  minute, the two-suit one a quarter of an hour. **Don't reach for a shorter `--limit` to make that cheaper**: a capped
+  run measures the cap, and a cap is exactly what would hide a regression in the
   positions it stopped short of.
 - **Read the Held column, not only the counts.** The node cap is the only thing
   bounding what a search holds (§ The budget), so a change that solves more by
