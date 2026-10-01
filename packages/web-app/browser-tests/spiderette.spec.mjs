@@ -247,14 +247,14 @@ test("a drag that completes the last run flies it home and wins", async ({ page 
 // All three packs, because the repeated ones are where the plan and the board can come
 // apart in a way no other test would see: the model packs both Sevens of Spades to one
 // int, so a plan that named a card by that int rather than by the one it lifted off the
-// live pile would drag the wrong Seven here. `seed=1` on each, so the line is the same
-// one every run.
-for (const game of ["spiderette1", "spiderette2", "spiderette4"]) {
+// live pile would drag the wrong Seven here. A fixed deal on each, so the line is the
+// same one every run — one the search finds in well under `Solver.interactive`.
+for (const [game, seed] of [["spiderette1", 3], ["spiderette2", 2], ["spiderette4", 1]]) {
   test(`autoplay plays a ${game} deal out, dealing the stock as it goes`, async ({ page }) => {
     // The search thinks for a second or two, then ninety-odd moves play out and the
     // last runs fly home — more than the suite's default patience.
     test.setTimeout(180_000)
-    await page.goto(`/?game=${game}&seed=1&animate=off`)
+    await page.goto(`/?game=${game}&seed=${seed}&animate=off`)
     await settle(page)
     await expect(stock(page)).toHaveCount(24)
     await expect(page.locator(".win-overlay")).toHaveCount(0)

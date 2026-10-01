@@ -125,11 +125,13 @@ Spiderette) and 10,326 ms (two-suit). **So a wait under about a second is not a
 wait this can keep**; both named ones are far above that.
 
 **Lowering `interactive` is a change to what the browser suite can play.**
-`browser-tests/spiderette.spec.mjs` types `autoplay` on all three Spiderette packs
-at `seed=1` and waits for the win overlay, so those three searches have to finish
-inside it. They are not close to it — 69 ms, 907 ms and 771 ms on a loaded
-four-core sandbox — but they are the floor, and the failure they'd give is a
-missing overlay rather than anything that says "time".
+`browser-tests/spiderette.spec.mjs` types `autoplay` on all three Spiderette packs,
+on one fixed deal each, and waits for the win overlay, so those three searches have
+to finish inside it. They are not close to it — a few hundred milliseconds each on a
+loaded four-core sandbox — but they are the floor, and the failure they'd give is a
+missing overlay rather than anything that says "time". A change that grows the
+search can push a deal past the wait, which is why the spec names its deals rather
+than taking the first of each.
 
 ### The three ways to come back with nothing
 
@@ -708,8 +710,8 @@ second buys: § The budget.
   each node sits in it.
 - **The visited set is a hash table, and a hit is checked.** It files each node by
   `Board.hash`, which agrees with `Position.key` — two positions that differ only in
-  *which* free cell or *which* column holds what are the same position — and a hash
-  that matches counts as seen only once the node's position, stood on a second
+  *which* free cell holds what are the same position, and so are two that differ only
+  in which column holds what, **once the stock is out** — and a hash that matches counts as seen only once the node's position, stood on a second
   board, is `Board.alike` the one asked about. A collision taken for "seen" would prune a
   position nobody visited, and `Exhausted` would stop being a proof. No string is
   built for a position anywhere on this path.
@@ -723,6 +725,16 @@ second buys: § The budget.
   cell and a run to the *first* empty column (the other empties are the same
   move), and a whole column may not move into an empty one (that only renames
   the column). Nothing is pruned on a hunch — that would make `exhausted` a lie.
+- **While there is a stock, column order is part of the position**, and the two
+  column prunings wait for it to run out. A deal lands one card on each column in
+  turn, so the same piles in another column order are dealt other cards: a run into
+  the second empty column is not the move into the first, and a whole column moved
+  into an empty one is not a rename. The key, the hash and both `alike`s keep the
+  columns in order while `stock` is not empty, and fold them only once it is. A
+  board that never deals is untouched by this. Spiderette rows whose Environment
+  doesn't say *column order kept* were measured with the fold applied throughout — a
+  position could be pruned as seen when the board it stood for was another — so
+  their unwinnable deals were proved only under it.
 
 ### The budget
 

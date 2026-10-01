@@ -29,10 +29,11 @@ let stopped: Solver.patience = {ms: Solver.interactive, clock: () => 0.}
 let deals = (game: Game.t): array<int> =>
   switch game.id {
   | "simplesimon" => [1, 6]
+  | "spiderette1" => [3, 9]
   | "spiderette2" => [2, 5]
   | "spiderette4" => [11, 15]
-  | "spider1" => [6, 7]
-  | "spider2" => [27]
+  | "spider1" => [21]
+  | "spider2" => [37]
   | _ => [1, 2]
   }
 
@@ -45,8 +46,10 @@ let greedySteps = 400
 
 let describeAll = (moves: array<Position.move>) => moves->Array.map(Position.describeMove)
 
-// The same board with its cells and its columns in another order — a board
-// `Position.key` says is the same one, so `Board.hash` has to as well.
+// The same piles with its cells and its columns in another order. `Position.key`
+// says that is the same board once the stock is out, so `Board.hash` and both `alike`s
+// have to as well — and while there is a stock, that it is another board unless the
+// reversal left every column where it was.
 let shuffled = (s: Position.t): Position.t => {
   let cells = s.cells->Array.toReversed
   let order = s.casc->Array.mapWithIndex((_, i) => i)->Array.toReversed
@@ -56,6 +59,11 @@ let shuffled = (s: Position.t): Position.t => {
     casc: order->Array.map(i => s.casc->Array.getUnsafe(i)->Array.copy),
     down: order->Array.map(i => s.down->Array.getUnsafe(i)),
   }
+}
+
+let foldsOnto = (s: Position.t): bool => {
+  let t = shuffled(s)
+  Array.length(s.stock) == 0 || (t.casc == s.casc && t.down == s.down)
 }
 
 let hidden = (s: Position.t) => s.down->Array.reduce(0, (a, b) => a + b)
@@ -109,8 +117,8 @@ let walk = (~game: Game.t, ~seed: int, ~reached: reached, ~failures: array<strin
       }
       let hash = Board.hash(board)
       checkHash(s, hash)
-      if Board.hash(Board.load(shuffled(s))) != hash {
-        fail(`${at}: the same board in another order hashes differently`)
+      if (Board.hash(Board.load(shuffled(s))) == hash) != foldsOnto(s) {
+        fail(`${at}: the piles in another order hash as the key says they aren't`)
       }
       let best = ref(None)
       offered->Array.forEach(move => {
@@ -132,15 +140,23 @@ let walk = (~game: Game.t, ~seed: int, ~reached: reached, ~failures: array<strin
         if Board.hash(scratch) != Board.hash(board) {
           fail(`${said}: a reloaded board hashes differently`)
         }
-        if !Position.alike(after, shuffled(after)) {
-          fail(`${said}: the same board in another order isn't alike`)
+        if Position.alike(after, shuffled(after)) != foldsOnto(after) {
+          fail(`${said}: the piles in another order are alike as the key says they aren't`)
+        }
+        if (
+          Position.alike(after, shuffled(after)) !=
+            (Position.key(after) == Position.key(shuffled(after)))
+        ) {
+          fail(`${said}: alike and key disagree on the piles in another order`)
         }
         if Position.alike(s, after) != (Position.key(s) == Position.key(after)) {
           fail(`${said}: alike and key disagree`)
         }
         Board.reload(scratch, shuffled(after))
-        if !Board.alike(board, scratch) {
-          fail(`${said}: the same board in another order isn't alike on the board`)
+        if Board.alike(board, scratch) != foldsOnto(after) {
+          fail(
+            `${said}: the piles in another order are alike on the board as the key says they aren't`,
+          )
         }
         Board.reload(scratch, s)
         if Board.alike(board, scratch) != Position.alike(after, s) {
