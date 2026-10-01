@@ -431,12 +431,14 @@ describe("Solver", () => {
         let start = startOf(Game.freecellDeal(~seed=1))
         let other = Position.applyMove(start, Position.legalMoves(start)->Array.getUnsafe(0))
         let graph = Graph.make(start)
-        let hash = Graph.hash(graph, start)
-        let slot = Graph.slotOf(graph, start, ~hash)
+        let board = Graph.load(graph, start)
+        let hash = Graph.hash(board)
+        let slot = Graph.slotOf(graph, board, ~hash)
         let root = graph->Graph.add(~parent=-1, ~move=0, ~depth=0, ~h=0, ~hash)
         graph->Graph.file(slot, root)
-        expect(Graph.nodeAt(graph, Graph.slotOf(graph, start, ~hash)))->toBe(root)
-        expect(Graph.nodeAt(graph, Graph.slotOf(graph, other, ~hash)))->toBe(-1)
+        let slotFor = s => Graph.slotOf(graph, Graph.load(graph, s), ~hash)
+        expect(Graph.nodeAt(graph, slotFor(start)))->toBe(root)
+        expect(Graph.nodeAt(graph, slotFor(other)))->toBe(-1)
       },
     )
 

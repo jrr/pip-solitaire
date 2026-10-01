@@ -170,9 +170,8 @@ type t = {
 }
 
 // A position of one's own: every array copied, so a caller can mutate the result
-// without reaching back into the original. The search leans on this — `applyMove`
-// works in place on a copy rather than rebuilding immutably, which is most of why
-// it can afford to be called a hundred thousand times.
+// without reaching back into the original. `applyMove` leans on this — it works in
+// place on a copy rather than rebuilding immutably.
 let copy = (s: t): t => {
   law: s.law,
   pack: s.pack, // never mutated, so every copy shares the one record

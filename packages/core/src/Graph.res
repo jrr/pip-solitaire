@@ -9,7 +9,8 @@
 // other position is read back by playing moves down from the nearest node that was.
 //
 // **Membership is by hash and exact.** `table` maps a hash to a node, and a hit counts
-// only once the node's position has been rebuilt and found `alike` the one asked about.
+// only once the node's position has been stood on a board and found `alike` the one
+// asked about.
 // A collision taken for "seen" would prune a position nobody visited, and `Exhausted`
 // would stop being a proof.
 
@@ -46,7 +47,12 @@ type t = {
   // so a stored position keeps only its length; a re-root after an undo of a deal can
   // stand on a longer one than `start` first had (`widen`).
   mutable stock: array<int>,
-  mutable board: Board.t, // scratch for hashing, reloaded for every position asked about
+  // Two scratch boards, each loaded with the whole of `stock` so that any node can be
+  // stood on either. `board` is the caller's — the search grows a node on it — and
+  // `probe` is this module's own, for reading a node back (`standOn`), which a lookup
+  // does while the caller's board stands on the position it is looking up.
+  mutable board: Board.t,
+  mutable probe: Board.t,
   mutable size: int,
   mutable parent: ints,
   mutable move: ints, // `Board.move`, packed
@@ -71,6 +77,7 @@ let make = (start: Position.t): t => {
     start,
     stock: start.stock,
     board: Board.load(start),
+    probe: Board.load(start),
     size: 0,
     parent: Int32Array.fromLength(nodes),
     move: Int32Array.fromLength(nodes),
@@ -146,9 +153,9 @@ let reparent = (graph: t, node: int, ~parent: int, ~move: int, ~depth: int) => {
   graph.depth->put(node, depth)
 }
 
-// Pack a closed node's position into the arena.
-let keep = (graph: t, node: int, s: Position.t) => {
-  let need = Array.length(s.cells) + 5 + 2 * Array.length(s.casc) + s.pack.size
+// Pack a closed node's position, as `b` stands, into the arena.
+let keep = (graph: t, node: int, b: Board.t) => {
+  let need = Array.length(b.cells) + 5 + 2 * Board.columns(b) + b.pack.size
   if graph.arenaSize + need > TypedArray.length(graph.arena) {
     graph.arena = widened(
       graph.arena,
@@ -163,20 +170,23 @@ let keep = (graph: t, node: int, s: Position.t) => {
     cursor := cursor.contents + 1
   }
   graph.stored->put(node, graph.arenaSize)
-  s.cells->Array.forEach(card => write(card + 1))
-  s.found->Array.forEach(write)
-  write(Array.length(s.stock))
-  s.casc->Array.forEachWithIndex((pile, col) => {
-    write(s.down->Array.getUnsafe(col))
-    write(Array.length(pile))
-    pile->Array.forEach(write)
-  })
+  b.cells->Array.forEach(card => write(card + 1))
+  b.found->Array.forEach(write)
+  write(b.undealt)
+  for col in 0 to Board.columns(b) - 1 {
+    let height = b.height->Array.getUnsafe(col)
+    write(b.down->Array.getUnsafe(col))
+    write(height)
+    for i in 0 to height - 1 {
+      write(Board.cardAt(b, ~col, ~i))
+    }
+  }
   graph.arenaSize = cursor.contents
 }
 
-// Close a node, now that it is being grown — keeping its position if the last
+// Close a node, now that it is being grown on `b` — keeping its position if the last
 // `keepEvery - 1` closed nodes above it all went without.
-let close = (graph: t, node: int, s: Position.t) => {
+let close = (graph: t, node: int, b: Board.t) => {
   let run = ref(0)
   let above = ref(graph.parent->at(node))
   while above.contents >= 0 && graph.stored->at(above.contents) == unkept {
@@ -186,50 +196,66 @@ let close = (graph: t, node: int, s: Position.t) => {
   if above.contents >= 0 && run.contents < keepEvery - 1 {
     graph.stored->put(node, unkept)
   } else {
-    keep(graph, node, s)
+    keep(graph, node, b)
   }
 }
 
-// The position a kept node was grown from, read back out of the arena.
-let unpack = (graph: t, node: int): Position.t => {
-  let {start, arena} = graph
+// Stand `b` on a kept node's position, read straight out of the arena.
+//
+// **This writes `Board`'s fields directly**, so it knows `Board`'s layout as well as the
+// arena's, and a change to either is a change here. The cleaner boundary is the arena's
+// format moving into `Board`, beside `load` — which is where a port to another language
+// would want it, the board and its stored form behind one interface. A reader callback
+// handed to `Board` instead would cost a call per byte on the search's hottest read.
+let unpack = (graph: t, node: int, b: Board.t) => {
+  let arena = graph.arena
   let cursor = ref(graph.stored->at(node))
   let read = () => {
     let n = arena->at(cursor.contents)
     cursor := cursor.contents + 1
     n
   }
-  let cells = start.cells->Array.map(_ => read() - 1)
-  let found = start.found->Array.map(_ => read())
-  let undealt = read()
-  let down = []
-  let casc = start.casc->Array.map(_ => {
-    down->Array.push(read())
-    Array.fromInitializer(~length=read(), _ => read())
-  })
-  {
-    law: start.law,
-    pack: start.pack,
-    cells,
-    found,
-    casc,
-    down,
-    stock: graph.stock->Array.slice(~start=0, ~end=undealt),
+  Board.forget(b)
+  for i in 0 to Array.length(b.cells) - 1 {
+    b.cells->Array.setUnsafe(i, read() - 1)
+  }
+  for i in 0 to Array.length(b.found) - 1 {
+    b.found->Array.setUnsafe(i, read())
+  }
+  b.undealt = read()
+  for col in 0 to Board.columns(b) - 1 {
+    b.down->Array.setUnsafe(col, read())
+    let height = read()
+    b.height->Array.setUnsafe(col, height)
+    for i in 0 to height - 1 {
+      b.cards->Array.setUnsafe(col * b.cap + i, read())
+    }
   }
 }
 
-// Any node's position: a kept one's from the arena, any other's by playing its move
-// on its parent's — a few moves at most, since a parent is always closed and a run of
-// closed nodes is broken by a kept one every `keepEvery`. The root, open, is the start.
-let rec positionOf = (graph: t, node: int): Position.t =>
+// Stand `b` on any node's position: a kept one's from the arena, any other's by standing
+// on its parent's and playing its move — a few moves at most, since a parent is always
+// closed and a run of closed nodes is broken by a kept one every `keepEvery`. The root,
+// open, is the start. Whatever `b` stood on before is let go of, and the moves played
+// to get here are left in play.
+let rec standOn = (graph: t, node: int, b: Board.t) =>
   if graph.stored->at(node) >= 0 {
-    unpack(graph, node)
+    unpack(graph, node, b)
   } else {
     let parent = graph.parent->at(node)
-    parent < 0
-      ? graph.start
-      : Position.applyMove(positionOf(graph, parent), Board.toMove(graph.move->at(node)))
+    if parent < 0 {
+      Board.reload(b, graph.start)
+    } else {
+      standOn(graph, parent, b)
+      Board.play(b, graph.move->at(node))
+    }
   }
+
+// Any node's position, as a `Position` — for the callers that say moves in its terms.
+let positionOf = (graph: t, node: int): Position.t => {
+  standOn(graph, node, graph.probe)
+  Board.toPosition(graph.probe)
+}
 
 // A move recorded against one layout of a position, said against another layout of the
 // same position: the same cards, from and to the cells and columns that hold what the
@@ -299,7 +325,7 @@ let lineTo = (graph: t, node: int, ~last: option<int>=?): array<Position.move> =
       real := Position.applyMove(real.contents, said)
       switch chain->Array.get(i) {
       | Some(child) if graph.stored->at(child) >= 0 =>
-        own := unpack(graph, child)
+        own := positionOf(graph, child)
         parted := own.contents != real.contents
       | Some(_) if parted.contents => own := Position.applyMove(own.contents, move)
       | Some(_) | None => ()
@@ -318,14 +344,18 @@ let moveBetween = (from: Position.t, to: Position.t): option<int> =>
 
 // --- Lookup -------------------------------------------------------------------
 
-// `Board.hash` of a position, by way of the scratch board — its first lane alone. The
-// second would only spare a comparison the table almost never makes: a match is
-// compared card for card whatever the hash says, and a 32-bit match on a different
-// position is about one probe in four billion.
-let hash = (graph: t, s: Position.t): int => {
+// The caller's scratch board, stood on `s` — for a caller with a position in hand
+// rather than a board.
+let load = (graph: t, s: Position.t): Board.t => {
   Board.reload(graph.board, s)
-  Pair.first(Board.hash(graph.board))
+  graph.board
 }
+
+// `Board.hash`'s first lane alone, which is all the table files by. The second would
+// only spare a comparison the table almost never makes: a match is compared card for
+// card whatever the hash says, and a 32-bit match on a different position is about one
+// probe in four billion.
+let hash = (b: Board.t): int => Pair.first(Board.hash(b))
 
 let mask = (graph: t) => TypedArray.length(graph.table) - 1
 
@@ -348,9 +378,10 @@ let rehash = (graph: t) => {
   }
 }
 
-// The slot a position is filed under: holding its node if it has one, or the empty
-// slot it would go in if it hasn't. Read it with `nodeAt`, fill it with `file`.
-let slotOf = (graph: t, s: Position.t, ~hash: int): int => {
+// The slot the position `b` stands on is filed under: holding its node if it has one,
+// or the empty slot it would go in if it hasn't. Read it with `nodeAt`, fill it with
+// `file`. `b` may be any board but `probe`, which a hit is checked on.
+let slotOf = (graph: t, b: Board.t, ~hash: int): int => {
   if TypedArray.length(graph.table) == 0 {
     rehash(graph)
   }
@@ -360,7 +391,12 @@ let slotOf = (graph: t, s: Position.t, ~hash: int): int => {
   let found = ref(false)
   while !found.contents && table->at(slot.contents) >= 0 {
     let node = table->at(slot.contents)
-    if graph.hashes->at(node) == hash && Position.alike(positionOf(graph, node), s) {
+    if (
+      graph.hashes->at(node) == hash && {
+          standOn(graph, node, graph.probe)
+          Board.alike(graph.probe, b)
+        }
+    ) {
       found := true
     } else {
       slot := (slot.contents + 1)->Int.bitwiseAnd(mask)
@@ -396,6 +432,7 @@ let widen = (graph: t, s: Position.t) =>
   if Array.length(s.stock) > Array.length(graph.stock) {
     graph.stock = s.stock
     graph.board = Board.load(s)
+    graph.probe = Board.load(s)
   }
 
 // What a walk from a root found: which nodes it reached, the kept closed node each was
@@ -427,23 +464,16 @@ let grownBy = (graph: t, board: Board.t, ~node: int, ~move: int): int => {
   }
   let {table} = graph
   let mask = mask(graph)
-  let hash = Pair.first(Board.hash(board))
+  let hash = hash(board)
   let slot = ref(hash->Int.bitwiseAnd(mask))
   let found = ref(-1)
-  let s = ref(None)
   while found.contents < 0 && table->at(slot.contents) >= 0 {
     let candidate = table->at(slot.contents)
     if (
       graph.hashes->at(candidate) == hash &&
         ((graph.parent->at(candidate) == node && graph.move->at(candidate) == move) || {
-            let position = switch s.contents {
-            | Some(position) => position
-            | None =>
-              let position = Board.toPosition(board)
-              s := Some(position)
-              position
-            }
-            Position.alike(positionOf(graph, candidate), position)
+            standOn(graph, candidate, graph.probe)
+            Board.alike(graph.probe, board)
           })
     ) {
       found := candidate
@@ -614,7 +644,8 @@ let collect = (graph: t, ~root: int, walked: walked, ~reopened: ints): option<in
   let astray = node => moving->at(node) == 1
   let store = node =>
     if graph.stored->at(node) == unkept {
-      keep(graph, node, positionOf(graph, node))
+      standOn(graph, node, graph.probe)
+      keep(graph, node, graph.probe)
     }
   let moves = Int32Array.fromLength(size)
   let faithful = ref(true)
@@ -741,6 +772,7 @@ let clear = (graph: t, start: Position.t) => {
   graph.start = fresh.start
   graph.stock = fresh.stock
   graph.board = fresh.board
+  graph.probe = fresh.probe
   graph.size = 0
   graph.parent = fresh.parent
   graph.move = fresh.move

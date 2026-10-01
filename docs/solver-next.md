@@ -114,9 +114,9 @@ grown, because its children's moves name the columns of the layout it was grown
 in.
 
 **Lookup is by hash, membership is exact.** A hash table maps the first 32-bit
-lane of `Board.hash` to a node index. A hit is *verified* by rebuilding the
-node's position and comparing card for card (`Position.alike`, which agrees with
-`Position.key` without spelling it). The second lane would only spare a
+lane of `Board.hash` to a node index. A hit is *verified* by standing a second
+board on the node's position and comparing card for card (`Board.alike`, which
+agrees with `Position.key` without spelling it). The second lane would only spare a
 comparison the table almost never makes, since every true match is compared
 anyway, so it is not filed. Correctness never depends on the hash, which is how
 the visited set costs a few bytes per position rather than a string, while "seen"
@@ -214,7 +214,7 @@ had to be more careful than the table says.
 - **The walk replays, and mostly doesn't compare.** Each closed node's moves are
   generated on a `Board` and each child looked up by hash. A child that was grown
   from this node by this very move is that position by construction, so it is taken
-  without `Position.alike`; any other match is compared, as growing it was. What is
+  without `Board.alike`; any other match is compared, as growing it was. What is
   left is the comparisons on transpositions, and on a transposition-heavy board that
   is most of the walk (`docs/solver.md` § Re-rooting).
 - **A new parent never makes a cycle.** A kept node whose parent was let go of hangs
@@ -366,9 +366,9 @@ cost together.
 
 Expanding a node means playing each of its moves and canonicalising the result,
 some fifteen times per node on Spider and hundreds of thousands of times a
-search. `Position.applyMove` copies the whole position each time, and the copy
-and the string key are, with the collector they feed, most of the runtime
-(`docs/solver.md` § On making this faster).
+search. `Position.applyMove` would copy the whole position each time; what that
+copy cost, and what playing in place bought back, is `docs/solver.md` § On making
+this faster.
 
 The search therefore expands on **`Board`** (`core/src/Board.res`), the same
 position laid out to be played forward and back in place: play a move, hash the

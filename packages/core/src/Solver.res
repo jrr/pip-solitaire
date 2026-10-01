@@ -340,7 +340,8 @@ module Search = {
 
   // `grown` counts the positions taken off the frontier and grown; `tried` the moves
   // played out to see where they led, which is the bigger number and the one most of the
-  // time goes into (every one of them is an `applyMove`, a hash and a `canFinish`). Both
+  // time goes into (every one of them is a `Board.play`, a hash, a lookup and a
+  // `canFinish`, and a `takeBack`). Both
   // count from `make`, across every `think` and every re-root. `closed` is the grown
   // positions the graph still holds — `grown` until a re-root lets some go — and is what
   // `maxNodes` caps, since the cap is on what a search holds.
@@ -393,8 +394,9 @@ module Search = {
       search.line = Some([])
     } else {
       let graph = search.graph
-      let hash = Graph.hash(graph, start)
-      let slot = Graph.slotOf(graph, start, ~hash)
+      let board = Graph.load(graph, start)
+      let hash = Graph.hash(board)
+      let slot = Graph.slotOf(graph, board, ~hash)
       let root =
         graph->Graph.add(~parent=-1, ~move=0, ~depth=0, ~h=heuristic(start, search.weights), ~hash)
       graph->Graph.file(slot, root)
@@ -445,9 +447,11 @@ module Search = {
   // The nodes the graph already holds for children of `s`.
   let known = (search: t, s: Position.t): array<int> => {
     let graph = search.graph
-    Position.legalMoves(s)->Array.filterMap(move => {
-      let child = Position.applyMove(s, move)
-      let node = Graph.nodeAt(graph, Graph.slotOf(graph, child, ~hash=Graph.hash(graph, child)))
+    let board = Graph.load(graph, s)
+    Board.legalMoves(board)->Array.filterMap(move => {
+      Board.play(board, move)
+      let node = Graph.nodeAt(graph, Graph.slotOf(graph, board, ~hash=Graph.hash(board)))
+      Board.takeBack(board)
       node >= 0 ? Some(node) : None
     })
   }
@@ -466,8 +470,9 @@ module Search = {
         search.line = Some(Graph.lineTo(graph, node, ~last=move))
       }
     } else {
-      let hash = Graph.hash(graph, s)
-      let slot = Graph.slotOf(graph, s, ~hash)
+      let board = Graph.load(graph, s)
+      let hash = Graph.hash(board)
+      let slot = Graph.slotOf(graph, board, ~hash)
       if Graph.nodeAt(graph, slot) < 0 {
         let child =
           graph->Graph.add(
@@ -493,9 +498,9 @@ module Search = {
   let reroot = (search: t, s: Position.t) => {
     let graph = search.graph
     Graph.widen(graph, s)
-    let hash = Graph.hash(graph, s)
-    let slot = Graph.slotOf(graph, s, ~hash)
-    let found = Graph.nodeAt(graph, slot)
+    let board = Graph.load(graph, s)
+    let hash = Graph.hash(board)
+    let found = Graph.nodeAt(graph, Graph.slotOf(graph, board, ~hash))
     let children = found >= 0 ? [] : known(search, s)
     if Position.canFinish(s) || (found < 0 && Array.length(children) == 0) {
       search->restart(s)
@@ -512,8 +517,9 @@ module Search = {
           ) => Math.Int.min(least, graph.depth->Graph.at(node))) - 1
         let root =
           graph->Graph.add(~parent=-1, ~move=0, ~depth, ~h=heuristic(s, search.weights), ~hash)
-        graph->Graph.file(Graph.slotOf(graph, s, ~hash), root)
-        Graph.keep(graph, root, s)
+        let board = Graph.load(graph, s)
+        graph->Graph.file(Graph.slotOf(graph, board, ~hash), root)
+        Graph.keep(graph, root, board)
         search.grown = search.grown + 1
         root
       }
@@ -535,7 +541,6 @@ module Search = {
       }
       let (walked, renumbered) = reach()
       graph.start = s
-      graph.board = Board.load(s)
       search.frontiers->Array.forEach(Heap.clear)
       search.closed = 0
       for node in 0 to graph.size - 1 {
@@ -599,42 +604,46 @@ module Search = {
     ) {
       let node = next(search)
       if node >= 0 {
-        let position = Graph.positionOf(graph, node)
-        Graph.close(graph, node, position)
+        // The node is stood on once, and each child is the one board with a move played
+        // on it and taken back — nothing copied per child.
+        let board = graph.board
+        Graph.standOn(graph, node, board)
+        Graph.close(graph, node, board)
         search.grown = search.grown + 1
         search.closed = search.closed + 1
         let g = graph.depth->Graph.at(node) + 1
-        let moves = Position.legalMoves(position)
+        let moves = Board.legalMoves(board)
         let i = ref(0)
         while Option.isNone(search.line) && i.contents < Array.length(moves) {
           let move = moves->Array.getUnsafe(i.contents)
-          let next = Position.applyMove(position, move)
+          Board.play(board, move)
           search.tried = search.tried + 1
-          let hash = Graph.hash(graph, next)
-          let slot = Graph.slotOf(graph, next, ~hash)
+          let hash = Graph.hash(board)
+          let slot = Graph.slotOf(graph, board, ~hash)
           let prior = Graph.nodeAt(graph, slot)
           if prior >= 0 {
             // Seen. A closed position stays as it was grown; an open one reached more
             // cheaply takes the cheaper way, and moves up every heap to match. A
             // position reached no more cheaply than before teaches nothing new.
             if !Graph.isClosed(graph, prior) && graph.depth->Graph.at(prior) > g {
-              graph->Graph.reparent(prior, ~parent=node, ~move=Board.ofMove(move), ~depth=g)
+              graph->Graph.reparent(prior, ~parent=node, ~move, ~depth=g)
               search->push(prior)
             }
-          } else if Position.canFinish(next) {
-            search.line = Some(Graph.lineTo(graph, node, ~last=Board.ofMove(move)))
+          } else if Board.canFinish(board) {
+            search.line = Some(Graph.lineTo(graph, node, ~last=move))
           } else {
             let child =
               graph->Graph.add(
                 ~parent=node,
-                ~move=Board.ofMove(move),
+                ~move,
                 ~depth=g,
-                ~h=heuristic(next, weights),
+                ~h=Board.heuristic(board, weights),
                 ~hash,
               )
             graph->Graph.file(slot, child)
             search->push(child)
           }
+          Board.takeBack(board)
           i := i.contents + 1
         }
       }
