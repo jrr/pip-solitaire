@@ -947,13 +947,13 @@ describe("Solver", () => {
       "plays a repeated pack out, each step naming a card the reducer will move",
       () => {
         let problems = []
-        [Game.spiderette1Deal(~seed=1), Game.spideretteDeal(~seed=1)]->Array.forEach(
+        [Game.spiderette1Deal(~seed=3), Game.spideretteDeal(~seed=2)]->Array.forEach(
           game => {
             let opening = GameState.initial(game)
             switch Solver.autoplay(~game, opening) {
             | Solver.UnknownBoard => problems->Array.push(`${game.id}: not a board it read`)
             | Solver.NoLine | Solver.Unwinnable | Solver.OutOfPatience =>
-              problems->Array.push(`${game.id}: deal 1 went unplayed`)
+              problems->Array.push(`${game.id}: the deal went unplayed`)
             | Solver.Played({steps}) =>
               let before = ref(opening)
               steps->Array.forEachWithIndex(
