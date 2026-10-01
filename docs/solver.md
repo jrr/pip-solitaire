@@ -276,7 +276,7 @@ a heuristic change is trying to reduce.
 | 2026-09-29 | 1–1000 | 941/1000 | 54 | 5 | 628 ms | 85 | #964 at 19.2 s | 21 MB, #964 at 533 MB | Node v26.9.0, cloud sandbox, two soaks at once |
 | 2026-09-30 | 1–1000 | 931/1000 | 54 | 15 | 407 ms | 80 | #60 at 9.7 s | 21 MB, #60 at 447 MB | Node v26.9.0, cloud sandbox, up to four soaks at once |
 | 2026-09-30 | 1–1000 | 944/1000 | 56 | 0 | 791 ms | 80 | #766 at 100.9 s | 2 MB, #766 at 164 MB | Node v26.9.0, cloud sandbox, up to four soaks at once; the graph in typed arrays; `--nodes 1600000` |
-SIMON_DEFAULT
+| 2026-10-01 | 1–1000 | 940/1000 | 55 | 5 | 481 ms | 80 | #314 at 25.3 s | 2 MB, #60 at 74 MB | Node v26.9.0, cloud sandbox, three soaks at once; the graph in typed arrays at the default cap |
 
 **Spiderette · 4 suits**, over 1–200 rather than the thousand: a deal the search
 gives up on costs it the whole budget — five minutes each at the 2026-09-30 cap — so
@@ -312,7 +312,7 @@ and an unsolved count of its own.
 | 2026-09-30 | 2 suits | 1–200 | 181/200 | 4 | 15 | 1.9 s | 84 | #94 at 21.6 s | 82 MB, #94 at 795 MB | Node v26.9.0, cloud sandbox, up to four soaks at once |
 | 2026-09-30 | 1 suit | 1–200 | 198/200 | 2 | 0 | 221 ms | 71 | #143 at 6.5 s | <1 MB, #143 at 11 MB | Node v26.9.0, cloud sandbox, up to four soaks at once; the graph in typed arrays |
 | 2026-09-30 | 2 suits | 1–200 | 195/200 | 5 | 0 | 4.2 s | 86 | #168 at 182.6 s | 11 MB, #168 at 429 MB | Node v26.9.0, cloud sandbox, up to four soaks at once; the graph in typed arrays; `--nodes 6000000` |
-S2_DEFAULT
+| 2026-10-01 | 2 suits | 1–200 | 190/200 | 5 | 5 | 1.9 s | 85 | #120 at 36.3 s | 7 MB, #120 at 121 MB | Node v26.9.0, cloud sandbox, three soaks at once; the graph in typed arrays at the default cap |
 
 **Mini and Micro**, under FreeCell's law and its weights. Every deal is
 *answered* — the search either finds a line or empties its frontier long before
