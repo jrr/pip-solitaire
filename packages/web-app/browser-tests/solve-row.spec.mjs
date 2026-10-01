@@ -34,6 +34,15 @@ const DEAL = "/?game=freecell&seed=24680&animate=off"
 // board that answered in 50 ms could pass it by accident.
 const SLOW_DEAL = "/?game=spiderette4&seed=147&animate=off"
 
+// A deal that needs a second ask: out of time at ten seconds, and solved at fifteen by
+// the same search carrying on (`mise run solve -- --game spider2 --limit 10+10` finds
+// it) — early in the second ask rather than at its end, so a slower machine still has
+// room.
+const TWO_ASK_DEAL = "/?game=spider2&seed=21&animate=off"
+
+// `Command.autoplayMore` at `Solver.interactive`: the modal's offer of another wait.
+const MORE = "10s more"
+
 // `MenuDebugScreen.thinking`, which is what the row's description becomes the moment the
 // press is taken and stays until the answer lands.
 const THINKING = "Thinking…"
@@ -79,19 +88,51 @@ test("the row hands the board to the solver, says what it found, and plays it on
   await expect(page.locator(".win-overlay")).toBeVisible({ timeout: 60_000 })
 })
 
-test("an answer with no line to play offers only Close, back to the Debug screen", async ({
+test("an answer with no line to play offers no Autoplay, and Close goes back to the Debug screen", async ({
   page,
 }) => {
-  // Out of patience after ten seconds (see `SLOW_DEAL`), which is a refusal.
+  // Out of patience after ten seconds (see `SLOW_DEAL`), which is a refusal — and the one
+  // refusal worth asking again about, so it offers more time beside Close.
   await page.goto(SLOW_DEAL)
   await settleBoard(page)
   await openDebug(page)
   await solveRow(page).click()
-  await expect(solveDialog(page)).toHaveText(/gave up|couldn't|no way/, { timeout: 30_000 })
-  await expect(solveDialog(page).getByRole("button")).toHaveText(["Close"])
+  await expect(solveDialog(page)).toHaveText(/gave up/, { timeout: 30_000 })
+  await expect(solveDialog(page).getByRole("button")).toHaveText(["Close", MORE])
   await solveDialog(page).getByRole("button", { name: "Close" }).click()
   await expect(solveDialog(page)).toBeHidden()
   await expect(solveRow(page)).toBeVisible()
+})
+
+test("a search out of time carries on for ten more seconds at a time, and finds what one ask couldn't", async ({
+  page,
+}) => {
+  test.setTimeout(150_000)
+  await page.goto(TWO_ASK_DEAL)
+  await settleBoard(page)
+  await openDebug(page)
+
+  await solveRow(page).click()
+  await expect(solveDialog(page)).toHaveText(/gave up after/, { timeout: 30_000 })
+
+  // One more ask finds it on a quiet machine; a loaded one grows fewer positions in its
+  // ten seconds, so it is asked again while it is still offered. What proves the asks
+  // are one search is the time the answer reports: a search started again on each ask
+  // would run out at ten seconds every time, and could never say more.
+  for (let asks = 2; asks <= 4; asks++) {
+    await solveDialog(page).getByRole("button", { name: MORE }).click()
+    // Said to be the same search, and only Close to press while it is.
+    await expect(solveDialog(page)).toHaveText(/same search/)
+    await expect(solveDialog(page).getByRole("button")).toHaveText(["Close"])
+    await expect(solveDialog(page)).toHaveText(/solution found|gave up/, { timeout: 30_000 })
+    if (!(await solveDialog(page).getByRole("button", { name: MORE }).isVisible())) break
+  }
+  const said = await solveDialog(page).locator(".solve-dialog__message").innerText()
+  const [, seconds] = said.match(/solution found in ([\d.]+)s/) ?? []
+  expect(Number(seconds), said).toBeGreaterThan(10)
+
+  await solveDialog(page).getByRole("button", { name: "Autoplay" }).click()
+  await expect(page.locator(".win-overlay")).toBeVisible({ timeout: 90_000 })
 })
 
 test("the page keeps painting while the solver thinks, and the row says so", async ({ page }) => {

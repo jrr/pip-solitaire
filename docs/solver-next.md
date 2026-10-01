@@ -258,6 +258,33 @@ For re-rooting it is a correctness question, and it is answered:
 On every board without a stock the two layouts generate the same children and
 translate move for move, so nothing is ever reopened there.
 
+### Re-rooting in the browser
+
+What a player waits through on the first Solve after a move: the re-root runs at the
+top of that ask's `think`, on the worker, and **inside the ask's own wait** — the
+deadline is fixed as the `think` is read, so ten seconds is ten seconds including the
+re-root, and whatever it takes is taken from the growing. The page keeps painting
+throughout.
+
+Measured on the built site in headless Chromium: a two-suit Spider deal solved for
+ten seconds from the Debug screen (out of time each time), one move typed at the
+console, and Solve again. *First reply* is from the `think` going out to the first
+`progress` coming back — the re-root and one slice of growing, where a slice is
+30–90 ms — read off the page's own `Worker` messages.
+
+| deal, move | held at ten seconds (grown / open) | first reply, fresh | first reply after the move | open after the re-root |
+|---|---|---|---|---|
+| spider2 #1, Q♥ T6→T1 | 336k / 600k | 81 ms | 2.4 s | 75k |
+| spider2 #5, J♠ T5→T2 | 299k / 397k | 94 ms | 1.1 s | 36k |
+| spider2 #5, A♠ T3→T4 | 294k / 394k | 87 ms | 8.0 s | 268k |
+
+**The cost follows what is kept, not what is let go of.** A move that leaves most of
+the graph reachable is the expensive one, and it is the move a player is most likely
+to make — the one the search was already exploring around. The last row spent four
+fifths of a ten-second ask re-rooting before it grew a position, on a graph a little
+under a million nodes; that is the number the child-link trade in **The walk**, above,
+is to be weighed against.
+
 ## The ladder, replaced
 
 A restart cannot be resumed — "ten more seconds" has no meaning across one — so

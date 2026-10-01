@@ -25,6 +25,15 @@
 // first question and kept: a `stop` is read at its next slice boundary, so the thread
 // outlives every question it is asked. Terminating is kept for a worker that has
 // stopped answering, which is a build gone wrong rather than anything a player did.
+//
+// **The search outlives the question too.** The worker holds one board and the search
+// grown from it, and this side keeps a copy of which board that is (`held`), so a
+// question tells the worker only what has changed since: nothing, when it is asked
+// again about the same board — which is how a second ask *continues* the first rather
+// than starting over — a `Moved` for the same game in another state, and an `Open` only
+// for another game. The board says it has moved (`follow`) on every committed state, so
+// the worker hears of a move as it happens; what that re-root costs is paid at the top
+// of the next think, on the worker (`docs/solver-next.md` § Re-rooting in the browser).
 
 // Whether there is another thread to think on. Workers are baseline everywhere the app
 // runs, so what this really asks about is jsdom, where the unit suite has none and wants
@@ -82,8 +91,16 @@ type asked = {
   mutable watchdog: int,
 }
 
+// The board the worker holds, as this side last told it. `game` is the caller's own
+// value rather than the copy sent without its `deal`, because *which* game is asked by
+// identity: a session keeps its `Game.t` for as long as it is played, and a new deal is
+// a new one (`Game.dealt`), so a move or an undo is a `Moved` and a new deal, another
+// game or a scenario's board an `Open`.
+type held = {game: Game.t, state: GameState.t}
+
 let thread: ref<option<worker>> = ref(None)
 let live: ref<option<asked>> = ref(None)
+let held: ref<option<held>> = ref(None)
 let asks = ref(0)
 
 // Let go of the question in flight without answering it. The worker is told so, and
@@ -106,7 +123,9 @@ let abandon = (worker: worker) => {
   worker->onError(_ => ())
   terminate(worker)
   switch thread.contents {
-  | Some(current) if current === worker => thread := None
+  | Some(current) if current === worker =>
+    thread := None
+    held := None
   | _ => ()
   }
   switch live.contents {
@@ -145,6 +164,28 @@ let worker = (): worker =>
     worker
   }
 
+// Bring the worker's board to this one, saying as little as will do it. A different
+// board stops whatever it was thinking about, so the question in flight is let go of
+// here as well — or its watchdog would wait on an answer the worker will never send.
+let tellBoard = (worker: worker, ~game: Game.t, ~state: GameState.t) =>
+  switch held.contents {
+  | Some(board) if board.game === game && board.state == state => ()
+  | Some(board) if board.game === game =>
+    cancel()
+    held := Some({game, state})
+    worker->tell(Moved({state: state}))
+  | _ =>
+    cancel()
+    held := Some({game, state})
+    worker->tell(Open({game: {...game, deal: None}, state}))
+  }
+
+// The board is now this one: every committed state, from every place a board can
+// change. Only to a worker that is already up — one that isn't holds no search to keep,
+// and the first question will `Open` it.
+let follow = (~game: Game.t, ~state: GameState.t) =>
+  thread.contents->Option.forEach(worker => worker->tellBoard(~game, ~state))
+
 // Ask for a line, and say so when there is one.
 //
 // `onAnswer` is a callback rather than a promise because the fallback answers
@@ -170,10 +211,12 @@ let think = (
       fallback: () => here(~game, ~state, ~patience),
       watchdog: 0,
     }
+    // The board first — which may be nothing at all, and is, for a second ask on the
+    // same board: that one carries on with the search the first grew, and its effort
+    // counts both. Then the question, with the watchdog started, since `tellBoard`
+    // lets go of any question it finds in flight.
+    worker->tellBoard(~game, ~state)
     live := Some(question)
     watch(worker, question)
-    // A fresh `open` for every question: each is about the board as it stands, with a
-    // search of its own, which is what every caller here expects of it.
-    worker->tell(Open({game: {...game, deal: None}, state}))
     worker->tell(Think({ask: question.ask, ms: patience}))
   }
