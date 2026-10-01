@@ -946,7 +946,10 @@ describe("Solver", () => {
                   (Game.spiderette4Deal(~seed=55), false),
                 ]->Array.forEach(
                   ((game, folds)) => {
-                    let said = `${game.id} #${game.seed->Option.mapOr("", seed => Int.toString(seed))}`
+                    let said = `${game.id} #${game.seed->Option.mapOr(
+                        "",
+                        seed => Int.toString(seed),
+                      )}`
                     let opening = GameState.initial(game)
                     let start = startOf(game)
                     let search = Solver.Search.make(start)
