@@ -95,17 +95,18 @@ let make = (start: Position.t): t => {
 
 // What the graph holds, from the arrays' own lengths — what they have room for, not
 // only what they have filled, since the room is what the heap is paying for.
+//
+// Summed by hand rather than over an array of the columns: the search reads this once a
+// position grown, against its cap.
 let bytes = (graph: t): int =>
-  [
-    graph.parent,
-    graph.move,
-    graph.depth,
-    graph.h,
-    graph.stored,
-    graph.hashes,
-    graph.arena,
-    graph.table,
-  ]->Array.reduce(0, (sum, column) => sum + TypedArray.byteLength(column))
+  TypedArray.byteLength(graph.parent) +
+  TypedArray.byteLength(graph.move) +
+  TypedArray.byteLength(graph.depth) +
+  TypedArray.byteLength(graph.h) +
+  TypedArray.byteLength(graph.stored) +
+  TypedArray.byteLength(graph.hashes) +
+  TypedArray.byteLength(graph.arena) +
+  TypedArray.byteLength(graph.table)
 
 // --- Nodes --------------------------------------------------------------------
 

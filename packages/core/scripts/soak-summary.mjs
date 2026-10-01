@@ -19,10 +19,10 @@ for (let i = 0; i < argv.length; i++) {
 if (!files.length) throw new Error("name the --record files to merge")
 
 const records = files.map((f) => JSON.parse(readFileSync(f, "utf8")))
-const [{ game, nodes, limits, node }] = records
+const [{ game, cap, limits, node }] = records
 for (const r of records)
-  if (r.game !== game || r.nodes !== nodes || String(r.limits) !== String(limits))
-    throw new Error("these records aren't slices of one soak: game, --nodes and --limit must agree")
+  if (r.game !== game || r.cap !== cap || String(r.limits) !== String(limits))
+    throw new Error("these records aren't slices of one soak: game, cap and --limit must agree")
 
 const deals = records.flatMap((r) => r.deals).sort((a, b) => a.seed - b.seed)
 const n = deals.length
@@ -35,7 +35,7 @@ const heaviest = most("held")
 
 const environment = [
   `Node ${node}, CI runner, ${records.length} job${records.length > 1 ? "s" : ""} at once`,
-  nodes ? `\`--nodes ${nodes}\`` : null,
+  cap ? `capped at ${cap}` : null,
   limits ? `\`--limit ${limits.join("+")}\`` : null,
   note || null,
 ]

@@ -338,6 +338,19 @@ let reportScene: ref<string => unit> = ref(_ => ())
 // to own them, since they belong to the board rather than to any one screen.
 
 let options: ref<Options.t> = ref(Preferences.load())
+
+// How much the solver may hold, settled once per load (`Device`) — after asking whether the
+// last load's solve took the tab down, which lowers it and is said once, over the board,
+// in the Solve dialog's panel (`init`, below). A lowered setting is the setting from now on.
+let memoryDropped: option<Device.dropped> = {
+  let (memory, dropped) = Device.recover(~memory=options.contents.memory)
+  if memory != options.contents.memory {
+    options := {...options.contents, memory}
+    Preferences.saveMemory(memory)
+  }
+  Thinker.tier := Device.tier(~memory)
+  dropped
+}
 let tiltEnabled: ref<bool> = ref(Preferences.loadCardTilt())
 
 // The "Beta features" flag, a ref for a reason of its own — nothing on the board reads
@@ -1790,9 +1803,14 @@ let dispatch = Html.mount(
     shareLinks: None,
     shareDialogOpen: false,
     shareStatus: None,
-    // …and the Solve row has nothing to report until it is pressed.
+    // …and the Solve row has nothing to report until it is pressed — unless the last
+    // one never finished, which is said here, once.
     solving: false,
-    solved: None,
+    solved: memoryDropped->Option.map((dropped): TableScene.solved => {
+      reply: Render.text(Device.say(dropped)),
+      play: None,
+      more: None,
+    }),
     // Seeded from the board's opening deal report, for the same reason
     // `canUndo` is: it fired during the switcher's initial mount above, before
     // `dispatch` existed. On a plain open that report *is* the deal number the Share
@@ -1849,7 +1867,19 @@ DebugConsole.setRunner(line => {
   // The driver's flags, typed rather than switched. Each goes through its menu switch's
   // own action rather than straight to the ref, so the switch and the saved
   // preference stay in step with a typed change — it *toggles*, hence the guard.
-  | Command.Set({setting, on}) =>
+  | Command.Set({setting, value: Options.Tier(memory)}) =>
+    // No menu switch to keep in step: the setting is the ref, the stored preference and
+    // the solver's tier at once. Choosing one clears the ceiling a crash left (`Device`).
+    options := Options.apply(options.contents, ~setting, ~value=Options.Tier(memory))
+    Preferences.saveMemory(memory)
+    Device.clearCeiling()
+    Thinker.tier := Device.tier(~memory)
+    Render.text(
+      `${Command.describeSet(~setting, ~value=Options.Tier(memory))} (${Solver.tierName(
+          Thinker.tier.contents,
+        )}, ${Int.toString(Solver.capOf(Thinker.tier.contents) / 1_000_000)} MB)`,
+    )
+  | Command.Set({setting, value: Options.Flag(on)}) =>
     switch setting {
     | Options.AutoCollect =>
       if options.contents.autoCollect != on {
@@ -1867,8 +1897,9 @@ DebugConsole.setRunner(line => {
       if options.contents.allowColumnReorder != on {
         dispatch(SettingsMsg(MenuSettingsScreen.ToggleColumnReorder))
       }
+    | Options.Memory => ()
     }
-    Render.text(Command.describeSet(~setting, ~on))
+    Render.text(Command.describeSet(~setting, ~value=Options.Flag(on)))
   // The CLI's session verb, answered here rather than forwarded: a panel isn't a
   // session you leave, it's chrome you close, and the keys that close it are on the
   // status line. This is the mirror image of the CLI accepting `clear` as a no-op —

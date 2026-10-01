@@ -348,7 +348,10 @@ let adoptAutoplay = (~clock: unit => float, ~ms: float, s: t, found: Solver.auto
       s,
       {change: Unchanged, reply: Render.text(Command.autoplayUnknownBoard)},
     )
-  | Solver.NoLine => (s, {change: Unchanged, reply: Render.text(Command.autoplayNoLine)})
+  | Solver.OutOfRoom({bytes}) => (
+      s,
+      {change: Unchanged, reply: Render.text(Command.autoplayOutOfRoom(~bytes))},
+    )
   | Solver.Unwinnable => (s, {change: Unchanged, reply: Render.text(Command.autoplayUnwinnable)})
   | Solver.OutOfPatience => (
       s,
@@ -400,7 +403,8 @@ let autoplay = (~clock: unit => float, ~patience: option<float>=?, s: t): (t, ou
   | None => None
   | Some(ms) => Some(({ms, clock}: Solver.patience))
   }
-  let found = Solver.autoplay(~game=s.game, ~patience=?limit, present(s))
+  // The memory setting, where one is made; the solver's own `Medium` where not.
+  let found = Solver.autoplay(~game=s.game, ~patience=?limit, ~tier=?s.options.memory, present(s))
   adoptAutoplay(~clock, ~ms=clock() -. started, s, found)
 }
 

@@ -34,11 +34,16 @@
 // can't be a gate in front of the reducer: `Session.dispatch` hands it to the reducer,
 // which waives that one refusal (`Reducer.dealRefusal`). The solver plays the standard
 // game regardless, and its plans stay legal under either.
+//
+// `memory`: how much the solver may hold (`Solver.tier`), over whatever the driver would
+// choose for itself — `None` leaves it to the driver: the web app's reading of the
+// device, the CLI's `Medium`. The one setting that isn't on or off.
 type t = {
   autoCollect: bool,
   allowColumnReorder: bool,
   allowFoundationReturn: bool,
   allowDealWithEmptyColumns: bool,
+  memory: option<Solver.tier>,
 }
 
 // The shipped default: auto-collect on, the two house rules the game has always played
@@ -48,6 +53,7 @@ let default = {
   allowColumnReorder: true,
   allowFoundationReturn: true,
   allowDealWithEmptyColumns: false,
+  memory: None,
 }
 
 // --- Addressing a flag by name -----------------------------------------------
@@ -63,8 +69,9 @@ type setting =
   | ColumnReorder
   | FoundationReturn
   | EmptyColumnDeal
+  | Memory
 
-let all = [AutoCollect, ColumnReorder, FoundationReturn, EmptyColumnDeal]
+let all = [AutoCollect, ColumnReorder, FoundationReturn, EmptyColumnDeal, Memory]
 
 // The canonical name of a setting — what `set` takes and what a listing shows.
 let name = (s: setting): string =>
@@ -73,6 +80,7 @@ let name = (s: setting): string =>
   | ColumnReorder => "reorder"
   | FoundationReturn => "worryback"
   | EmptyColumnDeal => "gapdeal"
+  | Memory => "memory"
   }
 
 let parse = (token: string): option<setting> =>
@@ -81,11 +89,17 @@ let parse = (token: string): option<setting> =>
   | "reorder" | "columnreorder" | "movecol" => Some(ColumnReorder)
   | "worryback" | "worry" | "takeback" => Some(FoundationReturn)
   | "gapdeal" | "emptydeal" | "dealempty" => Some(EmptyColumnDeal)
+  | "memory" | "mem" | "tier" => Some(Memory)
   | _ => None
   }
 
-// The value half: what counts as on and off. Generous about spelling, because a flag
-// refused over `true` vs `on` teaches nothing.
+// The value half. A flag is on or off; `memory` is a tier, or `auto` for the driver's own.
+type value =
+  | Flag(bool)
+  | Tier(option<Solver.tier>)
+
+// What counts as on and off. Generous about spelling, because a flag refused over `true`
+// vs `on` teaches nothing.
 let parseFlag = (token: string): option<bool> =>
   switch token->String.toLowerCase {
   | "on" | "true" | "yes" | "1" => Some(true)
@@ -93,23 +107,54 @@ let parseFlag = (token: string): option<bool> =>
   | _ => None
   }
 
-let read = (o: t, s: setting): bool =>
+// A value of the kind `s` takes, or `None` — so a value can't reach `apply` on a setting
+// of the other kind from a typed line.
+let parseValue = (s: setting, token: string): option<value> =>
   switch s {
-  | AutoCollect => o.autoCollect
-  | ColumnReorder => o.allowColumnReorder
-  | FoundationReturn => o.allowFoundationReturn
-  | EmptyColumnDeal => o.allowDealWithEmptyColumns
+  | Memory =>
+    switch token->String.toLowerCase {
+    | "auto" | "device" => Some(Tier(None))
+    | other => Solver.parseTier(other)->Option.map(tier => Tier(Some(tier)))
+    }
+  | AutoCollect | ColumnReorder | FoundationReturn | EmptyColumnDeal =>
+    parseFlag(token)->Option.map(on => Flag(on))
   }
 
-let apply = (o: t, ~setting: setting, ~on: bool): t =>
-  switch setting {
-  | AutoCollect => {...o, autoCollect: on}
-  | ColumnReorder => {...o, allowColumnReorder: on}
-  | FoundationReturn => {...o, allowFoundationReturn: on}
-  | EmptyColumnDeal => {...o, allowDealWithEmptyColumns: on}
+// What a setting's values are, in words, for a refusal.
+let spellings = (s: setting): string =>
+  switch s {
+  | Memory => "small, medium, large or auto"
+  | AutoCollect | ColumnReorder | FoundationReturn | EmptyColumnDeal => "on or off"
+  }
+
+let read = (o: t, s: setting): value =>
+  switch s {
+  | AutoCollect => Flag(o.autoCollect)
+  | ColumnReorder => Flag(o.allowColumnReorder)
+  | FoundationReturn => Flag(o.allowFoundationReturn)
+  | EmptyColumnDeal => Flag(o.allowDealWithEmptyColumns)
+  | Memory => Tier(o.memory)
+  }
+
+// A value of the other kind changes nothing (`parseValue` never makes one).
+let apply = (o: t, ~setting: setting, ~value: value): t =>
+  switch (setting, value) {
+  | (AutoCollect, Flag(on)) => {...o, autoCollect: on}
+  | (ColumnReorder, Flag(on)) => {...o, allowColumnReorder: on}
+  | (FoundationReturn, Flag(on)) => {...o, allowFoundationReturn: on}
+  | (EmptyColumnDeal, Flag(on)) => {...o, allowDealWithEmptyColumns: on}
+  | (Memory, Tier(memory)) => {...o, memory}
+  | (AutoCollect | ColumnReorder | FoundationReturn | EmptyColumnDeal, Tier(_))
+  | (Memory, Flag(_)) => o
+  }
+
+let say = (value: value): string =>
+  switch value {
+  | Flag(on) => on ? "on" : "off"
+  | Tier(Some(tier)) => Solver.tierName(tier)
+  | Tier(None) => "auto"
   }
 
 // Every setting and its value, as rows for a front end to render (`Command.renderHelp`
 // aligns them, the same way it aligns the help listing).
-let rows = (o: t): array<(string, string)> =>
-  all->Array.map(s => (name(s), read(o, s) ? "on" : "off"))
+let rows = (o: t): array<(string, string)> => all->Array.map(s => (name(s), say(read(o, s))))

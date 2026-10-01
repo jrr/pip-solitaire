@@ -188,3 +188,29 @@ test("a scene with no board to solve says so, and the row can't be pressed", asy
   await expect(solveRow(page)).toHaveText(/No game on screen to solve\./)
   await expect(solveRow(page)).toBeDisabled()
 })
+
+// A load that finds the last solve's mark still set reads it as the tab having been taken
+// down by that solve: it says so once, over the board, and holds less from then on. The
+// mark is planted before the first load, since no test can make a tab run out of memory —
+// and a reload can't stand in for the crash, because `pagehide` clears the mark, which is
+// the point of it. Which tier the test's browser lands in is not this test's business, only
+// that the next one down is stored.
+test("a solve that never finished lowers the memory tier and says so once", async ({ page }) => {
+  await page.addInitScript(() => {
+    if (!sessionStorage.getItem("planted")) {
+      sessionStorage.setItem("planted", "yes")
+      localStorage.setItem("pip.solving", "true")
+    }
+  })
+  await page.goto(DEAL)
+  await settleBoard(page)
+  await expect(solveDialog(page)).toContainText("The last solve closed the page")
+  expect(await page.evaluate(() => localStorage.getItem("pip.solving"))).toBe(null)
+  const ceiling = await page.evaluate(() => localStorage.getItem("pip.memoryCeiling"))
+  expect(["small", "medium"]).toContain(ceiling)
+
+  // Said once: the next load has nothing to say.
+  await page.reload()
+  await settleBoard(page)
+  await expect(solveDialog(page)).toHaveCount(0)
+})

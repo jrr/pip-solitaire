@@ -179,7 +179,7 @@ describe("Solver", () => {
       () =>
         switch Solver.autoplay(~game, opening) {
         | Solver.UnknownBoard => expect("a FreeCell board")->toBe("but the solver didn't know it")
-        | Solver.NoLine | Solver.Unwinnable | Solver.OutOfPatience =>
+        | Solver.OutOfRoom(_) | Solver.Unwinnable | Solver.OutOfPatience =>
           expect("deal 1 played")->toBe("but no line was found")
         | Solver.Played({steps, effort}) =>
           expect(Array.length(steps) > 20)->toBe(true) // a real game, not a shortcut
@@ -239,7 +239,7 @@ describe("Solver", () => {
     test(
       "a board that's already finishable is played by doing nothing",
       () => {
-        // A `Played` with no steps and `NoLine` are different answers, and a driver
+        // A `Played` with no steps and `OutOfRoom` are different answers, and a driver
         // treats them differently: one hands over to the finish sweep, the other says
         // it couldn't. Spelled out in full because the effort is part of the answer,
         // and because it's the one board where every number in it is knowable: the
@@ -300,7 +300,7 @@ describe("Solver", () => {
       () =>
         // The property the rest of this file rests on — and why a wait puts no
         // timing-shaped hole in the suite. A caller that hands over a stopped clock gets
-        // the plan the node budgets alone would find, so a plan stays a value two runs
+        // the plan the budget alone would find, so a plan stays a value two runs
         // can be expected to agree on.
         expect(Solver.plan(~game, ~patience={ms: 1., clock: () => 0.}, opening))->toEqual(
           Solver.plan(~game, opening),
@@ -314,17 +314,54 @@ describe("Solver", () => {
         switch Position.ofGameState(~game, opening) {
         | None => expect("a FreeCell board packs")->toBe("but it didn't")
         | Some(start) =>
-          // Far too small to find anything on a full deal.
-          let budget: Solver.budget = {heaps: [2.], maxNodes: 10}
-          // With time to spare, the search grows its whole budget and says it is full.
+          // Room for the arrays a search starts with and not a byte more, so the first
+          // column to grow fills it — far too small to find anything on a full deal.
+          let empty = Solver.Search.bytes(
+            Solver.Search.make(start, ~budget={heaps: [2.], maxBytes: Solver.capOf(Solver.Small)}),
+          )
+          let budget: Solver.budget = {heaps: [2.], maxBytes: empty + 1}
+          // With time to spare, the search grows until it holds its budget and says it is
+          // full.
           let (_, full) = Solver.solveWithEffort(start, ~budget)
-          expect(full.positions)->toBe(10)
-          expect(full.ending)->toEqual(Solver.OutOfNodes)
+          expect(full.positions > 0)->toBe(true)
+          expect(full.bytes > empty)->toBe(true)
+          expect(full.ending)->toEqual(Solver.Full)
           // Out of time, it never grows a position — and a more patient caller could
-          // still have had those ten, which is why the two aren't one ending.
+          // still have had those, which is why the two aren't one ending.
           let (_, clock) = Solver.solveWithEffort(start, ~budget, ~patience=spent())
           expect(clock.positions)->toBe(0)
           expect(clock.ending)->toEqual(Solver.OutOfTime)
+        },
+    )
+
+    test(
+      "a full search is autoplay's out of room, carrying what it held, and not a verdict",
+      () => {
+        let effort: Solver.effort = {positions: 9, moves: 40, ending: Solver.Full, bytes: 12_345}
+        expect(Solver.autoplayedOf(~game, opening, ~line=None, ~effort))->toEqual(
+          Solver.OutOfRoom({bytes: 12_345}),
+        )
+      },
+    )
+
+    test(
+      "a cap lowered under what a search holds is full at the next think, and raised, grows on",
+      () =>
+        switch {
+          let simon = Game.simpleSimonDeal(~seed=957)
+          Position.ofGameState(~game=simon, GameState.initial(simon))
+        } {
+        | None => expect("a Simple Simon board packs")->toBe("but it didn't")
+        | Some(start) =>
+          let search = Solver.Search.make(start)
+          expect(Solver.Search.think(search, ~nodes=2_000))->toEqual(Solver.Search.Paused)
+          Solver.Search.limit(search, ~maxBytes=Solver.Search.bytes(search))
+          let grown = search.grown
+          expect(Solver.Search.think(search, ~nodes=2_000))->toEqual(Solver.Search.Full)
+          expect(search.grown)->toBe(grown)
+          Solver.Search.limit(search, ~maxBytes=Solver.capOf(Solver.Small))
+          expect(Solver.Search.think(search, ~nodes=2_000))->toEqual(Solver.Search.Paused)
+          expect(search.grown)->toBe(grown + 2_000)
         },
     )
 
@@ -634,7 +671,7 @@ describe("Solver", () => {
               seed := (Math.Int.imul(seed.contents, 1103515245) + 12345)->Int.bitwiseAnd(0x7fffffff)
               mod(seed.contents / 65536, n)
             }
-            let budget = {Solver.heaps: [2., 1.], maxNodes: 5_000_000}
+            let budget = {Solver.heaps: [2., 1.], maxBytes: 2_000_000_000}
             let toEnd = search => {
               let answer = ref(Solver.Search.Paused)
               while answer.contents == Solver.Search.Paused {
@@ -767,7 +804,7 @@ describe("Solver", () => {
         switch Solver.autoplay(~game, opening) {
         | Solver.UnknownBoard =>
           expect("a Simple Simon board")->toBe("but the solver didn't know it")
-        | Solver.NoLine | Solver.Unwinnable | Solver.OutOfPatience =>
+        | Solver.OutOfRoom(_) | Solver.Unwinnable | Solver.OutOfPatience =>
           expect("deal 1 played")->toBe("but no line was found")
         | Solver.Played({steps, effort}) =>
           expect(Array.length(steps) > 40)->toBe(true) // a real game, not a shortcut
@@ -813,7 +850,8 @@ describe("Solver", () => {
           let game = Game.simpleSimonDeal(~seed)
           switch Solver.autoplay(~game, GameState.initial(game)) {
           | Solver.UnknownBoard => problems->Array.push(`deal ${Int.toString(seed)}: not read`)
-          | Solver.NoLine => problems->Array.push(`deal ${Int.toString(seed)}: the budget ran out`)
+          | Solver.OutOfRoom(_) =>
+            problems->Array.push(`deal ${Int.toString(seed)}: the budget ran out`)
           | Solver.OutOfPatience =>
             problems->Array.push(`deal ${Int.toString(seed)}: the patience ran out`)
           | Solver.Unwinnable => ()
@@ -880,7 +918,7 @@ describe("Solver", () => {
       () =>
         switch Solver.autoplay(~game, opening) {
         | Solver.UnknownBoard => expect("a Spiderette board")->toBe("but the solver didn't know it")
-        | Solver.NoLine | Solver.Unwinnable | Solver.OutOfPatience =>
+        | Solver.OutOfRoom(_) | Solver.Unwinnable | Solver.OutOfPatience =>
           expect("deal 1 played")->toBe("but no line was found")
         | Solver.Played({steps}) =>
           let problems = []
@@ -952,7 +990,7 @@ describe("Solver", () => {
             let opening = GameState.initial(game)
             switch Solver.autoplay(~game, opening) {
             | Solver.UnknownBoard => problems->Array.push(`${game.id}: not a board it read`)
-            | Solver.NoLine | Solver.Unwinnable | Solver.OutOfPatience =>
+            | Solver.OutOfRoom(_) | Solver.Unwinnable | Solver.OutOfPatience =>
               problems->Array.push(`${game.id}: the deal went unplayed`)
             | Solver.Played({steps}) =>
               let before = ref(opening)
@@ -1001,7 +1039,7 @@ describe("Solver", () => {
               let deal = `${game.name} #${Int.toString(seed)}`
               switch Solver.autoplay(~game, opening) {
               | Solver.UnknownBoard => problems->Array.push(`${deal}: not a board it read`)
-              | Solver.NoLine => problems->Array.push(`${deal}: the budget ran out`)
+              | Solver.OutOfRoom(_) => problems->Array.push(`${deal}: the budget ran out`)
               | Solver.OutOfPatience => problems->Array.push(`${deal}: the patience ran out`)
               | Solver.Unwinnable => ()
               | Solver.Played({steps}) =>

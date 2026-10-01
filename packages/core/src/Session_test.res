@@ -164,7 +164,11 @@ describe("Session clock", () => {
 
 describe("Session house rules", () => {
   test("column reordering off refuses before the reducer sees it", () => {
-    let off = Options.apply(Options.default, ~setting=Options.ColumnReorder, ~on=false)
+    let off = Options.apply(
+      Options.default,
+      ~setting=Options.ColumnReorder,
+      ~value=Options.Flag(false),
+    )
     let (s, outcome) = Session.step(
       ~clock=stopped,
       fresh(~options=off, ()),
@@ -239,7 +243,11 @@ describe("Session house rules", () => {
   })
 
   test("auto-collect off leaves the reducer's result exactly as it came", () => {
-    let off = Options.apply(Options.default, ~setting=Options.AutoCollect, ~on=false)
+    let off = Options.apply(
+      Options.default,
+      ~setting=Options.AutoCollect,
+      ~value=Options.Flag(false),
+    )
     let state = Scenario.freecellSendHome(freecell)
     let (settled, swept) = Session.settle(~game=freecell, ~options=off, state)
     expect(GameState.equal(settled, state))->toBe(true)
@@ -272,7 +280,11 @@ describe("Session house rules", () => {
       // Simple Simon's foundations are filled by collection alone, so a board that
       // honoured the option here could never be won. Board order: 4 foundations, 10
       // cascades; the first cascade holds a finished ♠K→A run.
-      let off = Options.apply(Options.default, ~setting=Options.AutoCollect, ~on=false)
+      let off = Options.apply(
+        Options.default,
+        ~setting=Options.AutoCollect,
+        ~value=Options.Flag(false),
+      )
       let board = Game.simpleSimon
       let run = Cards.ranks->Array.toReversed->Array.map(rank => {suit: Spades, rank})
       let state = GameState.faceUp(board.piles->Array.mapWithIndex((_, i) => i == 4 ? run : []))
@@ -284,7 +296,11 @@ describe("Session house rules", () => {
   )
 
   test("a restart is the same board under the same rules", () => {
-    let off = Options.apply(Options.default, ~setting=Options.AutoCollect, ~on=false)
+    let off = Options.apply(
+      Options.default,
+      ~setting=Options.AutoCollect,
+      ~value=Options.Flag(false),
+    )
     let (again, outcome) = Session.redeal(~clock=stopped, fresh(~options=off, ()))
     expect(outcome.change)->toEqual(Session.Dealt)
     // Restarting a game isn't changing the rules you're playing it under.

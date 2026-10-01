@@ -86,7 +86,7 @@ type t =
   // neither reaches the reducer — but both front ends have the same two flags, so the
   // vocabulary is shared like the rest.
   | Settings
-  | Set({setting: Options.setting, on: bool})
+  | Set({setting: Options.setting, value: Options.value})
   | Unknown({verb: string}) // no such verb
   // A prefix that fits more than one verb (`h` is `help` and `home`) — refused by name
   // rather than resolved to whichever came first in the table. See `resolveVerb`.
@@ -150,7 +150,8 @@ let notAPile = (token: string) =>
 
 let settingNames = () => Options.all->Array.map(Options.name)->Array.join(", ")
 let notASetting = (token: string) => `Not a setting: "${token}" (${settingNames()}).`
-let notAFlag = (token: string) => `Not on or off: "${token}".`
+let notAValue = (~setting: Options.setting, token: string) =>
+  `Not ${Options.spellings(setting)}: "${token}".`
 
 // --- Verbs, and how little of one you have to type ----------------------------
 // The prefix rule, the two rules that keep it honest and the alias tier below are
@@ -272,22 +273,25 @@ let parse = (line: string): t => {
             message: "Usage: move <card|place> <where>   (e.g. move AS 0, move AS T3, move 2H 3C, move C1 F1, or move AS table)",
           })
         }
-      // Bare `set` shows the flags; `set <setting> on|off` changes one. Arity before content
+      // Bare `set` shows the settings; `set <setting> <value>` changes one. Arity before content
       // here too, so `set autocollect` asks for the usage line rather than complaining about
       // a value that isn't there.
       | "set" =>
         switch (arg(1), arg(2)) {
         | (None, _) => Settings
         | (Some(settingTok), Some(valueTok)) =>
-          switch (Options.parse(settingTok), Options.parseFlag(valueTok)) {
-          | (None, _) => Usage({verb: "set", message: notASetting(settingTok)})
-          | (_, None) => Usage({verb: "set", message: notAFlag(valueTok)})
-          | (Some(setting), Some(on)) => Set({setting, on})
+          switch Options.parse(settingTok) {
+          | None => Usage({verb: "set", message: notASetting(settingTok)})
+          | Some(setting) =>
+            switch Options.parseValue(setting, valueTok) {
+            | None => Usage({verb: "set", message: notAValue(~setting, valueTok)})
+            | Some(value) => Set({setting, value})
+            }
           }
         | (Some(_), None) =>
           Usage({
             verb: "set",
-            message: `Usage: set <setting> on|off   (e.g. set autocollect off; ${settingNames()})`,
+            message: `Usage: set <setting> on|off   (e.g. set autocollect off, set memory small; ${settingNames()})`,
           })
         }
       | "home" =>
@@ -750,7 +754,13 @@ let duration = (ms: float): string =>
 // differently would be two commands wearing one name.
 let autoplayUnknownBoard = "Autoplay plays every board the game deals — FreeCell full, Mini or Micro, Simple Simon, and every Spiderette and Spider pack; this board isn't one of them."
 
-let autoplayNoLine = "Autoplay couldn't find a way to win from here."
+// Said when the search filled the memory it is allowed (`Solver.OutOfRoom`). It is about
+// the budget and says nothing about the board, so it names the budget and the one thing
+// that changes it — and leaves the board an open question, as `autoplayOutOfPatience` does.
+let autoplayOutOfRoom = (~bytes: int): string =>
+  `Autoplay used all the memory it's allowed here (${Int.toString(
+      bytes / 1_000_000,
+    )} MB) without finding a win — that's the limit of its budget, ` ++ `not an answer about this board.`
 
 // Said only when the search ran out of positions rather than patience: every line
 // from here was tried.
@@ -846,6 +856,7 @@ let boardHelp: array<helpRow> = [
 let driverHelp: array<helpRow> = [
   ("set", "show the driver settings"),
   ("set <setting> on|off", "change one (autocollect, reorder, worryback, gapdeal)"),
+  ("set memory <size>", "what the solver may hold: small, medium, large or auto"),
 ]
 
 // The `deal` family. Shared rows, because both front ends read the argument the same way
@@ -890,9 +901,9 @@ let renderHelp = (rows: array<helpRow>): string => {
 let describeSettings = (options: Options.t): string =>
   `Settings:\n${renderHelp(Options.rows(options))}`
 
-// One changed flag, acknowledged. Short on purpose: it's a confirmation, not a report.
-let describeSet = (~setting: Options.setting, ~on: bool): string =>
-  `${Options.name(setting)} ${on ? "on" : "off"}`
+// One changed setting, acknowledged. Short on purpose: it's a confirmation, not a report.
+let describeSet = (~setting: Options.setting, ~value: Options.value): string =>
+  `${Options.name(setting)} ${Options.say(value)}`
 
 // The available games, one per line — what `games` prints, and what an unknown game
 // id is answered with.

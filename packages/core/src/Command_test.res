@@ -468,10 +468,10 @@ describe("Command.parse — set", () => {
 
   test("set <setting> on|off names a typed setting and a value", () => {
     expect(Command.parse("set autocollect off"))->toEqual(
-      Command.Set({setting: Options.AutoCollect, on: false}),
+      Command.Set({setting: Options.AutoCollect, value: Options.Flag(false)}),
     )
     expect(Command.parse("set reorder on"))->toEqual(
-      Command.Set({setting: Options.ColumnReorder, on: true}),
+      Command.Set({setting: Options.ColumnReorder, value: Options.Flag(true)}),
     )
   })
 
@@ -479,10 +479,10 @@ describe("Command.parse — set", () => {
   // nothing, and the settings answer to the names they're known by elsewhere.
   test("the aliases people will actually type", () => {
     expect(Command.parse("SET Auto-Collect TRUE"))->toEqual(
-      Command.Set({setting: Options.AutoCollect, on: true}),
+      Command.Set({setting: Options.AutoCollect, value: Options.Flag(true)}),
     )
     expect(Command.parse("set movecol no"))->toEqual(
-      Command.Set({setting: Options.ColumnReorder, on: false}),
+      Command.Set({setting: Options.ColumnReorder, value: Options.Flag(false)}),
     )
   })
 
@@ -492,13 +492,29 @@ describe("Command.parse — set", () => {
       expect(verb)->toBe("set")
       expect(
         message,
-      )->toBe(`Not a setting: "frobnicate" (autocollect, reorder, worryback, gapdeal).`)
+      )->toBe(`Not a setting: "frobnicate" (autocollect, reorder, worryback, gapdeal, memory).`)
     | _ => expect("not a usage")->toBe("usage")
     }
     switch Command.parse("set autocollect maybe") {
     | Command.Usage({message}) => expect(message)->toBe(`Not on or off: "maybe".`)
     | _ => expect("not a usage")->toBe("usage")
     }
+    switch Command.parse("set memory on") {
+    | Command.Usage({message}) => expect(message)->toBe(`Not small, medium, large or auto: "on".`)
+    | _ => expect("not a usage")->toBe("usage")
+    }
+  })
+
+  test("set memory takes a tier, or auto for the driver's own", () => {
+    expect(Command.parse("set memory small"))->toEqual(
+      Command.Set({setting: Options.Memory, value: Options.Tier(Some(Solver.Small))}),
+    )
+    expect(Command.parse("set mem LARGE"))->toEqual(
+      Command.Set({setting: Options.Memory, value: Options.Tier(Some(Solver.Large))}),
+    )
+    expect(Command.parse("set memory auto"))->toEqual(
+      Command.Set({setting: Options.Memory, value: Options.Tier(None)}),
+    )
   })
 
   // Arity before content, as everywhere else in this grammar.
@@ -517,33 +533,62 @@ describe("Command.parse — set", () => {
     expect(shown->String.includes("reorder      on"))->toBe(true)
     expect(shown->String.includes("worryback    on"))->toBe(true)
     expect(shown->String.includes("gapdeal      off"))->toBe(true)
+    expect(shown->String.includes("memory       auto"))->toBe(true)
     expect(
       Command.describeSettings(
-        Options.apply(Options.default, ~setting=Options.AutoCollect, ~on=false),
+        Options.apply(Options.default, ~setting=Options.AutoCollect, ~value=Options.Flag(false)),
       )->String.includes("autocollect  off"),
     )->toBe(true)
   })
 })
 
+describe("Command.autoplayOutOfRoom", () => {
+  test("is about the budget, in megabytes, and leaves the board an open question", () => {
+    let said = Command.autoplayOutOfRoom(~bytes=256_400_000)
+    expect(said->String.includes("(256 MB)"))->toBe(true)
+    expect(said->String.includes("budget"))->toBe(true)
+    expect(said->String.includes("not an answer about this board"))->toBe(true)
+  })
+})
+
 describe("Options", () => {
   test("apply changes one flag and leaves the other", () => {
-    let off = Options.apply(Options.default, ~setting=Options.ColumnReorder, ~on=false)
+    let off = Options.apply(
+      Options.default,
+      ~setting=Options.ColumnReorder,
+      ~value=Options.Flag(false),
+    )
     expect(off.allowColumnReorder)->toBe(false)
     expect(off.autoCollect)->toBe(Options.default.autoCollect)
   })
 
-  test("read is apply's inverse, for every setting", () =>
+  test("read is apply's inverse, for every setting and every value it parses", () =>
     Options.all->Array.forEach(
-      setting => {
-        expect(Options.read(Options.apply(Options.default, ~setting, ~on=false), setting))->toBe(
-          false,
-        )
-        expect(Options.read(Options.apply(Options.default, ~setting, ~on=true), setting))->toBe(
-          true,
-        )
-      },
+      setting =>
+        ["on", "off", "small", "medium", "large", "auto"]->Array.forEach(
+          token =>
+            Options.parseValue(setting, token)->Option.forEach(
+              value =>
+                expect(
+                  Options.read(Options.apply(Options.default, ~setting, ~value), setting),
+                )->toEqual(value),
+            ),
+        ),
     )
   )
+
+  test("a value of the other kind changes nothing", () => {
+    expect(
+      Options.apply(Options.default, ~setting=Options.Memory, ~value=Options.Flag(true)),
+    )->toEqual(Options.default)
+    expect(
+      Options.apply(
+        Options.default,
+        ~setting=Options.AutoCollect,
+        ~value=Options.Tier(Some(Solver.Small)),
+      ),
+    )->toEqual(Options.default)
+  })
 
   test("every setting parses back from the name it's listed under", () =>
     Options.all->Array.forEach(

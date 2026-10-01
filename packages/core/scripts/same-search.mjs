@@ -25,9 +25,9 @@ import { headSrc, startThinker } from "./lib/thinkers.mjs"
 const plan = [
   { game: "spiderette4", seeds: seedsOf("1-30") },
   { game: "spiderette2", seeds: seedsOf("1-40") },
-  { game: "spider4", seeds: seedsOf("1-3"), nodes: 100000 },
-  { game: "spider2", seeds: seedsOf("1-3"), nodes: 100000 },
-  { game: "spider1", seeds: seedsOf("1-3"), nodes: 100000 },
+  { game: "spider4", seeds: seedsOf("1-3"), mb: 48 },
+  { game: "spider2", seeds: seedsOf("1-3"), mb: 48 },
+  { game: "spider1", seeds: seedsOf("1-3"), mb: 48 },
   { game: "simplesimon", seeds: seedsOf("1-150") },
   { game: "spiderette1", seeds: seedsOf("1-100") },
   { game: "freecell", seeds: seedsOf("1-300") },
@@ -36,16 +36,16 @@ const plan = [
 ]
 
 function parseArgs(argv) {
-  const opts = { base: "origin/main", game: null, seeds: [], nodes: null }
+  const opts = { base: "origin/main", game: null, seeds: [], mb: null }
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i]
     if (arg === "--base") opts.base = argv[++i]
     else if (arg === "--game") opts.game = argv[++i]
-    else if (arg === "--nodes") opts.nodes = Number(argv[++i])
+    else if (arg === "--mb") opts.mb = Number(argv[++i])
     else if (seedsOf(arg)) opts.seeds.push(...seedsOf(arg))
     else throw new Error(`unrecognised argument: ${arg}`)
   }
-  if ((opts.seeds.length || opts.nodes !== null) && !opts.game) throw new Error("deals and --nodes need a --game")
+  if ((opts.seeds.length || opts.mb !== null) && !opts.game) throw new Error("deals and --mb need a --game")
   return opts
 }
 
@@ -55,7 +55,7 @@ const boards = opts.game
       {
         ...(plan.find((b) => b.game === opts.game) ?? { game: opts.game, seeds: [1] }),
         ...(opts.seeds.length ? { seeds: opts.seeds } : {}),
-        ...(opts.nodes !== null ? { nodes: opts.nodes } : {}),
+        ...(opts.mb !== null ? { mb: opts.mb } : {}),
       },
     ]
   : plan
@@ -67,7 +67,7 @@ const baseSrc = buildBaseline(base.sha)
 // Half the cores to each build: a deal is asked of both at once, so the pair finishes
 // together and neither queue runs ahead of the other.
 const width = Math.max(1, Math.floor(availableParallelism() / 2))
-const tasks = boards.flatMap(({ game, seeds, nodes }) => seeds.map((seed) => ({ game, seed, nodes })))
+const tasks = boards.flatMap(({ game, seeds, mb }) => seeds.map((seed) => ({ game, seed, mb })))
 const outcome = new Map(boards.map((b) => [b.game, { left: b.seeds.length, differ: [] }]))
 const started = Date.now()
 let failed = false
@@ -105,9 +105,9 @@ async function worker() {
 }
 
 function report(game) {
-  const { seeds, nodes } = boards.find((b) => b.game === game)
+  const { seeds, mb } = boards.find((b) => b.game === game)
   const { differ } = outcome.get(game)
-  const cap = nodes ? `, capped at ${nodes} nodes` : ""
+  const cap = mb ? `, capped at ${mb} MB` : ""
   const secs = ((Date.now() - started) / 1000).toFixed(0)
   if (!differ.length) console.log(`same       ${game} ${rangeOf(seeds)}${cap}  (${secs}s)`)
   else {

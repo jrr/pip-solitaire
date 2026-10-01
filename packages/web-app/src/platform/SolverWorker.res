@@ -30,13 +30,14 @@ let clock = () => Date.now()
 //   `Moved`  — the same game, a different state: the search behind it is re-rooted
 //              there at the next think, keeping what is reachable from it.
 //   `Think`  — spend up to `ms` on the open board (`None`: until it answers), resuming
-//              whatever search an earlier think left.
+//              whatever search an earlier think left, holding at most `maxBytes`
+//              (`Solver.capOf` the device's tier, which can change between thinks).
 //   `Stop`   — end the think in progress at the next slice boundary, answering nothing.
 //   `Forget` — let go of the board and everything grown from it.
 type request =
   | Open({game: Game.t, state: GameState.t})
   | Moved({state: GameState.t})
-  | Think({ask: int, ms: option<float>})
+  | Think({ask: int, ms: option<float>, maxBytes: int})
   | Stop
   | Forget
 
@@ -115,7 +116,7 @@ let serve = () => {
       ),
     )
 
-  let think = (ask: int, ms: option<float>) => {
+  let think = (ask: int, ms: option<float>, maxBytes: int) => {
     thinking := Some(ask)
     switch held.contents {
     // Asked about no board at all: the same refusal as a board the solver can't read,
@@ -131,6 +132,7 @@ let serve = () => {
           search
         })
       }
+      search->Option.forEach(search => Solver.Search.limit(search, ~maxBytes))
       switch search {
       | None => answer(ask, Solver.UnknownBoard)
       | Some(search) =>
@@ -165,7 +167,7 @@ let serve = () => {
           }
           {...board, state, search}
         })
-    | Think({ask, ms}) => think(ask, ms)
+    | Think({ask, ms, maxBytes}) => think(ask, ms, maxBytes)
     | Stop => thinking := None
     | Forget =>
       thinking := None

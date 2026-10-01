@@ -23,7 +23,7 @@ type reached = {
 }
 
 // A budget cheap enough for a unit test, and every deal below has a line inside it.
-let cheap: Solver.budget = {heaps: [8.], maxNodes: 15_000}
+let cheap: Solver.budget = {heaps: [8.], maxBytes: 16_000_000}
 let stopped: Solver.patience = {ms: Solver.interactive, clock: () => 0.}
 
 let deals = (game: Game.t): array<int> =>
