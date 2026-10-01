@@ -814,9 +814,17 @@ is taken back and it re-roots again, and each re-root is timed with the nodes it
 | 2026-10-01 | Simple Simon | 1–100 | 6.5 M | 7.3 ms | #60, 9.7 s to keep 1,354,000 | Node v26.9.0, cloud sandbox, four runs at once |
 | 2026-10-01 | Spiderette · 2 suits | 1–40 | 4.8 M | 8.3 ms | #6, 8.4 s to keep 976,000 | Node v26.9.0, cloud sandbox, four runs at once |
 | 2026-10-01 | Spiderette · 4 suits | 1–20 | 15.3 M | 7.7 ms | #3, 20.0 s to keep 2,675,000 | Node v26.9.0, cloud sandbox, four runs at once |
+| 2026-10-01 | FreeCell | 1–200 | 3.3 M | 6.0 ms | #150, 3.1 s to keep 530,000 | Node v26.9.0, cloud sandbox, five runs at once; grown on a `Board` |
+| 2026-10-01 | Mini | 1–200 | 27,000 | 11.9 ms | #2, 10 ms to keep 49 | Node v26.9.0, cloud sandbox, five runs at once; grown on a `Board` |
+| 2026-10-01 | Simple Simon | 1–100 | 6.5 M | 5.4 ms | #60, 7.1 s to keep 1,354,000 | Node v26.9.0, cloud sandbox, five runs at once; grown on a `Board` |
+| 2026-10-01 | Spiderette · 2 suits | 1–40 | 4.8 M | 6.0 ms | #6, 6.0 s to keep 976,000 | Node v26.9.0, cloud sandbox, five runs at once; grown on a `Board` |
+| 2026-10-01 | Spiderette · 4 suits | 1–20 | 15.3 M | 5.9 ms | #3, 15.3 s to keep 2,675,000 | Node v26.9.0, cloud sandbox, five runs at once; grown on a `Board` |
 
 **About eight microseconds a node, on every board**, open and closed alike — Mini's
-higher figure is graphs too small to amortise anything. A graph the default cap fills
+higher figure is graphs too small to amortise anything. The walk keeps the same nodes on a
+`Board`-grown graph and costs about six microseconds a node — the last five rows —
+because a transposition is checked on the second scratch board rather than on a
+`Position` built for it. A graph the default cap fills
 holds one to three million nodes, open and closed, so a re-root of one costs five to
 twenty seconds — the interactive wait itself, or twice it — and a third to a half of
 what growing it cost: Simple Simon #60 grew its graph in 24 s and re-roots it in 10,
