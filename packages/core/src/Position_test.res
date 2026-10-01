@@ -909,6 +909,60 @@ describe("Position with a stock to deal from", () => {
     expect(disagreements)->toEqual([])
   })
 
+  test("with cards left to deal, which column holds a pile is part of the position", () => {
+    switch Position.ofGameState(~game, opening) {
+    | None => expect("a Spiderette board packs")->toBe("but it didn't")
+    | Some(position) =>
+      let swap = (s: Position.t, i, j) => {
+        let order = s.casc->Array.mapWithIndex((_, k) => k == i ? j : k == j ? i : k)
+        {
+          ...s,
+          casc: order->Array.map(k => s.casc->Array.getUnsafe(k)->Array.copy),
+          down: order->Array.map(k => s.down->Array.getUnsafe(k)),
+        }
+      }
+      // The same piles, two of them traded: the next deal drops other cards on them, so
+      // trading them back afterwards doesn't give the board the untraded one is dealt.
+      let traded = swap(position, 0, 1)
+      let dealt = Position.applyMove(position, Position.Deal)
+      let tradedDealt = Position.applyMove(traded, Position.Deal)
+      expect(Position.key(traded) == Position.key(position))->toBe(false)
+      expect(Position.alike(traded, position))->toBe(false)
+      expect(Position.key(swap(tradedDealt, 0, 1)) == Position.key(dealt))->toBe(false)
+      // With the stock out, nothing tells the two apart, and they are one position.
+      let out = {...position, stock: []}
+      expect(Position.key(swap(out, 0, 1)))->toBe(Position.key(out))
+      expect(Position.alike(swap(out, 0, 1), out))->toBe(true)
+    }
+  })
+
+  test("with cards left to deal, a run may go to any empty column, and a whole one may", () => {
+    // ♠K on one column, ♠Q on the next, and two empties: the King's column is the whole
+    // of itself, and the Queen has two empty seats to choose from.
+    let posed: Position.t = {
+      law: SimpleSimon,
+      pack: Position.standardPack,
+      cells: [],
+      found: [0, 0, 0, 0],
+      casc: [[12], [11], [], []],
+      down: [0, 0, 0, 0],
+      stock: [0, 1, 2, 3],
+    }
+    let intoEmpty = (s: Position.t) =>
+      Position.legalMoves(s)->Array.filterMap(
+        move =>
+          switch move {
+          | Position.Play({source: FromColumn(src), destination: ToColumn(dest)})
+            if Array.length(s.casc->Array.getUnsafe(dest)) == 0 =>
+            Some((src, dest))
+          | _ => None
+          },
+      )
+    expect(intoEmpty(posed))->toEqual([(0, 2), (0, 3), (1, 2), (1, 3)])
+    // The same board with nothing left to deal offers none: each would only rename a column.
+    expect(intoEmpty({...posed, stock: []}))->toEqual([])
+  })
+
   test("a dealt row lands the cards the reducer lands, in the same places", () => {
     switch (Position.ofGameState(~game, opening), Reducer.reduce(~game, opening, Reducer.Deal)) {
     | (Some(position), Ok(dealt)) =>

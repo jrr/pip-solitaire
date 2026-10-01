@@ -123,8 +123,8 @@ let toPosition = (b: t): Position.t => {
 }
 
 // `Position.alike`, on two boards of one deal: the same foundations and stock length,
-// and the cells and the columns the same *multisets*. What a search asks to be sure a
-// hash that matched meant the same position.
+// the cells the same *multiset*, and the columns too — in the same order while there is
+// a stock. What a search asks to be sure a hash that matched meant the same position.
 let alike = (a: t, b: t): bool => {
   let columnsEqual = (x: t, i: int, y: t, j: int): bool => {
     let n = x.height->Array.getUnsafe(i)
@@ -181,12 +181,19 @@ let alike = (a: t, b: t): bool => {
     }
     ok.contents
   }
+  // Each column of `a` the one in the same seat of `b`.
+  let sameSeats = () => {
+    let i = ref(0)
+    while i.contents < columns(a) && columnsEqual(a, i.contents, b, i.contents) {
+      i := i.contents + 1
+    }
+    i.contents == columns(a)
+  }
   a.undealt == b.undealt &&
   Array.length(a.cells) == Array.length(b.cells) &&
   columns(a) == columns(b) &&
   a.found->Array.everyWithIndex((n, suit) => b.found->Array.getUnsafe(suit) == n) &&
-  sameCells() &&
-  sameColumns()
+  sameCells() && (a.undealt > 0 ? sameSeats() : sameColumns())
 }
 
 // --- The journal -------------------------------------------------------------
@@ -587,6 +594,7 @@ let legalMoves = (b: t): array<move> => {
   }
   let firstEmptyCell = b.cells->Array.indexOf(-1)
   let firstEmptyColumn = b.height->Array.indexOf(0)
+  let folds = b.undealt == 0
   for src in 0 to columns(b) - 1 {
     let depth = b.height->Array.getUnsafe(src)
     if depth > 0 {
@@ -605,7 +613,7 @@ let legalMoves = (b: t): array<move> => {
           if (
             dest != src &&
             cascadeAccepts(b, ~col=dest, ~card=bottom) &&
-            !(intoEmpty && (dest != firstEmptyColumn || n == depth)) &&
+            !(intoEmpty && folds && (dest != firstEmptyColumn || n == depth)) &&
             n <= liftLimit(b, ~ignoring=dest)
           ) {
             moves->Array.push(bottom + n * 64 + src * 8192 + (2 + dest * 4) * 524288)
@@ -672,9 +680,11 @@ let played = (b: t): int => Array.length(b.frames)
 
 // --- The canonical hash ------------------------------------------------------
 // Two 32-bit hashes of the board `Position.key` spells, so two boards that key
-// alike hash alike: the cells and the columns are a multiset there (sorted before
-// they're spelled), and here each is hashed on its own and the results *summed*,
-// which no order changes. The foundations and the stock's length are positional.
+// alike hash alike: the cells are a multiset there (sorted before they're spelled),
+// and here each is hashed on its own and the results *summed*, which no order
+// changes. The columns are summed the same way once the stock is out; while there is
+// one, each column's hash takes its index too, as `key` keeps their order. The
+// foundations and the stock's length are positional.
 //
 // **Nothing may depend on it being exact.** A match is where a lookup starts, never
 // where it ends — `Exhausted` is only a proof while "seen" means seen, so a caller
@@ -705,8 +715,9 @@ let hash = (b: t): (int, int) => {
   }
   for col in 0 to columns(b) - 1 {
     let h = b.height->Array.getUnsafe(col)
-    let ha = ref(step(0x811c9dc5, b.down->Array.getUnsafe(col)))
-    let hz = ref(step(0x050c5d1f, b.down->Array.getUnsafe(col) + 64))
+    let seat = (seed: int): int => b.undealt > 0 ? step(seed, col) : seed
+    let ha = ref(step(seat(0x811c9dc5), b.down->Array.getUnsafe(col)))
+    let hz = ref(step(seat(0x050c5d1f), b.down->Array.getUnsafe(col) + 64))
     for i in 0 to h - 1 {
       let card = cardAt(b, ~col, ~i)
       ha := step(ha.contents, card)

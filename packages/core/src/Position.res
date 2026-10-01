@@ -21,8 +21,8 @@ open Card
 //
 // **A repeated pack collapses onto it, deliberately.** Spiderette · 1 suit is ♠ taken
 // four times, so both Sevens of Spades are the int 6 — and that is the right answer,
-// because two boards differing only in which of them sits where are the same position
-// and `key` already sorts the cells and the columns to say so. Where a copy has to be
+// because two boards differing only in which of them sits where are the same position,
+// and packed they are the same ints in the same places. Where a copy has to be
 // told from its twin is on the *real* board, and `toAction` gets there by carrying the
 // cards a move lifts out of the live pile rather than rebuilding them from the int.
 
@@ -588,10 +588,10 @@ type move =
   | Deal
 
 // Every legal move from here, less three deliberate prunings that only ever cost the
-// search time — `docs/solver.md` § The search names them. The same loops serve both
-// laws: a Simple Simon position has no cells to loop over and no foundation that
-// accepts, and a board that doesn't deal never clears `canDeal`, so the moves a board
-// has no word for are never reached.
+// search time — `docs/solver.md` § The search names them, and why two of them wait
+// for the stock to run out. The same loops serve both laws: a Simple Simon position
+// has no cells to loop over and no foundation that accepts, and a board that doesn't
+// deal never clears `canDeal`, so the moves a board has no word for are never reached.
 let legalMoves = (s: t): array<move> => {
   let moves = []
   for cell in 0 to Array.length(s.cells) - 1 {
@@ -609,6 +609,7 @@ let legalMoves = (s: t): array<move> => {
   }
   let firstEmptyCell = s.cells->Array.indexOf(-1)
   let firstEmptyColumn = s.casc->Array.findIndex(pile => Array.length(pile) == 0)
+  let folds = Array.length(s.stock) == 0
   for src in 0 to Array.length(s.casc) - 1 {
     let pile = s.casc->Array.getUnsafe(src)
     switch pile->Array.last {
@@ -638,8 +639,10 @@ let legalMoves = (s: t): array<move> => {
             dest != src &&
             cascadeAccepts(s, ~col=dest, ~card=bottom) &&
             // Only the first empty column: the others are the same move. And never a
-            // whole column into one: that only renames the column.
-            !(intoEmpty && (dest != firstEmptyColumn || n == Array.length(pile))) &&
+            // whole column into one: that only renames the column. Both only once the
+            // stock is out — before then, which column holds a pile decides what it is
+            // dealt (`key`).
+            !(intoEmpty && folds && (dest != firstEmptyColumn || n == Array.length(pile))) &&
             n <= liftLimit(s, ~ignoring=dest)
           ) {
             moves->Array.push(
@@ -718,8 +721,10 @@ let applyMove = (s: t, move: move): t => {
 let spell = (ns: array<int>): string => String.fromCharCodeMany(ns->Array.map(n => n + 48))
 
 // A position's canonical form, spelled: two positions that differ only in *which*
-// free cell or *which* column holds what are the same position, so the cells and the
-// columns are both sorted before they're spelled out. It is the definition the
+// free cell holds what are the same position, so the cells are sorted before they're
+// spelled out — and so are the columns, **but only once the stock is out**. A deal
+// lands one card on each column in turn, so while there is a stock the same piles in
+// another column order are dealt other cards and are another position. It is the
 // search's own tests of sameness answer to — `alike` below and `Board.hash` — and
 // what a driver compares a board it has read with. **Not for the search's hot path**:
 // a string per position was most of what a search held (`docs/solver.md` § The
@@ -737,7 +742,9 @@ let key = (s: t): string => {
     | down => `!${spell([down])}${cards}`
     }
   })
-  cols->Array.sort(String.compare)
+  if Array.length(s.stock) == 0 {
+    cols->Array.sort(String.compare)
+  }
   // The stock as its *length*: its order is fixed at the deal and it only ever
   // shortens from the top, so within one search two boards holding the same number of
   // undealt cards are holding the same cards. Written only where there is a stock.
@@ -749,7 +756,8 @@ let key = (s: t): string => {
 }
 
 // Whether two positions of one deal `key` alike, without spelling either: the same
-// foundations and stock length, and the cells and the columns the same *multisets*.
+// foundations and stock length, the cells the same *multiset*, and the columns the
+// same multiset too — or, while there is a stock, the same columns in the same order.
 // What a search asks to be sure a hash that matched meant the same position.
 let alike = (a: t, b: t): bool => {
   let columnsEqual = (x: t, i: int, y: t, j: int): bool =>
@@ -815,8 +823,11 @@ let alike = (a: t, b: t): bool => {
   Array.length(a.cells) == Array.length(b.cells) &&
   Array.length(a.casc) == Array.length(b.casc) &&
   a.found->Array.everyWithIndex((n, suit) => b.found->Array.getUnsafe(suit) == n) &&
-  sameCells() &&
-  sameColumns()
+  sameCells() && (
+    Array.length(a.stock) > 0
+      ? a.casc->Array.everyWithIndex((_, i) => columnsEqual(a, i, b, i))
+      : sameColumns()
+  )
 }
 
 // A move in words, for a play-by-play. A deal names no card because it has none to

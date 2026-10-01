@@ -239,12 +239,10 @@ had to be more careful than the table says.
 
 **With a stock, column order is part of the position.** A deal lands one card on each
 column in turn, so two boards with the same piles in a different column order are
-dealt different cards. The canonical form says they are one position, and the search
-grows them as one: whichever layout reached it first is the one its subtree was grown
-for. For growing that is a question about the search, not about re-rooting, and it is
-left open here — it means a position can be pruned as seen when the board it stands
-for is not, which bears on whether `Exhausted` is a proof on a board that still deals.
-For re-rooting it is a correctness question, and it is answered:
+dealt different cards. The canonical form says so (`docs/solver.md` § The search): while
+there is a stock, two positions are one only if every column is the same pile in the
+same seat, so a node found by its key is laid out just as the board that found it. For
+re-rooting, that means:
 
 - a closed node is walked in its own layout while there is a stock, so the walk finds
   the children it was grown with rather than another layout's;
@@ -254,6 +252,13 @@ For re-rooting it is a correctness question, and it is answered:
   there, and what was under it is kept only if something else reaches it. A found root
   in another column order from the player's board is reopened likewise. `collect`
   says so by declining, and the walk runs again with the reopened nodes as leaves.
+
+**Neither can happen while the key keeps column order**: no two layouts of a position
+with a stock are ever one node, so `Graph.dealsAlike` holds of every pair the walk and
+`collect` compare. They stand as the guard that keeps a re-root correct if the key ever
+folds column order under a stock again — and as code that a change which means to drop
+them can delete, with the walk's own-layout boards, once `Solver_test`'s re-rooting
+cases say nothing moved.
 
 On every board without a stock the two layouts generate the same children and
 translate move for move, so nothing is ever reopened there.
