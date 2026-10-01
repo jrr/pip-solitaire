@@ -67,9 +67,9 @@ costs, is the next section.
 ## What a caller is willing to spend
 
 The budget is in *positions*, and a position is not a unit anyone waits
-in. Two hundred thousand of them is a fifth of a second of Mini and most of a
-minute of four-suit Spiderette, and the same number again is one wait on a CI
-runner and another on a phone. So the budget says how hard to try, and `patience`
+in. A million of them is half a minute of four-suit Spiderette on a cloud sandbox,
+more than Mini ever needs, and the same number again is one wait on a CI runner and
+another on a phone. So the budget says how hard to try, and `patience`
 says how long the caller will let that take:
 
 ```rescript
@@ -81,13 +81,20 @@ Two are named in `Solver`, for **who is waiting** rather than for how long:
 | | | |
 |---|---|---|
 | `interactive` | 10 s | a board someone is watching — passed by `TableScene` |
-| `patient` | 120 s | a terminal or a script, where the waiting is the point — passed by `Cli` |
+| `patient` | 30 s | a terminal or a script, where the waiting is the point — passed by `Cli` and the autoplay harness |
 
 `interactive` is a **policy**, and it really does cost answers — § What the
 interactive wait costs measures how many, and § Why the unsolved count stands is
-the decision that came out of it. `patient` is a **backstop**: it sits above the
-worst search any board's budget allows, so it bites only on a machine far slower
-than the one the record was measured on.
+the decision that came out of it. `patient` is a **backstop**: it sits at the worst
+search any board's budget allows, so it bites only on a machine slower than the one
+the record was measured on.
+
+**Nothing waits longer than thirty seconds by default.** Each board's cap is about
+thirty seconds of search on a cloud sandbox (§ The budget), and `patient` is thirty
+seconds of clock, so a default solve — `mise run solve` with no flags, the CLI's
+`autoplay`, the browser harness — gives up by then whatever it was asked. Waiting
+longer is something a caller asks for, never something it gets: `--nodes` raises
+`mise run solve`'s cap, and `--limit` sets its wait.
 
 **Neither front end waits on the thread it draws with.** The terminal has nothing
 to draw; the web app sends the board to a worker (`web-app/src/platform/Thinker.res`)
@@ -97,7 +104,7 @@ what it stopped being is the difference between a page and a hung page.
 
 `mise run solve` passes whatever `--limit` says, and nothing at all by default,
 which is what makes the benchmark record a measurement of the budget rather than
-of a wait.
+of a wait. A row measured with `--nodes` says so.
 
 **The search keeps no time; the caller cuts it into slices.** `Solver.Search.think`
 takes a number of positions and nothing else, and `Solver.solveOn` is the one place a
@@ -208,10 +215,18 @@ many of the unsolved were that.
 **Every deal is also weighed.** Beside its time, each deal reports what the search
 *held*, and the summary gives the mean over the range and the deal that held most —
 the "Held" column in every table below. It is the live JavaScript heap with the search
-still in hand once it has answered, less what was live before it was made. **A search
-never releases what it has grown**, so that moment is its largest; `solve.mjs` holds
-the search as a value, so it can run the collector there, after the timed asks, and
-keep the collection out of the time. So the task runs Node with `--expose-gc`.
+still in hand once it has answered, less what was live before it was made — the heap
+*and* the backing stores of typed arrays, which live outside it and are where the
+search keeps its graph. **A search never releases what it has grown**, so that moment
+is its largest; `solve.mjs` holds the search as a value, so it can run the collector
+there, after the timed asks, and keep the collection out of the time. So the task runs
+Node with `--expose-gc`, and collects until two readings agree: a column outgrown
+just before the search stopped can linger in the count for a collection or two.
+
+Beside each Held, in brackets, is what the search says it holds: `effort.bytes`,
+summed from its own arrays' lengths (`Solver.Search.bytes`). The two agree to within a
+megabyte on every deal, and the difference is what the arrays don't count — the
+scratch board, the line, the search record itself.
 
 Rows before 2026-09-30 are the restart ladder that search replaced, and were measured
 differently to the same end: a rung that spent its budget was released for the next,
@@ -247,6 +262,7 @@ core's own shuffle, not Microsoft's numbering. "Moves" counts moves to the
 | 2026-09-29 | 1–1000 | 1000/1000 | 85 ms | 54 | #403 at 6.7 s | 4 MB, #582 at 334 MB | Node v26.9.0, cloud sandbox, two soaks at once |
 | 2026-09-30 | 1–1000 | 1000/1000 | 126 ms | 54 | #403 at 8.7 s | 4 MB, #582 at 334 MB | Node v26.9.0, cloud sandbox, up to four soaks at once; the ladder, re-run beside the row below |
 | 2026-09-30 | 1–1000 | 1000/1000 | 124 ms | 52 | #403 at 8.4 s | 6 MB, #963 at 331 MB | Node v26.9.0, cloud sandbox, up to four soaks at once |
+| 2026-09-30 | 1–1000 | 1000/1000 | 73 ms | 52 | #658 at 5.9 s | <1 MB, #150 at 25 MB | Node v26.9.0, cloud sandbox, up to four soaks at once; the graph in typed arrays |
 
 **Simple Simon.** "Unwinnable" is the deals the search *proved* have no line
 (`exhausted`); "unsolved" is the ones the budget gave up on, which is the number
@@ -259,10 +275,12 @@ a heuristic change is trying to reduce.
 | 2026-09-20 | 1–1000 | 941/1000 | 54 | 5 | 855 ms | 85 | #964 at 25.1 s | — | Node v26.9.0, cloud sandbox |
 | 2026-09-29 | 1–1000 | 941/1000 | 54 | 5 | 628 ms | 85 | #964 at 19.2 s | 21 MB, #964 at 533 MB | Node v26.9.0, cloud sandbox, two soaks at once |
 | 2026-09-30 | 1–1000 | 931/1000 | 54 | 15 | 407 ms | 80 | #60 at 9.7 s | 21 MB, #60 at 447 MB | Node v26.9.0, cloud sandbox, up to four soaks at once |
+| 2026-09-30 | 1–1000 | 944/1000 | 56 | 0 | 791 ms | 80 | #766 at 100.9 s | 2 MB, #766 at 164 MB | Node v26.9.0, cloud sandbox, up to four soaks at once; the graph in typed arrays; `--nodes 1600000` |
+SIMON_DEFAULT
 
 **Spiderette · 4 suits**, over 1–200 rather than the thousand: a deal the search
-gives up on costs it the whole budget, so this soak is half an hour where Simple
-Simon's is twenty minutes. The unsolved count is not zero and is not a target —
+gives up on costs it the whole budget — five minutes each at the 2026-09-30 cap — so
+this soak is over an hour in one process where Simple Simon's is a quarter of one. The unsolved count is not zero and is not a target —
 `mise run solve` exits non-zero on this board today, and on the two-suit pack
 below it. Why it stands: § Why the unsolved count stands.
 
@@ -271,6 +289,9 @@ below it. Why it stands: § Why the unsolved count stands.
 | 2026-09-19 | 1–200 | 159/200 | 8 | 33 | 5.4 s | 105 | #147 at 38.6 s | — | Node v26.7.0, CI runner |
 | 2026-09-20 | 1–200 | 159/200 | 8 | 33 | 5.9 s | 105 | #147 at 30.2 s | — | Node v26.9.0, cloud sandbox |
 | 2026-09-29 | 1–200 | 159/200 | 8 | 33 | 4.3 s | 105 | #147 at 22.2 s | 188 MB, #162 at 897 MB | Node v26.9.0, cloud sandbox, two soaks at once |
+| 2026-09-30 | 1–200 | 150/200 | 7 | 43 | 3.2 s | 100 | #71 at 13.4 s | 156 MB, #41 at 619 MB | Node v26.9.0, cloud sandbox, up to four soaks at once |
+| 2026-09-30 | 1–200 | 180/200 | 8 | 12 | 23.1 s | 102 | #90 at 344.9 s | 55 MB, #199 at 779 MB | Node v26.9.0, cloud sandbox, up to four soaks at once; the graph in typed arrays; `--nodes 5500000` |
+S4_DEFAULT
 
 **Spiderette · 1 suit and · 2 suits**, over the same 1–200. The same law, budget
 and weights on a cheaper deck — these are the repeated packs, where `found`
@@ -289,6 +310,9 @@ and an unsolved count of its own.
 | 2026-09-29 | 2 suits | 1–200 | 183/200 | 5 | 12 | 2.2 s | 86 | #42 at 30.0 s | 86 MB, #100 at 963 MB | Node v26.9.0, cloud sandbox, two soaks at once |
 | 2026-09-30 | 1 suit | 1–200 | 198/200 | 2 | 0 | 293 ms | 70 | #143 at 11.7 s | 11 MB, #143 at 425 MB | Node v26.9.0, cloud sandbox, up to four soaks at once |
 | 2026-09-30 | 2 suits | 1–200 | 181/200 | 4 | 15 | 1.9 s | 84 | #94 at 21.6 s | 82 MB, #94 at 795 MB | Node v26.9.0, cloud sandbox, up to four soaks at once |
+| 2026-09-30 | 1 suit | 1–200 | 198/200 | 2 | 0 | 221 ms | 71 | #143 at 6.5 s | <1 MB, #143 at 11 MB | Node v26.9.0, cloud sandbox, up to four soaks at once; the graph in typed arrays |
+| 2026-09-30 | 2 suits | 1–200 | 195/200 | 5 | 0 | 4.2 s | 86 | #168 at 182.6 s | 11 MB, #168 at 429 MB | Node v26.9.0, cloud sandbox, up to four soaks at once; the graph in typed arrays; `--nodes 6000000` |
+S2_DEFAULT
 
 **Mini and Micro**, under FreeCell's law and its weights. Every deal is
 *answered* — the search either finds a line or empties its frontier long before
@@ -306,6 +330,8 @@ its budget — so the number to watch here is "unsolved", and it is zero.
 | 2026-09-29 | Micro | 1–1000 | 981/1000 | 19 | 0 | <1 ms | 10 | #699 at 13 ms | <1 MB | Node v26.9.0, cloud sandbox, two soaks at once |
 | 2026-09-30 | Mini | 1–1000 | 992/1000 | 8 | 0 | 1 ms | 11 | #10 at 74 ms | <1 MB | Node v26.9.0, cloud sandbox, up to four soaks at once |
 | 2026-09-30 | Micro | 1–1000 | 981/1000 | 19 | 0 | 1 ms | 9 | #699 at 15 ms | <1 MB | Node v26.9.0, cloud sandbox, up to four soaks at once |
+| 2026-09-30 | Mini | 1–1000 | 992/1000 | 8 | 0 | 2 ms | 11 | #10 at 101 ms | <1 MB | Node v26.9.0, cloud sandbox, up to four soaks at once; the graph in typed arrays |
+| 2026-09-30 | Micro | 1–1000 | 981/1000 | 19 | 0 | 1 ms | 9 | #519 at 25 ms | <1 MB | Node v26.9.0, cloud sandbox, up to four soaks at once; the graph in typed arrays |
 
 Over deals 1–200 that is 198 and 196 solved — the same counts `Game.res` records
 from an exhaustive single-card search when it chose two free cells for each
@@ -360,12 +386,42 @@ Spiderettes and higher on one suit, which is as much the load as the search.
 Under the interactive wait the comparison is different, and § What the interactive
 wait costs has it.
 
+### What the graph in typed arrays bought
+
+The last 2026-09-30 row of each table is the search holding its graph in typed arrays
+(§ The search), with the caps raised as § The budget describes. It got there in three
+steps, each soaked on every board at the caps the one before it used:
+
+| Board | 2026-09-30, objects | Typed arrays | One node per position | Caps raised |
+|---|---|---|---|---|
+| FreeCell | 1000 · 331 MB | 1000 · 37 MB | 1000 · 28 MB | 1000 · 25 MB |
+| Simple Simon | 931 + 54 · 447 MB | 931 + 54 · 44 MB | 932 + 54 · 43 MB | 944 + 56 · 164 MB |
+| Spiderette · 1 suit | 198 + 2 · 425 MB | 198 + 2 · 47 MB | 198 + 2 · 16 MB | 198 + 2 · 11 MB |
+| Spiderette · 2 suits | 181 + 4 · 795 MB | 181 + 4 · 86 MB | 185 + 5 · 67 MB | 195 + 5 · 429 MB |
+| Spiderette · 4 suits | 150 + 7 · 619 MB | 150 + 7 · 73 MB | 157 + 8 · 59 MB | 180 + 8 · 779 MB |
+
+Each cell is solved + proved unwinnable, and the most any deal held.
+
+- **Typed arrays, nothing else changed.** A node was still one per push, so the search
+  was the same search: the identical line on every deal of 1–40 on five boards, and
+  the same counts on every board — the bar the parent-pointer change met before it.
+  What changed is only what it held, a tenth.
+- **One node per position.** A position reached again more cheaply used to be pushed
+  as a second node, and the stale first one was grown too when its turn came — a third
+  of all nodes on four-suit Spiderette, and a quarter of what it grew. Moving the
+  cheaper node up its heaps instead, and leaving a grown one as it was, grows those
+  positions once, which is both less held and more reached inside the same cap.
+  Lines are no longer the ones the earlier rows found, but no shorter or longer on the
+  mean.
+- **Caps raised**, and every fourth closed position kept rather than every one, which
+  halved what the largest deals held again (§ The search, § The budget).
+
 ### What the interactive wait costs
 
 Every row above is the ladder with nothing in its way, and that is what those
 tables are for. This is the same ladder under `Solver.interactive` — the ten
 seconds a watched board gets — over the same ranges, each capped row beside the
-uncapped one it should be read against. Each date's six rows were measured in one
+uncapped one it should be read against. Each date's rows were measured in one
 sitting on one machine, so within a date the times compare as well as the counts;
 read across dates, or any other pair of rows in this page, and only the counts do —
 and under a cap not even those, since a faster machine gets further in ten seconds.
@@ -390,6 +446,12 @@ and under a cap not even those, since a faster machine gets further in ten secon
 | 2026-09-30 | Spiderette · 2 suits | 1–200 | 10 s | 179 | 4 | 17 | 1.7 s | #94 at 10.1 s | 74 MB, #167 at 512 MB |
 | 2026-09-30 | Spiderette · 4 suits | 1–200 | none | 150 | 7 | 43 | 3.2 s | #71 at 13.4 s | 156 MB, #41 at 619 MB |
 | 2026-09-30 | Spiderette · 4 suits | 1–200 | 10 s | 150 | 7 | 43 | 3.0 s | #157 at 10.0 s | 153 MB, #162 at 568 MB |
+| 2026-09-30 | Simple Simon | 1–1000 | none | 944 | 56 | 0 | 791 ms | #766 at 100.9 s | 2 MB, #766 at 164 MB |
+| 2026-09-30 | Simple Simon | 1–1000 | 10 s | 933 | 54 | 13 | 431 ms | #102 at 10.1 s | 1 MB, #946 at 32 MB |
+| 2026-09-30 | Spiderette · 2 suits | 1–200 | none | 195 | 5 | 0 | 4.2 s | #168 at 182.6 s | 11 MB, #168 at 429 MB |
+| 2026-09-30 | Spiderette · 2 suits | 1–200 | 10 s | 184 | 5 | 11 | 1.4 s | #94 at 10.1 s | 4 MB, #184 at 53 MB |
+| 2026-09-30 | Spiderette · 4 suits | 1–200 | none | 180 | 8 | 12 | 23.1 s | #90 at 344.9 s | 55 MB, #199 at 779 MB |
+| 2026-09-30 | Spiderette · 4 suits | 1–200 | 10 s | 156 | 8 | 36 | 2.9 s | #166 at 10.0 s | 10 MB, #184 at 51 MB |
 
 So the wait costs **twenty-seven Simple Simon deals in the thousand, and eight
 two-suit and ten four-suit in the two hundred** on the 2026-09-20 machine — and one
@@ -420,30 +482,42 @@ never releases what it grew, so what bounds it is its node cap (§ The budget), 
 watched board holds what an unwatched one does: 568 MB at most on four-suit
 Spiderette, and 447 MB on Simple Simon where the ladder held 352 under the wait.
 
+**The last six rows are the graph in typed arrays, and under the wait they hold a
+tenth of anything above them.** Ten seconds reaches 53 MB at most on any of the three
+boards, where every earlier search held 350 MB and more; and in those ten seconds it
+answers more than the ladder did under the same wait — three Simple Simon deals, six
+two-suit and one four-suit — and every proof the ladder found with no wait at all. The node caps are
+far past what ten seconds reaches, so the capped rows are the ones a player sees, and
+the uncapped ones say what a patient caller could have.
+
 The 2026-09-20 rows: Node v26.9.0, cloud sandbox. The 2026-09-29 rows: Node
 v26.9.0, cloud sandbox, two soaks at once. The 2026-09-30 rows: Node v26.9.0, cloud
-sandbox, up to four soaks at once. The capped half of each with `--limit 10`.
+sandbox, up to four soaks at once — the uncapped typed-array rows as chunks of the
+range side by side, their means weighted back together. The capped half of each with
+`--limit 10`.
 
 **Spider has no row here, and a probe is why.** `Position.ofGameState` reads all
 three packs — nothing in the model assumes one pack or four foundations — so the
 search runs on 104 cards without an edit. What it does *not* do is answer: at the
-interactive ten seconds, four of the first five two-suit deals came back out of
-time, and the one that solved took 206 moves. Each of the four held 400 to 436 MB
-when the limit stopped it, and the one that solved about 80 MB (2026-09-29, the
-command in § Measuring it). That is the figure the memory work is about: ten seconds
-of a Spider search is a heap a phone may not give a tab. Five deals is a probe, not a record,
-and the honest reading is only that the numbers above do not carry over — a board
-twice the size is not the same search at the same cap. Whoever measures it properly
-owes a range and a row; until then the Debug screen's Solve row on a Spider board
-is ten seconds of thinking and then a refusal, which is the designed path
-(`Solver.ranOutOfTime`) and not a wait anyone should be asked to like.
+interactive ten seconds, four of the first five two-suit deals come back out of time,
+and the one that solves takes 173 moves. Under the object graph each of the four held
+397 to 471 MB when the limit stopped it (2026-09-30, the command in § Measuring it,
+re-run beside the row below) — a heap a phone may not give a tab. The graph in typed
+arrays holds 38 MB at most and 26 on the mean over the same five, with as many
+positions grown in the ten seconds. Five deals is a probe, not a record, and the
+honest reading is only that the numbers above do not carry over — a board twice the
+size is not the same search at the same cap. Whoever measures it properly owes a range
+and a row; until then the Debug screen's Solve row on a Spider board is ten seconds of
+thinking and then a refusal, which is the designed path (`Solver.ranOutOfTime`) and
+not a wait anyone should be asked to like.
 
 ### Why the unsolved count stands
 
-Four-suit Spiderette leaves 43 of 200 deals unanswered and the two-suit pack 15,
-where every other board the solver models answers all of them. **Those numbers
-are the record, not a target**, and this is the argument for leaving them alone
-rather than tuning the heuristic or widening the budget to move them.
+Four-suit Spiderette leaves 12 of 200 deals unanswered with no wait, and under the
+ten seconds a watched board gets it leaves 36, and the two-suit pack 11 — where every
+other board, and two suits given the time, answers all of them. **Those numbers are
+the record, not a target**, and this is the argument for leaving them alone rather
+than tuning the heuristic or widening the budget to move them.
 
 **The cost that made them a defect is gone.** What was wrong with an unanswered
 deal was never the gap in the table — it was that reaching it took the whole
@@ -459,9 +533,9 @@ nobody finished looking. Part of what made the count feel like a defect was a
 sentence claiming more than the search had earned.
 
 **Nobody knows the count is too high.** Eight of the 200 four-suit deals were
-*proved* unwinnable by the ladder; the rest of the 43 were not proved either way. A
-deal with no line is not a deal the solver failed on, and no one has established how
-many of the 43 have lines at all. "Answer more of them" is only a goal for the ones that can be
+*proved* unwinnable by the ladder, and the search proves the same eight; the rest were
+not proved either way. A deal with no line is not a deal the solver failed on, and no
+one has established how many of the 12 have lines at all. "Answer more of them" is only a goal for the ones that can be
 answered, and that number is unknown.
 
 **A longer search is the wrong knob, and now for a second reason.** The budget is
@@ -472,11 +546,13 @@ that. On three stubborn four-suit deals — #3, #141, #147 — the old ladder sp
 700,000 of its positions and took 21 to 31 s, and ten seconds bought 217,000 to
 357,000 of them. A search a player would never finish is tuning for `mise run solve`
 and the CLI — worth doing only if those are who it is for, which should be said out
-loud rather than assumed.
+loud rather than assumed. The caps were raised on 2026-09-30 under exactly that
+reading: they answer more for a patient caller, cost a watched board nothing it would
+reach in ten seconds, and are held under the memory the ladder already spent.
 
 **What would actually help is a cheaper proof.** A search that empties its frontier
 answers a deal in milliseconds, which is well inside any wait; that is how Mini
-and Micro answer every deal in the first thousand. Converting some of the 43 into
+and Micro answer every deal in the first thousand. Converting some of the 36 into
 `Exhausted` would raise the answered count *within* the ten seconds, where a
 longer search cannot. That is a different piece of work from tuning weights, and
 it is the direction to take if this is picked up again.
@@ -567,13 +643,29 @@ reach it. So a search with an empty set of lists has still grown every position 
 could reach, and `Exhausted` is still a proof. Why each board has two, and what the
 second buys: § The budget.
 
-- **The open list is a binary heap** (`Solver.Heap`), not a sorted array: it's
-  pushed and popped hundreds of thousands of times per deal, and re-sorting it
-  that often is the whole cost of the search.
-- **The visited set is keyed by `Position.key`**, which sorts the cells and the
-  columns first — two positions that differ only in *which* free cell or *which*
-  column holds what are the same position. A position reached no more cheaply
-  than before teaches nothing new and is dropped.
+- **The graph is typed arrays, not objects** (`Graph.res`). A node is an index: its
+  parent, the move from there, its depth, its heuristic and its hash are a slot each
+  in a column of their own, about twenty bytes. Only a *grown* node's position is
+  kept, packed one byte per card into an arena; an open node's is its parent's with
+  its move played again, the trade `parent` and `trail` objects used to make. What
+  that holds per board is § The budget's to say.
+- **The open list is a binary heap** (`Solver.Heap`) of node indices, not a sorted
+  array: it's pushed and popped hundreds of thousands of times per deal, and
+  re-sorting it that often is the whole cost of the search. A priority is read off
+  the node when two are compared, so a heap stores nothing but the index and where
+  each node sits in it.
+- **The visited set is a hash table, and a hit is checked.** It files each node by
+  `Board.hash`, which agrees with `Position.key` — two positions that differ only in
+  *which* free cell or *which* column holds what are the same position — and a hash
+  that matches counts as seen only once the node's position, rebuilt, is
+  `Position.alike` the one asked about. A collision taken for "seen" would prune a
+  position nobody visited, and `Exhausted` would stop being a proof. No string is
+  built for a position anywhere on this path.
+- **One node per position, and `closed` is on the node.** A position reached no more
+  cheaply than before teaches nothing new and is dropped. One reached more cheaply
+  while still open takes the cheaper parent and moves up each heap where it stands;
+  one already grown is left as it was grown, because its children's moves name
+  the columns of the layout it was grown in.
 - **Three prunings in `legalMoves`** that only ever cost time, all of them
   symmetries the key already collapses: a card may go to the *first* empty free
   cell and a run to the *first* empty column (the other empties are the same
@@ -588,9 +680,9 @@ the board deals.
 
 | Board | `heaps` | `maxNodes` |
 |---|---|---|
-| FreeCell, Mini, Micro | 2.0, 1.0 | 200,000 |
-| Simple Simon | 1.0, 0.3 | 150,000 |
-| Spiderette, every pack | 2.0, 1.0 | 300,000 |
+| FreeCell, Mini, Micro | 2.0, 1.0 | 2,000,000 |
+| Simple Simon | 1.0, 0.3 | 1,600,000 |
+| Spiderette, every pack | 2.0, 1.0 | 5,500,000 |
 
 A high weight is greedy and dives; a low one searches wider and costs more per answer.
 The first weight on each board is the one almost every deal falls to — FreeCell's is
@@ -606,31 +698,38 @@ Spiderette's 2.0 at 200,000 and 1.0 at 500,000. A restart cannot be resumed — 
 seconds" has no meaning across one — so one continuous search took its place, and the
 different weights that used to take turns *in time* take turns *in a graph* instead.
 
-**The cap is a memory ceiling now, and that is what set each one.** The ladder was a
+**The cap is a memory ceiling, and that is what sets each one.** The ladder was a
 ceiling as well as a restart: a rung that spent its budget released its frontier
-before the next began, so a deal held at most what its biggest rung did. A search
-that only grows has no such release, and it holds much more per position than a
-restart's rungs did — about 3 KB per position grown on a Simple Simon board, twice
-what the ladder's wide last rung held. So each cap is the most that board can grow
-without its soak's Held column rising above the ladder's, and not the ladder's total:
+before the next began, so a deal held at most what its biggest rung did. A search that
+only grows has no such release. So **each cap is the most that board can grow without
+its soak's Held column rising above the ladder's 2026-09-29 figure** — 334 MB on
+FreeCell, 533 on Simple Simon, 963 and 897 on the two- and four-suit Spiderettes.
 
-- **FreeCell** at 2.0 alone left #666 and #677 unsolved even at a million positions.
-  With 1.0 beside it every deal in the thousand falls inside 160,000 — #403 is the
-  last, and #963 holds the most, 331 MB against the ladder's 334 — so the cap is
-  200,000 and costs nothing. As the second heap 4.0 missed both deals, and 0.5 caught
-  both but grew #582 past a gigabyte.
-- **Simple Simon** at 1.0 alone left twelve of the first 500 unsolved at 400,000 and
-  held a gigabyte doing it. As a second heap 2.0 caught none of the hard deals, 0.5
-  most, and 0.3 the most with the least held; 0.7, 0.2 and 0.1 each caught fewer.
-  At 1.0 and 0.3 the thousand solves 938 at 300,000 — but #102 holds 672 MB there,
-  and 150,000 is the cap that keeps the most held under the ladder's 533.
-- **Spiderette** at 2.0 alone needed 700,000 positions to pass the two-suit count,
-  holding 1.6 GB. With 1.0 beside it the count is matched at 500,000, still holding
-  a gigabyte; 300,000 is where every pack's most held is under its ladder's.
+What a position costs is what moved the caps. The first continuous search held about
+3 KB per position grown, an object per open node and a string per position seen, and
+that put the caps at 200,000, 150,000 and 300,000 — below the ladder's reach, which is
+where the 2026-09-30 rows lost ten Simple Simon deals, eleven Spiderette deals and two
+proofs. The graph in typed arrays (§ The search) holds 60 to 150 bytes per position
+grown, which is what let the caps go back up:
 
-What that cost is in the benchmark record's 2026-09-30 rows and § What the continuous
-search costs. **A bigger cap is the wrong knob**: it is paid for in memory by every
-deal that spends it, which is every deal that goes unanswered.
+- **FreeCell** solves every deal in the thousand well inside 200,000, so its cap costs
+  nothing and changes nothing; 2,000,000 is where a deal at the cap would still hold
+  under 334 MB. #150 holds the most, 25 MB.
+- **Simple Simon** answers every deal in the thousand at 1,600,000 — 944 solved and 56
+  proved, where the ladder gave up on five. #766 is the longest and holds the most,
+  164 MB in 101 s; the cap was set when a Simple Simon position cost a third more, and
+  is where a deal that spent it would still hold under 533 MB.
+- **Spiderette** is the one board where deals still spend the cap, so its cap is the
+  one the ceiling binds. At 6,000,000 four-suit #199 held 915 MB, over its 897; at
+  5,500,000 it holds 779 and the count is the same — 180 solved, 8 proved, 12 left,
+  where the ladder solved 159. Two suits answers all 200 (195 and 5) and none of them
+  comes near the cap: #168 is the longest and holds the most, 429 MB in 183 s. One
+  suit answers all 200 inside 11 MB.
+
+**A bigger cap is still paid for in memory** by every deal that spends it, which is
+every deal that goes unanswered — and now in time as well, since a deal that spends six
+million positions takes minutes. A watched board never gets there: § What the
+interactive wait costs has what ten seconds reaches, and how little it holds.
 
 ## The packed position
 
@@ -738,8 +837,12 @@ of a two-hundred-move path, took ten seconds of `Solver.interactive` past a giga
 which iOS answers by killing the tab, worker and all, and reloading it. The three
 together measured 1,518 MB → 379 MB of live heap over 100,000 nodes of a Spider
 position, a little faster, and the identical line on every deal of 1–40 on five
-boards. The key stays exact: a hash would be smaller still, but a collision prunes a
-position, and `Exhausted` is only a proof while nothing is pruned that wasn't seen. Re-profiled after that, the collector was still ~23%,
+boards. **The key went next, and the objects with it** (§ The search): nodes as typed
+arrays and a visited set that files by hash and checks every match, which is how a
+hash can be smaller without a collision ever pruning a position — `Exhausted` is only
+a proof while nothing is pruned that wasn't seen. That too found the identical line on
+every deal of 1–40 on five boards before anything else about the search changed.
+Re-profiled before it, the collector was still ~23%,
 now behind `applyMove`'s `copy`; make/unmake against one mutable board would take
 most of that too. **Call it 3–4× available without leaving the language, and the
 rules untouched by any of it.**
@@ -770,12 +873,12 @@ to want it is more likely a *shorter line* than a faster one, which is the trade
   table above. A change that helps the mean and doubles the worst case is not an
   improvement, and a change to the search or a shared term moves every board at
   once. The two short packs take a few seconds each, so there is no excuse.
-  Spiderette is the expensive one — `--game spiderette4 --quiet 1-200` is half an
+  Spiderette is the expensive one — `--game spiderette4 --quiet 1-200` is over an
   hour, because the deals it gives up on each cost the whole budget — so soak it
-  over 1–200 rather than the thousand, and leave it running. Its repeated packs
-  (`spiderette1`, `spiderette2`) are the same board with a cheaper deck and are
-  worth the same range: the one-suit soak is about a minute, the two-suit one
-  a quarter of an hour. **Don't reach for `--limit` to make that cheaper**: a capped run
+  over 1–200 rather than the thousand, split the range across processes, and leave
+  it running. Its repeated packs (`spiderette1`, `spiderette2`) are the same board
+  with a cheaper deck and are worth the same range: the one-suit soak is about a
+  minute, the two-suit one a quarter of an hour. **Don't reach for `--limit` to make that cheaper**: a capped run
   measures the cap, and a cap is exactly what would hide a regression in the
   positions it stopped short of.
 - **Read the Held column, not only the counts.** The node cap is the only thing

@@ -2,7 +2,7 @@
 // drives the app into a fixed, shareable position without touching it — which is what
 // the screenshot report needs (`?game=freecell&state=midgame`, then shoot it).
 //
-//   ?game=mini     which game, by id       ?state=midgame  a named `Scenario`
+//   ?game=spider2  which game, by id       ?state=midgame  a named `Scenario`
 //   ?scene=raster  which scene, by id      ?seed=7         the deal number
 //   ?animate=off   still every card       ?raster=svg     the raster scene's rendering
 //   ?cascade=pose  freeze the cascade at a fixed frame

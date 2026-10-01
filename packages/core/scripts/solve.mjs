@@ -8,6 +8,7 @@
 //   mise run solve -- --game minifreecell 1-200 # …a short-deck one, likewise
 //   mise run solve -- --limit 10 1-200      # give up on a deal after ten seconds
 //   mise run solve -- --limit 10+10 147     # …then ask the same search for ten more
+//   mise run solve -- --nodes 5000000 147   # a bigger budget than the board's own
 //
 // What it's for, and what to measure with it: docs/solver.md § Measuring it. That
 // section also says what the "held" figure is and isn't.
@@ -19,6 +20,10 @@
 // Several waits joined by `+` are asked one after another of the *same* search, the
 // way a driver that ran out of patience would ask for more: each carries on from where
 // the last stopped, and the effort reported is all of them together.
+//
+// `--nodes` replaces the board's cap on positions grown, keeping its heaps. A board's
+// own cap is about thirty seconds of search, the most anything waits by default; this is
+// how a run that means to wait longer says so.
 //
 // It runs core's *compiled* output directly (ReScript compiles in-source to
 // `.res.mjs`), which is also the proof that the solver is reachable from plain
@@ -35,11 +40,15 @@ import * as Position from "../src/Position.res.mjs"
 import * as Solver from "../src/Solver.res.mjs"
 
 function parseArgs(argv) {
-  const opts = { seeds: [], quiet: false, game: "freecell", limits: null }
+  const opts = { seeds: [], quiet: false, game: "freecell", limits: null, nodes: null }
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i]
     if (arg === "--quiet") opts.quiet = true
     else if (arg === "--game") opts.game = argv[++i]
+    else if (arg === "--nodes") {
+      opts.nodes = Number(argv[++i])
+      if (!(Number.isInteger(opts.nodes) && opts.nodes > 0)) throw new Error("--nodes takes a whole number of positions")
+    }
     else if (arg === "--limit") {
       opts.limits = String(argv[++i]).split("+").map(Number)
       if (!opts.limits.every((limit) => limit > 0))
@@ -71,13 +80,29 @@ let totalMoves = 0
 let worst = { seed: null, ms: 0 }
 let totalHeld = 0
 let most = { seed: null, bytes: 0 }
+let totalArrays = 0
 
 // The collector has to be callable to read a live heap rather than a live heap plus
 // whatever garbage happened not to be swept yet — the mise task passes the flag.
 if (typeof globalThis.gc !== "function") throw new Error("run with node --expose-gc (mise run solve does)")
+// A typed array's contents live outside the JavaScript heap, in the backing stores
+// `arrayBuffers` counts — which is where the search keeps its graph. A buffer the
+// collector has found dead can still be counted there for a collection or two, so
+// collect until two readings agree: a column outgrown just before the search stopped
+// otherwise reads as held.
 const liveHeap = () => {
-  globalThis.gc()
-  return process.memoryUsage().heapUsed
+  const read = () => {
+    globalThis.gc()
+    const { heapUsed, arrayBuffers } = process.memoryUsage()
+    return heapUsed + arrayBuffers
+  }
+  let last = read()
+  for (let i = 0; i < 5; i++) {
+    const now = read()
+    if (now === last) break
+    last = now
+  }
+  return last
 }
 
 // Ask one search every wait in turn, stopping at the first that isn't cut short by the
@@ -90,9 +115,10 @@ const liveHeap = () => {
 function think(position) {
   const baseline = liveHeap()
   const started = Date.now()
-  // The two `undefined`s are `~budget` and `~weights`, left to the board's own: a
-  // ReScript optional argument is positional by the time it reaches here.
-  const search = Solver.Search.make(position, undefined, undefined)
+  // `~budget` and `~weights`, positionally — a ReScript optional argument is by the time
+  // it reaches here. The board's own for both, unless `--nodes` raised the cap.
+  const budget = opts.nodes === null ? undefined : { ...Solver.budgetFor(position), maxNodes: opts.nodes }
+  const search = Solver.Search.make(position, budget, undefined)
   let line, effort
   let asked = 0
   do [line, effort] = Solver.solveOn(search, asks[asked++])
@@ -104,6 +130,9 @@ function think(position) {
 }
 
 const mb = (bytes) => (bytes < 1e6 ? "<1 MB" : `${(bytes / 1e6).toFixed(0)} MB`)
+// Held, and beside it what the search says its own arrays hold (`effort.bytes`) — the
+// two should agree to within what the arrays don't count.
+const holding = (held, effort) => `holding ${mb(held)} (arrays ${mb(effort.bytes)})`
 
 for (const seed of opts.seeds) {
   const deal = Game.dealt(game, seed)
@@ -126,7 +155,8 @@ for (const seed of opts.seeds) {
   totalMs += took
   if (took > worst.ms) worst = { seed, ms: took }
   totalHeld += held
-  if (held > most.bytes) most = { seed, bytes: held }
+  if (held > most.bytes) most = { seed, bytes: held, arrays: effort.bytes }
+  totalArrays += effort.bytes
   // Three ways to come back without a line, and they are three different facts: a proof
   // the deal can't be won, the budget spent, and the caller's own limit reached.
   const proved = Solver.provedUnwinnable(effort)
@@ -140,16 +170,16 @@ for (const seed of opts.seeds) {
   const why = proved ? "every line was tried" : ranOut ? limitSaid : "the budget ran out"
   if (!opts.quiet) {
     console.log(`\n=== deal #${seed} ===`)
-    if (!plan) console.log(`  no solution — ${why}${onAsk}, ${took}ms of thinking holding ${mb(held)}`)
+    if (!plan) console.log(`  no solution — ${why}${onAsk}, ${took}ms of thinking ${holding(held, effort)}`)
     else {
       plan.forEach((step, i) => console.log(`  ${String(i + 1).padStart(3)}. ${step.description}`))
       console.log(
-        `  ${plan.length} moves to a finishable board${onAsk}, ${took}ms of thinking holding ${mb(held)}`,
+        `  ${plan.length} moves to a finishable board${onAsk}, ${took}ms of thinking ${holding(held, effort)}`,
       )
     }
   } else if (!plan)
     console.log(
-      `deal ${seed}: ${proved ? "unwinnable" : ranOut ? "out of time" : "no solution"} (${took}ms, ${mb(held)})`,
+      `deal ${seed}: ${proved ? "unwinnable" : ranOut ? "out of time" : "no solution"} (${took}ms, ${mb(held)}, arrays ${mb(effort.bytes)})`,
     )
 }
 
@@ -163,8 +193,8 @@ console.log(
     (outOfTime ? ` (${outOfTime} out of time)` : "") +
     ` — ${per(totalMs)}ms and ${(totalMoves / Math.max(solved, 1)).toFixed(0)} moves a deal on average` +
     (worst.seed === null ? "" : `, worst deal #${worst.seed} at ${worst.ms}ms`) +
-    ` — ${mb(totalHeld / Math.max(n, 1))} held a deal on average` +
-    (most.seed === null ? "" : `, most by #${most.seed} at ${mb(most.bytes)}`),
+    ` — ${mb(totalHeld / Math.max(n, 1))} held a deal on average (arrays ${mb(totalArrays / Math.max(n, 1))})` +
+    (most.seed === null ? "" : `, most by #${most.seed} at ${mb(most.bytes)} (arrays ${mb(most.arrays)})`),
 )
 
 process.exit(unsolved === 0 ? 0 : 1)

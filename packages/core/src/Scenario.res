@@ -503,7 +503,7 @@ let freecellScenarios: array<named> = [
   {name: "finish", label: "Finishable", build: freecellFinish, seed: None},
 ]
 
-// Spiderette's, addressed the same way (`?game=spiderette&state=dealt`, `deal
+// Spiderette's, addressed the same way (`?game=spiderette2&state=dealt`, `deal
 // spiderette dealt`), and shared by its three variants since all build from whatever
 // pack the board carries — and by Spider's three, since each builds from the board's
 // cascades and foundations as well: the deep column is posed on the first of however
