@@ -27,7 +27,8 @@ let clock = () => Date.now()
 // let go of, and the asker is the one who knows which question is current.
 //
 //   `Open`   — the board to think about, replacing any other along with its search.
-//   `Moved`  — the same game, a different state: the search behind it goes.
+//   `Moved`  — the same game, a different state: the search behind it is re-rooted
+//              there at the next think, keeping what is reachable from it.
 //   `Think`  — spend up to `ms` on the open board (`None`: until it answers), resuming
 //              whatever search an earlier think left.
 //   `Stop`   — end the think in progress at the next slice boundary, answering nothing.
@@ -69,8 +70,8 @@ let makeYield: unit => (unit => unit) => unit = %raw(`
 `)
 
 // The board held open. `search` is grown from it on the first `think` and kept for the
-// next, so a second think carries on where the first left off; anything that changes the
-// board drops it.
+// next, so a second think carries on where the first left off; a `Moved` hands it the
+// new board, and a board it can't read drops it.
 type held = {game: Game.t, state: GameState.t, mutable search: option<Solver.Search.t>}
 
 let serve = () => {
@@ -154,7 +155,16 @@ let serve = () => {
       held := Some({game, state, search: None})
     | Moved({state}) =>
       thinking := None
-      held := held.contents->Option.map(board => {...board, state, search: None})
+      held :=
+        held.contents->Option.map(board => {
+          let search = switch (board.search, Position.ofGameState(~game=board.game, state)) {
+          | (Some(search), Some(position)) =>
+            Solver.Search.moved(search, position)
+            Some(search)
+          | _ => None
+          }
+          {...board, state, search}
+        })
     | Think({ask, ms}) => think(ask, ms)
     | Stop => thinking := None
     | Forget =>

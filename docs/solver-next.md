@@ -197,6 +197,67 @@ is a move proved to lead nowhere, and after an undo the search never re-enters
 it; the app could say so. A line found from the position after a move is, after
 the undo, that line with one move in front of it, known at once.
 
+### Re-rooting as built
+
+`Solver.Search.moved` and the re-root at the top of the next `think` (or `answer`),
+over `Graph.walk` and `Graph.collect`. The rule above holds; these are the places it
+had to be more careful than the table says.
+
+- **Missing with no child held is `make` again**, exactly — same graph, same heaps,
+  `turn` back to the first — and so is a board that already finishes. Only `grown`,
+  `tried` and the bytes carry over, because the effort is the search's and not the
+  graph's.
+- **The cap counts what is held.** `maxNodes` is checked against the grown nodes the
+  graph still holds (`closed`), not against `grown`, which counts every position
+  grown since `make`. A search a player keeps open all game would otherwise answer
+  `Full` on a board it holds little of.
+- **The walk replays, and mostly doesn't compare.** Each closed node's moves are
+  generated on a `Board` and each child looked up by hash. A child that was grown
+  from this node by this very move is that position by construction, so it is taken
+  without `Position.alike`; any other match is compared, as growing it was. What is
+  left is the comparisons on transpositions, and on a transposition-heavy board that
+  is most of the walk (`docs/solver.md` § Re-rooting).
+- **A new parent never makes a cycle.** A kept node whose parent was let go of hangs
+  from the node it was first reached from. That node can lie under it in the old
+  graph, so the new parents are followed up to the root, and wherever they loop the
+  loop is broken at a node whose old parent was reached after it — which every loop
+  has, since the node a child was reached from was always reached first.
+- **Strays are adopted.** A child of a kept closed node with no node of its own is
+  added as an open node — or, if it finishes, is the line. They come from the node a
+  search found its line under, which it stopped growing at the finishing move; so a
+  line survives a re-root whenever the node it ran through does, and a re-root after
+  the line was abandoned leaves that node's other children waiting rather than lost.
+- **A line is said in the player's layout.** A re-parented closed node keeps its own
+  layout (its position stored, as above), so a line through it is replayed alongside
+  the moves recorded against it, and each move from the first node whose layout parts
+  from the replayed one is said against the replayed one instead (`Graph.translate`):
+  the same cards, to and from the cells and columns that hold them there. Until a
+  re-root has kept anything, layouts can't part and `lineTo` is what it was.
+- **An undo of a deal stands on a longer stock** than any node had. A stored position
+  keeps only its stock's length and reads the cards back off a stock the graph holds,
+  so that stock is widened to the longest seen before anything is read.
+
+**With a stock, column order is part of the position.** A deal lands one card on each
+column in turn, so two boards with the same piles in a different column order are
+dealt different cards. The canonical form says they are one position, and the search
+grows them as one: whichever layout reached it first is the one its subtree was grown
+for. For growing that is a question about the search, not about re-rooting, and it is
+left open here — it means a position can be pruned as seen when the board it stands
+for is not, which bears on whether `Exhausted` is a proof on a board that still deals.
+For re-rooting it is a correctness question, and it is answered:
+
+- a closed node is walked in its own layout while there is a stock, so the walk finds
+  the children it was grown with rather than another layout's;
+- a closed node that can only be kept by hanging it from a parent whose move lays it
+  out in another column order, while there is a stock, is **reopened** instead: it
+  becomes an open node in the layout its new parent gives it and is grown again from
+  there, and what was under it is kept only if something else reaches it. A found root
+  in another column order from the player's board is reopened likewise. `collect`
+  says so by declining, and the walk runs again with the reopened nodes as leaves.
+
+On every board without a stock the two layouts generate the same children and
+translate move for move, so nothing is ever reopened there.
+
 ## The ladder, replaced
 
 A restart cannot be resumed — "ten more seconds" has no meaning across one — so

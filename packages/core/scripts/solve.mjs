@@ -9,6 +9,7 @@
 //   mise run solve -- --limit 10 1-200      # give up on a deal after ten seconds
 //   mise run solve -- --limit 10+10 147     # …then ask the same search for ten more
 //   mise run solve -- --nodes 5000000 147   # a bigger budget than the board's own
+//   mise run solve -- --reroot 1-100        # …and what following a move and its undo costs
 //
 // What it's for, and what to measure with it: docs/solver.md § Measuring it. That
 // section also says what the "held" figure is and isn't.
@@ -25,6 +26,13 @@
 // own cap is about thirty seconds of search, the most anything waits by default; this is
 // how a run that means to wait longer says so.
 //
+// `--reroot` times the walk a search pays on every move a player makes with it open
+// (`Solver.Search.moved`): once the search has answered, the board moves one move — the
+// line's first, or the first move offered where there is no line — and the next think
+// re-roots there; then the move is taken back and it re-roots again. Each is timed with
+// the nodes it kept. The per-node cost it prints is what docs/solver.md § Re-rooting
+// records.
+//
 // It runs core's *compiled* output directly (ReScript compiles in-source to
 // `.res.mjs`), which is also the proof that the solver is reachable from plain
 // Node — the same import the web-app's autoplay harness uses.
@@ -40,10 +48,11 @@ import * as Position from "../src/Position.res.mjs"
 import * as Solver from "../src/Solver.res.mjs"
 
 function parseArgs(argv) {
-  const opts = { seeds: [], quiet: false, game: "freecell", limits: null, nodes: null }
+  const opts = { seeds: [], quiet: false, game: "freecell", limits: null, nodes: null, reroot: false }
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i]
     if (arg === "--quiet") opts.quiet = true
+    else if (arg === "--reroot") opts.reroot = true
     else if (arg === "--game") opts.game = argv[++i]
     else if (arg === "--nodes") {
       opts.nodes = Number(argv[++i])
@@ -126,8 +135,32 @@ function think(position) {
   const took = Date.now() - started
   const held = liveHeap() - baseline
   if (search.grown !== effort.positions) throw new Error("the search and its effort disagree")
-  return { line, effort, took, held, asked }
+  const rerooted = opts.reroot ? reroot(search, position, line) : null
+  return { line, effort, took, held, asked, rerooted }
 }
+
+// One move along, and back: the two re-roots `--reroot` measures, each as the nodes the
+// graph held before, the nodes it kept, and the milliseconds the walk took. A think of
+// nothing is the re-root alone.
+function reroot(search, position, line) {
+  const move = line?.[0] ?? Position.legalMoves(position)[0]
+  if (move === undefined) return null
+  const timed = (board) => {
+    const before = search.graph.size
+    Solver.Search.moved(search, board)
+    const started = performance.now()
+    Solver.Search.think(search, 0)
+    return { before, kept: search.graph.size, ms: performance.now() - started }
+  }
+  const on = timed(Position.applyMove(position, move))
+  const back = timed(position)
+  return { on, back }
+}
+
+let rerootMs = 0
+let rerootKept = 0
+let rerootWorst = { seed: null, ms: 0 }
+const rerootSaid = ({ before, kept, ms }) => `kept ${kept} of ${before} nodes in ${ms.toFixed(0)}ms`
 
 const mb = (bytes) => (bytes < 1e6 ? "<1 MB" : `${(bytes / 1e6).toFixed(0)} MB`)
 // Held, and beside it what the search says its own arrays hold (`effort.bytes`) — the
@@ -138,7 +171,14 @@ for (const seed of opts.seeds) {
   const deal = Game.dealt(game, seed)
   const position = Position.ofGameState(deal, GameState.initial(deal))
   if (!position) throw new Error(`${game.name} isn't a board the solver models`)
-  const { line, effort, took, held, asked } = think(position)
+  const { line, effort, took, held, asked, rerooted } = think(position)
+  if (rerooted) {
+    for (const { kept, ms } of [rerooted.on, rerooted.back]) {
+      rerootMs += ms
+      rerootKept += kept
+      if (ms > rerootWorst.ms) rerootWorst = { seed, ms, kept }
+    }
+  }
   // Which ask answered, when there was more than one to make.
   const onAsk = asks.length > 1 && !Solver.ranOutOfTime(effort) ? ` on ask ${asked} of ${asks.length}` : ""
   // The line as steps, the way `planSteps` says them — built here so the effort
@@ -177,6 +217,8 @@ for (const seed of opts.seeds) {
         `  ${plan.length} moves to a finishable board${onAsk}, ${took}ms of thinking ${holding(held, effort)}`,
       )
     }
+    if (rerooted)
+      console.log(`  re-rooted one move on: ${rerootSaid(rerooted.on)}; and back: ${rerootSaid(rerooted.back)}`)
   } else if (!plan)
     console.log(
       `deal ${seed}: ${proved ? "unwinnable" : ranOut ? "out of time" : "no solution"} (${took}ms, ${mb(held)}, arrays ${mb(effort.bytes)})`,
@@ -196,5 +238,11 @@ console.log(
     ` — ${mb(totalHeld / Math.max(n, 1))} held a deal on average (arrays ${mb(totalArrays / Math.max(n, 1))})` +
     (most.seed === null ? "" : `, most by #${most.seed} at ${mb(most.bytes)} (arrays ${mb(most.arrays)})`),
 )
+
+if (opts.reroot && rerootKept > 0)
+  console.log(
+    `re-rooting: ${((rerootMs / rerootKept) * 1000).toFixed(1)}ms per thousand nodes kept, over ${rerootKept} nodes` +
+      ` — worst deal #${rerootWorst.seed}, ${rerootWorst.ms.toFixed(0)}ms to keep ${rerootWorst.kept}`,
+  )
 
 process.exit(unsolved === 0 ? 0 : 1)

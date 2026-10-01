@@ -139,7 +139,7 @@ about the board:
 | `ending` | what happened | `autoplay` says |
 |---|---|---|
 | `Exhausted` | the frontier emptied: every reachable position was seen, and none finishes | `Unwinnable` — a proof |
-| `OutOfNodes` | the search grew its `maxNodes` with positions still waiting | `NoLine` |
+| `OutOfNodes` | the search holds its `maxNodes` grown positions with others still waiting | `NoLine` |
 | `OutOfTime` | the caller's `patience` ran out, with the budget not yet spent | `OutOfPatience` |
 
 They are `Search.answer`'s four with a clock read against it: `Full` is `OutOfNodes`,
@@ -685,7 +685,8 @@ second buys: § The budget.
 
 ### The budget
 
-Each board gets **two heaps over one search**, and a cap on the positions it grows.
+Each board gets **two heaps over one search**, and a cap on the grown positions it
+holds — every one it has grown, until a re-root (§ Re-rooting) lets some go.
 `Solver.budgetFor` picks one the same way `weightsFor` does: the law, and then whether
 the board deals.
 
@@ -755,6 +756,49 @@ defaults answer, against what the ceiling would, is in the rows marked with neit
 `--nodes` nor `--limit` beside the ones marked `--nodes`. A watched board never reaches
 either: § What the interactive wait costs has what ten seconds reaches, and how little
 it holds.
+
+### Re-rooting
+
+What a player pays on every move with a search open: `Search.moved`, and the walk the
+next `think` starts with to keep what is reachable from the new board and let go of the
+rest. The rule and its repairs are `docs/solver-next.md` § Re-rooting; this is what it
+costs. `mise run solve -- --reroot` measures it: once a deal's search has answered, the
+board moves one move — the line's first — and the search re-roots there, then the move
+is taken back and it re-roots again, and each re-root is timed with the nodes it kept.
+
+| Date | Board | Deals | Nodes kept | Per thousand kept | Worst | Environment |
+|---|---|---|---|---|---|---|
+| 2026-10-01 | FreeCell | 1–200 | 3.3 M | 8.2 ms | #150, 4.8 s to keep 530,000 | Node v26.9.0, cloud sandbox, four runs at once |
+| 2026-10-01 | Mini | 1–200 | 27,000 | 18.3 ms | #80, 10 ms to keep 306 | Node v26.9.0, cloud sandbox, four runs at once |
+| 2026-10-01 | Simple Simon | 1–100 | 6.5 M | 7.3 ms | #60, 9.7 s to keep 1,354,000 | Node v26.9.0, cloud sandbox, four runs at once |
+| 2026-10-01 | Spiderette · 2 suits | 1–40 | 4.8 M | 8.3 ms | #6, 8.4 s to keep 976,000 | Node v26.9.0, cloud sandbox, four runs at once |
+| 2026-10-01 | Spiderette · 4 suits | 1–20 | 15.3 M | 7.7 ms | #3, 20.0 s to keep 2,675,000 | Node v26.9.0, cloud sandbox, four runs at once |
+
+**About eight microseconds a node, on every board**, open and closed alike — Mini's
+higher figure is graphs too small to amortise anything. A graph the default cap fills
+holds one to three million nodes, open and closed, so a re-root of one costs five to
+twenty seconds — the interactive wait itself, or twice it — and a third to a half of
+what growing it cost: Simple Simon #60 grew its graph in 24 s and re-roots it in 10,
+four-suit Spiderette #3 in 62 s and 20. The time goes on lookups, as
+growing did. A child grown from the node being walked by the move being replayed is
+found without a comparison; every other child is a transposition, compared card for
+card, and on Simple Simon that is most of them.
+
+**That is the number that decides child links.** Storing each closed node's children
+would replace those lookups with a read — four bytes an edge, several edges a node, on
+a graph that holds about sixty bytes a node today (§ The search). Whether a watched
+board's re-root is worth that is the decision this measurement is for, and it is not
+taken here.
+
+**What a re-root holds.** `effort.bytes` drops as it should: the kept nodes are copied
+into arrays sized to hold them, so moving one move on from two-suit Spiderette #6 at a
+300,000 cap took the search from 33 MB to 8. The cap counts the grown positions a
+search *holds*, so a re-rooted search that grows back to it holds what a fresh one from
+the same board does at the cap, or less — 36 MB against 38 on that deal. Short of the
+cap it can hold more on the way to a line: it carries a frontier ordered from where it
+was opened, and Simple Simon #60 one move on found its line holding 51 MB where a fresh
+search from that board found one at 16. The Held column, the most a deal holds, is
+bounded by the cap either way.
 
 ## The packed position
 
