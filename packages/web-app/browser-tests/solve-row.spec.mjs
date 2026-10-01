@@ -34,12 +34,6 @@ const DEAL = "/?game=freecell&seed=24680&animate=off"
 // board that answered in 50 ms could pass it by accident.
 const SLOW_DEAL = "/?game=spiderette4&seed=147&animate=off"
 
-// A deal that needs a second ask: out of time at ten seconds, and solved at fifteen by
-// the same search carrying on (`mise run solve -- --game spider2 --limit 10+10` finds
-// it) — early in the second ask rather than at its end, so a slower machine still has
-// room.
-const TWO_ASK_DEAL = "/?game=spider2&seed=21&animate=off"
-
 // `Command.autoplayMore` at `Solver.interactive`: the modal's offer of another wait.
 const MORE = "10s more"
 
@@ -104,35 +98,53 @@ test("an answer with no line to play offers no Autoplay, and Close goes back to 
   await expect(solveRow(page)).toBeVisible()
 })
 
-test("a search out of time carries on for ten more seconds at a time, and finds what one ask couldn't", async ({
+test("ten more seconds carries on with the same search rather than starting another", async ({
   page,
 }) => {
-  test.setTimeout(150_000)
-  await page.goto(TWO_ASK_DEAL)
+  test.setTimeout(90_000)
+  // What crosses to the worker, and what it says back, read off the page's own `Worker`:
+  // whether a second ask continues the first is a fact about that conversation, where a
+  // line found or not depends on how fast the machine grows positions.
+  await page.addInitScript(() => {
+    window.__worker = []
+    const Base = window.Worker
+    window.Worker = class extends Base {
+      constructor(...args) {
+        super(...args)
+        this.addEventListener("message", (e) => window.__worker.push({ heard: e.data }))
+      }
+      postMessage(message) {
+        window.__worker.push({ told: message.TAG ?? message, ask: message.ask })
+        super.postMessage(message)
+      }
+    }
+  })
+  await page.goto(SLOW_DEAL)
   await settleBoard(page)
   await openDebug(page)
 
   await solveRow(page).click()
   await expect(solveDialog(page)).toHaveText(/gave up after/, { timeout: 30_000 })
+  const firstAsk = await page.evaluate(() => window.__worker.length)
+  await solveDialog(page).getByRole("button", { name: MORE }).click()
+  // Said to be the same search, and only Close to press while it is.
+  await expect(solveDialog(page)).toHaveText(/same search/)
+  await expect(solveDialog(page).getByRole("button")).toHaveText(["Close"])
+  await expect(solveDialog(page)).not.toHaveText(/same search/, { timeout: 30_000 })
 
-  // One more ask finds it on a quiet machine; a loaded one grows fewer positions in its
-  // ten seconds, so it is asked again while it is still offered. What proves the asks
-  // are one search is the time the answer reports: a search started again on each ask
-  // would run out at ten seconds every time, and could never say more.
-  for (let asks = 2; asks <= 4; asks++) {
-    await solveDialog(page).getByRole("button", { name: MORE }).click()
-    // Said to be the same search, and only Close to press while it is.
-    await expect(solveDialog(page)).toHaveText(/same search/)
-    await expect(solveDialog(page).getByRole("button")).toHaveText(["Close"])
-    await expect(solveDialog(page)).toHaveText(/solution found|gave up/, { timeout: 30_000 })
-    if (!(await solveDialog(page).getByRole("button", { name: MORE }).isVisible())) break
-  }
+  const log = await page.evaluate(() => window.__worker)
+  const progress = (entries, ask) =>
+    entries.filter((e) => e.heard?.TAG === "Progress" && e.heard.ask === ask).map((e) => e.heard.positions)
+  const [first, second] = [log.slice(0, firstAsk), log.slice(firstAsk)]
+  const ask = second.find((e) => e.told === "Think").ask
+  // The second ask is a `Think` and nothing else — no `Open` to start the board again…
+  expect(second.filter((e) => e.told).map((e) => e.told)).toEqual(["Think"])
+  // …and its first slice grows on from the positions the first ask left.
+  expect(progress(second, ask)[0]).toBeGreaterThan(progress(first, ask - 1).at(-1))
+  // The sentence counts both waits, whichever answer it is.
   const said = await solveDialog(page).locator(".solve-dialog__message").innerText()
-  const [, seconds] = said.match(/solution found in ([\d.]+)s/) ?? []
-  expect(Number(seconds), said).toBeGreaterThan(10)
-
-  await solveDialog(page).getByRole("button", { name: "Autoplay" }).click()
-  await expect(page.locator(".win-overlay")).toBeVisible({ timeout: 90_000 })
+  const [, seconds] = said.match(/(?:gave up after|found in) ([\d.]+)s/) ?? []
+  if (seconds !== undefined) expect(Number(seconds), said).toBeGreaterThan(10)
 })
 
 test("the page keeps painting while the solver thinks, and the row says so", async ({ page }) => {
