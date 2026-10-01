@@ -1,8 +1,8 @@
-// A `Position` the search can play forward and back **in place** — play a move,
-// hash and weigh the result, take the move back, and no copy made along the way.
-// `Position.applyMove` copies the whole board for every child a node generates, and
-// that copy and the collector it feeds are most of the solver's runtime
-// (`docs/solver.md` § On making this faster); this is the board that doesn't.
+// A `Position` the search plays forward and back **in place** — play a move, hash
+// and weigh the result, take the move back, and no copy made along the way. The search
+// grows every node on one (`Solver.Search.think`) and the graph reads a node back onto
+// one (`Graph.standOn`); `Position.applyMove` would copy the whole board for every
+// child instead, and what that cost is `docs/solver.md` § On making this faster.
 //
 // **`Position` is its oracle.** Every function over the board below is a
 // re-reading of the `Position` function of the same name on a different layout,
@@ -80,11 +80,22 @@ let load = (s: Position.t): t => {
   }
 }
 
-// `load` again, into a board already made — no allocation, for a caller that hashes
-// a position at every child it generates. **Only a position of the same deal**: the
+// Let go of every move in play, keeping the board as it stands: nothing is left to
+// take back. For a caller about to overwrite the whole board — `reload`, or one reading
+// a layout of its own into it.
+@set external truncate: (array<int>, @as(0) _) => unit = "length"
+
+let forget = (b: t) => {
+  b.journal->truncate
+  b.frames->truncate
+}
+
+// `load` again, into a board already made — no allocation, for a caller that stands
+// it on a position at every node it grows. **Only a position of the same deal**: the
 // same pack and columns, and a stock that is a prefix of the one first loaded, which
-// every position a search reaches from its start is. Nothing may be in play.
+// every position a search reaches from its start is. Whatever was in play is let go of.
 let reload = (b: t, s: Position.t) => {
+  forget(b)
   for i in 0 to Array.length(s.cells) - 1 {
     b.cells->Array.setUnsafe(i, s.cells->Array.getUnsafe(i))
   }
@@ -109,6 +120,73 @@ let toPosition = (b: t): Position.t => {
   ),
   down: b.down->Array.copy,
   stock: b.stock->Array.slice(~start=0, ~end=b.undealt),
+}
+
+// `Position.alike`, on two boards of one deal: the same foundations and stock length,
+// and the cells and the columns the same *multisets*. What a search asks to be sure a
+// hash that matched meant the same position.
+let alike = (a: t, b: t): bool => {
+  let columnsEqual = (x: t, i: int, y: t, j: int): bool => {
+    let n = x.height->Array.getUnsafe(i)
+    x.down->Array.getUnsafe(i) == y.down->Array.getUnsafe(j) &&
+    n == y.height->Array.getUnsafe(j) && {
+      let k = ref(0)
+      while k.contents < n && cardAt(x, ~col=i, ~i=k.contents) == cardAt(y, ~col=j, ~i=k.contents) {
+        k := k.contents + 1
+      }
+      k.contents == n
+    }
+  }
+  // Each column of `a` as often in `a` as in `b` — with as many columns on each side,
+  // that is the two multisets equal.
+  let sameColumns = () => {
+    let n = columns(a)
+    let ok = ref(true)
+    let i = ref(0)
+    while ok.contents && i.contents < n {
+      let inA = ref(0)
+      let inB = ref(0)
+      for j in 0 to n - 1 {
+        if columnsEqual(a, i.contents, a, j) {
+          inA := inA.contents + 1
+        }
+        if columnsEqual(a, i.contents, b, j) {
+          inB := inB.contents + 1
+        }
+      }
+      ok := inA.contents == inB.contents
+      i := i.contents + 1
+    }
+    ok.contents
+  }
+  // The cells likewise, counting empties as a value like any other.
+  let sameCells = () => {
+    let n = Array.length(a.cells)
+    let ok = ref(true)
+    let i = ref(0)
+    while ok.contents && i.contents < n {
+      let card = a.cells->Array.getUnsafe(i.contents)
+      let inA = ref(0)
+      let inB = ref(0)
+      for j in 0 to n - 1 {
+        if a.cells->Array.getUnsafe(j) == card {
+          inA := inA.contents + 1
+        }
+        if b.cells->Array.getUnsafe(j) == card {
+          inB := inB.contents + 1
+        }
+      }
+      ok := inA.contents == inB.contents
+      i := i.contents + 1
+    }
+    ok.contents
+  }
+  a.undealt == b.undealt &&
+  Array.length(a.cells) == Array.length(b.cells) &&
+  columns(a) == columns(b) &&
+  a.found->Array.everyWithIndex((n, suit) => b.found->Array.getUnsafe(suit) == n) &&
+  sameCells() &&
+  sameColumns()
 }
 
 // --- The journal -------------------------------------------------------------

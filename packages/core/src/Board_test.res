@@ -138,6 +138,14 @@ let walk = (~game: Game.t, ~seed: int, ~reached: reached, ~failures: array<strin
         if Position.alike(s, after) != (Position.key(s) == Position.key(after)) {
           fail(`${said}: alike and key disagree`)
         }
+        Board.reload(scratch, shuffled(after))
+        if !Board.alike(board, scratch) {
+          fail(`${said}: the same board in another order isn't alike on the board`)
+        }
+        Board.reload(scratch, s)
+        if Board.alike(board, scratch) != Position.alike(after, s) {
+          fail(`${said}: Board.alike and Position.alike disagree`)
+        }
         Board.takeBack(board)
         if Board.toPosition(board) != s {
           fail(`${said}: doesn't take back`)

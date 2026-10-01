@@ -660,6 +660,11 @@ second buys: § The budget.
   kept, packed one byte per card into an arena; an open node's is its parent's with
   its move played again, the trade `parent` and `trail` objects used to make. What
   that holds per board is § The budget's to say.
+- **A node is grown on one board, in place** (`Board.res`). It is stood on once —
+  read out of the arena, or its nearest kept ancestor's position read and the moves
+  down from there played — and then each of its moves is played, hashed, looked up,
+  weighed and taken back. No position is copied per child; what that bought is
+  § On making this faster.
 - **The open list is a binary heap** (`Solver.Heap`) of node indices, not a sorted
   array: it's pushed and popped hundreds of thousands of times per deal, and
   re-sorting it that often is the whole cost of the search. A priority is read off
@@ -668,8 +673,8 @@ second buys: § The budget.
 - **The visited set is a hash table, and a hit is checked.** It files each node by
   `Board.hash`, which agrees with `Position.key` — two positions that differ only in
   *which* free cell or *which* column holds what are the same position — and a hash
-  that matches counts as seen only once the node's position, rebuilt, is
-  `Position.alike` the one asked about. A collision taken for "seen" would prune a
+  that matches counts as seen only once the node's position, stood on a second
+  board, is `Board.alike` the one asked about. A collision taken for "seen" would prune a
   position nobody visited, and `Exhausted` would stop being a proof. No string is
   built for a position anywhere on this path.
 - **One node per position, and `closed` is on the node.** A position reached no more
