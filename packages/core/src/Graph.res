@@ -201,6 +201,12 @@ let close = (graph: t, node: int, b: Board.t) => {
 }
 
 // Stand `b` on a kept node's position, read straight out of the arena.
+//
+// **This writes `Board`'s fields directly**, so it knows `Board`'s layout as well as the
+// arena's, and a change to either is a change here. The cleaner boundary is the arena's
+// format moving into `Board`, beside `load` — which is where a port to another language
+// would want it, the board and its stored form behind one interface. A reader callback
+// handed to `Board` instead would cost a call per byte on the search's hottest read.
 let unpack = (graph: t, node: int, b: Board.t) => {
   let arena = graph.arena
   let cursor = ref(graph.stored->at(node))
