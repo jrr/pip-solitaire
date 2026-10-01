@@ -302,6 +302,7 @@ below it. Why it stands: § Why the unsolved count stands.
 | 2026-10-01 | 1–200 | 173/200 | 8 | 19 | 5.2 s | 101 | #3 at 37.7 s | 20 MB, #3 at 143 MB | Node v26.9.0, cloud sandbox, three soaks at once; the graph in typed arrays at the default cap, in two halves |
 | 2026-10-01 | 1–200 | 173/200 | 8 | 19 | 7.0 s | 101 | #3 at 51.0 s | 20 MB, #3 at 143 MB | Node v26.9.0, cloud sandbox, two soaks at once; the graph in typed arrays, re-run beside the row below |
 | 2026-10-01 | 1–200 | 173/200 | 8 | 19 | 2.9 s | 101 | #171 at 20.0 s | 20 MB, #3 at 143 MB | Node v26.9.0, cloud sandbox, two soaks at once; grown on a `Board` |
+| 2026-10-01 | 1–200 | 171/200 | 8 | 21 | 5.0 s | 102 | #200 at 42.4 s | 24 MB, #120 at 188 MB | Node v26.9.0, cloud sandbox, three soaks at once; grown on a `Board`, column order kept |
 
 **Spiderette · 1 suit and · 2 suits**, over the same 1–200. The same law, budget
 and weights on a cheaper deck — these are the repeated packs, where `found`
@@ -327,6 +328,8 @@ and an unsolved count of its own.
 | 2026-10-01 | 1 suit | 1–200 | 198/200 | 2 | 0 | 75 ms | 71 | #143 at 1.7 s | <1 MB, #143 at 11 MB | Node v26.9.0, cloud sandbox, two soaks at once; grown on a `Board` |
 | 2026-10-01 | 2 suits | 1–200 | 190/200 | 5 | 5 | 2.3 s | 85 | #120 at 42.8 s | 7 MB, #120 at 121 MB | Node v26.9.0, cloud sandbox, two soaks at once; the graph in typed arrays, re-run beside the row below |
 | 2026-10-01 | 2 suits | 1–200 | 190/200 | 5 | 5 | 963 ms | 85 | #120 at 18.2 s | 7 MB, #120 at 121 MB | Node v26.9.0, cloud sandbox, two soaks at once; grown on a `Board` |
+| 2026-10-01 | 1 suit | 1–200 | 198/200 | 2 | 0 | 5.2 s | 71 | #179 at 85.8 s | 22 MB, #38 at 221 MB | Node v26.9.0, cloud sandbox, three soaks at once; grown on a `Board`, column order kept |
+| 2026-10-01 | 2 suits | 1–200 | 186/200 | 5 | 9 | 6.3 s | 85 | #1 at 159.7 s | 33 MB, #1 at 710 MB | Node v26.9.0, cloud sandbox, three soaks at once; grown on a `Board`, column order kept |
 
 **Mini and Micro**, under FreeCell's law and its weights. Every deal is
 *answered* — the search either finds a line or empties its frontier long before
@@ -490,6 +493,12 @@ and under a cap not even those, since a faster machine gets further in ten secon
 | 2026-10-01 | Spiderette · 2 suits | 1–200 | 10 s | 188 | 5 | 7 | 800 ms | #45 at 10.0 s | 6 MB, #184 at 76 MB |
 | 2026-10-01 | Spiderette · 4 suits | 1–200 | none | 173 | 8 | 19 | 2.9 s | #171 at 20.0 s | 20 MB, #3 at 143 MB |
 | 2026-10-01 | Spiderette · 4 suits | 1–200 | 10 s | 165 | 8 | 27 | 2.2 s | #200 at 10.0 s | 15 MB, #184 at 78 MB |
+| 2026-10-01 | Spiderette · 1 suit | 1–200 | none | 198 | 2 | 0 | 5.2 s | #179 at 85.8 s | 22 MB, #38 at 221 MB |
+| 2026-10-01 | Spiderette · 1 suit | 1–200 | 10 s | 159 | 2 | 39 | 3.3 s | #59 at 10.8 s | 14 MB, #137 at 70 MB |
+| 2026-10-01 | Spiderette · 2 suits | 1–200 | none | 186 | 5 | 9 | 6.3 s | #1 at 159.7 s | 33 MB, #1 at 710 MB |
+| 2026-10-01 | Spiderette · 2 suits | 1–200 | 10 s | 159 | 5 | 36 | 3.0 s | #1 at 10.3 s | 15 MB, #129 at 70 MB |
+| 2026-10-01 | Spiderette · 4 suits | 1–200 | none | 171 | 8 | 21 | 5.0 s | #200 at 42.4 s | 24 MB, #120 at 188 MB |
+| 2026-10-01 | Spiderette · 4 suits | 1–200 | 10 s | 152 | 8 | 40 | 3.1 s | #95 at 10.2 s | 14 MB, #129 at 68 MB |
 
 So the wait costs **twenty-seven Simple Simon deals in the thousand, and eight
 two-suit and ten four-suit in the two hundred** on the 2026-09-20 machine — and one
@@ -559,12 +568,23 @@ and a row; until then the Debug screen's Solve row on a Spider board is ten seco
 thinking and then a refusal, which is the designed path (`Solver.ranOutOfTime`) and
 not a wait anyone should be asked to like.
 
+**The last six rows keep column order while there is a stock** (§ The search), and
+the watched board pays for it. Every proof stands: the same 2, 5 and 8 deals come back
+unwinnable on the three packs, so none of them leaned on the fold. But a search that
+has to tell more boards apart reaches fewer of them in ten seconds — 39 one-suit deals go unanswered under the wait where none did,
+and two-suit loses 29 and four-suit 13 against the rows above them. Uncapped, the counts
+barely move — two fewer solved on four suits and four fewer on two, with a few deals
+trading places — but the one-suit mean goes from under a tenth of a second to five. The time goes on boards with empty columns, where a
+run now has every empty seat to go to and a whole column may change seats, and one suit
+empties columns most.
+
 ### Why the unsolved count stands
 
-Four-suit Spiderette leaves 12 of 200 deals unanswered at the most it may be asked to
-grow and 19 at the default cap; under the ten seconds a watched board gets it leaves
-36, and the two-suit pack 11 — where every other board, and two suits given the time,
-answers all of them. **Those numbers are
+Four-suit Spiderette leaves 21 of 200 deals unanswered at the default cap; under the
+ten seconds a watched board gets it leaves 40, the two-suit pack 36 and the one-suit
+pack 39 — where every other board answers all of them. (With columns folded under the
+stock, four suits left 12 at the most it may be asked to grow; that cap is not yet
+measured with column order kept.) **Those numbers are
 the record, not a target**, and this is the argument for leaving them alone rather
 than tuning the heuristic or widening the budget to move them.
 
@@ -582,7 +602,8 @@ nobody finished looking. Part of what made the count feel like a defect was a
 sentence claiming more than the search had earned.
 
 **Nobody knows the count is too high.** Eight of the 200 four-suit deals were
-*proved* unwinnable by the ladder, and the search proves the same eight; the rest were
+*proved* unwinnable by the ladder, and the search proves the same eight — with column
+order kept, so without leaning on a fold that a board which deals can't make; the rest were
 not proved either way. A deal with no line is not a deal the solver failed on, and no
 one has established how many of the 12 have lines at all. "Answer more of them" is only a goal for the ones that can be
 answered, and that number is unknown.
@@ -601,7 +622,7 @@ reach in ten seconds, and are held under the memory the ladder already spent.
 
 **What would actually help is a cheaper proof.** A search that empties its frontier
 answers a deal in milliseconds, which is well inside any wait; that is how Mini
-and Micro answer every deal in the first thousand. Converting some of the 36 into
+and Micro answer every deal in the first thousand. Converting some of the 40 into
 `Exhausted` would raise the answered count *within* the ten seconds, where a
 longer search cannot. That is a different piece of work from tuning weights, and
 it is the direction to take if this is picked up again.
