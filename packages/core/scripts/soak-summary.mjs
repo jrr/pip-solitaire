@@ -2,7 +2,8 @@
 //
 // Reads the files `mise run solve -- --record` wrote, one per slice of a range, and
 // prints the row the record's table for that board takes (docs/solver.md § The
-// benchmark record), with its Environment cell left for the author to finish:
+// benchmark record) — and, for a board that table is kept for, its row in § What the
+// interactive wait costs — with its Environment cell left for the author to finish:
 // the slices ran on separate machines at once, which is itself part of what that
 // cell says. `--note <text>` is appended to it.
 
@@ -63,7 +64,29 @@ const cells = [
   environment,
 ]
 
+// § What the interactive wait costs: every board named, a Wait column, and no moves or
+// Environment — a date's rows there share one sentence under the table instead.
+const waitBoard = {
+  simplesimon: "Simple Simon",
+  spiderette1: "Spiderette · 1 suit",
+  spiderette2: "Spiderette · 2 suits",
+  spiderette4: "Spiderette · 4 suits",
+}[game]
+const waitCells = waitBoard && [
+  cells[0],
+  waitBoard,
+  rangeOf(deals.map((d) => d.seed)),
+  limits ? `${limits.join("+")} s` : "none",
+  solved,
+  count("unwinnable"),
+  count("unsolved"),
+  time(mean(deals.map((d) => d.ms))),
+  `#${worst.seed} at ${time(worst.ms)}`,
+  `${mb(mean(deals.map((d) => d.held)))}, #${heaviest.seed} at ${mb(heaviest.held)}`,
+]
+
 const outOfTime = deals.filter((d) => d.outOfTime).length
 console.log(`${game}, ${n} deals over ${records.length} slice${records.length > 1 ? "s" : ""}:\n`)
 console.log(`| ${cells.join(" | ")} |`)
+if (waitCells) console.log(`\nIn § What the interactive wait costs:\n\n| ${waitCells.join(" | ")} |`)
 if (outOfTime) console.log(`\n${outOfTime} of the unsolved ran out of the --limit rather than the budget.`)
