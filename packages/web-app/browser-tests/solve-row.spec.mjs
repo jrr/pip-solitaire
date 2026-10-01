@@ -34,6 +34,9 @@ const DEAL = "/?game=freecell&seed=24680&animate=off"
 // board that answered in 50 ms could pass it by accident.
 const SLOW_DEAL = "/?game=spiderette4&seed=147&animate=off"
 
+// `Command.autoplayMore` at `Solver.interactive`: the modal's offer of another wait.
+const MORE = "10s more"
+
 // `MenuDebugScreen.thinking`, which is what the row's description becomes the moment the
 // press is taken and stays until the answer lands.
 const THINKING = "Thinking…"
@@ -79,19 +82,69 @@ test("the row hands the board to the solver, says what it found, and plays it on
   await expect(page.locator(".win-overlay")).toBeVisible({ timeout: 60_000 })
 })
 
-test("an answer with no line to play offers only Close, back to the Debug screen", async ({
+test("an answer with no line to play offers no Autoplay, and Close goes back to the Debug screen", async ({
   page,
 }) => {
-  // Out of patience after ten seconds (see `SLOW_DEAL`), which is a refusal.
+  // Out of patience after ten seconds (see `SLOW_DEAL`), which is a refusal — and the one
+  // refusal worth asking again about, so it offers more time beside Close.
   await page.goto(SLOW_DEAL)
   await settleBoard(page)
   await openDebug(page)
   await solveRow(page).click()
-  await expect(solveDialog(page)).toHaveText(/gave up|couldn't|no way/, { timeout: 30_000 })
-  await expect(solveDialog(page).getByRole("button")).toHaveText(["Close"])
+  await expect(solveDialog(page)).toHaveText(/gave up/, { timeout: 30_000 })
+  await expect(solveDialog(page).getByRole("button")).toHaveText(["Close", MORE])
   await solveDialog(page).getByRole("button", { name: "Close" }).click()
   await expect(solveDialog(page)).toBeHidden()
   await expect(solveRow(page)).toBeVisible()
+})
+
+test("ten more seconds carries on with the same search rather than starting another", async ({
+  page,
+}) => {
+  test.setTimeout(90_000)
+  // What crosses to the worker, and what it says back, read off the page's own `Worker`:
+  // whether a second ask continues the first is a fact about that conversation, where a
+  // line found or not depends on how fast the machine grows positions.
+  await page.addInitScript(() => {
+    window.__worker = []
+    const Base = window.Worker
+    window.Worker = class extends Base {
+      constructor(...args) {
+        super(...args)
+        this.addEventListener("message", (e) => window.__worker.push({ heard: e.data }))
+      }
+      postMessage(message) {
+        window.__worker.push({ told: message.TAG ?? message, ask: message.ask })
+        super.postMessage(message)
+      }
+    }
+  })
+  await page.goto(SLOW_DEAL)
+  await settleBoard(page)
+  await openDebug(page)
+
+  await solveRow(page).click()
+  await expect(solveDialog(page)).toHaveText(/gave up after/, { timeout: 30_000 })
+  const firstAsk = await page.evaluate(() => window.__worker.length)
+  await solveDialog(page).getByRole("button", { name: MORE }).click()
+  // Said to be the same search, and only Close to press while it is.
+  await expect(solveDialog(page)).toHaveText(/same search/)
+  await expect(solveDialog(page).getByRole("button")).toHaveText(["Close"])
+  await expect(solveDialog(page)).not.toHaveText(/same search/, { timeout: 30_000 })
+
+  const log = await page.evaluate(() => window.__worker)
+  const progress = (entries, ask) =>
+    entries.filter((e) => e.heard?.TAG === "Progress" && e.heard.ask === ask).map((e) => e.heard.positions)
+  const [first, second] = [log.slice(0, firstAsk), log.slice(firstAsk)]
+  const ask = second.find((e) => e.told === "Think").ask
+  // The second ask is a `Think` and nothing else — no `Open` to start the board again…
+  expect(second.filter((e) => e.told).map((e) => e.told)).toEqual(["Think"])
+  // …and its first slice grows on from the positions the first ask left.
+  expect(progress(second, ask)[0]).toBeGreaterThan(progress(first, ask - 1).at(-1))
+  // The sentence counts both waits, whichever answer it is.
+  const said = await solveDialog(page).locator(".solve-dialog__message").innerText()
+  const [, seconds] = said.match(/(?:gave up after|found in) ([\d.]+)s/) ?? []
+  if (seconds !== undefined) expect(Number(seconds), said).toBeGreaterThan(10)
 })
 
 test("the page keeps painting while the solver thinks, and the row says so", async ({ page }) => {

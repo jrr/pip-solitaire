@@ -204,6 +204,7 @@ type msg =
   | ShareStatus(option<string>) // the share dialog's transient status line; `None` clears it
   | SolveStarted // the Debug screen's Solve — a search is running
   | SolveAnswered(TableScene.solved) // what it found; raises the modal over the menu
+  | SolveContinued // the modal's "more": the same search, for another wait
   | CloseSolveDialog // its Close, or a tap on the dim behind it
   | DealChanged(option<int>) // the board reported which deal it's showing
   | ShareDealStatus(option<string>) // the Share button's transient status line; `None` clears it
@@ -702,6 +703,20 @@ let update = (msg, model) =>
     model.menuOpen && model.solving
       ? ({...model, solving: false, solved: Some(solved)}, Html.noEffect)
       : (model, Html.noEffect)
+  // The modal stays up through the second wait and says what it is waiting for, with
+  // nothing to press but Close — whose answer then raises it again, as the first's does.
+  | SolveContinued => (
+      {
+        ...model,
+        solving: true,
+        solved: Some({
+          reply: Render.text(Command.autoplayContinuing(~ms=Solver.interactive)),
+          play: None,
+          more: None,
+        }),
+      },
+      Html.noEffect,
+    )
   | CloseSolveDialog => ({...model, solved: None}, Html.noEffect)
   // A new deal reached the table. Whatever status line the previous deal's
   // share left up goes with it — "Link copied to clipboard." must not sit under a
@@ -1515,7 +1530,7 @@ let settingsScreen = (model, dispatch): MenuSettingsScreen.props => {
 // The Solve modal, raised over the Debug screen with the solver's answer. A line found
 // is played on the board, which is behind this panel — so Autoplay closes the menu on
 // it, the way New Game and Restart do.
-let solveDialog = (dispatch, {reply, play}: TableScene.solved): SolveDialog.props => {
+let solveDialog = (dispatch, {reply, play, more}: TableScene.solved): SolveDialog.props => {
   message: Render.toPlain(reply),
   onAutoplay: play->Option.map(play =>
     () => {
@@ -1523,6 +1538,15 @@ let solveDialog = (dispatch, {reply, play}: TableScene.solved): SolveDialog.prop
       play()
     }
   ),
+  // The answer arrives through the first ask's `~onAnswer` (`onSolve` below), so all
+  // this side does is say it is waiting again.
+  onMore: more->Option.map(more => (
+    Command.autoplayMore(~ms=Solver.interactive),
+    () => {
+      dispatch(SolveContinued)
+      more()
+    },
+  )),
   onClose: () => dispatch(CloseSolveDialog),
 }
 

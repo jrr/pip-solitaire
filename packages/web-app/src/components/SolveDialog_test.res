@@ -5,8 +5,8 @@ open TestDom
 
 let found = "12-move solution found in 0.4 s — 3,210 positions, 9,876 moves tried."
 
-let render = (~message=found, ~onAutoplay=None, ~onClose=() => ()) =>
-  Html.create(SolveDialog.make({message, onAutoplay, onClose}))
+let render = (~message=found, ~onAutoplay=None, ~onMore=None, ~onClose=() => ()) =>
+  Html.create(SolveDialog.make({message, onAutoplay, onMore, onClose}))
 
 let buttons = (dialog): array<element> => dialog->findAll(".solve-dialog__button")
 
@@ -26,6 +26,17 @@ describe("SolveDialog", () => {
   test("offers only Close when there is nothing to play", () => {
     let dialog = render(~message="Autoplay couldn't find a way to win from here.")
     expect(dialog->buttons->Array.map(text))->toEqual(["Close"])
+  })
+
+  test("offers more time when the wait ran out, and asks for it on the press", () => {
+    let asks = ref(0)
+    let dialog = render(
+      ~message=Command.autoplayOutOfPatience(~ms=10_000.),
+      ~onMore=Some(("10s more", () => asks := asks.contents + 1)),
+    )
+    expect(dialog->buttons->Array.map(text))->toEqual(["Close", "10s more"])
+    dialog->buttons->Array.getUnsafe(1)->click
+    expect(asks.contents)->toBe(1)
   })
 
   test("closes from the button and from the dim behind the panel", () => {

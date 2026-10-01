@@ -17,13 +17,16 @@ type props = {
   message: string,
   // Present exactly when there is a line to play.
   onAutoplay: option<unit => unit>,
+  // Present exactly when the wait ran out with the search still going: the button's
+  // words, and the press that asks the same search for more.
+  onMore: option<(string, unit => unit)>,
   // Close and the dim behind the panel, which are the same answer.
   onClose: unit => unit,
 }
 
 let title = "Solve"
 
-let make = ({message, onAutoplay, onClose}) =>
+let make = ({message, onAutoplay, onMore, onClose}) =>
   <div id="solve-dialog" role="dialog" ariaModal="true" ariaLabel=title>
     <div className="solve-dialog__backdrop" onClick={_ => onClose()} />
     <div className="solve-dialog__panel">
@@ -38,6 +41,13 @@ let make = ({message, onAutoplay, onClose}) =>
         >
           {Html.string("Close")}
         </button>
+        {switch onMore {
+        | Some((label, more)) =>
+          <button className="solve-dialog__button" type_="button" onClick={_ => more()}>
+            {Html.string(label)}
+          </button>
+        | None => Html.empty
+        }}
         {switch onAutoplay {
         | Some(play) =>
           <button className="solve-dialog__button" type_="button" onClick={_ => play()}>

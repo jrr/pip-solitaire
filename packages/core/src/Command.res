@@ -766,6 +766,18 @@ let autoplayOutOfPatience = (~ms: float): string =>
       ms,
     )} — there was more to search, ` ++ `so this board may still have a win in it.`
 
+// The second ask, and every one after it: the same search carrying on, not a new one
+// starting. It says so because a player who has just been told "gave up" would
+// otherwise read the wait that follows as the same ten seconds spent again. `ms` is how
+// much longer it will wait.
+let autoplayContinuing = (~ms: float): string =>
+  `Carrying on with the same search for another ${duration(
+      ms,
+    )} — from where it stopped, not from the start.`
+
+// The offer itself, on the button under `autoplayOutOfPatience`.
+let autoplayMore = (~ms: float): string => `${duration(ms)} more`
+
 // A count with thousands separators, because the numbers a search reports run to six
 // figures and `312004` doesn't read as anything at a glance.
 let thousands = (n: int): string => {

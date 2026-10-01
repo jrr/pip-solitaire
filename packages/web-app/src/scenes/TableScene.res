@@ -306,9 +306,15 @@ type autoplayed = {
 // `play` is a plan for the board the solver was handed. Called after that board has
 // moved on (a card played, a new deal), it does nothing, the same rule every step of a
 // line already plays by.
+//
+// `more` is there exactly when the wait ran out with the search still going: another
+// `Solver.interactive` on the *same* search, answered through the same `~onAnswer`, its
+// time and effort counted together with every ask before it. It goes stale the way
+// `play` does.
 type solved = {
   reply: array<Render.line>,
   play: option<unit => unit>,
+  more: option<unit => unit>,
 }
 
 // Everything a mounted board offers the chrome, handed over whole by `~publish`. Why
@@ -727,7 +733,7 @@ let make = (
       onAnswer({playing: false, reply: []})
     )
     let liveSolve: ref<(~onAnswer: solved => unit) => unit> = ref((~onAnswer) =>
-      onAnswer({reply: [], play: None})
+      onAnswer({reply: [], play: None, more: None})
     )
     let liveRelayout: ref<unit => unit> = ref(() => ())
 
@@ -909,6 +915,16 @@ let make = (
 
       // A function rather than a stored value, so the session stays the one answer.
       let state = () => Session.present(session.contents)
+
+      // **Every committed state goes through here**, so the solver's worker hears of each
+      // one — a move, an undo, a redo, a line walked a step at a time — and the next
+      // Solve re-roots what the last one grew rather than growing it again. A deal or a
+      // new game is a build, which tells it the board it opens on just below.
+      let commit = (next: Session.t) => {
+        session := next
+        Thinker.follow(~game=next.game, ~state=Session.present(next))
+      }
+      Thinker.follow(~game=session.contents.game, ~state=state())
 
       // The house rules live at mount scope and outlive any one board — a New Game
       // doesn't change the rules you're playing under — so they're the driver's to
@@ -1271,7 +1287,7 @@ let make = (
         interruptPlay()
         let before = state()
         let (next, change) = Session.dispatch(~clock, current(), action)
-        session := next
+        commit(next)
         narrate(~before, change)
         change
       }
@@ -1729,7 +1745,7 @@ let make = (
         // past — the Finish button (or a typed `finish`) pressed mid-line.
         interruptPlay()
         let (next, outcome) = Session.finish(~clock, current())
-        session := next
+        commit(next)
         switch outcome.change {
         | Session.Swept({moved}) =>
           flySweep(moved)
@@ -1813,7 +1829,7 @@ let make = (
         if Session.canUndo(session.contents) {
           DebugLog.message("undo")
           let (stepped, _) = Session.undo(~clock, current())
-          session := stepped
+          commit(stepped)
           adoptRestored()
         }
 
@@ -1872,7 +1888,7 @@ let make = (
         // first save this writes already carries "this game was autoplayed", and adopted
         // even on a line with no moves in it (a board that was already finishable), which
         // is the case a trail alone wouldn't cover.
-        session := reached
+        commit(reached)
         // Any flight still in the air belongs to the position the line starts from (and
         // the tilt timings with it — see `adoptHistoryPresent`). This also ends an
         // autoplay already running, so a second `autoplay` replaces the first rather than
@@ -1943,7 +1959,7 @@ let make = (
               }
               // Adopted *before* the flight, as every other move here is, so an
               // interruption mid-air leaves the model settled.
-              session := step.session
+              commit(step.session)
               played := i + 1
               afterChange()
               animateAutoplayStep(step.moved, ~onDone=() => playFrom(i + 1))
@@ -2000,7 +2016,7 @@ let make = (
         // there a move at a time is the point (see `playLine`).
         | Session.Played({reached, trail}) => playLine(~reached, ~trail)
         | change =>
-          session := next
+          commit(next)
           narrate(~before, change)
           // A step through history isn't a move and carries no action to say, so the
           // verb itself is what goes in the log — and only when it actually stepped, so a
@@ -2046,7 +2062,13 @@ let make = (
       // a *frozen* board, but ten seconds of a spinner is still a limit worth having,
       // and it costs answers on the stubborn deals — `docs/solver.md` § What a caller is
       // willing to spend.
-      let solve = (~onAnswer: solved => unit) => {
+      //
+      // **A second ask is the same search, not a new one.** The wait for each ask is
+      // `Solver.interactive` again rather than a wait of its own: what bounds it is the
+      // same person watching the same spinner, and the player is the one deciding to wait
+      // longer — so ten seconds at a time, as often as they ask. `~spent` is what the asks
+      // before this one took, so the sentence says the whole wait.
+      let rec ask = (~spent: float, ~onAnswer: solved => unit) => {
         // A press replaces whatever the last one started: a line still being played is
         // ended where it stands, exactly as the stop gesture would end it, and a search
         // still running is abandoned by `interruptPlay` below. Either way the board the
@@ -2076,12 +2098,8 @@ let make = (
             // the answer is a plan for a board that no longer exists.
             if token == playToken.contents {
               stopPlay := None
-              let (next, outcome) = Session.adoptAutoplay(
-                ~clock,
-                ~ms=clock() -. started,
-                asked,
-                found,
-              )
+              let ms = spent +. (clock() -. started)
+              let (next, outcome) = Session.adoptAutoplay(~clock, ~ms, asked, found)
               // A refusal moves nothing, so there is nothing to adopt — only the words.
               // A line is held back as `play`, with the same token re-check at the
               // moment it is called: the answer is a plan for this board and no other.
@@ -2097,11 +2115,22 @@ let make = (
                   )
                 | _ => None
                 },
+                more: switch found {
+                | Solver.OutOfPatience =>
+                  Some(
+                    () =>
+                      if token == playToken.contents {
+                        ask(~spent=ms, ~onAnswer)
+                      },
+                  )
+                | _ => None
+                },
               })
             }
           },
         )
       }
+      let solve = (~onAnswer) => ask(~spent=0., ~onAnswer)
 
       // `solve`, and the line played the moment it is found.
       let autoplay = (~onAnswer: autoplayed => unit) =>
