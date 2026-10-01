@@ -131,8 +131,10 @@ The thinking behind it lives in `core` — `Position.res` (a board packed for
 search, under FreeCell's rules or Simple Simon's) and `Solver.res` (the search
 itself). `mise run solve -- <deal>` runs that alone, with no browser: seconds
 instead of a minute, so it's what you measure a solver change with before playing
-one for real. `docs/solver.md` has the contract, the heuristic, and the benchmark
-record to beat.
+one for real. `mise run solve-same` says in a couple of minutes whether a change left
+the search exactly as main's, and `solve-time` times the two side by side; the soaks
+that write the benchmark record run in CI. `docs/solver.md` has the contract, the
+heuristic, the record to beat, and which of those checks a change owes.
 
 `mise run profile -- <deal>` drives that same browser harness with the CPU
 throttled and a Chrome trace running, and ranks where the main thread's time

@@ -1021,22 +1021,55 @@ to want it is more likely a *shorter line* than a faster one, which is the trade
 
 ## Before you change the solver
 
-- **Soak it — every board.** `mise run solve -- --quiet 1-1000`, and again with
-  `--game simplesimon`, `--game minifreecell` and `--game microfreecell`, and add a row to each
-  table above. A change that helps the mean and doubles the worst case is not an
-  improvement, and a change to the search or a shared term moves every board at
-  once. The two short packs take a few seconds each, so there is no excuse.
-  Spiderette is the expensive one — `--game spiderette4 --quiet 1-200` is half an
-  hour at the default cap and over an hour with `--nodes` at the ceiling, because the
-  deals it gives up on each cost the whole budget — so soak it over 1–200 rather than
-  the thousand, split the range across processes, and leave it running. Its repeated
-  packs (`spiderette1`, `spiderette2`) are the same board with a cheaper deck and are
-  worth the same range: the one-suit soak is about a minute, the two-suit one ten
-  minutes at the default and a quarter of an hour at the ceiling. A change to the
-  search wants a row at both caps, since § The budget keeps both. **Don't reach for
-  `--limit` to make that cheaper**: a capped run
-  measures the cap, and a cap is exactly what would hide a regression in the
-  positions it stopped short of.
+Three checks, each sized to the question it answers. Which a change owes depends on
+what it means to do.
+
+- **A refactor or a speed-up owes the first two, and no soak.** The question is
+  whether it is the *same search*, and that has an exact answer:
+
+  ```
+  mise run solve-same                            # every board, against main
+  mise run solve-same -- --game simplesimon 1-1000   # one board, a range of your own
+  mise run solve-same -- --base HEAD~1           # against another commit
+  ```
+
+  It builds the base commit's solver (the merge base with `origin/main` unless
+  `--base` says otherwise) under `packages/core/.baseline/`, runs it beside this tree
+  deal by deal, and compares the positions grown, the moves tried, how the search
+  ended and the line it found. A deal that differs is printed and the exit is
+  non-zero. Every board is covered, from a sample of each sized to finish in about
+  two minutes on four cores; the Spider boards, whose deals nearly all run to the
+  budget, are compared under a 100,000-node cap. Two searches that grow the same
+  positions and try the same moves on a deal make every count the record keeps for
+  it the same — so where `solve-same` passes, the record's counts stand. Its times
+  could still have moved, and so could Held, which is how the search *stores* what
+  it grew: a change to that wants `mise run solve -- --quiet` over a short range of
+  each board, beside the same range on main.
+
+  Then **is it faster** — `mise run solve-time -- --game <id> <deals>`, which times
+  the base build and this one on each deal in turn, swapping which goes first, and
+  prints each one's mean and worst beside the ratio. `--runs 3` for a steadier
+  figure on a short range. The pair is the measurement: the two halves were taken
+  together under the same load, and compare with each other and nothing else —
+  not with the record, and not with a pair taken another day. A speed claim in a PR
+  quotes the pair. A board whose deals take seconds wants a short range (Spiderette
+  over 1–20 is a few minutes); the cheap boards can take hundreds.
+
+- **A change meant to move the counts** — the heuristic, the weights, the caps, a
+  pruning — fails `solve-same` by design, and owes a **soak of every board**, and a
+  row in each table above. A change that helps the mean and doubles the worst case is
+  not an improvement, and a change to the search or a shared term moves every board
+  at once. Soaks run in CI, not in a session: the `solver-soak` workflow (Actions →
+  solver-soak → Run workflow, on the PR's branch) takes a board, a range, an optional
+  `--nodes` cap and a number of jobs, splits the range across them, and prints the
+  row for that board's table on the run page — copy it in and finish its Environment
+  cell. The ranges are the record's: 1–1000 for FreeCell, Simple Simon and the two
+  short packs, 1–200 for each Spiderette pack. A change to the search wants a row at
+  both caps, since § The budget keeps both. **Don't reach for `--limit` to make that
+  cheaper**: a capped run measures the cap, and a cap is exactly what would hide a
+  regression in the positions it stopped short of. `mise run solve -- --quiet` is
+  still how you soak a range by hand, and `--record <file>` with `mise run
+  soak-summary -- <files>` is how the workflow puts its slices back together.
 - **Read the Held column, not only the counts.** The node cap is the only thing
   bounding what a search holds (§ The budget), so a change that solves more by
   growing more is a change a phone pays for. Add a row to § What the interactive
