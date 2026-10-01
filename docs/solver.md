@@ -723,7 +723,7 @@ second buys: § The budget.
   in a column of their own, about twenty bytes. Only a *grown* node's position is
   kept, packed one byte per card into an arena; an open node's is its parent's with
   its move played again, the trade `parent` and `trail` objects used to make. What
-  that holds per board is § The budget's to say.
+  that holds per board is § Memory tiers' to say.
 - **A node is grown on one board, in place** (`Board.res`). It is stood on once —
   read out of the arena, or its nearest kept ancestor's position read and the moves
   down from there played — and then each of its moves is played, hashed, looked up,
@@ -764,24 +764,17 @@ second buys: § The budget.
 
 ### The budget
 
-Each board gets **two heaps over one search**, and a cap on the grown positions it
-holds — every one it has grown, until a re-root (§ Re-rooting) lets some go.
-`Solver.budgetFor` picks one the same way `weightsFor` does: the law, and then whether
-the board deals.
+Each board gets **two heaps over one search**, and a cap on what it may hold, in bytes:
+the arrays its graph and heaps keep (`Solver.Search.bytes`), which is everything it has
+grown until a re-root (§ Re-rooting) lets some go. `Solver.budgetFor` picks the heaps the
+same way `weightsFor` does — the law, and then whether the board deals — and the cap from
+the device's memory tier (§ Memory tiers).
 
-| Board | `heaps` | `maxNodes` by default | …and the most the memory ceiling allows |
-|---|---|---|---|
-| FreeCell, Mini, Micro | 2.0, 1.0 | 500,000 | 2,000,000 |
-| Simple Simon | 1.0, 0.3 | 500,000 | 1,600,000 |
-| Spiderette, every pack | 2.0, 1.0 | 1,000,000 | 5,500,000 |
-
-**Two numbers, because two things bound a search.** The default is *time*: about
-thirty seconds of search on a cloud sandbox, which is as long as anything should run
-when nobody asked it to (§ What a caller is willing to spend), and what `mise run
-solve` measures with no flags. The larger figure is *memory*: the most the board can
-grow while the deal that holds most stays under what the restart ladder held, and what
-a caller who will wait minutes may ask for with `--nodes`. The benchmark record carries
-rows at both, and a row says which it is.
+| Board | `heaps` |
+|---|---|
+| FreeCell, Mini, Micro | 2.0, 1.0 |
+| Simple Simon | 1.0, 0.3 |
+| Spiderette, every pack | 2.0, 1.0 |
 
 A high weight is greedy and dives; a low one searches wider and costs more per answer.
 The first weight on each board is the one almost every deal falls to — FreeCell's is
@@ -797,44 +790,76 @@ Spiderette's 2.0 at 200,000 and 1.0 at 500,000. A restart cannot be resumed — 
 seconds" has no meaning across one — so one continuous search took its place, and the
 different weights that used to take turns *in time* take turns *in a graph* instead.
 
-**The cap is a memory ceiling, and that is what sets the larger figure.** The ladder
-was a ceiling as well as a restart: a rung that spent its budget released its frontier
-before the next began, so a deal held at most what its biggest rung did. A search that
-only grows has no such release. So **the most a board may be asked to grow is the most
-it can without its soak's Held column rising above the ladder's 2026-09-29 figure** —
-334 MB on FreeCell, 533 on Simple Simon, 963 and 897 on the two- and four-suit
-Spiderettes.
+**Then the cap was in positions**, until 2026-10-01: 500,000 grown positions on FreeCell
+and Simple Simon and 1,000,000 on Spiderette by default — about thirty seconds of search
+each on a cloud sandbox — and up to 2,000,000, 1,600,000 and 5,500,000 for a caller who
+would wait (`--nodes`), the most each board could grow while its worst deal held under
+what the ladder did: 334 MB on FreeCell, 533 on Simple Simon, 963 and 897 on the two- and
+four-suit Spiderettes. The record's rows marked `--nodes`, or with no cap named, before
+that date are those caps. A position is not a unit of memory, though — one costs from
+60 bytes to 2 KB depending on the board and the deal (§ Memory tiers) — and a search a
+player keeps all game is bounded by what it holds, so the cap became bytes.
 
-What a position costs is what moved that figure. The first continuous search held about
-3 KB per position grown, an object per open node and a string per position seen, and
-that put the caps at 200,000, 150,000 and 300,000 — below the ladder's reach, which is
-where the first 2026-09-30 rows lost ten Simple Simon deals, eleven Spiderette deals
-and two proofs. The graph in typed arrays (§ The search) holds 60 to 150 bytes per
-position grown, which is what let the ceiling go back up:
+**The time a default search takes now follows from the cap.** At the medium tier a
+search holds 256 MB, which is a million to two million positions on most boards: seconds
+for nearly every deal and about a minute for the stubborn Simple Simon ones on a cloud
+sandbox, where the 500,000-position cap stopped at thirty seconds. That buys answers —
+the medium tier answers every Simple Simon deal in the thousand, where the old default
+left five unsolved — and costs nobody a wait: a player's ask is bounded by `interactive`
+and a script's by `patient`, and only `mise run solve` with no `--limit` searches to the
+cap, because that is what the benchmark measures.
 
-- **FreeCell** solves every deal in the thousand well inside 200,000, so neither
-  number costs it anything; 2,000,000 is where a deal at the cap would still hold under
-  334 MB. #150 holds the most, 25 MB.
-- **Simple Simon** answers every deal in the thousand at 1,600,000 — 944 solved and 56
-  proved, where the ladder gave up on five. #766 is the longest and holds the most,
-  164 MB in 101 s; the figure was set when a Simple Simon position cost a third more,
-  and is where a deal that spent it would still hold under 533 MB.
-- **Spiderette** is the one board where deals still spend what they are given, so its
-  figure is the one the ceiling binds. At 6,000,000 four-suit #199 held 915 MB, over its
-  897; at 5,500,000 it holds 779 and the count is the same — 180 solved, 8 proved, 12
-  left, where the ladder solved 159. Two suits answers all 200 (195 and 5) and none of
-  them comes near it: #168 is the longest and holds the most, 429 MB in 183 s. One suit
-  answers all 200 inside 11 MB.
+### Memory tiers
 
-**The default is set by time instead**, because a bigger cap is paid for by every deal
-that spends it — in memory, and now in minutes, since a deal that spends six million
-positions takes several. Half a million positions is about thirty seconds of Simple
-Simon on a cloud sandbox and a million about thirty of four-suit Spiderette, so those
-are the defaults, and `Solver.patient` is thirty seconds of clock to match. What the
-defaults answer, against what the ceiling would, is in the rows marked with neither
-`--nodes` nor `--limit` beside the ones marked `--nodes`. A watched board never reaches
-either: § What the interactive wait costs has what ten seconds reaches, and how little
-it holds.
+The cap is one of three numbers, `Solver.capOf`:
+
+| Tier | Cap | Chosen for |
+|---|---|---|
+| `Small` | 128 MB | under 4 GB of `deviceMemory`; with none, an iPhone or iPad |
+| `Medium` | 256 MB | 4 to 8 GB; with none, anything else — and every caller in Node |
+| `Large` | 768 MB | 8 GB, which is as high as `deviceMemory` reads |
+
+How the web app chooses, the setting that overrides it, and the reload that lowers it:
+`docs/solver-next.md` § Memory. A search that reaches its cap answers `Full`, and the
+player is told it ran out of room in megabytes, an answer about the budget rather than
+the board (`Command.autoplayOutOfRoom`). The cap is checked before each position is
+grown and an array grows by a quarter at a time, so a search can pass its cap by up to a
+quarter of its largest column before it stops.
+
+**What a tier is in positions** depends on the board, and `mise run solve` reports it:
+each deal's bytes per position grown, and the figure over the range. Measured on
+2026-10-01 (Node v26.9.0, cloud sandbox, five soaks and the browser suite at once — so
+read the counts, not the times), over the deals that held at least 10 MB, since a
+search's first arrays are sized ahead of what it grows and a deal answered in a few
+hundred positions reads as kilobytes each:
+
+| Board | Deals | Wait | Deals over 10 MB | Bytes a position: over them all | median | most | Held, most |
+|---|---|---|---|---|---|---|---|
+| FreeCell | 1–1000 | none | 5 | 276 | 254 | 681 | #150 at 25 MB |
+| Simple Simon | 1–1000 | none | 25 | 117 | 148 | 240 | #766 at 164 MB |
+| Spiderette · 4 suits | 1–200 | 10 s | 76 | 122 | 124 | 973 | #199 at 81 MB |
+| Spiderette · 2 suits | 1–200 | 10 s | 68 | 274 | 257 | 2,035 | #183 at 96 MB |
+| Spiderette · 1 suit | 1–200 | 10 s | 83 | 311 | 302 | 1,743 | #179 at 91 MB |
+
+The figure is a fact about the arrays, not about Node: the browser's worker grows the
+same `Graph` in the same typed arrays, and `Search.bytes` reads their lengths, so a
+position costs the same in Chrome. The spread is the frontier: a position's children are
+held as open nodes until they are grown, and a board with many moves from each position
+holds many of them per position grown.
+
+So at the medium tier a search holds about two million Simple Simon or four-suit
+positions and about a million on the other boards; the small tier half that. **The small
+tier is set by the ten-second ask**: the most any board held in ten seconds here is 96 MB
+(two-suit #183), so a single ask fits under 128 MB on every board, and what the tier
+bounds is a search asked again and again, or kept open across a game. The counts under
+the wait, beside the record's rows in § What the interactive wait costs: 156 four-suit
+deals solved and 8 proved, 161 and 5 on two suits, 164 and 2 on one suit, with every
+unsolved deal out of time rather than full; and with no wait, FreeCell 1000 of 1000 and
+Simple Simon 944 solved and 56 proved — every deal answered.
+
+**Not yet measured: the small tier on an old phone.** It is the number most likely to
+be wrong, and the reload that lowers a tier is the backstop for it being too high; a
+device named here, and what it held before it was killed, is what would settle it.
 
 ### Re-rooting
 
@@ -1103,7 +1128,8 @@ what it means to do.
   row for that board's table on the run page — copy it in and finish its Environment
   cell. The ranges are the record's: 1–1000 for FreeCell, Simple Simon and the two
   short packs, 1–200 for each Spiderette pack. A change to the search wants a row at
-  both caps, since § The budget keeps both. **Don't reach for `--limit` to make that
+  the medium tier, which is what a soak with no `--mb` runs at, and one at `--mb 128`,
+  the small tier's cap, when it changes what a position costs (§ Memory tiers). **Don't reach for `--limit` to make that
   cheaper**: a capped run measures the cap, and a cap is exactly what would hide a
   regression in the positions it stopped short of. `mise run solve -- --quiet` is
   still how you soak a range by hand, and `--record <file>` with `mise run

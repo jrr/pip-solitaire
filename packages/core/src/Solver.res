@@ -250,7 +250,7 @@ type tier =
 
 let capOf = (tier: tier): int =>
   switch tier {
-  | Small => 96_000_000
+  | Small => 128_000_000
   | Medium => 256_000_000
   | Large => 768_000_000
   }
