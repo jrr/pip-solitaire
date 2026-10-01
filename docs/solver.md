@@ -263,6 +263,8 @@ core's own shuffle, not Microsoft's numbering. "Moves" counts moves to the
 | 2026-09-30 | 1–1000 | 1000/1000 | 126 ms | 54 | #403 at 8.7 s | 4 MB, #582 at 334 MB | Node v26.9.0, cloud sandbox, up to four soaks at once; the ladder, re-run beside the row below |
 | 2026-09-30 | 1–1000 | 1000/1000 | 124 ms | 52 | #403 at 8.4 s | 6 MB, #963 at 331 MB | Node v26.9.0, cloud sandbox, up to four soaks at once |
 | 2026-09-30 | 1–1000 | 1000/1000 | 73 ms | 52 | #658 at 5.9 s | <1 MB, #150 at 25 MB | Node v26.9.0, cloud sandbox, up to four soaks at once; the graph in typed arrays |
+| 2026-10-01 | 1–1000 | 1000/1000 | 83 ms | 52 | #658 at 6.5 s | <1 MB, #150 at 25 MB | Node v26.9.0, cloud sandbox, two soaks at once; the graph in typed arrays, re-run beside the row below |
+| 2026-10-01 | 1–1000 | 1000/1000 | 46 ms | 52 | #658 at 4.0 s | <1 MB, #150 at 25 MB | Node v26.9.0, cloud sandbox, two soaks at once; grown on a `Board` |
 
 **Simple Simon.** "Unwinnable" is the deals the search *proved* have no line
 (`exhausted`); "unsolved" is the ones the budget gave up on, which is the number
@@ -277,6 +279,8 @@ a heuristic change is trying to reduce.
 | 2026-09-30 | 1–1000 | 931/1000 | 54 | 15 | 407 ms | 80 | #60 at 9.7 s | 21 MB, #60 at 447 MB | Node v26.9.0, cloud sandbox, up to four soaks at once |
 | 2026-09-30 | 1–1000 | 944/1000 | 56 | 0 | 791 ms | 80 | #766 at 100.9 s | 2 MB, #766 at 164 MB | Node v26.9.0, cloud sandbox, up to four soaks at once; the graph in typed arrays; `--nodes 1600000` |
 | 2026-10-01 | 1–1000 | 940/1000 | 55 | 5 | 481 ms | 80 | #314 at 25.3 s | 2 MB, #60 at 74 MB | Node v26.9.0, cloud sandbox, three soaks at once; the graph in typed arrays at the default cap |
+| 2026-10-01 | 1–1000 | 940/1000 | 55 | 5 | 593 ms | 80 | #314 at 31.3 s | 2 MB, #60 at 74 MB | Node v26.9.0, cloud sandbox, two soaks at once; the graph in typed arrays, re-run beside the row below |
+| 2026-10-01 | 1–1000 | 940/1000 | 55 | 5 | 223 ms | 80 | #957 at 12.1 s | 2 MB, #60 at 74 MB | Node v26.9.0, cloud sandbox, two soaks at once; grown on a `Board` |
 
 **Spiderette · 4 suits**, over 1–200 rather than the thousand: a deal the search
 gives up on costs it the whole budget — about forty seconds each at the default cap,
@@ -294,6 +298,8 @@ below it. Why it stands: § Why the unsolved count stands.
 | 2026-09-30 | 1–200 | 150/200 | 7 | 43 | 3.2 s | 100 | #71 at 13.4 s | 156 MB, #41 at 619 MB | Node v26.9.0, cloud sandbox, up to four soaks at once |
 | 2026-09-30 | 1–200 | 180/200 | 8 | 12 | 23.1 s | 102 | #90 at 344.9 s | 55 MB, #199 at 779 MB | Node v26.9.0, cloud sandbox, up to four soaks at once; the graph in typed arrays; `--nodes 5500000` |
 | 2026-10-01 | 1–200 | 173/200 | 8 | 19 | 5.2 s | 101 | #3 at 37.7 s | 20 MB, #3 at 143 MB | Node v26.9.0, cloud sandbox, three soaks at once; the graph in typed arrays at the default cap, in two halves |
+| 2026-10-01 | 1–200 | 173/200 | 8 | 19 | 7.0 s | 101 | #3 at 51.0 s | 20 MB, #3 at 143 MB | Node v26.9.0, cloud sandbox, two soaks at once; the graph in typed arrays, re-run beside the row below |
+| 2026-10-01 | 1–200 | 173/200 | 8 | 19 | 2.9 s | 101 | #171 at 20.0 s | 20 MB, #3 at 143 MB | Node v26.9.0, cloud sandbox, two soaks at once; grown on a `Board` |
 
 **Spiderette · 1 suit and · 2 suits**, over the same 1–200. The same law, budget
 and weights on a cheaper deck — these are the repeated packs, where `found`
@@ -315,6 +321,10 @@ and an unsolved count of its own.
 | 2026-09-30 | 1 suit | 1–200 | 198/200 | 2 | 0 | 221 ms | 71 | #143 at 6.5 s | <1 MB, #143 at 11 MB | Node v26.9.0, cloud sandbox, up to four soaks at once; the graph in typed arrays |
 | 2026-09-30 | 2 suits | 1–200 | 195/200 | 5 | 0 | 4.2 s | 86 | #168 at 182.6 s | 11 MB, #168 at 429 MB | Node v26.9.0, cloud sandbox, up to four soaks at once; the graph in typed arrays; `--nodes 6000000` |
 | 2026-10-01 | 2 suits | 1–200 | 190/200 | 5 | 5 | 1.9 s | 85 | #120 at 36.3 s | 7 MB, #120 at 121 MB | Node v26.9.0, cloud sandbox, three soaks at once; the graph in typed arrays at the default cap |
+| 2026-10-01 | 1 suit | 1–200 | 198/200 | 2 | 0 | 182 ms | 71 | #143 at 5.0 s | <1 MB, #143 at 11 MB | Node v26.9.0, cloud sandbox, two soaks at once; the graph in typed arrays, re-run beside the row below |
+| 2026-10-01 | 1 suit | 1–200 | 198/200 | 2 | 0 | 75 ms | 71 | #143 at 1.7 s | <1 MB, #143 at 11 MB | Node v26.9.0, cloud sandbox, two soaks at once; grown on a `Board` |
+| 2026-10-01 | 2 suits | 1–200 | 190/200 | 5 | 5 | 2.3 s | 85 | #120 at 42.8 s | 7 MB, #120 at 121 MB | Node v26.9.0, cloud sandbox, two soaks at once; the graph in typed arrays, re-run beside the row below |
+| 2026-10-01 | 2 suits | 1–200 | 190/200 | 5 | 5 | 963 ms | 85 | #120 at 18.2 s | 7 MB, #120 at 121 MB | Node v26.9.0, cloud sandbox, two soaks at once; grown on a `Board` |
 
 **Mini and Micro**, under FreeCell's law and its weights. Every deal is
 *answered* — the search either finds a line or empties its frontier long before
@@ -334,6 +344,10 @@ its budget — so the number to watch here is "unsolved", and it is zero.
 | 2026-09-30 | Micro | 1–1000 | 981/1000 | 19 | 0 | 1 ms | 9 | #699 at 15 ms | <1 MB | Node v26.9.0, cloud sandbox, up to four soaks at once |
 | 2026-09-30 | Mini | 1–1000 | 992/1000 | 8 | 0 | 2 ms | 11 | #10 at 101 ms | <1 MB | Node v26.9.0, cloud sandbox, up to four soaks at once; the graph in typed arrays |
 | 2026-09-30 | Micro | 1–1000 | 981/1000 | 19 | 0 | 1 ms | 9 | #519 at 25 ms | <1 MB | Node v26.9.0, cloud sandbox, up to four soaks at once; the graph in typed arrays |
+| 2026-10-01 | Mini | 1–1000 | 992/1000 | 8 | 0 | 1 ms | 11 | #10 at 73 ms | <1 MB | Node v26.9.0, cloud sandbox, two soaks at once; the graph in typed arrays, re-run beside the row below |
+| 2026-10-01 | Mini | 1–1000 | 992/1000 | 8 | 0 | 1 ms | 11 | #10 at 58 ms | <1 MB | Node v26.9.0, cloud sandbox, two soaks at once; grown on a `Board` |
+| 2026-10-01 | Micro | 1–1000 | 981/1000 | 19 | 0 | 1 ms | 9 | #18 at 17 ms | <1 MB | Node v26.9.0, cloud sandbox, two soaks at once; the graph in typed arrays, re-run beside the row below |
+| 2026-10-01 | Micro | 1–1000 | 981/1000 | 19 | 0 | <1 ms | 9 | #18 at 12 ms | <1 MB | Node v26.9.0, cloud sandbox, two soaks at once; grown on a `Board` |
 
 Over deals 1–200 that is 198 and 196 solved — the same counts `Game.res` records
 from an exhaustive single-card search when it chose two free cells for each
@@ -462,6 +476,18 @@ and under a cap not even those, since a faster machine gets further in ten secon
 | 2026-09-30 | Spiderette · 2 suits | 1–200 | 10 s | 184 | 5 | 11 | 1.4 s | #94 at 10.1 s | 4 MB, #184 at 53 MB |
 | 2026-09-30 | Spiderette · 4 suits | 1–200 | none | 180 | 8 | 12 | 23.1 s | #90 at 344.9 s | 55 MB, #199 at 779 MB |
 | 2026-09-30 | Spiderette · 4 suits | 1–200 | 10 s | 156 | 8 | 36 | 2.9 s | #166 at 10.0 s | 10 MB, #184 at 51 MB |
+| 2026-10-01 | Simple Simon | 1–1000 | none | 940 | 55 | 5 | 593 ms | #314 at 31.3 s | 2 MB, #60 at 74 MB |
+| 2026-10-01 | Simple Simon | 1–1000 | 10 s | 932 | 54 | 14 | 443 ms | #60 at 10.1 s | 1 MB, #60 at 31 MB |
+| 2026-10-01 | Spiderette · 2 suits | 1–200 | none | 190 | 5 | 5 | 2.3 s | #120 at 42.8 s | 7 MB, #120 at 121 MB |
+| 2026-10-01 | Spiderette · 2 suits | 1–200 | 10 s | 183 | 5 | 12 | 1.4 s | #42 at 10.0 s | 4 MB, #168 at 41 MB |
+| 2026-10-01 | Spiderette · 4 suits | 1–200 | none | 173 | 8 | 19 | 7.0 s | #3 at 51.0 s | 20 MB, #3 at 143 MB |
+| 2026-10-01 | Spiderette · 4 suits | 1–200 | 10 s | 153 | 8 | 39 | 3.1 s | #4 at 10.1 s | 9 MB, #184 at 38 MB |
+| 2026-10-01 | Simple Simon | 1–1000 | none | 940 | 55 | 5 | 223 ms | #957 at 12.1 s | 2 MB, #60 at 74 MB |
+| 2026-10-01 | Simple Simon | 1–1000 | 10 s | 939 | 55 | 6 | 213 ms | #766 at 10.0 s | 2 MB, #60 at 64 MB |
+| 2026-10-01 | Spiderette · 2 suits | 1–200 | none | 190 | 5 | 5 | 963 ms | #120 at 18.2 s | 7 MB, #120 at 121 MB |
+| 2026-10-01 | Spiderette · 2 suits | 1–200 | 10 s | 188 | 5 | 7 | 800 ms | #45 at 10.0 s | 6 MB, #184 at 76 MB |
+| 2026-10-01 | Spiderette · 4 suits | 1–200 | none | 173 | 8 | 19 | 2.9 s | #171 at 20.0 s | 20 MB, #3 at 143 MB |
+| 2026-10-01 | Spiderette · 4 suits | 1–200 | 10 s | 165 | 8 | 27 | 2.2 s | #200 at 10.0 s | 15 MB, #184 at 78 MB |
 
 So the wait costs **twenty-seven Simple Simon deals in the thousand, and eight
 two-suit and ten four-suit in the two hundred** on the 2026-09-20 machine — and one
@@ -500,11 +526,21 @@ two-suit and one four-suit — and every proof the ladder found with no wait at 
 far past what ten seconds reaches, so the capped rows are the ones a player sees, and
 the uncapped ones say what a patient caller could have.
 
+**The last twelve are the search grown on a `Board`** (§ On making this faster), the
+first six the build before it and the last six the new one, each pair run at the same
+moment so the two compare in time. With no wait the counts are identical, because the
+search is the same search, and it gets there in under half the time. Under the wait
+that time turns into answers: seven more Simple Simon deals and a proof, five more
+two-suit and twelve more four-suit — 165 solved, the first ten-second row to pass the
+ladder's 159 with no wait at all. What it holds under the wait rises with them, to
+78 MB at most, because ten seconds now reaches further into the same graph.
+
 The 2026-09-20 rows: Node v26.9.0, cloud sandbox. The 2026-09-29 rows: Node
 v26.9.0, cloud sandbox, two soaks at once. The 2026-09-30 rows: Node v26.9.0, cloud
 sandbox, up to four soaks at once — the uncapped typed-array rows as chunks of the
-range side by side, their means weighted back together. The capped half of each with
-`--limit 10`.
+range side by side, their means weighted back together. The 2026-10-01 rows: Node
+v26.9.0, cloud sandbox, two soaks at once, the old build's and the new one's. The
+capped half of each with `--limit 10`.
 
 **Spider has no row here, and a probe is why.** `Position.ofGameState` reads all
 three packs — nothing in the model assumes one pack or four foundations — so the
@@ -916,13 +952,48 @@ arrays and a visited set that files by hash and checks every match, which is how
 hash can be smaller without a collision ever pruning a position — `Exhausted` is only
 a proof while nothing is pruned that wasn't seen. That too found the identical line on
 every deal of 1–40 on five boards before anything else about the search changed.
-Re-profiled before it, the collector was still ~23%,
-now behind `applyMove`'s `copy`; make/unmake against one mutable board would take
-most of that too. **Call it 3–4× available without leaving the language, and the
-rules untouched by any of it.**
+Re-profiled before it, the collector was still ~23%, now behind `applyMove`'s
+`copy`, and the estimate was that make/unmake against one mutable board would take
+most of that too: 3–4× available without leaving the language.
 
-What WASM adds on top is the usual 1.2–2× of integer loops over an optimising
-JIT — and it costs the thing having the solver in `core` buys:
+**Make/unmake went in last, and bought 1.8–2.7× a deal** — the 2026-10-01 rows, each
+soaked beside the build before it. The search grows a node on one `Board`, playing
+each move and taking it back (§ The search), and it is the same search: the same
+positions grown and the same line on every deal sampled on every board, so the counts
+in every table are the ones before it. `Board` had measured 1.8× per child on FreeCell
+and 2.4–2.5× on Simple Simon and Spider in isolation, against `applyMove` plus `key`;
+in the search the means moved by about that — 1.8× on FreeCell, 2.4× on each
+Spiderette, 2.7× on Simple Simon, where reading a node back and checking a hash hit,
+both now on a board rather than a fresh `Position`, are a larger share. The short packs
+gain least, on deals that take a millisecond either way. **That is the low end of the
+estimate, and the collector is not where it came from**: the graph in typed arrays had
+already taken it from a quarter of the time to about a twentieth, and it stays there.
+What went is the work of making a position per child — the copy, `Position`'s own
+array-walking helpers, a position unpacked and replayed for every hash hit — spread
+over a dozen functions, none of them large alone.
+
+What is left, profiled the same way over FreeCell 1–60 and a few Simple Simon and
+two-suit Spiderette deals at a smaller cap — 10 seconds of solving where the build
+before took 25:
+
+| | |
+|---|---|
+| ~10% | `Board.heuristic` |
+| ~15% | checking hash hits — `Board.alike` and the columns it compares |
+| ~12% | standing a node on the board — `Graph.standOn` and the arena it reads |
+| ~5% | the collector |
+| the rest | the game on the board — `play`, `takeBack`, `legalMoves`, `hash`, the collects — and the card predicates it shares with `Position`, `rankOf` alone 7% |
+
+**It is spread thin.** No line of it is the quarter of the runtime the collector or
+the string key once was, so the next gains are a few percent each — a cheaper
+comparison for the hit that is laid out in the same order, or not standing a node on
+the board again when the search dives into a child it has just made — and none of them
+changes what the search finds. The rules are untouched by any of it.
+
+**The interface a port would sit behind is now the one the search uses**: `Board`'s
+five operations and `Graph`'s typed arrays. What WASM adds on top is the usual 1.2–2×
+of integer loops over an optimising JIT — and it costs the thing having the solver in
+`core` buys:
 
 - The search asks `legalMoves` / `applyMove` / `canFinish` millions of times a
   deal, so the boundary **can't** sit between the search and the rules. The rules
