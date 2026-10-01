@@ -8,8 +8,8 @@
 // does meanwhile is what it always does.
 //
 // What crosses the boundary is plain data both ways, because a `postMessage` is a
-// structured clone (`SolverWorker` is the other end). Two things follow, and both are
-// load-bearing:
+// structured clone (`SolverWorker` is the other end, and owns the protocol). Two things
+// follow, and both are load-bearing:
 //
 //   - **The `Game.t` goes over without its `deal`.** That field is the one function on
 //     the type (`Game.res`), and a function cannot be cloned — a board sent whole
@@ -21,10 +21,10 @@
 //     make the trip, so the worker never builds one; `Session.adoptAutoplay` does that
 //     back here, out of what came back.
 //
-// **Cancelling means terminating.** The search is one synchronous call on the far side
-// and never looks at its message queue, so there is no polite way to ask it to stop.
-// That is fine, and it is more than the old inline search could offer: a board that has
-// moved on — a card played, a new deal, the stop gesture — kills the thread outright.
+// **One worker per tab, and cancelling is a message.** The worker is spawned on the
+// first question and kept: a `stop` is read at its next slice boundary, so the thread
+// outlives every question it is asked. Terminating is kept for a worker that has
+// stopped answering, which is a build gone wrong rather than anything a player did.
 
 // Whether there is another thread to think on. Workers are baseline everywhere the app
 // runs, so what this really asks about is jsdom, where the unit suite has none and wants
@@ -32,7 +32,7 @@
 let supported: bool = %raw(`typeof Worker === "function"`)
 
 type worker
-type messageEvent = {data: Solver.autoplayed}
+type messageEvent = {data: SolverWorker.reply}
 
 // **One raw expression on purpose.** Vite finds a worker to bundle by matching
 // `new Worker(new URL(<literal>, import.meta.url), …)` in the emitted module. Split the
@@ -44,38 +44,106 @@ let spawn: unit => worker = %raw(`
 `)
 
 @send external terminate: worker => unit = "terminate"
-@send external ask: (worker, SolverWorker.request) => unit = "postMessage"
+@send external tell: (worker, SolverWorker.request) => unit = "postMessage"
 @set external onMessage: (worker, messageEvent => unit) => unit = "onmessage"
 // Takes no argument on purpose: what went wrong is the build's problem, not this
 // module's, and the fallback below is the same whatever the event would have said.
 @set external onError: (worker, unit => unit) => unit = "onerror"
 
-// The thread in flight, `Some` exactly while a search is running on it. One at a time:
-// a second question replaces the first rather than racing it, which is the same rule
-// the board plays a second `autoplay` by.
-let live: ref<option<worker>> = ref(None)
+@val external setTimeout: (unit => unit, int) => int = "setTimeout"
+@val external clearTimeout: int => unit = "clearTimeout"
 
-let cancel = () =>
-  switch live.contents {
-  | Some(worker) =>
-    live := None
-    // Dropped before the terminate, not after: an answer already queued from a search
-    // that finished in the gap must not reach a caller that has stopped caring.
-    worker->onMessage(_ => ())
-    worker->onError(_ => ())
-    terminate(worker)
-  | None => ()
-  }
+// How long a thinking worker may go without a word before it counts as gone. It posts
+// after every slice, and a slice is a third of a second on the heaviest board
+// (`docs/solver.md`); the first question also waits on the worker's own module loading.
+// So this is not a tight bound — it is far enough past any slow device that only a
+// thread that has really stopped answering trips it, because what tripping it costs is
+// the whole wait spent on this thread instead.
+let silence = 10_000
 
 // Solve right here, on this thread, holding it for as long as it takes. The answer to
-// "what if there is no worker" — and to a worker that failed to load, which is a build
-// gone wrong rather than anything a player did, and better answered slowly than not at
-// all. It reads the wait off the same clock the far side would (`SolverWorker.clock`),
-// so a ten-second patience means ten seconds wherever the thinking ends up happening.
+// "what if there is no worker" — and to a worker that has stopped answering, which is
+// better answered slowly than not at all. It reads the wait off the same clock the far
+// side would (`SolverWorker.clock`), so a ten-second patience means ten seconds wherever
+// the thinking ends up happening.
 let here = (~game: Game.t, ~state: GameState.t, ~patience: option<float>): Solver.autoplayed => {
   let limit = patience->Option.map((ms): Solver.patience => {ms, clock: SolverWorker.clock})
   Solver.autoplay(~game, ~patience=?limit, state)
 }
+
+// The question in flight, `Some` exactly while one is being thought about. One at a
+// time: a second question replaces the first rather than racing it, which is the same
+// rule the board plays a second `autoplay` by.
+type asked = {
+  ask: int,
+  onAnswer: Solver.autoplayed => unit,
+  // The same question, answered on this thread — for a worker that stops answering.
+  fallback: unit => Solver.autoplayed,
+  mutable watchdog: int,
+}
+
+let thread: ref<option<worker>> = ref(None)
+let live: ref<option<asked>> = ref(None)
+let asks = ref(0)
+
+// Let go of the question in flight without answering it. The worker is told so, and
+// anything it still says about this ask is ignored by number when it arrives.
+let cancel = () =>
+  switch live.contents {
+  | Some(question) =>
+    live := None
+    clearTimeout(question.watchdog)
+    thread.contents->Option.forEach(worker => worker->tell(Stop))
+  | None => ()
+  }
+
+// The worker has failed to load, thrown, or gone quiet. Said on the console because
+// nothing a player did gets here: it is the build, and the fallback below would
+// otherwise hide it behind a page that merely got slow.
+let abandon = (worker: worker) => {
+  Console.error("[pip] the solver's worker stopped answering; solving on the main thread")
+  worker->onMessage(_ => ())
+  worker->onError(_ => ())
+  terminate(worker)
+  switch thread.contents {
+  | Some(current) if current === worker => thread := None
+  | _ => ()
+  }
+  switch live.contents {
+  | Some(question) =>
+    live := None
+    clearTimeout(question.watchdog)
+    question.onAnswer(question.fallback())
+  | None => ()
+  }
+}
+
+let watch = (worker: worker, question: asked) => {
+  clearTimeout(question.watchdog)
+  question.watchdog = setTimeout(() => abandon(worker), silence)
+}
+
+let heard = (worker: worker, reply: SolverWorker.reply) =>
+  switch (live.contents, reply) {
+  | (Some(question), Progress({ask})) if ask == question.ask => watch(worker, question)
+  | (Some(question), Answer({ask, autoplayed})) if ask == question.ask =>
+    live := None
+    clearTimeout(question.watchdog)
+    question.onAnswer(autoplayed)
+  // About a question already let go of: an answer about a board that has moved on.
+  | _ => ()
+  }
+
+let worker = (): worker =>
+  switch thread.contents {
+  | Some(worker) => worker
+  | None =>
+    let worker = spawn()
+    worker->onMessage(event => heard(worker, event.data))
+    worker->onError(() => abandon(worker))
+    thread := Some(worker)
+    worker
+  }
 
 // Ask for a line, and say so when there is one.
 //
@@ -94,18 +162,18 @@ let think = (
     onAnswer(here(~game, ~state, ~patience))
   } else {
     cancel()
-    let worker = spawn()
-    live := Some(worker)
-    let finish = (answer: Solver.autoplayed) =>
-      // Only from the thread still on the books: a late message from one already
-      // cancelled is an answer about a board that has moved on.
-      switch live.contents {
-      | Some(current) if current === worker =>
-        cancel()
-        onAnswer(answer)
-      | _ => ()
-      }
-    worker->onMessage(event => finish(event.data))
-    worker->onError(() => finish(here(~game, ~state, ~patience)))
-    worker->ask({game: {...game, deal: None}, state, patience})
+    let worker = worker()
+    asks := asks.contents + 1
+    let question = {
+      ask: asks.contents,
+      onAnswer,
+      fallback: () => here(~game, ~state, ~patience),
+      watchdog: 0,
+    }
+    live := Some(question)
+    watch(worker, question)
+    // A fresh `open` for every question: each is about the board as it stands, with a
+    // search of its own, which is what every caller here expects of it.
+    worker->tell(Open({game: {...game, deal: None}, state}))
+    worker->tell(Think({ask: question.ask, ms: patience}))
   }

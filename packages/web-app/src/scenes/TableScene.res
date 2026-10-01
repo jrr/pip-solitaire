@@ -2805,7 +2805,7 @@ let make = (
       // everything hung off `window`, a clock, or a thread of its own: the
       // `devicemotion` subscription, a cascade's frame loop, its own resize listener
       // and a sprite build still in flight, a line still being played or thought about
-      // (`interruptPlay`, which also terminates the search), and this observer. Each
+      // (`interruptPlay`, which also stops the search), and this observer. Each
       // has to be detached explicitly.
       () => {
         interruptPlay()

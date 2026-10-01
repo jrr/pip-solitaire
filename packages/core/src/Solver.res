@@ -408,6 +408,9 @@ module Search = {
       sum + Heap.bytes(frontier)
     )
 
+  // Positions found and not yet grown: every node in the graph is one or the other.
+  let frontier = (search: t): int => search.graph.size - search.grown
+
   // What the search knows now, without growing it — the answer a `think` of nothing
   // gives. An emptied frontier is a proof whatever else was running out, so it is read
   // before either budget.
@@ -521,6 +524,19 @@ type effort = {positions: int, moves: int, ending: ending, bytes: int}
 // deals by them and gates its exit code on the first. *Asked* rather than compared,
 // because how the compiler spells a constructor in the JavaScript it emits is its own
 // business — the same bargain `stepFor` strikes for a move.
+// What a search has cost so far, and how `answer` — its last — left it.
+let effortOf = (search: Search.t, answer: Search.answer): effort => {
+  positions: search.grown,
+  moves: search.tried,
+  ending: switch answer {
+  | Search.Found => Found
+  | Search.Exhausted => Exhausted
+  | Search.Full => OutOfNodes
+  | Search.Paused => OutOfTime
+  },
+  bytes: Search.bytes(search),
+}
+
 let provedUnwinnable = (e: effort): bool => e.ending == Exhausted
 let ranOutOfTime = (e: effort): bool => e.ending == OutOfTime
 
@@ -541,20 +557,7 @@ let solveOn = (search: Search.t, ~patience: option<patience>=?): (
   while answer.contents == Search.Paused && !past(deadline) {
     answer := Search.think(search, ~nodes=clockEvery)
   }
-  (
-    Search.line(search),
-    {
-      positions: search.grown,
-      moves: search.tried,
-      ending: switch answer.contents {
-      | Search.Found => Found
-      | Search.Exhausted => Exhausted
-      | Search.Full => OutOfNodes
-      | Search.Paused => OutOfTime
-      },
-      bytes: Search.bytes(search),
-    },
-  )
+  (Search.line(search), effortOf(search, answer.contents))
 }
 
 // Solve to the finishable position — or `None` when the budget runs out or the caller's
@@ -673,47 +676,58 @@ let namedCards = (~game: Game.t, state: GameState.t, action: Reducer.action): ar
   | Reducer.MoveColumn(_) => []
   }
 
+// What a search's line and effort come to on the real board it started from. The half of
+// `autoplay` after the thinking, for a caller that does the thinking in slices of its own
+// (`SolverWorker`).
+let autoplayedOf = (
+  ~game: Game.t,
+  state: GameState.t,
+  ~line: option<array<Position.move>>,
+  ~effort: effort,
+): autoplayed =>
+  switch line {
+  | None =>
+    switch effort.ending {
+    | Exhausted => Unwinnable
+    | OutOfTime => OutOfPatience
+    | Found | OutOfNodes => NoLine
+    }
+  | Some(moves) =>
+    let steps = []
+    let current = ref(state)
+    // A plan generated from these very rules shouldn't come unstuck against them,
+    // but a driver handed half a plan and told it was whole would play a board
+    // nobody can explain. So a move that won't convert or won't reduce ends the
+    // line *here*, and what comes back is the prefix that really was played.
+    let stopped = ref(false)
+    let i = ref(0)
+    while !stopped.contents && i.contents < Array.length(moves) {
+      switch Position.toAction(~game, current.contents, moves->Array.getUnsafe(i.contents)) {
+      | None => stopped := true
+      | Some(action) =>
+        switch Reducer.reduce(~game, current.contents, action) {
+        | Error(_) => stopped := true
+        | Ok(next) =>
+          let (settled, collected) = settle(~game, next)
+          steps->Array.push({
+            action,
+            state: settled,
+            moved: Array.concat(namedCards(~game, current.contents, action), collected),
+          })
+          current := settled
+        }
+      }
+      i := i.contents + 1
+    }
+    Played({steps, effort})
+  }
+
 let autoplay = (~game: Game.t, ~patience: option<patience>=?, state: GameState.t): autoplayed =>
   switch Position.ofGameState(~game, state) {
   | None => UnknownBoard
   | Some(position) =>
     let (line, effort) = solveWithEffort(position, ~patience?)
-    switch line {
-    | None =>
-      switch effort.ending {
-      | Exhausted => Unwinnable
-      | OutOfTime => OutOfPatience
-      | Found | OutOfNodes => NoLine
-      }
-    | Some(moves) =>
-      let steps = []
-      let current = ref(state)
-      // A plan generated from these very rules shouldn't come unstuck against them,
-      // but a driver handed half a plan and told it was whole would play a board
-      // nobody can explain. So a move that won't convert or won't reduce ends the
-      // line *here*, and what comes back is the prefix that really was played.
-      let stopped = ref(false)
-      let i = ref(0)
-      while !stopped.contents && i.contents < Array.length(moves) {
-        switch Position.toAction(~game, current.contents, moves->Array.getUnsafe(i.contents)) {
-        | None => stopped := true
-        | Some(action) =>
-          switch Reducer.reduce(~game, current.contents, action) {
-          | Error(_) => stopped := true
-          | Ok(next) =>
-            let (settled, collected) = settle(~game, next)
-            steps->Array.push({
-              action,
-              state: settled,
-              moved: Array.concat(namedCards(~game, current.contents, action), collected),
-            })
-            current := settled
-          }
-        }
-        i := i.contents + 1
-      }
-      Played({steps, effort})
-    }
+    autoplayedOf(~game, state, ~line, ~effort)
   }
 
 // --- The plan, in the terms a driver outside ReScript plays it in ------------
