@@ -6,6 +6,10 @@ node_modules/
 packages/*/lib/
 *.res.mjs
 
+# Another commit's solver, built for `mise run solve-same` and `solve-time` to
+# compare against (packages/core/scripts/lib/baseline.mjs).
+packages/core/.baseline/
+
 # Vite build output. `dist-profile/` is the readable-frames build `mise run
 # profile` measures (vite.config.profile.js) — same status as `dist/`, and named
 # separately because the pattern above matches a directory called exactly `dist`.

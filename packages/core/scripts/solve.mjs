@@ -10,6 +10,7 @@
 //   mise run solve -- --limit 10+10 147     # …then ask the same search for ten more
 //   mise run solve -- --nodes 5000000 147   # a bigger budget than the board's own
 //   mise run solve -- --reroot 1-100        # …and what following a move and its undo costs
+//   mise run solve -- --record r.json 1-100 # …and every deal's figures, for soak-summary
 //
 // What it's for, and what to measure with it: docs/solver.md § Measuring it. That
 // section also says what the "held" figure is and isn't.
@@ -33,6 +34,10 @@
 // the nodes it kept. The per-node cost it prints is what docs/solver.md § Re-rooting
 // records.
 //
+// `--record` writes each deal's outcome, moves, time and Held to a JSON file once the
+// last deal is done — what a soak split across CI jobs is put back together from
+// (soak-summary.mjs). A file that exists is a run that finished, whatever it exits.
+//
 // It runs core's *compiled* output directly (ReScript compiles in-source to
 // `.res.mjs`), which is also the proof that the solver is reachable from plain
 // Node — the same import the web-app's autoplay harness uses.
@@ -42,18 +47,20 @@
 // the `--limit` is unsolved like any other: the limit is what the caller chose to spend,
 // not a verdict on the board.
 
+import { writeFileSync } from "node:fs"
 import * as Game from "../src/Game.res.mjs"
 import * as GameState from "../src/GameState.res.mjs"
 import * as Position from "../src/Position.res.mjs"
 import * as Solver from "../src/Solver.res.mjs"
 
 function parseArgs(argv) {
-  const opts = { seeds: [], quiet: false, game: "freecell", limits: null, nodes: null, reroot: false }
+  const opts = { seeds: [], quiet: false, game: "freecell", limits: null, nodes: null, reroot: false, record: null }
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i]
     if (arg === "--quiet") opts.quiet = true
     else if (arg === "--reroot") opts.reroot = true
     else if (arg === "--game") opts.game = argv[++i]
+    else if (arg === "--record") opts.record = argv[++i]
     else if (arg === "--nodes") {
       opts.nodes = Number(argv[++i])
       if (!(Number.isInteger(opts.nodes) && opts.nodes > 0)) throw new Error("--nodes takes a whole number of positions")
@@ -90,6 +97,7 @@ let worst = { seed: null, ms: 0 }
 let totalHeld = 0
 let most = { seed: null, bytes: 0 }
 let totalArrays = 0
+const record = []
 
 // The collector has to be callable to read a live heap rather than a live heap plus
 // whatever garbage happened not to be swept yet — the mise task passes the flag.
@@ -207,6 +215,16 @@ for (const seed of opts.seeds) {
   } else if (proved) unwinnable++
   else if (ranOut) outOfTime++
 
+  record.push({
+    seed,
+    outcome: plan ? "solved" : proved ? "unwinnable" : "unsolved",
+    outOfTime: !plan && ranOut,
+    moves: plan ? plan.length : null,
+    ms: took,
+    held,
+    arrays: effort.bytes,
+  })
+
   const why = proved ? "every line was tried" : ranOut ? limitSaid : "the budget ran out"
   if (!opts.quiet) {
     console.log(`\n=== deal #${seed} ===`)
@@ -243,6 +261,12 @@ if (opts.reroot && rerootKept > 0)
   console.log(
     `re-rooting: ${((rerootMs / rerootKept) * 1000).toFixed(1)}ms per thousand nodes kept, over ${rerootKept} nodes` +
       ` — worst deal #${rerootWorst.seed}, ${rerootWorst.ms.toFixed(0)}ms to keep ${rerootWorst.kept}`,
+  )
+
+if (opts.record)
+  writeFileSync(
+    opts.record,
+    JSON.stringify({ game: game.id, nodes: opts.nodes, limits: opts.limits, node: process.version, deals: record }),
   )
 
 process.exit(unsolved === 0 ? 0 : 1)

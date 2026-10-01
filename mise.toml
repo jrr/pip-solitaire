@@ -92,6 +92,30 @@ description = "Solve a deal without playing it: `mise run solve -- 24680`"
 depends = ["build"]
 run = "node --expose-gc packages/core/scripts/solve.mjs"
 
+# The three checks a solver change answers to, each sized to its question
+# (docs/solver.md § Before you change the solver). `solve-same` asks whether this
+# tree's search is main's, deal by deal, on every board: minutes, and a non-zero
+# exit when any deal differs. `-- --base <ref>` for another commit, `-- --game <id>
+# <deals>` for a board and range of your own. Both build the base commit's solver
+# under packages/core/.baseline/.
+[tasks.solve-same]
+description = "Compare this tree's search with main's, deal by deal: `mise run solve-same`"
+depends = ["build"]
+run = "node packages/core/scripts/same-search.mjs"
+
+# Old and new builds timed in turn on each deal, so the pair runs under the same
+# load: `-- --game simplesimon 1-100`, `--runs 3`, `--base <ref>`.
+[tasks.solve-time]
+description = "Time main's solver against this tree's, paired: `mise run solve-time -- --game freecell 1-200`"
+depends = ["build"]
+run = "node packages/core/scripts/solve-pair.mjs"
+
+# Merges the `--record` files a split soak wrote into the record's row
+# (.github/workflows/solver-soak.yml runs it): `-- <record.json>…`.
+[tasks.soak-summary]
+description = "Summarise `solve --record` files as a benchmark-record row"
+run = "node packages/core/scripts/soak-summary.mjs"
+
 # Plays the built site to a win in a real browser, every move a pointer drag —
 # no reaching into game state (packages/web-app/scripts/autoplay). Takes deal
 # numbers and ranges: `-- 24680`, `-- 1-25`, plus `--headed` to watch it play and
