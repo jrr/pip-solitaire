@@ -780,11 +780,11 @@ test("set changes the driver's flags, through the app's own switch", async ({ pa
   await settleBoard(page)
   await openConsole(page)
 
-  // The four rows a `set` listing ends with — read off the foot of the scrollback, since
+  // The five rows a `set` listing ends with — read off the foot of the scrollback, since
   // the echoed command and the one-line acknowledgement say the same words as the row.
   const settingsShown = async () =>
     (await consoleLines(page).allTextContents())
-      .slice(-4)
+      .slice(-5)
       .map((line) => line.trim().replace(/\s+/g, " "))
 
   await runCommand(page, "set")
@@ -793,6 +793,7 @@ test("set changes the driver's flags, through the app's own switch", async ({ pa
     "reorder on",
     "worryback on",
     "gapdeal off",
+    "memory auto",
   ])
 
   // A typed auto-collect goes through the very action the Settings switch dispatches,
@@ -816,12 +817,19 @@ test("set changes the driver's flags, through the app's own switch", async ({ pa
   await expect
     .poll(() => page.evaluate(() => localStorage.getItem("pip.columnReorder")))
     .toBe("false")
+  // The one setting with no switch: a tier, stored as the preference. Which tier the
+  // device would have chosen is not this test's business, so it only sets one.
+  await runCommand(page, "set memory small")
+  await expect
+    .poll(() => page.evaluate(() => localStorage.getItem("pip.memory")))
+    .toBe("small")
   await runCommand(page, "set")
   expect(await settingsShown()).toEqual([
     "autocollect off",
     "reorder off",
     "worryback off",
     "gapdeal on",
+    "memory small",
   ])
 
   // And a setting we don't have is refused in the words the CLI uses.
