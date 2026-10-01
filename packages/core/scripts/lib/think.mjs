@@ -2,7 +2,7 @@
 // (`startThinker` in thinkers.mjs):
 //
 //   node --expose-gc think.mjs <src dir>
-//   → { game, seed, nodes }   ← { seed, grown, tried, ending, line, ms }
+//   → { game, seed, mb }   ← { seed, grown, tried, ending, line, ms }
 //
 // The search runs to its budget with no patience, so what it grows is a function of
 // the code and the deal alone: two builds that answer a deal with the same `grown`,
@@ -23,14 +23,17 @@ const [Game, GameState, Position, Solver] = await Promise.all(
   ["Game", "GameState", "Position", "Solver"].map(load),
 )
 
-process.on("message", ({ game: id, seed, nodes }) => {
+// A cap of `mb` megabytes, or the build's own budget when there is none.
+const budgetOf = (position, mb) => (mb == null ? undefined : { ...Solver.budgetFor(undefined, position), maxBytes: mb * 1e6 })
+
+process.on("message", ({ game: id, seed, mb }) => {
   try {
     const game = Game.byId(id)
     if (!game) throw new Error(`no game called ${id} in ${src}`)
     const deal = Game.dealt(game, seed)
     const position = Position.ofGameState(deal, GameState.initial(deal))
     if (!position) throw new Error(`${id} isn't a board this solver models`)
-    const budget = nodes == null ? undefined : { ...Solver.budgetFor(position), maxNodes: nodes }
+    const budget = budgetOf(position, mb)
     globalThis.gc?.()
     const started = performance.now()
     const search = Solver.Search.make(position, budget, undefined)

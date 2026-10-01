@@ -26,6 +26,7 @@ let debugLogKey = "pip.debugLog"
 let revealHiddenKey = "pip.revealHidden"
 let betaFeaturesKey = "pip.betaFeatures"
 let consoleDockKey = "pip.consoleDock"
+let memoryKey = "pip.memory"
 
 // An explicit "true"/"false" wins; anything else — missing, garbage, unreadable —
 // keeps `fallback`.
@@ -51,6 +52,20 @@ let saveFlag = (key, value) =>
   | _ => ()
   }
 
+// The memory setting: a tier's name, or nothing stored for the device's own (`Device`).
+// Anything unreadable is the device's own too.
+let loadMemory = (): option<Solver.tier> => {
+  let stored = try getItem(memoryKey)->Nullable.toOption catch {
+  | _ => None
+  }
+  stored->Option.flatMap(Solver.parseTier)
+}
+
+let saveMemory = (memory: option<Solver.tier>) =>
+  try setItem(memoryKey, memory->Option.mapOr("", Solver.tierName)) catch {
+  | _ => ()
+  }
+
 let load = (): Options.t => {
   let autoCollect = loadFlag(autoCollectKey, ~fallback=Options.default.autoCollect)
   let allowFoundationReturn = loadFlag(
@@ -67,6 +82,7 @@ let load = (): Options.t => {
     allowColumnReorder,
     allowFoundationReturn,
     allowDealWithEmptyColumns,
+    memory: loadMemory(),
   }
 }
 
@@ -79,6 +95,7 @@ let saveEmptyColumnDeal = (enabled: bool) => saveFlag(emptyColumnDealKey, enable
 let saveColumnReorder = (enabled: bool) => saveFlag(columnReorderKey, enabled)
 
 let save = (options: Options.t) => {
+  saveMemory(options.memory)
   saveAutoCollect(options.autoCollect)
   saveFoundationReturn(options.allowFoundationReturn)
   saveEmptyColumnDeal(options.allowDealWithEmptyColumns)

@@ -48,7 +48,7 @@ otherwise. A `None` proves nothing about the deal — only that this budget
 didn't crack it — *unless* the effort says `Exhausted`: a search that emptied its
 frontier grew every position reachable from the start, and none of them
 finishes. That is a proof, and `Solver.autoplay` answers it as `Unwinnable`
-rather than `NoLine`. It is not a rare answer: about one Simple Simon deal in
+rather than `OutOfRoom`. It is not a rare answer: about one Simple Simon deal in
 twelve is stuck within a few dozen positions of the deal, and the search says so
 in a millisecond. The short packs make it commoner still and cheaper still —
 eight Mini deals and nineteen Micro ones in the first thousand, none of them
@@ -89,12 +89,15 @@ the decision that came out of it. `patient` is a **backstop**: it sits at the wo
 search any board's budget allows, so it bites only on a machine slower than the one
 the record was measured on.
 
-**Nothing waits longer than thirty seconds by default.** Each board's cap is about
-thirty seconds of search on a cloud sandbox (§ The budget), and `patient` is thirty
-seconds of clock, so a default solve — `mise run solve` with no flags, the CLI's
-`autoplay`, the browser harness — gives up by then whatever it was asked. Waiting
-longer is something a caller asks for, never something it gets: `--nodes` raises
-`mise run solve`'s cap, and `--limit` sets its wait.
+**Nothing a player or a script waits on runs longer than thirty seconds by default.**
+The CLI's `autoplay` and the browser harness pass `patient`, and a watched board
+`interactive`, so each gives up by then whatever it was asked. The budget is a cap in
+*bytes* (§ Memory tiers), and how long a search takes to fill it depends on the board:
+`mise run solve` with no flags searches to the medium tier with no wait, which on a
+cloud sandbox is seconds for most deals and minutes for the stubborn ones on the
+boards whose positions are cheap. That is the benchmark's to spend, not a caller's.
+Waiting longer is something a caller asks for: `--tier` and `--mb` raise `mise run
+solve`'s cap, and `--limit` sets its wait.
 
 **Neither front end waits on the thread it draws with.** The terminal has nothing
 to draw; the web app sends the board to a worker (`web-app/src/platform/Thinker.res`)
@@ -104,7 +107,7 @@ what it stopped being is the difference between a page and a hung page.
 
 `mise run solve` passes whatever `--limit` says, and nothing at all by default,
 which is what makes the benchmark record a measurement of the budget rather than
-of a wait. A row measured with `--nodes` says so.
+of a wait. A row measured with `--mb` or another `--tier` says so.
 
 **The search keeps no time; the caller cuts it into slices.** `Solver.Search.think`
 takes a number of positions and nothing else, and `Solver.solveOn` is the one place a
@@ -141,15 +144,17 @@ about the board:
 | `ending` | what happened | `autoplay` says |
 |---|---|---|
 | `Exhausted` | the frontier emptied: every reachable position was seen, and none finishes | `Unwinnable` — a proof |
-| `OutOfNodes` | the search holds its `maxNodes` grown positions with others still waiting | `NoLine` |
+| `Full` | the search holds its budget's `maxBytes` with positions still waiting | `OutOfRoom` |
 | `OutOfTime` | the caller's `patience` ran out, with the budget not yet spent | `OutOfPatience` |
 
-They are `Search.answer`'s four with a clock read against it: `Full` is `OutOfNodes`,
+They are `Search.answer`'s four with a clock read against it: `Full` is `Full`,
 and `Paused` — a slice spent with the frontier not — is `OutOfTime` once the deadline
 has passed, and simply the next slice before then.
 
-**The last two are not one answer in two moods.** `OutOfNodes` means the budget was
-spent and gave up, which is the most this solver has to say about a deal.
+**The last two are not one answer in two moods.** `Full` means the budget was
+spent and gave up, which is the most this solver has to say about a deal — and it is
+said as an answer about the budget, in megabytes, rather than about the board
+(`Command.autoplayOutOfRoom`).
 `OutOfTime` means nobody finished looking — so it's the one refusal a more patient
 caller might turn into an answer, and the front end says *that* rather than
 reporting a verdict the search never reached (`Command.autoplayOutOfPatience`).
@@ -1072,7 +1077,7 @@ what it means to do.
   ended and the line it found. A deal that differs is printed and the exit is
   non-zero. Every board is covered, from a sample of each sized to finish in about
   two minutes on four cores; the Spider boards, whose deals nearly all run to the
-  budget, are compared under a 100,000-node cap. Two searches that grow the same
+  budget, are compared under a 48 MB cap (`--mb`). Two searches that grow the same
   positions and try the same moves on a deal make every count the record keeps for
   it the same — so where `solve-same` passes, the record's counts stand. Its times
   could still have moved, and so could Held, which is how the search *stores* what
@@ -1094,7 +1099,7 @@ what it means to do.
   not an improvement, and a change to the search or a shared term moves every board
   at once. Soaks run in CI, not in a session: the `solver-soak` workflow (Actions →
   solver-soak → Run workflow, on the PR's branch) takes a board, a range, an optional
-  `--nodes` cap and a number of jobs, splits the range across them, and prints the
+  `--mb` cap and a number of jobs, splits the range across them, and prints the
   row for that board's table on the run page — copy it in and finish its Environment
   cell. The ranges are the record's: 1–1000 for FreeCell, Simple Simon and the two
   short packs, 1–200 for each Spiderette pack. A change to the search wants a row at
@@ -1103,8 +1108,8 @@ what it means to do.
   regression in the positions it stopped short of. `mise run solve -- --quiet` is
   still how you soak a range by hand, and `--record <file>` with `mise run
   soak-summary -- <files>` is how the workflow puts its slices back together.
-- **Read the Held column, not only the counts.** The node cap is the only thing
-  bounding what a search holds (§ The budget), so a change that solves more by
+- **Read the Held column, not only the counts.** The tier's cap is the only thing
+  bounding what a search holds (§ Memory tiers), so a change that solves more by
   growing more is a change a phone pays for. Add a row to § What the interactive
   wait costs as well: that table is where a watched board's memory is measured.
 - **Check the mirror.** If you touched `Position`, `Position_test` plays a solved

@@ -82,7 +82,7 @@ Its interface, in `core`, is five operations:
 | `Found` | `line()` has the moves from the current root | `Found` |
 | `Exhausted` | the frontier is empty: every position reachable from the root is closed and none finishes. A proof. | `Exhausted` |
 | `Paused` | this call's budget is spent and the frontier is not | `OutOfTime`, from the driver's point of view |
-| `Full` | the memory cap is reached with positions still waiting | `OutOfNodes` |
+| `Full` | the memory cap is reached with positions still waiting | `Full` |
 
 The rest of this page is what it takes to make those five operations true.
 
@@ -207,10 +207,10 @@ had to be more careful than the table says.
   `turn` back to the first — and so is a board that already finishes. Only `grown`,
   `tried` and the bytes carry over, because the effort is the search's and not the
   graph's.
-- **The cap counts what is held.** `maxNodes` is checked against the grown nodes the
-  graph still holds (`closed`), not against `grown`, which counts every position
-  grown since `make`. A search a player keeps open all game would otherwise answer
-  `Full` on a board it holds little of.
+- **The cap counts what is held.** `maxBytes` is checked against what the graph and
+  heaps hold now (`Search.bytes`), which a re-root shrinks to what it kept — not
+  against anything counted since `make`. A search a player keeps open all game would
+  otherwise answer `Full` on a board it holds little of.
 - **The walk replays, and mostly doesn't compare.** Each closed node's moves are
   generated on a `Board` and each child looked up by hash. A child that was grown
   from this node by this very move is that position by construction, so it is taken
@@ -360,9 +360,26 @@ Where the cap comes from, in order:
 
 The three tiers are three numbers in one place. What they should be is measured,
 not reasoned: bytes per node from `solve.mjs` in Node, from Chrome on the dev
-server, and the small tier tried on an old phone. Until the tiers land the cap is
-expressed in nodes, each board's set so the most its soak holds stays under what
-the restart ladder held (`docs/solver.md` § The budget).
+server, and the small tier tried on an old phone.
+
+### Memory as built
+
+`Solver.capOf` holds the three numbers and `Solver.budgetFor(~tier)` turns one into a
+budget; the search answers `Full` once `Search.bytes` reaches it, checked before each
+position is grown. `web-app/src/platform/Device.res` is the ladder above: it reads the
+device, keeps the flag (set by `Thinker` when a question goes to the worker, cleared
+when it is answered or let go of, and on `pagehide`, so a reload or a closed tab is
+not read as a crash), and keeps the ceiling a crash leaves. The setting is
+`set memory small|medium|large|auto` (`Options.memory`), stored like the other
+preferences; choosing it clears the ceiling, and a crash under a chosen tier lowers
+the setting rather than the ceiling, so the player's choice and the device's guess
+never disagree silently. The drop is said once, in the Solve dialog's panel over the
+board.
+
+The worker hears the cap with every `Think`, not once at `Open`, because the setting
+can change between two asks of one search (`Search.limit`); a cap lowered under what a
+search holds answers `Full` at the next ask without growing anything. What the tiers
+come to on each board, and how they were measured: `docs/solver.md` § Memory tiers.
 
 ## The worker, as a service
 

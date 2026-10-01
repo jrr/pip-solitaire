@@ -238,34 +238,74 @@ module Heap = {
 
 // --- What a caller is willing to spend ---------------------------------------
 
-// How hard a search leans on the heuristic, and how far it may grow. `heaps` is one
+// How much a search may hold, in three sizes of device. **The three numbers are here and
+// nowhere else**: a tier is chosen once per load by whoever knows the device (the web
+// app's `Device`), and a caller that knows nothing about it — the CLI, `mise run solve`,
+// a test — gets `Medium`. What each holds in positions on each board, and the device each
+// was tried on: `docs/solver.md` § Memory tiers.
+type tier =
+  | Small
+  | Medium
+  | Large
+
+let capOf = (tier: tier): int =>
+  switch tier {
+  | Small => 96_000_000
+  | Medium => 256_000_000
+  | Large => 768_000_000
+  }
+
+// The tier below, for a device that has shown it can't hold this one. `Small` is the floor.
+let lower = (tier: tier): tier =>
+  switch tier {
+  | Large => Medium
+  | Medium | Small => Small
+  }
+
+let tierName = (tier: tier): string =>
+  switch tier {
+  | Small => "small"
+  | Medium => "medium"
+  | Large => "large"
+  }
+
+let parseTier = (token: string): option<tier> =>
+  switch token->String.toLowerCase {
+  | "small" => Some(Small)
+  | "medium" => Some(Medium)
+  | "large" => Some(Large)
+  | _ => None
+  }
+
+// How hard a search leans on the heuristic, and how much it may hold. `heaps` is one
 // weight per open list — each scales the heuristic against depth, and a search with
 // more than one takes turns between them over a single graph (`Search`, below).
-// `maxNodes` is the grown positions it may hold, over all of them, before it answers
-// `Full` — every position it has grown, until a re-root lets some go.
+// `maxBytes` is what it may hold (`Search.bytes`) before it answers `Full`: the search
+// lets go of nothing it has grown but what a re-root leaves behind, so this is the
+// bound on a search asked again and again, or kept open all game.
 //
-// **A default cap is about thirty seconds of search**, whoever calls: a deal that spends
-// it takes that long on a cloud sandbox, and nothing that runs by default should take
-// longer. A caller who will wait longer passes a budget of its own (`solve.mjs --nodes`).
-// It is a memory ceiling too — a search lets go of nothing it has grown but what a
-// re-root leaves behind — and each default holds well under what the restart ladder it
-// replaced did. Why each pair of heaps, and what each cap costs in deals:
-// `docs/solver.md` § The budget.
-type budget = {heaps: array<float>, maxNodes: int}
+// **The cap is a tier's, and the time a default search takes follows from it**: at the
+// 60 to 600 bytes a position the boards cost, `Medium` is a few hundred thousand to a
+// million and a half positions — up to about thirty seconds on a cloud sandbox. A caller
+// who will wait longer, or has more room, passes a budget of its own (`solve.mjs --mb`).
+// Why each pair of heaps: `docs/solver.md` § The budget.
+type budget = {heaps: array<float>, maxBytes: int}
 
 // The first weight on each board is the one almost every deal falls to; the second is
 // the one that catches most of what the first misses.
-let freecellBudget = {heaps: [2., 1.], maxNodes: 500_000}
-let simonBudget = {heaps: [1., 0.3], maxNodes: 500_000}
-let spideretteBudget = {heaps: [2., 1.], maxNodes: 1_000_000}
+let freecellHeaps = [2., 1.]
+let simonHeaps = [1., 0.3]
+let spideretteHeaps = [2., 1.]
 
-// The budget a board gets — picked the same way its weights are, and for the same
-// reason: a stock is a longer game, not another law.
-let budgetFor = (s: Position.t): budget =>
-  switch s.law {
-  | Position.FreeCell => freecellBudget
-  | Position.SimpleSimon => Array.length(s.stock) > 0 ? spideretteBudget : simonBudget
-  }
+// The budget a board gets on a device of `tier` — its heaps picked the same way its
+// weights are, and for the same reason: a stock is a longer game, not another law.
+let budgetFor = (~tier: tier=Medium, s: Position.t): budget => {
+  heaps: switch s.law {
+  | Position.FreeCell => freecellHeaps
+  | Position.SimpleSimon => Array.length(s.stock) > 0 ? spideretteHeaps : simonHeaps
+  },
+  maxBytes: capOf(tier),
+}
 
 // How long the caller is willing to wait, and the clock to measure it on. **The solver
 // still keeps no clock of its own** — it is handed one, the way `Session` is handed the
@@ -329,9 +369,9 @@ module Search = {
   //   `Exhausted` — the frontier is empty: every position reachable from the root was
   //                 grown and none finishes. A proof.
   //   `Paused`    — this call's slice is spent and the frontier is not. Ask again.
-  //   `Full`      — the search holds its `maxNodes` grown positions with others still
+  //   `Full`      — the search holds its `maxBytes` with positions still
   //                 waiting. It proves nothing about the deal, and asking again changes
-  //                 nothing until the board moves.
+  //                 nothing until the board moves or the cap is raised.
   type answer =
     | Found
     | Exhausted
@@ -343,11 +383,14 @@ module Search = {
   // time goes into (every one of them is a `Board.play`, a hash, a lookup and a
   // `canFinish`, and a `takeBack`). Both
   // count from `make`, across every `think` and every re-root. `closed` is the grown
-  // positions the graph still holds — `grown` until a re-root lets some go — and is what
-  // `maxNodes` caps, since the cap is on what a search holds.
+  // positions the graph still holds — `grown` until a re-root lets some go.
+  //
+  // `budget` is mutable for its `maxBytes` alone: a device found to hold less than it
+  // was thought to (`limit`, below) caps a search already grown. Its `heaps` are the
+  // frontiers' and never change.
   type t = {
     weights: weights,
-    budget: budget,
+    mutable budget: budget,
     graph: Graph.t,
     frontiers: array<Heap.t>,
     priorities: array<int => float>, // each heap's order, read off the graph
@@ -572,6 +615,10 @@ module Search = {
       sum + Heap.bytes(frontier)
     )
 
+  // A cap of `maxBytes` from here on, for a search grown under another. Lowered below
+  // what it holds, the next `think` answers `Full` without growing anything.
+  let limit = (search: t, ~maxBytes: int) => search.budget = {...search.budget, maxBytes}
+
   // Positions found and not yet grown: every node in the graph is one or the other.
   let frontier = (search: t): int => search.graph.size - search.closed
 
@@ -584,7 +631,7 @@ module Search = {
       Found
     } else if !waiting(search) {
       Exhausted
-    } else if search.closed >= search.budget.maxNodes {
+    } else if bytes(search) >= search.budget.maxBytes {
       Full
     } else {
       Paused
@@ -594,12 +641,12 @@ module Search = {
   // Grow the search by up to `nodes` more positions, and say where that left it.
   let think = (search: t, ~nodes: int): answer => {
     search->follow
-    let {weights, budget: {maxNodes}, graph} = search
+    let {weights, budget: {maxBytes}, graph} = search
     let until = search.grown + nodes
     while (
       Option.isNone(search.line) &&
       waiting(search) &&
-      search.closed < maxNodes &&
+      bytes(search) < maxBytes &&
       search.grown < until
     ) {
       let node = next(search)
@@ -662,15 +709,16 @@ module Search = {
 //   `Found`      — a line.
 //   `Exhausted`  — the search proved there is none, and what `autoplay` answers
 //                  `Unwinnable` from.
-//   `OutOfNodes` — the search is `Full`. It proves nothing about the deal.
+//   `Full`       — the search holds all its budget lets it. It proves nothing about
+//                  the deal.
 //   `OutOfTime`  — the caller's `patience` ran out with the search still `Paused`. It
 //                  proves nothing about the deal *or about the budget*, and it isn't
-//                  folded into `OutOfNodes` because it is the one refusal a more patient
+//                  folded into `Full` because it is the one refusal a more patient
 //                  caller might turn into an answer.
 type ending =
   | Found
   | Exhausted
-  | OutOfNodes
+  | Full
   | OutOfTime
 
 // What a solve cost, for a front end that wants to say how hard the answer was to find,
@@ -703,7 +751,7 @@ let effortOf = (search: Search.t, answer: Search.answer): effort => {
   ending: switch answer {
   | Search.Found => Found
   | Search.Exhausted => Exhausted
-  | Search.Full => OutOfNodes
+  | Search.Full => Full
   | Search.Paused => OutOfTime
   },
   bytes: Search.bytes(search),
@@ -802,10 +850,10 @@ type played = {
 }
 
 // What autoplay found. The four refusals answer four different questions and read as
-// four different sentences (`Command.autoplayUnknownBoard` / `autoplayNoLine` /
+// four different sentences (`Command.autoplayUnknownBoard` / `autoplayOutOfRoom` /
 // `autoplayUnwinnable` / `autoplayOutOfPatience`): a board the solver doesn't
-// understand, one it understands and couldn't win, one it has proved can't be won, and
-// one nobody finished looking at. A `Played` with no steps is none of them — it's a
+// understand, one it filled its memory on without a win, one it has proved can't be won,
+// and one nobody finished looking at. A `Played` with no steps is none of them — it's a
 // board already finishable, where there was nothing left to think about.
 //
 // `Played` carries what the search cost alongside the line it found (`effort`), so a
@@ -815,7 +863,9 @@ type played = {
 type autoplayed =
   | Played({steps: array<played>, effort: effort})
   | UnknownBoard // not a board `Position.ofGameState` can read — neither game, or a shape of one it doesn't model
-  | NoLine // the budget ran out (which proves nothing about the deal — see `solve`)
+  // The search holds all its budget lets it, `bytes` of it, with positions still waiting:
+  // an answer about the budget, which proves nothing about the deal.
+  | OutOfRoom({bytes: int})
   | Unwinnable // every reachable position was searched and none wins (`ending` says `Exhausted`)
   // The caller's own `patience` ran out with the search still going — an answer about the
   // wait that was asked for, not about the board. It reads as its own refusal because it
@@ -862,7 +912,7 @@ let autoplayedOf = (
     switch effort.ending {
     | Exhausted => Unwinnable
     | OutOfTime => OutOfPatience
-    | Found | OutOfNodes => NoLine
+    | Found | Full => OutOfRoom({bytes: effort.bytes})
     }
   | Some(moves) =>
     let steps = []
@@ -894,11 +944,17 @@ let autoplayedOf = (
     Played({steps, effort})
   }
 
-let autoplay = (~game: Game.t, ~patience: option<patience>=?, state: GameState.t): autoplayed =>
+// `~tier` is the device's (`budgetFor`), for a driver that knows it; `Medium` otherwise.
+let autoplay = (
+  ~game: Game.t,
+  ~patience: option<patience>=?,
+  ~tier: option<tier>=?,
+  state: GameState.t,
+): autoplayed =>
   switch Position.ofGameState(~game, state) {
   | None => UnknownBoard
   | Some(position) =>
-    let (line, effort) = solveWithEffort(position, ~patience?)
+    let (line, effort) = solveWithEffort(position, ~budget=budgetFor(~tier?, position), ~patience?)
     autoplayedOf(~game, state, ~line, ~effort)
   }
 

@@ -28,8 +28,8 @@ on:
         description: Range of deals, `from-to`
         type: string
         default: 1-1000
-      nodes:
-        description: Node cap (`--nodes`); empty for the board's own
+      mb:
+        description: Memory cap in megabytes (`--mb`); empty for the medium tier
         type: string
         default: ""
       jobs:
@@ -46,12 +46,12 @@ jobs:
       - id: slice
         env:
           DEALS: ${{ inputs.deals }}
-          NODES: ${{ inputs.nodes }}
+          MB: ${{ inputs.mb }}
           JOBS: ${{ inputs.jobs }}
         run: |
           [[ "$DEALS" =~ ^([0-9]+)-([0-9]+)$ ]] || { echo "deals must be from-to, got '$DEALS'"; exit 1; }
           from=${BASH_REMATCH[1]} to=${BASH_REMATCH[2]}
-          [[ -z "$NODES" || "$NODES" =~ ^[0-9]+$ ]] || { echo "nodes must be a whole number"; exit 1; }
+          [[ -z "$MB" || "$MB" =~ ^[0-9]+$ ]] || { echo "mb must be a whole number"; exit 1; }
           [[ "$JOBS" =~ ^[0-9]+$ ]] && (( JOBS >= 1 && JOBS <= 64 )) || { echo "jobs must be 1-64"; exit 1; }
           n=$(( to - from + 1 )); (( n >= 1 )) || { echo "empty range"; exit 1; }
           (( JOBS > n )) && JOBS=$n
@@ -83,10 +83,10 @@ jobs:
       - name: Soak the slice
         env:
           GAME: ${{ inputs.game }}
-          NODES: ${{ inputs.nodes }}
+          MB: ${{ inputs.mb }}
           SLICE: ${{ matrix.slice }}
         run: |
-          mise run solve -- --game "$GAME" --quiet --record "soak-$SLICE.json" ${NODES:+--nodes "$NODES"} "$SLICE" || true
+          mise run solve -- --game "$GAME" --quiet --record "soak-$SLICE.json" ${MB:+--mb "$MB"} "$SLICE" || true
           test -s "soak-$SLICE.json"
 
       - uses: actions/upload-artifact@v7

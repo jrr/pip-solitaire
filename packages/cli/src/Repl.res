@@ -302,11 +302,11 @@ let consider = (
     // The one command that changes the *driver* rather than the board. Handed back as
     // part of the state so the loop carries it into the next line — which is what makes
     // a setting stick for the rest of the session.
-    | Command.Set({setting, on}) =>
+    | Command.Set({setting, value}) =>
       Ran({
         session,
-        options: Options.apply(options, ~setting, ~on),
-        output: Command.describeSet(~setting, ~on),
+        options: Options.apply(options, ~setting, ~value),
+        output: Command.describeSet(~setting, ~value),
       })
     | command =>
       let (next, output) = stepCommand(~options, ~newSeed, ~clock, ~patience?, session, command)

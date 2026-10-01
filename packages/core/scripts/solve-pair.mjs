@@ -18,13 +18,13 @@ import { rangeOf, seedsOf, time } from "./lib/format.mjs"
 import { headSrc, startThinker } from "./lib/thinkers.mjs"
 
 function parseArgs(argv) {
-  const opts = { base: "origin/main", game: "freecell", seeds: [], runs: 1, nodes: null }
+  const opts = { base: "origin/main", game: "freecell", seeds: [], runs: 1, mb: null }
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i]
     if (arg === "--base") opts.base = argv[++i]
     else if (arg === "--game") opts.game = argv[++i]
     else if (arg === "--runs") opts.runs = Number(argv[++i])
-    else if (arg === "--nodes") opts.nodes = Number(argv[++i])
+    else if (arg === "--mb") opts.mb = Number(argv[++i])
     else if (seedsOf(arg)) opts.seeds.push(...seedsOf(arg))
     else throw new Error(`unrecognised argument: ${arg}`)
   }
@@ -43,7 +43,7 @@ const builds = [
 
 // Each build thinks the first deal once untimed, so neither pays for its JIT warming up
 // inside the pair.
-const ask = (build, seed) => build.thinker.ask({ game: opts.game, seed, nodes: opts.nodes })
+const ask = (build, seed) => build.thinker.ask({ game: opts.game, seed, mb: opts.mb })
 for (const build of builds) await ask(build, opts.seeds[0])
 
 let unlike = 0
@@ -74,7 +74,7 @@ const geomean = Math.exp(ratios.reduce((a, r) => a + Math.log(r), 0) / ratios.le
 const faster = ratios.filter((r) => r < 1).length
 const n = opts.seeds.length
 
-console.log(`\n${opts.game} ${rangeOf(opts.seeds)}, ${opts.runs} run${opts.runs > 1 ? "s" : ""} a deal${opts.nodes ? `, capped at ${opts.nodes} nodes` : ""}`)
+console.log(`\n${opts.game} ${rangeOf(opts.seeds)}, ${opts.runs} run${opts.runs > 1 ? "s" : ""} a deal${opts.mb ? `, capped at ${opts.mb} MB` : ""}`)
 for (const [name, s] of [["base", old], ["this", now]])
   console.log(`  ${name}  mean ${time(s.mean).padStart(7)}, worst #${s.worstSeed} at ${time(s.worstMs)}`)
 console.log(

@@ -70,6 +70,10 @@ let spawn: unit => worker = %raw(`
 // the whole wait spent on this thread instead.
 let silence = 10_000
 
+// How much a search may hold here: the tier `Device` settled on at load, or the one the
+// memory setting chose since. Read at each question, so a change lands on the next.
+let tier: ref<Solver.tier> = ref(Solver.Medium)
+
 // Solve right here, on this thread, holding it for as long as it takes. The answer to
 // "what if there is no worker" — and to a worker that has stopped answering, which is
 // better answered slowly than not at all. It reads the wait off the same clock the far
@@ -77,7 +81,7 @@ let silence = 10_000
 // the thinking ends up happening.
 let here = (~game: Game.t, ~state: GameState.t, ~patience: option<float>): Solver.autoplayed => {
   let limit = patience->Option.map((ms): Solver.patience => {ms, clock: SolverWorker.clock})
-  Solver.autoplay(~game, ~patience=?limit, state)
+  Solver.autoplay(~game, ~patience=?limit, ~tier=tier.contents, state)
 }
 
 // The question in flight, `Some` exactly while one is being thought about. One at a
@@ -109,6 +113,7 @@ let cancel = () =>
   switch live.contents {
   | Some(question) =>
     live := None
+    Device.ended()
     clearTimeout(question.watchdog)
     thread.contents->Option.forEach(worker => worker->tell(Stop))
   | None => ()
@@ -132,7 +137,9 @@ let abandon = (worker: worker) => {
   | Some(question) =>
     live := None
     clearTimeout(question.watchdog)
-    question.onAnswer(question.fallback())
+    let answered = question.fallback()
+    Device.ended()
+    question.onAnswer(answered)
   | None => ()
   }
 }
@@ -147,6 +154,7 @@ let heard = (worker: worker, reply: SolverWorker.reply) =>
   | (Some(question), Progress({ask})) if ask == question.ask => watch(worker, question)
   | (Some(question), Answer({ask, autoplayed})) if ask == question.ask =>
     live := None
+    Device.ended()
     clearTimeout(question.watchdog)
     question.onAnswer(autoplayed)
   // About a question already let go of: an answer about a board that has moved on.
@@ -200,7 +208,10 @@ let think = (
   ~onAnswer: Solver.autoplayed => unit,
 ) =>
   if !supported {
-    onAnswer(here(~game, ~state, ~patience))
+    Device.started()
+    let answered = here(~game, ~state, ~patience)
+    Device.ended()
+    onAnswer(answered)
   } else {
     cancel()
     let worker = worker()
@@ -218,5 +229,8 @@ let think = (
     worker->tellBoard(~game, ~state)
     live := Some(question)
     watch(worker, question)
-    worker->tell(Think({ask: question.ask, ms: patience}))
+    // Marked as running until it answers or is let go of: a load that finds the mark
+    // still set is a tab this search took down (`Device.recover`).
+    Device.started()
+    worker->tell(Think({ask: question.ask, ms: patience, maxBytes: Solver.capOf(tier.contents)}))
   }

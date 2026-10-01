@@ -8,7 +8,8 @@
 //   mise run solve -- --game minifreecell 1-200 # …a short-deck one, likewise
 //   mise run solve -- --limit 10 1-200      # give up on a deal after ten seconds
 //   mise run solve -- --limit 10+10 147     # …then ask the same search for ten more
-//   mise run solve -- --nodes 5000000 147   # a bigger budget than the board's own
+//   mise run solve -- --tier large 147      # the budget a large device gets
+//   mise run solve -- --mb 2000 147         # …or a cap of your own, in megabytes
 //   mise run solve -- --reroot 1-100        # …and what following a move and its undo costs
 //   mise run solve -- --record r.json 1-100 # …and every deal's figures, for soak-summary
 //
@@ -23,9 +24,11 @@
 // way a driver that ran out of patience would ask for more: each carries on from where
 // the last stopped, and the effort reported is all of them together.
 //
-// `--nodes` replaces the board's cap on positions grown, keeping its heaps. A board's
-// own cap is about thirty seconds of search, the most anything waits by default; this is
-// how a run that means to wait longer says so.
+// `--tier` is the memory tier the search is capped at (`Solver.capOf`), `medium` when
+// left off — what a caller that knows nothing about its device gets. `--mb` replaces the
+// cap with one of its own, keeping the board's heaps: how a run that means to hold more,
+// and wait longer, says so. Each deal reports what it held per position grown, which is
+// how a tier is read as positions on a board (docs/solver.md § Memory tiers).
 //
 // `--reroot` times the walk a search pays on every move a player makes with it open
 // (`Solver.Search.moved`): once the search has answered, the board moves one move — the
@@ -54,16 +57,19 @@ import * as Position from "../src/Position.res.mjs"
 import * as Solver from "../src/Solver.res.mjs"
 
 function parseArgs(argv) {
-  const opts = { seeds: [], quiet: false, game: "freecell", limits: null, nodes: null, reroot: false, record: null }
+  const opts = { seeds: [], quiet: false, game: "freecell", limits: null, tier: null, mb: null, reroot: false, record: null }
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i]
     if (arg === "--quiet") opts.quiet = true
     else if (arg === "--reroot") opts.reroot = true
     else if (arg === "--game") opts.game = argv[++i]
     else if (arg === "--record") opts.record = argv[++i]
-    else if (arg === "--nodes") {
-      opts.nodes = Number(argv[++i])
-      if (!(Number.isInteger(opts.nodes) && opts.nodes > 0)) throw new Error("--nodes takes a whole number of positions")
+    else if (arg === "--tier") {
+      opts.tier = argv[++i]
+      if (!Solver.parseTier(opts.tier)) throw new Error("--tier takes small, medium or large")
+    } else if (arg === "--mb") {
+      opts.mb = Number(argv[++i])
+      if (!(Number.isInteger(opts.mb) && opts.mb > 0)) throw new Error("--mb takes a whole number of megabytes")
     }
     else if (arg === "--limit") {
       opts.limits = String(argv[++i]).split("+").map(Number)
@@ -79,7 +85,13 @@ function parseArgs(argv) {
   return opts
 }
 
+const mb = (bytes) => (bytes < 1e6 ? "<1 MB" : `${(bytes / 1e6).toFixed(0)} MB`)
 const opts = parseArgs(process.argv.slice(2))
+// The cap every deal is searched under: `--mb`'s, or the tier's.
+const tier = Solver.parseTier(opts.tier ?? "medium")
+const capBytes = opts.mb !== null ? opts.mb * 1e6 : Solver.capOf(tier)
+const capSaid = opts.mb !== null ? `${opts.mb} MB` : `the ${opts.tier ?? "medium"} tier, ${mb(capBytes)}`
+const budget = (position) => ({ ...Solver.budgetFor(tier, position), maxBytes: capBytes })
 const game = Game.byId(opts.game)
 if (!game) throw new Error(`no game called ${opts.game} — one of ${Game.all.map((g) => g.id).join(", ")}`)
 
@@ -97,6 +109,8 @@ let worst = { seed: null, ms: 0 }
 let totalHeld = 0
 let most = { seed: null, bytes: 0 }
 let totalArrays = 0
+let totalPositions = 0
+let costliest = { seed: null, each: 0 }
 const record = []
 
 // The collector has to be callable to read a live heap rather than a live heap plus
@@ -133,9 +147,8 @@ function think(position) {
   const baseline = liveHeap()
   const started = Date.now()
   // `~budget` and `~weights`, positionally — a ReScript optional argument is by the time
-  // it reaches here. The board's own for both, unless `--nodes` raised the cap.
-  const budget = opts.nodes === null ? undefined : { ...Solver.budgetFor(position), maxNodes: opts.nodes }
-  const search = Solver.Search.make(position, budget, undefined)
+  // it reaches here. The board's own weights; its heaps at the tier's cap or `--mb`'s.
+  const search = Solver.Search.make(position, budget(position), undefined)
   let line, effort
   let asked = 0
   do [line, effort] = Solver.solveOn(search, asks[asked++])
@@ -170,10 +183,11 @@ let rerootKept = 0
 let rerootWorst = { seed: null, ms: 0 }
 const rerootSaid = ({ before, kept, ms }) => `kept ${kept} of ${before} nodes in ${ms.toFixed(0)}ms`
 
-const mb = (bytes) => (bytes < 1e6 ? "<1 MB" : `${(bytes / 1e6).toFixed(0)} MB`)
 // Held, and beside it what the search says its own arrays hold (`effort.bytes`) — the
 // two should agree to within what the arrays don't count.
-const holding = (held, effort) => `holding ${mb(held)} (arrays ${mb(effort.bytes)})`
+// …and what that came to per position grown: the figure a tier is read through.
+const perPosition = (effort) => `${(effort.bytes / Math.max(effort.positions, 1)).toFixed(0)} B a position`
+const holding = (held, effort) => `holding ${mb(held)} (arrays ${mb(effort.bytes)}, ${perPosition(effort)})`
 
 for (const seed of opts.seeds) {
   const deal = Game.dealt(game, seed)
@@ -205,6 +219,11 @@ for (const seed of opts.seeds) {
   totalHeld += held
   if (held > most.bytes) most = { seed, bytes: held, arrays: effort.bytes }
   totalArrays += effort.bytes
+  totalPositions += effort.positions
+  // Among the deals that grew enough to matter: a search's first arrays are sized ahead of
+  // what it grows, so a deal answered in a few hundred positions reads as kilobytes each.
+  const each = effort.bytes / Math.max(effort.positions, 1)
+  if (effort.bytes >= 10e6 && each > costliest.each) costliest = { seed, each }
   // Three ways to come back without a line, and they are three different facts: a proof
   // the deal can't be won, the budget spent, and the caller's own limit reached.
   const proved = Solver.provedUnwinnable(effort)
@@ -223,6 +242,7 @@ for (const seed of opts.seeds) {
     ms: took,
     held,
     arrays: effort.bytes,
+    positions: effort.positions,
   })
 
   const why = proved ? "every line was tried" : ranOut ? limitSaid : "the budget ran out"
@@ -239,7 +259,7 @@ for (const seed of opts.seeds) {
       console.log(`  re-rooted one move on: ${rerootSaid(rerooted.on)}; and back: ${rerootSaid(rerooted.back)}`)
   } else if (!plan)
     console.log(
-      `deal ${seed}: ${proved ? "unwinnable" : ranOut ? "out of time" : "no solution"} (${took}ms, ${mb(held)}, arrays ${mb(effort.bytes)})`,
+      `deal ${seed}: ${proved ? "unwinnable" : ranOut ? "out of time" : "no solution"} (${took}ms, ${mb(held)}, arrays ${mb(effort.bytes)}, ${perPosition(effort)})`,
     )
 }
 
@@ -254,7 +274,10 @@ console.log(
     ` — ${per(totalMs)}ms and ${(totalMoves / Math.max(solved, 1)).toFixed(0)} moves a deal on average` +
     (worst.seed === null ? "" : `, worst deal #${worst.seed} at ${worst.ms}ms`) +
     ` — ${mb(totalHeld / Math.max(n, 1))} held a deal on average (arrays ${mb(totalArrays / Math.max(n, 1))})` +
-    (most.seed === null ? "" : `, most by #${most.seed} at ${mb(most.bytes)} (arrays ${mb(most.arrays)})`),
+    (most.seed === null ? "" : `, most by #${most.seed} at ${mb(most.bytes)} (arrays ${mb(most.arrays)})`) +
+    ` — ${(totalArrays / Math.max(totalPositions, 1)).toFixed(0)} B a position grown over the range` +
+    (costliest.seed === null ? "" : `, most by #${costliest.seed} at ${costliest.each.toFixed(0)} B of those holding 10 MB`) +
+    ` — capped at ${capSaid}`,
 )
 
 if (opts.reroot && rerootKept > 0)
@@ -266,7 +289,7 @@ if (opts.reroot && rerootKept > 0)
 if (opts.record)
   writeFileSync(
     opts.record,
-    JSON.stringify({ game: game.id, nodes: opts.nodes, limits: opts.limits, node: process.version, deals: record }),
+    JSON.stringify({ game: game.id, cap: capSaid, limits: opts.limits, node: process.version, deals: record }),
   )
 
 process.exit(unsolved === 0 ? 0 : 1)
