@@ -29,7 +29,7 @@ async function tapStock(page) {
 test("deals 54 cards with only the tops up, and the stock deals its five rows by tap", async ({
   page,
 }) => {
-  await page.goto("/?game=spider&seed=1&animate=off")
+  await page.goto("/?game=spider2&seed=1&animate=off")
   await settle(page)
   await expect(cards(page)).toHaveCount(104)
   await expect(page.locator(".drop-zone")).toHaveCount(19)

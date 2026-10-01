@@ -13,14 +13,14 @@ describe("Game", () => {
     // <id>` enumerate, in picker order.
     expect(Game.all->Array.map(g => g.id))->toEqual([
       "freecell",
-      "mini",
-      "micro",
+      "minifreecell",
+      "microfreecell",
       "simplesimon",
       "spiderette1",
-      "spiderette",
+      "spiderette2",
       "spiderette4",
       "spider1",
-      "spider",
+      "spider2",
       "spider4",
     ])
     expect(Game.all->Array.every(g => g.name != ""))->toBe(true)
@@ -33,6 +33,27 @@ describe("Game", () => {
     expect(
       ids->Array.filter(id => ids->Array.filter(other => other == id)->Array.length > 1),
     )->toEqual([])
+  })
+
+  test("a former id still finds its board, and names no board of its own", () => {
+    expect(Game.byId("mini")->Option.map(g => g.id))->toEqual(Some("minifreecell"))
+    expect(Game.byId("micro")->Option.map(g => g.id))->toEqual(Some("microfreecell"))
+    expect(Game.byId("spiderette")->Option.map(g => g.id))->toEqual(Some("spiderette2"))
+    expect(Game.byId("spider")->Option.map(g => g.id))->toEqual(Some("spider2"))
+    let current = Game.all->Array.map(g => g.id)
+    expect(
+      Game.formerIds->Array.filter(((former, _)) => current->Array.includes(former)),
+    )->toEqual([])
+  })
+
+  test("a former id points at a current one, so one lookup always lands", () => {
+    let current = Game.all->Array.map(g => g.id)
+    expect(Game.formerIds->Array.every(((_, now)) => current->Array.includes(now)))->toBe(true)
+  })
+
+  test("an id that was never renamed comes back as it is, scene ids included", () => {
+    expect(Game.currentId("spider4"))->toBe("spider4")
+    expect(Game.currentId("raster"))->toBe("raster")
   })
 
   // The assembled FreeCell board: pile capacity, pile roles, the cascade rule and
@@ -1378,9 +1399,7 @@ describe("Game", () => {
   })
 
   // The one- and four-suit packs are the same twelve-pile board with a different
-  // deck: still 52 cards and still four runs, so the same four foundations. The
-  // two-suit board keeps the bare `spiderette` id, so a save or link written for it
-  // opens it and not a sibling.
+  // deck: still 52 cards and still four runs, so the same four foundations.
   describe("spiderette's other packs", () => {
     test(
       "one suit is spades four times over, four suits is the standard pack, and each is 52 cards in twelve piles",
@@ -1553,11 +1572,11 @@ describe("Game", () => {
       "gathers each family's boards under one name, in offering order",
       () => {
         expect(Game.freecellFamily.name)->toBe("FreeCell")
-        expect(ids(Game.freecellFamily))->toEqual(["freecell", "mini", "micro"])
+        expect(ids(Game.freecellFamily))->toEqual(["freecell", "minifreecell", "microfreecell"])
         expect(Game.spideretteFamily.name)->toBe("Spiderette")
-        expect(ids(Game.spideretteFamily))->toEqual(["spiderette1", "spiderette", "spiderette4"])
+        expect(ids(Game.spideretteFamily))->toEqual(["spiderette1", "spiderette2", "spiderette4"])
         expect(Game.spiderFamily.name)->toBe("Spider")
-        expect(ids(Game.spiderFamily))->toEqual(["spider1", "spider", "spider4"])
+        expect(ids(Game.spiderFamily))->toEqual(["spider1", "spider2", "spider4"])
       },
     )
 
@@ -1568,8 +1587,8 @@ describe("Game", () => {
         // the default, where the Spiderettes are ordered easiest-first and default to the
         // two-suit pack in the middle.
         expect(Game.freecellFamily.default.game.id)->toBe("freecell")
-        expect(Game.spideretteFamily.default.game.id)->toBe("spiderette")
-        expect(Game.spiderFamily.default.game.id)->toBe("spider")
+        expect(Game.spideretteFamily.default.game.id)->toBe("spiderette2")
+        expect(Game.spiderFamily.default.game.id)->toBe("spider2")
       },
     )
 

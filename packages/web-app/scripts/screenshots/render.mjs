@@ -87,9 +87,9 @@ const scenes = [
   { name: "Dealt", query: "?game=freecell&seed=1&animate=off" },
   { name: "Mid-game", query: "?game=freecell&state=midgame" },
   { name: "Finish", query: "?game=freecell&state=finish" },
-  { name: "Spiderette", query: "?game=spiderette&state=dealt&animate=off" },
-  { name: "Deep column", query: "?game=spiderette&state=deep&animate=off" },
-  { name: "Spider", query: "?game=spider&seed=1&animate=off" },
+  { name: "Spiderette", query: "?game=spiderette2&state=dealt&animate=off" },
+  { name: "Deep column", query: "?game=spiderette2&state=deep&animate=off" },
+  { name: "Spider", query: "?game=spider2&seed=1&animate=off" },
   {
     name: "Menu",
     query: "?game=freecell&seed=1&animate=off",

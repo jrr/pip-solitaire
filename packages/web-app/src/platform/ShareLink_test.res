@@ -136,10 +136,18 @@ describe("ShareLink.savedFrom names the game", () => {
   let saveOf = (game: Game.t): SaveState.t =>
     SaveState.ofHistory(History.make(GameState.initial(game)))
 
+  testAsync("a link sent under a game's former id still comes back as that game", async () => {
+    let blob = await blobFor({...saveOf(Game.mini), gameId: Some("mini")})
+    switch await ShareLink.savedFrom(blob) {
+    | Some({game}) => expect(game.id)->toBe("minifreecell")
+    | None => expect("restored")->toBe("but got None")
+    }
+  })
+
   testAsync("a link shared from another game comes back as that game", async () => {
     let blob = await blobFor({...saveOf(Game.mini), gameId: Some(Game.mini.id)})
     switch await ShareLink.savedFrom(blob) {
-    | Some({game}) => expect(game.id)->toBe("mini")
+    | Some({game}) => expect(game.id)->toBe("minifreecell")
     | None => expect("restored")->toBe("but got None")
     }
   })
@@ -181,6 +189,11 @@ describe("ShareLink.urlForDeal names the game", () => {
   test("a deal of another game names it with `?game=`", () => {
     let url = ShareLink.urlForDeal(~game=Game.simpleSimon, ~seed=7)
     expect(url->String.endsWith("?game=" ++ Game.simpleSimon.id ++ "&seed=7"))->toBe(true)
+  })
+
+  test("a renamed game is named by its current id, never a former one", () => {
+    let url = ShareLink.urlForDeal(~game=Game.spider, ~seed=7)
+    expect(url->String.endsWith("?game=spider2&seed=7"))->toBe(true)
   })
 
   test("…and the default game leaves it out, for the link to stay legible", () => {

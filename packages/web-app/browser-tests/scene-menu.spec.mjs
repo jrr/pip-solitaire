@@ -94,7 +94,7 @@ test("tapping the game you're already playing doesn't re-deal it", async ({ page
 test("every released game is listed up top, and none among the demos", async ({
   page,
 }) => {
-  await page.goto("/?game=micro&animate=off")
+  await page.goto("/?game=microfreecell&animate=off")
   await settleBoard(page)
 
   await openMenu(page)

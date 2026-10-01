@@ -119,7 +119,7 @@ building and where to look, and never restates the issue.
 
 The app can be played by an agent, in a real browser, with pointer drags —
 `mise run autoplay -- <deal>` plays a deal to the win overlay, and
-`-- --game simplesimon <deal>` a Simple Simon one (`mini` and `micro` likewise;
+`-- --game simplesimon <deal>` a Simple Simon one (`minifreecell` and `microfreecell` likewise;
 the Spiderettes only through the in-app `autoplay` command, since the harness
 can't read a face-down card off the page). Use it to see a change in the actual
 game rather than only in tests. Driving the board by hand (one move, a

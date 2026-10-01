@@ -40,7 +40,7 @@ let seedStorage = () => {
   setItem("pip.savedDeal.freecell", "24680")
   setItem("pip.lastGame", "freecell")
   setItem("pip.autoCollect", "false")
-  setItem("pip.variant.freecell", "mini")
+  setItem("pip.variant.freecell", "minifreecell")
 }
 
 describe("StoredState", () => {

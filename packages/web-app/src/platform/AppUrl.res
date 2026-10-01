@@ -2,7 +2,7 @@
 // drives the app into a fixed, shareable position without touching it — which is what
 // the screenshot report needs (`?game=freecell&state=midgame`, then shoot it).
 //
-//   ?game=mini     which game, by id       ?state=midgame  a named `Scenario`
+//   ?game=spider2  which game, by id       ?state=midgame  a named `Scenario`
 //   ?scene=raster  which scene, by id      ?seed=7         the deal number
 //   ?animate=off   still every card       ?raster=svg     the raster scene's rendering
 //   ?cascade=pose  freeze the cascade at a fixed frame
@@ -31,7 +31,9 @@ type searchParams
 type t = {
   // Resolved, because this module can see `Game.all`: an unknown id is turned away
   // here rather than travelling on as a string that looks like an answer. `scene`
-  // stays raw for the opposite reason — the scene list is built in `Main`.
+  // stays a string for the opposite reason — the scene list is built in `Main` — but a
+  // former game id is brought up to date (`Game.currentId`), a board's scene id being
+  // its game id.
   game: option<Game.t>,
   scene: option<string>,
   state: option<string>,
@@ -72,5 +74,14 @@ let parse = (): t => {
   // An unknown `?game=` falls through to `?scene=` and the launch default, rather than
   // forcing a scene id nothing can mount.
   let game = read(ShareLink.gameKey)->Option.flatMap(Game.byId)
-  {game, scene: read("scene"), state: read("state"), seed, animate, raster, cascade, shared}
+  {
+    game,
+    scene: read("scene")->Option.map(Game.currentId),
+    state: read("state"),
+    seed,
+    animate,
+    raster,
+    cascade,
+    shared,
+  }
 }

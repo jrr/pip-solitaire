@@ -1,6 +1,6 @@
 // The short-deck boards, played to the win overlay in a real browser.
 //
-// `mini` and `micro` are FreeCell in every mechanic and differ only in deck and
+// Mini and Micro FreeCell are FreeCell in every mechanic and differ only in deck and
 // shape, and the claim that costs them nothing but two values in `Game.res` is
 // exactly that: the view, the reducer and the rules all read the board rather than
 // assume FreeCell's. Nothing short of playing one proves that end to end — a unit
@@ -27,13 +27,13 @@ test.use(quietWin)
 
 const BOARDS = [
   {
-    id: "mini",
+    id: "minifreecell",
     game: Game.mini,
     zones: 10, // 2 cells + 4 foundations + 4 cascades
     line: "2D C1, 5D C2, 2D T3, 5S C1, 3S F2, 3C F1, 4H T1, 4D T4, 5H T2, 4S F2, 4C F1, 5S F2, 4H C1",
   },
   {
-    id: "micro",
+    id: "microfreecell",
     game: Game.micro,
     zones: 8, // 2 cells + 2 foundations + 4 cascades
     line: "2S T3, 2H C1, 6S C2, 8H C1, 5S T1, 4H F1, 5H F1, 6H F1, 8S T4",

@@ -386,7 +386,7 @@ back, so nothing is converted before comparing. The conversion to playfield-loca
    needs in scaled pixels is published; anything it derives itself can drift.
 4. **Check the short screen, not just the wide one.** The height fit, the fan
    extent and `rowsCount` only show up on a landscape phone — and so does a
-   compressed fan at its tightest. `?game=spiderette&state=deep` is the column
+   compressed fan at its tightest. `?game=spiderette2&state=deep` is the column
    to look at; the screenshot report shoots it.
 5. **Retuning `minScale` or `cardW` moves the dock refusal.** They're the same
    arithmetic; `TableLayout_test`'s round-trip test is what notices.

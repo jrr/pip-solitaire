@@ -5,7 +5,7 @@
 //   mise run solve -- 1-25                  # a range, for soaking the solver
 //   mise run solve -- --quiet 1-100         # just the summary line
 //   mise run solve -- --game simplesimon 7  # another board, by `Game.t` id
-//   mise run solve -- --game mini 1-200     # …a short-deck one, likewise
+//   mise run solve -- --game minifreecell 1-200 # …a short-deck one, likewise
 //   mise run solve -- --limit 10 1-200      # give up on a deal after ten seconds
 //   mise run solve -- --limit 10+10 147     # …then ask the same search for ten more
 //   mise run solve -- --nodes 5000000 147   # a bigger budget than the board's own

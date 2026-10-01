@@ -184,11 +184,11 @@ mise run solve                    # deal 1, with the line printed
 mise run solve -- 24680           # a particular deal
 mise run solve -- --quiet 1-1000  # a soak: just the summary line
 mise run solve -- --game simplesimon 1-1000 --quiet   # the other law
-mise run solve -- --game mini --quiet 1-1000          # the short packs
+mise run solve -- --game minifreecell --quiet 1-1000  # the short packs
 mise run solve -- --game spiderette4 --quiet 1-200    # the board that deals
 mise run solve -- --game spiderette1 --quiet 1-200    # …and its repeated packs
-mise run solve -- --game spiderette --quiet 1-200
-mise run solve -- --game spider --limit 10 --quiet 1-5   # two packs: a probe, not a record
+mise run solve -- --game spiderette2 --quiet 1-200
+mise run solve -- --game spider2 --limit 10 --quiet 1-5   # two packs: a probe, not a record
 mise run solve -- --limit 10 --game spiderette4 --quiet 1-200   # …as a player waits for it
 mise run solve -- --limit 10+10 --game spiderette4 147          # …and asks for ten more
 ```
@@ -869,14 +869,14 @@ to want it is more likely a *shorter line* than a faster one, which is the trade
 ## Before you change the solver
 
 - **Soak it — every board.** `mise run solve -- --quiet 1-1000`, and again with
-  `--game simplesimon`, `--game mini` and `--game micro`, and add a row to each
+  `--game simplesimon`, `--game minifreecell` and `--game microfreecell`, and add a row to each
   table above. A change that helps the mean and doubles the worst case is not an
   improvement, and a change to the search or a shared term moves every board at
   once. The two short packs take a few seconds each, so there is no excuse.
   Spiderette is the expensive one — `--game spiderette4 --quiet 1-200` is over an
   hour, because the deals it gives up on each cost the whole budget — so soak it
   over 1–200 rather than the thousand, split the range across processes, and leave
-  it running. Its repeated packs (`spiderette1`, `spiderette`) are the same board
+  it running. Its repeated packs (`spiderette1`, `spiderette2`) are the same board
   with a cheaper deck and are worth the same range: the one-suit soak is about a
   minute, the two-suit one a quarter of an hour. **Don't reach for `--limit` to make that cheaper**: a capped run
   measures the cap, and a cap is exactly what would hide a regression in the

@@ -65,7 +65,7 @@ describe("MenuVariantPicker", () => {
     let log = []
     let picker = render(Game.spideretteFamily, ~on=Game.spiderette, ~log)
     picker->findAll(".menu-variant-picker__choice")->Array.forEach(click)
-    expect(log)->toEqual(["spiderette1", "spiderette", "spiderette4"])
+    expect(log)->toEqual(["spiderette1", "spiderette2", "spiderette4"])
   })
 
   test("is buttons, so a tap is a tap and not a form submission", () => {
