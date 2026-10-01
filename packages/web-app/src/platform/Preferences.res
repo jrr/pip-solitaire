@@ -132,14 +132,15 @@ let saveBetaFeatures = (enabled: bool) => saveFlag(betaFeaturesKey, enabled)
 // costs no stored-shape migration; `family` is the family's own id, which is why it is
 // stable across a rename of what a player sees.
 //
-// Handed back raw, because what counts as a variant is `Game`'s to say and not
+// Handed back unchecked, a former id brought up to date (`Game.currentId`) and nothing
+// more, because what counts as a variant is `Game`'s to say and not
 // storage's: the reader resolves the id against the family and falls back to its
 // default, so a stale id, a garbage value and a variant this build has dropped are all
 // one answer — exactly how a remembered last game is read (`Main`'s `menuGameById`).
 let variantKey = (~family: string) => "pip.variant." ++ family
 
 let loadVariant = (~family: string): option<string> =>
-  try getItem(variantKey(~family))->Nullable.toOption catch {
+  try getItem(variantKey(~family))->Nullable.toOption->Option.map(Game.currentId) catch {
   | _ => None
   }
 

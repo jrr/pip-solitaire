@@ -32,6 +32,7 @@ open Vitest
 // Emptying one key, which the module itself has no reason to expose: `clear` is
 // per-game, and nothing in the app forgets which game was last on the table.
 @val @scope("localStorage") external removeItem: string => unit = "removeItem"
+@val @scope("localStorage") external getItem: string => Nullable.t<string> = "getItem"
 
 describe("SavedGame", () => {
   let game = Game.freecell
@@ -153,5 +154,37 @@ describe("SavedGame", () => {
     expect(SavedGame.loadLastGame())->toEqual(Some("freecell"))
     SavedGame.saveLastGame("simplesimon")
     expect(SavedGame.loadLastGame())->toEqual(Some("simplesimon"))
+  })
+
+  test("a renamed board's save and deal number move to its current id", () => {
+    SavedGame.clear("minifreecell")
+    SavedGame.save("mini", saved)
+    SavedGame.saveSeed("mini", 42)
+    SavedGame.moveRenamed()
+    expect(SavedGame.load("minifreecell"))->toEqual(Some(saved))
+    expect(SavedGame.loadSeed("minifreecell"))->toEqual(Some(42))
+    expect(getItem(SavedGame.key("mini"))->Nullable.toOption)->toEqual(None)
+    expect(getItem(SavedGame.seedKey("mini"))->Nullable.toOption)->toEqual(None)
+  })
+
+  test("a save already under the current id wins, and the former one is dropped", () => {
+    let current = {...saved, stats: {...saved.stats, moves: 9}}
+    SavedGame.save("spider2", current)
+    SavedGame.saveSeed("spider2", 7)
+    SavedGame.save("spider", saved)
+    SavedGame.saveSeed("spider", 42)
+    SavedGame.moveRenamed()
+    expect(SavedGame.load("spider2"))->toEqual(Some(current))
+    expect(SavedGame.loadSeed("spider2"))->toEqual(Some(7))
+    expect(SavedGame.load("spider"))->toEqual(None)
+  })
+
+  test("a moved save with no deal number of its own takes none, not a stale one", () => {
+    SavedGame.clear("spiderette2")
+    SavedGame.saveSeed("spiderette2", 7)
+    SavedGame.save("spiderette", saved)
+    SavedGame.moveRenamed()
+    expect(SavedGame.load("spiderette2"))->toEqual(Some(saved))
+    expect(SavedGame.loadSeed("spiderette2"))->toEqual(None)
   })
 })

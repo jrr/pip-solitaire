@@ -186,7 +186,7 @@ for (const viewport of DEEP_VIEWPORTS) {
     test.use({ viewport: { width: viewport.width, height: viewport.height } })
 
     test("backs step tighter than faces, and the fan ends inside the playfield", async ({ page }) => {
-      await page.goto("/?game=spiderette&state=deep&animate=off")
+      await page.goto("/?game=spiderette2&state=deep&animate=off")
       await settleBoard(page)
       await expect(page.locator(".stacking-card")).toHaveCount(52)
 

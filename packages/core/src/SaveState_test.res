@@ -253,9 +253,9 @@ describe("SaveState", () => {
     test(
       "rides in the envelope and comes back",
       () => {
-        expect(SaveState.encode(miniSave)->String.includes(`"game":"mini"`))->toBe(true)
+        expect(SaveState.encode(miniSave)->String.includes(`"game":"minifreecell"`))->toBe(true)
         switch SaveState.decode(SaveState.encode(miniSave)) {
-        | Some(restored) => expect(restored.gameId)->toEqual(Some("mini"))
+        | Some(restored) => expect(restored.gameId)->toEqual(Some("minifreecell"))
         | None => expect("decoded")->toBe("but got None")
         }
       },

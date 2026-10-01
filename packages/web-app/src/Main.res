@@ -749,6 +749,10 @@ let update = (msg, model) => {
 // (`Game.t.deal`).
 let url = AppUrl.parse()
 
+// Before anything below reads a save: a board saved under an id it has since been
+// renamed from is brought to the one it is read under now.
+SavedGame.moveRenamed()
+
 // Whether the URL asks for no particular board — the *plain open* of
 // `docs/board-driver.md` § Which opens touch storage, minus the "re-dealable game"
 // half each scene adds for itself. One spelling, because the same condition decides

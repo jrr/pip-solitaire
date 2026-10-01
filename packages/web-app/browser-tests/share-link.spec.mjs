@@ -32,7 +32,7 @@ const MIDGAME = "/?game=freecell&state=midgame&animate=off"
 // can ask: the blob names the game it was shared from, and the link has to open
 // that game rather than whichever board the app happens to launch into. Deal #1 of Mini,
 // so the position is fixed and its 20 cards are unmistakably not FreeCell's 52.
-const MINI = "/?game=mini&seed=1&animate=off"
+const MINI = "/?game=minifreecell&seed=1&animate=off"
 
 // The board as comparable data: every card by name, with where it came to rest.
 // Cards are absolutely positioned siblings rather than children of their zones, so
@@ -197,7 +197,7 @@ test("a shared link takes over the save of the game it names, and no other", asy
   const adopted = await readBoard(page)
 
   // A plain open of that game resumes what the link left…
-  await page.goto("/?game=mini")
+  await page.goto("/?game=minifreecell")
   await settleBoard(page)
   expect(await readBoard(page)).toEqual(adopted)
 
@@ -206,6 +206,35 @@ test("a shared link takes over the save of the game it names, and no other", asy
   await page.goto("/?game=freecell")
   await settleBoard(page)
   expect((await readBoard(page)).length).toBe(52)
+})
+
+test("a game's former id still opens it, and a save filed under that id resumes", async ({
+  page,
+}) => {
+  // `Game.formerIds`: links and saves written before a rename name the old id.
+  await page.goto("/?game=mini&seed=1&animate=off")
+  await settleBoard(page)
+  const dealt = await readBoard(page)
+  await page.goto(MINI)
+  await settleBoard(page)
+  expect(await readBoard(page)).toEqual(dealt)
+
+  // Adopt a board so there is a save, then file it where an older build would have.
+  const url = await shareFromDebugScreen(page)
+  await page.goto(url)
+  await settleBoard(page)
+  const adopted = await readBoard(page)
+  await page.evaluate(() => {
+    for (const kind of ["savedGame", "savedDeal"]) {
+      const value = localStorage.getItem(`pip.${kind}.minifreecell`)
+      localStorage.removeItem(`pip.${kind}.minifreecell`)
+      if (value !== null) localStorage.setItem(`pip.${kind}.mini`, value)
+    }
+  })
+
+  await page.goto("/?game=minifreecell")
+  await settleBoard(page)
+  expect(await readBoard(page)).toEqual(adopted)
 })
 
 test("a corrupt link leaves an existing saved game alone", async ({ page }) => {

@@ -29,10 +29,10 @@ let stopped: Solver.patience = {ms: Solver.interactive, clock: () => 0.}
 let deals = (game: Game.t): array<int> =>
   switch game.id {
   | "simplesimon" => [1, 6]
-  | "spiderette" => [2, 5]
+  | "spiderette2" => [2, 5]
   | "spiderette4" => [12, 15]
   | "spider1" => [6, 7]
-  | "spider" => [27]
+  | "spider2" => [27]
   | _ => [1, 2]
   }
 

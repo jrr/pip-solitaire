@@ -79,7 +79,7 @@ async function watchFlashes(page) {
 test("spiderette turns a card over when it is exposed, and deals its stock by tap", async ({ page }) => {
   const game = Game.spideretteDeal(1)
   const cascades = Game.pileIndices(game, "Cascade")
-  await page.goto("/?game=spiderette&seed=1&animate=off")
+  await page.goto("/?game=spiderette2&seed=1&animate=off")
   await settle(page)
 
   // The board `Game.res` describes: a stock, four foundations, seven columns, and
@@ -152,7 +152,7 @@ test.describe("a deal refused by an empty column", () => {
   test("flashes every empty column, and nothing else", async ({ page }) => {
     const game = Game.spiderette
     const cascades = Game.pileIndices(game, "Cascade")
-    await page.goto("/?game=spiderette&state=stuck&animate=off")
+    await page.goto("/?game=spiderette2&state=stuck&animate=off")
     await settle(page)
 
     // Two columns empty with the stock still full — the second and the fifth, so a
@@ -188,7 +188,7 @@ test.describe("a deal refused by an empty column", () => {
     await page.addInitScript(() => localStorage.setItem("pip.emptyColumnDeal", "true"))
     const game = Game.spiderette
     const cascades = Game.pileIndices(game, "Cascade")
-    await page.goto("/?game=spiderette&state=stuck&animate=off")
+    await page.goto("/?game=spiderette2&state=stuck&animate=off")
     await settle(page)
     await expect(stock(page)).toHaveCount(24)
 
@@ -204,7 +204,7 @@ test.describe("a deal refused by an empty column", () => {
     // Every run collected but the last: five columns stand empty and the stock is out,
     // so the deal is refused for a reason no column is to blame for — and there is no
     // stock card left to tap in the first place.
-    await page.goto("/?game=spiderette&state=almost-won&animate=off")
+    await page.goto("/?game=spiderette2&state=almost-won&animate=off")
     await settle(page)
     await expect(stock(page)).toHaveCount(0)
     const flashed = await watchFlashes(page)
@@ -226,7 +226,7 @@ test.describe("a deal refused by an empty column", () => {
 })
 
 test("a drag that completes the last run flies it home and wins", async ({ page }) => {
-  await page.goto("/?game=spiderette&state=almost-won&animate=off")
+  await page.goto("/?game=spiderette2&state=almost-won&animate=off")
   await settle(page)
   await expect(page.locator(".win-overlay")).toHaveCount(0)
   // The Ace alone on the second column: the last run's, whose face is also on top of a
@@ -249,7 +249,7 @@ test("a drag that completes the last run flies it home and wins", async ({ page 
 // int, so a plan that named a card by that int rather than by the one it lifted off the
 // live pile would drag the wrong Seven here. `seed=1` on each, so the line is the same
 // one every run.
-for (const game of ["spiderette1", "spiderette", "spiderette4"]) {
+for (const game of ["spiderette1", "spiderette2", "spiderette4"]) {
   test(`autoplay plays a ${game} deal out, dealing the stock as it goes`, async ({ page }) => {
     // The search thinks for a second or two, then ninety-odd moves play out and the
     // last runs fly home — more than the suite's default patience.
@@ -283,7 +283,7 @@ test.describe("a compressed column", () => {
   test("takes a drop on its last card", async ({ page }) => {
     const game = Game.spiderette
     const cascades = Game.pileIndices(game, "Cascade")
-    await page.goto("/?game=spiderette&state=deep&animate=off")
+    await page.goto("/?game=spiderette2&state=deep&animate=off")
     await settle(page)
     const before = assignPiles(await readGeometry(page))
     expect(before[cascades[0]].length).toBe(20)

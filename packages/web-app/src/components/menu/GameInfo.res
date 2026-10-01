@@ -55,9 +55,9 @@ let wikipedia = (article: string): string => wikipediaArticle ++ article
 // points at the article for the game it is a variant of, rather than at nothing.
 let referenceFor = (id: string): string =>
   switch id {
-  | "freecell" | "mini" | "micro" => wikipedia("FreeCell")
+  | "freecell" | "minifreecell" | "microfreecell" => wikipedia("FreeCell")
   | "simplesimon" => wikipedia("Simple_Simon_(solitaire)")
-  | "spiderette1" | "spiderette" | "spiderette4" | "spider1" | "spider" | "spider4" =>
+  | "spiderette1" | "spiderette2" | "spiderette4" | "spider1" | "spider2" | "spider4" =>
     wikipedia("Spider_(solitaire)")
   | _ => wikipedia("Patience_(game)")
   }

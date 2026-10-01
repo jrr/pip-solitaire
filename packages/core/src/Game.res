@@ -200,7 +200,7 @@ let miniDeck: Cards.deck = {suits: Cards.suits, ranks: [Ace, Two, Three, Four, F
 
 let miniDeal = (~seed: int): t =>
   freecellShaped(
-    ~id="mini",
+    ~id="minifreecell",
     ~name="Mini FreeCell",
     ~deck=miniDeck,
     ~cascades=4,
@@ -220,7 +220,7 @@ let microDeck: Cards.deck = {
 
 let microDeal = (~seed: int): t =>
   freecellShaped(
-    ~id="micro",
+    ~id="microfreecell",
     ~name="Micro FreeCell",
     ~deck=microDeck,
     ~cascades=4,
@@ -305,9 +305,8 @@ let spideretteCounts = [1, 2, 3, 4, 5, 6, 7]
 // The seams that differ per variant, so the shape below can be written once — and per
 // game, since Spider (below) is this same shape at ten columns and two packs: the
 // counts are what tell the two apart, and everything after them is read off the deck
-// and the counts. `id` stays the storage key and `?game=` value, so the two-suit board
-// keeps the bare `spiderette` it has always had: a save or link written for it still
-// opens it.
+// and the counts. `id` is the storage key and `?game=` value, so renaming one means a
+// row in `formerIds`.
 let rec spiderShaped = (
   ~id: string,
   ~name: string,
@@ -374,7 +373,7 @@ let spideretteDeck: Cards.deck = {suits: [Spades, Hearts], ranks: Cards.ranks, c
 
 let spideretteDeal = (~seed: int): t =>
   spiderShaped(
-    ~id="spiderette",
+    ~id="spiderette2",
     ~name="Spiderette · 2 suits",
     ~deck=spideretteDeck,
     ~counts=spideretteCounts,
@@ -406,8 +405,7 @@ let spiderette4 = spiderette4Deal(~seed=freecellSeed)
 // twice over. Eight runs to collect whichever pack it is, so eight foundations
 // (`suits × copies`) — which, with the stock's fifty, is what tells Spider's top row from
 // Spiderette's. One suit makes the same-suit run rule vacuous and four suits is the real
-// game; two is where most players start. The two-suit board keeps the bare `spider` id
-// as the two-suit Spiderette keeps `spiderette`, so the two families' ids read alike.
+// game; two is where most players start.
 let spiderCounts = [6, 6, 6, 6, 5, 5, 5, 5, 5, 5]
 
 let spider1Deck: Cards.deck = {suits: [Spades], ranks: Cards.ranks, copies: 8}
@@ -425,7 +423,7 @@ let spiderDeck: Cards.deck = {suits: [Spades, Hearts], ranks: Cards.ranks, copie
 
 let spiderDeal = (~seed: int): t =>
   spiderShaped(
-    ~id="spider",
+    ~id="spider2",
     ~name="Spider · 2 suits",
     ~deck=spiderDeck,
     ~counts=spiderCounts,
@@ -468,9 +466,27 @@ let all = [
 // means FreeCell — this is the one line to change the day that stops being true.
 let default = freecell
 
+// **An id, once published, keeps resolving.** Ids are in shared links, saved games' keys
+// and blobs, and the remembered last game and variant, so a renamed board's old id
+// stays here, pointing at its new one. Share links write only the current id.
+let formerIds = [
+  ("mini", "minifreecell"),
+  ("micro", "microfreecell"),
+  ("spiderette", "spiderette2"),
+  ("spider", "spider2"),
+]
+
+// The current id for `id`: itself, unless it is a former one. A string that names no
+// game comes back as it is, so this is safe on a scene id too.
+let currentId = (id: string): string =>
+  formerIds->Array.find(((former, _)) => former == id)->Option.mapOr(id, ((_, current)) => current)
+
 // The lookup lives beside the list it looks in, so a caller holds a `Game.t` rather
-// than a string it hopes is one.
-let byId = (id: string): option<t> => all->Array.find(game => game.id == id)
+// than a string it hopes is one. It takes a former id as readily as a current one.
+let byId = (id: string): option<t> => {
+  let id = currentId(id)
+  all->Array.find(game => game.id == id)
+}
 
 // A game with no deal to vary has only the one board, so it answers with itself: a
 // caller asking for "the next board of this game" always gets a board.

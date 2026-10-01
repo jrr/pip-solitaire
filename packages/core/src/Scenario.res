@@ -524,10 +524,10 @@ let scenariosFor = (game: Game.t): array<named> =>
   switch game.id {
   | "freecell" => freecellScenarios
   | "spiderette1"
-  | "spiderette"
+  | "spiderette2"
   | "spiderette4"
   | "spider1"
-  | "spider"
+  | "spider2"
   | "spider4" => spideretteScenarios
   | _ => []
   }

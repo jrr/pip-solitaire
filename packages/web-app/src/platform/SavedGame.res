@@ -106,6 +106,37 @@ let saveLastGame = (gameId: string): unit =>
   | _ => ()
   }
 
+// --- Renamed games ---------------------------------------------------------
+//
+// Both per-game keys are filed under the id, so a renamed board's save sits under the
+// id it had (`Game.formerIds`). `Main` calls this once, before anything reads a save,
+// to move each one to the id it has now.
+//
+// **A save and its deal number move together or not at all**, since a number is only
+// meaningful beside the board it dealt. A board already saved under its current id
+// keeps that save, and the stale one under the former id is dropped. A device that
+// can't persist hits the same failure on every key, so nothing is left half-moved.
+let moveRenamed = (): unit =>
+  Game.formerIds->Array.forEach(((former, current)) =>
+    try {
+      if getItem(key(current))->Nullable.isNullable {
+        getItem(key(former))
+        ->Nullable.toOption
+        ->Option.forEach(stored => {
+          setItem(key(current), stored)
+          switch getItem(seedKey(former))->Nullable.toOption {
+          | Some(seed) => setItem(seedKey(current), seed)
+          | None => removeItem(seedKey(current))
+          }
+        })
+      }
+      removeItem(key(former))
+      removeItem(seedKey(former))
+    } catch {
+    | _ => ()
+    }
+  )
+
 // Drop `gameId`'s saved game, deal number and all. Not used by the resume flow
 // (New Game overwrites via `save` rather than clearing), but kept for completeness
 // and testing.

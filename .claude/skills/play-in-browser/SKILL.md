@@ -102,8 +102,8 @@ hand-run script doesn't.)
 
 Query parameters, all documented in `src/platform/AppUrl.res`:
 
-- `?game=freecell` — open a game by id (`freecell`, `mini`, `micro`, `simplesimon`,
-  `spiderette1`, `spiderette`, `spiderette4`, `spider1`, `spider`, `spider4`).
+- `?game=freecell` — open a game by id (`freecell`, `minifreecell`, `microfreecell`,
+  `simplesimon`, `spiderette1`, `spiderette2`, `spiderette4`, `spider1`, `spider2`, `spider4`).
   `playGame()` knows FreeCell and Simple Simon (`playGame(page, { game:
   "simplesimon", seed })`). The solver plans every Spiderette too, but this harness
   can't play them — `read-board.mjs` says why, and the in-app `autoplay` command
