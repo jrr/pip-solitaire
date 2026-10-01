@@ -35,6 +35,11 @@ type t = {
   down: array<int>,
   stock: array<int>,
   mutable undealt: int,
+  // Fold the columns even while there is a stock: the same piles in another column order
+  // taken for one position, as they are once the stock is out. Not true of a board that
+  // deals, so a search that folds can find a line but can't prove there is none —
+  // `Solver.Search` folds to look and keeps the order to prove.
+  fold: bool,
   journal: array<int>,
   frames: array<int>, // the journal's length at the start of each move still played
   // Scratch for `canFinish` and `heuristic`, which ask after every generated move.
@@ -46,6 +51,10 @@ type t = {
 
 let columns = (b: t): int => Array.length(b.height)
 
+// Whether which column holds a pile is part of the position: while there is a stock to
+// deal onto them, unless the board was loaded to `fold`.
+let keepsOrder = (b: t): bool => b.undealt > 0 && !b.fold
+
 let cardAt = (b: t, ~col: int, ~i: int): int => b.cards->Array.getUnsafe(col * b.cap + i)
 
 let topOf = (b: t, col: int): int => {
@@ -53,7 +62,7 @@ let topOf = (b: t, col: int): int => {
   h == 0 ? -1 : cardAt(b, ~col, ~i=h - 1)
 }
 
-let load = (s: Position.t): t => {
+let load = (~fold: bool=false, s: Position.t): t => {
   let cap = Math.Int.max(s.pack.size, 1)
   let n = Array.length(s.casc)
   let cards = Array.make(~length=n * cap, 0)
@@ -71,6 +80,7 @@ let load = (s: Position.t): t => {
     down: s.down->Array.copy,
     stock: s.stock->Array.copy,
     undealt: Array.length(s.stock),
+    fold,
     journal: [],
     frames: [],
     drainFound: s.found->Array.copy,
@@ -123,8 +133,8 @@ let toPosition = (b: t): Position.t => {
 }
 
 // `Position.alike`, on two boards of one deal: the same foundations and stock length,
-// the cells the same *multiset*, and the columns too — in the same order while there is
-// a stock. What a search asks to be sure a hash that matched meant the same position.
+// the cells the same *multiset*, and the columns too — in the same order while `a`
+// `keepsOrder`. What a search asks to be sure a hash that matched meant the same position.
 let alike = (a: t, b: t): bool => {
   let columnsEqual = (x: t, i: int, y: t, j: int): bool => {
     let n = x.height->Array.getUnsafe(i)
@@ -193,7 +203,7 @@ let alike = (a: t, b: t): bool => {
   Array.length(a.cells) == Array.length(b.cells) &&
   columns(a) == columns(b) &&
   a.found->Array.everyWithIndex((n, suit) => b.found->Array.getUnsafe(suit) == n) &&
-  sameCells() && (a.undealt > 0 ? sameSeats() : sameColumns())
+  sameCells() && (keepsOrder(a) ? sameSeats() : sameColumns())
 }
 
 // --- The journal -------------------------------------------------------------
@@ -576,7 +586,9 @@ let toMove = (move: move): Position.move =>
     })
   }
 
-// `Position.legalMoves`, in the same order and with the same three prunings.
+// `Position.legalMoves`, in the same order and with the same three prunings — the two
+// column ones taken whenever the board doesn't `keepsOrder`, so a board that `fold`s
+// prunes them with a stock still to deal.
 let legalMoves = (b: t): array<move> => {
   let moves = []
   for cell in 0 to Array.length(b.cells) - 1 {
@@ -594,7 +606,7 @@ let legalMoves = (b: t): array<move> => {
   }
   let firstEmptyCell = b.cells->Array.indexOf(-1)
   let firstEmptyColumn = b.height->Array.indexOf(0)
-  let folds = b.undealt == 0
+  let folds = !keepsOrder(b)
   for src in 0 to columns(b) - 1 {
     let depth = b.height->Array.getUnsafe(src)
     if depth > 0 {
@@ -682,8 +694,8 @@ let played = (b: t): int => Array.length(b.frames)
 // Two 32-bit hashes of the board `Position.key` spells, so two boards that key
 // alike hash alike: the cells are a multiset there (sorted before they're spelled),
 // and here each is hashed on its own and the results *summed*, which no order
-// changes. The columns are summed the same way once the stock is out; while there is
-// one, each column's hash takes its index too, as `key` keeps their order. The
+// changes. The columns are summed the same way unless the board `keepsOrder`; while it
+// does, each column's hash takes its index too, as `key` keeps their order. The
 // foundations and the stock's length are positional.
 //
 // **Nothing may depend on it being exact.** A match is where a lookup starts, never
@@ -715,7 +727,7 @@ let hash = (b: t): (int, int) => {
   }
   for col in 0 to columns(b) - 1 {
     let h = b.height->Array.getUnsafe(col)
-    let seat = (seed: int): int => b.undealt > 0 ? step(seed, col) : seed
+    let seat = (seed: int): int => keepsOrder(b) ? step(seed, col) : seed
     let ha = ref(step(seat(0x811c9dc5), b.down->Array.getUnsafe(col)))
     let hz = ref(step(seat(0x050c5d1f), b.down->Array.getUnsafe(col) + 64))
     for i in 0 to h - 1 {

@@ -326,6 +326,42 @@ describe("Board", () => {
     expect(Board.toPosition(board))->toEqual(posed)
   })
 
+  test(
+    "a board loaded to fold takes the piles in another order for itself, stock or no stock",
+    () => {
+      // ♠K on one column, ♠Q on the next, two empties, and a stock still to deal.
+      let posed: Position.t = {
+        law: SimpleSimon,
+        pack: Position.standardPack,
+        cells: [],
+        found: [0, 0, 0, 0],
+        casc: [[12], [11], [], []],
+        down: [0, 0, 0, 0],
+        stock: [0, 1, 2, 3],
+      }
+      let kept = Board.load(posed)
+      let folded = Board.load(~fold=true, posed)
+      expect(Board.hash(kept) == Board.hash(Board.load(shuffled(posed))))->toBe(false)
+      expect(Board.hash(folded) == Board.hash(Board.load(~fold=true, shuffled(posed))))->toBe(true)
+      expect(Board.alike(folded, Board.load(~fold=true, shuffled(posed))))->toBe(true)
+      // …and prunes as a board with no stock does: each pile is the whole of its column, so
+      // moving it into an empty one would only rename the column.
+      let intoEmpty = (b: Board.t) =>
+        Board.legalMoves(b)
+        ->Array.map(Board.toMove)
+        ->Array.filterMap(
+          move =>
+            switch move {
+            | Position.Play({source: FromColumn(src), destination: ToColumn(dest)}) if dest >= 2 =>
+              Some((src, dest))
+            | _ => None
+            },
+        )
+      expect(intoEmpty(kept))->toEqual([(0, 2), (0, 3), (1, 2), (1, 3)])
+      expect(intoEmpty(folded))->toEqual([])
+    },
+  )
+
   test("a move packs into an int and back as the same move", () => {
     let moves = [
       Position.Deal,

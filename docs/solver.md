@@ -308,6 +308,7 @@ below it. Why it stands: § Why the unsolved count stands.
 | 2026-10-01 | 1–200 | 173/200 | 8 | 19 | 7.0 s | 101 | #3 at 51.0 s | 20 MB, #3 at 143 MB | Node v26.9.0, cloud sandbox, two soaks at once; the graph in typed arrays, re-run beside the row below |
 | 2026-10-01 | 1–200 | 173/200 | 8 | 19 | 2.9 s | 101 | #171 at 20.0 s | 20 MB, #3 at 143 MB | Node v26.9.0, cloud sandbox, two soaks at once; grown on a `Board` |
 | 2026-10-01 | 1–200 | 171/200 | 8 | 21 | 5.0 s | 102 | #200 at 42.4 s | 24 MB, #120 at 188 MB | Node v26.9.0, cloud sandbox, three soaks at once; grown on a `Board`, column order kept |
+| 2026-10-01 | 1–200 | 176/200 | 8 | 16 | 5.8 s | 101 | #7 at 59.6 s | 35 MB, #147 at 289 MB | Node v26.9.0, cloud sandbox, three soaks at once; grown on a `Board`, folded to look and column order kept to prove |
 
 **Spiderette · 1 suit and · 2 suits**, over the same 1–200. The same law, budget
 and weights on a cheaper deck — these are the repeated packs, where `found`
@@ -335,6 +336,8 @@ and an unsolved count of its own.
 | 2026-10-01 | 2 suits | 1–200 | 190/200 | 5 | 5 | 963 ms | 85 | #120 at 18.2 s | 7 MB, #120 at 121 MB | Node v26.9.0, cloud sandbox, two soaks at once; grown on a `Board` |
 | 2026-10-01 | 1 suit | 1–200 | 198/200 | 2 | 0 | 5.2 s | 71 | #179 at 85.8 s | 22 MB, #38 at 221 MB | Node v26.9.0, cloud sandbox, three soaks at once; grown on a `Board`, column order kept |
 | 2026-10-01 | 2 suits | 1–200 | 186/200 | 5 | 9 | 6.3 s | 85 | #1 at 159.7 s | 33 MB, #1 at 710 MB | Node v26.9.0, cloud sandbox, three soaks at once; grown on a `Board`, column order kept |
+| 2026-10-01 | 1 suit | 1–200 | 198/200 | 2 | 0 | 89 ms | 71 | #93 at 3.2 s | <1 MB, #143 at 11 MB | Node v26.9.0, cloud sandbox, three soaks at once; grown on a `Board`, folded to look and column order kept to prove |
+| 2026-10-01 | 2 suits | 1–200 | 193/200 | 5 | 2 | 1.6 s | 85 | #168 at 49.0 s | 9 MB, #168 at 265 MB | Node v26.9.0, cloud sandbox, three soaks at once; grown on a `Board`, folded to look and column order kept to prove |
 
 **Mini and Micro**, under FreeCell's law and its weights. Every deal is
 *answered* — the search either finds a line or empties its frontier long before
@@ -504,6 +507,12 @@ and under a cap not even those, since a faster machine gets further in ten secon
 | 2026-10-01 | Spiderette · 2 suits | 1–200 | 10 s | 159 | 5 | 36 | 3.0 s | #1 at 10.3 s | 15 MB, #129 at 70 MB |
 | 2026-10-01 | Spiderette · 4 suits | 1–200 | none | 171 | 8 | 21 | 5.0 s | #200 at 42.4 s | 24 MB, #120 at 188 MB |
 | 2026-10-01 | Spiderette · 4 suits | 1–200 | 10 s | 152 | 8 | 40 | 3.1 s | #95 at 10.2 s | 14 MB, #129 at 68 MB |
+| 2026-10-01 | Spiderette · 1 suit | 1–200 | none | 198 | 2 | 0 | 89 ms | #93 at 3.2 s | <1 MB, #143 at 11 MB |
+| 2026-10-01 | Spiderette · 1 suit | 1–200 | 10 s | 198 | 2 | 0 | 96 ms | #93 at 3.3 s | <1 MB, #143 at 11 MB |
+| 2026-10-01 | Spiderette · 2 suits | 1–200 | none | 193 | 5 | 2 | 1.6 s | #168 at 49.0 s | 9 MB, #168 at 265 MB |
+| 2026-10-01 | Spiderette · 2 suits | 1–200 | 10 s | 187 | 5 | 8 | 919 ms | #42 at 10.0 s | 5 MB, #184 at 63 MB |
+| 2026-10-01 | Spiderette · 4 suits | 1–200 | none | 176 | 8 | 16 | 5.8 s | #7 at 59.6 s | 35 MB, #147 at 289 MB |
+| 2026-10-01 | Spiderette · 4 suits | 1–200 | 10 s | 164 | 8 | 28 | 2.3 s | #84 at 10.0 s | 14 MB, #116 at 75 MB |
 
 So the wait costs **twenty-seven Simple Simon deals in the thousand, and eight
 two-suit and ten four-suit in the two hundred** on the 2026-09-20 machine — and one
@@ -583,13 +592,24 @@ trading places — but the one-suit mean goes from under a tenth of a second to 
 run now has every empty seat to go to and a whole column may change seats, and one suit
 empties columns most.
 
+**The last six rows look with the columns folded and prove with them kept** (§ The
+search), and the watched board gets back what keeping the order cost it: 198 one-suit
+deals inside the ten seconds where the six above them answered 159, 187 two-suit where
+they answered 159, and 164 four-suit where they answered 152 — each within one of the
+fold applied throughout, the 2026-10-01 rows before those six. Every proof stands with
+column order kept: the same 2, 5 and 8 deals come back unwinnable, the slowest of them
+(two-suit #105) in under seven seconds, so none of them is lost to the wait. Uncapped
+it answers more than either: seven more two-suit deals and five more four-suit than
+with column order kept throughout, and the one-suit mean back under a tenth of a
+second. Measured with three soaks at once, the capped three and then the uncapped.
+
 ### Why the unsolved count stands
 
-Four-suit Spiderette leaves 21 of 200 deals unanswered at the default cap; under the
-ten seconds a watched board gets it leaves 40, the two-suit pack 36 and the one-suit
-pack 39 — where every other board answers all of them. (With columns folded under the
-stock, four suits left 12 at the most it may be asked to grow; that cap is not yet
-measured with column order kept.) **Those numbers are
+Four-suit Spiderette leaves 16 of 200 deals unanswered at the default cap; under the
+ten seconds a watched board gets it leaves 28, and the two-suit pack 8 — where every
+other board answers all of them. (With columns folded throughout, four suits left 12 at
+the most it may be asked to grow; that cap is not yet measured with proofs confirmed
+in column order.) **Those numbers are
 the record, not a target**, and this is the argument for leaving them alone rather
 than tuning the heuristic or widening the budget to move them.
 
@@ -627,7 +647,7 @@ reach in ten seconds, and are held under the memory the ladder already spent.
 
 **What would actually help is a cheaper proof.** A search that empties its frontier
 answers a deal in milliseconds, which is well inside any wait; that is how Mini
-and Micro answer every deal in the first thousand. Converting some of the 40 into
+and Micro answer every deal in the first thousand. Converting some of the 28 into
 `Exhausted` would raise the answered count *within* the ten seconds, where a
 longer search cannot. That is a different piece of work from tuning weights, and
 it is the direction to take if this is picked up again.
@@ -761,6 +781,19 @@ second buys: § The budget.
   doesn't say *column order kept* were measured with the fold applied throughout — a
   position could be pruned as seen when the board it stood for was another — so
   their unwinnable deals were proved only under it.
+- **But a search on a board that deals looks with the columns folded, and proves with
+  them kept.** Keeping the order multiplies the graph by every seat a pile could sit
+  in, and a watched board pays for that in answers it doesn't reach in ten seconds.
+  The fold costs a line nothing: every node is still a real position its parent's move
+  leads to, so a line found under it is a line, played move by move against the
+  reducer like any other. What the fold can't give is a proof — a position pruned as
+  seen may have been another board — so a folded search whose frontier empties is
+  **grown again from its root with column order kept** (`Search.confirm`), and only
+  that search can answer `Exhausted`. Proofs under the fold are small, so the second
+  search is usually as quick; when it isn't, the deal comes back out of time or out of
+  room, never `Unwinnable`. The fold is a flag on the graph and every board it loads
+  (`Board.fold`), not a change to `Position`, whose key keeps column order whatever the
+  search does. Spiderette rows whose Environment says *folded to look* were measured so.
 
 ### The budget
 

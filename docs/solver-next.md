@@ -253,12 +253,12 @@ re-rooting, that means:
   in another column order from the player's board is reopened likewise. `collect`
   says so by declining, and the walk runs again with the reopened nodes as leaves.
 
-**Neither can happen while the key keeps column order**: no two layouts of a position
-with a stock are ever one node, so `Graph.dealsAlike` holds of every pair the walk and
-`collect` compare. They stand as the guard that keeps a re-root correct if the key ever
-folds column order under a stock again — and as code that a change which means to drop
-them can delete, with the walk's own-layout boards, once `Solver_test`'s re-rooting
-cases say nothing moved.
+**They happen while a search folds.** A search on a board that deals looks with the
+columns folded (`docs/solver.md` § The search), so two layouts of a position with a stock
+can be one node, and `Graph.dealsAlike` is the guard that keeps a re-root of that search
+from hanging a node under a parent that lays it out otherwise. Once a search keeps column
+order — the search that confirms a proof — no two layouts are ever one node, the guard
+holds of every pair the walk and `collect` compare, and nothing is reopened.
 
 On every board without a stock the two layouts generate the same children and
 translate move for move, so nothing is ever reopened there.
