@@ -928,6 +928,18 @@ is taken back and it re-roots again, and each re-root is timed with the nodes it
 | 2026-10-01 | Simple Simon | 1–100 | 6.5 M | 5.4 ms | #60, 7.1 s to keep 1,354,000 | Node v26.9.0, cloud sandbox, five runs at once; grown on a `Board` |
 | 2026-10-01 | Spiderette · 2 suits | 1–40 | 4.8 M | 6.0 ms | #6, 6.0 s to keep 976,000 | Node v26.9.0, cloud sandbox, five runs at once; grown on a `Board` |
 | 2026-10-01 | Spiderette · 4 suits | 1–20 | 15.3 M | 5.9 ms | #3, 15.3 s to keep 2,675,000 | Node v26.9.0, cloud sandbox, five runs at once; grown on a `Board` |
+| 2026-10-01 | Spiderette · 1 suit | 1–40 | 465,000 | 6.2 ms | #21, 0.3 s to keep 44,500 | Node v26.9.0, cloud sandbox, three runs at once; folded to look |
+| 2026-10-01 | Spiderette · 2 suits | 1–40 | 7.7 M | 6.0 ms | #6, 16.5 s to keep 2,440,000 | Node v26.9.0, cloud sandbox, three runs at once; folded to look |
+| 2026-10-01 | Spiderette · 4 suits | 1–20 | 31.1 M | 6.0 ms | #7, 36.7 s to keep 5,111,000 | Node v26.9.0, cloud sandbox, three runs at once; folded to look |
+
+The last three rows are the Spiderette searches folded to look (§ The search), where every
+row above them kept column order throughout. **The cost a node is unchanged; the worst
+re-root keeps two to three times the nodes it did, and takes that much longer**: a
+two-suit #6 or four-suit #7 that ran to the cap re-roots for as long as one interactive
+wait, or several. Before the fold could be re-rooted at all, the
+two- and four-suit runs stopped on a panic in `Graph.collect`: a folded lookup reaches a
+node in the other column order, and no move in its own leads there
+(`docs/solver-next.md` § Re-rooting as built).
 
 **About eight microseconds a node, on every board**, open and closed alike — Mini's
 higher figure is graphs too small to amortise anything. The walk keeps the same nodes on a
