@@ -459,6 +459,13 @@ The reasons it is shaped like this:
   face down: thinking about one unasked is the solver peeking with nobody having
   asked it to, which is harmless exactly as long as nothing is shown.
 
+**To watch it**, turn on **Thinking indicator** on the Debug screen: a dot in the
+bottom-left corner, amber and pulsing while a think is out, green once the board is
+settled, grey once its allowance went by unanswered (`debug/ThinkingDot.res`). Every
+change is also a line in the debug log — the in-app console, and the JS console with
+**Console logging** on — such as `think ahead: found a line — 451ms unasked, 7,303
+positions` or `think ahead: stopped — the board moved`.
+
 **The crash mark is set while an unasked think runs**, because it is a solve for that
 purpose — the memory it holds is the solver's. So a tab killed while thinking unasked
 lowers the tier, which is the right answer. It also gives `Device.recover`'s existing

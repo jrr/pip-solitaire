@@ -120,6 +120,44 @@ type asked = {
   mutable watchdog: int,
 }
 
+// What thinking unasked is doing, for whoever wants to watch it (`reports`): the Debug
+// screen's indicator and the debug log. A report is said at a change, not per chunk.
+//
+//   `Thinking` — an unasked think has gone out about the board on the table.
+//   `Answered` — the board is settled: `how` the search ended, the unasked time it took,
+//                and the positions grown by then. `asked` when a Solve settled it.
+//   `Spent`    — the board's whole `Solver.unasked` went by without an answer.
+//   `Stopped`  — an unasked think was let go of, and `why`.
+//   `Idle`     — a new board, not yet thought about.
+type report =
+  | Thinking
+  | Answered({how: string, ms: float, positions: int, asked: bool})
+  | Spent({ms: float, positions: int})
+  | Stopped({why: string})
+  | Idle
+
+let reports: ref<report => unit> = ref(_ => ())
+
+// The positions the search had grown at the last `Progress` from the question in flight,
+// for a report on a think that ends without a line to count them.
+let grown = ref(0)
+
+// How a search that has answered ended, in the words a report says it with.
+let how = (found: Solver.autoplayed): string =>
+  switch found {
+  | Solver.Played(_) => "found a line"
+  | Unwinnable => "proved it unwinnable"
+  | OutOfRoom(_) => "filled its memory"
+  | UnknownBoard => "can't read this board"
+  | OutOfPatience => "ran out of time"
+  }
+
+let positionsIn = (found: Solver.autoplayed, ~otherwise: int): int =>
+  switch found {
+  | Solver.Played({effort}) => effort.positions
+  | _ => otherwise
+  }
+
 // The board the worker holds, as this side last told it. `game` is the caller's own
 // value rather than the copy sent without its `deal`, because *which* game is asked by
 // identity: a session keeps its `Game.t` for as long as it is played, and a new deal is
@@ -149,11 +187,14 @@ let release = (question: asked) => {
 
 // Let go of the question in flight without answering it. The worker is told so, and
 // anything it still says about this ask is ignored by number when it arrives.
-let cancel = () =>
+let cancel = (~why: string) =>
   switch live.contents {
   | Some(question) =>
     release(question)
     thread.contents->Option.forEach(worker => worker->tell(Stop))
+    if Option.isSome(question.unasked) {
+      reports.contents(Stopped({why: why}))
+    }
   | None => ()
   }
 
@@ -192,7 +233,9 @@ let watch = (worker: worker, question: asked) => {
 
 let heard = (worker: worker, reply: SolverWorker.reply) =>
   switch (live.contents, reply) {
-  | (Some(question), Progress({ask})) if ask == question.ask => watch(worker, question)
+  | (Some(question), Progress({ask, positions})) if ask == question.ask =>
+    grown := positions
+    watch(worker, question)
   | (Some(question), Answer({ask, autoplayed})) if ask == question.ask =>
     release(question)
     question.onAnswer(autoplayed)
@@ -218,11 +261,11 @@ let tellBoard = (worker: worker, ~game: Game.t, ~state: GameState.t) =>
   switch held.contents {
   | Some(board) if board.game === game && board.state == state => ()
   | Some(board) if board.game === game =>
-    cancel()
+    cancel(~why="the board moved")
     held := Some({game, state})
     worker->tell(Moved({state: state}))
   | _ =>
-    cancel()
+    cancel(~why="another game")
     held := Some({game, state})
     worker->tell(Open({game: {...game, deal: None}, state}))
   }
@@ -266,10 +309,10 @@ let disarm = () => {
 }
 
 // An unasked think in flight, let go of; a question someone asked is left alone.
-let quiet = () => {
+let quiet = (~why: string) => {
   disarm()
   switch live.contents {
-  | Some({unasked: Some(_)}) => cancel()
+  | Some({unasked: Some(_)}) => cancel(~why)
   | _ => ()
   }
 }
@@ -306,12 +349,28 @@ and wonder = (board: table) => {
   let worker = worker()
   worker->tellBoard(~game=board.game, ~state=board.state)
   asks := asks.contents + 1
+  grown := 0
+  reports.contents(Thinking)
   let question = {
     ask: asks.contents,
     onAnswer: found =>
       switch found {
-      | Solver.OutOfPatience => arm(breath)
-      | _ => board.settled = true
+      | Solver.OutOfPatience =>
+        if board.spent >= Solver.unasked {
+          reports.contents(Spent({ms: board.spent, positions: grown.contents}))
+        } else {
+          arm(breath)
+        }
+      | _ =>
+        board.settled = true
+        reports.contents(
+          Answered({
+            how: how(found),
+            ms: board.spent,
+            positions: positionsIn(found, ~otherwise=grown.contents),
+            asked: false,
+          }),
+        )
       },
     fallback: None,
     unasked: Some(board),
@@ -337,17 +396,19 @@ and wonder = (board: table) => {
 // in flight.
 let allow = (on: bool) => {
   allowed := on
-  on ? arm(settle) : quiet()
+  on ? arm(settle) : quiet(~why="switched off")
 }
 
 // A hidden tab thinks about nothing, and a page being put away stops at once — the
 // battery is the player's, and a page in the back-forward cache is not a page they are
 // looking at.
 if supported {
-  addDocumentListener("visibilitychange", () => hidden() ? quiet() : arm(settle))
+  addDocumentListener("visibilitychange", () =>
+    hidden() ? quiet(~why="the tab is hidden") : arm(settle)
+  )
   addWindowListener("pagehide", () => {
     parked := true
-    quiet()
+    quiet(~why="the page is going away")
   })
   addWindowListener("pageshow", () => {
     parked := false
@@ -363,7 +424,9 @@ if supported {
 let follow = (~game: Game.t, ~state: GameState.t) => {
   switch table.contents {
   | Some(board) if board.game === game && board.state == state => ()
-  | _ => table := Some({game, state, spent: 0., settled: false})
+  | _ =>
+    table := Some({game, state, spent: 0., settled: false})
+    reports.contents(Idle)
   }
   thread.contents->Option.forEach(worker => worker->tellBoard(~game, ~state))
   arm(settle)
@@ -372,8 +435,9 @@ let follow = (~game: Game.t, ~state: GameState.t) => {
 // The board has left the table — its scene is gone — so there is nothing to think about
 // unasked until another one says it is there.
 let leave = () => {
-  quiet()
+  quiet(~why="the board left the table")
   table := None
+  reports.contents(Idle)
 }
 
 // Ask for a line, and say so when there is one.
@@ -398,16 +462,26 @@ let think = (
     Device.ended()
     onAnswer(answered)
   } else {
-    cancel()
+    cancel(~why="Solve was asked")
     disarm()
     let worker = worker()
     asks := asks.contents + 1
+    grown := 0
     let question = {
       ask: asks.contents,
       onAnswer: found => {
         switch (found, table.contents) {
         | (Solver.OutOfPatience, _) => arm(settle)
-        | (_, Some(board)) if board.game === game && board.state == state => board.settled = true
+        | (_, Some(board)) if board.game === game && board.state == state =>
+          board.settled = true
+          reports.contents(
+            Answered({
+              how: how(found),
+              ms: board.spent,
+              positions: positionsIn(found, ~otherwise=grown.contents),
+              asked: true,
+            }),
+          )
         | _ => ()
         }
         onAnswer(found)
@@ -440,6 +514,6 @@ let think = (
 // Let go of the question in flight, as the board does when what it asked about has
 // moved on — and start the board's stillness counting again, since nothing else will.
 let cancel = () => {
-  cancel()
+  cancel(~why="the board moved")
   arm(settle)
 }

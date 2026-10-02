@@ -96,3 +96,24 @@ test("with Think ahead off, nothing is thought about until asked, and the switch
   await openSettings(page)
   await expect(toggle).toHaveAttribute("aria-checked", "false")
 })
+
+test("the Debug screen's indicator and the console both say what thinking unasked is doing", async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    localStorage.setItem("pip.thinkingDot", "true")
+    localStorage.setItem("pip.debugLog", "true")
+  })
+  const said = []
+  page.on("console", (message) => said.push(message.text()))
+  await page.goto(DEAL)
+  await settleBoard(page)
+
+  // Settled: green, and the tooltip says how.
+  const dot = page.locator("#thinking-dot")
+  await expect(dot).toHaveAttribute("title", /^think ahead: found a line — /, { timeout: 15_000 })
+  await expect(dot).toBeVisible()
+  // Once per change, not once per chunk.
+  expect(said.filter((line) => line.includes("think ahead: thinking about this board"))).toHaveLength(1)
+  expect(said.some((line) => line.includes("think ahead: found a line"))).toBe(true)
+})

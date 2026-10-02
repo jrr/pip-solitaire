@@ -38,6 +38,8 @@ let debug: MenuDebugScreen.props = {
   onToggleCutoutDebug: () => (),
   debugLog: false,
   onToggleDebugLog: () => (),
+  thinkingDot: false,
+  onToggleThinkingDot: () => (),
   solveEnabled: false,
   solving: false,
   onSolve: () => (),

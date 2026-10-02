@@ -5,7 +5,8 @@
 //   - a header whose **back** button (`onBackToSettings`) returns to Settings — one
 //     step back up, not all the way out — beside the ✕;
 //   - the **Safe-area overlay** toggle (`cutoutDebug`) and the **Console logging**
-//     toggle (`debugLog` — narrates the UI↔core traffic to the JS console);
+//     toggle (`debugLog` — narrates the UI↔core traffic to the JS console), and the
+//     **Thinking indicator** (`thinkingDot` — the corner dot `ThinkingDot` draws);
 //   - the three action rows: **Solve** (the console's `autoplay`, split into asking and
 //     playing — `SolveDialog` holds the answer), **Share game state** (`ShareLink`) and **Clear saved data**
 //     (`StoredState`);
@@ -30,6 +31,8 @@ type props = {
   onToggleCutoutDebug: unit => unit,
   debugLog: bool,
   onToggleDebugLog: unit => unit,
+  thinkingDot: bool,
+  onToggleThinkingDot: unit => unit,
   // "Solve": whether there is a board behind this screen to hand to the solver.
   // False on a scene with no game, where the row goes dark rather than answering a tap
   // with a refusal.
@@ -85,6 +88,8 @@ let make = ({
   onToggleCutoutDebug,
   debugLog,
   onToggleDebugLog,
+  thinkingDot,
+  onToggleThinkingDot,
   solveEnabled,
   solving,
   onSolve,
@@ -115,6 +120,12 @@ let make = ({
         desc="Log every UI↔core interaction to the browser console."
         on=debugLog
         onToggle=onToggleDebugLog
+      />
+      <MenuToggleRow
+        label="Thinking indicator"
+        desc="A dot in the corner while the solver thinks ahead: amber thinking, green settled."
+        on=thinkingDot
+        onToggle=onToggleThinkingDot
       />
       <MenuActionRow
         label="Solve"
