@@ -3,12 +3,19 @@
 // can say is that a hundred and four cards lay out on the stage at all, with the
 // opening's backs where the snapshot says and the stock a tap deals from until it is
 // out; the compressed column is judged on Spiderette (`spiderette.spec.mjs`) and Spider
-// is laid out by the same fan.
+// is laid out by the same fan. And that a press on a column's buried cards picks up the
+// run below them, which only a pointer on a laid-out fan can try.
 //
 // The deal is played from `seed=1`, so every tap lands on the same board.
 
-import { expect, test } from "@playwright/test"
-import { settle } from "../scripts/autoplay/read-board.mjs"
+import { devices, expect, test } from "@playwright/test"
+import { contextOptions } from "../scripts/lib/devices.mjs"
+import { assignPiles, cardCodeOf, readGeometry, settle } from "../scripts/autoplay/read-board.mjs"
+import * as Command from "core/src/Command.res.mjs"
+import * as Game from "core/src/Game.res.mjs"
+import * as CardText from "core/src/CardText.res.mjs"
+import * as Scenario from "core/src/Scenario.res.mjs"
+import * as GameState from "core/src/GameState.res.mjs"
 
 test.use({ viewport: { width: 1280, height: 900 } })
 
@@ -46,4 +53,232 @@ test("deals 54 cards with only the tops up, and the stock deals its five rows by
   // Dealt cards land face up, over the backs the opening left.
   await expect(backs(page)).toHaveCount(44)
   await expect(cards(page)).toHaveCount(104)
+})
+
+// A cascade's buried cards — backs, and face-up cards heading no run — are a handle for
+// the run the column shows: a press on one lifts what `moverun` would off that place
+// (`Command.runShowing`), up to the pointer — and for a finger, held clear above it so
+// the card is in sight — so the drop lands where the hand aims rather than a fan-step
+// or two below it.
+test.describe("a press on a column's buried cards", () => {
+  const game = Game.spider
+  const cascades = Game.pileIndices(game, "Cascade")
+  const posed = Scenario.spideretteDeep(game)
+  const headOf = (i) => Command.runShowing(game, posed, i)
+  // Where a hand presses a buried card: the middle of the strip the next card leaves showing.
+  const pressOn = (pile, idx) => {
+    const card = pile[idx]
+    return { x: card.cx, y: card.y + Math.min((pile[idx + 1].y - card.y) / 2, card.h / 2) }
+  }
+
+  test.beforeEach(async ({ page }) => {
+    await page.goto("/?game=spider&state=deep&animate=off")
+    await settle(page)
+  })
+
+  // The deep column is six backs, two face-up strays that head no run, then the twelve.
+  for (const { what, idx } of [
+    { what: "a back", idx: 2 },
+    { what: "a face-up stray", idx: 6 },
+  ]) {
+    test(`carries the run of twelve held at the pointer, from ${what} above it`, async ({ page }) => {
+      const run = headOf(cascades[0])
+      expect(run.length).toBe(12)
+      const deep = assignPiles(await readGeometry(page))[cascades[0]]
+      expect(deep.slice(0, 6).every((c) => c.name === "face-down card")).toBe(true)
+      expect(deep[6].name).not.toBe("face-down card")
+      expect(deep[idx].liftable).toBe(false)
+      const pressed = deep[idx]
+      const at = pressOn(deep, idx)
+
+      await page.mouse.move(at.x, at.y)
+      await page.mouse.down()
+      for (let i = 1; i <= 4; i++) await page.mouse.move(at.x + 10 * i, at.y)
+      const dragging = page.locator(".stacking-card.dragging")
+      await expect(dragging).toHaveCount(12)
+      // A cursor holds the head as a press on it would, inside its index strip, moved
+      // across only as far as the pointer.
+      const carried = await readGeometry(page)
+      const head = carried.cards.find((c) => cardCodeOf(c.name) === CardText.format(run[0]))
+      // `TableLayout.grabClearance`: half a face-up step, at most 26 × 1.35 / 2. Stated
+      // here because a browser test can't import a module that reaches a stylesheet.
+      const clearance = at.y - head.y
+      expect(clearance).toBeGreaterThan(0)
+      expect(clearance).toBeLessThanOrEqual((26 * 1.35) / 2 + 3)
+      expect(Math.abs(head.cx - (pressed.cx + 40))).toBeLessThan(6)
+      // Released over its own column, the run goes back where it lay.
+      await page.mouse.up()
+      await settle(page)
+      await expect(dragging).toHaveCount(0)
+      const after = assignPiles(await readGeometry(page))[cascades[0]]
+      expect(after.map((c) => c.name)).toEqual(deep.map((c) => c.name))
+    })
+  }
+
+  test("drops a run of one where the finger aims, as a press on the card itself would", async ({
+    page,
+  }) => {
+    // The second column's head is the Ace alone, and the first column ends in a Two.
+    const run = headOf(cascades[1])
+    expect(run.map(CardText.format)).toEqual([CardText.format(GameState.topOf(posed, cascades[1]))])
+    const geom = await readGeometry(page)
+    const piles = assignPiles(geom)
+    const column = piles[cascades[1]]
+    expect(column[0].name).toBe("face-down card")
+    const at = pressOn(column, 0)
+    // The Ace arrives with the pointer in its index strip, so aiming the pointer at the
+    // column's middle aims the card there too.
+    const target = geom.zones[cascades[0]]
+    const aim = { x: target.cx, y: target.cy }
+
+    await page.mouse.move(at.x, at.y)
+    await page.mouse.down()
+    for (let i = 1; i <= 8; i++) {
+      await page.mouse.move(at.x + ((aim.x - at.x) * i) / 8, at.y + ((aim.y - at.y) * i) / 8)
+    }
+    await expect(page.locator(".drop-zone--over")).toHaveCount(1)
+    await page.mouse.up()
+    await settle(page)
+
+    const after = assignPiles(await readGeometry(page))
+    expect(after[cascades[0]].length).toBe(piles[cascades[0]].length + 1)
+    expect(cardCodeOf(after[cascades[0]].at(-1).name)).toBe(CardText.format(run[0]))
+    expect(after[cascades[1]].length).toBe(column.length - 1)
+  })
+})
+
+// On a phone the finger covers what it presses, so once a press becomes a drag the run
+// comes up clear of it — pressed directly or from above: its top edge a thumb's reach
+// above the touch (`TableLayout.fingertip`, 80px), the whole card in sight above the
+// fingertip. A finger held still becomes a drag too; a touch that stays a tap lifts
+// nothing.
+test.describe("a finger's press in a column", () => {
+  test.use(contextOptions(devices["iPhone 13 Mini"]))
+
+  const game = Game.spider
+  const cascades = Game.pileIndices(game, "Cascade")
+  const run = Command.runShowing(game, Scenario.spideretteDeep(game), cascades[0])
+  const headCode = CardText.format(run[0])
+
+  async function touch(page, idx, { animate = false } = {}) {
+    await page.goto(`/?game=spider&state=deep${animate ? "" : "&animate=off"}`)
+    await settle(page)
+    const deep = assignPiles(await readGeometry(page))[cascades[0]]
+    const card = deep[idx]
+    const at = { x: card.cx, y: card.y + Math.min((deep[idx + 1].y - card.y) / 2, card.h / 2) }
+    const cdp = await page.context().newCDPSession(page)
+    const finger = (x, y) => [{ x, y, radiusX: 1, radiusY: 1, force: 1 }]
+    const send = (type, points) => cdp.send("Input.dispatchTouchEvent", { type, touchPoints: points })
+    return {
+      at,
+      deep,
+      start: () => send("touchStart", finger(at.x, at.y)),
+      move: (dx) => send("touchMove", finger(at.x + dx, at.y)),
+      end: async () => {
+        await send("touchEnd", [])
+        await cdp.detach()
+      },
+    }
+  }
+  const headNow = async (page) =>
+    (await readGeometry(page)).cards.find((c) => cardCodeOf(c.name) === headCode)
+
+  // The deep column's six backs, then two strays, then the run's head, the King.
+  for (const { what, idx } of [
+    { what: "a back above it", idx: 2 },
+    { what: "its head", idx: 8 },
+  ]) {
+    test(`holds the run clear above the fingertip, pressed on ${what}`, async ({ page }) => {
+      const hand = await touch(page, idx)
+      await hand.start()
+      await hand.move(20)
+      await expect(page.locator(".stacking-card.dragging")).toHaveCount(12)
+      const head = await headNow(page)
+      expect(Math.abs(hand.at.y - head.y - 80)).toBeLessThan(4)
+      expect(head.y + head.h).toBeLessThan(hand.at.y)
+      await hand.end()
+    })
+  }
+
+  test("slides the run up to the finger rather than jumping there", async ({ page }) => {
+    const hand = await touch(page, 8, { animate: true })
+    const before = await headNow(page)
+    // The top of the carried span, every frame: the head is its highest card.
+    await page.evaluate(() => {
+      window.__tops = []
+      const sample = () => {
+        const dragging = [...document.querySelectorAll(".stacking-card.dragging")]
+        if (dragging.length) window.__tops.push(Math.min(...dragging.map((el) => el.getBoundingClientRect().top)))
+        if (!window.__stopSampling) requestAnimationFrame(sample)
+      }
+      requestAnimationFrame(sample)
+    })
+    await hand.start()
+    await hand.move(20)
+    await page.waitForTimeout(400)
+    const tops = await page.evaluate(() => {
+      window.__stopSampling = true
+      return window.__tops
+    })
+    await hand.end()
+    const rise = tops.map((top) => before.y - top)
+    // Seen partway up on the way, never back down, and whole in the end.
+    expect(rise.some((r) => r > 8 && r < 72)).toBe(true)
+    rise.slice(1).forEach((r, i) => expect(r).toBeGreaterThanOrEqual(rise[i] - 1))
+    expect(Math.abs(hand.at.y - (before.y - rise.at(-1)) - 80)).toBeLessThan(4)
+  })
+
+  test("lifts the run for a finger held still, and puts it back if it never moves", async ({
+    page,
+  }) => {
+    const hand = await touch(page, 8)
+    await hand.start()
+    // Past `holdToDragMs` (250ms), without a single move.
+    await expect(page.locator(".stacking-card.dragging")).toHaveCount(12)
+    await expect
+      .poll(async () => Math.abs(hand.at.y - (await headNow(page)).y - 80), { timeout: 2000 })
+      .toBeLessThan(4)
+    await hand.end()
+    await settle(page)
+    const after = assignPiles(await readGeometry(page))[cascades[0]]
+    expect(after.map((c) => c.name)).toEqual(hand.deep.map((c) => c.name))
+  })
+
+  test("drops a held run where it is carried once the finger does move", async ({ page }) => {
+    // The Ace on top of the second column, held until it rises, then carried onto the
+    // first column's Two.
+    await page.goto("/?game=spider&state=deep&animate=off")
+    await settle(page)
+    const geom = await readGeometry(page)
+    const piles = assignPiles(geom)
+    const ace = piles[cascades[1]].at(-1)
+    const at = { x: ace.cx, y: ace.cy }
+    const target = geom.zones[cascades[0]]
+    const cdp = await page.context().newCDPSession(page)
+    const finger = (x, y) => [{ x, y, radiusX: 1, radiusY: 1, force: 1 }]
+    const send = (type, points) => cdp.send("Input.dispatchTouchEvent", { type, touchPoints: points })
+    await send("touchStart", finger(at.x, at.y))
+    await page.waitForTimeout(400)
+    for (let i = 1; i <= 8; i++) {
+      await send("touchMove", finger(at.x + ((target.cx - at.x) * i) / 8, at.y + ((target.cy - at.y) * i) / 8))
+    }
+    await send("touchEnd", [])
+    await cdp.detach()
+    await settle(page)
+    const after = assignPiles(await readGeometry(page))
+    expect(after[cascades[0]].length).toBe(piles[cascades[0]].length + 1)
+    expect(after[cascades[0]].at(-1).name).toBe(ace.name)
+  })
+
+  test("lifts nothing for a touch that stays a tap", async ({ page }) => {
+    const hand = await touch(page, 8)
+    const before = await headNow(page)
+    await hand.start()
+    await hand.move(4)
+    expect(Math.abs((await headNow(page)).y - before.y)).toBeLessThan(2)
+    await hand.end()
+    await settle(page)
+    const after = assignPiles(await readGeometry(page))[cascades[0]]
+    expect(after.map((c) => c.name)).toEqual(hand.deep.map((c) => c.name))
+  })
 })

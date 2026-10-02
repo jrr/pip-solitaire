@@ -24,6 +24,8 @@ type pointerEvent
 @get external clientX: pointerEvent => float = "clientX"
 @get external clientY: pointerEvent => float = "clientY"
 @get external pointerId: pointerEvent => int = "pointerId"
+// "touch", "mouse" or "pen": a finger hides what it presses and a cursor doesn't.
+@get external pointerType: pointerEvent => string = "pointerType"
 // The event's timestamp (ms since page load); the send-home double-tap is timed
 // off this rather than a `dblclick`, which mobile Safari never fires for a
 // double-tap (see the pointer loop below).
@@ -227,6 +229,12 @@ type card = {
   // Whether the node shows its back. Read at reflow to tell a card *turning over*
   // from one that was face up already, which is the only moment the flip animates.
   down: ref<bool>,
+  // Pick this card up with the run it heads, as a press on it would, from a press that
+  // landed elsewhere: a card above it in its column (see the `pointerdown` in
+  // `makeCard`). The float is how far to carry the run up once the press becomes a drag,
+  // so it arrives at the finger that pressed there. Filled in once the card's pointer
+  // loop exists.
+  grabFrom: ref<(pointerEvent, float) => unit>,
 }
 
 // Turn a node face down or face up. The back is a sibling of the face inside the
@@ -529,6 +537,16 @@ let tiltFor = (~enabled, ~card, ~pile, ~slot) =>
 // moment it's handed, and this is the layer that has a wall clock to hand it. The same
 // line the terminal draws — see the comment above `Cli.randomSeed`.
 let clock = () => Date.now()
+
+// How long a dragged card takes to rise to the finger (`liftNow` in `makeCard`): short
+// enough that the card is where the hand aims before the hand has gone far, long enough
+// that an 80px rise is seen to travel.
+let liftSlideMs = 120.
+
+// How long a finger held still on a card takes to become a drag, so the card rises clear
+// of it without the finger having to move first. Past a tap's press (a double-tap's
+// halves are each far shorter) and short of iOS's own long-press.
+let holdToDragMs = 250
 
 // Build a scene that plays `game`: its id and label name it in the picker, its piles
 // and opening deal drive everything below.
@@ -1162,6 +1180,12 @@ let make = (
             headsRun
               ? classList(c.wrapper)->removeClass("stacking-card--buried")
               : classList(c.wrapper)->addClass("stacking-card--buried")
+            // The rest of a cascade — backs, and face-up cards that head no run — lifts
+            // the run the column shows (`handleFor` in `makeCard`), so it offers the
+            // grab too, as long as there is a run to lift.
+            role == Game.Cascade && !headsRun && down < count
+              ? classList(c.wrapper)->addClass("stacking-card--handle")
+              : classList(c.wrapper)->removeClass("stacking-card--handle")
             // Take the cards this pile *hides* out of the accessible tree.
             // Every card is a `role="img"` with an `aria-label` (see `CardArt`), and a
             // Squared pile draws its whole contents on one spot — so a screen reader
@@ -2179,6 +2203,7 @@ let make = (
           y: ref(0.),
           draggable: ref(true),
           down: ref(false),
+          grabFrom: ref((_, _) => ()),
         }
         // Register the node so a pile derived from `state` can be laid out onto it.
         nodes->Array.push(self)
@@ -2283,59 +2308,192 @@ let make = (
           })
         }
 
+        // How far the span is carried up once a press becomes a drag, set at the press.
+        // Deferred to the drag so a tap — a double-tap's half, or a press that
+        // changes its mind — neither flickers the card nor, released where the lift
+        // put it, drops it on a zone above the one it rests in.
+        let pendingLift = ref(0.)
+        // Filled in below, once the slide it starts exists.
+        let beginDrag = ref(() => ())
+        // When the drag began, and so how far into its slide the lift is (`liftNow`);
+        // `None` until the press becomes a drag.
+        let liftSince = ref(None)
+        // The pointer's travel since the press, kept so the slide can move the span on
+        // frames with no `pointermove` — a finger held still while its card rises.
+        let travel = ref((0., 0.))
+        // Whether the pointer has actually travelled past the tap tolerance, as opposed
+        // to the press becoming a drag by being held (`holdToDragMs`).
+        let travelled = ref(false)
+        let holdTimer = ref(None)
+        let cancelHold = () => {
+          holdTimer.contents->Option.forEach(clearTimeout)
+          holdTimer := None
+        }
+
+        // The part of the lift applied by now: eased in over `liftSlideMs` so a thumb's
+        // worth of jump reads as the card rising to the finger, not teleporting. Whole
+        // at once under reduced motion or `?animate=off`, like every cosmetic motion.
+        let liftNow = () =>
+          switch liftSince.contents {
+          | None => 0.
+          | Some(since) =>
+            let t =
+              skipFlights || matchMedia("(prefers-reduced-motion: reduce)")["matches"]
+                ? 1.
+                : Math.min(1., (clock() -. since) /. liftSlideMs)
+            pendingLift.contents *. (1. -. Math.pow(1. -. t, ~exp=3.))
+          }
+
+        // Take hold of this card and the span it heads. `lift` is how far to carry the
+        // span up once the press becomes a drag; zero for a cursor on the card itself.
+        let startGrab = (ev, lift) => {
+          // A fresh press: assume a tap until the pointer travels far enough
+          // (below) to be a drag, which is what tells the double-tap apart.
+          movedFar := false
+          pendingLift := lift
+          liftSince := None
+          travel := (0., 0.)
+          travelled := false
+          cancelHold()
+
+          // A finger held still becomes a drag in its own time (`beginDrag`, below); a
+          // cursor hides nothing, so a slow click stays a click.
+          if pointerType(ev) == "touch" {
+            holdTimer := Some(setTimeout(() => {
+                  holdTimer := None
+                  if grab.contents != None && !movedFar.contents {
+                    beginDrag.contents()
+                  }
+                }, holdToDragMs))
+          }
+          // Capture so the cards keep getting moves/up even if the pointer leaves
+          // their bounds — or never pressed them: a press on a back hands its pointer
+          // to the run head here.
+          wrapper->setPointerCapture(pointerId(ev))
+          // Gather the span this card heads: itself and every card resting above
+          // it in its pile, bottom-first. A lone card is a span of one.
+          let span = switch GameState.locationOf(state(), self.data) {
+          | Some(GameState.InPile(pileIdx, slot)) =>
+            let pile = GameState.cardsInPile(state(), pileIdx)
+            pile->Array.slice(~start=slot, ~end=Array.length(pile))->Array.filterMap(nodeFor)
+          | _ => nodeFor(self.data)->Option.mapOr([], c => [c])
+          }
+          // Raise the whole span above the rest of the board, keeping bottom-first
+          // order so the run stays coherently stacked while it's carried. `dragging`
+          // switches the snap transition off, so the lift jumps to the finger rather
+          // than sliding there behind it.
+          span->Array.forEach(c => {
+            classList(c.wrapper)->addClass("dragging")
+            bringToFront(c.wrapper)
+          })
+          grab :=
+            Some((clientX(ev), clientY(ev), span->Array.map(c => (c, c.x.contents, c.y.contents))))
+        }
+        self.grabFrom := startGrab
+
+        // The lift that brings `head`'s top edge to the pointer: for a finger, held clear
+        // above it (`TableLayout.grabClearance`), so the card being carried is the one
+        // thing the fingertip doesn't cover.
+        let liftTo = (ev, head) => {
+          let pointer = clientY(ev) -. boundingRect(playfield).top
+          let finger = pointerType(ev) == "touch"
+          head.y.contents -. (pointer -. TableLayout.grabClearance(~finger, ~scale=scale.contents))
+        }
+
+        // The run head a press on this card picks up when it heads no run itself: the
+        // deepest card
+        // that still heads a run in its cascade, which is `moverun`'s reading of a
+        // place (`Command.runShowing`), so the pointer and the typed line can't come
+        // to lift different cards. `None` off a cascade, and on one with no face-up
+        // card to grab.
+        let handleFor = () =>
+          switch GameState.locationOf(state(), self.data) {
+          | Some(GameState.InPile(i, _))
+            if game.piles
+            ->Array.get(i)
+            ->Option.mapOr(false, (p: Game.pile) => p.role == Game.Cascade) =>
+            Command.runShowing(~game, state(), i)->Array.get(0)->Option.flatMap(nodeFor)
+          | _ => None
+          }
+
         wrapper->onPointer("pointerdown", ev =>
           // Only a card that heads a legal run can be picked up; every other buried
           // card ignores the pointer (its `draggable` is false, set each reflow) —
-          // except the stock's, whose press is the start of a tap.
+          // except the stock's, whose press is the start of a tap, and a cascade's,
+          // which are a handle for the run the column shows below them.
           if !self.draggable.contents && inStock() {
             stockPress := Some((clientX(ev), clientY(ev)))
           } else if self.draggable.contents {
-            // A fresh press: assume a tap until the pointer travels far enough
-            // (below) to be a drag, which is what tells the double-tap apart.
-            movedFar := false
-            // Capture so the cards keep getting moves/up even if the pointer leaves
-            // their bounds.
-            wrapper->setPointerCapture(pointerId(ev))
-            // Gather the span this card heads: itself and every card resting above
-            // it in its pile, bottom-first. A lone card is a span of one.
-            let span = switch GameState.locationOf(state(), self.data) {
-            | Some(GameState.InPile(pileIdx, slot)) =>
-              let pile = GameState.cardsInPile(state(), pileIdx)
-              pile->Array.slice(~start=slot, ~end=Array.length(pile))->Array.filterMap(nodeFor)
-            | _ => nodeFor(self.data)->Option.mapOr([], c => [c])
+            // A cursor carries the card from where it was pressed; a finger would hide
+            // it there, so it is held clear.
+            startGrab(ev, pointerType(ev) == "touch" ? liftTo(ev, self) : 0.)
+          } else {
+            // The drop hit-test aims by the grabbed card's rect, not the pointer, so a
+            // run carried from where it lies — a card or two below the pointer — would
+            // land that far below every aim. It is lifted to the pointer instead.
+            switch handleFor() {
+            | Some(head) => head.grabFrom.contents(ev, liftTo(ev, head))
+            | None => ()
             }
-            grab :=
-              Some((
-                clientX(ev),
-                clientY(ev),
-                span->Array.map(c => (c, c.x.contents, c.y.contents)),
-              ))
-            // Raise the whole span above the rest of the board, keeping bottom-first
-            // order so the run stays coherently stacked while it's carried.
-            span->Array.forEach(c => {
-              classList(c.wrapper)->addClass("dragging")
-              bringToFront(c.wrapper)
-            })
           }
         )
 
-        wrapper->onPointer("pointermove", ev =>
+        // Put the span where the pointer's travel and the lift so far say, and outline
+        // the zone that puts it over.
+        let follow = () =>
           switch grab.contents {
-          | Some((startPX, startPY, spanStarts)) =>
-            let dx = clientX(ev) -. startPX
-            let dy = clientY(ev) -. startPY
-
-            // Once the pointer has travelled past the tap tolerance this press is a
-            // drag, not a tap, and so can't be half of a double-tap.
-            if Math.abs(dx) +. Math.abs(dy) > doubleTapMoveTol {
-              movedFar := true
-            }
+          | Some((_, _, spanStarts)) =>
+            let (dx, dy) = travel.contents
+            let lift = liftNow()
             spanStarts->Array.forEach(((c, sx, sy)) => {
               c.x := sx +. dx
-              c.y := sy +. dy
+              c.y := sy +. dy -. lift
               place(c)
             })
             highlightHover(spanStarts->Array.map(((c, _, _)) => c.data))
+          | None => ()
+          }
+
+        // Carry the slide on frames the pointer doesn't move, until the lift is whole or
+        // the drag is over.
+        let rec slide = () =>
+          switch grab.contents {
+          | Some(_) =>
+            follow()
+            if liftNow() != pendingLift.contents {
+              requestAnimationFrame(slide)->ignore
+            }
+          | None => ()
+          }
+
+        // The press is a drag, not a tap, and so can't be half of a double-tap — and the
+        // span starts rising by the lift the press set (`pendingLift`). Reached by
+        // travelling past the tap tolerance, or by a finger held still.
+        beginDrag :=
+          (
+            () => {
+              cancelHold()
+              movedFar := true
+              liftSince := Some(clock())
+              if pendingLift.contents != 0. {
+                requestAnimationFrame(slide)->ignore
+              }
+            }
+          )
+
+        wrapper->onPointer("pointermove", ev =>
+          switch grab.contents {
+          | Some((startPX, startPY, _)) =>
+            let dx = clientX(ev) -. startPX
+            let dy = clientY(ev) -. startPY
+            travel := (dx, dy)
+            if !travelled.contents && Math.abs(dx) +. Math.abs(dy) > doubleTapMoveTol {
+              travelled := true
+              if !movedFar.contents {
+                beginDrag.contents()
+              }
+            }
+            follow()
           | None => ()
           }
         )
@@ -2453,6 +2611,7 @@ let make = (
           | Some((_, _, spanStarts)) =>
             wrapper->releasePointerCapture(pointerId(ev))
             grab := None
+            cancelHold()
             spanStarts->Array.forEach(((c, _, _)) => classList(c.wrapper)->removeClass("dragging"))
             let spanCards = spanStarts->Array.map(((c, _, _)) => c.data)
             // Where the grabbed card's centre was released decides the *action*:
@@ -2460,7 +2619,10 @@ let make = (
             // at all there is no move to make — a card only ever rests in a pile —
             // so nothing is dispatched and the span reflows home. Every drop that
             // *is* a move goes to the reducer, so `core` owns every rest position.
-            switch zoneAt(boundingRect(wrapper)) {
+            //
+            // A press that never travelled has nowhere to go, even held until it rose:
+            // the lift put it over whatever sits above its pile, not the player.
+            switch travelled.contents ? zoneAt(boundingRect(wrapper)) : None {
             | None => reflowAll()
             | Some(zone) =>
               let target = Reducer.ToPile(zone.index)
