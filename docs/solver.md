@@ -700,17 +700,22 @@ all twenty seconds without an answer.
 | 2026-10-02 | Spiderette · 2 suits | 1–30 | 8.1 s | 977 ms | #8 at 47.2 s | 1 of 2,554 boards | Node v26.9.0, cloud sandbox, up to three soaks at once |
 | 2026-10-02 | Spiderette · 4 suits | 1–20 | 26.0 s | 3.6 s | #3 at 183.0 s | 5 of 1,845 boards | Node v26.9.0, cloud sandbox, up to three soaks and the browser suite at once |
 
-**Most of it is not the opening board.** The opening board is answered in under a
-tenth of a second on average everywhere but the two- and four-suit packs. What a game
-costs beyond that is the boards after it: every move re-roots what the graph keeps
-(§ Re-rooting), and a line found from the old root is found again from the new one —
-which on a large graph is not always a lookup, so a board along the line can be
-thought about again from well short of an answer. On the boards whose graphs grow
-large — FreeCell's stubborn deals, the two- and four-suit packs — that is most of the
-bill: four-suit #3 spent 60 of its 183 seconds on three boards that used their whole
-allowance, and the rest a little at a time across a hundred others. Making the walk
-cheaper (#524) is what would bring the per-game figure down; the allowance only bounds
-a board.
+**Most of it is not the opening board, and none of it is searching.** The opening
+board is answered in under a tenth of a second on average everywhere but the two- and
+four-suit packs. After that, a move along a line already found grows nothing: the
+re-root walks what the graph keeps (§ Re-rooting), meets the finishing position under
+the line's last node on the way, and has the line again before a single position is
+grown. Followed move by move along the line the search itself holds, FreeCell #14,
+#5 and #24680, Simple Simon #17, two-suit #8 and four-suit #3 grew **no positions on
+any of their 50–100 moves**; the whole of each game's bill was the walk, from about
+15 ms a move on FreeCell #5 to 2.7 s on four-suit #3, whose graph is the biggest. A
+move *off* the line is real work — on FreeCell #14 the other opening moves each grew
+2,000–35,000 positions before answering. The worst games above are deals whose
+opening board went unanswered for a while, so a large graph was grown before the line
+was found and then walked on every move: four-suit #3 spent 60 of its 183 seconds on
+three boards that used their whole allowance, and the rest walking. Making the walk
+cheaper — or skipping it for a move that is the line's next (#524) — is what would bring
+the per-game figure down; the allowance only bounds a board.
 
 **Twenty seconds is two interactive asks**: long enough that a board the search can
 answer at all is almost always answered unasked first — no FreeCell, Mini, Micro,

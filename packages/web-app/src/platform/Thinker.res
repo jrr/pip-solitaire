@@ -96,12 +96,14 @@ let here = (~game: Game.t, ~state: GameState.t, ~patience: option<float>): Solve
 // unasked has cost so far. `spent` is wall-clock time from each unasked think going out
 // to its answer, re-root and all, because that is what the worker spent; `settled` is a
 // search that has answered about this board — a line, a proof, a full budget — which no
-// more thinking changes.
+// more thinking changes. `grew` is the positions every think about it added, asked or
+// not: 0 for a board the re-root alone answered.
 type table = {
   game: Game.t,
   state: GameState.t,
   mutable spent: float,
   mutable settled: bool,
+  mutable grew: int,
 }
 
 // The question in flight, `Some` exactly while one is being thought about. One at a
@@ -116,6 +118,9 @@ type asked = {
   fallback: option<unit => Solver.autoplayed>,
   // The board an unasked think is charged to, `None` for a question someone asked.
   unasked: option<table>,
+  // The board on the table this question is about, asked or not — `None` for a Solve on
+  // a board that isn't the one the table last said it is.
+  about: option<table>,
   sent: float,
   mutable watchdog: int,
 }
@@ -123,33 +128,41 @@ type asked = {
 // What thinking unasked is doing, for whoever wants to watch it (`reports`): the Debug
 // screen's indicator and the debug log. A report is said at a change, not per chunk.
 //
-//   `Thinking` — an unasked think has gone out about the board on the table.
-//   `Answered` — the board is settled: `how` the search ended, the unasked time it took,
-//                and the positions grown by then. `asked` when a Solve settled it.
+//   `Thinking` — an unasked think has gone out about the board on the table, `ms` of
+//                its allowance spent before it.
+//   `Answered` — the board is settled: the `verdict`, the unasked time it took, the
+//                search's positions by then and how many of them this board `grew`.
+//                `asked` when a Solve settled it.
 //   `Spent`    — the board's whole `Solver.unasked` went by without an answer.
 //   `Stopped`  — an unasked think was let go of, and `why`.
 //   `Idle`     — a new board, not yet thought about.
+type verdict =
+  | Winnable
+  | Unwinnable
+  | OutOfRoom
+  | Unreadable
+
 type report =
-  | Thinking
-  | Answered({how: string, ms: float, positions: int, asked: bool})
-  | Spent({ms: float, positions: int})
+  | Thinking({ms: float})
+  | Answered({verdict: verdict, ms: float, positions: int, grew: int, asked: bool})
+  | Spent({ms: float, positions: int, grew: int})
   | Stopped({why: string})
   | Idle
 
 let reports: ref<report => unit> = ref(_ => ())
 
-// The positions the search had grown at the last `Progress` from the question in flight,
-// for a report on a think that ends without a line to count them.
+// The search's positions as the question in flight last said them — at each `Progress`,
+// and finally in its `Answer` — for a report on a think that ends without a line.
 let grown = ref(0)
 
-// How a search that has answered ended, in the words a report says it with.
-let how = (found: Solver.autoplayed): string =>
+// What an answer says about the board. `OutOfPatience` is no verdict and never reaches
+// here: it leaves the board unsettled.
+let verdictOf = (found: Solver.autoplayed): verdict =>
   switch found {
-  | Solver.Played(_) => "found a line"
-  | Unwinnable => "proved it unwinnable"
-  | OutOfRoom(_) => "filled its memory"
-  | UnknownBoard => "can't read this board"
-  | OutOfPatience => "ran out of time"
+  | Solver.Played(_) => Winnable
+  | Unwinnable => Unwinnable
+  | OutOfRoom(_) | OutOfPatience => OutOfRoom
+  | UnknownBoard => Unreadable
   }
 
 let positionsIn = (found: Solver.autoplayed, ~otherwise: int): int =>
@@ -236,7 +249,9 @@ let heard = (worker: worker, reply: SolverWorker.reply) =>
   | (Some(question), Progress({ask, positions})) if ask == question.ask =>
     grown := positions
     watch(worker, question)
-  | (Some(question), Answer({ask, autoplayed})) if ask == question.ask =>
+  | (Some(question), Answer({ask, autoplayed, grew, positions})) if ask == question.ask =>
+    grown := positions
+    question.about->Option.forEach(board => board.grew = board.grew + grew)
     release(question)
     question.onAnswer(autoplayed)
   // About a question already let go of: an answer about a board that has moved on.
@@ -350,14 +365,14 @@ and wonder = (board: table) => {
   worker->tellBoard(~game=board.game, ~state=board.state)
   asks := asks.contents + 1
   grown := 0
-  reports.contents(Thinking)
+  reports.contents(Thinking({ms: board.spent}))
   let question = {
     ask: asks.contents,
     onAnswer: found =>
       switch found {
       | Solver.OutOfPatience =>
         if board.spent >= Solver.unasked {
-          reports.contents(Spent({ms: board.spent, positions: grown.contents}))
+          reports.contents(Spent({ms: board.spent, positions: grown.contents, grew: board.grew}))
         } else {
           arm(breath)
         }
@@ -365,15 +380,17 @@ and wonder = (board: table) => {
         board.settled = true
         reports.contents(
           Answered({
-            how: how(found),
+            verdict: verdictOf(found),
             ms: board.spent,
             positions: positionsIn(found, ~otherwise=grown.contents),
+            grew: board.grew,
             asked: false,
           }),
         )
       },
     fallback: None,
     unasked: Some(board),
+    about: Some(board),
     sent: SolverWorker.clock(),
     watchdog: 0,
   }
@@ -425,7 +442,7 @@ let follow = (~game: Game.t, ~state: GameState.t) => {
   switch table.contents {
   | Some(board) if board.game === game && board.state == state => ()
   | _ =>
-    table := Some({game, state, spent: 0., settled: false})
+    table := Some({game, state, spent: 0., settled: false, grew: 0})
     reports.contents(Idle)
   }
   thread.contents->Option.forEach(worker => worker->tellBoard(~game, ~state))
@@ -467,27 +484,33 @@ let think = (
     let worker = worker()
     asks := asks.contents + 1
     grown := 0
+    let about = switch table.contents {
+    | Some(board) if board.game === game && board.state == state => Some(board)
+    | _ => None
+    }
     let question = {
       ask: asks.contents,
       onAnswer: found => {
-        switch (found, table.contents) {
+        switch (found, about) {
         | (Solver.OutOfPatience, _) => arm(settle)
-        | (_, Some(board)) if board.game === game && board.state == state =>
+        | (_, Some(board)) =>
           board.settled = true
           reports.contents(
             Answered({
-              how: how(found),
+              verdict: verdictOf(found),
               ms: board.spent,
               positions: positionsIn(found, ~otherwise=grown.contents),
+              grew: board.grew,
               asked: true,
             }),
           )
-        | _ => ()
+        | (_, None) => ()
         }
         onAnswer(found)
       },
       fallback: Some(() => here(~game, ~state, ~patience)),
       unasked: None,
+      about,
       sent: SolverWorker.clock(),
       watchdog: 0,
     }

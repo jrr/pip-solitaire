@@ -459,12 +459,16 @@ The reasons it is shaped like this:
   face down: thinking about one unasked is the solver peeking with nobody having
   asked it to, which is harmless exactly as long as nothing is shown.
 
-**To watch it**, turn on **Thinking indicator** on the Debug screen: a dot in the
-bottom-left corner, amber and pulsing while a think is out, green once the board is
-settled, grey once its allowance went by unanswered (`debug/ThinkingDot.res`). Every
-change is also a line in the debug log — the in-app console, and the JS console with
-**Console logging** on — such as `think ahead: found a line — 451ms unasked, 7,303
-positions` or `think ahead: stopped — the board moved`.
+**To watch it**, turn on **Thinking indicator** on the Debug screen: a dot and a
+caption in the bottom-left corner (`debug/ThinkingDot.res`, which has the key). Amber
+and pulsing while a think is out, counting the board's allowance; then green for
+winnable, red for proved unwinnable, purple for a full memory and grey for an allowance
+spent — the last two no verdict. A green caption says `known` for a board the re-root
+answered without growing a position — a move along a line already found — and the
+count otherwise. Every change is also a line in the debug log: the in-app console, and
+the JS console with **Console logging** on. **The indicator says whether a board is
+winnable**, which nothing else in the app does; that is #410's question, and the switch
+is a developer's until it is answered.
 
 **The crash mark is set while an unasked think runs**, because it is a solve for that
 purpose — the memory it holds is the solver's. So a tab killed while thinking unasked

@@ -46,10 +46,13 @@ type request =
 
 // `Progress` goes out after every slice that leaves the search still going — for a
 // spinner that can say something, and as the heartbeat that tells `Thinker` this thread
-// is still answering. `Answer` goes out once per think that is not stopped first.
+// is still answering. `Answer` goes out once per think that is not stopped first, with
+// `grew` the positions that think added — 0 for a think the re-root alone answered, which
+// is how a front end tells a known answer from one it had to search for — and
+// `positions` the search's total, which an answer with no line has nowhere else to carry.
 type reply =
   | Progress({ask: int, positions: int, frontier: int, bytes: int})
-  | Answer({ask: int, autoplayed: Solver.autoplayed})
+  | Answer({ask: int, autoplayed: Solver.autoplayed, grew: int, positions: int})
 
 type messageEvent = {data: request}
 
@@ -92,12 +95,19 @@ let serve = () => {
   // ends without a word.
   let thinking: ref<option<int>> = ref(None)
 
-  let answer = (ask, autoplayed) => {
+  let answer = (ask, autoplayed, ~grew=0, ~positions=0) => {
     thinking := None
-    say(Answer({ask, autoplayed}))
+    say(Answer({ask, autoplayed, grew, positions}))
   }
 
-  let rec slice = (ask: int, ~unasked: bool, board: held, search: Solver.Search.t, deadline) =>
+  let rec slice = (
+    ask: int,
+    ~unasked: bool,
+    ~from: int,
+    board: held,
+    search: Solver.Search.t,
+    deadline,
+  ) =>
     if thinking.contents == Some(ask) {
       let before = search.grown
       let found = Solver.Search.think(search, ~nodes=Solver.clockEvery)
@@ -113,12 +123,12 @@ let serve = () => {
             bytes: Solver.Search.bytes(search),
           }),
         )
-        yieldThen(() => slice(ask, ~unasked, board, search, deadline))
+        yieldThen(() => slice(ask, ~unasked, ~from, board, search, deadline))
       } else {
-        conclude(ask, board, search, found)
+        conclude(ask, ~from, board, search, found)
       }
     }
-  and conclude = (ask, board, search, found) =>
+  and conclude = (ask, ~from, board, search, found) =>
     answer(
       ask,
       Solver.autoplayedOf(
@@ -127,6 +137,8 @@ let serve = () => {
         ~line=Solver.Search.line(search),
         ~effort={...Solver.effortOf(search, found), unasked: board.unasked},
       ),
+      ~grew=search.grown - from,
+      ~positions=search.grown,
     )
 
   let think = (ask: int, ms: option<float>, maxBytes: int, ~unasked: bool) => {
@@ -153,11 +165,12 @@ let serve = () => {
         // as before every other — the same order `Solver.solveOn` keeps, so a wait of
         // nothing is told so without being charged a slice.
         let deadline = Solver.deadlineFor(ms->Option.map((ms): Solver.patience => {ms, clock}))
+        let from = search.grown
         let found = Solver.Search.answer(search)
         if found == Solver.Search.Paused && !Solver.past(deadline) {
-          slice(ask, ~unasked, board, search, deadline)
+          slice(ask, ~unasked, ~from, board, search, deadline)
         } else {
-          conclude(ask, board, search, found)
+          conclude(ask, ~from, board, search, found)
         }
       }
     }

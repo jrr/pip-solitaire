@@ -123,7 +123,7 @@ let make = ({
       />
       <MenuToggleRow
         label="Thinking indicator"
-        desc="A dot in the corner while the solver thinks ahead: amber thinking, green settled."
+        desc="Show in the corner what thinking ahead is doing, and whether the board is winnable."
         on=thinkingDot
         onToggle=onToggleThinkingDot
       />

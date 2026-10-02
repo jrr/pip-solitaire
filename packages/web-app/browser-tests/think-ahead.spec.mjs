@@ -109,11 +109,14 @@ test("the Debug screen's indicator and the console both say what thinking unaske
   await page.goto(DEAL)
   await settleBoard(page)
 
-  // Settled: green, and the tooltip says how.
+  // Settled: green, the caption says winnable and what it took, the tooltip says it whole.
   const dot = page.locator("#thinking-dot")
-  await expect(dot).toHaveAttribute("title", /^think ahead: found a line — /, { timeout: 15_000 })
+  await expect(dot).toHaveAttribute("title", /^think ahead: winnable — a line is known — /, {
+    timeout: 15_000,
+  })
   await expect(dot).toBeVisible()
+  await expect(dot.locator(".thinking-dot__caption")).toHaveText(/^winnable · \+[\d,]+ positions · /)
   // Once per change, not once per chunk.
   expect(said.filter((line) => line.includes("think ahead: thinking about this board"))).toHaveLength(1)
-  expect(said.some((line) => line.includes("think ahead: found a line"))).toBe(true)
+  expect(said.some((line) => line.includes("think ahead: winnable"))).toBe(true)
 })
