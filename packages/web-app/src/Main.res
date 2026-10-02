@@ -418,6 +418,7 @@ let settingsEnv = MenuSettingsScreen.liveEnv(
   ~tiltEnabled,
   ~shakeActive,
   ~betaFeatures,
+  ~thinking=Thinker.allow,
   ~board=settingsBoard,
 )
 
@@ -1896,6 +1897,10 @@ DebugConsole.setRunner(line => {
     | Options.ColumnReorder =>
       if options.contents.allowColumnReorder != on {
         dispatch(SettingsMsg(MenuSettingsScreen.ToggleColumnReorder))
+      }
+    | Options.Thinking =>
+      if options.contents.thinking != on {
+        dispatch(SettingsMsg(MenuSettingsScreen.ToggleThinking))
       }
     | Options.Memory => ()
     }

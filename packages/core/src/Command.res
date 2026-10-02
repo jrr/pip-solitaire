@@ -811,13 +811,29 @@ let thousands = (n: int): string => {
 // finishable needed no thinking at all.
 //
 // `ms` is the caller's own measurement around its `Solver.autoplay` call (the solver
-// keeps no clock); `positions` and `tried` are that search's `Solver.effort`.
-let describeAutoplay = (~moves: int, ~ms: float, ~positions: int, ~tried: int): string =>
+// keeps no clock); `positions` and `tried` are that search's `Solver.effort`, and
+// `unasked` how many of those positions were grown before anyone asked. That share is
+// said because without it a line found in no time after a search of thousands of
+// positions reads as a clock gone wrong.
+let describeAutoplay = (
+  ~moves: int,
+  ~ms: float,
+  ~positions: int,
+  ~tried: int,
+  ~unasked: int=0,
+): string =>
   switch moves {
   | 0 => "Autoplay: nothing left to think about — the board is already finishable."
   | n =>
+    let ahead = if unasked <= 0 {
+      ""
+    } else if unasked >= positions {
+      " (all of them thought of before you asked)"
+    } else {
+      ` (${thousands(unasked)} of them before you asked)`
+    }
     `${Int.toString(n)}-move solution found in ${duration(ms)} — ` ++
-    `${thousands(positions)} positions, ${thousands(tried)} moves tried.`
+    `${thousands(positions)} positions${ahead}, ${thousands(tried)} moves tried.`
   }
 
 // --- Help ---------------------------------------------------------------------
@@ -855,7 +871,7 @@ let boardHelp: array<helpRow> = [
 // two front ends have the same settings, and the CLI has no other control for any of them.
 let driverHelp: array<helpRow> = [
   ("set", "show the driver settings"),
-  ("set <setting> on|off", "change one (autocollect, reorder, worryback, gapdeal)"),
+  ("set <setting> on|off", "change one (autocollect, reorder, worryback, gapdeal, thinking)"),
   ("set memory <size>", "what the solver may hold: small, medium, large or auto"),
 ]
 

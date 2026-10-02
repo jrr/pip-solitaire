@@ -396,7 +396,7 @@ five operations become its protocol:
 |---|---|
 | `open {game, state}` | `progress {positions, frontier, bytes}` between slices, for a spinner that can say something |
 | `moved {state}` | `answer {autoplayed, effort}` |
-| `think {ms}` | |
+| `think {ms, unasked}` | |
 | `stop` | |
 | `forget` | |
 
@@ -408,13 +408,63 @@ worker: the same five operations on the calling thread, with the whole budget in
 one slice, which is what the unit suite under jsdom wants.
 
 `TableScene` sends `moved` on every committed state — a move, an undo, a redo, a
-deal, a new game — and nothing happens until someone asks. Whether the app should
-*think between requests*, keeping a line warm for a hint that is a lookup, is a
-product question the design leaves open and supports.
+deal, a new game.
 
 "Try for ten more seconds" is then `think {ms: 10000}` again: same graph, same
 root, ten more seconds of slices, and an `effort` that says what the two asks
 cost together.
+
+### Thinking between asks
+
+**The app thinks between asks, in small chunks, and only when the board is still.**
+`Thinker` hands the worker a `think {ms: 250, unasked: true}` once the board has sat
+for a second and a half after its last commit with no card held, nothing animating,
+no line being played and the tab in view — and another after each that comes back
+still going, until the search answers (`Found`, `Exhausted`, `Full`) or the board has
+had `Solver.unasked` of them, twenty seconds. By the time a player asks, the answer is
+often already known and the re-root has already happened while they were looking at
+the board, so a Solve is a lookup. What that costs a tab over a played game, per
+board, is `docs/solver.md` § What thinking unasked costs.
+
+The reasons it is shaped like this:
+
+- **The front end owns the cadence**, because it is the only thing that knows
+  whether the player is dragging, whether an animation is running, whether the tab
+  is visible and whether anyone is still here. The worker only ever does what a
+  `think` tells it, so the policy lives in one module (`Thinker`) and the protocol
+  gains one flag.
+- **A pause pays for it, a quick player never does.** The re-root is the first thing
+  a think does after a move, and on a graph the previous ten seconds grew it can be
+  eight seconds of worker time (§ Re-rooting in the browser) that a `stop` or the
+  next `moved` waits behind. Every commit restarts the settle, so only a board left
+  alone triggers one; making the walk itself cheaper is #524's.
+- **The allowance is per board, and the board is the committed state.** A move,
+  undo or deal is a new board with a new allowance; a Solve that answers settles the
+  board, and one that runs out of patience leaves the allowance where it was. It is
+  wall-clock from each think going out to its answer, re-root included, because that
+  is what the worker spent.
+- **Nothing unasked runs on the main thread.** A worker that stops answering falls
+  back to solving here only for a question someone asked; an unasked one is dropped,
+  and nothing more is thought about unasked on that page.
+- **Off is a setting**: `set thinking off`, or **Think ahead** in Settings
+  (`Options.thinking`), for a player who would rather keep the battery than the wait.
+  A hidden tab thinks about nothing, and `pagehide` stops it until `pageshow`.
+- **The effort says so.** The worker counts what unasked thinks grew, and an asked
+  think's `effort.unasked` carries it, so "found in 3 ms — 1,204 positions (all of
+  them thought of before you asked)" reads as a warm answer rather than a clock gone
+  wrong. A Solve on a board still being grown continues the same search and reports
+  the two together.
+- **Nothing on the board changes because of it.** A hint, a "known winnable" mark or
+  any other reveal is #410's question. That matters most on a board dealt with cards
+  face down: thinking about one unasked is the solver peeking with nobody having
+  asked it to, which is harmless exactly as long as nothing is shown.
+
+**The crash mark is set while an unasked think runs**, because it is a solve for that
+purpose — the memory it holds is the solver's. So a tab killed while thinking unasked
+lowers the tier, which is the right answer. It also gives `Device.recover`'s existing
+misfire — a tab killed for some other reason while a solve was running, read as the
+solver's doing — many more chances to fire, since a still board is now usually
+mid-think. #525 is where what that does in the field gets reported.
 
 ## The board the search plays on
 

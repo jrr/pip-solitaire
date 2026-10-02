@@ -34,6 +34,14 @@
 // for another game. The board says it has moved (`follow`) on every committed state, so
 // the worker hears of a move as it happens; what that re-root costs is paid at the top
 // of the next think, on the worker (`docs/solver-next.md` § Re-rooting in the browser).
+//
+// **And it thinks between asks, when the board is still.** A board that has sat still
+// for `settle` after its last commit — no card held, nothing flying, the tab in view —
+// gets a short unasked think, and another after each that comes back still going, until
+// the search answers or the board has had `Solver.unasked` of them. Each is an ask of
+// its own number, so a Solve pressed meanwhile replaces it like any other question and
+// continues the search it grew. The policy and why it is this one are
+// `docs/solver-next.md` § Thinking between asks.
 
 // Whether there is another thread to think on. Workers are baseline everywhere the app
 // runs, so what this really asks about is jsdom, where the unit suite has none and wants
@@ -84,14 +92,31 @@ let here = (~game: Game.t, ~state: GameState.t, ~patience: option<float>): Solve
   Solver.autoplay(~game, ~patience=?limit, ~tier=tier.contents, state)
 }
 
+// The board on the table, as the board last said (`follow`), and what thinking about it
+// unasked has cost so far. `spent` is wall-clock time from each unasked think going out
+// to its answer, re-root and all, because that is what the worker spent; `settled` is a
+// search that has answered about this board — a line, a proof, a full budget — which no
+// more thinking changes.
+type table = {
+  game: Game.t,
+  state: GameState.t,
+  mutable spent: float,
+  mutable settled: bool,
+}
+
 // The question in flight, `Some` exactly while one is being thought about. One at a
 // time: a second question replaces the first rather than racing it, which is the same
 // rule the board plays a second `autoplay` by.
 type asked = {
   ask: int,
   onAnswer: Solver.autoplayed => unit,
-  // The same question, answered on this thread — for a worker that stops answering.
-  fallback: unit => Solver.autoplayed,
+  // The same question, answered on this thread — for a worker that stops answering. An
+  // unasked think has none: nobody is waiting on it, and the thread this module exists
+  // to keep free is the last place to spend it.
+  fallback: option<unit => Solver.autoplayed>,
+  // The board an unasked think is charged to, `None` for a question someone asked.
+  unasked: option<table>,
+  sent: float,
   mutable watchdog: int,
 }
 
@@ -105,16 +130,29 @@ type held = {game: Game.t, state: GameState.t}
 let thread: ref<option<worker>> = ref(None)
 let live: ref<option<asked>> = ref(None)
 let held: ref<option<held>> = ref(None)
+let table: ref<option<table>> = ref(None)
 let asks = ref(0)
+// A worker has been abandoned on this page. Asked questions spawn another and fall back
+// if it fails too; nothing unasked is worth a second try at a build that has gone wrong.
+let failed = ref(false)
+
+// A question is over — answered, let go of, or abandoned. An unasked one is charged to
+// its board for the time it ran.
+let release = (question: asked) => {
+  live := None
+  Device.ended()
+  clearTimeout(question.watchdog)
+  question.unasked->Option.forEach(board =>
+    board.spent = board.spent +. (SolverWorker.clock() -. question.sent)
+  )
+}
 
 // Let go of the question in flight without answering it. The worker is told so, and
 // anything it still says about this ask is ignored by number when it arrives.
 let cancel = () =>
   switch live.contents {
   | Some(question) =>
-    live := None
-    Device.ended()
-    clearTimeout(question.watchdog)
+    release(question)
     thread.contents->Option.forEach(worker => worker->tell(Stop))
   | None => ()
   }
@@ -124,6 +162,7 @@ let cancel = () =>
 // otherwise hide it behind a page that merely got slow.
 let abandon = (worker: worker) => {
   Console.error("[pip] the solver's worker stopped answering; solving on the main thread")
+  failed := true
   worker->onMessage(_ => ())
   worker->onError(_ => ())
   terminate(worker)
@@ -135,11 +174,13 @@ let abandon = (worker: worker) => {
   }
   switch live.contents {
   | Some(question) =>
-    live := None
-    clearTimeout(question.watchdog)
-    let answered = question.fallback()
-    Device.ended()
-    question.onAnswer(answered)
+    release(question)
+    question.fallback->Option.forEach(fallback => {
+      Device.started()
+      let answered = fallback()
+      Device.ended()
+      question.onAnswer(answered)
+    })
   | None => ()
   }
 }
@@ -153,9 +194,7 @@ let heard = (worker: worker, reply: SolverWorker.reply) =>
   switch (live.contents, reply) {
   | (Some(question), Progress({ask})) if ask == question.ask => watch(worker, question)
   | (Some(question), Answer({ask, autoplayed})) if ask == question.ask =>
-    live := None
-    Device.ended()
-    clearTimeout(question.watchdog)
+    release(question)
     question.onAnswer(autoplayed)
   // About a question already let go of: an answer about a board that has moved on.
   | _ => ()
@@ -188,11 +227,154 @@ let tellBoard = (worker: worker, ~game: Game.t, ~state: GameState.t) =>
     worker->tell(Open({game: {...game, deal: None}, state}))
   }
 
+// --- Thinking unasked ---------------------------------------------------------
+
+// How long the board has to have been still since its last commit before an unasked
+// think goes out. A player moving quickly never gets one: the first thing a think does
+// after a move is the re-root, which on a big graph is seconds of worker time a `Stop`
+// or the next `Moved` waits behind — so only a pause pays for it.
+let settle = 1_500
+
+// One unasked think: short, so a Solve or a move is never queued behind much of one.
+// The worker reads its inbox at every slice boundary, so this bounds the growing, not
+// the re-root at its top.
+let chunk = 250.
+
+// Between one unasked think and the next, so the board's stillness is asked again.
+let breath = 50
+
+// What the page says about itself. A worker-less runtime (jsdom) has neither question
+// worth answering, since nothing unasked runs there.
+let hidden: unit => bool = %raw(`() => typeof document !== "undefined" && document.hidden`)
+@val external addWindowListener: (string, unit => unit) => unit = "addEventListener"
+@val @scope("document")
+external addDocumentListener: (string, unit => unit) => unit = "addEventListener"
+
+// Whether the player wants it (`Options.thinking`, through `allow`); whether the page
+// is being put away (`pagehide`, until a `pageshow` brings it back); and whether the
+// board is still — no card held, nothing flying, no line being played — which only the
+// board can say, so it installs the answer here (`TableScene`).
+let allowed = ref(false)
+let parked = ref(false)
+let still: ref<unit => bool> = ref(() => true)
+
+let timer: ref<option<int>> = ref(None)
+
+let disarm = () => {
+  timer.contents->Option.forEach(clearTimeout)
+  timer := None
+}
+
+// An unasked think in flight, let go of; a question someone asked is left alone.
+let quiet = () => {
+  disarm()
+  switch live.contents {
+  | Some({unasked: Some(_)}) => cancel()
+  | _ => ()
+  }
+}
+
+let rec arm = (ms: int) => {
+  disarm()
+  if supported && allowed.contents {
+    timer := Some(setTimeout(wake, ms))
+  }
+}
+and wake = () => {
+  timer := None
+  switch table.contents {
+  | Some(board)
+    if allowed.contents &&
+    !failed.contents &&
+    !parked.contents &&
+    !hidden() &&
+    Option.isNone(live.contents) &&
+    !board.settled &&
+    board.spent < Solver.unasked =>
+    if still.contents() {
+      wonder(board)
+    } else {
+      arm(settle)
+    }
+  | _ => ()
+  }
+}
+// One unasked think about the board on the table, and the next one booked when it comes
+// back still going. Any other answer is the search having said all it will about this
+// board, so it settles it.
+and wonder = (board: table) => {
+  let worker = worker()
+  worker->tellBoard(~game=board.game, ~state=board.state)
+  asks := asks.contents + 1
+  let question = {
+    ask: asks.contents,
+    onAnswer: found =>
+      switch found {
+      | Solver.OutOfPatience => arm(breath)
+      | _ => board.settled = true
+      },
+    fallback: None,
+    unasked: Some(board),
+    sent: SolverWorker.clock(),
+    watchdog: 0,
+  }
+  live := Some(question)
+  watch(worker, question)
+  // A think nobody asked for is still a search holding this tab's memory, so it is
+  // marked like any other (`Device.recover`).
+  Device.started()
+  worker->tell(
+    Think({
+      ask: question.ask,
+      ms: Some(Math.min(chunk, Solver.unasked -. board.spent)),
+      maxBytes: Solver.capOf(tier.contents),
+      unasked: true,
+    }),
+  )
+}
+
+// The player's switch: on books a think for the board as it stands, off lets go of any
+// in flight.
+let allow = (on: bool) => {
+  allowed := on
+  on ? arm(settle) : quiet()
+}
+
+// A hidden tab thinks about nothing, and a page being put away stops at once — the
+// battery is the player's, and a page in the back-forward cache is not a page they are
+// looking at.
+if supported {
+  addDocumentListener("visibilitychange", () => hidden() ? quiet() : arm(settle))
+  addWindowListener("pagehide", () => {
+    parked := true
+    quiet()
+  })
+  addWindowListener("pageshow", () => {
+    parked := false
+    arm(settle)
+  })
+}
+
 // The board is now this one: every committed state, from every place a board can
-// change. Only to a worker that is already up — one that isn't holds no search to keep,
-// and the first question will `Open` it.
-let follow = (~game: Game.t, ~state: GameState.t) =>
+// change. A worker that is up is told at once; one that isn't holds no search to keep,
+// and the first think will `Open` it. Either way the board's stillness starts counting
+// again from here, which is the debounce that keeps a quick player from ever paying for
+// an unasked re-root.
+let follow = (~game: Game.t, ~state: GameState.t) => {
+  switch table.contents {
+  | Some(board) if board.game === game && board.state == state => ()
+  | _ => table := Some({game, state, spent: 0., settled: false})
+  }
   thread.contents->Option.forEach(worker => worker->tellBoard(~game, ~state))
+  arm(settle)
+}
+
+// The board has left the table — its scene is gone — so there is nothing to think about
+// unasked until another one says it is there.
+let leave = () => {
+  quiet()
+  table := None
+}
 
 // Ask for a line, and say so when there is one.
 //
@@ -201,6 +383,9 @@ let follow = (~game: Game.t, ~state: GameState.t) =>
 // command that asked for it, and a promise would put a microtask in front of the tick
 // and reorder the two. With a worker the answer lands whenever it lands, which is the
 // whole point.
+//
+// An answer that leaves the search still going books more thinking unasked, and any
+// other settles the board, the same as an unasked think's would.
 let think = (
   ~game: Game.t,
   ~state: GameState.t,
@@ -214,12 +399,22 @@ let think = (
     onAnswer(answered)
   } else {
     cancel()
+    disarm()
     let worker = worker()
     asks := asks.contents + 1
     let question = {
       ask: asks.contents,
-      onAnswer,
-      fallback: () => here(~game, ~state, ~patience),
+      onAnswer: found => {
+        switch (found, table.contents) {
+        | (Solver.OutOfPatience, _) => arm(settle)
+        | (_, Some(board)) if board.game === game && board.state == state => board.settled = true
+        | _ => ()
+        }
+        onAnswer(found)
+      },
+      fallback: Some(() => here(~game, ~state, ~patience)),
+      unasked: None,
+      sent: SolverWorker.clock(),
       watchdog: 0,
     }
     // The board first — which may be nothing at all, and is, for a second ask on the
@@ -232,5 +427,19 @@ let think = (
     // Marked as running until it answers or is let go of: a load that finds the mark
     // still set is a tab this search took down (`Device.recover`).
     Device.started()
-    worker->tell(Think({ask: question.ask, ms: patience, maxBytes: Solver.capOf(tier.contents)}))
+    worker->tell(
+      Think({
+        ask: question.ask,
+        ms: patience,
+        maxBytes: Solver.capOf(tier.contents),
+        unasked: false,
+      }),
+    )
   }
+
+// Let go of the question in flight, as the board does when what it asked about has
+// moved on — and start the board's stillness counting again, since nothing else will.
+let cancel = () => {
+  cancel()
+  arm(settle)
+}

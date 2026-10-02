@@ -19,6 +19,7 @@ let model = (
   ~foundationReturn=false,
   ~emptyColumnDeal=false,
   ~columnReorder=false,
+  ~thinking=false,
   ~cardTilt=false,
   ~wiggle=Motion.Off,
   ~wantsShake=false,
@@ -31,6 +32,7 @@ let model = (
   foundationReturn,
   emptyColumnDeal,
   columnReorder,
+  thinking,
   cardTilt,
   wiggle,
   wantsShake,
@@ -73,6 +75,7 @@ describe("MenuSettingsScreen", () => {
       "Auto-collect",
       "Sloppy placement",
       "Display content around notch",
+      "Think ahead",
     ])
   })
 
@@ -93,11 +96,12 @@ describe("MenuSettingsScreen", () => {
       "Wiggle Waggle",
       "Beta features",
       "Display content around notch",
+      "Think ahead",
     ])
   })
 
   test("sends each switch's own message", () => {
-    // Five rows that look alike: a crossed wire here would be invisible. Wiggle Waggle
+    // Six rows that look alike: a crossed wire here would be invisible. Wiggle Waggle
     // is shown listening so that its tap is the one branch that resolves to a message
     // synchronously — turning it *on* asks the OS first (`askMotion`).
     let (screen, sent) = renderRecording(~model=model(~revealed=true, ~wiggle=Motion.On))
@@ -108,6 +112,7 @@ describe("MenuSettingsScreen", () => {
       WiggleOff,
       ToggleBetaFeatures,
       ToggleNotchDisplay,
+      ToggleThinking,
     ])
   })
 
@@ -124,6 +129,7 @@ describe("MenuSettingsScreen", () => {
     expect(onRowLabels(render(~model=model(~revealed=true, ~betaFeatures=true))))->toEqual([
       "Beta features",
     ])
+    expect(onRowLabels(render(~model=model(~thinking=true))))->toEqual(["Think ahead"])
   })
 
   test("sets the house rules apart under a heading of their own", () => {
@@ -276,6 +282,16 @@ describe("MenuSettingsScreen.update", () => {
       expect(next.columnReorder)->toBe(false)
       expect(log)->toEqual(["publish", "persist"])
       expect(saved->Option.map(s => s.columnReorder))->toEqual(Some(false))
+    },
+  )
+
+  test(
+    "writes thinking ahead into the live options and storage, and asks the board nothing",
+    () => {
+      let (next, log, saved) = run(~model=model(), ToggleThinking)
+      expect(next.thinking)->toBe(true)
+      expect(log)->toEqual(["publish", "persist"])
+      expect(saved->Option.map(s => s.thinking))->toEqual(Some(true))
     },
   )
 

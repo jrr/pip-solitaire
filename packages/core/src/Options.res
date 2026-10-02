@@ -38,12 +38,18 @@
 // `memory`: how much the solver may hold (`Solver.tier`), over whatever the driver would
 // choose for itself — `None` leaves it to the driver: the web app's reading of the
 // device, the CLI's `Medium`. The one setting that isn't on or off.
+//
+// `thinking`: may the solver think about the board between asks, unasked, so a Solve
+// finds its answer already warm? Only a driver with another thread to think on acts on
+// it — the web app's `Thinker`; the CLI thinks only when asked whatever this says. On by
+// default, and off is for a player who would rather keep the battery than the wait.
 type t = {
   autoCollect: bool,
   allowColumnReorder: bool,
   allowFoundationReturn: bool,
   allowDealWithEmptyColumns: bool,
   memory: option<Solver.tier>,
+  thinking: bool,
 }
 
 // The shipped default: auto-collect on, the two house rules the game has always played
@@ -54,6 +60,7 @@ let default = {
   allowFoundationReturn: true,
   allowDealWithEmptyColumns: false,
   memory: None,
+  thinking: true,
 }
 
 // --- Addressing a flag by name -----------------------------------------------
@@ -70,8 +77,9 @@ type setting =
   | FoundationReturn
   | EmptyColumnDeal
   | Memory
+  | Thinking
 
-let all = [AutoCollect, ColumnReorder, FoundationReturn, EmptyColumnDeal, Memory]
+let all = [AutoCollect, ColumnReorder, FoundationReturn, EmptyColumnDeal, Memory, Thinking]
 
 // The canonical name of a setting — what `set` takes and what a listing shows.
 let name = (s: setting): string =>
@@ -81,6 +89,7 @@ let name = (s: setting): string =>
   | FoundationReturn => "worryback"
   | EmptyColumnDeal => "gapdeal"
   | Memory => "memory"
+  | Thinking => "thinking"
   }
 
 let parse = (token: string): option<setting> =>
@@ -90,6 +99,7 @@ let parse = (token: string): option<setting> =>
   | "worryback" | "worry" | "takeback" => Some(FoundationReturn)
   | "gapdeal" | "emptydeal" | "dealempty" => Some(EmptyColumnDeal)
   | "memory" | "mem" | "tier" => Some(Memory)
+  | "thinking" | "think" | "thinkahead" => Some(Thinking)
   | _ => None
   }
 
@@ -116,7 +126,7 @@ let parseValue = (s: setting, token: string): option<value> =>
     | "auto" | "device" => Some(Tier(None))
     | other => Solver.parseTier(other)->Option.map(tier => Tier(Some(tier)))
     }
-  | AutoCollect | ColumnReorder | FoundationReturn | EmptyColumnDeal =>
+  | AutoCollect | ColumnReorder | FoundationReturn | EmptyColumnDeal | Thinking =>
     parseFlag(token)->Option.map(on => Flag(on))
   }
 
@@ -124,7 +134,7 @@ let parseValue = (s: setting, token: string): option<value> =>
 let spellings = (s: setting): string =>
   switch s {
   | Memory => "small, medium, large or auto"
-  | AutoCollect | ColumnReorder | FoundationReturn | EmptyColumnDeal => "on or off"
+  | AutoCollect | ColumnReorder | FoundationReturn | EmptyColumnDeal | Thinking => "on or off"
   }
 
 let read = (o: t, s: setting): value =>
@@ -134,6 +144,7 @@ let read = (o: t, s: setting): value =>
   | FoundationReturn => Flag(o.allowFoundationReturn)
   | EmptyColumnDeal => Flag(o.allowDealWithEmptyColumns)
   | Memory => Tier(o.memory)
+  | Thinking => Flag(o.thinking)
   }
 
 // A value of the other kind changes nothing (`parseValue` never makes one).
@@ -144,7 +155,8 @@ let apply = (o: t, ~setting: setting, ~value: value): t =>
   | (FoundationReturn, Flag(on)) => {...o, allowFoundationReturn: on}
   | (EmptyColumnDeal, Flag(on)) => {...o, allowDealWithEmptyColumns: on}
   | (Memory, Tier(memory)) => {...o, memory}
-  | (AutoCollect | ColumnReorder | FoundationReturn | EmptyColumnDeal, Tier(_))
+  | (Thinking, Flag(on)) => {...o, thinking: on}
+  | (AutoCollect | ColumnReorder | FoundationReturn | EmptyColumnDeal | Thinking, Tier(_))
   | (Memory, Flag(_)) => o
   }
 
