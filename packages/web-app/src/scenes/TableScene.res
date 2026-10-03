@@ -169,7 +169,7 @@ external animateZ: (
 external animateMask: (
   WebDom.element,
   array<{"opacity": string, "offset": float}>,
-  {"duration": float, "iterations": int, "easing": string},
+  {"duration": float, "iterations": int, "easing": string, "delay": float},
 ) => animation = "animate"
 
 // Honour the OS "reduce motion" preference by collapsing the fly-up to an
@@ -177,26 +177,36 @@ external animateMask: (
 @val external matchMedia: string => {"matches": bool} = "matchMedia"
 
 // Pulse a throwaway `.hint-mask` over one card wrapper and drop it when the pulse ends —
-// the double-tap's destinations and the Hint button's move alike.
+// the double-tap's destinations (twice, at once) and the Hint button's move (once each,
+// in turn, so a later pulse waits out `delay` at the mask's resting opacity of 0).
 //
 // **Reduced motion keeps the information rather than losing it.** A colour fade carries
-// no movement, so the pulse becomes a single hold-then-fade — lit long enough to read,
+// no movement, so each flash becomes a single hold-then-fade — lit long enough to read,
 // then settled — instead of the hint being dropped. (Reading `matchMedia`/`animate` also
 // keeps clear of jsdom, which implements neither.)
-let pulse = (el: WebDom.element) => {
-  let reduceMotion = matchMedia("(prefers-reduced-motion: reduce)")["matches"]
+let reduceMotion = () => matchMedia("(prefers-reduced-motion: reduce)")["matches"]
+
+// How long one flash lasts, which is what a sequence of them is spaced by.
+let flashMs = () => reduceMotion() ? 900. : 500.
+
+// The pause between the Hint's two showings of its move.
+let hintBeat = 400.
+
+let pulse = (~iterations=2, ~delay=0., el: WebDom.element) => {
+  let reduced = reduceMotion()
   // Mostly-green at its peak — opaque enough to read as green for a frame or two,
   // translucent enough to keep the pip showing through — then fades to nothing. No
   // `fill`, so the mask ends fully transparent.
   let peak = "0.82"
-  let (keyframes, options) = reduceMotion
+  let (keyframes, iterations, easing) = reduced
     ? (
         [
           {"opacity": peak, "offset": 0.},
           {"opacity": peak, "offset": 0.6},
           {"opacity": "0", "offset": 1.},
         ],
-        {"duration": 900., "iterations": 1, "easing": "ease-out"},
+        1,
+        "ease-out",
       )
     : (
         [
@@ -205,12 +215,17 @@ let pulse = (el: WebDom.element) => {
           {"opacity": peak, "offset": 0.5},
           {"opacity": "0", "offset": 1.},
         ],
-        {"duration": 500., "iterations": 2, "easing": "ease-in-out"},
+        iterations,
+        "ease-in-out",
       )
   let mask = WebDom.createElement("div")
   mask->WebDom.setAttribute("class", "hint-mask")
   el->WebDom.appendChild(mask)->ignore
-  animateMask(mask, keyframes, options)->setOnFinish(() => mask->WebDom.remove)
+  animateMask(
+    mask,
+    keyframes,
+    {"duration": flashMs(), "iterations": iterations, "easing": easing, "delay": delay},
+  )->setOnFinish(() => mask->WebDom.remove)
 }
 
 // A card is positioned by writing `style.left/top`, and layered by writing
@@ -2757,8 +2772,17 @@ let make = (
           )
         | MoveColumn(_) => ([], None)
         }
-        lifted->Array.filterMap(nodeFor)->Array.forEach(node => pulse(node.wrapper))
-        onto->Option.forEach(pulse)
+        // Source, then target, a beat, then the pair again: the order is what says which
+        // way the move goes, since both light the same green.
+        let flash = flashMs()
+        let round = (start: float) => {
+          lifted
+          ->Array.filterMap(nodeFor)
+          ->Array.forEach(node => pulse(~iterations=1, ~delay=start, node.wrapper))
+          onto->Option.forEach(el => pulse(~iterations=1, ~delay=start +. flash, el))
+        }
+        round(0.)
+        round(2. *. flash +. hintBeat)
       }
 
       // Point the published `undo`, `runCommand` and `relayout` at *this* build,
