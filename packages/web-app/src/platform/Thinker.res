@@ -464,6 +464,8 @@ if supported {
 //
 // A move along the known line keeps the rest of it, so the hint is there at once rather
 // than a settle and a re-root later. The board is still thought about as any new one is.
+// The rest of a line with no shortcut in it has none either, so what is kept needs no
+// pass of its own: the line arrived shortened (`Solver.shortened`).
 let follow = (~game: Game.t, ~state: GameState.t) => {
   switch table.contents {
   | Some(board) if board.game === game && board.state == state => ()

@@ -54,6 +54,22 @@ in a millisecond. The short packs make it commoner still and cheaper still —
 eight Mini deals and nineteen Micro ones in the first thousand, none of them
 taking longer than the deal it was dealt from.
 
+**Shortened on the way out.** A line can take the long way between two of its
+own positions — one read back through a re-rooted graph most of all, since the
+graph keeps each node's parent from before the root moved, and the route back to
+the new root runs wherever that leads. Each move is legal; a player handed the
+pair reads it as the solver not knowing what it is doing. So where a line is
+handed to a driver — `Solver.plan`, `autoplay`, `planSteps`, and so the Hint and
+the `autoplay` command in both front ends — it first goes through
+`Solver.shortened`: from each position on it every legal move is tried, and one
+that lands on a position further down the line replaces the moves between. A
+couple of milliseconds a line; a fresh search's line is seldom touched by it.
+**`solve` and `solveOn` hand back the line as the search found it**, which is
+what `mise run solve` measures and `solve-same` compares — so every count in
+the record below, Mean moves included, describes the search, and a line a
+player is handed is that long or shorter. A change to the pass itself is
+covered by `Solver_test` alone.
+
 **No clock of its own.** `Solver.effort` reports positions and moves, and
 never an elapsed time: how *long* a solve took is the caller's own measurement,
 taken around a call it made. What the solver takes instead is a **`patience`** — a

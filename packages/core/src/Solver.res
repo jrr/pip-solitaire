@@ -837,6 +837,118 @@ let solve = (start: Position.t, ~budget: option<budget>=?, ~patience: option<pat
 // Wanting this faster? It has been profiled, and the answer isn't the one it looks
 // like — read `docs/solver.md` § On making this faster first.
 
+// --- The line, shortened -----------------------------------------------------
+// A line can take the long way between two of its own positions: a run carried onto
+// one 3 and then onto the other, where one move would have put it there. A fresh
+// search seldom does it, keeping one node per position, but it promised nothing about
+// length — and a line read back through a re-rooted graph runs through parents chosen
+// before the root moved, so a detour is where the route happens to go. Each hint is
+// legal; the pair reads as the solver not knowing what it is doing, and `autoplay`
+// plays the extra move.
+//
+// So a line is shortened before a driver sees it: from each position on it, every
+// legal move is tried, and one that lands on a position further down the line
+// replaces the moves between — as does a position the line comes back to. About one
+// move generation a step, which is nothing beside the search.
+//
+// **It runs where a line is handed over — `plan`, `autoplayedOf`, `planSteps` — and not
+// in the search**: `solve` and `solveOn` hand back the line the search found. What that
+// leaves the record measuring is `docs/solver.md` § The contract.
+//
+// "Lands on" is the search's own sameness, asked the way the graph asks it: a hash on
+// a `Board` loaded with column order kept while there is a stock, confirmed card for
+// card. Which column holds a pile decides what a deal lands on it, so with cards to come
+// the same piles in another order are another position; with none they are one, and the
+// rest of the line — recorded against the layout the line reached — is then said against
+// the one the shortcut reached (`Graph.translate`), as a re-rooted graph's line is.
+
+let shortened = (start: Position.t, line: array<Position.move>): array<Position.move> => {
+  let count = Array.length(line)
+  if count < 2 {
+    line
+  } else {
+    // Every position the line visits, and each filed by its hash. A hash can collide, so
+    // what is filed is a list of where it was seen, each to be confirmed.
+    let positions = Array.make(~length=count + 1, start)
+    let board = Board.load(start)
+    let probe = Board.load(start)
+    let filed: Map.t<int, array<int>> = Map.make()
+    let file = i => {
+      let hash = Graph.hash(board)
+      switch filed->Map.get(hash) {
+      | Some(seen) => seen->Array.push(i)
+      | None => filed->Map.set(hash, [i])
+      }
+    }
+    file(0)
+    line->Array.forEachWithIndex((move, i) => {
+      positions->Array.setUnsafe(i + 1, Position.applyMove(positions->Array.getUnsafe(i), move))
+      Board.play(board, Board.ofMove(move))
+      file(i + 1)
+    })
+    // The furthest position on the line past `after` that `board` stands on, or -1.
+    let landing = (~after: int): int =>
+      switch filed->Map.get(Graph.hash(board)) {
+      | None => -1
+      | Some(seen) =>
+        seen->Array.reduce(-1, (best, j) =>
+          if (
+            j > after &&
+            j > best && {
+              Board.reload(probe, positions->Array.getUnsafe(j))
+              Board.alike(probe, board)
+            }
+          ) {
+            j
+          } else {
+            best
+          }
+        )
+      }
+    let shorter = []
+    let real = ref(start) // the position the shorter line has reached, in its own layout
+    let i = ref(0) // where on the line that is
+    while i.contents < count {
+      let here = real.contents
+      Board.reload(board, here)
+      // The furthest the line can be rejoined from here: by no move, if the line comes
+      // back to this position, or by one — further down than its own next move, or there
+      // is nothing to gain.
+      let furthest = ref(landing(~after=i.contents))
+      let via = ref(None)
+      Board.legalMoves(board)->Array.forEach(move => {
+        Board.play(board, move)
+        let there = landing(~after=i.contents + 1)
+        if there > furthest.contents {
+          furthest := there
+          via := Some((Board.toMove(move), Board.toPosition(board)))
+        }
+        Board.takeBack(board)
+      })
+      switch via.contents {
+      | Some((move, landed)) =>
+        shorter->Array.push(move)
+        real := landed
+        i := furthest.contents
+      | None if furthest.contents > i.contents => i := furthest.contents
+      | None =>
+        let own = positions->Array.getUnsafe(i.contents)
+        let move = line->Array.getUnsafe(i.contents)
+        let said = own == here ? move : Graph.translate(move, ~from=own, ~onto=here)
+        shorter->Array.push(said)
+        real := Position.applyMove(here, said)
+        i := i.contents + 1
+      }
+    }
+    shorter
+  }
+}
+
+// `solve`, with the line shortened — for the callers that hand it to a driver.
+let solved = (start: Position.t, ~budget: option<budget>=?, ~patience: option<patience>=?): option<
+  array<Position.move>,
+> => solve(start, ~budget?, ~patience?)->Option.map(line => shortened(start, line))
+
 // --- Playing the plan on a real board ----------------------------------------
 
 // The moves to a finishable board from a real `GameState` — the game-facing entry
@@ -848,7 +960,7 @@ let solve = (start: Position.t, ~budget: option<budget>=?, ~patience: option<pat
 // `Position.applyMove`, which is where the settling happens.
 let plan = (~game: Game.t, ~patience: option<patience>=?, state: GameState.t): option<
   array<Position.move>,
-> => Position.ofGameState(~game, state)->Option.flatMap(position => solve(position, ~patience?))
+> => Position.ofGameState(~game, state)->Option.flatMap(position => solved(position, ~patience?))
 
 // The next move to play, as the action a driver dispatches — the smallest useful
 // thing to ask the solver, and the one the game itself will want first.
@@ -955,6 +1067,12 @@ let autoplayedOf = (
     | Found | Full => OutOfRoom({bytes: effort.bytes})
     }
   | Some(moves) =>
+    // The line the search found, shortened on its way to the driver (`shortened`); a
+    // board the solver can't read has no line, so the position is always there.
+    let moves = switch Position.ofGameState(~game, state) {
+    | Some(position) => shortened(position, moves)
+    | None => moves
+    }
     let steps = []
     let current = ref(state)
     // A plan generated from these very rules shouldn't come unstuck against them,
@@ -1053,7 +1171,7 @@ let stepFor = (position: Position.t, move: Position.move): step => {
 // about. The patience comes first so a driver outside ReScript passes it positionally
 // — the harness hands it `patient`, since the thing waiting there is a script.
 let planSteps = (~patience: option<patience>=?, start: Position.t): option<array<step>> =>
-  solve(start, ~patience?)->Option.map(moves => {
+  solved(start, ~patience?)->Option.map(moves => {
     let position = ref(start)
     moves->Array.map(move => {
       let step = stepFor(position.contents, move)
