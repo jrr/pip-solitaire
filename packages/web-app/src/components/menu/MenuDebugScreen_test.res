@@ -25,8 +25,8 @@ let render = (
   ~debugLog=false,
   ~onToggleCutoutDebug=() => (),
   ~onToggleDebugLog=() => (),
-  ~thinkingDot=false,
-  ~onToggleThinkingDot=() => (),
+  ~thinking=false,
+  ~onToggleThinking=() => (),
   ~onShareGame=() => (),
   ~onClearStored=() => (),
   ~onBackToSettings=() => (),
@@ -39,8 +39,8 @@ let render = (
       onToggleCutoutDebug,
       debugLog,
       onToggleDebugLog,
-      thinkingDot,
-      onToggleThinkingDot,
+      thinking,
+      onToggleThinking,
       solveEnabled,
       solving,
       onSolve,
@@ -78,7 +78,7 @@ describe("MenuDebugScreen", () => {
     expect(render()->findAll(".menu-row--switch .menu-row__label")->Array.map(text))->toEqual([
       "Safe-area overlay",
       "Console logging",
-      "Thinking indicator",
+      "Think ahead",
     ])
   })
 
@@ -87,10 +87,10 @@ describe("MenuDebugScreen", () => {
     let screen = render(
       ~onToggleCutoutDebug=() => log->Array.push("cutout"),
       ~onToggleDebugLog=() => log->Array.push("debug-log"),
-      ~onToggleThinkingDot=() => log->Array.push("thinking-dot"),
+      ~onToggleThinking=() => log->Array.push("thinking"),
     )
     screen->findAll(".menu-row--switch")->Array.forEach(click)
-    expect(log)->toEqual(["cutout", "debug-log", "thinking-dot"])
+    expect(log)->toEqual(["cutout", "debug-log", "thinking"])
   })
 
   test("offers to look for a win in the game that is on the table", () => {

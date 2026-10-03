@@ -5,8 +5,9 @@
 //   - a header whose **back** button (`onBackToSettings`) returns to Settings — one
 //     step back up, not all the way out — beside the ✕;
 //   - the **Safe-area overlay** toggle (`cutoutDebug`) and the **Console logging**
-//     toggle (`debugLog` — narrates the UI↔core traffic to the JS console), and the
-//     **Thinking indicator** (`thinkingDot` — the corner dot `ThinkingDot` draws);
+//     toggle (`debugLog` — narrates the UI↔core traffic to the JS console), and **Think
+//     ahead** (`thinking` — the solver thinking between asks, and the corner dot
+//     `ThinkingDot` draws to show it);
 //   - the three action rows: **Solve** (the console's `autoplay`, split into asking and
 //     playing — `SolveDialog` holds the answer), **Share game state** (`ShareLink`) and **Clear saved data**
 //     (`StoredState`);
@@ -31,8 +32,8 @@ type props = {
   onToggleCutoutDebug: unit => unit,
   debugLog: bool,
   onToggleDebugLog: unit => unit,
-  thinkingDot: bool,
-  onToggleThinkingDot: unit => unit,
+  thinking: bool,
+  onToggleThinking: unit => unit,
   // "Solve": whether there is a board behind this screen to hand to the solver.
   // False on a scene with no game, where the row goes dark rather than answering a tap
   // with a refusal.
@@ -88,8 +89,8 @@ let make = ({
   onToggleCutoutDebug,
   debugLog,
   onToggleDebugLog,
-  thinkingDot,
-  onToggleThinkingDot,
+  thinking: thinkingAhead,
+  onToggleThinking,
   solveEnabled,
   solving,
   onSolve,
@@ -122,10 +123,10 @@ let make = ({
         onToggle=onToggleDebugLog
       />
       <MenuToggleRow
-        label="Thinking indicator"
-        desc="Show in the corner what thinking ahead is doing, and whether the board is winnable."
-        on=thinkingDot
-        onToggle=onToggleThinkingDot
+        label="Think ahead"
+        desc="Let the solver think between moves, and show in the corner what it's doing and whether the board is winnable."
+        on=thinkingAhead
+        onToggle=onToggleThinking
       />
       <MenuActionRow
         label="Solve"

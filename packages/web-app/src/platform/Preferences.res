@@ -28,7 +28,6 @@ let betaFeaturesKey = "pip.betaFeatures"
 let consoleDockKey = "pip.consoleDock"
 let memoryKey = "pip.memory"
 let thinkingKey = "pip.thinking"
-let thinkingDotKey = "pip.thinkingDot"
 
 // An explicit "true"/"false" wins; anything else — missing, garbage, unreadable —
 // keeps `fallback`.
@@ -127,11 +126,6 @@ let saveNotchDisplay = (enabled: bool) => saveFlag(notchDisplayKey, enabled)
 // logging on still sees it after a reload.
 let loadDebugLog = (): bool => loadFlag(debugLogKey, ~fallback=false)
 let saveDebugLog = (enabled: bool) => saveFlag(debugLogKey, enabled)
-
-// The Debug screen's thinking indicator (`ThinkingDot`): persisted like the logging, so
-// a tester who turns it on keeps it through the reloads a test takes.
-let loadThinkingDot = (): bool => loadFlag(thinkingDotKey, ~fallback=false)
-let saveThinkingDot = (enabled: bool) => saveFlag(thinkingDotKey, enabled)
 
 // `HiddenOptions`: persisted so the ten-tap gesture is performed once per device, not
 // once per launch. Written in both directions — ten more taps hides the rows again,

@@ -41,8 +41,9 @@
 //
 // `thinking`: may the solver think about the board between asks, unasked, so a Solve
 // finds its answer already warm? Only a driver with another thread to think on acts on
-// it — the web app's `Thinker`; the CLI thinks only when asked whatever this says. On by
-// default, and off is for a player who would rather keep the battery than the wait.
+// it — the web app's `Thinker`, behind a Debug-screen switch that also shows what the
+// thinking found; the CLI thinks only when asked whatever this says. Off by default: it
+// is a developer's setting until what a player may be shown of it is decided (#410).
 type t = {
   autoCollect: bool,
   allowColumnReorder: bool,
@@ -60,7 +61,7 @@ let default = {
   allowFoundationReturn: true,
   allowDealWithEmptyColumns: false,
   memory: None,
-  thinking: true,
+  thinking: false,
 }
 
 // --- Addressing a flag by name -----------------------------------------------

@@ -534,7 +534,7 @@ describe("Command.parse — set", () => {
     expect(shown->String.includes("worryback    on"))->toBe(true)
     expect(shown->String.includes("gapdeal      off"))->toBe(true)
     expect(shown->String.includes("memory       auto"))->toBe(true)
-    expect(shown->String.includes("thinking     on"))->toBe(true)
+    expect(shown->String.includes("thinking     off"))->toBe(true)
     expect(
       Command.describeSettings(
         Options.apply(Options.default, ~setting=Options.AutoCollect, ~value=Options.Flag(false)),

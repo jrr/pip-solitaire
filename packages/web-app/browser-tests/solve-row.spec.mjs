@@ -22,12 +22,6 @@ test.use({ viewport: { width: 800, height: 1000 }, ...quietWin })
 // A real search, then forty-odd moves: slower than a test that only reads chrome.
 test.setTimeout(90_000)
 
-// Each case here times an ask, or counts what crosses to the worker across asks, from a
-// search that starts when the row is pressed. Thinking between asks would start it
-// earlier and talk to the worker in between, so it is off; `think-ahead.spec.mjs` is
-// where it is on.
-test.beforeEach(({ page }) => page.addInitScript(() => localStorage.setItem("pip.thinking", "false")))
-
 // A whole deal rather than a posed position, so the solver is handed the board a player
 // would be looking at. `?animate=off` because the flights are `stop-autoplay.spec.mjs`'s
 // subject, not this file's — what is under test here is that the run happens at all.

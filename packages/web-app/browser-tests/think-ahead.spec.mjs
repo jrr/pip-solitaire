@@ -48,9 +48,15 @@ const solve = async (page) => {
     .click()
 }
 
+// Think ahead is the Debug screen's switch, and off until it is flipped: each case that
+// wants it on says so before the page loads.
+const thinkingOn = (page) =>
+  page.addInitScript(() => localStorage.setItem("pip.thinking", "true"))
+
 test("a still board is thought about unasked, and a Solve on it answers at once and says so", async ({
   page,
 }) => {
+  await thinkingOn(page)
   await listen(page)
   await page.goto(DEAL)
   await settleBoard(page)
@@ -73,37 +79,41 @@ test("a still board is thought about unasked, and a Solve on it answers at once 
   expect(asked).toHaveLength(1)
 })
 
-test("with Think ahead off, nothing is thought about until asked, and the switch is stored", async ({
+test("off by default: nothing is thought about until asked, and no dot — until the Debug switch", async ({
   page,
 }) => {
   await listen(page)
   await page.goto(DEAL)
   await settleBoard(page)
-  await page.getByRole("button", { name: "Open menu" }).click()
-  await openSettings(page)
-  const toggle = page.getByRole("switch", { name: /^Think ahead/ })
-  await expect(toggle).toHaveAttribute("aria-checked", "true")
-  await toggle.click()
-  expect(await page.evaluate(() => localStorage.getItem("pip.thinking"))).toBe("false")
-
-  // A fresh page with the switch off, left still for well past the settle.
-  await page.reload()
-  await settleBoard(page)
+  // Left still for well past the settle.
   await page.waitForTimeout(4000)
   expect((await log(page)).filter((e) => e.told === "Think")).toHaveLength(0)
+  await expect(page.locator("#thinking-dot")).toHaveCount(0)
 
+  // Settings has no row for it; the Debug screen has the one switch for both.
   await page.getByRole("button", { name: "Open menu" }).click()
   await openSettings(page)
+  await expect(page.getByRole("switch", { name: /^Think ahead/ })).toHaveCount(0)
+  await page.getByRole("button", { name: "Debug" }).first().click()
+  const toggle = page.getByRole("switch", { name: /^Think ahead/ })
   await expect(toggle).toHaveAttribute("aria-checked", "false")
+  await toggle.click()
+  expect(await page.evaluate(() => localStorage.getItem("pip.thinking"))).toBe("true")
+  await expect(page.locator("#thinking-dot")).toBeVisible()
+  await expect
+    .poll(async () => (await log(page)).some((e) => e.told === "Think" && e.message.unasked), {
+      timeout: 15_000,
+    })
+    .toBe(true)
+
+  // And off again takes both away.
+  await toggle.click()
+  await expect(page.locator("#thinking-dot")).toBeHidden()
 })
 
-test("the Debug screen's indicator and the console both say what thinking unasked is doing", async ({
-  page,
-}) => {
-  await page.addInitScript(() => {
-    localStorage.setItem("pip.thinkingDot", "true")
-    localStorage.setItem("pip.debugLog", "true")
-  })
+test("the dot and the console both say what thinking unasked is doing", async ({ page }) => {
+  await thinkingOn(page)
+  await page.addInitScript(() => localStorage.setItem("pip.debugLog", "true"))
   const said = []
   page.on("console", (message) => said.push(message.text()))
   await page.goto(DEAL)

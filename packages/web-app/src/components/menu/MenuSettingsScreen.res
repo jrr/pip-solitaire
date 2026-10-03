@@ -43,10 +43,6 @@ type model = {
   // "Reorder columns": `Options.allowColumnReorder`. A hidden setting, since the board
   // has no gesture for a reorder yet — only the console's `movecol` makes one.
   columnReorder: bool,
-  // "Think ahead": `Options.thinking` — whether the solver thinks about the board between
-  // asks. Published to the solver's thread (`~thinking`) as well as to the shared ref,
-  // because turning it on has to start a think on a board that may not move for a while.
-  thinking: bool,
   // "Sloppy placement" — the slight resting-card tilt, for players who'd
   // rather see cards stacked dead-square.
   cardTilt: bool,
@@ -80,7 +76,6 @@ type msg =
   | ToggleFoundationReturn
   | ToggleEmptyColumnDeal
   | ToggleColumnReorder
-  | ToggleThinking
   | ToggleCardTilt
   | WiggleOff // the Wiggle Waggle switch turned off — stop listening, square up
   | WiggleResolved(Motion.state) // a motion-permission request resolved to a new state
@@ -127,7 +122,6 @@ let liveEnv = (
   ~tiltEnabled: ref<bool>,
   ~shakeActive: ref<bool>,
   ~betaFeatures: ref<bool>,
-  ~thinking: bool => unit,
   ~board: request => unit,
 ): env => {
   publish: model => {
@@ -137,9 +131,7 @@ let liveEnv = (
         allowFoundationReturn: model.foundationReturn,
         allowDealWithEmptyColumns: model.emptyColumnDeal,
         allowColumnReorder: model.columnReorder,
-        thinking: model.thinking,
       }
-    thinking(model.thinking)
     tiltEnabled := model.cardTilt
     // Settings is the owner of the app-wide motion state (see `Motion.current`): the
     // debug Motion scene shows it, and the board listens only while `shakeActive`.
@@ -156,7 +148,6 @@ let liveEnv = (
     Preferences.saveFoundationReturn(model.foundationReturn)
     Preferences.saveEmptyColumnDeal(model.emptyColumnDeal)
     Preferences.saveColumnReorder(model.columnReorder)
-    Preferences.saveThinking(model.thinking)
     Preferences.saveCardTilt(model.cardTilt)
     Preferences.saveWantsShake(model.wantsShake)
     Preferences.saveNotchDisplay(model.notchDisplay)
@@ -177,7 +168,6 @@ let init = (): model => {
     foundationReturn: options.allowFoundationReturn,
     emptyColumnDeal: options.allowDealWithEmptyColumns,
     columnReorder: options.allowColumnReorder,
-    thinking: options.thinking,
     cardTilt: Preferences.loadCardTilt(),
     wiggle: Motion.initialState(~wantsShake),
     wantsShake,
@@ -238,15 +228,6 @@ let update = (env: env, msg, model) =>
     )
   | ToggleColumnReorder =>
     let model = {...model, columnReorder: !model.columnReorder}
-    (
-      model,
-      () => {
-        env.publish(model)
-        env.persist(model)
-      },
-    )
-  | ToggleThinking =>
-    let model = {...model, thinking: !model.thinking}
     (
       model,
       () => {
@@ -422,12 +403,6 @@ let make = ({model, dispatch, onClose, onBackToMenu, onOpenDebug}) => <>
         desc="Let the controls reach into the corners beside the camera notch."
         on={model.notchDisplay}
         onToggle={() => dispatch(ToggleNotchDisplay)}
-      />
-      <MenuToggleRow
-        label="Think ahead"
-        desc="Let the solver work on the board while you play, so Solve answers sooner. Uses some battery."
-        on={model.thinking}
-        onToggle={() => dispatch(ToggleThinking)}
       />
     </MenuSection>
     <MenuSection label="House rules" heading="House rules">

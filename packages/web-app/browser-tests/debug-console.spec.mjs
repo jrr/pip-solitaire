@@ -794,7 +794,7 @@ test("set changes the driver's flags, through the app's own switch", async ({ pa
     "worryback on",
     "gapdeal off",
     "memory auto",
-    "thinking on",
+    "thinking off",
   ])
 
   // A typed auto-collect goes through the very action the Settings switch dispatches,
@@ -824,10 +824,12 @@ test("set changes the driver's flags, through the app's own switch", async ({ pa
   await expect
     .poll(() => page.evaluate(() => localStorage.getItem("pip.memory")))
     .toBe("small")
-  await runCommand(page, "set thinking off")
+  // The Debug screen's Think ahead, typed: it goes through that switch's own action.
+  await runCommand(page, "set thinking on")
   await expect
     .poll(() => page.evaluate(() => localStorage.getItem("pip.thinking")))
-    .toBe("false")
+    .toBe("true")
+  await expect(page.locator("#thinking-dot")).toBeVisible()
   await runCommand(page, "set")
   expect(await settingsShown()).toEqual([
     "autocollect off",
@@ -835,7 +837,7 @@ test("set changes the driver's flags, through the app's own switch", async ({ pa
     "worryback off",
     "gapdeal on",
     "memory small",
-    "thinking off",
+    "thinking on",
   ])
 
   // And a setting we don't have is refused in the words the CLI uses.

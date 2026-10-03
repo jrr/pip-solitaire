@@ -446,9 +446,11 @@ The reasons it is shaped like this:
 - **Nothing unasked runs on the main thread.** A worker that stops answering falls
   back to solving here only for a question someone asked; an unasked one is dropped,
   and nothing more is thought about unasked on that page.
-- **Off is a setting**: `set thinking off`, or **Think ahead** in Settings
-  (`Options.thinking`), for a player who would rather keep the battery than the wait.
-  A hidden tab thinks about nothing, and `pagehide` stops it until `pageshow`.
+- **It is a developer's switch, off by default**: **Think ahead** on the Debug
+  screen, or `set thinking on` (`Options.thinking`). The same switch shows what the
+  thinking found (below), and what a player may be shown of that is #410's to decide,
+  so the two stay together and out of Settings until it is. A hidden tab thinks about
+  nothing, and `pagehide` stops it until `pageshow`.
 - **The effort says so.** The worker counts what unasked thinks grew, and an asked
   think's `effort.unasked` carries it, so "found in 3 ms — 1,204 positions (all of
   them thought of before you asked)" reads as a warm answer rather than a clock gone
@@ -459,16 +461,15 @@ The reasons it is shaped like this:
   face down: thinking about one unasked is the solver peeking with nobody having
   asked it to, which is harmless exactly as long as nothing is shown.
 
-**To watch it**, turn on **Thinking indicator** on the Debug screen: a dot and a
-caption in the bottom-left corner (`debug/ThinkingDot.res`, which has the key). Amber
+**What it shows**: with Think ahead on, a dot and a caption sit in the bottom-left
+corner (`debug/ThinkingDot.res`, which has the key). Amber
 and pulsing while a think is out, counting the board's allowance; then green for
 winnable, red for proved unwinnable, purple for a full memory and grey for an allowance
 spent — the last two no verdict. A green caption says `known` for a board the re-root
 answered without growing a position — a move along a line already found — and the
 count otherwise. Every change is also a line in the debug log: the in-app console, and
-the JS console with **Console logging** on. **The indicator says whether a board is
-winnable**, which nothing else in the app does; that is #410's question, and the switch
-is a developer's until it is answered.
+the JS console with **Console logging** on. **The dot says whether a board is
+winnable**, which nothing else in the app does — the reason the switch is a developer's.
 
 **The crash mark is set while an unasked think runs**, because it is a solve for that
 purpose — the memory it holds is the solver's. So a tab killed while thinking unasked
