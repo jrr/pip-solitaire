@@ -447,22 +447,20 @@ The reasons it is shaped like this:
   back to solving here only for a question someone asked; an unasked one is dropped,
   and nothing more is thought about unasked on that page.
 - **It is a beta feature, off by default**: **Beta features** in the hidden
-  settings turns it on, with no switch of its own. The same flag shows what the
-  thinking found (below), and what a player may be shown of that is #410's to decide,
-  so the two stay together behind it until it is. A hidden tab thinks about nothing,
-  and `pagehide` stops it until `pageshow`.
+  settings turns it on, with no switch of its own, and with it what the thinking
+  found — the Hint button and the corner dot (below). A hidden tab thinks about
+  nothing, and `pagehide` stops it until `pageshow`.
 - **The effort says so.** The worker counts what unasked thinks grew, and an asked
   think's `effort.unasked` carries it, so "found in 3 ms — 1,204 positions (all of
   them thought of before you asked)" reads as a warm answer rather than a clock gone
   wrong. A Solve on a board still being grown continues the same search and reports
   the two together.
-- **Nothing on the board changes because of it, outside beta.** The one reveal so far
-  is the top bar's **Hint**, there while a line is known (`Thinker.known`) and behind
-  the same flag; a press flashes the next move's card, then where it lands, twice,
-  without playing it. Whether a player is shown that, or a "known winnable" mark, or
-  anything else, is #410's question. That matters most on a board dealt with cards
-  face down: thinking about one unasked is the solver peeking with nobody having
-  asked it to, which is harmless exactly as long as nothing is shown.
+- **What it found shows as a Hint.** The top bar's **Hint** is there while a line is
+  known (`Thinker.known`); a press flashes the next move's card, then where it lands,
+  twice, without playing it. So a Hint appearing says the board is winnable, and on a
+  board dealt with cards face down the line was found by peeking. Both are accepted
+  (`docs/solver.md` § What the solver sees): the hint is offered the same on every
+  board.
 
 **What it shows**: with Beta features on, a dot and a caption sit in the bottom-left
 corner (`debug/ThinkingDot.res`, which has the key). Amber

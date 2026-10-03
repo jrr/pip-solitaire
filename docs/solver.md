@@ -184,11 +184,11 @@ reducer turns it over as part of that move. The alternative is a different
 program — a search under uncertainty, where `Position.key` no longer identifies a
 board and a plan can be invalidated by the card it turns over — and nothing in
 `Solver` is shaped for that. What peeking costs is not technical but
-player-facing: **a hint that peeks is a hint that knows where the Ace is.**
-Whether the game may offer a hint, or autoplay, on a board with cards face down
-is therefore the front end's question and is still open; `mise run solve`, the
-harness and the tests all want the solver that sees everything, and that is the
-one they get.
+player-facing: **a hint that peeks is a hint that knows where the Ace is** — and
+that is accepted. The game offers its hint, and autoplay, on a board with cards
+face down exactly as on one without, so a front end has no reason to hide either
+there. `mise run solve`, the harness and the tests want the same solver that sees
+everything, and that is the one they get.
 
 ## Measuring it
 

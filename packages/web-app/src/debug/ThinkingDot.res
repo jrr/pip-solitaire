@@ -3,9 +3,9 @@
 // Beta features, `Main`'s `setBetaFeatures`), and a line in the debug log at every
 // change.
 //
-// **It says what the search found**, which the game itself never does — whether a board is
-// winnable is #410's question, which is why thinking ahead is a beta feature and the dot
-// comes with it. What each colour means:
+// **It says what the search found**, in more words than the Hint button's appearing does:
+// a verdict either way, and what it cost. Developer chrome, shown with the feature it
+// watches. What each colour means:
 //
 //   amber, pulsing — thinking; the caption counts the board's allowance spent so far
 //   green          — winnable: a line is known
