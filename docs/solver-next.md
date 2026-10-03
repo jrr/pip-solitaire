@@ -456,8 +456,10 @@ The reasons it is shaped like this:
   them thought of before you asked)" reads as a warm answer rather than a clock gone
   wrong. A Solve on a board still being grown continues the same search and reports
   the two together.
-- **Nothing on the board changes because of it.** A hint, a "known winnable" mark or
-  any other reveal is #410's question. That matters most on a board dealt with cards
+- **Nothing on the board changes because of it, outside beta.** The one reveal so far
+  is the top bar's **Hint**, there while a line is known (`Thinker.known`) and behind
+  the same flag; a press pulses the next move's cards without playing it. Whether a
+  player is shown that, or a "known winnable" mark, or anything else, is #410's question. That matters most on a board dealt with cards
   face down: thinking about one unasked is the solver peeking with nobody having
   asked it to, which is harmless exactly as long as nothing is shown.
 

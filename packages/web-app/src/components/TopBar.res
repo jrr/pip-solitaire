@@ -14,6 +14,11 @@
 // button was removed (a single undo is enough for this game); redo lives on only
 // in `core`'s history for the CLI.
 //
+// A third, **Hint**, is a beta feature and shows only while it has something to say: a
+// winning line is known from the board on the table (`Thinker.known`). It comes last in
+// the row, so appearing and going never moves Undo; the landscape rail puts it between
+// the two instead, keeping both in their corners.
+//
 // Undo is driven by the mounted board: it publishes the action to the chrome and
 // reports whether there's anything to step back to, so the button enables exactly
 // when history holds a prior state (`canUndo`). Undo is *not* special-cased on a
@@ -33,6 +38,10 @@ type props = {
   onUndo: unit => unit,
   canUndo: bool,
   updateVisible: bool,
+  // Show the next move of the known line. `None` while there is none, and then there is
+  // no button at all rather than a disabled one: a dimmed Hint would say "this board has
+  // no solution", which nothing here knows.
+  onHint: option<unit => unit>,
 }
 
 // The undo glyph, drawn rather than typed. A Unicode arrow (e.g. `↶`, U+21B6)
@@ -48,7 +57,15 @@ let undoIcon =
     <path d={undoPath} fill="currentColor" />
   </svg>
 
-let make = ({onMenu, onUndo, canUndo, updateVisible}) =>
+// A lightbulb, drawn for the same reason as the undo glyph.
+let hintPath = "M9 21c0 .55.45 1 1 1h4c.55 0 1-.45 1-1v-1H9v1zm3-19C8.14 2 5 5.14 5 9c0 2.38 1.19 4.47 3 5.74V17c0 .55.45 1 1 1h6c.55 0 1-.45 1-1v-2.26c1.81-1.27 3-3.36 3-5.74 0-3.86-3.14-7-7-7z"
+
+let hintIcon =
+  <svg className="top-bar__icon" viewBox="0 0 24 24" ariaHidden="true" focusable="false">
+    <path d={hintPath} fill="currentColor" />
+  </svg>
+
+let make = ({onMenu, onUndo, canUndo, updateVisible, onHint}) =>
   <header id="top-bar">
     <button
       className="top-bar__button top-bar__button--menu"
@@ -79,4 +96,17 @@ let make = ({onMenu, onUndo, canUndo, updateVisible}) =>
     >
       {undoIcon}
     </button>
+    {switch onHint {
+    | Some(onHint) =>
+      <button
+        className="top-bar__button top-bar__button--hint"
+        onClick={_ => onHint()}
+        type_="button"
+        title="Hint"
+        ariaLabel="Hint"
+      >
+        {hintIcon}
+      </button>
+    | None => Html.empty
+    }}
   </header>

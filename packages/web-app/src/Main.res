@@ -112,6 +112,9 @@ type model = {
   // what storage remembered (`openingVariants`) and never has to be complete.
   variants: Dict.t<string>,
   canUndo: bool,
+  // The next move of a known winning line from the board on the table (`Thinker.known`),
+  // which the top bar's Hint button shows. Offered only while Beta features is on.
+  hint: option<Reducer.action>,
   // The adaptive Settings refresh control. `refreshMode` is `None` until
   // `Refresh.detect` resolves (and stays effectively hidden on an unsupported
   // browser); it decides the button's "Refresh" vs "Check for updates" shape.
@@ -195,6 +198,7 @@ type msg =
   | SceneActivated(string) // the switcher mounted a scene — which one the menu highlights
   | VariantChosen(string) // a family's segment tapped, with no board of it up
   | HistoryChanged(bool) // whether the board can undo after a move
+  | HintChanged(option<Reducer.action>) // the next move of a known line, or none (`Thinker.known`)
   | RefreshDetected(Refresh.mode) // service-worker presence detected — sets the button's shape
   | RefreshStarted // the refresh button was tapped — start spinning the button
   | RefreshChecked // an update check finished — stop the spinner (a found update surfaces as the About button)
@@ -572,6 +576,8 @@ let update = (msg, model) =>
   // A family's segment tapped while its board *isn't* up: nothing mounts, the row simply
   // shows the next variant, and the tap on the name beside it is what opens that board.
   | VariantChosen(id) => rememberVariant(model, id)
+  | HintChanged(hint) =>
+    hint == model.hint ? (model, Html.noEffect) : ({...model, hint}, Html.noEffect)
   | HistoryChanged(canUndo) =>
     canUndo == model.canUndo ? (model, Html.noEffect) : ({...model, canUndo}, Html.noEffect) // no change — don't re-render
   // Closing the menu takes the seed dialog down with it, which is what lets Deal say
@@ -1716,6 +1722,11 @@ let view = (model, dispatch) => <>
       onUndo={() => liveBoard.contents->Option.forEach(board => board.undo())}
       canUndo={model.canUndo}
       updateVisible={model.updateAvailable}
+      onHint={model.settings.betaFeatures
+        ? model.hint->Option.map(hint =>
+            () => liveBoard.contents->Option.forEach(board => board.hint(hint))
+          )
+        : None}
     />
     <section id="scene-area">
       <div id="scene-box"> {Html.node(switcher.scene)} </div>
@@ -1813,6 +1824,7 @@ let dispatch = Html.mount(
     // mount above — before `dispatch` existed — so it's read back from
     // `initialCanUndo` here rather than hardcoded off.
     canUndo: initialCanUndo.contents,
+    hint: None,
     // The refresh button starts hidden until `Refresh.detect` reports the
     // service-worker state; not busy until an action runs.
     refreshMode: None,
@@ -2017,6 +2029,9 @@ if MenuSettingsScreen.listening(settingsInit) {
 // …and let the board's history reports reach the loop, so Undo enables and
 // disables as moves are played and undone.
 reportHistory := (canUndo => dispatch(HistoryChanged(canUndo)))
+
+// …and what the solver knows of the board, so Hint shows exactly while a line is known.
+Thinker.known := (hint => dispatch(HintChanged(hint)))
 
 // …and the same for the deal number, so the Share button follows the board: a
 // New Game's fresh deal, a Restart's same one, a scene switch to a board with none.

@@ -78,6 +78,21 @@
       margin-bottom: env(safe-area-inset-bottom);
     }
 
+    /* Hint (a beta feature, there only while a line is known) rides just above Undo
+       rather than taking the rail's centre, where the camera band sits on a notched
+       edge. Last in the markup so the portrait row never moves Undo; `order` lifts it
+       above Undo here, and its auto margin takes the free space space-between would
+       otherwise have split around it. Whether both fit one corner wing on every phone
+       is untested. */
+    .top-bar__button--hint {
+      order: -1;
+      margin-top: auto;
+    }
+
+    .top-bar__button--menu {
+      order: -2;
+    }
+
     /* The shaded band starts just right of the rail rather than bleeding under
        it: drop only the *inline-start* (left) full-bleed margin, keeping the end
        one so the band still runs to the screen's right edge. */
