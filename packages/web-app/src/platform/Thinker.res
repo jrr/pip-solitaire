@@ -97,13 +97,15 @@ let here = (~game: Game.t, ~state: GameState.t, ~patience: option<float>): Solve
 // to its answer, re-root and all, because that is what the worker spent; `settled` is a
 // search that has answered about this board — a line, a proof, a full budget — which no
 // more thinking changes. `grew` is the positions every think about it added, asked or
-// not: 0 for a board the re-root alone answered.
+// not: 0 for a board the re-root alone answered. `line` is the winning line from here,
+// when one is known, which is what `known` offers.
 type table = {
   game: Game.t,
   state: GameState.t,
   mutable spent: float,
   mutable settled: bool,
   mutable grew: int,
+  mutable line: array<Solver.played>,
 }
 
 // The question in flight, `Some` exactly while one is being thought about. One at a
@@ -186,6 +188,26 @@ let asks = ref(0)
 // A worker has been abandoned on this page. Asked questions spawn another and fall back
 // if it fails too; nothing unasked is worth a second try at a build that has gone wrong.
 let failed = ref(false)
+
+// The next move of a known winning line from the board on the table, or `None` when there
+// is none — for the Hint button. Said whenever that changes: a line found, a new board.
+// A board already finishable has an empty line and so no hint: the Finish button is that.
+let known: ref<option<Reducer.action> => unit> = ref(_ => ())
+
+let offer = (board: table) => known.contents(board.line->Array.get(0)->Option.map(s => s.action))
+
+// An answer about `board`, kept: a line becomes what `known` offers, while the board is
+// still the one on the table.
+let keep = (board: table, found: Solver.autoplayed) =>
+  switch found {
+  | Solver.Played({steps}) =>
+    board.line = steps
+    switch table.contents {
+    | Some(current) if current === board => offer(board)
+    | _ => ()
+    }
+  | _ => ()
+  }
 
 // A question is over — answered, let go of, or abandoned. An unasked one is charged to
 // its board for the time it ran.
@@ -308,7 +330,7 @@ let hidden: unit => bool = %raw(`() => typeof document !== "undefined" && docume
 @val @scope("document")
 external addDocumentListener: (string, unit => unit) => unit = "addEventListener"
 
-// Whether it is switched on (`Options.thinking`, through `allow`); whether the page
+// Whether it is switched on (Beta features, through `allow`); whether the page
 // is being put away (`pagehide`, until a `pageshow` brings it back); and whether the
 // board is still — no card held, nothing flying, no line being played — which only the
 // board can say, so it installs the answer here (`TableScene`).
@@ -378,6 +400,7 @@ and wonder = (board: table) => {
         }
       | _ =>
         board.settled = true
+        keep(board, found)
         reports.contents(
           Answered({
             verdict: verdictOf(found),
@@ -438,12 +461,26 @@ if supported {
 // and the first think will `Open` it. Either way the board's stillness starts counting
 // again from here, which is the debounce that keeps a quick player from ever paying for
 // an unasked re-root.
+//
+// A move along the known line keeps the rest of it, so the hint is there at once rather
+// than a settle and a re-root later. The board is still thought about as any new one is.
 let follow = (~game: Game.t, ~state: GameState.t) => {
   switch table.contents {
   | Some(board) if board.game === game && board.state == state => ()
-  | _ =>
-    table := Some({game, state, spent: 0., settled: false, grew: 0})
+  | previous =>
+    let line = switch previous {
+    | Some(board) if board.game === game =>
+      switch board.line->Array.get(0) {
+      | Some(step) if step.state == state =>
+        board.line->Array.slice(~start=1, ~end=Array.length(board.line))
+      | _ => []
+      }
+    | _ => []
+    }
+    let board = {game, state, spent: 0., settled: false, grew: 0, line}
+    table := Some(board)
     reports.contents(Idle)
+    offer(board)
   }
   thread.contents->Option.forEach(worker => worker->tellBoard(~game, ~state))
   arm(settle)
@@ -455,6 +492,7 @@ let leave = () => {
   quiet(~why="the board left the table")
   table := None
   reports.contents(Idle)
+  known.contents(None)
 }
 
 // Ask for a line, and say so when there is one.
@@ -495,6 +533,7 @@ let think = (
         | (Solver.OutOfPatience, _) => arm(settle)
         | (_, Some(board)) =>
           board.settled = true
+          keep(board, found)
           reports.contents(
             Answered({
               verdict: verdictOf(found),

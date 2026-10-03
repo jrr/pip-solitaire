@@ -7,20 +7,37 @@
 open Vitest
 open TestDom
 
-let render = (~canUndo=true, ~updateVisible=false, ~onMenu=() => (), ~onUndo=() => ()) =>
-  Html.create(TopBar.make({onMenu, onUndo, canUndo, updateVisible}))
+let render = (
+  ~canUndo=true,
+  ~updateVisible=false,
+  ~onMenu=() => (),
+  ~onUndo=() => (),
+  ~onHint=None,
+) => Html.create(TopBar.make({onMenu, onUndo, canUndo, updateVisible, onHint}))
 
 let menuButton = bar => bar->find(".top-bar__button--menu")->Option.getOrThrow
 let undoButton = bar => bar->find(".top-bar__button--undo")->Option.getOrThrow
 
 describe("TopBar", () => {
-  test("offers exactly two controls: Menu and Undo", () => {
+  test("offers exactly two controls, Menu and Undo, while no hint is known", () => {
     // New Game left for the menu and Update for the About footer;
     // Redo was removed outright. A third button appearing here is a regression.
     expect(render()->children->Array.map(el => el->attrOr("aria-label")))->toEqual([
       "Open menu",
       "Undo",
     ])
+  })
+
+  test("adds Hint after Undo when a hint is known, so Undo never moves", () => {
+    let hinted = ref(false)
+    let bar = render(~onHint=Some(() => hinted := true))
+    expect(bar->children->Array.map(el => el->attrOr("aria-label")))->toEqual([
+      "Open menu",
+      "Undo",
+      "Hint",
+    ])
+    bar->find(".top-bar__button--hint")->Option.getOrThrow->click
+    expect(hinted.contents)->toBe(true)
   })
 
   test("says a version is waiting, rather than only showing it", () => {

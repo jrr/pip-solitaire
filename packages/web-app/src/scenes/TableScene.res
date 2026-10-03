@@ -169,12 +169,64 @@ external animateZ: (
 external animateMask: (
   WebDom.element,
   array<{"opacity": string, "offset": float}>,
-  {"duration": float, "iterations": int, "easing": string},
+  {"duration": float, "iterations": int, "easing": string, "delay": float},
 ) => animation = "animate"
 
 // Honour the OS "reduce motion" preference by collapsing the fly-up to an
 // instant placement.
 @val external matchMedia: string => {"matches": bool} = "matchMedia"
+
+// Pulse a throwaway `.hint-mask` over one card wrapper and drop it when the pulse ends —
+// the double-tap's destinations (twice, at once) and the Hint button's move (once each,
+// in turn, so a later pulse waits out `delay` at the mask's resting opacity of 0).
+//
+// **Reduced motion keeps the information rather than losing it.** A colour fade carries
+// no movement, so each flash becomes a single hold-then-fade — lit long enough to read,
+// then settled — instead of the hint being dropped. (Reading `matchMedia`/`animate` also
+// keeps clear of jsdom, which implements neither.)
+let reduceMotion = () => matchMedia("(prefers-reduced-motion: reduce)")["matches"]
+
+// How long one flash lasts, which is what a sequence of them is spaced by.
+let flashMs = () => reduceMotion() ? 900. : 500.
+
+// The pause between the Hint's two showings of its move.
+let hintBeat = 400.
+
+let pulse = (~iterations=2, ~delay=0., el: WebDom.element) => {
+  let reduced = reduceMotion()
+  // Mostly-green at its peak — opaque enough to read as green for a frame or two,
+  // translucent enough to keep the pip showing through — then fades to nothing. No
+  // `fill`, so the mask ends fully transparent.
+  let peak = "0.82"
+  let (keyframes, iterations, easing) = reduced
+    ? (
+        [
+          {"opacity": peak, "offset": 0.},
+          {"opacity": peak, "offset": 0.6},
+          {"opacity": "0", "offset": 1.},
+        ],
+        1,
+        "ease-out",
+      )
+    : (
+        [
+          {"opacity": "0", "offset": 0.},
+          {"opacity": peak, "offset": 0.2},
+          {"opacity": peak, "offset": 0.5},
+          {"opacity": "0", "offset": 1.},
+        ],
+        iterations,
+        "ease-in-out",
+      )
+  let mask = WebDom.createElement("div")
+  mask->WebDom.setAttribute("class", "hint-mask")
+  el->WebDom.appendChild(mask)->ignore
+  animateMask(
+    mask,
+    keyframes,
+    {"duration": flashMs(), "iterations": iterations, "easing": easing, "delay": delay},
+  )->setOnFinish(() => mask->WebDom.remove)
+}
 
 // A card is positioned by writing `style.left/top`, and layered by writing
 // `style.zIndex`; the drag loop needs these, and reflow grows a fanned zone by
@@ -367,6 +419,11 @@ type controls = {
   // way, by callback from the worker, but leaves the board where it is until the
   // answer's `play` is called.
   solve: (~onAnswer: solved => unit) => unit,
+  // Show a move without playing it: the card or run it lifts, and the card it would land
+  // on, pulse the double-tap's green. A `Deal` pulses the stock's top card. A move that
+  // isn't one for the board on the table shows nothing, so a hint arriving a beat late
+  // is harmless.
+  hint: Reducer.action => unit,
   // Re-lay every resting card, so the tilt switch re-tilts the board in place rather
   // than only on the next move.
   relayout: unit => unit,
@@ -752,6 +809,7 @@ let make = (
       onAnswer({reply: [], play: None, more: None})
     )
     let liveRelayout: ref<unit => unit> = ref(() => ())
+    let liveHint: ref<Reducer.action => unit> = ref(_ => ())
 
     // The active `devicemotion` shake subscription, `Some` while Wiggle Waggle is on
     // and permission granted. `Motion.subscribeShake` already parks the
@@ -2389,43 +2447,7 @@ let make = (
         // When no foundation will take a double-tapped card but it can still move
         // somewhere, flash those destinations instead. Purely informational: no card
         // moves, nothing is selected, `state` is untouched.
-        //
-        // **Reduced motion keeps the information rather than losing it.** A colour fade
-        // carries no movement, so the pulse becomes a single hold-then-fade — lit long
-        // enough to read, then settled — instead of the hint being dropped. (Reading
-        // `matchMedia`/`animate` also keeps clear of jsdom, which implements neither.)
         let flashMoveTargets = (moves: array<Reducer.move>) => {
-          let reduceMotion = matchMedia("(prefers-reduced-motion: reduce)")["matches"]
-          // Mostly-green at its peak — opaque enough to read as green for a frame or
-          // two, translucent enough to keep the pip showing through — then fades to
-          // nothing. No `fill`, so the mask ends fully transparent.
-          let peak = "0.82"
-          let (keyframes, options) = reduceMotion
-            ? (
-                [
-                  {"opacity": peak, "offset": 0.},
-                  {"opacity": peak, "offset": 0.6},
-                  {"opacity": "0", "offset": 1.},
-                ],
-                {"duration": 900., "iterations": 1, "easing": "ease-out"},
-              )
-            : (
-                [
-                  {"opacity": "0", "offset": 0.},
-                  {"opacity": peak, "offset": 0.2},
-                  {"opacity": peak, "offset": 0.5},
-                  {"opacity": "0", "offset": 1.},
-                ],
-                {"duration": 500., "iterations": 2, "easing": "ease-in-out"},
-              )
-          // Pulse a throwaway `.hint-mask` over one eligible card wrapper (card-sized)
-          // and drop it when the pulse ends.
-          let flash = el => {
-            let mask = WebDom.createElement("div")
-            mask->WebDom.setAttribute("class", "hint-mask")
-            el->WebDom.appendChild(mask)->ignore
-            animateMask(mask, keyframes, options)->setOnFinish(() => mask->WebDom.remove)
-          }
           // Never hint free cells — they're the obvious park spot — nor a blank
           // space on the board: an empty target (an empty cascade) is skipped entirely
           // rather than lighting its slot placeholder. Each remaining target lights its
@@ -2436,7 +2458,7 @@ let make = (
           ->Array.forEach(({to: i}) => {
             let cards = GameState.cardsInPile(state(), i)
             switch cards->Array.get(Array.length(cards) - 1)->Option.flatMap(nodeFor) {
-            | Some(node) => flash(node.wrapper)
+            | Some(node) => pulse(node.wrapper)
             | None => ()
             }
           })
@@ -2729,6 +2751,40 @@ let make = (
       // Layout-independent, so it needn't wait on the deal's frame.
       updateFinishButton()
 
+      // The Hint button's move, shown on this board: what it lifts, then where it lands —
+      // the top card there, or the empty slot when there is none. A `Deal` names no card,
+      // so the stock's top card stands for it. Cards are found by identity, so a move for
+      // some other board finds nothing to light.
+      let showHint = (action: Reducer.action) => {
+        let top = (i: int) => {
+          let cards = GameState.cardsInPile(state(), i)
+          switch cards->Array.get(Array.length(cards) - 1)->Option.flatMap(nodeFor) {
+          | Some(node) => Some(node.wrapper)
+          | None => zones->Array.find(z => z.index == i)->Option.map(z => z.el)
+          }
+        }
+        let (lifted, onto) = switch action {
+        | Reducer.Move({card, to: ToPile(i)}) => ([card], top(i))
+        | MoveRun({cards, to: ToPile(i)}) => (cards, top(i))
+        | Deal => (
+            [],
+            game.piles->Array.findIndexOpt(p => p.role == Game.Stock)->Option.flatMap(top),
+          )
+        | MoveColumn(_) => ([], None)
+        }
+        // Source, then target, a beat, then the pair again: the order is what says which
+        // way the move goes, since both light the same green.
+        let flash = flashMs()
+        let round = (start: float) => {
+          lifted
+          ->Array.filterMap(nodeFor)
+          ->Array.forEach(node => pulse(~iterations=1, ~delay=start, node.wrapper))
+          onto->Option.forEach(el => pulse(~iterations=1, ~delay=start +. flash, el))
+        }
+        round(0.)
+        round(2. *. flash +. hintBeat)
+      }
+
       // Point the published `undo`, `runCommand` and `relayout` at *this* build,
       // and report the opening history (nothing to undo yet) so the top bar's button
       // starts disabled. Each of the three closes over the board it was built
@@ -2743,6 +2799,7 @@ let make = (
       liveAutoplay := autoplay
       liveSolve := solve
       liveRelayout := squareUp
+      liveHint := showHint
       reportHistory()
 
       // Persist this freshly-built board when saving is on: the opening deal,
@@ -2808,6 +2865,7 @@ let make = (
         runCommand: command => liveRunCommand.contents(command),
         autoplay: (~onAnswer) => liveAutoplay.contents(~onAnswer),
         solve: (~onAnswer) => liveSolve.contents(~onAnswer),
+        hint: action => liveHint.contents(action),
         relayout: () => liveRelayout.contents(),
         dockFit: inset => dockFit.contents(inset),
         shake: {start: startShake, stop: stopShake},

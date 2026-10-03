@@ -94,10 +94,6 @@ type model = {
   // `cutoutDebug`) so the switch opens in the right position; the logging itself is
   // driven by the shared `DebugLog.enabled` gate the toggle flips.
   debugLog: bool,
-  // "Think ahead": the Debug screen's one switch for the solver thinking between asks
-  // (`Options.thinking`, which `Thinker` acts on) and the corner dot that shows what it
-  // is doing (`ThinkingDot`). A mirror of the persisted option, like `debugLog`.
-  thinking: bool,
   // Which scene is mounted. The menu's games rows render their highlight from
   // this, so a scene change moves it through the diff rather than through a class
   // rewritten on a button the switcher kept hold of. Seeded from `switcher.active`
@@ -116,6 +112,9 @@ type model = {
   // what storage remembered (`openingVariants`) and never has to be complete.
   variants: Dict.t<string>,
   canUndo: bool,
+  // The next move of a known winning line from the board on the table (`Thinker.known`),
+  // which the top bar's Hint button shows. Offered only while Beta features is on.
+  hint: option<Reducer.action>,
   // The adaptive Settings refresh control. `refreshMode` is `None` until
   // `Refresh.detect` resolves (and stays effectively hidden on an unsupported
   // browser); it decides the button's "Refresh" vs "Check for updates" shape.
@@ -196,10 +195,10 @@ type msg =
   | ClearStoredState // the Debug screen's "Clear saved data" — forget the device, reopen
   | ToggleCutoutDebug // the menu's safe-area overlay switch (debug)
   | ToggleDebugLog // the Debug screen's console-logging switch
-  | ToggleThinking // the Debug screen's think-ahead switch, and `set thinking`
   | SceneActivated(string) // the switcher mounted a scene — which one the menu highlights
   | VariantChosen(string) // a family's segment tapped, with no board of it up
   | HistoryChanged(bool) // whether the board can undo after a move
+  | HintChanged(option<Reducer.action>) // the next move of a known line, or none (`Thinker.known`)
   | RefreshDetected(Refresh.mode) // service-worker presence detected — sets the button's shape
   | RefreshStarted // the refresh button was tapped — start spinning the button
   | RefreshChecked // an update check finished — stop the spinner (a found update surfaces as the About button)
@@ -374,15 +373,24 @@ let betaFeatures: ref<bool> = ref(Preferences.loadBetaFeatures())
 let debugLogEnabled = Preferences.loadDebugLog()
 DebugLog.setConsoleEnabled(debugLogEnabled)
 
-// Thinking ahead and the dot that shows it are one developer setting: on, the solver
-// thinks between asks and the corner says what it is doing; off, neither. Every change
-// is also a debug-log line, so with Console logging on the JS console narrates it too.
-let setThinking = (on: bool) => {
+// Thinking ahead and the dot that shows it are a beta feature: on, the solver thinks
+// between asks and the corner says what it is doing; off, neither. Every change is also
+// a debug-log line, so with Console logging on the JS console narrates it too.
+let thinkAhead = (on: bool) => {
   Thinker.allow(on)
   ThinkingDot.setVisible(on)
 }
 Thinker.reports := ThinkingDot.heard
-setThinking(options.contents.thinking)
+thinkAhead(betaFeatures.contents)
+
+// The Settings screen's way to flip the flag (`settingsEnv.publish`). Every flip of any
+// setting publishes the whole snapshot, so this acts only on a change — `Thinker.allow`
+// restarts the board's stillness count, which another setting's flip shouldn't.
+let setBetaFeatures = (on: bool) =>
+  if betaFeatures.contents != on {
+    betaFeatures := on
+    thinkAhead(on)
+  }
 
 // The persisted console placement (defaults to the top overlay). Unlike the flag
 // above there's nothing to apply at startup: the console is always closed on load, so
@@ -432,7 +440,7 @@ let settingsEnv = MenuSettingsScreen.liveEnv(
   ~options,
   ~tiltEnabled,
   ~shakeActive,
-  ~betaFeatures,
+  ~setBetaFeatures,
   ~board=settingsBoard,
 )
 
@@ -568,6 +576,8 @@ let update = (msg, model) =>
   // A family's segment tapped while its board *isn't* up: nothing mounts, the row simply
   // shows the next variant, and the tap on the name beside it is what opens that board.
   | VariantChosen(id) => rememberVariant(model, id)
+  | HintChanged(hint) =>
+    hint == model.hint ? (model, Html.noEffect) : ({...model, hint}, Html.noEffect)
   | HistoryChanged(canUndo) =>
     canUndo == model.canUndo ? (model, Html.noEffect) : ({...model, canUndo}, Html.noEffect) // no change — don't re-render
   // Closing the menu takes the seed dialog down with it, which is what lets Deal say
@@ -709,16 +719,6 @@ let update = (msg, model) =>
       () => {
         DebugLog.setConsoleEnabled(debugLog)
         Preferences.saveDebugLog(debugLog)
-      },
-    )
-  | ToggleThinking =>
-    let thinking = !model.thinking
-    (
-      {...model, thinking},
-      () => {
-        options := {...options.contents, thinking}
-        Preferences.saveThinking(thinking)
-        setThinking(thinking)
       },
     )
   | Reload => (
@@ -1596,8 +1596,6 @@ let debugScreen = (model, dispatch): MenuDebugScreen.props => {
   onToggleCutoutDebug: () => dispatch(ToggleCutoutDebug),
   debugLog: model.debugLog,
   onToggleDebugLog: () => dispatch(ToggleDebugLog),
-  thinking: model.thinking,
-  onToggleThinking: () => dispatch(ToggleThinking),
   // Asked of the live board rather than the model: the row is live wherever a command
   // has somewhere to land, which is the same question the console answers with "no board
   // on this scene".
@@ -1724,6 +1722,11 @@ let view = (model, dispatch) => <>
       onUndo={() => liveBoard.contents->Option.forEach(board => board.undo())}
       canUndo={model.canUndo}
       updateVisible={model.updateAvailable}
+      onHint={model.settings.betaFeatures
+        ? model.hint->Option.map(hint =>
+            () => liveBoard.contents->Option.forEach(board => board.hint(hint))
+          )
+        : None}
     />
     <section id="scene-area">
       <div id="scene-box"> {Html.node(switcher.scene)} </div>
@@ -1806,7 +1809,6 @@ let dispatch = Html.mount(
     // Mirror the persisted console-logging preference so the switch opens in
     // the right position; the `DebugLog` gate itself was seeded above.
     debugLog: debugLogEnabled,
-    thinking: options.contents.thinking,
     // The scene the switcher mounted on its way up — read straight off it,
     // since the mount above happened before this loop existed and so before any
     // message could carry the news. Every later change arrives as `SceneActivated`.
@@ -1822,6 +1824,7 @@ let dispatch = Html.mount(
     // mount above — before `dispatch` existed — so it's read back from
     // `initialCanUndo` here rather than hardcoded off.
     canUndo: initialCanUndo.contents,
+    hint: None,
     // The refresh button starts hidden until `Refresh.detect` reports the
     // service-worker state; not busy until an action runs.
     refreshMode: None,
@@ -1925,10 +1928,6 @@ DebugConsole.setRunner(line => {
       if options.contents.allowColumnReorder != on {
         dispatch(SettingsMsg(MenuSettingsScreen.ToggleColumnReorder))
       }
-    | Options.Thinking =>
-      if options.contents.thinking != on {
-        dispatch(ToggleThinking)
-      }
     | Options.Memory => ()
     }
     Render.text(Command.describeSet(~setting, ~value=Options.Flag(on)))
@@ -2030,6 +2029,9 @@ if MenuSettingsScreen.listening(settingsInit) {
 // …and let the board's history reports reach the loop, so Undo enables and
 // disables as moves are played and undone.
 reportHistory := (canUndo => dispatch(HistoryChanged(canUndo)))
+
+// …and what the solver knows of the board, so Hint shows exactly while a line is known.
+Thinker.known := (hint => dispatch(HintChanged(hint)))
 
 // …and the same for the deal number, so the Share button follows the board: a
 // New Game's fresh deal, a Restart's same one, a scene switch to a board with none.

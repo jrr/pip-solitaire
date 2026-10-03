@@ -59,11 +59,11 @@ type model = {
   // into the corner wings beside the notch; off clamps every control inside the safe
   // area.
   notchDisplay: bool,
-  // "Beta features": the one switch in front of what's built but not finished. Nothing
-  // stands behind it today; a game in development would list itself in the Games menu
-  // through it (`Main`'s `betaGames`). An unfinished feature gates itself on the flag and
-  // takes the gate out when it graduates. A feature flag rather
-  // than a preference, which is why it is hidden and why it defaults off.
+  // "Beta features": the one switch in front of what's built but not finished — the
+  // solver thinking ahead and what it found (`Main`'s `setBetaFeatures`), and a game in
+  // development listing itself in the Games menu (`Main`'s `betaGames`). An unfinished
+  // feature gates itself on the flag and takes the gate out when it graduates. A feature
+  // flag rather than a preference, which is why it is hidden and why it defaults off.
   betaFeatures: bool,
   // The hidden settings and the run of taps that reveals them (`HiddenOptions`). Today
   // that is Wiggle Waggle and Beta features. A hidden row says nothing about whether its
@@ -121,7 +121,7 @@ let liveEnv = (
   ~options: ref<Options.t>,
   ~tiltEnabled: ref<bool>,
   ~shakeActive: ref<bool>,
-  ~betaFeatures: ref<bool>,
+  ~setBetaFeatures: bool => unit,
   ~board: request => unit,
 ): env => {
   publish: model => {
@@ -137,9 +137,9 @@ let liveEnv = (
     // debug Motion scene shows it, and the board listens only while `shakeActive`.
     shakeActive := Motion.isOn(model.wiggle)
     Motion.current := model.wiggle
-    // Which games the menu lists, read by the scene switcher rather than by a component:
-    // the rows it files are built outside the chrome's render (see `Main`).
-    betaFeatures := model.betaFeatures
+    // Which games the menu lists, read by the scene switcher rather than by a component,
+    // and whether the solver thinks ahead: neither is the chrome's to render (see `Main`).
+    setBetaFeatures(model.betaFeatures)
   },
   board,
   root: model => NotchDisplay.setEnabled(model.notchDisplay),
@@ -297,10 +297,9 @@ let update = (env: env, msg, model) =>
         env.persist(model)
       },
     )
-  // Published as well as stored, which is what makes the flip land on the very next menu
-  // render rather than the next launch: what it gates (`Main`'s `menuGames`) is
-  // read by the scene switcher, outside the chrome's render, so this model reaching the
-  // screen is not enough on its own. A feature gated on this field alone needs no
+  // Published as well as stored, which is what makes the flip land now rather than at the
+  // next launch: what it gates (`Main`'s `menuGames`, and thinking ahead) is read outside
+  // the chrome's render, so this model reaching the screen is not enough on its own. A feature gated on this field alone needs no
   // publish — a menu screen re-renders from the model regardless.
   | ToggleBetaFeatures =>
     let model = {...model, betaFeatures: !model.betaFeatures}

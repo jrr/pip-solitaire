@@ -27,7 +27,6 @@ let revealHiddenKey = "pip.revealHidden"
 let betaFeaturesKey = "pip.betaFeatures"
 let consoleDockKey = "pip.consoleDock"
 let memoryKey = "pip.memory"
-let thinkingKey = "pip.thinking"
 
 // An explicit "true"/"false" wins; anything else — missing, garbage, unreadable —
 // keeps `fallback`.
@@ -84,7 +83,6 @@ let load = (): Options.t => {
     allowFoundationReturn,
     allowDealWithEmptyColumns,
     memory: loadMemory(),
-    thinking: loadFlag(thinkingKey, ~fallback=Options.default.thinking),
   }
 }
 
@@ -95,7 +93,6 @@ let saveAutoCollect = (enabled: bool) => saveFlag(autoCollectKey, enabled)
 let saveFoundationReturn = (enabled: bool) => saveFlag(foundationReturnKey, enabled)
 let saveEmptyColumnDeal = (enabled: bool) => saveFlag(emptyColumnDealKey, enabled)
 let saveColumnReorder = (enabled: bool) => saveFlag(columnReorderKey, enabled)
-let saveThinking = (enabled: bool) => saveFlag(thinkingKey, enabled)
 
 let save = (options: Options.t) => {
   saveMemory(options.memory)
@@ -103,7 +100,6 @@ let save = (options: Options.t) => {
   saveFoundationReturn(options.allowFoundationReturn)
   saveEmptyColumnDeal(options.allowDealWithEmptyColumns)
   saveColumnReorder(options.allowColumnReorder)
-  saveThinking(options.thinking)
 }
 
 let loadCardTilt = (): bool => loadFlag(cardTiltKey, ~fallback=true)
@@ -133,8 +129,8 @@ let saveDebugLog = (enabled: bool) => saveFlag(debugLogKey, enabled)
 let loadRevealHidden = (): bool => loadFlag(revealHiddenKey, ~fallback=false)
 let saveRevealHidden = (revealed: bool) => saveFlag(revealHiddenKey, revealed)
 
-// "Beta features": the one switch in front of everything built but not finished. Nothing
-// stands behind it today (`Main`'s `betaGames` is empty). Off by default and reachable only from
+// "Beta features": the one switch in front of everything built but not finished — today,
+// the solver thinking ahead and what it found (`Main`'s `setBetaFeatures`). Off by default and reachable only from
 // the hidden settings, which is a second gesture in front of this one; persisted like
 // the rest, so a device left with it on keeps it across launches.
 //
