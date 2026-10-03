@@ -492,7 +492,7 @@ describe("Command.parse — set", () => {
       expect(verb)->toBe("set")
       expect(
         message,
-      )->toBe(`Not a setting: "frobnicate" (autocollect, reorder, worryback, gapdeal, memory, thinking).`)
+      )->toBe(`Not a setting: "frobnicate" (autocollect, reorder, worryback, gapdeal, memory).`)
     | _ => expect("not a usage")->toBe("usage")
     }
     switch Command.parse("set autocollect maybe") {
@@ -534,7 +534,6 @@ describe("Command.parse — set", () => {
     expect(shown->String.includes("worryback    on"))->toBe(true)
     expect(shown->String.includes("gapdeal      off"))->toBe(true)
     expect(shown->String.includes("memory       auto"))->toBe(true)
-    expect(shown->String.includes("thinking     off"))->toBe(true)
     expect(
       Command.describeSettings(
         Options.apply(Options.default, ~setting=Options.AutoCollect, ~value=Options.Flag(false)),

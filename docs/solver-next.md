@@ -446,11 +446,11 @@ The reasons it is shaped like this:
 - **Nothing unasked runs on the main thread.** A worker that stops answering falls
   back to solving here only for a question someone asked; an unasked one is dropped,
   and nothing more is thought about unasked on that page.
-- **It is a developer's switch, off by default**: **Think ahead** on the Debug
-  screen, or `set thinking on` (`Options.thinking`). The same switch shows what the
+- **It is a beta feature, off by default**: **Beta features** in the hidden
+  settings turns it on, with no switch of its own. The same flag shows what the
   thinking found (below), and what a player may be shown of that is #410's to decide,
-  so the two stay together and out of Settings until it is. A hidden tab thinks about
-  nothing, and `pagehide` stops it until `pageshow`.
+  so the two stay together behind it until it is. A hidden tab thinks about nothing,
+  and `pagehide` stops it until `pageshow`.
 - **The effort says so.** The worker counts what unasked thinks grew, and an asked
   think's `effort.unasked` carries it, so "found in 3 ms — 1,204 positions (all of
   them thought of before you asked)" reads as a warm answer rather than a clock gone
@@ -461,7 +461,7 @@ The reasons it is shaped like this:
   face down: thinking about one unasked is the solver peeking with nobody having
   asked it to, which is harmless exactly as long as nothing is shown.
 
-**What it shows**: with Think ahead on, a dot and a caption sit in the bottom-left
+**What it shows**: with Beta features on, a dot and a caption sit in the bottom-left
 corner (`debug/ThinkingDot.res`, which has the key). Amber
 and pulsing while a think is out, counting the board's allowance; then green for
 winnable, red for proved unwinnable, purple for a full memory and grey for an allowance

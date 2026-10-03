@@ -9,7 +9,7 @@
 
 import { expect, test } from "@playwright/test"
 import { quietWin, settleBoard } from "./lib/board.mjs"
-import { openSettings } from "./lib/menu.mjs"
+import { openSettings, setBetaFeatures } from "./lib/menu.mjs"
 
 test.use({ viewport: { width: 800, height: 1000 }, ...quietWin })
 test.setTimeout(60_000)
@@ -48,10 +48,10 @@ const solve = async (page) => {
     .click()
 }
 
-// Think ahead is the Debug screen's switch, and off until it is flipped: each case that
-// wants it on says so before the page loads.
+// Thinking ahead is a beta feature, and off until Beta features is flipped: each case
+// that wants it on says so before the page loads.
 const thinkingOn = (page) =>
-  page.addInitScript(() => localStorage.setItem("pip.thinking", "true"))
+  page.addInitScript(() => localStorage.setItem("pip.betaFeatures", "true"))
 
 test("a still board is thought about unasked, and a Solve on it answers at once and says so", async ({
   page,
@@ -79,7 +79,7 @@ test("a still board is thought about unasked, and a Solve on it answers at once 
   expect(asked).toHaveLength(1)
 })
 
-test("off by default: nothing is thought about until asked, and no dot — until the Debug switch", async ({
+test("off by default: nothing is thought about until asked, and no dot — until Beta features", async ({
   page,
 }) => {
   await listen(page)
@@ -90,15 +90,10 @@ test("off by default: nothing is thought about until asked, and no dot — until
   expect((await log(page)).filter((e) => e.told === "Think")).toHaveLength(0)
   await expect(page.locator("#thinking-dot")).toHaveCount(0)
 
-  // Settings has no row for it; the Debug screen has the one switch for both.
+  // No switch of its own: Beta features is the one switch for both, and lands without a
+  // reload.
   await page.getByRole("button", { name: "Open menu" }).click()
-  await openSettings(page)
-  await expect(page.getByRole("switch", { name: /^Think ahead/ })).toHaveCount(0)
-  await page.getByRole("button", { name: "Debug" }).first().click()
-  const toggle = page.getByRole("switch", { name: /^Think ahead/ })
-  await expect(toggle).toHaveAttribute("aria-checked", "false")
-  await toggle.click()
-  expect(await page.evaluate(() => localStorage.getItem("pip.thinking"))).toBe("true")
+  await setBetaFeatures(page, true)
   await expect(page.locator("#thinking-dot")).toBeVisible()
   await expect
     .poll(async () => (await log(page)).some((e) => e.told === "Think" && e.message.unasked), {
@@ -107,7 +102,7 @@ test("off by default: nothing is thought about until asked, and no dot — until
     .toBe(true)
 
   // And off again takes both away.
-  await toggle.click()
+  await setBetaFeatures(page, false)
   await expect(page.locator("#thinking-dot")).toBeHidden()
 })
 

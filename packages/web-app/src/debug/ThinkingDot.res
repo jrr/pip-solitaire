@@ -1,11 +1,11 @@
 // What the solver's unasked thinking is doing, where a tester can see it: a dot and a
-// one-line caption in the bottom-left corner, shown whenever thinking ahead is on (the
-// Debug screen's "Think ahead", `Options.thinking`), and a line in the debug log at every
+// one-line caption in the bottom-left corner, shown whenever thinking ahead is on (behind
+// Beta features, `Main`'s `setBetaFeatures`), and a line in the debug log at every
 // change.
 //
 // **It says what the search found**, which the game itself never does — whether a board is
-// winnable is #410's question, which is why thinking ahead is a developer's switch and
-// the dot comes with it. What each colour means:
+// winnable is #410's question, which is why thinking ahead is a beta feature and the dot
+// comes with it. What each colour means:
 //
 //   amber, pulsing — thinking; the caption counts the board's allowance spent so far
 //   green          — winnable: a line is known

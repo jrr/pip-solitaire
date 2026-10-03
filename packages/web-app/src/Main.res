@@ -94,10 +94,6 @@ type model = {
   // `cutoutDebug`) so the switch opens in the right position; the logging itself is
   // driven by the shared `DebugLog.enabled` gate the toggle flips.
   debugLog: bool,
-  // "Think ahead": the Debug screen's one switch for the solver thinking between asks
-  // (`Options.thinking`, which `Thinker` acts on) and the corner dot that shows what it
-  // is doing (`ThinkingDot`). A mirror of the persisted option, like `debugLog`.
-  thinking: bool,
   // Which scene is mounted. The menu's games rows render their highlight from
   // this, so a scene change moves it through the diff rather than through a class
   // rewritten on a button the switcher kept hold of. Seeded from `switcher.active`
@@ -196,7 +192,6 @@ type msg =
   | ClearStoredState // the Debug screen's "Clear saved data" — forget the device, reopen
   | ToggleCutoutDebug // the menu's safe-area overlay switch (debug)
   | ToggleDebugLog // the Debug screen's console-logging switch
-  | ToggleThinking // the Debug screen's think-ahead switch, and `set thinking`
   | SceneActivated(string) // the switcher mounted a scene — which one the menu highlights
   | VariantChosen(string) // a family's segment tapped, with no board of it up
   | HistoryChanged(bool) // whether the board can undo after a move
@@ -374,15 +369,24 @@ let betaFeatures: ref<bool> = ref(Preferences.loadBetaFeatures())
 let debugLogEnabled = Preferences.loadDebugLog()
 DebugLog.setConsoleEnabled(debugLogEnabled)
 
-// Thinking ahead and the dot that shows it are one developer setting: on, the solver
-// thinks between asks and the corner says what it is doing; off, neither. Every change
-// is also a debug-log line, so with Console logging on the JS console narrates it too.
-let setThinking = (on: bool) => {
+// Thinking ahead and the dot that shows it are a beta feature: on, the solver thinks
+// between asks and the corner says what it is doing; off, neither. Every change is also
+// a debug-log line, so with Console logging on the JS console narrates it too.
+let thinkAhead = (on: bool) => {
   Thinker.allow(on)
   ThinkingDot.setVisible(on)
 }
 Thinker.reports := ThinkingDot.heard
-setThinking(options.contents.thinking)
+thinkAhead(betaFeatures.contents)
+
+// The Settings screen's way to flip the flag (`settingsEnv.publish`). Every flip of any
+// setting publishes the whole snapshot, so this acts only on a change — `Thinker.allow`
+// restarts the board's stillness count, which another setting's flip shouldn't.
+let setBetaFeatures = (on: bool) =>
+  if betaFeatures.contents != on {
+    betaFeatures := on
+    thinkAhead(on)
+  }
 
 // The persisted console placement (defaults to the top overlay). Unlike the flag
 // above there's nothing to apply at startup: the console is always closed on load, so
@@ -432,7 +436,7 @@ let settingsEnv = MenuSettingsScreen.liveEnv(
   ~options,
   ~tiltEnabled,
   ~shakeActive,
-  ~betaFeatures,
+  ~setBetaFeatures,
   ~board=settingsBoard,
 )
 
@@ -709,16 +713,6 @@ let update = (msg, model) =>
       () => {
         DebugLog.setConsoleEnabled(debugLog)
         Preferences.saveDebugLog(debugLog)
-      },
-    )
-  | ToggleThinking =>
-    let thinking = !model.thinking
-    (
-      {...model, thinking},
-      () => {
-        options := {...options.contents, thinking}
-        Preferences.saveThinking(thinking)
-        setThinking(thinking)
       },
     )
   | Reload => (
@@ -1596,8 +1590,6 @@ let debugScreen = (model, dispatch): MenuDebugScreen.props => {
   onToggleCutoutDebug: () => dispatch(ToggleCutoutDebug),
   debugLog: model.debugLog,
   onToggleDebugLog: () => dispatch(ToggleDebugLog),
-  thinking: model.thinking,
-  onToggleThinking: () => dispatch(ToggleThinking),
   // Asked of the live board rather than the model: the row is live wherever a command
   // has somewhere to land, which is the same question the console answers with "no board
   // on this scene".
@@ -1806,7 +1798,6 @@ let dispatch = Html.mount(
     // Mirror the persisted console-logging preference so the switch opens in
     // the right position; the `DebugLog` gate itself was seeded above.
     debugLog: debugLogEnabled,
-    thinking: options.contents.thinking,
     // The scene the switcher mounted on its way up — read straight off it,
     // since the mount above happened before this loop existed and so before any
     // message could carry the news. Every later change arrives as `SceneActivated`.
@@ -1924,10 +1915,6 @@ DebugConsole.setRunner(line => {
     | Options.ColumnReorder =>
       if options.contents.allowColumnReorder != on {
         dispatch(SettingsMsg(MenuSettingsScreen.ToggleColumnReorder))
-      }
-    | Options.Thinking =>
-      if options.contents.thinking != on {
-        dispatch(ToggleThinking)
       }
     | Options.Memory => ()
     }

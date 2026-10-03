@@ -308,7 +308,7 @@ let hidden: unit => bool = %raw(`() => typeof document !== "undefined" && docume
 @val @scope("document")
 external addDocumentListener: (string, unit => unit) => unit = "addEventListener"
 
-// Whether it is switched on (`Options.thinking`, through `allow`); whether the page
+// Whether it is switched on (Beta features, through `allow`); whether the page
 // is being put away (`pagehide`, until a `pageshow` brings it back); and whether the
 // board is still — no card held, nothing flying, no line being played — which only the
 // board can say, so it installs the answer here (`TableScene`).
