@@ -137,6 +137,9 @@ type asked = {
 //                `asked` when a Solve settled it.
 //   `Spent`    — the board's whole `Solver.unasked` went by without an answer.
 //   `Stopped`  — an unasked think was let go of, and `why`.
+//   `Asked`    — a Solve is thinking about the board, and thinking unasked waits on it.
+//   `Died`     — the worker was given up on, and `why`: nothing more is thought about
+//                unasked on this page, so every board after says this rather than `Idle`.
 //   `Idle`     — a new board, not yet thought about.
 type verdict =
   | Winnable
@@ -149,6 +152,8 @@ type report =
   | Answered({verdict: verdict, ms: float, positions: int, grew: int, asked: bool})
   | Spent({ms: float, positions: int, grew: int})
   | Stopped({why: string})
+  | Asked
+  | Died({why: string})
   | Idle
 
 let reports: ref<report => unit> = ref(_ => ())
@@ -185,9 +190,20 @@ let live: ref<option<asked>> = ref(None)
 let held: ref<option<held>> = ref(None)
 let table: ref<option<table>> = ref(None)
 let asks = ref(0)
-// A worker has been abandoned on this page. Asked questions spawn another and fall back
-// if it fails too; nothing unasked is worth a second try at a build that has gone wrong.
-let failed = ref(false)
+// Why a worker was abandoned on this page, if one was. Asked questions spawn another and
+// fall back if it fails too; nothing unasked is worth a second try at a build that has
+// gone wrong.
+let failed: ref<option<string>> = ref(None)
+
+// What a board nothing is thinking about yet says: `Idle`, or `Died` on a page where
+// nothing ever will.
+let rest = () =>
+  reports.contents(
+    switch failed.contents {
+    | Some(why) => Died({why: why})
+    | None => Idle
+    },
+  )
 
 // The next move of a known winning line from the board on the table, or `None` when there
 // is none — for the Hint button. Said whenever that changes: a line found, a new board.
@@ -236,9 +252,11 @@ let cancel = (~why: string) =>
 // The worker has failed to load, thrown, or gone quiet. Said on the console because
 // nothing a player did gets here: it is the build, and the fallback below would
 // otherwise hide it behind a page that merely got slow.
-let abandon = (worker: worker) => {
-  Console.error("[pip] the solver's worker stopped answering; solving on the main thread")
-  failed := true
+//
+// Reported last, after any fallback has answered, so `Died` is what the dot is left on.
+let abandon = (worker: worker, ~why: string) => {
+  Console.error(`[pip] the solver's worker ${why}; solving on the main thread`)
+  failed := Some(why)
   worker->onMessage(_ => ())
   worker->onError(_ => ())
   terminate(worker)
@@ -259,11 +277,15 @@ let abandon = (worker: worker) => {
     })
   | None => ()
   }
+  reports.contents(Died({why: why}))
 }
 
 let watch = (worker: worker, question: asked) => {
   clearTimeout(question.watchdog)
-  question.watchdog = setTimeout(() => abandon(worker), silence)
+  question.watchdog = setTimeout(
+    () => abandon(worker, ~why=`said nothing for ${Int.toString(silence / 1000)} s`),
+    silence,
+  )
 }
 
 let heard = (worker: worker, reply: SolverWorker.reply) =>
@@ -286,7 +308,7 @@ let worker = (): worker =>
   | None =>
     let worker = spawn()
     worker->onMessage(event => heard(worker, event.data))
-    worker->onError(() => abandon(worker))
+    worker->onError(() => abandon(worker, ~why="raised an error"))
     thread := Some(worker)
     worker
   }
@@ -365,16 +387,19 @@ and wake = () => {
   switch table.contents {
   | Some(board)
     if allowed.contents &&
-    !failed.contents &&
     !parked.contents &&
     !hidden() &&
     Option.isNone(live.contents) &&
     !board.settled &&
     board.spent < Solver.unasked =>
-    if still.contents() {
-      wonder(board)
-    } else {
-      arm(settle)
+    switch failed.contents {
+    | Some(why) => reports.contents(Died({why: why}))
+    | None =>
+      if still.contents() {
+        wonder(board)
+      } else {
+        arm(settle)
+      }
     }
   | _ => ()
   }
@@ -481,7 +506,7 @@ let follow = (~game: Game.t, ~state: GameState.t) => {
     }
     let board = {game, state, spent: 0., settled: false, grew: 0, line}
     table := Some(board)
-    reports.contents(Idle)
+    rest()
     offer(board)
   }
   thread.contents->Option.forEach(worker => worker->tellBoard(~game, ~state))
@@ -493,7 +518,7 @@ let follow = (~game: Game.t, ~state: GameState.t) => {
 let leave = () => {
   quiet(~why="the board left the table")
   table := None
-  reports.contents(Idle)
+  rest()
   known.contents(None)
 }
 
@@ -521,6 +546,7 @@ let think = (
   } else {
     cancel(~why="Solve was asked")
     disarm()
+    reports.contents(Asked)
     let worker = worker()
     asks := asks.contents + 1
     grown := 0
@@ -532,7 +558,9 @@ let think = (
       ask: asks.contents,
       onAnswer: found => {
         switch (found, about) {
-        | (Solver.OutOfPatience, _) => arm(settle)
+        | (Solver.OutOfPatience, _) =>
+          rest()
+          arm(settle)
         | (_, Some(board)) =>
           board.settled = true
           keep(board, found)
@@ -545,7 +573,8 @@ let think = (
               asked: true,
             }),
           )
-        | (_, None) => ()
+        // Nothing is booked for the board on the table until it moves.
+        | (_, None) => reports.contents(Stopped({why: "Solve answered about another board"}))
         }
         onAnswer(found)
       },
