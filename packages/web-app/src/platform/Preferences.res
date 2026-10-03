@@ -27,6 +27,7 @@ let revealHiddenKey = "pip.revealHidden"
 let betaFeaturesKey = "pip.betaFeatures"
 let consoleDockKey = "pip.consoleDock"
 let memoryKey = "pip.memory"
+let thinkingKey = "pip.thinking"
 
 // An explicit "true"/"false" wins; anything else — missing, garbage, unreadable —
 // keeps `fallback`.
@@ -83,6 +84,7 @@ let load = (): Options.t => {
     allowFoundationReturn,
     allowDealWithEmptyColumns,
     memory: loadMemory(),
+    thinking: loadFlag(thinkingKey, ~fallback=Options.default.thinking),
   }
 }
 
@@ -93,6 +95,7 @@ let saveAutoCollect = (enabled: bool) => saveFlag(autoCollectKey, enabled)
 let saveFoundationReturn = (enabled: bool) => saveFlag(foundationReturnKey, enabled)
 let saveEmptyColumnDeal = (enabled: bool) => saveFlag(emptyColumnDealKey, enabled)
 let saveColumnReorder = (enabled: bool) => saveFlag(columnReorderKey, enabled)
+let saveThinking = (enabled: bool) => saveFlag(thinkingKey, enabled)
 
 let save = (options: Options.t) => {
   saveMemory(options.memory)
@@ -100,6 +103,7 @@ let save = (options: Options.t) => {
   saveFoundationReturn(options.allowFoundationReturn)
   saveEmptyColumnDeal(options.allowDealWithEmptyColumns)
   saveColumnReorder(options.allowColumnReorder)
+  saveThinking(options.thinking)
 }
 
 let loadCardTilt = (): bool => loadFlag(cardTiltKey, ~fallback=true)

@@ -50,6 +50,18 @@ external onPointerCapturing: (
 @send
 external onAnimation: (WebDom.element, string, unit => unit) => unit = "addEventListener"
 
+// Whether anything on the board is moving under the player's hand or on its own: a card
+// held (`dragging`), or an animation on its way to an end — a flight, a sweep, a deal.
+// An `infinite` one (the drop zone's hover pulse) has no end and only runs during a drag
+// anyway, so it is left out rather than read as a board that is never still.
+let moving: WebDom.element => bool = %raw(`
+  (host) =>
+    host.querySelector(".dragging") !== null ||
+    host.getAnimations({ subtree: true }).some(
+      (a) => a.playState === "running" && Number.isFinite(a.effect?.getComputedTiming().endTime),
+    )
+`)
+
 // The initial deal is centred on the stage's live size, which isn't known until
 // the stage is in the document and laid out. On first load the scene mounts while
 // still detached (see SceneSwitcher), so the deal is deferred to the next frame,
@@ -707,6 +719,10 @@ let make = (
         },
       {"capture": true},
     )
+
+    // What the solver's unasked thinking waits on: a board nobody is playing on. A line
+    // being played or thought about counts as play.
+    Thinker.still := (() => Option.isNone(stopPlay.contents) && !moving(boardHost))
 
     // --- The mount-scope refs -------------------------------------------------
     // Everything below belongs to a *build* but is held at *mount* scope, because
@@ -2838,6 +2854,7 @@ let make = (
       // has to be detached explicitly.
       () => {
         interruptPlay()
+        Thinker.leave()
         unsubscribeShake()
         endCascade()
         dropHeldDeal()
@@ -2846,6 +2863,7 @@ let make = (
     | None =>
       () => {
         interruptPlay()
+        Thinker.leave()
         unsubscribeShake()
         endCascade()
         dropHeldDeal()

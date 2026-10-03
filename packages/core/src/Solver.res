@@ -322,6 +322,13 @@ type patience = {ms: float, clock: unit => float}
 let interactive = 10_000.
 let patient = 30_000.
 
+// The most a board is thought about *unasked*: what a front end that thinks between asks
+// (the web app's `Thinker`) may spend on one board before anyone presses Solve, in short
+// chunks while the board is still. Not a wait — nobody is watching it — but a cost paid
+// in battery by someone who never asked for it, which is why it is measured rather than
+// reasoned: `docs/solver.md` § What thinking unasked costs.
+let unasked = 20_000.
+
 // `patience` resolved against the clock once, at the moment the caller asked.
 type deadline = {at: float, clock: unit => float}
 
@@ -761,12 +768,16 @@ type ending =
 //   `bytes`     — what the search holds, read off its own arrays (`Search.bytes`). A
 //                 search lets go of nothing but what a re-root leaves behind, so since
 //                 the last one this is also the most it held.
+//   `unasked`   — how many of `positions` were grown by thinks nobody asked for, before
+//                 this ask. The search can't tell one think from another, so this is
+//                 always 0 here and the caller that does the asking fills it in
+//                 (`SolverWorker`).
 //
 // **Deliberately no elapsed time.** `patience` is a limit handed in, not a clock the
 // solver keeps, and nothing here reports how long anything took: a caller times its own
 // call, the way `solve.mjs` and `Session.autoplay` do. What that buys:
 // `docs/solver.md` § The contract.
-type effort = {positions: int, moves: int, ending: ending, bytes: int}
+type effort = {positions: int, moves: int, ending: ending, bytes: int, unasked: int}
 
 // The two readings of `ending` a driver outside ReScript needs: `solve.mjs` counts its
 // deals by them and gates its exit code on the first. *Asked* rather than compared,
@@ -783,6 +794,7 @@ let effortOf = (search: Search.t, answer: Search.answer): effort => {
   | Search.Paused => OutOfTime
   },
   bytes: Search.bytes(search),
+  unasked: 0,
 }
 
 let provedUnwinnable = (e: effort): bool => e.ending == Exhausted

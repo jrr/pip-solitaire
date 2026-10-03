@@ -83,6 +83,12 @@ Two are named in `Solver`, for **who is waiting** rather than for how long:
 | `interactive` | 10 s | a board someone is watching — passed by `TableScene` |
 | `patient` | 30 s | a terminal or a script, where the waiting is the point — passed by `Cli` and the autoplay harness |
 
+A third is not a wait at all. `unasked` (20 s) is the most a board is thought about
+with nobody having asked — what the web app's `Thinker` spends between asks, in short
+chunks while the board is still (`docs/solver-next.md` § Thinking between asks).
+Nobody watches it, so it bounds battery rather than patience, and § What thinking
+unasked costs is what it comes to over a game.
+
 `interactive` is a **policy**, and it really does cost answers — § What the
 interactive wait costs measures how many, and § Why the unsolved count stands is
 the decision that came out of it. `patient` is a **backstop**: it sits at the worst
@@ -668,6 +674,56 @@ it is the direction to take if this is picked up again.
 Add a row rather than editing one. Two runs on different machines are two
 different facts, and a heuristic change is worth a soak beside the run it
 replaces.
+
+### What thinking unasked costs
+
+What a tab spends thinking between asks, over a whole played game: `mise run
+solve-unasked` replays `Thinker`'s policy without a browser — chunks of 250 ms on
+each board until the search answers or the board's `Solver.unasked` is spent, the
+re-root a move leaves owing paid in the first. The game played is the line a patient
+solve finds, and the player stops on every board long enough for the background to do
+all it would, so this is **the most the background is given on a game won by the
+solver's own line**; a player who leaves the line pays a fresh search wherever they do.
+A deal with no line to play is counted as its opening board alone.
+
+*Per game* is the whole game's unasked thinking; *opening* is the part of it spent on
+the deal as laid out, before any move; *whole allowance* counts the boards that spent
+all twenty seconds without an answer.
+
+| Date | Board | Deals | Per game | Opening | Worst game | Whole allowance | Environment |
+|---|---|---|---|---|---|---|---|
+| 2026-10-02 | FreeCell | 1–100 | 606 ms | 20 ms | #14 at 23.8 s | 0 of 5,394 boards | Node v26.9.0, cloud sandbox, up to three soaks at once |
+| 2026-10-02 | Mini | 1–100 | 3 ms | 1 ms | #10 at 24 ms | 0 of 1,187 boards | Node v26.9.0, cloud sandbox, up to three soaks at once |
+| 2026-10-02 | Micro | 1–100 | 3 ms | <1 ms | #2 at 21 ms | 0 of 1,049 boards | Node v26.9.0, cloud sandbox, up to three soaks at once |
+| 2026-10-02 | Simple Simon | 1–50 | 761 ms | 94 ms | #17 at 8.0 s | 0 of 3,799 boards | Node v26.9.0, cloud sandbox, up to three soaks at once |
+| 2026-10-02 | Spiderette · 1 suit | 1–50 | 773 ms | 38 ms | #49 at 8.7 s | 0 of 3,627 boards | Node v26.9.0, cloud sandbox, up to three soaks at once |
+| 2026-10-02 | Spiderette · 2 suits | 1–30 | 8.1 s | 977 ms | #8 at 47.2 s | 1 of 2,554 boards | Node v26.9.0, cloud sandbox, up to three soaks at once |
+| 2026-10-02 | Spiderette · 4 suits | 1–20 | 26.0 s | 3.6 s | #3 at 183.0 s | 5 of 1,845 boards | Node v26.9.0, cloud sandbox, up to three soaks and the browser suite at once |
+
+**Most of it is not the opening board, and none of it is searching.** The opening
+board is answered in under a tenth of a second on average everywhere but the two- and
+four-suit packs. After that, a move along a line already found grows nothing: the
+re-root walks what the graph keeps (§ Re-rooting), meets the finishing position under
+the line's last node on the way, and has the line again before a single position is
+grown. Followed move by move along the line the search itself holds, FreeCell #14,
+#5 and #24680, Simple Simon #17, two-suit #8 and four-suit #3 grew **no positions on
+any of their 50–100 moves**; the whole of each game's bill was the walk, from about
+15 ms a move on FreeCell #5 to 2.7 s on four-suit #3, whose graph is the biggest. A
+move *off* the line is real work — on FreeCell #14 the other opening moves each grew
+2,000–35,000 positions before answering. The worst games above are deals whose
+opening board went unanswered for a while, so a large graph was grown before the line
+was found and then walked on every move: four-suit #3 spent 60 of its 183 seconds on
+three boards that used their whole allowance, and the rest walking. Making the walk
+cheaper — or skipping it for a move that is the line's next (#524) — is what would bring
+the per-game figure down; the allowance only bounds a board.
+
+**Twenty seconds is two interactive asks**: long enough that a board the search can
+answer at all is almost always answered unasked first — no FreeCell, Mini, Micro,
+Simple Simon or one-suit board in these ranges spent it, and 6 of some 8,000
+Spiderette boards did — and short enough that a deal that will never answer costs a
+pause twenty seconds and no more. A game is not bounded by it: what bounds a game is
+the player, who has to stop on a board for a second and a half before it is thought
+about at all.
 
 ## The heuristic
 

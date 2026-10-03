@@ -32,21 +32,27 @@ let clock = () => Date.now()
 //   `Think`  — spend up to `ms` on the open board (`None`: until it answers), resuming
 //              whatever search an earlier think left, holding at most `maxBytes`
 //              (`Solver.capOf` the device's tier, which can change between thinks).
+//              `unasked` marks a think nobody pressed Solve for: what it grows is
+//              counted, and the next asked think's effort says how much of the search
+//              that was (`Solver.effort.unasked`).
 //   `Stop`   — end the think in progress at the next slice boundary, answering nothing.
 //   `Forget` — let go of the board and everything grown from it.
 type request =
   | Open({game: Game.t, state: GameState.t})
   | Moved({state: GameState.t})
-  | Think({ask: int, ms: option<float>, maxBytes: int})
+  | Think({ask: int, ms: option<float>, maxBytes: int, unasked: bool})
   | Stop
   | Forget
 
 // `Progress` goes out after every slice that leaves the search still going — for a
 // spinner that can say something, and as the heartbeat that tells `Thinker` this thread
-// is still answering. `Answer` goes out once per think that is not stopped first.
+// is still answering. `Answer` goes out once per think that is not stopped first, with
+// `grew` the positions that think added — 0 for a think the re-root alone answered, which
+// is how a front end tells a known answer from one it had to search for — and
+// `positions` the search's total, which an answer with no line has nowhere else to carry.
 type reply =
   | Progress({ask: int, positions: int, frontier: int, bytes: int})
-  | Answer({ask: int, autoplayed: Solver.autoplayed})
+  | Answer({ask: int, autoplayed: Solver.autoplayed, grew: int, positions: int})
 
 type messageEvent = {data: request}
 
@@ -72,8 +78,14 @@ let makeYield: unit => (unit => unit) => unit = %raw(`
 
 // The board held open. `search` is grown from it on the first `think` and kept for the
 // next, so a second think carries on where the first left off; a `Moved` hands it the
-// new board, and a board it can't read drops it.
-type held = {game: Game.t, state: GameState.t, mutable search: option<Solver.Search.t>}
+// new board, and a board it can't read drops it. `unasked` is how many of the search's
+// positions unasked thinks grew, and goes wherever the search goes.
+type held = {
+  game: Game.t,
+  state: GameState.t,
+  mutable search: option<Solver.Search.t>,
+  mutable unasked: int,
+}
 
 let serve = () => {
   let yieldThen = makeYield()
@@ -83,14 +95,25 @@ let serve = () => {
   // ends without a word.
   let thinking: ref<option<int>> = ref(None)
 
-  let answer = (ask, autoplayed) => {
+  let answer = (ask, autoplayed, ~grew=0, ~positions=0) => {
     thinking := None
-    say(Answer({ask, autoplayed}))
+    say(Answer({ask, autoplayed, grew, positions}))
   }
 
-  let rec slice = (ask: int, board: held, search: Solver.Search.t, deadline) =>
+  let rec slice = (
+    ask: int,
+    ~unasked: bool,
+    ~from: int,
+    board: held,
+    search: Solver.Search.t,
+    deadline,
+  ) =>
     if thinking.contents == Some(ask) {
+      let before = search.grown
       let found = Solver.Search.think(search, ~nodes=Solver.clockEvery)
+      if unasked {
+        board.unasked = board.unasked + search.grown - before
+      }
       if found == Solver.Search.Paused && !Solver.past(deadline) {
         say(
           Progress({
@@ -100,23 +123,25 @@ let serve = () => {
             bytes: Solver.Search.bytes(search),
           }),
         )
-        yieldThen(() => slice(ask, board, search, deadline))
+        yieldThen(() => slice(ask, ~unasked, ~from, board, search, deadline))
       } else {
-        conclude(ask, board, search, found)
+        conclude(ask, ~from, board, search, found)
       }
     }
-  and conclude = (ask, board, search, found) =>
+  and conclude = (ask, ~from, board, search, found) =>
     answer(
       ask,
       Solver.autoplayedOf(
         ~game=board.game,
         board.state,
         ~line=Solver.Search.line(search),
-        ~effort=Solver.effortOf(search, found),
+        ~effort={...Solver.effortOf(search, found), unasked: board.unasked},
       ),
+      ~grew=search.grown - from,
+      ~positions=search.grown,
     )
 
-  let think = (ask: int, ms: option<float>, maxBytes: int) => {
+  let think = (ask: int, ms: option<float>, maxBytes: int, ~unasked: bool) => {
     thinking := Some(ask)
     switch held.contents {
     // Asked about no board at all: the same refusal as a board the solver can't read,
@@ -140,11 +165,12 @@ let serve = () => {
         // as before every other — the same order `Solver.solveOn` keeps, so a wait of
         // nothing is told so without being charged a slice.
         let deadline = Solver.deadlineFor(ms->Option.map((ms): Solver.patience => {ms, clock}))
+        let from = search.grown
         let found = Solver.Search.answer(search)
         if found == Solver.Search.Paused && !Solver.past(deadline) {
-          slice(ask, board, search, deadline)
+          slice(ask, ~unasked, ~from, board, search, deadline)
         } else {
-          conclude(ask, board, search, found)
+          conclude(ask, ~from, board, search, found)
         }
       }
     }
@@ -154,7 +180,7 @@ let serve = () => {
     switch event.data {
     | Open({game, state}) =>
       thinking := None
-      held := Some({game, state, search: None})
+      held := Some({game, state, search: None, unasked: 0})
     | Moved({state}) =>
       thinking := None
       held :=
@@ -165,9 +191,9 @@ let serve = () => {
             Some(search)
           | _ => None
           }
-          {...board, state, search}
+          {...board, state, search, unasked: Option.isSome(search) ? board.unasked : 0}
         })
-    | Think({ask, ms, maxBytes}) => think(ask, ms, maxBytes)
+    | Think({ask, ms, maxBytes, unasked}) => think(ask, ms, maxBytes, ~unasked)
     | Stop => thinking := None
     | Forget =>
       thinking := None

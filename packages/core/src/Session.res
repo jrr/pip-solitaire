@@ -382,6 +382,7 @@ let adoptAutoplay = (~clock: unit => float, ~ms: float, s: t, found: Solver.auto
             ~ms,
             ~positions=effort.positions,
             ~tried=effort.moves,
+            ~unasked=effort.unasked,
           ),
         ),
       },

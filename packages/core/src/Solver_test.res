@@ -249,7 +249,7 @@ describe("Solver", () => {
         expect(Solver.autoplay(~game, finishable))->toEqual(
           Solver.Played({
             steps: [],
-            effort: {positions: 0, moves: 0, ending: Solver.Found, bytes: 0},
+            effort: {positions: 0, moves: 0, ending: Solver.Found, bytes: 0, unasked: 0},
           }),
         )
       },
@@ -337,7 +337,13 @@ describe("Solver", () => {
     test(
       "a full search is autoplay's out of room, carrying what it held, and not a verdict",
       () => {
-        let effort: Solver.effort = {positions: 9, moves: 40, ending: Solver.Full, bytes: 12_345}
+        let effort: Solver.effort = {
+          positions: 9,
+          moves: 40,
+          ending: Solver.Full,
+          bytes: 12_345,
+          unasked: 0,
+        }
         expect(Solver.autoplayedOf(~game, opening, ~line=None, ~effort))->toEqual(
           Solver.OutOfRoom({bytes: 12_345}),
         )

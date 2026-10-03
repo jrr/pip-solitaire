@@ -492,7 +492,7 @@ describe("Command.parse — set", () => {
       expect(verb)->toBe("set")
       expect(
         message,
-      )->toBe(`Not a setting: "frobnicate" (autocollect, reorder, worryback, gapdeal, memory).`)
+      )->toBe(`Not a setting: "frobnicate" (autocollect, reorder, worryback, gapdeal, memory, thinking).`)
     | _ => expect("not a usage")->toBe("usage")
     }
     switch Command.parse("set autocollect maybe") {
@@ -534,6 +534,7 @@ describe("Command.parse — set", () => {
     expect(shown->String.includes("worryback    on"))->toBe(true)
     expect(shown->String.includes("gapdeal      off"))->toBe(true)
     expect(shown->String.includes("memory       auto"))->toBe(true)
+    expect(shown->String.includes("thinking     off"))->toBe(true)
     expect(
       Command.describeSettings(
         Options.apply(Options.default, ~setting=Options.AutoCollect, ~value=Options.Flag(false)),
@@ -1080,6 +1081,21 @@ describe("Command.describeAutoplay", () => {
       "58-move solution found in 65ms — 1,204 positions, 18,332 moves tried.",
     )
   )
+
+  // A search the background grew says how much of it was grown unasked, so an answer in
+  // no time after a thousand positions reads as a warm answer rather than a clock gone wrong.
+  test("says how much of the search was grown before the ask", () => {
+    expect(
+      Command.describeAutoplay(~moves=58, ~ms=3., ~positions=1204, ~tried=18332, ~unasked=1204),
+    )->toBe(
+      "58-move solution found in 3ms — 1,204 positions (all of them thought of before you asked), 18,332 moves tried.",
+    )
+    expect(
+      Command.describeAutoplay(~moves=58, ~ms=65., ~positions=1204, ~tried=18332, ~unasked=1000),
+    )->toBe(
+      "58-move solution found in 65ms — 1,204 positions (1,000 of them before you asked), 18,332 moves tried.",
+    )
+  })
 
   // A board that was already finishable needed no thinking at all, so there's no time
   // and no cost to report — only that there was nothing to do.

@@ -110,6 +110,14 @@ description = "Time main's solver against this tree's, paired: `mise run solve-t
 depends = ["build"]
 run = "node packages/core/scripts/solve-pair.mjs"
 
+# What thinking between asks costs a tab over a played game (the web app's
+# `Thinker`, replayed without a browser): `-- --game spiderette2 1-50`,
+# `--allowance <s>`, `--chunk <ms>`. docs/solver.md § What thinking unasked costs.
+[tasks.solve-unasked]
+description = "Time the solver's unasked thinking through played games: `mise run solve-unasked -- --game freecell 1-20`"
+depends = ["build"]
+run = "node packages/core/scripts/unasked.mjs"
+
 # Merges the `--record` files a split soak wrote into the record's row
 # (.github/workflows/solver-soak.yml runs it): `-- <record.json>…`.
 [tasks.soak-summary]
