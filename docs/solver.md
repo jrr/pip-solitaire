@@ -782,6 +782,36 @@ and 4 given up on at 16 s each; with it at 5 the same five come back 4 solved,
 and the one that doesn't (#3) is one the whole restart ladder the search then ran
 couldn't crack either way.
 
+**`idle` is a cost, not an estimate**, and it is what keeps a hint from shuffling
+before it deals. A deal raises the estimate by about eleven, so under `g + 2·h` it
+costs some twenty-two where a move that changes nothing costs one: a search left to
+that explores every pointless move before it deals once, and the line it finds
+carries a few of them in front of the row — moves a player reads as the solver not
+knowing what it is doing. So on a board that could deal now, a move that shows the
+player nothing better costs `idle` (10) more than one. *Shows* is `Solver.shown`:
+seams, empty columns, face-down cards and cards home, with `buried` left out —
+judged by the estimate instead, the charge measured at half the effect, because
+freeing a card the search wants lowers `h` and changes nothing anyone can see. With a
+column standing empty no row can come, so nothing is charged until it is filled.
+
+Measured on the first 80 two-suit Spiderette deals at 20 s and the first 32 two-suit
+Spider deals at 30 s, the line shortened as a hint's is, an *idle* move being one
+that improves none of the four:
+
+| | Deals with an idle move just before | Idle among moves made with a deal available | Solved |
+|---|---|---|---|
+| Spiderette 2-suit, without | 36% | 21% | 76 |
+| Spiderette 2-suit, `idle` 10 | 13% | 5% | 75 |
+| Spider 2-suit, without | 58% | 23% | 21 |
+| Spider 2-suit, `idle` 10 | 18% | 3% | 22 |
+
+On deals 1–40 at 10 s, one-suit Spiderette solves all 40 either way, and four-suit
+33 where it solved 36 — the price, accepted for hints that read as a player's. What
+idle moves remain before a deal are mostly the rule's (a column has to be filled
+before a row will come) and the rest mostly peeking: a column set up for the card
+the stock is about to drop on it, which only a solver that reads the stock would
+make (§ What the solver sees).
+
 The weights are three named records (`Solver.freecellWeights`,
 `Solver.simonWeights`, `Solver.spideretteWeights`) that `Search.make` takes as an
 argument, which is how they were chosen — measured rather than guessed. Three,
