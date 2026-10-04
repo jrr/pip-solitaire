@@ -698,8 +698,13 @@ module Search = {
         let g = graph.depth->Graph.at(node) + 1
         // A move that leaves the estimate no lower while a deal is waiting costs `idle`
         // more than one: a player would deal rather than shuffle (`docs/solver.md`).
-        let penalises = weights.idle > 0 && Board.canDeal(board)
+        let penalises = weights.idle != 0 && Board.canDeal(board)
         let h = graph.h->Graph.at(node)
+        // EXPERIMENT: a negative `idle` judges by what a player sees instead.
+        let sight = {...weights, buried: 0}
+        let seen = () =>
+          Board.heuristic(board, sight) + board.down->Array.reduce(0, (a, n) => a + n)
+        let before = penalises && weights.idle < 0 ? seen() : 0
         let moves = Board.legalMoves(board)
         let i = ref(0)
         while Option.isNone(search.line) && i.contents < Array.length(moves) {
@@ -707,7 +712,15 @@ module Search = {
           Board.play(board, move)
           search.tried = search.tried + 1
           let childH = penalises ? Board.heuristic(board, weights) : 0
-          let g = penalises && move != Board.deal && childH >= h ? g + weights.idle : g
+          let g = if !penalises || move == Board.deal {
+            g
+          } else if weights.idle > 0 {
+            childH >= h ? g + weights.idle : g
+          } else if seen() >= before {
+            g - weights.idle
+          } else {
+            g
+          }
           let hash = Graph.hash(board)
           let slot = Graph.slotOf(graph, board, ~hash)
           let prior = Graph.nodeAt(graph, slot)
