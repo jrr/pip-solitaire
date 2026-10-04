@@ -31,9 +31,9 @@ let deals = (game: Game.t): array<int> =>
   | "simplesimon" => [1, 6]
   | "spiderette1" => [3, 9]
   | "spiderette2" => [2, 5]
-  | "spiderette4" => [11, 15]
+  | "spiderette4" => [1, 15]
   | "spider1" => [21]
-  | "spider2" => [37]
+  | "spider2" => [12]
   | _ => [1, 2]
   }
 

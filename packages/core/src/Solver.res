@@ -35,7 +35,7 @@ let simonWeights = {remaining: 0, buried: 1, seam: 2, cell: 0, emptyColumn: 4, s
 // like pure damage next to any tidying move, and the search spends its whole budget
 // tidying a board it can only win by dealing. Charging for the undealt cards is what
 // makes "get the row down" worth the mess it makes.
-let spideretteWeights = {...simonWeights, stock: 5, idle: 6}
+let spideretteWeights = {...simonWeights, stock: 5, idle: 10}
 
 // Which of the three a board is weighed by. The law picks two of them; the third is
 // picked by whether there is a stock to deal from, which is a fact about the *board*
@@ -351,6 +351,15 @@ let past = (deadline: option<deadline>): bool =>
 let clockEvery = 1024
 
 // --- The search --------------------------------------------------------------
+
+// How the board looks to a player, lower being better: the heuristic with `buried`
+// left out, since a card the search wants freed is no progress anyone can see, and
+// with every face-down card and every card home counted. `sight` is the weights with
+// `buried` at zero. What it is for is `idle`'s, in `docs/solver.md` § The heuristic.
+let shown = (b: Board.t, sight: weights): int =>
+  Board.heuristic(b, sight) +
+  b.down->Array.reduce(0, (sum, n) => sum + n) -
+  Board.foundationTotal(b)
 
 // Weighted best-first search from a start to the first position that
 // `Position.canFinish` — as a value rather than a call. **It keeps its frontier and its
@@ -676,6 +685,7 @@ module Search = {
   let think = (search: t, ~nodes: int): answer => {
     search->follow
     let {weights, budget: {maxBytes}, graph} = search
+    let sight = {...weights, buried: 0}
     let until = search.grown + nodes
     while (
       {
@@ -696,31 +706,18 @@ module Search = {
         search.grown = search.grown + 1
         search.closed = search.closed + 1
         let g = graph.depth->Graph.at(node) + 1
-        // A move that leaves the estimate no lower while a deal is waiting costs `idle`
-        // more than one: a player would deal rather than shuffle (`docs/solver.md`).
-        let penalises = weights.idle != 0 && Board.canDeal(board)
-        let h = graph.h->Graph.at(node)
-        // EXPERIMENT: a negative `idle` judges by what a player sees instead.
-        let sight = {...weights, buried: 0}
-        let seen = () =>
-          Board.heuristic(board, sight) + board.down->Array.reduce(0, (a, n) => a + n)
-        let before = penalises && weights.idle < 0 ? seen() : 0
+        // While a deal is waiting, a move that shows the player nothing better costs
+        // `idle` more than one (`shown`).
+        let charges = weights.idle > 0 && Board.canDeal(board)
+        let before = charges ? shown(board, sight) : 0
         let moves = Board.legalMoves(board)
         let i = ref(0)
         while Option.isNone(search.line) && i.contents < Array.length(moves) {
           let move = moves->Array.getUnsafe(i.contents)
           Board.play(board, move)
           search.tried = search.tried + 1
-          let childH = penalises ? Board.heuristic(board, weights) : 0
-          let g = if !penalises || move == Board.deal {
-            g
-          } else if weights.idle > 0 {
-            childH >= h ? g + weights.idle : g
-          } else if seen() >= before {
-            g - weights.idle
-          } else {
-            g
-          }
+          let g =
+            charges && move != Board.deal && shown(board, sight) >= before ? g + weights.idle : g
           let hash = Graph.hash(board)
           let slot = Graph.slotOf(graph, board, ~hash)
           let prior = Graph.nodeAt(graph, slot)
@@ -740,7 +737,7 @@ module Search = {
                 ~parent=node,
                 ~move,
                 ~depth=g,
-                ~h=penalises ? childH : Board.heuristic(board, weights),
+                ~h=Board.heuristic(board, weights),
                 ~hash,
               )
             graph->Graph.file(slot, child)
