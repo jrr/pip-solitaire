@@ -18,15 +18,16 @@ type weights = Board.weights = {
   cell: int,
   emptyColumn: int,
   stock: int,
+  idle: int,
 }
 
-let freecellWeights = {remaining: 2, buried: 2, seam: 1, cell: 3, emptyColumn: 3, stock: 0}
+let freecellWeights = {remaining: 2, buried: 2, seam: 1, cell: 3, emptyColumn: 3, stock: 0, idle: 0}
 
 // The same terms under Simple Simon, where there are no cells to charge for,
 // a seam is a break in a *same-suit* run — the join the game is really about — and
 // `remaining` has nothing to steer (a run is collected the moment it forms, never
 // by choice), so it is zero rather than a number that measured as no number at all.
-let simonWeights = {remaining: 0, buried: 1, seam: 2, cell: 0, emptyColumn: 4, stock: 0}
+let simonWeights = {remaining: 0, buried: 1, seam: 2, cell: 0, emptyColumn: 4, stock: 0, idle: 0}
 
 // Simple Simon's again, for a board that deals. **Only `stock` differs, and it is not
 // a rounding term** — without it the search never deals at all: a row lands seven
@@ -34,7 +35,7 @@ let simonWeights = {remaining: 0, buried: 1, seam: 2, cell: 0, emptyColumn: 4, s
 // like pure damage next to any tidying move, and the search spends its whole budget
 // tidying a board it can only win by dealing. Charging for the undealt cards is what
 // makes "get the row down" worth the mess it makes.
-let spideretteWeights = {...simonWeights, stock: 5}
+let spideretteWeights = {...simonWeights, stock: 5, idle: 10}
 
 // Which of the three a board is weighed by. The law picks two of them; the third is
 // picked by whether there is a stock to deal from, which is a fact about the *board*
@@ -350,6 +351,15 @@ let past = (deadline: option<deadline>): bool =>
 let clockEvery = 1024
 
 // --- The search --------------------------------------------------------------
+
+// How the board looks to a player, lower being better: the heuristic with `buried`
+// left out, since a card the search wants freed is no progress anyone can see, and
+// with every face-down card and every card home counted. `sight` is the weights with
+// `buried` at zero. What it is for is `idle`'s, in `docs/solver.md` § The heuristic.
+let shown = (b: Board.t, sight: weights): int =>
+  Board.heuristic(b, sight) +
+  b.down->Array.reduce(0, (sum, n) => sum + n) -
+  Board.foundationTotal(b)
 
 // Weighted best-first search from a start to the first position that
 // `Position.canFinish` — as a value rather than a call. **It keeps its frontier and its
@@ -675,6 +685,7 @@ module Search = {
   let think = (search: t, ~nodes: int): answer => {
     search->follow
     let {weights, budget: {maxBytes}, graph} = search
+    let sight = {...weights, buried: 0}
     let until = search.grown + nodes
     while (
       {
@@ -695,12 +706,18 @@ module Search = {
         search.grown = search.grown + 1
         search.closed = search.closed + 1
         let g = graph.depth->Graph.at(node) + 1
+        // While a deal is waiting, a move that shows the player nothing better costs
+        // `idle` more than one (`shown`).
+        let charges = weights.idle > 0 && Board.canDeal(board)
+        let before = charges ? shown(board, sight) : 0
         let moves = Board.legalMoves(board)
         let i = ref(0)
         while Option.isNone(search.line) && i.contents < Array.length(moves) {
           let move = moves->Array.getUnsafe(i.contents)
           Board.play(board, move)
           search.tried = search.tried + 1
+          let g =
+            charges && move != Board.deal && shown(board, sight) >= before ? g + weights.idle : g
           let hash = Graph.hash(board)
           let slot = Graph.slotOf(graph, board, ~hash)
           let prior = Graph.nodeAt(graph, slot)

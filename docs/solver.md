@@ -333,6 +333,7 @@ below it. Why it stands: § Why the unsolved count stands.
 | 2026-10-01 | 1–200 | 171/200 | 8 | 21 | 5.0 s | 102 | #200 at 42.4 s | 24 MB, #120 at 188 MB | Node v26.9.0, cloud sandbox, three soaks at once; grown on a `Board`, column order kept |
 | 2026-10-01 | 1–200 | 176/200 | 8 | 16 | 5.8 s | 101 | #7 at 59.6 s | 35 MB, #147 at 289 MB | Node v26.9.0, cloud sandbox, three soaks at once; grown on a `Board`, folded to look and column order kept to prove |
 | 2026-10-01 | 1–200 | 176/200 | 8 | 16 | 3.3 s | 101 | #7 at 37.4 s | 35 MB, #108 at 289 MB | Node v26.9.0, CI runner, 8 jobs at once; grown on a `Board`, folded to look and column order kept to prove |
+| 2026-10-04 | 1–200 | 176/200 | 8 | 16 | 4.0 s | 99 | #184 at 36.2 s | 38 MB, #116 at 289 MB | Node v26.9.0, CI runner, 8 jobs at once; grown on a `Board`, folded to look and column order kept to prove; `idle` charged at 10 |
 
 **Spiderette · 1 suit and · 2 suits**, over the same 1–200. The same law, budget
 and weights on a cheaper deck — these are the repeated packs, where `found`
@@ -364,6 +365,8 @@ and an unsolved count of its own.
 | 2026-10-01 | 2 suits | 1–200 | 193/200 | 5 | 2 | 1.6 s | 85 | #168 at 49.0 s | 9 MB, #168 at 265 MB | Node v26.9.0, cloud sandbox, three soaks at once; grown on a `Board`, folded to look and column order kept to prove |
 | 2026-10-01 | 1 suit | 1–200 | 198/200 | 2 | 0 | 62 ms | 71 | #93 at 1.9 s | <1 MB, #143 at 11 MB | Node v26.9.0, CI runner, 8 jobs at once; grown on a `Board`, folded to look and column order kept to prove |
 | 2026-10-01 | 2 suits | 1–200 | 193/200 | 5 | 2 | 951 ms | 85 | #168 at 24.4 s | 9 MB, #168 at 264 MB | Node v26.9.0, CI runner, 8 jobs at once; grown on a `Board`, folded to look and column order kept to prove |
+| 2026-10-04 | 1 suit | 1–200 | 198/200 | 2 | 0 | 73 ms | 68 | #93 at 2.3 s | <1 MB, #143 at 13 MB | Node v26.9.0, CI runner, 8 jobs at once; grown on a `Board`, folded to look and column order kept to prove; `idle` charged at 10 |
+| 2026-10-04 | 2 suits | 1–200 | 189/200 | 5 | 6 | 1.2 s | 78 | #7 at 37.2 s | 12 MB, #120 at 281 MB | Node v26.9.0, CI runner, 8 jobs at once; grown on a `Board`, folded to look and column order kept to prove; `idle` charged at 10 |
 
 **Mini and Micro**, under FreeCell's law and its weights. Every deal is
 *answered* — the search either finds a line or empties its frontier long before
@@ -542,6 +545,9 @@ and under a cap not even those, since a faster machine gets further in ten secon
 | 2026-10-01 | Spiderette · 1 suit | 1–200 | none | 198 | 2 | 0 | 62 ms | #93 at 1.9 s | <1 MB, #143 at 11 MB |
 | 2026-10-01 | Spiderette · 2 suits | 1–200 | none | 193 | 5 | 2 | 951 ms | #168 at 24.4 s | 9 MB, #168 at 264 MB |
 | 2026-10-01 | Spiderette · 4 suits | 1–200 | none | 176 | 8 | 16 | 3.3 s | #7 at 37.4 s | 35 MB, #108 at 289 MB |
+| 2026-10-04 | Spiderette · 1 suit | 1–200 | none | 198 | 2 | 0 | 73 ms | #93 at 2.3 s | <1 MB, #143 at 13 MB |
+| 2026-10-04 | Spiderette · 2 suits | 1–200 | none | 189 | 5 | 6 | 1.2 s | #7 at 37.2 s | 12 MB, #120 at 281 MB |
+| 2026-10-04 | Spiderette · 4 suits | 1–200 | none | 176 | 8 | 16 | 4.0 s | #184 at 36.2 s | 38 MB, #116 at 289 MB |
 
 So the wait costs **twenty-seven Simple Simon deals in the thousand, and eight
 two-suit and ten four-suit in the two hundred** on the 2026-09-20 machine — and one
@@ -781,6 +787,38 @@ Measured rather than argued: with the term at zero, deals 1–5 come back 1 solv
 and 4 given up on at 16 s each; with it at 5 the same five come back 4 solved,
 and the one that doesn't (#3) is one the whole restart ladder the search then ran
 couldn't crack either way.
+
+**`idle` is a cost, not an estimate**, and it is what keeps a hint from shuffling
+before it deals. A deal raises the estimate by about eleven, so under `g + 2·h` it
+costs some twenty-two where a move that changes nothing costs one: a search left to
+that explores every pointless move before it deals once, and the line it finds
+carries a few of them in front of the row — moves a player reads as the solver not
+knowing what it is doing. So on a board that could deal now, a move that shows the
+player nothing better costs `idle` (10) more than one. *Shows* is `Solver.shown`:
+seams, empty columns, face-down cards and cards home, with `buried` left out —
+judged by the estimate instead, the charge measured at half the effect, because
+freeing a card the search wants lowers `h` and changes nothing anyone can see. With a
+column standing empty no row can come, so nothing is charged until it is filled.
+
+Measured on the first 80 two-suit Spiderette deals at 20 s and the first 32 two-suit
+Spider deals at 30 s, the line shortened as a hint's is, an *idle* move being one
+that improves none of the four:
+
+| | Deals with an idle move just before | Idle among moves made with a deal available | Solved |
+|---|---|---|---|
+| Spiderette 2-suit, without | 36% | 21% | 76 |
+| Spiderette 2-suit, `idle` 10 | 13% | 5% | 75 |
+| Spider 2-suit, without | 58% | 23% | 21 |
+| Spider 2-suit, `idle` 10 | 18% | 3% | 22 |
+
+Over the record's 1–200 at the medium tier, one- and four-suit Spiderette answer
+exactly the deals they did without it, and two-suit solves 189 where it solved 193 —
+the price, accepted for hints that read as a player's, and the record's rows dated
+2026-10-04. Every line is shorter: 68 moves against 71, 78 against 85, 99 against 101. What
+idle moves remain before a deal are mostly the rule's (a column has to be filled
+before a row will come) and the rest mostly peeking: a column set up for the card
+the stock is about to drop on it, which only a solver that reads the stock would
+make (§ What the solver sees).
 
 The weights are three named records (`Solver.freecellWeights`,
 `Solver.simonWeights`, `Solver.spideretteWeights`) that `Search.make` takes as an
