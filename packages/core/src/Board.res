@@ -760,6 +760,7 @@ type weights = {
   cell: int,
   emptyColumn: int,
   stock: int,
+  idle: int,
 }
 
 let heuristic = (b: t, w: weights): int => {

@@ -18,15 +18,16 @@ type weights = Board.weights = {
   cell: int,
   emptyColumn: int,
   stock: int,
+  idle: int,
 }
 
-let freecellWeights = {remaining: 2, buried: 2, seam: 1, cell: 3, emptyColumn: 3, stock: 0}
+let freecellWeights = {remaining: 2, buried: 2, seam: 1, cell: 3, emptyColumn: 3, stock: 0, idle: 0}
 
 // The same terms under Simple Simon, where there are no cells to charge for,
 // a seam is a break in a *same-suit* run — the join the game is really about — and
 // `remaining` has nothing to steer (a run is collected the moment it forms, never
 // by choice), so it is zero rather than a number that measured as no number at all.
-let simonWeights = {remaining: 0, buried: 1, seam: 2, cell: 0, emptyColumn: 4, stock: 0}
+let simonWeights = {remaining: 0, buried: 1, seam: 2, cell: 0, emptyColumn: 4, stock: 0, idle: 0}
 
 // Simple Simon's again, for a board that deals. **Only `stock` differs, and it is not
 // a rounding term** — without it the search never deals at all: a row lands seven
@@ -34,7 +35,7 @@ let simonWeights = {remaining: 0, buried: 1, seam: 2, cell: 0, emptyColumn: 4, s
 // like pure damage next to any tidying move, and the search spends its whole budget
 // tidying a board it can only win by dealing. Charging for the undealt cards is what
 // makes "get the row down" worth the mess it makes.
-let spideretteWeights = {...simonWeights, stock: 5}
+let spideretteWeights = {...simonWeights, stock: 5, idle: 6}
 
 // Which of the three a board is weighed by. The law picks two of them; the third is
 // picked by whether there is a stock to deal from, which is a fact about the *board*
@@ -695,12 +696,18 @@ module Search = {
         search.grown = search.grown + 1
         search.closed = search.closed + 1
         let g = graph.depth->Graph.at(node) + 1
+        // A move that leaves the estimate no lower while a deal is waiting costs `idle`
+        // more than one: a player would deal rather than shuffle (`docs/solver.md`).
+        let penalises = weights.idle > 0 && Board.canDeal(board)
+        let h = graph.h->Graph.at(node)
         let moves = Board.legalMoves(board)
         let i = ref(0)
         while Option.isNone(search.line) && i.contents < Array.length(moves) {
           let move = moves->Array.getUnsafe(i.contents)
           Board.play(board, move)
           search.tried = search.tried + 1
+          let childH = penalises ? Board.heuristic(board, weights) : 0
+          let g = penalises && move != Board.deal && childH >= h ? g + weights.idle : g
           let hash = Graph.hash(board)
           let slot = Graph.slotOf(graph, board, ~hash)
           let prior = Graph.nodeAt(graph, slot)
@@ -720,7 +727,7 @@ module Search = {
                 ~parent=node,
                 ~move,
                 ~depth=g,
-                ~h=Board.heuristic(board, weights),
+                ~h=penalises ? childH : Board.heuristic(board, weights),
                 ~hash,
               )
             graph->Graph.file(slot, child)
