@@ -169,6 +169,156 @@ describe("Solver", () => {
     }
   })
 
+  // The shortening a line gets on its way to a driver. The line is deal #1's, as the
+  // search found it; a detour is built into it by hand, since a fresh search seldom
+  // leaves one.
+  describe("a line, shortened", () => {
+    let position = Position.ofGameState(~game, opening)->Option.getOrThrow
+    let line = Solver.solve(position)->Option.getOrThrow
+    let base = Solver.shortened(position, line)
+    let positions = base->Array.reduce(
+      [position],
+      (visited, move) => {
+        visited->Array.push(Position.applyMove(visited->Array.last->Option.getOrThrow, move))
+        visited
+      },
+    )
+
+    // The line with one of its single-card column moves taken by way of a free cell:
+    // two moves where it took one, landing on the very same position. The first move
+    // on the line where that holds — a card parked in a cell can be collected from
+    // there, and so can the card it uncovers, and either way the two routes part.
+    let detoured = base->Array.reduceWithIndex(
+      None,
+      (found, move, i) =>
+        switch (found, move) {
+        | (Some(_), _) => found
+        | (
+            None,
+            Position.Play({
+              n: 1,
+              source: FromColumn(_) as source,
+              destination: ToColumn(_) as destination,
+              card,
+            }),
+          ) =>
+          let at = positions->Array.getUnsafe(i)
+          let cell = at.cells->Array.indexOf(-1)
+          let park = Position.Play({n: 1, source, destination: ToCell(cell), card})
+          let fetch = Position.Play({n: 1, source: FromCell(cell), destination, card})
+          if (
+            cell >= 0 &&
+              Position.applyMove(Position.applyMove(at, park), fetch) ==
+                Position.applyMove(at, move)
+          ) {
+            Some(
+              Array.concat(
+                base->Array.slice(~start=0, ~end=i),
+                Array.concat(
+                  [park, fetch],
+                  base->Array.slice(~start=i + 1, ~end=Array.length(base)),
+                ),
+              ),
+            )
+          } else {
+            None
+          }
+        | (None, _) => None
+        },
+    )
+
+    test(
+      "a two-move detour that one move covers comes out, and the line still plays to a finish",
+      () => {
+        switch detoured {
+        | None => expect("a move to take the long way round")->toBe("but the line offers none")
+        | Some(detoured) =>
+          expect(Array.length(detoured))->toBe(Array.length(base) + 1)
+          // The detour is a line the game plays to the finish, so what fails below is the
+          // shortening and not the premise.
+          switch play(~game, opening, detoured) {
+          | Error(why) => expect("the detour played out")->toBe(why)
+          | Ok(reached) => expect(Reducer.canFinish(~game, reached))->toBe(true)
+          }
+          let shorter = Solver.shortened(position, detoured)
+          expect(shorter)->toEqual(base)
+          switch play(~game, opening, shorter) {
+          | Error(why) => expect("the shorter line played out")->toBe(why)
+          | Ok(reached) => expect(Reducer.canFinish(~game, reached))->toBe(true)
+          }
+        }
+      },
+    )
+
+    test(
+      "a line with no shortcut comes back unchanged",
+      () => {
+        expect(Solver.shortened(position, base))->toEqual(base)
+        expect(Solver.shortened(position, []))->toEqual([])
+        let one = base->Array.slice(~start=0, ~end=1)
+        expect(Solver.shortened(position, one))->toEqual(one)
+      },
+    )
+
+    test(
+      "the same piles in another column order are one position only once the stock is out",
+      () => {
+        let id = code => Position.idOfCode(code)->Option.getOrThrow
+        let posed = (~stock): Position.t => {
+          law: Position.SimpleSimon,
+          pack: Position.standardPack,
+          cells: [],
+          found: [0, 0, 0, 0],
+          casc: [[id("5S")], [], [], [id("KC"), id("6H")]],
+          down: [0, 0, 0, 0],
+          stock,
+        }
+        let move = (code, ~from, ~to) => Position.Play({
+          n: 1,
+          source: FromColumn(from),
+          destination: ToColumn(to),
+          card: id(code),
+        })
+        // The 5♠ to the first empty column, the 6♥ to the one it left, the 5♠ back onto it:
+        // three moves to ⟨6♥ 5♠⟩ ⟨⟩ ⟨⟩ ⟨K♣⟩. The 6♥ to the first empty column and the 5♠
+        // onto it is two, and leaves the same piles with the run one column over.
+        let line = [
+          move("5S", ~from=0, ~to=1),
+          move("6H", ~from=3, ~to=0),
+          move("5S", ~from=1, ~to=0),
+        ]
+        // With cards still to deal, which column holds the run decides what lands on it, so
+        // the shorter route reaches another position and the line keeps its three moves.
+        expect(Solver.shortened(posed(~stock=[0, 1, 2, 3]), line))->toEqual(line)
+        // With none, the two are one position — and the 5♠'s move, recorded against the
+        // line's own layout, is said against the one the shortcut reached.
+        let out = posed(~stock=[])
+        let shorter = Solver.shortened(out, line)
+        expect(shorter)->toEqual([move("6H", ~from=3, ~to=1), move("5S", ~from=0, ~to=1)])
+        let end = line->Array.reduce(out, Position.applyMove)
+        let reached = shorter->Array.reduce(out, Position.applyMove)
+        expect(Position.alike(reached, end))->toBe(true)
+        expect(reached == end)->toBe(false)
+      },
+    )
+
+    test(
+      "a plan and an autoplay hand over the shortened line; `solve` hands over the search's",
+      () => {
+        expect(Solver.solve(position))->toEqual(Some(line))
+        expect(Solver.plan(~game, opening))->toEqual(Some(base))
+        switch Solver.autoplay(~game, opening) {
+        | Solver.Played({steps}) =>
+          expect(Array.length(steps))->toBe(Array.length(base))
+          expect(steps->Array.get(0)->Option.map(step => step.action))->toEqual(
+            base->Array.get(0)->Option.flatMap(move => Position.toAction(~game, opening, move)),
+          )
+        | _ => expect("a line")->toBe("but autoplay found none")
+        }
+      },
+    )
+  })
+
   // Autoplay: the plan, played. `plan` is tested above as a *line*; what's
   // pinned here is that playing it is a real sequence of reducer moves ending on the
   // board the search was aiming at — the thing both front ends' `autoplay` verb hands

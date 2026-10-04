@@ -445,7 +445,9 @@ The reasons it is shaped like this:
   is what the worker spent.
 - **Nothing unasked runs on the main thread.** A worker that stops answering falls
   back to solving here only for a question someone asked; an unasked one is dropped,
-  and nothing more is thought about unasked on that page.
+  and nothing more is thought about unasked on that page. A worker counts as stopped
+  after ten seconds without a word, and a re-root sends none: on a big Spider search
+  one can take longer than that by itself, so a long game there is where this fires.
 - **It is a beta feature, off by default**: **Beta features** in the hidden
   settings turns it on, with no switch of its own, and with it what the thinking
   found — the Hint button and the corner dot (below). A hidden tab thinks about
@@ -466,7 +468,9 @@ The reasons it is shaped like this:
 corner (`debug/ThinkingDot.res`, which has the key). Amber
 and pulsing while a think is out, counting the board's allowance; then green for
 winnable, red for proved unwinnable, purple for a full memory and grey for an allowance
-spent — the last two no verdict. A green caption says `known` for a board the re-root
+spent — the last two no verdict. An amber ring is a Solve thinking, which thinking ahead
+waits on; a dark dot in a red ring is a worker given up on, after which every board says
+so until a reload rather than `waiting`. A green caption says `known` for a board the re-root
 answered without growing a position — a move along a line already found — and the
 count otherwise. Every change is also a line in the debug log: the in-app console, and
 the JS console with **Console logging** on. **The dot says whether a board is

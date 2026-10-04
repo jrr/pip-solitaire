@@ -12,6 +12,8 @@
 //   red            — not winnable: every line was tried
 //   purple         — the search filled its memory: no verdict
 //   grey           — the allowance went by with no answer: no verdict
+//   amber ring     — a Solve is thinking, and thinking ahead waits on it
+//   dark, red ring — the worker died: nothing more is thought ahead until a reload
 //   ring           — nothing yet, paused, or a board the solver can't read
 //
 // "known" in a green caption is a board answered by the re-root alone, with no position
@@ -39,6 +41,8 @@ let caption = (report: Thinker.report): string =>
   | Answered({verdict: Unreadable}) => "can't read this board"
   | Spent({ms}) => `gave up · ${seconds(ms)} · no verdict`
   | Stopped(_) => "paused"
+  | Asked => "solving · asked"
+  | Died(_) => "worker died · reload"
   | Idle => "waiting"
   }
 
@@ -70,6 +74,9 @@ let sentence = (report: Thinker.report): option<string> => {
         )} positions grown for this board, ${Command.thousands(positions)} in the search`,
     )
   | Stopped({why}) => Some(`think ahead: paused — ${why}`)
+  | Asked => Some("think ahead: held while Solve thinks about this board")
+  | Died({why}) =>
+    Some(`think ahead: off until a reload — the solver's worker ${why} and was given up on`)
   | Idle => None
   }
 }
@@ -87,6 +94,8 @@ let look = (report: Thinker.report): string =>
   | Answered({verdict: Unwinnable}) => "background:#e74c3c;"
   | Answered({verdict: OutOfRoom}) => "background:#9b59b6;"
   | Spent(_) => "background:#8a8a8a;"
+  | Asked => "border:2px solid #f5a623;"
+  | Died(_) => "background:#2b2b2b;border:2px solid #e74c3c;"
   | Answered({verdict: Unreadable}) | Stopped(_) | Idle => "border:2px solid #8a8a8a;opacity:0.7;"
   }
 
@@ -150,8 +159,9 @@ let setVisible = (visible: bool) => {
 // only when the kind of report changes, since an unasked think goes out every quarter
 // second.
 let heard = (report: Thinker.report) => {
+  // `Died` is said again at every board after, and is still the one fact.
   let same = switch (last.contents, report) {
-  | (Thinker.Thinking(_), Thinker.Thinking(_)) => true
+  | (Thinker.Thinking(_), Thinker.Thinking(_)) | (Died(_), Died(_)) => true
   | _ => false
   }
   last := report
