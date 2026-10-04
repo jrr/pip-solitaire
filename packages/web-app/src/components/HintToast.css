@@ -1,0 +1,55 @@
+@layer components {
+  /* The Hint's toast (HintToast.res): a caption, not a panel — the debug corner's
+     translucent pill, bottom-left, where it stays clear of the Finish button centred
+     along the board's bottom edge. It never takes a pointer, so a drag that ends under
+     it lands on the board. Between the board and the debug console (z-index: 15 — see
+     DebugConsole.css), and under the menu (20). */
+  #hint-toast {
+    position: fixed;
+    z-index: 10;
+    left: calc(env(safe-area-inset-left) + 8px);
+    bottom: calc(env(safe-area-inset-bottom) + 8px);
+    max-width: calc(100vw - env(safe-area-inset-left) - env(safe-area-inset-right) - 16px);
+    box-sizing: border-box;
+    padding: 3px 9px;
+    border-radius: 7px;
+    font: 13px/1.4 system-ui, sans-serif;
+    color: #e8e8e8;
+    background: rgba(0, 0, 0, 0.6);
+    pointer-events: none;
+    animation: hint-toast-in 0.2s ease-out;
+    /* `Main`'s `hintToastFadeMs` waits this out before taking the toast down. */
+    transition: opacity 0.6s ease-in;
+  }
+
+  @keyframes hint-toast-in {
+    from {
+      opacity: 0;
+      transform: translateY(6px);
+    }
+  }
+
+  /* Still looking: the text breathes, as the debug dot's amber did. */
+  .hint-toast--thinking {
+    animation:
+      hint-toast-in 0.2s ease-out,
+      hint-toast-thinking 0.7s ease-in-out 0.2s infinite alternate;
+  }
+
+  @keyframes hint-toast-thinking {
+    to {
+      color: rgba(232, 232, 232, 0.5);
+    }
+  }
+
+  .hint-toast--leaving {
+    opacity: 0;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    #hint-toast,
+    .hint-toast--thinking {
+      animation: none;
+    }
+  }
+}

@@ -19,7 +19,7 @@ let menuButton = bar => bar->find(".top-bar__button--menu")->Option.getOrThrow
 let undoButton = bar => bar->find(".top-bar__button--undo")->Option.getOrThrow
 
 describe("TopBar", () => {
-  test("offers exactly two controls, Menu and Undo, while no hint is known", () => {
+  test("offers exactly two controls, Menu and Undo, without Beta features", () => {
     // New Game left for the menu and Update for the About footer;
     // Redo was removed outright. A third button appearing here is a regression.
     expect(render()->children->Array.map(el => el->attrOr("aria-label")))->toEqual([
@@ -28,7 +28,7 @@ describe("TopBar", () => {
     ])
   })
 
-  test("adds Hint after Undo when a hint is known, so Undo never moves", () => {
+  test("adds Hint after Undo with Beta features, so Undo never moves", () => {
     let hinted = ref(false)
     let bar = render(~onHint=Some(() => hinted := true))
     expect(bar->children->Array.map(el => el->attrOr("aria-label")))->toEqual([

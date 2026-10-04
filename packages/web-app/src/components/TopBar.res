@@ -14,10 +14,10 @@
 // button was removed (a single undo is enough for this game); redo lives on only
 // in `core`'s history for the CLI.
 //
-// A third, **Hint**, is a beta feature and shows only while it has something to say: a
-// winning line is known from the board on the table (`Thinker.known`). It comes last in
-// the row, so appearing and going never moves Undo; the landscape rail puts it between
-// the two instead, keeping both in their corners.
+// A third, **Hint**, is a beta feature: a press asks the solver for a line from the board
+// on the table and shows its next move (`TableScene`'s `hint`), and a toast says what it
+// found (`HintToast`). It comes last in the row, so Beta features adding it never moves
+// Undo; the landscape rail puts it between the two instead, keeping both in their corners.
 //
 // Undo is driven by the mounted board: it publishes the action to the chrome and
 // reports whether there's anything to step back to, so the button enables exactly
@@ -38,9 +38,7 @@ type props = {
   onUndo: unit => unit,
   canUndo: bool,
   updateVisible: bool,
-  // Show the next move of the known line. `None` while there is none, and then there is
-  // no button at all rather than a disabled one: a dimmed Hint would say "this board has
-  // no solution", which nothing here knows.
+  // `None` with Beta features off, and then there is no button at all.
   onHint: option<unit => unit>,
 }
 

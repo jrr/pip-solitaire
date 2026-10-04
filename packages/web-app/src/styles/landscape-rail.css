@@ -78,7 +78,7 @@
       margin-bottom: env(safe-area-inset-bottom);
     }
 
-    /* Hint (a beta feature, there only while a line is known) rides just above Undo
+    /* Hint (a beta feature) rides just above Undo
        rather than taking the rail's centre, where the camera band sits on a notched
        edge. Last in the markup so the portrait row never moves Undo; `order` lifts it
        above Undo here, and its auto margin takes the free space space-between would
