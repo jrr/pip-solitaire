@@ -1211,6 +1211,38 @@ describe("TableScene autoplay", () => {
     }
   })
 
+  // The flights held only because a shown move pulses its cards with `Element.animate`.
+  testAsync("a hint says it is looking, then what it found, and moves nothing", () =>
+    withFlightsHeld(
+      async () => {
+        let game = Game.freecellDeal(~seed=24680)
+        let saved = ref(None)
+        let board = ref(None)
+        let scene = TableScene.make(
+          ~persist=s => saved := Some(s),
+          ~publish=published => board := Some(published),
+          game,
+        )
+        let _teardown = scene.mount(host("div"))
+        let before = statsOf(saved)
+        let said = []
+        live(board).hint(~onSaid=news => said->Array.push(news))
+        expect(said->Array.length)->toBe(2)
+        expect(said->Array.get(0))->toEqual(Some(Some(HintToast.Thinking)))
+        switch said->Array.get(1) {
+        | Some(Some(HintToast.Found({moves}))) => expect(moves > 0)->toBe(true)
+        | _ => expect("a line found")->toBe("something else said")
+        }
+        expect(statsOf(saved))->toEqual(before)
+
+        // Asked again about the same board, it already knows: no "looking" this time.
+        let again = []
+        live(board).hint(~onSaid=news => again->Array.push(news))
+        expect(again->Array.map(news => news->Option.map(HintToast.fades)))->toEqual([Some(true)])
+      },
+    )
+  )
+
   testAsync("an autoplayed win keeps its Share button to itself, undo or no undo", async () => {
     // The requirement, end to end: autoplay, undo back out of everything it did, win
     // the game by hand from there — the victory is still not shareable, because the

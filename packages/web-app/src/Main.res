@@ -35,6 +35,11 @@
 // How long the share row's "Link copied…" line stays up before clearing itself.
 let shareStatusMs = 2500
 
+// How long the Hint's toast stays up once it has news, and then how long it takes to fade
+// — the latter is `HintToast.css`'s transition, waited out before the toast goes.
+let hintToastMs = 4000
+let hintToastFadeMs = 600
+
 // --- Service-worker registration (vite-plugin-pwa virtual module) -----------
 // `registerSW` registers the worker (with a relative URL, so its scope follows
 // the GitHub Pages subpath) and returns an `updateSW(reloadPage)` function that
@@ -59,6 +64,9 @@ external registerSW: registerSWOptions => bool => promise<unit> = "registerSW"
 // by hand instead of derived by the `@jsx.component` sugar.
 
 // --- The Elm loop ------------------------------------------------------------
+// The Hint's toast while it is up: `model.hintToast`.
+type hintToast = {id: int, news: HintToast.news, leaving: bool}
+
 // The chrome is a pure model + update + view. The reactive bits: service-worker
 // lifecycle (two booleans flip when their callbacks fire) and whether the menu is
 // open.
@@ -112,9 +120,10 @@ type model = {
   // what storage remembered (`openingVariants`) and never has to be complete.
   variants: Dict.t<string>,
   canUndo: bool,
-  // The next move of a known winning line from the board on the table (`Thinker.known`),
-  // which the top bar's Hint button shows. Offered only while Beta features is on.
-  hint: option<Reducer.action>,
+  // What the last Hint press has to say (`HintToast`), while it is up. `id` is the press
+  // it answers, so a timer or a withdrawal from an earlier press can't take down a later
+  // one's.
+  hintToast: option<hintToast>,
   // The adaptive Settings refresh control. `refreshMode` is `None` until
   // `Refresh.detect` resolves (and stays effectively hidden on an unsupported
   // browser); it decides the button's "Refresh" vs "Check for updates" shape.
@@ -198,7 +207,11 @@ type msg =
   | SceneActivated(string) // the switcher mounted a scene — which one the menu highlights
   | VariantChosen(string) // a family's segment tapped, with no board of it up
   | HistoryChanged(bool) // whether the board can undo after a move
-  | HintChanged(option<Reducer.action>) // the next move of a known line, or none (`Thinker.known`)
+  // What the top bar's Hint press `id` has to say; `None` withdraws it. Numbered so a toast
+  // is told from a later press's.
+  | HintSaid(int, option<HintToast.news>)
+  | HintToastLeaving(int) // its toast has been read: start the fade
+  | HintToastGone(int) // …and the fade is done
   | RefreshDetected(Refresh.mode) // service-worker presence detected — sets the button's shape
   | RefreshStarted // the refresh button was tapped — start spinning the button
   | RefreshChecked // an update check finished — stop the spinner (a found update surfaces as the About button)
@@ -373,24 +386,9 @@ let betaFeatures: ref<bool> = ref(Preferences.loadBetaFeatures())
 let debugLogEnabled = Preferences.loadDebugLog()
 DebugLog.setConsoleEnabled(debugLogEnabled)
 
-// Thinking ahead and the dot that shows it are a beta feature: on, the solver thinks
-// between asks and the corner says what it is doing; off, neither. Every change is also
-// a debug-log line, so with Console logging on the JS console narrates it too.
-let thinkAhead = (on: bool) => {
-  Thinker.allow(on)
-  ThinkingDot.setVisible(on)
-}
-Thinker.reports := ThinkingDot.heard
-thinkAhead(betaFeatures.contents)
-
-// The Settings screen's way to flip the flag (`settingsEnv.publish`). Every flip of any
-// setting publishes the whole snapshot, so this acts only on a change — `Thinker.allow`
-// restarts the board's stillness count, which another setting's flip shouldn't.
-let setBetaFeatures = (on: bool) =>
-  if betaFeatures.contents != on {
-    betaFeatures := on
-    thinkAhead(on)
-  }
+// The Settings screen's way to flip the flag (`settingsEnv.publish`). The Hint button
+// reads the model's copy instead, which the same flip writes.
+let setBetaFeatures = (on: bool) => betaFeatures := on
 
 // The persisted console placement (defaults to the top overlay). Unlike the flag
 // above there's nothing to apply at startup: the console is always closed on load, so
@@ -470,6 +468,14 @@ let rememberVariant = (model, id: string) =>
     ({...model, variants}, () => Preferences.saveVariant(~family=family.id, id))
   | _ => (model, Html.noEffect)
   }
+
+// A message sent to the loop after `ms`, for a timer an `update` branch starts: the
+// branch has no `dispatch` of its own, and the loop's is filled in once it is mounted.
+let redispatch: ref<msg => unit> = ref(_ => ())
+let later = (msg: msg, ms: int) => setTimeout(() => redispatch.contents(msg), ms)->ignore
+
+// The Hint presses so far, which number each press's toast.
+let hintPresses = ref(0)
 
 let update = (msg, model) =>
   switch msg {
@@ -576,8 +582,23 @@ let update = (msg, model) =>
   // A family's segment tapped while its board *isn't* up: nothing mounts, the row simply
   // shows the next variant, and the tap on the name beside it is what opens that board.
   | VariantChosen(id) => rememberVariant(model, id)
-  | HintChanged(hint) =>
-    hint == model.hint ? (model, Html.noEffect) : ({...model, hint}, Html.noEffect)
+  | HintSaid(id, Some(news)) => (
+      {...model, hintToast: Some({id, news, leaving: false})},
+      HintToast.fades(news) ? () => later(HintToastLeaving(id), hintToastMs) : Html.noEffect,
+    )
+  | HintSaid(id, None) | HintToastGone(id) =>
+    switch model.hintToast {
+    | Some(toast) if toast.id == id => ({...model, hintToast: None}, Html.noEffect)
+    | _ => (model, Html.noEffect)
+    }
+  | HintToastLeaving(id) =>
+    switch model.hintToast {
+    | Some(toast) if toast.id == id => (
+        {...model, hintToast: Some({...toast, leaving: true})},
+        () => later(HintToastGone(id), hintToastFadeMs),
+      )
+    | _ => (model, Html.noEffect)
+    }
   | HistoryChanged(canUndo) =>
     canUndo == model.canUndo ? (model, Html.noEffect) : ({...model, canUndo}, Html.noEffect) // no change — don't re-render
   // Closing the menu takes the seed dialog down with it, which is what lets Deal say
@@ -1723,8 +1744,14 @@ let view = (model, dispatch) => <>
       canUndo={model.canUndo}
       updateVisible={model.updateAvailable}
       onHint={model.settings.betaFeatures
-        ? model.hint->Option.map(hint =>
-            () => liveBoard.contents->Option.forEach(board => board.hint(hint))
+        ? Some(
+            () => {
+              hintPresses := hintPresses.contents + 1
+              let id = hintPresses.contents
+              liveBoard.contents->Option.forEach(board =>
+                board.hint(~onSaid=news => dispatch(HintSaid(id, news)))
+              )
+            },
           )
         : None}
     />
@@ -1757,6 +1784,10 @@ let view = (model, dispatch) => <>
   }}
   {switch model.solved {
   | Some(solved) => SolveDialog.make(solveDialog(dispatch, solved))
+  | None => Html.empty
+  }}
+  {switch model.hintToast {
+  | Some({news, leaving}) => <HintToast news leaving />
   | None => Html.empty
   }}
 </>
@@ -1824,7 +1855,7 @@ let dispatch = Html.mount(
     // mount above — before `dispatch` existed — so it's read back from
     // `initialCanUndo` here rather than hardcoded off.
     canUndo: initialCanUndo.contents,
-    hint: None,
+    hintToast: None,
     // The refresh button starts hidden until `Refresh.detect` reports the
     // service-worker state; not busy until an action runs.
     refreshMode: None,
@@ -2030,8 +2061,8 @@ if MenuSettingsScreen.listening(settingsInit) {
 // disables as moves are played and undone.
 reportHistory := (canUndo => dispatch(HistoryChanged(canUndo)))
 
-// …and what the solver knows of the board, so Hint shows exactly while a line is known.
-Thinker.known := (hint => dispatch(HintChanged(hint)))
+// …and the timers an `update` starts.
+redispatch := dispatch
 
 // …and the same for the deal number, so the Share button follows the board: a
 // New Game's fresh deal, a Restart's same one, a scene switch to a board with none.

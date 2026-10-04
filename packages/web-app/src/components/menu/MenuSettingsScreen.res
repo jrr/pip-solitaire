@@ -60,7 +60,7 @@ type model = {
   // area.
   notchDisplay: bool,
   // "Beta features": the one switch in front of what's built but not finished — the
-  // solver thinking ahead and what it found (`Main`'s `setBetaFeatures`), and a game in
+  // top bar's Hint (`Main`'s `onHint`), and a game in
   // development listing itself in the Games menu (`Main`'s `betaGames`). An unfinished
   // feature gates itself on the flag and takes the gate out when it graduates. A feature
   // flag rather than a preference, which is why it is hidden and why it defaults off.
@@ -298,7 +298,7 @@ let update = (env: env, msg, model) =>
       },
     )
   // Published as well as stored, which is what makes the flip land now rather than at the
-  // next launch: what it gates (`Main`'s `menuGames`, and thinking ahead) is read outside
+  // next launch: what it gates (`Main`'s `menuGames`) is read outside
   // the chrome's render, so this model reaching the screen is not enough on its own. A feature gated on this field alone needs no
   // publish — a menu screen re-renders from the model regardless.
   | ToggleBetaFeatures =>

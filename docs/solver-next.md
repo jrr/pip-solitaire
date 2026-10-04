@@ -416,72 +416,29 @@ cost together.
 
 ### Thinking between asks
 
-**The app thinks between asks, in small chunks, and only when the board is still.**
-`Thinker` hands the worker a `think {ms: 250, unasked: true}` once the board has sat
-for a second and a half after its last commit with no card held, nothing animating,
-no line being played and the tab in view — and another after each that comes back
-still going, until the search answers (`Found`, `Exhausted`, `Full`) or the board has
-had `Solver.unasked` of them, twenty seconds. By the time a player asks, the answer is
-often already known and the re-root has already happened while they were looking at
-the board, so a Solve is a lookup. What that costs a tab over a played game, per
-board, is `docs/solver.md` § What thinking unasked costs.
+**The app does not think between asks.** The solver runs when someone presses for it —
+**Hint**, or the Debug screen's Solve and Autoplay — and at no other time. Thinking
+unasked is measured but not run: what it would cost a tab over a
+played game is `docs/solver.md` § What thinking unasked costs, and on the bigger packs
+that is tens of seconds of a phone's battery per game spent on answers nobody asked
+for, nearly all of it the re-root walk after each move (#524). The worker protocol
+still carries `think {unasked}` and `mise run solve-unasked` still replays the policy
+— chunks of 250 ms once the board has sat still for a second and a half, up to
+`Solver.unasked` a board — so the case can be re-measured once that walk is cheap.
 
-The reasons it is shaped like this:
+**What a Hint does**, a beta feature behind **Beta features** in the hidden settings:
+the top bar's Hint is there whenever the flag is on. A press asks `Thinker` for a line
+from the board on the table, with `Solver.interactive`'s patience, and says so in a
+toast at the bottom of the screen (`components/HintToast.res`) — "looking" while the
+search runs, then what it found, which fades. A line flashes its next move's card, then
+where it lands, twice, without playing it. Every way the search can decline has its
+own words; a wait that ran out offers a second press, which continues the same search.
 
-- **The front end owns the cadence**, because it is the only thing that knows
-  whether the player is dragging, whether an animation is running, whether the tab
-  is visible and whether anyone is still here. The worker only ever does what a
-  `think` tells it, so the policy lives in one module (`Thinker`) and the protocol
-  gains one flag.
-- **A pause pays for it, a quick player never does.** The re-root is the first thing
-  a think does after a move, and on a graph the previous ten seconds grew it can be
-  eight seconds of worker time (§ Re-rooting in the browser) that a `stop` or the
-  next `moved` waits behind. Every commit restarts the settle, so only a board left
-  alone triggers one; making the walk itself cheaper is #524's.
-- **The allowance is per board, and the board is the committed state.** A move,
-  undo or deal is a new board with a new allowance; a Solve that answers settles the
-  board, and one that runs out of patience leaves the allowance where it was. It is
-  wall-clock from each think going out to its answer, re-root included, because that
-  is what the worker spent.
-- **Nothing unasked runs on the main thread.** A worker that stops answering falls
-  back to solving here only for a question someone asked; an unasked one is dropped,
-  and nothing more is thought about unasked on that page. A worker counts as stopped
-  after ten seconds without a word, and a re-root sends none: on a big Spider search
-  one can take longer than that by itself, so a long game there is where this fires.
-- **It is a beta feature, off by default**: **Beta features** in the hidden
-  settings turns it on, with no switch of its own, and with it what the thinking
-  found — the Hint button and the corner dot (below). A hidden tab thinks about
-  nothing, and `pagehide` stops it until `pageshow`.
-- **The effort says so.** The worker counts what unasked thinks grew, and an asked
-  think's `effort.unasked` carries it, so "found in 3 ms — 1,204 positions (all of
-  them thought of before you asked)" reads as a warm answer rather than a clock gone
-  wrong. A Solve on a board still being grown continues the same search and reports
-  the two together.
-- **What it found shows as a Hint.** The top bar's **Hint** is there while a line is
-  known (`Thinker.known`); a press flashes the next move's card, then where it lands,
-  twice, without playing it. So a Hint appearing says the board is winnable, and on a
-  board dealt with cards face down the line was found by peeking. Both are accepted
-  (`docs/solver.md` § What the solver sees): the hint is offered the same on every
-  board.
-
-**What it shows**: with Beta features on, a dot and a caption sit in the bottom-left
-corner (`debug/ThinkingDot.res`, which has the key). Amber
-and pulsing while a think is out, counting the board's allowance; then green for
-winnable, red for proved unwinnable, purple for a full memory and grey for an allowance
-spent — the last two no verdict. An amber ring is a Solve thinking, which thinking ahead
-waits on; a dark dot in a red ring is a worker given up on, after which every board says
-so until a reload rather than `waiting`. A green caption says `known` for a board the re-root
-answered without growing a position — a move along a line already found — and the
-count otherwise. Every change is also a line in the debug log: the in-app console, and
-the JS console with **Console logging** on. **The dot says whether a board is
-winnable**, which nothing else in the app does — the reason the switch is a developer's.
-
-**The crash mark is set while an unasked think runs**, because it is a solve for that
-purpose — the memory it holds is the solver's. So a tab killed while thinking unasked
-lowers the tier, which is the right answer. It also gives `Device.recover`'s existing
-misfire — a tab killed for some other reason while a solve was running, read as the
-solver's doing — many more chances to fire, since a still board is now usually
-mid-think. #525 is where what that does in the field gets reported.
+**A line is kept once found.** `Thinker` remembers the line from the board on the
+table, and a move along it keeps the rest (`Thinker.follow`), so a second Hint, or one
+after playing the move it showed, answers at once without asking the worker. A move
+off the line forgets it. On a board dealt with cards face down the line was found by
+peeking; that is accepted (`docs/solver.md` § What the solver sees).
 
 ## The board the search plays on
 

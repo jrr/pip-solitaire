@@ -130,7 +130,7 @@ let loadRevealHidden = (): bool => loadFlag(revealHiddenKey, ~fallback=false)
 let saveRevealHidden = (revealed: bool) => saveFlag(revealHiddenKey, revealed)
 
 // "Beta features": the one switch in front of everything built but not finished — today,
-// the solver thinking ahead and what it found (`Main`'s `setBetaFeatures`). Off by default and reachable only from
+// the top bar's Hint (`Main`'s `onHint`). Off by default and reachable only from
 // the hidden settings, which is a second gesture in front of this one; persisted like
 // the rest, so a device left with it on keeps it across launches.
 //

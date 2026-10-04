@@ -99,11 +99,11 @@ Two are named in `Solver`, for **who is waiting** rather than for how long:
 | `interactive` | 10 s | a board someone is watching — passed by `TableScene` |
 | `patient` | 30 s | a terminal or a script, where the waiting is the point — passed by `Cli` and the autoplay harness |
 
-A third is not a wait at all. `unasked` (20 s) is the most a board is thought about
-with nobody having asked — what the web app's `Thinker` spends between asks, in short
-chunks while the board is still (`docs/solver-next.md` § Thinking between asks).
-Nobody watches it, so it bounds battery rather than patience, and § What thinking
-unasked costs is what it comes to over a game.
+A third is not a wait at all. `unasked` (20 s) is the most a board would be thought
+about with nobody having asked, in short chunks while the board is still — a policy the
+web app does not run (`docs/solver-next.md` § Thinking between asks), kept so it can be
+measured. Nobody would watch it, so it bounds battery rather than patience, and § What
+thinking unasked costs is what it comes to over a game.
 
 `interactive` is a **policy**, and it really does cost answers — § What the
 interactive wait costs measures how many, and § Why the unsolved count stands is
@@ -694,7 +694,8 @@ replaces.
 ### What thinking unasked costs
 
 What a tab spends thinking between asks, over a whole played game: `mise run
-solve-unasked` replays `Thinker`'s policy without a browser — chunks of 250 ms on
+solve-unasked` replays a policy for it without a browser — one the web app does not
+run (`docs/solver-next.md` § Thinking between asks) — chunks of 250 ms on
 each board until the search answers or the board's `Solver.unasked` is spent, the
 re-root a move leaves owing paid in the first. The game played is the line a patient
 solve finds, and the player stops on every board long enough for the background to do

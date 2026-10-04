@@ -323,7 +323,8 @@ let interactive = 10_000.
 let patient = 30_000.
 
 // The most a board is thought about *unasked*: what a front end that thinks between asks
-// (the web app's `Thinker`) may spend on one board before anyone presses Solve, in short
+// would spend on one board before anyone presses Solve — none does (`docs/solver-next.md`
+// § Thinking between asks), but `solve-unasked` replays the policy — in short
 // chunks while the board is still. Not a wait — nobody is watching it — but a cost paid
 // in battery by someone who never asked for it, which is why it is measured rather than
 // reasoned: `docs/solver.md` § What thinking unasked costs.

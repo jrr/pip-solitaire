@@ -419,11 +419,15 @@ type controls = {
   // way, by callback from the worker, but leaves the board where it is until the
   // answer's `play` is called.
   solve: (~onAnswer: solved => unit) => unit,
-  // Show a move without playing it: the card or run it lifts, and the card it would land
-  // on, pulse the double-tap's green. A `Deal` pulses the stock's top card. A move that
-  // isn't one for the board on the table shows nothing, so a hint arriving a beat late
-  // is harmless.
-  hint: Reducer.action => unit,
+  // The top bar's Hint: find a line from the board on the table — at once when one is
+  // already known from it, else by asking the solver — and show its next move without
+  // playing it: the card or run it lifts, and the card it would land on, pulse the
+  // double-tap's green. A `Deal` pulses the stock's top card.
+  //
+  // `~onSaid` is told what there is to say, as it changes: `Thinking` while the solver
+  // is asked, then what it found. `None` withdraws the last news, for a search let go of
+  // before it answered — the board moved, or left the table.
+  hint: (~onSaid: option<HintToast.news> => unit) => unit,
   // Re-lay every resting card, so the tilt switch re-tilts the board in place rather
   // than only on the next move.
   relayout: unit => unit,
@@ -777,10 +781,6 @@ let make = (
       {"capture": true},
     )
 
-    // What the solver's unasked thinking waits on: a board nobody is playing on. A line
-    // being played or thought about counts as play.
-    Thinker.still := (() => Option.isNone(stopPlay.contents) && !moving(boardHost))
-
     // --- The mount-scope refs -------------------------------------------------
     // Everything below belongs to a *build* but is held at *mount* scope, because
     // something set up once — the `ResizeObserver`, the shake subscription, the
@@ -809,7 +809,9 @@ let make = (
       onAnswer({reply: [], play: None, more: None})
     )
     let liveRelayout: ref<unit => unit> = ref(() => ())
-    let liveHint: ref<Reducer.action => unit> = ref(_ => ())
+    let liveHint: ref<(~onSaid: option<HintToast.news> => unit) => unit> = ref((~onSaid) =>
+      onSaid(None)
+    )
 
     // The active `devicemotion` shake subscription, `Some` while Wiggle Waggle is on
     // and permission granted. `Motion.subscribeShake` already parks the
@@ -2785,6 +2787,47 @@ let make = (
         round(2. *. flash +. hintBeat)
       }
 
+      // The Hint press. A line already known from this board — the rest of one a Hint or
+      // a Solve found, followed a move at a time (`Thinker.follow`) — is shown at once;
+      // otherwise the solver is asked, for as long as `autoplay` would wait. An answer
+      // that lands once the board has moved on is about a board that no longer exists,
+      // so it withdraws the "thinking" rather than showing anything.
+      let hint = (~onSaid: option<HintToast.news> => unit) => {
+        let asked = current()
+        let before = state()
+        let say = (line: array<Solver.played>) =>
+          switch line->Array.get(0) {
+          | Some(step) =>
+            showHint(step.action)
+            onSaid(Some(HintToast.Found({moves: Array.length(line)})))
+          | None => onSaid(Some(HintToast.Finishable))
+          }
+        switch Thinker.known(~game=asked.game, ~state=before) {
+        | Some(line) => say(line)
+        | None =>
+          let token = playToken.contents
+          onSaid(Some(HintToast.Thinking))
+          Thinker.think(
+            ~game=asked.game,
+            ~state=before,
+            ~patience=Some(Solver.interactive),
+            ~onLetGo=() => onSaid(None),
+            ~onAnswer=found =>
+              if token != playToken.contents || state() != before {
+                onSaid(None)
+              } else {
+                switch found {
+                | Solver.Played({steps}) => say(steps)
+                | Unwinnable => onSaid(Some(HintToast.Unwinnable))
+                | OutOfPatience => onSaid(Some(HintToast.OutOfPatience))
+                | OutOfRoom(_) => onSaid(Some(HintToast.OutOfRoom))
+                | UnknownBoard => onSaid(Some(HintToast.Unreadable))
+                }
+              },
+          )
+        }
+      }
+
       // Point the published `undo`, `runCommand` and `relayout` at *this* build,
       // and report the opening history (nothing to undo yet) so the top bar's button
       // starts disabled. Each of the three closes over the board it was built
@@ -2799,7 +2842,7 @@ let make = (
       liveAutoplay := autoplay
       liveSolve := solve
       liveRelayout := squareUp
-      liveHint := showHint
+      liveHint := hint
       reportHistory()
 
       // Persist this freshly-built board when saving is on: the opening deal,
@@ -2865,7 +2908,7 @@ let make = (
         runCommand: command => liveRunCommand.contents(command),
         autoplay: (~onAnswer) => liveAutoplay.contents(~onAnswer),
         solve: (~onAnswer) => liveSolve.contents(~onAnswer),
-        hint: action => liveHint.contents(action),
+        hint: (~onSaid) => liveHint.contents(~onSaid),
         relayout: () => liveRelayout.contents(),
         dockFit: inset => dockFit.contents(inset),
         shake: {start: startShake, stop: stopShake},

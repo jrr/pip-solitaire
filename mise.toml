@@ -110,8 +110,8 @@ description = "Time main's solver against this tree's, paired: `mise run solve-t
 depends = ["build"]
 run = "node packages/core/scripts/solve-pair.mjs"
 
-# What thinking between asks costs a tab over a played game (the web app's
-# `Thinker`, replayed without a browser): `-- --game spiderette2 1-50`,
+# What thinking between asks would cost a tab over a played game (a policy the web
+# app does not run, replayed without a browser): `-- --game spiderette2 1-50`,
 # `--allowance <s>`, `--chunk <ms>`. docs/solver.md § What thinking unasked costs.
 [tasks.solve-unasked]
 description = "Time the solver's unasked thinking through played games: `mise run solve-unasked -- --game freecell 1-20`"
