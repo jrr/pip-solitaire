@@ -333,6 +333,7 @@ below it. Why it stands: § Why the unsolved count stands.
 | 2026-10-01 | 1–200 | 171/200 | 8 | 21 | 5.0 s | 102 | #200 at 42.4 s | 24 MB, #120 at 188 MB | Node v26.9.0, cloud sandbox, three soaks at once; grown on a `Board`, column order kept |
 | 2026-10-01 | 1–200 | 176/200 | 8 | 16 | 5.8 s | 101 | #7 at 59.6 s | 35 MB, #147 at 289 MB | Node v26.9.0, cloud sandbox, three soaks at once; grown on a `Board`, folded to look and column order kept to prove |
 | 2026-10-01 | 1–200 | 176/200 | 8 | 16 | 3.3 s | 101 | #7 at 37.4 s | 35 MB, #108 at 289 MB | Node v26.9.0, CI runner, 8 jobs at once; grown on a `Board`, folded to look and column order kept to prove |
+| 2026-10-04 | 1–200 | 176/200 | 8 | 16 | 4.0 s | 99 | #184 at 36.2 s | 38 MB, #116 at 289 MB | Node v26.9.0, CI runner, 8 jobs at once; grown on a `Board`, folded to look and column order kept to prove; `idle` charged at 10 |
 
 **Spiderette · 1 suit and · 2 suits**, over the same 1–200. The same law, budget
 and weights on a cheaper deck — these are the repeated packs, where `found`
@@ -364,6 +365,8 @@ and an unsolved count of its own.
 | 2026-10-01 | 2 suits | 1–200 | 193/200 | 5 | 2 | 1.6 s | 85 | #168 at 49.0 s | 9 MB, #168 at 265 MB | Node v26.9.0, cloud sandbox, three soaks at once; grown on a `Board`, folded to look and column order kept to prove |
 | 2026-10-01 | 1 suit | 1–200 | 198/200 | 2 | 0 | 62 ms | 71 | #93 at 1.9 s | <1 MB, #143 at 11 MB | Node v26.9.0, CI runner, 8 jobs at once; grown on a `Board`, folded to look and column order kept to prove |
 | 2026-10-01 | 2 suits | 1–200 | 193/200 | 5 | 2 | 951 ms | 85 | #168 at 24.4 s | 9 MB, #168 at 264 MB | Node v26.9.0, CI runner, 8 jobs at once; grown on a `Board`, folded to look and column order kept to prove |
+| 2026-10-04 | 1 suit | 1–200 | 198/200 | 2 | 0 | 73 ms | 68 | #93 at 2.3 s | <1 MB, #143 at 13 MB | Node v26.9.0, CI runner, 8 jobs at once; grown on a `Board`, folded to look and column order kept to prove; `idle` charged at 10 |
+| 2026-10-04 | 2 suits | 1–200 | 189/200 | 5 | 6 | 1.2 s | 78 | #7 at 37.2 s | 12 MB, #120 at 281 MB | Node v26.9.0, CI runner, 8 jobs at once; grown on a `Board`, folded to look and column order kept to prove; `idle` charged at 10 |
 
 **Mini and Micro**, under FreeCell's law and its weights. Every deal is
 *answered* — the search either finds a line or empties its frontier long before
@@ -542,6 +545,9 @@ and under a cap not even those, since a faster machine gets further in ten secon
 | 2026-10-01 | Spiderette · 1 suit | 1–200 | none | 198 | 2 | 0 | 62 ms | #93 at 1.9 s | <1 MB, #143 at 11 MB |
 | 2026-10-01 | Spiderette · 2 suits | 1–200 | none | 193 | 5 | 2 | 951 ms | #168 at 24.4 s | 9 MB, #168 at 264 MB |
 | 2026-10-01 | Spiderette · 4 suits | 1–200 | none | 176 | 8 | 16 | 3.3 s | #7 at 37.4 s | 35 MB, #108 at 289 MB |
+| 2026-10-04 | Spiderette · 1 suit | 1–200 | none | 198 | 2 | 0 | 73 ms | #93 at 2.3 s | <1 MB, #143 at 13 MB |
+| 2026-10-04 | Spiderette · 2 suits | 1–200 | none | 189 | 5 | 6 | 1.2 s | #7 at 37.2 s | 12 MB, #120 at 281 MB |
+| 2026-10-04 | Spiderette · 4 suits | 1–200 | none | 176 | 8 | 16 | 4.0 s | #184 at 36.2 s | 38 MB, #116 at 289 MB |
 
 So the wait costs **twenty-seven Simple Simon deals in the thousand, and eight
 two-suit and ten four-suit in the two hundred** on the 2026-09-20 machine — and one
@@ -805,8 +811,10 @@ that improves none of the four:
 | Spider 2-suit, without | 58% | 23% | 21 |
 | Spider 2-suit, `idle` 10 | 18% | 3% | 22 |
 
-On deals 1–40 at 10 s, one-suit Spiderette solves all 40 either way, and four-suit
-33 where it solved 36 — the price, accepted for hints that read as a player's. What
+Over the record's 1–200 at the medium tier, one- and four-suit Spiderette answer
+exactly the deals they did without it, and two-suit solves 189 where it solved 193 —
+the price, accepted for hints that read as a player's, and the record's rows dated
+2026-10-04. Every line is shorter: 68 moves against 71, 78 against 85, 99 against 101. What
 idle moves remain before a deal are mostly the rule's (a column has to be filled
 before a row will come) and the rest mostly peeking: a column set up for the card
 the stock is about to drop on it, which only a solver that reads the stock would
