@@ -237,8 +237,8 @@ let tellBoard = (worker: worker, ~game: Game.t, ~state: GameState.t) =>
 //
 // A move along the known line keeps the rest of it, so a Hint after it is there at once
 // rather than a re-root later. The rest of a line with no shortcut in it has none either,
-// so what is kept needs no pass of its own: the line arrived shortened
-// (`Solver.shortened`).
+// and the rest of one in a player's order is still in it, so what is kept needs no pass
+// of its own: the line arrived polished (`Solver.polished`).
 let follow = (~game: Game.t, ~state: GameState.t) => {
   switch table.contents {
   | Some(board) if board.game === game && board.state == state => ()

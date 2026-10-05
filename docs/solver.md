@@ -54,21 +54,25 @@ in a millisecond. The short packs make it commoner still and cheaper still —
 eight Mini deals and nineteen Micro ones in the first thousand, none of them
 taking longer than the deal it was dealt from.
 
-**Shortened on the way out.** A line can take the long way between two of its
+**Polished on the way out.** A line can take the long way between two of its
 own positions — one read back through a re-rooted graph most of all, since the
 graph keeps each node's parent from before the root moved, and the route back to
 the new root runs wherever that leads. Each move is legal; a player handed the
-pair reads it as the solver not knowing what it is doing. So where a line is
-handed to a driver — `Solver.plan`, `autoplay`, `planSteps`, and so the Hint and
-the `autoplay` command in both front ends — it first goes through
-`Solver.shortened`: from each position on it every legal move is tried, and one
-that lands on a position further down the line replaces the moves between. A
-couple of milliseconds a line; a fresh search's line is seldom touched by it.
+pair reads it as the solver not knowing what it is doing. And the order of the
+moves that don't touch each other is whatever order the search grew them in,
+which is no order a player would choose (§ The line a player is handed). So
+where a line is handed to a driver — `Solver.plan`, `autoplay`, `planSteps`, and
+so the Hint and the `autoplay` command in both front ends — it first goes through
+`Solver.polished`: **shortened**, from each position on it every legal move is
+tried, and one that lands on a position further down the line replaces the moves
+between; then **ordered**, each next move being the best-ranked one left that a
+player could make now without changing where the line ends. A few milliseconds a
+line; a fresh search's line is seldom shortened and nearly always reordered.
 **`solve` and `solveOn` hand back the line as the search found it**, which is
 what `mise run solve` measures and `solve-same` compares — so every count in
 the record below, Mean moves included, describes the search, and a line a
-player is handed is that long or shorter. A change to the pass itself is
-covered by `Solver_test` alone.
+player is handed is that long or shorter. A change to either pass is covered by
+`Solver_test` alone.
 
 **No clock of its own.** `Solver.effort` reports positions and moves, and
 never an elapsed time: how *long* a solve took is the caller's own measurement,
@@ -841,6 +845,77 @@ difference to a single node over sixty deals — and set to zero so the table
 says so. Its other three were the best of a first sweep of seven settings; none
 of the seven moved the count of solved deals by more than two in sixty, and the
 search's own weight turned out to matter far more (§ The budget).
+
+## The line a player is handed
+
+A line is a path through the graph, and the search orders it by nothing a player
+would recognise. Two moves that don't touch each other come in whichever order the
+heap grew them — ties on `g + weight · h` are common, broken by where a node sits in
+the heap, and children are pushed in `legalMoves`' order, cells first and columns by
+index. Each move is on the line for a reason a player could follow (dig a column
+empty, free an Ace, drop a King in the room it made); the order between them is
+noise, and the Hint shows the first move.
+
+Three things a skilled player holds against a line, each measured on the line a
+driver is handed, with `mise run solve`'s own figures. The Spiderette and Simple
+Simon ranges are at `--limit 10`, FreeCell's at the budget:
+
+| | FreeCell 1–150 | Simple Simon 1–60 | Spiderette · 2 suits 1–40 |
+|---|---|---|---|
+| The Hint opens with a card parked in a cell | 47% | | |
+| … with a free move waiting — to a foundation, or onto a card | 43% | | |
+| Positions a line with every cell full | 8.4 | | |
+| Cards a line that could go home and are sent later | 3.2 | | |
+| Positions a line where a whole run could join its own suit and did something else | | 18.2 | 13.6 |
+| Neighbouring moves that could be played in either order | 27% | 19% | 17% |
+
+Every skipped join is made later on the same line. The late cards are unsafe by the
+auto-collect rule, so a careful player holds them too; that row is the mildest. The
+last row is how much of the order is nobody's choice, and the Hint's first move
+is one of those pairs about a third of the time.
+
+**So the line is ordered the way a player would play it** (`Solver.ordered`, run
+by `polished` after `shortened`): at each step, the best-ranked move left that can
+be played now and leaves every move it jumped still legal and the board the line
+reached *exactly* reached — exactly, not `alike`, because the moves still to come
+name the columns and cells of the layout the line was found in. Nothing is added
+or dropped: the line comes back a permutation of itself, ending where it ended, and
+ordering it again changes nothing. Under a millisecond a line, 6 ms at worst over
+the ranges above. The rank, lower first:
+
+| Rank | Move |
+|---|---|
+| 0 | to a foundation |
+| 10 | out of a cell onto a card |
+| 11 · 12 | a whole run onto a card — its own suit's under Simple Simon's law; any under FreeCell's |
+| 15 | the pack's highest card into an empty column |
+| 20 · 22 · 25 · 30 | part of a run, or across suits, onto a card |
+| 50 | anything else into an empty column |
+| 60 | into a cell |
+| 90 | a deal |
+
+Measured on the same ranges, the same figures with the pass:
+
+| | FreeCell 1–150 | Simple Simon 1–60 | Spiderette · 2 suits 1–40 |
+|---|---|---|---|
+| The Hint opens with a park | 33% | | |
+| … with a free move waiting | 29% | | |
+| Positions a line with every cell full | 7.2 | | |
+| Cards a line sent home late | 1.2 | | |
+| Whole-run joins passed over | | 15.9 | 12.2 |
+| Neighbouring moves that could swap | 23% | 21% | 19% |
+
+**What it can't reach is the moves the line doesn't have.** A park with a free
+move waiting is still the Hint on a third of FreeCell deals, because the free move
+a player would make — a card home, a run joined — is not on the line at all: the
+search had no need of it, and a pass that only reorders can't add it. The joins
+Simple Simon still passes over are made later from a position the line changes
+first. And the last row is untouched by design: the pass chooses *which* of two
+swappable moves comes first, and they stay swappable. Reaching those is a change
+to the search, not to the line — a secondary order on the heap so equal nodes grow
+the natural one first, or a cost on `g` for a park or a split run the way `idle`
+charges a pointless move before a deal — and either fails `solve-same` by design
+and owes the soak § Before you change the solver asks for.
 
 ## The search
 

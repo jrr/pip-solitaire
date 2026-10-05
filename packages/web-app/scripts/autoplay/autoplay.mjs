@@ -242,7 +242,7 @@ export async function playGame(
       .locator(".win-overlay")
       .waitFor({ timeout: 15_000 })
       .catch(() => {})
-    await settle(page)
+    await settle(page, { state: "attached" })
   }
 
   const won = (await page.locator(".win-overlay").count()) > 0
