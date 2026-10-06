@@ -14,7 +14,9 @@
 //   mise run solve -- --record r.json 1-100 # …and every deal's figures, for soak-summary
 //
 // What it's for, and what to measure with it: docs/solver.md § Measuring it. That
-// section also says what the "held" figure is and isn't.
+// section also says what the "held" figure is and isn't. A range ends with what its
+// lines look like to a player (lib/lines.mjs), taken on the line a driver is handed
+// rather than the one printed: docs/solver.md § The line a player is handed.
 //
 // `--limit` is the wait a *driver* would impose, in seconds, so a soak can be run the
 // way a front end actually calls the solver — and so the boards whose stubborn deals
@@ -55,6 +57,7 @@ import * as Game from "../src/Game.res.mjs"
 import * as GameState from "../src/GameState.res.mjs"
 import * as Position from "../src/Position.res.mjs"
 import * as Solver from "../src/Solver.res.mjs"
+import { quality, qualitySaid } from "./lib/lines.mjs"
 
 function parseArgs(argv) {
   const opts = { seeds: [], quiet: false, game: "freecell", limits: null, tier: null, mb: null, reroot: false, record: null }
@@ -111,6 +114,7 @@ let most = { seed: null, bytes: 0 }
 let totalArrays = 0
 let totalPositions = 0
 let costliest = { seed: null, each: 0 }
+const lines = { park: 0, parkFree: 0, cellsFull: 0, lateHome: 0, joins: 0, swaps: 0, pairs: 0 }
 const record = []
 
 // The collector has to be callable to read a live heap rather than a live heap plus
@@ -231,6 +235,10 @@ for (const seed of opts.seeds) {
   if (plan) {
     solved++
     totalMoves += plan.length
+    // What the line a driver gets looks like to a player — the polished line, where
+    // the one printed above is the search's own.
+    const q = quality(Position, position, Solver.polished(position, line))
+    for (const k in q) lines[k] += q[k]
   } else if (proved) unwinnable++
   else if (ranOut) outOfTime++
 
@@ -279,6 +287,9 @@ console.log(
     (costliest.seed === null ? "" : `, most by #${costliest.seed} at ${costliest.each.toFixed(0)} B of those holding 10 MB`) +
     ` — capped at ${capSaid}`,
 )
+
+const law = Position.lawOf(game)
+if (solved > 0) console.log(qualitySaid(lines, solved, law))
 
 if (opts.reroot && rerootKept > 0)
   console.log(

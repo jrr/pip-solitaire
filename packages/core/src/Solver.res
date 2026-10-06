@@ -869,9 +869,9 @@ let solve = (start: Position.t, ~budget: option<budget>=?, ~patience: option<pat
 // replaces the moves between — as does a position the line comes back to. About one
 // move generation a step, which is nothing beside the search.
 //
-// **It runs where a line is handed over — `plan`, `autoplayedOf`, `planSteps` — and not
-// in the search**: `solve` and `solveOn` hand back the line the search found. What that
-// leaves the record measuring is `docs/solver.md` § The contract.
+// **It runs where a line is handed over — `plan`, `autoplayedOf`, `planSteps`, through
+// `polished` — and not in the search**: `solve` and `solveOn` hand back the line the
+// search found. What that leaves the record measuring is `docs/solver.md` § The contract.
 //
 // "Lands on" is the search's own sameness, asked the way the graph asks it: a hash on
 // a `Board` loaded with column order kept while there is a stock, confirmed card for
@@ -962,10 +962,112 @@ let shortened = (start: Position.t, line: array<Position.move>): array<Position.
   }
 }
 
-// `solve`, with the line shortened — for the callers that hand it to a driver.
+// --- The line, ordered -------------------------------------------------------
+// The search orders a line by nothing a player would recognise: two moves that don't
+// touch each other come in whichever order the heap happened to grow them, so a line
+// parks a card in a cell with a foundation move waiting, or shuffles a run across suits
+// with its own suit's run there to join. Each move is on the line for a reason; the
+// order is noise, and the Hint shows the first move. `docs/solver.md` § The line a
+// player is handed has what that measures at and what this pass leaves.
+//
+// So a line is ordered the way a player would play it: at each step, the best-ranked
+// remaining move that can be played now and leaves every move before it still legal and
+// the board it reaches exactly the one the line reached — not `alike`, since the moves
+// still to come name columns and cells of the layout the line was found in. Nothing is
+// added or removed: the line comes back a permutation of itself, ending where it ended.
+
+// How a player ranks a move, lower first — the free moves before the ones that spend
+// something. The board is the one the move is played from.
+let rankOf = (b: Board.t, move: Board.move): int =>
+  switch Board.toMove(move) {
+  | Position.Deal => 90
+  | Position.Play({destination: Position.ToFoundation}) => 0
+  | Position.Play({destination: Position.ToCell(_)}) => 60
+  | Position.Play({n, source, destination: Position.ToColumn(col), card}) =>
+    if Board.topOf(b, col) < 0 {
+      // Into an empty column: the pack's highest card belongs there, and anything
+      // else spends the column.
+      Position.rankOf(card) == b.pack.ranks ? 15 : 50
+    } else {
+      switch source {
+      | Position.FromCell(_) => 10
+      | Position.FromColumn(from) =>
+        let whole = n == Board.runLength(b, from)
+        let suited = Position.suitOf(Board.topOf(b, col)) == Position.suitOf(card)
+        switch b.law {
+        | Position.SimpleSimon => suited ? whole ? 11 : 20 : whole ? 22 : 30
+        | Position.FreeCell => whole ? 12 : 25
+        }
+      }
+    }
+  }
+
+let ordered = (start: Position.t, line: array<Position.move>): array<Position.move> => {
+  let count = Array.length(line)
+  if count < 2 {
+    line
+  } else {
+    // `board` stands where the ordered line has reached, and tries a candidate route
+    // from there; `probe` plays the line's own order from the same place, as far as a
+    // candidate asks, so the two can be compared.
+    let board = Board.load(start)
+    let probe = Board.load(start)
+    let rest = line->Array.map(Board.ofMove)
+    let out = []
+    let legalOn = (b: Board.t, move: Board.move): bool => Board.legalMoves(b)->Array.includes(move)
+    let exact = (): bool => Board.toPosition(board) == Board.toPosition(probe)
+    while Array.length(rest) > 0 {
+      let head = rest->Array.getUnsafe(0)
+      let best = ref(0)
+      let bestRank = ref(rankOf(board, head))
+      let now = Board.legalMoves(board)
+      for j in 1 to Array.length(rest) - 1 {
+        let candidate = rest->Array.getUnsafe(j)
+        let rank = rankOf(board, candidate)
+        if rank < bestRank.contents && now->Array.includes(candidate) {
+          // The probe keeps pace with the line's own order: played up to `candidate`.
+          while Board.played(probe) <= j {
+            Board.play(probe, rest->Array.getUnsafe(Board.played(probe)))
+          }
+          // The candidate first, then the moves it jumped: each has to be legal still.
+          Board.play(board, candidate)
+          let k = ref(0)
+          while k.contents < j && legalOn(board, rest->Array.getUnsafe(k.contents)) {
+            Board.play(board, rest->Array.getUnsafe(k.contents))
+            k := k.contents + 1
+          }
+          if k.contents == j && exact() {
+            best := j
+            bestRank := rank
+          }
+          while Board.played(board) > 0 {
+            Board.takeBack(board)
+          }
+        }
+      }
+      while Board.played(probe) > 0 {
+        Board.takeBack(probe)
+      }
+      let chosen = rest->Array.getUnsafe(best.contents)
+      rest->Array.splice(~start=best.contents, ~remove=1, ~insert=[])
+      out->Array.push(Board.toMove(chosen))
+      Board.play(board, chosen)
+      Board.play(probe, chosen)
+      Board.forget(board)
+      Board.forget(probe)
+    }
+    out
+  }
+}
+
+// A line as a driver is handed it: shortened, then ordered.
+let polished = (start: Position.t, line: array<Position.move>): array<Position.move> =>
+  ordered(start, shortened(start, line))
+
+// `solve`, with the line polished — for the callers that hand it to a driver.
 let solved = (start: Position.t, ~budget: option<budget>=?, ~patience: option<patience>=?): option<
   array<Position.move>,
-> => solve(start, ~budget?, ~patience?)->Option.map(line => shortened(start, line))
+> => solve(start, ~budget?, ~patience?)->Option.map(line => polished(start, line))
 
 // --- Playing the plan on a real board ----------------------------------------
 
@@ -1085,10 +1187,10 @@ let autoplayedOf = (
     | Found | Full => OutOfRoom({bytes: effort.bytes})
     }
   | Some(moves) =>
-    // The line the search found, shortened on its way to the driver (`shortened`); a
+    // The line the search found, polished on its way to the driver (`polished`); a
     // board the solver can't read has no line, so the position is always there.
     let moves = switch Position.ofGameState(~game, state) {
-    | Some(position) => shortened(position, moves)
+    | Some(position) => polished(position, moves)
     | None => moves
     }
     let steps = []

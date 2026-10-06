@@ -303,17 +303,119 @@ describe("Solver", () => {
     )
 
     test(
-      "a plan and an autoplay hand over the shortened line; `solve` hands over the search's",
+      "a plan and an autoplay hand over the polished line; `solve` hands over the search's",
       () => {
+        let polished = Solver.polished(position, line)
+        expect(polished)->toEqual(Solver.ordered(position, base))
         expect(Solver.solve(position))->toEqual(Some(line))
-        expect(Solver.plan(~game, opening))->toEqual(Some(base))
+        expect(Solver.plan(~game, opening))->toEqual(Some(polished))
         switch Solver.autoplay(~game, opening) {
         | Solver.Played({steps}) =>
-          expect(Array.length(steps))->toBe(Array.length(base))
+          expect(Array.length(steps))->toBe(Array.length(polished))
           expect(steps->Array.get(0)->Option.map(step => step.action))->toEqual(
-            base->Array.get(0)->Option.flatMap(move => Position.toAction(~game, opening, move)),
+            polished->Array.get(0)->Option.flatMap(move => Position.toAction(~game, opening, move)),
           )
         | _ => expect("a line")->toBe("but autoplay found none")
+        }
+      },
+    )
+  })
+
+  describe("a line, ordered", () => {
+    let id = code => Position.idOfCode(code)->Option.getOrThrow
+    let move = (code, ~n=1, ~from, ~to) => Position.Play({
+      n,
+      source: FromColumn(from),
+      destination: to,
+      card: id(code),
+    })
+    let end = (start, line) => line->Array.reduce(start, Position.applyMove)
+
+    // Spades at two, so the 3♠ may go home and nothing sends it there on its own: the
+    // reds are too low for it to be safe.
+    let freecell = (casc): Position.t => {
+      let found = [0, 0, 0, 0]
+      found->Array.setUnsafe(Position.suitOf(id("3S")), 2)
+      {
+        law: Position.FreeCell,
+        pack: Position.standardPack,
+        cells: [-1, -1, -1, -1],
+        found,
+        casc,
+        down: Array.make(~length=Array.length(casc), 0),
+        stock: [],
+      }
+    }
+
+    test(
+      "a foundation move waiting behind a park is played first, and the park after it",
+      () => {
+        let start = freecell([[id("3S")], [id("KH"), id("7D")]])
+        let park = move("7D", ~from=1, ~to=ToCell(0))
+        let home = move("3S", ~from=0, ~to=ToFoundation)
+        let ordered = Solver.ordered(start, [park, home])
+        expect(ordered)->toEqual([home, park])
+        expect(end(start, ordered))->toEqual(end(start, [park, home]))
+      },
+    )
+
+    test(
+      "a move that needs the one before it stays behind it, however it ranks",
+      () => {
+        // The King wants the column the 3♠ empties, and the 7♦ off its back first.
+        let start = freecell([[id("3S")], [id("KH"), id("7D")]])
+        let park = move("7D", ~from=1, ~to=ToCell(0))
+        let home = move("3S", ~from=0, ~to=ToFoundation)
+        let king = move("KH", ~from=1, ~to=ToColumn(0))
+        expect(Solver.ordered(start, [park, home, king]))->toEqual([home, park, king])
+      },
+    )
+
+    test(
+      "under Simple Simon a run joins its own suit before a run is dropped across suits",
+      () => {
+        let start: Position.t = {
+          law: Position.SimpleSimon,
+          pack: Position.standardPack,
+          cells: [],
+          found: [0, 0, 0, 0],
+          casc: [[id("7S")], [id("6H")], [id("6C")], [id("7C")]],
+          down: [0, 0, 0, 0],
+          stock: [],
+        }
+        let across = move("6H", ~from=1, ~to=ToColumn(0))
+        let join = move("6C", ~from=2, ~to=ToColumn(3))
+        expect(Solver.ordered(start, [across, join]))->toEqual([join, across])
+      },
+    )
+
+    test(
+      "a line too short to order, and one nothing can be brought forward in, come back as they are",
+      () => {
+        let start = freecell([[id("3S")], [id("KH"), id("7D")]])
+        let park = move("7D", ~from=1, ~to=ToCell(0))
+        let king = move("KH", ~from=1, ~to=ToColumn(2))
+        expect(Solver.ordered(start, []))->toEqual([])
+        expect(Solver.ordered(start, [park]))->toEqual([park])
+        expect(Solver.ordered(start, [park, king]))->toEqual([park, king])
+      },
+    )
+
+    test(
+      "deal #1's line comes back a permutation of itself that plays to the same board, and once ordered stays so",
+      () => {
+        let position = Position.ofGameState(~game, opening)->Option.getOrThrow
+        let base = Solver.shortened(position, Solver.solve(position)->Option.getOrThrow)
+        let ordered = Solver.ordered(position, base)
+        expect(Array.length(ordered))->toBe(Array.length(base))
+        let spelled = line => line->Array.map(Position.describeMove)->Array.toSorted(String.compare)
+        expect(spelled(ordered))->toEqual(spelled(base))
+        expect(ordered == base)->toBe(false)
+        expect(end(position, ordered))->toEqual(end(position, base))
+        expect(Solver.ordered(position, ordered))->toEqual(ordered)
+        switch play(~game, opening, ordered) {
+        | Error(why) => expect("the ordered line played out")->toBe(why)
+        | Ok(reached) => expect(Reducer.canFinish(~game, reached))->toBe(true)
         }
       },
     )

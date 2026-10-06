@@ -241,12 +241,17 @@ export function stateFromPiles(piles, layout = FREECELL) {
  * Wait for the board to reach its resting layout — cards present, then every
  * animation on them finished.
  *
+ * "Present" is visible unless `state` says `attached`: a won board's victory cascade
+ * hides each card it launches, and which card is first in the DOM depends on the order
+ * the moves were played in, so a wait for that one to be visible is a wait for the
+ * cascade to end, which takes longer than this is given.
+ *
  * The same wait `browser-tests/lib/board.mjs` does, reimplemented rather than
  * imported: that one is a test helper built on `expect`, and `scripts/` doesn't
  * depend on the test suite (the dependency runs the other way).
  */
-export async function settle(page, { timeout = 3000 } = {}) {
-  await page.locator(".stacking-card").first().waitFor()
+export async function settle(page, { timeout = 3000, state = "visible" } = {}) {
+  await page.locator(".stacking-card").first().waitFor({ state })
   await page.evaluate(async (cap) => {
     await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)))
     // Scoped to the cards, not `document.getAnimations()`: a rejected drop carries
