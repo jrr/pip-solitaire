@@ -34,7 +34,7 @@ jobs:
       # action just removes the preview dir, so skip the build to save time.
       - name: Install mise
         if: github.event.action != 'closed'
-        uses: jdx/mise-action@v4
+        uses: jdx/mise-action@v5
 
       - name: Bundle the web app
         if: github.event.action != 'closed'
@@ -82,7 +82,7 @@ jobs:
 
       - name: Install mise
         if: github.event.action != 'closed'
-        uses: jdx/mise-action@v4
+        uses: jdx/mise-action@v5
 
       # `-browser` skips `--with-deps`, whose `apt-get` was the thing that hung
       # (see mise.toml). The browser download that remains is still a network
