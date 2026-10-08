@@ -16,6 +16,8 @@
 //   swaps      — neighbouring moves that could be played in either order to the same
 //                board, of `pairs` neighbouring pairs: how much of the order is still
 //                nobody's choice.
+//   moves      — the line's length as handed over, and `shortenedBy` the moves the polish
+//                took out of the search's line.
 
 const isPlay = (move) => move !== "Deal"
 const toColumn = (move) => (isPlay(move) && move.destination.TAG === "ToColumn" ? move.destination._0 : -1)
@@ -25,7 +27,7 @@ const fromColumn = (move) => (isPlay(move) && move.source.TAG === "FromColumn" ?
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b)
 
 export function quality(Position, start, line) {
-  const q = { park: 0, parkFree: 0, cellsFull: 0, lateHome: 0, joins: 0, swaps: 0, pairs: 0 }
+  const q = { park: 0, parkFree: 0, cellsFull: 0, lateHome: 0, joins: 0, swaps: 0, pairs: 0, moves: line.length }
   const positions = [start]
   for (const move of line) positions.push(Position.applyMove(positions[positions.length - 1], move))
   const legal = (position, move) => Position.legalMoves(position).some((x) => same(x, move))
@@ -78,7 +80,10 @@ export function qualitySaid(sum, solved, law) {
   if (!solved) return ""
   const per = (x) => (x / solved).toFixed(1)
   const pct = (x, of) => `${Math.round((100 * x) / Math.max(of, 1))}%`
-  const swaps = `${pct(sum.swaps, sum.pairs)} of neighbouring moves could swap`
+  const swaps =
+    `${pct(sum.swaps, sum.pairs)} of neighbouring moves could swap` +
+    `, ${per(sum.moves)} moves a line (${per(sum.shortenedBy)} fewer than the search's)` +
+    `, polished in ${per(sum.polishMs)}ms a line (worst ${sum.polishWorst.toFixed(0)}ms)`
   return law === "FreeCell"
     ? `lines as handed over: ${pct(sum.park, solved)} open with a park (${pct(sum.parkFree, solved)} with a free move waiting)` +
         `, every cell full at ${per(sum.cellsFull)} positions a line, ${per(sum.lateHome)} cards a line sent home late, ${swaps}`

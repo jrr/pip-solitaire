@@ -114,7 +114,19 @@ let most = { seed: null, bytes: 0 }
 let totalArrays = 0
 let totalPositions = 0
 let costliest = { seed: null, each: 0 }
-const lines = { park: 0, parkFree: 0, cellsFull: 0, lateHome: 0, joins: 0, swaps: 0, pairs: 0 }
+const lines = {
+  park: 0,
+  parkFree: 0,
+  cellsFull: 0,
+  lateHome: 0,
+  joins: 0,
+  swaps: 0,
+  pairs: 0,
+  moves: 0,
+  shortenedBy: 0,
+  polishMs: 0,
+  polishWorst: 0,
+}
 const record = []
 
 // The collector has to be callable to read a live heap rather than a live heap plus
@@ -237,8 +249,14 @@ for (const seed of opts.seeds) {
     totalMoves += plan.length
     // What the line a driver gets looks like to a player — the polished line, where
     // the one printed above is the search's own.
-    const q = quality(Position, position, Solver.polished(position, line))
+    const polishing = performance.now()
+    const polished = Solver.polished(position, line)
+    const polishMs = performance.now() - polishing
+    const q = quality(Position, position, polished)
     for (const k in q) lines[k] += q[k]
+    lines.shortenedBy += line.length - polished.length
+    lines.polishMs += polishMs
+    lines.polishWorst = Math.max(lines.polishWorst, polishMs)
   } else if (proved) unwinnable++
   else if (ranOut) outOfTime++
 

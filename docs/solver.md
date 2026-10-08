@@ -63,16 +63,18 @@ moves that don't touch each other is whatever order the search grew them in,
 which is no order a player would choose (§ The line a player is handed). So
 where a line is handed to a driver — `Solver.plan`, `autoplay`, `planSteps`, and
 so the Hint and the `autoplay` command in both front ends — it first goes through
-`Solver.polished`: **shortened**, from each position on it every legal move is
-tried, and one that lands on a position further down the line replaces the moves
-between; then **ordered**, each next move being the best-ranked one left that a
-player could make now without changing where the line ends. A few milliseconds a
-line; a fresh search's line is seldom shortened and nearly always reordered.
-**`solve` and `solveOn` hand back the line as the search found it**, which is
-what `mise run solve` measures and `solve-same` compares — so every count in
-the record below, Mean moves included, describes the search, and a line a
-player is handed is that long or shorter. A change to either pass is covered by
-`Solver_test` alone.
+`Solver.polished`: **shortened**, from each position on it a search a few moves
+deep looks for a route onto a position further down the line than the route is
+long, and the best one replaces the moves between (§ The line, shortened); then
+**ordered**, each next move being the best-ranked one left that a player could
+make now without changing where the line ends. Tens of milliseconds a line, in
+the worker after the search has answered; a fresh search's line comes out a move
+or two shorter and nearly always reordered. **`solve` and `solveOn` hand back the
+line as the search found it**, which is what `solve-same` compares — so every
+count in the record below, Mean moves included, describes the search, and a line
+a player is handed is that long or shorter. A change to either pass is covered by
+`Solver_test` alone, and measured by the "lines as handed over" figures `mise run
+solve` prints after its summary.
 
 **No clock of its own.** `Solver.effort` reports positions and moves, and
 never an elapsed time: how *long* a solve took is the caller's own measurement,
@@ -894,16 +896,18 @@ the ranges above. The rank, lower first:
 | 60 | into a cell |
 | 90 | a deal |
 
-Measured on the same ranges, the same figures with the pass:
+Measured on the same ranges, the same figures with both passes — shortened, then
+ordered:
 
 | | FreeCell 1–150 | Simple Simon 1–60 | Spiderette · 2 suits 1–40 |
 |---|---|---|---|
-| The Hint opens with a park | 33% | | |
+| The Hint opens with a park | 34% | | |
 | … with a free move waiting | 29% | | |
-| Positions a line with every cell full | 7.2 | | |
-| Cards a line sent home late | 1.2 | | |
-| Whole-run joins passed over | | 15.9 | 12.2 |
-| Neighbouring moves that could swap | 23% | 21% | 19% |
+| Positions a line with every cell full | 6.6 | | |
+| Cards a line sent home late | 1.1 | | |
+| Whole-run joins passed over | | 14.7 | 10.6 |
+| Neighbouring moves that could swap | 22% | 20% | 19% |
+| Moves a line, the search's in brackets | 50.8 (52.4) | 79.7 (81.0) | 77.0 (79.1) |
 
 **What it can't reach is the moves the line doesn't have.** A park with a free
 move waiting is still the Hint on a third of FreeCell deals, because the free move
@@ -916,6 +920,53 @@ to the search, not to the line — a secondary order on the heap so equal nodes 
 the natural one first, or a cost on `g` for a park or a split run the way `idle`
 charges a pointless move before a deal — and either fails `solve-same` by design
 and owes the soak § Before you change the solver asks for.
+
+### The line, shortened
+
+A line from a fresh search has no one-move shortcut: trying every legal move from
+every position on it took nothing out of a single line over the three ranges
+below. Its detours are deeper — two cards parked and fetched back where moving
+each straight there would have done, which no single move undoes — and a search
+for those meets the moves a board offers multiplied by themselves at every step.
+So `Solver.shortened` searches from each position on the line by
+iterative deepening, each depth a pass of its own that stands on a position once,
+and holds it in three ways: **depth** (`shortcutDepth`), the longest route it
+tries; **positions** (`shortcutPositions`), how many it stands on a step; and
+**horizon** (`shortcutHorizon`), the moves ahead on the line whose cards a route
+may move. The last two hold only past the first move: a single move is tried
+every way and counted against nothing, because a re-rooted line's detour can run
+longer than any horizon, and one move past all of it is the shortcut worth most.
+The horizon is the cheap one: at depth 3 a horizon of eight found every
+shortcut a horizon of the whole line did, in half the time or less.
+
+Measured on the search's own lines — FreeCell 1–150 at the budget, Simple Simon
+1–60 and two-suit Spiderette 1–40 at `--limit 10`, 52.5, 81.0 and 79.0 moves a
+line — as moves taken out of a line, then milliseconds a line on a cloud sandbox:
+
+| Depth · positions · horizon | FreeCell | Simple Simon | Spiderette · 2 suits |
+|---|---|---|---|
+| 1 · any · the line (one move, every legal move) | 0.00 · 2 | 0.00 · 3 | 0.00 · 3 |
+| 2 · any · the line | 0.60 · 24 | 0.56 · 29 | 0.97 · 18 |
+| 3 · 2000 · the line | 1.23 · 129 | 0.93 · 127 | 1.78 · 82 |
+| 3 · any · 8 | 1.37 · 48 | 1.13 · 114 | 1.92 · 59 |
+| 3 · 300 · 6 | 1.23 · 20 | 0.98 · 28 | 1.68 · 24 |
+| **4 · 300 · 6** | **1.65 · 41** | **1.33 · 45** | **2.05 · 45** |
+| 5 · 500 · 6 | 2.10 · 62 | 1.56 · 70 | 2.68 · 67 |
+| 4 · any · 6 | 2.03 · 142 | 1.70 · 543 | 2.81 · 224 |
+
+The bold row is the one set, measured as it ships, with the first move unbounded;
+the other rows held the first move to their bounds too. It takes under 140 ms on
+any line in the three ranges, and 2.5 moves out of a 174-move Spider line in about
+170 ms, and every line it shortened there plays to a finishable board through the
+reducer, as `autoplay` plays it. What the rows say about retuning: depth buys the
+most, and an uncapped depth 4 is seconds on a Simple Simon line, so the cap on
+positions is what keeps a deeper search affordable; the horizon cuts little that
+would have landed.
+
+What it can't promise is the shortest line. A route is looked for from the
+positions the line already visits, and only a few moves long, so a line that
+wanders for ten moves comes back shorter but still wandering; finding a better
+line than that is a matter for the search, not for a pass over its answer.
 
 ## The search
 
