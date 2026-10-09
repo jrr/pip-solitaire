@@ -194,6 +194,39 @@ module Heap = {
     }
   }
 
+  // The item at `i` down past every child that now outranks it — `item` being what
+  // belongs at `i`, which may not be there yet.
+  let siftDown = (heap: t, i: int, item: int, ~priority: int => float) => {
+    let items = heap.items
+    let size = heap.size
+    let rank = priority(item)
+    let i = ref(i)
+    let sifting = ref(true)
+    while sifting.contents {
+      let left = 2 * i.contents + 1
+      let right = left + 1
+      let smallest = ref(i.contents)
+      let least = ref(rank)
+      if left < size {
+        let p = priority(items->Graph.at(left))
+        if p < least.contents {
+          smallest := left
+          least := p
+        }
+      }
+      if right < size && priority(items->Graph.at(right)) < least.contents {
+        smallest := right
+      }
+      if smallest.contents == i.contents {
+        sifting := false
+      } else {
+        place(heap, i.contents, items->Graph.at(smallest.contents))
+        i := smallest.contents
+      }
+    }
+    place(heap, i.contents, item)
+  }
+
   // The item of least priority, taken off — or -1 from an empty heap.
   let pop = (heap: t, ~priority: int => float): int =>
     if heap.size == 0 {
@@ -203,38 +236,20 @@ module Heap = {
       let top = items->Graph.at(0)
       heap.where->Graph.put(top, -1)
       heap.size = heap.size - 1
-      let size = heap.size
-      if size > 0 {
-        let item = items->Graph.at(size)
-        let rank = priority(item)
-        let i = ref(0)
-        let sifting = ref(true)
-        while sifting.contents {
-          let left = 2 * i.contents + 1
-          let right = left + 1
-          let smallest = ref(i.contents)
-          let least = ref(rank)
-          if left < size {
-            let p = priority(items->Graph.at(left))
-            if p < least.contents {
-              smallest := left
-              least := p
-            }
-          }
-          if right < size && priority(items->Graph.at(right)) < least.contents {
-            smallest := right
-          }
-          if smallest.contents == i.contents {
-            sifting := false
-          } else {
-            place(heap, i.contents, items->Graph.at(smallest.contents))
-            i := smallest.contents
-          }
-        }
-        place(heap, i.contents, item)
+      if heap.size > 0 {
+        siftDown(heap, 0, items->Graph.at(heap.size), ~priority)
       }
       top
     }
+
+  // Into the heap, or — for an item already in it — to wherever its priority now puts
+  // it, risen or fallen. What `push` is for a partly expanded node, whose rank is its
+  // next child's and so goes the other way.
+  let update = (heap: t, item: int, ~priority: int => float) => {
+    push(heap, item, ~priority)
+    let at = heap.where->Graph.at(item)
+    siftDown(heap, at, item, ~priority)
+  }
 }
 
 // --- What a caller is willing to spend ---------------------------------------
@@ -290,7 +305,12 @@ let parseTier = (token: string): option<tier> =>
 // million and a half positions — up to about thirty seconds on a cloud sandbox. A caller
 // who will wait longer, or has more room, passes a budget of its own (`solve.mjs --mb`).
 // Why each pair of heaps: `docs/solver.md` § The budget.
-type budget = {heaps: array<float>, maxBytes: int}
+// `expand` is partial expansion: how many of a grown position's children, ranked by the
+// popping heap's own priority, are pushed on each visit — the position staying on the
+// heaps at its best unpushed child's rank, to be visited again for the next batch. 0
+// pushes every child at once, which is the search as it was. A prototype, measured in
+// `docs/solver.md` § Memory tiers.
+type budget = {heaps: array<float>, maxBytes: int, expand: int}
 
 // The first weight on each board is the one almost every deal falls to; the second is
 // the one that catches most of what the first misses.
@@ -306,6 +326,7 @@ let budgetFor = (~tier: tier=Medium, s: Position.t): budget => {
   | Position.SimpleSimon => Array.length(s.stock) > 0 ? spideretteHeaps : simonHeaps
   },
   maxBytes: capOf(tier),
+  expand: 0,
 }
 
 // How long the caller is willing to wait, and the clock to measure it on. **The solver
@@ -423,6 +444,10 @@ module Search = {
     mutable grown: int,
     mutable tried: int,
     mutable closed: int,
+    // Partial expansion's own two: visits to a position already grown, for its next
+    // batch of children, and the heap that popped the position being grown now.
+    mutable revisits: int,
+    mutable popped: int,
     mutable line: option<array<Position.move>>,
     mutable moved: option<Position.t>, // a board to re-root on at the next `think`
   }
@@ -435,6 +460,12 @@ module Search = {
   let push = (search: t, node: int) =>
     search.frontiers->Array.forEachWithIndex((frontier, i) =>
       frontier->Heap.push(node, ~priority=search.priorities->Array.getUnsafe(i))
+    )
+
+  // A partly expanded node back onto every heap, at its new rank — which rose.
+  let repush = (search: t, node: int) =>
+    search.frontiers->Array.forEachWithIndex((frontier, i) =>
+      frontier->Heap.update(node, ~priority=search.priorities->Array.getUnsafe(i))
     )
 
   let waiting = (search: t): bool =>
@@ -452,8 +483,9 @@ module Search = {
         search.frontiers
         ->Array.getUnsafe(i)
         ->Heap.pop(~priority=search.priorities->Array.getUnsafe(i))
-      if node >= 0 && !Graph.isClosed(search.graph, node) {
+      if node >= 0 && !Graph.isDone(search.graph, node) {
         found := node
+        search.popped = i
       }
     }
     found.contents
@@ -478,20 +510,30 @@ module Search = {
   let make = (start: Position.t, ~budget: option<budget>=?, ~weights: option<weights>=?): t => {
     let budget = budget->Option.getOr(budgetFor(start))
     let weights = weights->Option.getOr(weightsFor(start))
-    let graph = Graph.make(~fold=foldsFrom(start), start)
+    let partial = budget.expand > 0
+    let graph = Graph.make(~fold=foldsFrom(start), ~partial, start)
     let search = {
       weights,
       budget,
       graph,
       frontiers: budget.heaps->Array.map(_ => Heap.make()),
+      // A node's own depth and heuristic — or, expanding partially, the rank columns,
+      // which are those until the node has been partly expanded.
       priorities: budget.heaps->Array.map(weight =>
-        node =>
-          Int.toFloat(graph.depth->Graph.at(node)) +. Int.toFloat(graph.h->Graph.at(node)) *. weight
+        partial
+          ? node =>
+              Int.toFloat(graph.rankDepth->Graph.at(node)) +.
+              Int.toFloat(graph.rankH->Graph.at(node)) *. weight
+          : node =>
+              Int.toFloat(graph.depth->Graph.at(node)) +.
+              Int.toFloat(graph.h->Graph.at(node)) *. weight
       ),
       turn: 0,
       grown: 0,
       tried: 0,
       closed: 0,
+      revisits: 0,
+      popped: 0,
       line: None,
       moved: None,
     }
@@ -702,22 +744,22 @@ module Search = {
         // on it and taken back — nothing copied per child.
         let board = graph.board
         Graph.standOn(graph, node, board)
-        Graph.close(graph, node, board)
-        search.grown = search.grown + 1
-        search.closed = search.closed + 1
+        if Graph.isClosed(graph, node) {
+          search.revisits = search.revisits + 1
+        } else {
+          Graph.close(graph, node, board)
+          search.grown = search.grown + 1
+          search.closed = search.closed + 1
+        }
         let g = graph.depth->Graph.at(node) + 1
         // While a deal is waiting, a move that shows the player nothing better costs
         // `idle` more than one (`shown`).
         let charges = weights.idle > 0 && Board.canDeal(board)
         let before = charges ? shown(board, sight) : 0
         let moves = Board.legalMoves(board)
-        let i = ref(0)
-        while Option.isNone(search.line) && i.contents < Array.length(moves) {
-          let move = moves->Array.getUnsafe(i.contents)
-          Board.play(board, move)
-          search.tried = search.tried + 1
-          let g =
-            charges && move != Board.deal && shown(board, sight) >= before ? g + weights.idle : g
+        let count = Array.length(moves)
+        // A child played: filed if new, reparented if seen and now cheaper, or the line.
+        let visit = (move: int, g: int) => {
           let hash = Graph.hash(board)
           let slot = Graph.slotOf(graph, board, ~hash)
           let prior = Graph.nodeAt(graph, slot)
@@ -743,8 +785,73 @@ module Search = {
             graph->Graph.file(slot, child)
             search->push(child)
           }
-          Board.takeBack(board)
-          i := i.contents + 1
+        }
+        let expand = search.budget.expand
+        if expand <= 0 {
+          let i = ref(0)
+          while Option.isNone(search.line) && i.contents < count {
+            let move = moves->Array.getUnsafe(i.contents)
+            Board.play(board, move)
+            search.tried = search.tried + 1
+            let g =
+              charges && move != Board.deal && shown(board, sight) >= before ? g + weights.idle : g
+            visit(move, g)
+            Board.takeBack(board)
+            i := i.contents + 1
+          }
+        } else {
+          // Partial expansion: every child weighed by the popping heap's priority, and
+          // the next `expand` of them in that order filed; the node stays on the heaps
+          // ranked as the first child left over, if any is.
+          let weight = search.budget.heaps->Array.getUnsafe(search.popped)
+          let gs = Array.make(~length=count, 0)
+          let hs = Array.make(~length=count, 0)
+          let keys = Array.make(~length=count, 0.)
+          let i = ref(0)
+          while Option.isNone(search.line) && i.contents < count {
+            let move = moves->Array.getUnsafe(i.contents)
+            Board.play(board, move)
+            search.tried = search.tried + 1
+            let g =
+              charges && move != Board.deal && shown(board, sight) >= before ? g + weights.idle : g
+            if Board.canFinish(board) {
+              search.line = Some(Graph.lineTo(graph, node, ~last=move))
+            } else {
+              let h = Board.heuristic(board, weights)
+              gs->Array.setUnsafe(i.contents, g)
+              hs->Array.setUnsafe(i.contents, h)
+              keys->Array.setUnsafe(i.contents, Int.toFloat(g) +. Int.toFloat(h) *. weight)
+            }
+            Board.takeBack(board)
+            i := i.contents + 1
+          }
+          if Option.isNone(search.line) {
+            let order = Array.fromInitializer(~length=count, i => i)
+            order->Array.sort((a, b) => {
+              let d = keys->Array.getUnsafe(a) -. keys->Array.getUnsafe(b)
+              d < 0. ? -1. : d > 0. ? 1. : Int.toFloat(a - b)
+            })
+            let from = graph.cursor->Graph.at(node)
+            let to = Math.Int.min(count, from + expand)
+            let r = ref(from)
+            while Option.isNone(search.line) && r.contents < to {
+              let i = order->Array.getUnsafe(r.contents)
+              let move = moves->Array.getUnsafe(i)
+              Board.play(board, move)
+              visit(move, gs->Array.getUnsafe(i))
+              Board.takeBack(board)
+              r := r.contents + 1
+            }
+            if to >= count {
+              graph.cursor->Graph.put(node, Graph.allPushed)
+            } else {
+              let i = order->Array.getUnsafe(to)
+              graph.cursor->Graph.put(node, to)
+              graph.rankDepth->Graph.put(node, gs->Array.getUnsafe(i))
+              graph.rankH->Graph.put(node, hs->Array.getUnsafe(i))
+              search->repush(node)
+            }
+          }
         }
       }
     }

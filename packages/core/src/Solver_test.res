@@ -569,9 +569,12 @@ describe("Solver", () => {
           // Room for the arrays a search starts with and not a byte more, so the first
           // column to grow fills it — far too small to find anything on a full deal.
           let empty = Solver.Search.bytes(
-            Solver.Search.make(start, ~budget={heaps: [2.], maxBytes: Solver.capOf(Solver.Small)}),
+            Solver.Search.make(
+              start,
+              ~budget={heaps: [2.], maxBytes: Solver.capOf(Solver.Small), expand: 0},
+            ),
           )
-          let budget: Solver.budget = {heaps: [2.], maxBytes: empty + 1}
+          let budget: Solver.budget = {heaps: [2.], maxBytes: empty + 1, expand: 0}
           // With time to spare, the search grows until it holds its budget and says it is
           // full.
           let (_, full) = Solver.solveWithEffort(start, ~budget)
@@ -974,7 +977,7 @@ describe("Solver", () => {
               seed := (Math.Int.imul(seed.contents, 1103515245) + 12345)->Int.bitwiseAnd(0x7fffffff)
               mod(seed.contents / 65536, n)
             }
-            let budget = {Solver.heaps: [2., 1.], maxBytes: 2_000_000_000}
+            let budget = {Solver.heaps: [2., 1.], maxBytes: 2_000_000_000, expand: 0}
             let toEnd = search => {
               let answer = ref(Solver.Search.Paused)
               while answer.contents == Solver.Search.Paused {
