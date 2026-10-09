@@ -308,8 +308,8 @@ let parseTier = (token: string): option<tier> =>
 // `expand` is partial expansion: how many of a grown position's children, ranked by the
 // popping heap's own priority, are pushed on each visit — the position staying on the
 // heaps at its best unpushed child's rank, to be visited again for the next batch. 0
-// pushes every child at once, which is the search as it was. A prototype, measured in
-// `docs/solver.md` § Memory tiers.
+// pushes every child at once. Which boards it is on for, and what it measured:
+// `docs/solver.md` § Partial expansion.
 type budget = {heaps: array<float>, maxBytes: int, expand: int}
 
 // The first weight on each board is the one almost every deal falls to; the second is
@@ -320,13 +320,19 @@ let spideretteHeaps = [2., 1.]
 
 // The budget a board gets on a device of `tier` — its heaps picked the same way its
 // weights are, and for the same reason: a stock is a longer game, not another law.
+// Partial expansion is on for the two-pack board alone: a Spider position offers about
+// twenty moves and a Spiderette one half that, so a batch of four defers most of what
+// Spider would push and little of what Spiderette would, and Spiderette paid for it in
+// time with nothing bought (`docs/solver.md` § Partial expansion).
+let spiderExpand = (s: Position.t): int => Array.length(s.stock) > 0 && s.pack.size > 52 ? 4 : 0
+
 let budgetFor = (~tier: tier=Medium, s: Position.t): budget => {
   heaps: switch s.law {
   | Position.FreeCell => freecellHeaps
   | Position.SimpleSimon => Array.length(s.stock) > 0 ? spideretteHeaps : simonHeaps
   },
   maxBytes: capOf(tier),
-  expand: 0,
+  expand: spiderExpand(s),
 }
 
 // How long the caller is willing to wait, and the clock to measure it on. **The solver
