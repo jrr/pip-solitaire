@@ -222,6 +222,7 @@ mise run solve -- --game spiderette4 --quiet 1-200    # the board that deals
 mise run solve -- --game spiderette1 --quiet 1-200    # …and its repeated packs
 mise run solve -- --game spiderette2 --quiet 1-200
 mise run solve -- --game spider2 --limit 10 --quiet 1-5   # two packs: a probe, not a record
+mise run solve -- --game spider2 --expand 0 --tier small 1-30   # …with partial expansion off, or at another batch
 mise run solve -- --limit 10 --game spiderette4 --quiet 1-200   # …as a player waits for it
 mise run solve -- --limit 10+10 --game spiderette4 147          # …and asks for ten more
 ```
@@ -1092,6 +1093,48 @@ Simple Simon 944 solved and 56 proved — every deal answered.
 **Not yet measured: the small tier on an old phone.** It is the number most likely to
 be wrong, and the reload that lowers a tier is the backstop for it being too high; a
 device named here, and what it held before it was killed, is what would settle it.
+
+### Partial expansion
+
+**The frontier is the memory, not the positions.** On two-pack Spider the search holds
+ten open nodes for every one it grows: a grown position pushes about nineteen children,
+and the search returns to one in eleven of them. At the small tier the deal-first
+position of two-suit #155070 held 2.4 million open nodes against 240,000 grown when it
+answered `Full` — 66 MB of node columns, 48 MB of two heaps holding the same nodes, and
+6 MB of positions.
+
+So on that board a grown position files only its best few children. `budget.expand` is
+the batch: every child is played and weighed by the popping heap's own priority, the
+best `expand` of them not yet filed are, and the position stays on every heap ranked as
+its best child still unfiled, to be visited again for the next batch when that child's
+turn would have come (`Solver.Search.think`, the second path; `Graph.cursor` is the one
+thing a node keeps between visits). Nothing is dropped, only deferred, so an emptied
+frontier is still a proof, and a re-root treats a half-expanded node as grown and adopts
+its unfiled children as strays. What it costs is revisits: a position is stood on again
+and its children re-weighed each time the search comes back for more.
+
+**On for Spider, at four; off everywhere else** (`Solver.spiderExpand`). Zero is the
+search as it was, to the node — the columns it needs are allocated only when it is on,
+and `solve-same` finds every board without a stock, and every Spiderette, identical to
+main's. Measured at the small tier with a 30 s wait (Node v26.9.0, cloud sandbox, up to
+four soaks at once), paired over the deals both batches solved:
+
+| Board | Deals | Batch | Solved | Mean held | Worst held | Held, paired | Time, paired |
+|---|---|---|---|---|---|---|---|
+| Spider · 2 suits | 1–30 | off | 18 | 56 MB | #28 at 140 MB, `Full` | 461 MB | 125 s |
+| Spider · 2 suits | 1–30 | 8 | 17 | 26 MB | #30 at 75 MB | 227 MB | 140 s |
+| Spider · 2 suits | 1–30 | 4 | 18 | 17 MB | #30 at 50 MB | 123 MB | 85 s |
+| Spiderette · 2 suits | 1–200 | off | 188 | 8 MB | #168 at 144 MB, `Full` | 687 MB | 139 s |
+| Spiderette · 2 suits | 1–200 | 8 | 188 | 7 MB | #120 at 119 MB | 642 MB | 197 s |
+| Spiderette · 2 suits | 1–200 | 4 | 188 | 6 MB | #168 at 91 MB | 493 MB | 187 s |
+
+Spider at four holds a third of what it did and answers a third sooner, with the same
+count solved — two deals lost to the wait and two gained, since the search takes another
+path — and no deal reaching the cap: every unsolved one is out of time, the one refusal
+a longer wait can turn into an answer. Spiderette's positions have few enough children
+that a batch of four defers little, and it paid a third more time for a quarter less
+held, so it stays off there. The batch was picked by hand from the two tried; two and
+three on Spider are not yet measured, and nor is the ten-second wait a phone gives.
 
 ### Re-rooting
 

@@ -12,6 +12,7 @@
 //   mise run solve -- --mb 2000 147         # …or a cap of your own, in megabytes
 //   mise run solve -- --reroot 1-100        # …and what following a move and its undo costs
 //   mise run solve -- --record r.json 1-100 # …and every deal's figures, for soak-summary
+//   mise run solve -- --expand 8 1-100     # partial expansion at eight children a visit, or 0 for off (`budget.expand`)
 //
 // What it's for, and what to measure with it: docs/solver.md § Measuring it. That
 // section also says what the "held" figure is and isn't. A range ends with what its
@@ -60,7 +61,7 @@ import * as Solver from "../src/Solver.res.mjs"
 import { quality, qualitySaid } from "./lib/lines.mjs"
 
 function parseArgs(argv) {
-  const opts = { seeds: [], quiet: false, game: "freecell", limits: null, tier: null, mb: null, reroot: false, record: null }
+  const opts = { seeds: [], quiet: false, game: "freecell", limits: null, tier: null, mb: null, reroot: false, record: null, expand: null }
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i]
     if (arg === "--quiet") opts.quiet = true
@@ -74,7 +75,10 @@ function parseArgs(argv) {
       opts.mb = Number(argv[++i])
       if (!(Number.isInteger(opts.mb) && opts.mb > 0)) throw new Error("--mb takes a whole number of megabytes")
     }
-    else if (arg === "--limit") {
+    else if (arg === "--expand") {
+      opts.expand = Number(argv[++i])
+      if (!(Number.isInteger(opts.expand) && opts.expand >= 0)) throw new Error("--expand takes a whole number of children a visit, 0 for all")
+    } else if (arg === "--limit") {
       opts.limits = String(argv[++i]).split("+").map(Number)
       if (!opts.limits.every((limit) => limit > 0))
         throw new Error("--limit takes a number of seconds, or several joined by +")
@@ -93,8 +97,13 @@ const opts = parseArgs(process.argv.slice(2))
 // The cap every deal is searched under: `--mb`'s, or the tier's.
 const tier = Solver.parseTier(opts.tier ?? "medium")
 const capBytes = opts.mb !== null ? opts.mb * 1e6 : Solver.capOf(tier)
-const capSaid = opts.mb !== null ? `${opts.mb} MB` : `the ${opts.tier ?? "medium"} tier, ${mb(capBytes)}`
-const budget = (position) => ({ ...Solver.budgetFor(tier, position), maxBytes: capBytes })
+const capSaid = opts.mb !== null ? `${opts.mb} MB` : `the ${opts.tier ?? "medium"} tier, ${mb(capBytes)}` + (opts.expand === null ? "" : opts.expand > 0 ? `, expanding ${opts.expand} children a visit` : ", every child at once")
+// The board's own batch (`Solver.spiderExpand`) unless `--expand` names one.
+const budget = (position) => ({
+  ...Solver.budgetFor(tier, position),
+  maxBytes: capBytes,
+  ...(opts.expand === null ? {} : { expand: opts.expand }),
+})
 const game = Game.byId(opts.game)
 if (!game) throw new Error(`no game called ${opts.game} — one of ${Game.all.map((g) => g.id).join(", ")}`)
 

@@ -63,6 +63,19 @@ type t = {
   mutable h: ints,
   mutable stored: ints, // where a closed node's position begins in `arena`; -1 while open
   mutable hashes: ints, // the first lane of `Board.hash`, which is all `table` files by
+  // Whether the search expands partially (`Solver.Search`, `budget.expand`), and so
+  // whether the three columns below are kept at all: a search that pushes every child
+  // at once has no use for them, and pays no bytes for them. Set at `make`.
+  mutable partial: bool,
+  // Partial expansion: how many of a closed node's children, ranked, have been pushed so
+  // far, or -1 once all have — the only state a node's expansion keeps between visits.
+  // 0 for a node never grown.
+  mutable cursor: ints,
+  // What the heaps order a node by: its own depth and heuristic while it is open, and its
+  // best unpushed child's once it has been partly expanded, so that it is popped again
+  // only when that child would be. Mirrors `depth` and `h` while the flag is off.
+  mutable rankDepth: ints,
+  mutable rankH: ints,
   mutable arena: ints,
   mutable arenaSize: int,
   mutable table: ints, // node indices, open-addressed by `hashes`; -1 is an empty slot
@@ -74,11 +87,12 @@ type t = {
 
 // Empty, and holding nothing until something is added: a search whose start already
 // finishes never grows, and says so by holding no bytes.
-let make = (~fold: bool=false, start: Position.t): t => {
+let make = (~fold: bool=false, ~partial: bool=false, start: Position.t): t => {
   let nodes = 0
   {
     start,
     fold,
+    partial,
     stock: start.stock,
     board: Board.load(~fold, start),
     probe: Board.load(~fold, start),
@@ -89,6 +103,9 @@ let make = (~fold: bool=false, start: Position.t): t => {
     h: Int16Array.fromLength(nodes),
     stored: Int32Array.fromLength(nodes),
     hashes: Int32Array.fromLength(nodes),
+    cursor: Int16Array.fromLength(nodes),
+    rankDepth: Int16Array.fromLength(nodes),
+    rankH: Int16Array.fromLength(nodes),
     arena: Uint8Array.fromLength(0),
     arenaSize: 0,
     table: Int32Array.fromLength(0),
@@ -109,6 +126,9 @@ let bytes = (graph: t): int =>
   TypedArray.byteLength(graph.h) +
   TypedArray.byteLength(graph.stored) +
   TypedArray.byteLength(graph.hashes) +
+  TypedArray.byteLength(graph.cursor) +
+  TypedArray.byteLength(graph.rankDepth) +
+  TypedArray.byteLength(graph.rankH) +
   TypedArray.byteLength(graph.arena) +
   TypedArray.byteLength(graph.table)
 
@@ -120,6 +140,20 @@ let isOpen = -1
 let unkept = -2
 
 let isClosed = (graph: t, node: int): bool => graph.stored->at(node) != isOpen
+
+// Whether every child of a node is in the graph: nothing a heap should pop it for again.
+// A closed node under full expansion is done the moment it is grown; under partial
+// expansion it is done once its cursor has passed its last child.
+let allPushed = -1
+let isDone = (graph: t, node: int): bool =>
+  graph.partial ? graph.cursor->at(node) == allPushed : isClosed(graph, node)
+
+// Order a node by its own depth and heuristic — an open node's rank.
+let rankSelf = (graph: t, node: int) =>
+  if graph.partial {
+    graph.rankDepth->put(node, graph.depth->at(node))
+    graph.rankH->put(node, graph.h->at(node))
+  }
 
 // How many closed nodes in a row may go without a position of their own. Each one
 // kept costs a whole board in `arena`, more than all its columns besides; each one
@@ -137,6 +171,11 @@ let add = (graph: t, ~parent: int, ~move: int, ~depth: int, ~h: int, ~hash: int)
     graph.h = widened(graph.h, Int16Array.fromLength, length)
     graph.stored = widened(graph.stored, Int32Array.fromLength, length)
     graph.hashes = widened(graph.hashes, Int32Array.fromLength, length)
+    if graph.partial {
+      graph.cursor = widened(graph.cursor, Int16Array.fromLength, length)
+      graph.rankDepth = widened(graph.rankDepth, Int16Array.fromLength, length)
+      graph.rankH = widened(graph.rankH, Int16Array.fromLength, length)
+    }
   }
   graph.parent->put(node, parent)
   graph.move->put(node, move)
@@ -145,6 +184,10 @@ let add = (graph: t, ~parent: int, ~move: int, ~depth: int, ~h: int, ~hash: int)
   graph.stored->put(node, isOpen)
   graph.hashes->put(node, hash)
   graph.size = node + 1
+  if graph.partial {
+    graph.cursor->put(node, 0)
+    rankSelf(graph, node)
+  }
   node
 }
 
@@ -156,6 +199,7 @@ let reparent = (graph: t, node: int, ~parent: int, ~move: int, ~depth: int) => {
   graph.parent->put(node, parent)
   graph.move->put(node, move)
   graph.depth->put(node, depth)
+  rankSelf(graph, node)
 }
 
 // Pack a closed node's position, as `b` stands, into the arena.
@@ -724,6 +768,10 @@ let collect = (graph: t, ~root: int, walked: walked, ~reopened: ints): option<in
     let h = Int16Array.fromLength(count)
     let stored = Int32Array.fromLength(count)
     let hashes = Int32Array.fromLength(count)
+    let columns = graph.partial ? count : 0
+    let cursorOf = Int16Array.fromLength(columns)
+    let rankDepth = Int16Array.fromLength(columns)
+    let rankH = Int16Array.fromLength(columns)
     let arena = Uint8Array.fromLength(arenaSize.contents)
     let cursor = ref(0)
     for node in 0 to size - 1 {
@@ -746,6 +794,14 @@ let collect = (graph: t, ~root: int, walked: walked, ~reopened: ints): option<in
         } else {
           stored->put(to, offset)
         }
+
+        // Every child of a kept closed node is now in the graph — the walk adopted the
+        // strays — so none is left to push; an open node starts its expansion over.
+        if graph.partial {
+          rankDepth->put(to, graph.depth->at(node))
+          rankH->put(to, graph.h->at(node))
+          cursorOf->put(to, offset == isOpen ? 0 : allPushed)
+        }
       }
     }
     graph.size = count
@@ -755,6 +811,9 @@ let collect = (graph: t, ~root: int, walked: walked, ~reopened: ints): option<in
     graph.h = h
     graph.stored = stored
     graph.hashes = hashes
+    graph.cursor = cursorOf
+    graph.rankDepth = rankDepth
+    graph.rankH = rankH
     graph.arena = arena
     graph.arenaSize = cursor.contents
     // The smallest table `file` would not rehash at once, holding every node.
@@ -783,7 +842,7 @@ let collect = (graph: t, ~root: int, walked: walked, ~reopened: ints): option<in
 // Let go of everything, and stand on `start` — `make` again, into the graph already
 // made, for a search whose closures read this one. `fold` is the new graph's.
 let clear = (graph: t, ~fold: bool, start: Position.t) => {
-  let fresh = make(~fold, start)
+  let fresh = make(~fold, ~partial=graph.partial, start)
   graph.start = fresh.start
   graph.fold = fresh.fold
   graph.stock = fresh.stock
@@ -796,6 +855,9 @@ let clear = (graph: t, ~fold: bool, start: Position.t) => {
   graph.h = fresh.h
   graph.stored = fresh.stored
   graph.hashes = fresh.hashes
+  graph.cursor = fresh.cursor
+  graph.rankDepth = fresh.rankDepth
+  graph.rankH = fresh.rankH
   graph.arena = fresh.arena
   graph.arenaSize = 0
   graph.table = fresh.table
