@@ -970,17 +970,19 @@ let solve = (start: Position.t, ~budget: option<budget>=?, ~patience: option<pat
 
 // --- The line, shortened -----------------------------------------------------
 // A line can take the long way between two of its own positions: a run carried onto
-// one 3 and then onto the other, where one move would have put it there. A fresh
-// search seldom does it, keeping one node per position, but it promised nothing about
-// length — and a line read back through a re-rooted graph runs through parents chosen
-// before the root moved, so a detour is where the route happens to go. Each hint is
-// legal; the pair reads as the solver not knowing what it is doing, and `autoplay`
-// plays the extra move.
+// one 3 and then onto the other, where one move would have put it there. A line read
+// back through a re-rooted graph runs through parents chosen before the root moved, so
+// a detour is where the route happens to go; and weighted best-first promised nothing
+// about length, so a fresh search's line has detours of its own, two to four moves
+// deep. Each hint is legal; the pair reads as the solver not knowing what it is doing,
+// and `autoplay` plays the extra moves.
 //
-// So a line is shortened before a driver sees it: from each position on it, every
-// legal move is tried, and one that lands on a position further down the line
-// replaces the moves between — as does a position the line comes back to. About one
-// move generation a step, which is nothing beside the search.
+// So a line is shortened before a driver sees it: from each position on it, a small
+// search looks for a route of a few moves that lands on a position further down the
+// line than the route is long, and the best one found replaces the moves between — as
+// does a position the line comes back to. The moves a board offers multiply at every
+// step of that search, so it is held in by the three bounds below; what each buys and
+// costs is `docs/solver.md` § The line, shortened. Retune them there.
 //
 // **It runs where a line is handed over — `plan`, `autoplayedOf`, `planSteps`, through
 // `polished` — and not in the search**: `solve` and `solveOn` hand back the line the
@@ -992,6 +994,15 @@ let solve = (start: Position.t, ~budget: option<budget>=?, ~patience: option<pat
 // the same piles in another order are another position; with none they are one, and the
 // rest of the line — recorded against the layout the line reached — is then said against
 // the one the shortcut reached (`Graph.translate`), as a re-rooted graph's line is.
+
+// From each position on a line: routes of up to `shortcutDepth` moves, standing on at
+// most `shortcutPositions` positions between them, and — past a single move — moving
+// only cards the line itself moves in its next `shortcutHorizon` moves. A route that lands on the line has
+// left every card where the line leaves it, so a card the line doesn't move soon is one
+// the route would have to put back.
+let shortcutDepth = 4
+let shortcutPositions = 300
+let shortcutHorizon = 6
 
 let shortened = (start: Position.t, line: array<Position.move>): array<Position.move> => {
   let count = Array.length(line)
@@ -1036,29 +1047,78 @@ let shortened = (start: Position.t, line: array<Position.move>): array<Position.
           }
         )
       }
+    // The cards each move on the line lifts, and a deal as -1.
+    let lifted = line->Array.mapWithIndex((move, k) =>
+      switch move {
+      | Position.Deal => [-1]
+      | Position.Play({card, source: Position.FromCell(_)}) => [card]
+      | Position.Play({n, source: Position.FromColumn(col)}) =>
+        let pile = (positions->Array.getUnsafe(k)).casc->Array.getUnsafe(col)
+        pile->Array.slice(~start=Array.length(pile) - n, ~end=Array.length(pile))
+      }
+    )
     let shorter = []
     let real = ref(start) // the position the shorter line has reached, in its own layout
     let i = ref(0) // where on the line that is
+    let route = [] // the moves the search below has played from `here`
+    let wanted: Set.t<int> = Set.make() // the cards it may move, and -1 when it may deal
     while i.contents < count {
       let here = real.contents
       Board.reload(board, here)
-      // The furthest the line can be rejoined from here: by no move, if the line comes
-      // back to this position, or by one — further down than its own next move, or there
-      // is nothing to gain.
-      let furthest = ref(landing(~after=i.contents))
+      // The best way back onto the line from here, as how many moves it saves: by no
+      // move, if the line comes back to this position, or by a route of `d` moves to a
+      // position more than `d` further down. Shallow routes are tried first, and a deeper
+      // one has to save more to replace one.
+      let rejoined = landing(~after=i.contents)
+      let best = ref(rejoined > i.contents ? rejoined - i.contents : 0)
+      let furthest = ref(rejoined)
       let via = ref(None)
-      Board.legalMoves(board)->Array.forEach(move => {
-        Board.play(board, move)
-        let there = landing(~after=i.contents + 1)
-        if there > furthest.contents {
-          furthest := there
-          via := Some((Board.toMove(move), Board.toPosition(board)))
-        }
-        Board.takeBack(board)
-      })
+      let stood = ref(0)
+      wanted->Set.clear
+      for k in i.contents to Math.Int.min(count, i.contents + shortcutHorizon) - 1 {
+        lifted->Array.getUnsafe(k)->Array.forEach(card => wanted->Set.add(card))
+      }
+      // Each depth is its own pass, and within one a position is stood on again only by a
+      // shorter route than the last; `seen` holds the hashes a pass has stood on, at the
+      // depth it stood there. The first pass tries every move and counts none, as cheap
+      // as one move generation: a re-rooted line's detour can be longer than the horizon,
+      // and one move past it all is the shortcut worth most.
+      let rec look = (~depth: int, ~seen: Map.t<int, int>) =>
+        Board.legalMoves(board)->Array.forEach(move =>
+          if (
+            depth == 1 ||
+              (stood.contents < shortcutPositions &&
+                wanted->Set.has(move == Board.deal ? -1 : mod(move, 64)))
+          ) {
+            Board.play(board, move)
+            route->Array.push(move)
+            let d = Array.length(route)
+            let hash = Graph.hash(board)
+            if seen->Map.get(hash)->Option.mapOr(true, at => d < at) {
+              seen->Map.set(hash, d)
+              if depth > 1 {
+                stood := stood.contents + 1
+              }
+              let there = landing(~after=i.contents + d)
+              if there - i.contents - d > best.contents {
+                best := there - i.contents - d
+                furthest := there
+                via := Some((route->Array.map(Board.toMove), Board.toPosition(board)))
+              }
+              if d < depth {
+                look(~depth, ~seen)
+              }
+            }
+            route->Array.pop->ignore
+            Board.takeBack(board)
+          }
+        )
+      for depth in 1 to shortcutDepth {
+        look(~depth, ~seen=Map.make())
+      }
       switch via.contents {
-      | Some((move, landed)) =>
-        shorter->Array.push(move)
+      | Some((moves, landed)) =>
+        shorter->Array.pushMany(moves)
         real := landed
         i := furthest.contents
       | None if furthest.contents > i.contents => i := furthest.contents

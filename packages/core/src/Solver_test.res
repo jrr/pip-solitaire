@@ -169,9 +169,8 @@ describe("Solver", () => {
     }
   })
 
-  // The shortening a line gets on its way to a driver. The line is deal #1's, as the
-  // search found it; a detour is built into it by hand, since a fresh search seldom
-  // leaves one.
+  // The shortening a line gets on its way to a driver. The line is deal #1's, shortened
+  // once; a detour is built into it by hand, so the test says which one comes out.
   describe("a line, shortened", () => {
     let position = Position.ofGameState(~game, opening)->Option.getOrThrow
     let line = Solver.solve(position)->Option.getOrThrow
@@ -247,6 +246,49 @@ describe("Solver", () => {
           | Ok(reached) => expect(Reducer.canFinish(~game, reached))->toBe(true)
           }
         }
+      },
+    )
+
+    test(
+      "a four-move detour that only two moves cover comes out as those two",
+      () => {
+        let id = code => Position.idOfCode(code)->Option.getOrThrow
+        let posed: Position.t = {
+          law: Position.FreeCell,
+          pack: Position.standardPack,
+          cells: [-1, -1, -1, -1],
+          found: [0, 0, 0, 0],
+          casc: [
+            [id("KS"), id("5H")],
+            [id("KH"), id("6S")],
+            [id("KC"), id("8D")],
+            [id("KD"), id("9C")],
+          ],
+          down: [0, 0, 0, 0],
+          stock: [],
+        }
+        let play = (code, source, destination) => Position.Play({
+          n: 1,
+          source,
+          destination,
+          card: id(code),
+        })
+        // Both cards parked, then both fetched: no single move from any position on it
+        // reaches a later one, since every one of them has a card in a cell that the
+        // position after one move doesn't.
+        let line = [
+          play("5H", FromColumn(0), ToCell(0)),
+          play("8D", FromColumn(2), ToCell(1)),
+          play("5H", FromCell(0), ToColumn(1)),
+          play("8D", FromCell(1), ToColumn(3)),
+        ]
+        let shorter = Solver.shortened(posed, line)
+        expect(shorter)->toEqual([
+          play("5H", FromColumn(0), ToColumn(1)),
+          play("8D", FromColumn(2), ToColumn(3)),
+        ])
+        let end = line->Array.reduce(posed, Position.applyMove)
+        expect(shorter->Array.reduce(posed, Position.applyMove))->toEqual(end)
       },
     )
 
