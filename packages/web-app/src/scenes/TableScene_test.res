@@ -23,6 +23,13 @@
   globalThis.fetch = () => Promise.reject(new Error("no network in jsdom"))
 `)
 
+// jsdom has no pointer capture, and a press on any cascade card takes hold of a run,
+// which captures the pointer: a capture that does nothing lets a test's press be one.
+%%raw(`
+  globalThis.Element.prototype.setPointerCapture ??= () => {}
+  globalThis.Element.prototype.releasePointerCapture ??= () => {}
+`)
+
 // The stub above reports reduced motion for the whole file, which is what keeps every
 // flight within jsdom's reach — and it is also what sends a win straight to the panel,
 // so no other suite here pays for a sprite build. The cascade tests borrow the other

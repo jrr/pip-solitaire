@@ -318,6 +318,21 @@ describe("TableLayout — laying out a fan", () => {
   })
 })
 
+describe("TableLayout — holding a run above the finger", () => {
+  test("holds a finger's run a fingertip clear, whatever the board's scale", () => {
+    expect(TableLayout.grabClearance(~finger=true, ~scale=TableLayout.minScale))->toBe(
+      TableLayout.fingertip,
+    )
+    expect(TableLayout.grabClearance(~finger=true, ~scale=TableLayout.maxScale))->toBe(
+      TableLayout.fingertip,
+    )
+  })
+
+  test("holds a cursor's run with the pointer inside the index strip", () => {
+    expect(TableLayout.grabClearance(~finger=false, ~scale=1.))->toBe(TableLayout.fanStep /. 2.)
+  })
+})
+
 describe("TableLayout — the drop hit-test", () => {
   let zone: TableLayout.rect = {left: 100., top: 100., width: 88., height: 124.}
   let card = (~left, ~top): TableLayout.rect => {left, top, width: 80., height: 112.}
