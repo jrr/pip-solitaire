@@ -166,3 +166,33 @@ test("the almost-won board names its deal on the menu too", async ({ page }) => 
   await page.getByRole("button", { name: "Open menu" }).click()
   await expect(menuSeed(page)).toHaveText(`#${ALMOST_WON_DEAL}`)
 })
+
+test("the share sheet gets the message and link as one text, with no url field", async ({
+  page,
+}) => {
+  // The sheet is installed as a recorder, as `share-deal.spec.mjs` does; installing it
+  // is what makes `deliver` take the sheet's route instead of the clipboard's. A `url`
+  // field must not travel with the message: macOS's sheet answers Copy with that field
+  // alone, so the message would never reach the clipboard of whoever copies it.
+  await page.addInitScript(() => {
+    window.__shared = []
+    navigator.share = (data) => {
+      window.__shared.push(data)
+      return Promise.resolve()
+    }
+  })
+  await page.goto("/?game=freecell&state=almost-won&animate=off")
+  await playTheWinningMove(page)
+  await expect(page.locator(".win-overlay")).toHaveCount(1)
+
+  await shareButton(page).click()
+  await expect(shareStatus(page)).toHaveText("Link shared.")
+
+  const shared = await page.evaluate(() => window.__shared)
+  expect(shared).toHaveLength(1)
+  const [payload] = shared
+  expect(payload.url).toBeUndefined()
+  expect(payload.text).toContain(`♣️♥️♠️♦️ Pip FreeCell #${ALMOST_WON_DEAL}`)
+  const url = new URL(payload.text.slice(payload.text.indexOf("http")))
+  expect(url.search).toBe(`?seed=${ALMOST_WON_DEAL}`)
+})
