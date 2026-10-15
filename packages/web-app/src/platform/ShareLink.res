@@ -177,9 +177,11 @@ let copy = async (text: string): outcome =>
 // with a player who opened the sheet and thought better of it. Both land on "the URL
 // is on your clipboard", which beats inspecting `DOMException` names to tell them apart.
 //
-// Composing `~text` and `url` is this function's job, not the caller's, because the
-// two routes want the URL in different places: the sheet takes it as its own field and
-// lets the OS compose, the clipboard needs it appended.
+// Composing `~text` and `url` is this function's job, not the caller's. With text, both
+// routes get one string with the URL appended, and the sheet's `url` field is left out:
+// macOS's share sheet answers Copy with the `url` field alone whenever there is one, so
+// a message sent alongside it never reaches the clipboard. With no text the URL is all
+// there is, and the sheet gets it as a URL, which is what AirDrop and Reading List act on.
 //
 // **`~text` has no fallback, deliberately.** A share with nothing to say is a bare
 // link, and a sentence invented down here could only name a game — which is the one
@@ -187,9 +189,15 @@ let copy = async (text: string): outcome =>
 // between the two shares: a victory is a boast and brings `victoryMessage`, a deal is
 // an invitation and brings only the URL its `?game=` already names.
 let deliver = async (~text: option<string>=?, url: string): outcome => {
+  let composed = text->Option.map(message => message ++ "\n\n" ++ url)
   let shared = if canShare {
     try {
-      await navigatorShare(makeShareData(~title="Pip", ~text?, ~url))
+      await navigatorShare(
+        switch composed {
+        | Some(text) => makeShareData(~title="Pip", ~text)
+        | None => makeShareData(~title="Pip", ~url)
+        },
+      )
       true
     } catch {
     | _ => false
@@ -200,12 +208,7 @@ let deliver = async (~text: option<string>=?, url: string): outcome => {
   if shared {
     Shared
   } else {
-    await copy(
-      switch text {
-      | Some(message) => message ++ "\n\n" ++ url
-      | None => url
-      },
-    )
+    await copy(composed->Option.getOr(url))
   }
 }
 
