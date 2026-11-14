@@ -1215,6 +1215,34 @@ describe("Game", () => {
     )
 
     test(
+      "a run whose King still lies face down is not complete, and stays on its cascade",
+      () => {
+        // ♠K face down, ♠Q→♠2 built on the Queen dealt over it; the Ace arrives last.
+        let ace = {suit: Spades, rank: Ace}
+        let run = kingToAce(Spades)
+        let state = posed(~down=[1], [run->Array.slice(~start=0, ~end=12), [ace]])
+        let session = Session.open_(
+          ~clock=() => 0.,
+          ~options=Options.default,
+          ~seed=None,
+          board,
+          state,
+        )
+        let (moved, _) = Session.dispatch(
+          ~clock=() => 0.,
+          session,
+          Move({card: ace, to: ToPile(cascade(0))}),
+        )
+        let after = Session.present(moved)
+        expect(GameState.cardsInPile(after, cascade(0)))->toEqual(run)
+        expect(foundations->Array.map(i => Array.length(GameState.cardsInPile(after, i))))->toEqual(
+          foundations->Array.map(_ => 0),
+        )
+        expect(GameState.isFaceDown(after, {suit: Spades, rank: King}))->toBe(true)
+      },
+    )
+
+    test(
       "a run lifted whole, or collected, turns over the card it was resting on — and only then",
       () => {
         // ♣K face down under a three-card spade run: lifting the run exposes it.
