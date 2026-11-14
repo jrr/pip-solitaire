@@ -40,6 +40,8 @@ type model = {
   foundationReturn: bool,
   // "Deal despite empty columns": `Options.allowDealWithEmptyColumns`.
   emptyColumnDeal: bool,
+  // "Blind runs": `Options.allowCollectFaceDown`.
+  faceDownCollect: bool,
   // "Reorder columns": `Options.allowColumnReorder`. A hidden setting, since the board
   // has no gesture for a reorder yet — only the console's `movecol` makes one.
   columnReorder: bool,
@@ -75,6 +77,7 @@ type msg =
   | ToggleAutoCollect
   | ToggleFoundationReturn
   | ToggleEmptyColumnDeal
+  | ToggleFaceDownCollect
   | ToggleColumnReorder
   | ToggleCardTilt
   | WiggleOff // the Wiggle Waggle switch turned off — stop listening, square up
@@ -130,6 +133,7 @@ let liveEnv = (
         autoCollect: model.autoCollect,
         allowFoundationReturn: model.foundationReturn,
         allowDealWithEmptyColumns: model.emptyColumnDeal,
+        allowCollectFaceDown: model.faceDownCollect,
         allowColumnReorder: model.columnReorder,
       }
     tiltEnabled := model.cardTilt
@@ -147,6 +151,7 @@ let liveEnv = (
     Preferences.saveAutoCollect(model.autoCollect)
     Preferences.saveFoundationReturn(model.foundationReturn)
     Preferences.saveEmptyColumnDeal(model.emptyColumnDeal)
+    Preferences.saveFaceDownCollect(model.faceDownCollect)
     Preferences.saveColumnReorder(model.columnReorder)
     Preferences.saveCardTilt(model.cardTilt)
     Preferences.saveWantsShake(model.wantsShake)
@@ -167,6 +172,7 @@ let init = (): model => {
     autoCollect: options.autoCollect,
     foundationReturn: options.allowFoundationReturn,
     emptyColumnDeal: options.allowDealWithEmptyColumns,
+    faceDownCollect: options.allowCollectFaceDown,
     columnReorder: options.allowColumnReorder,
     cardTilt: Preferences.loadCardTilt(),
     wiggle: Motion.initialState(~wantsShake),
@@ -219,6 +225,17 @@ let update = (env: env, msg, model) =>
   // deal reads the flag at the moment of the tap.
   | ToggleEmptyColumnDeal =>
     let model = {...model, emptyColumnDeal: !model.emptyColumnDeal}
+    (
+      model,
+      () => {
+        env.publish(model)
+        env.persist(model)
+      },
+    )
+  // Nothing to redraw here either: a run already standing stays until the next move
+  // settles the board, which is when the flag is read.
+  | ToggleFaceDownCollect =>
+    let model = {...model, faceDownCollect: !model.faceDownCollect}
     (
       model,
       () => {
@@ -416,6 +433,12 @@ let make = ({model, dispatch, onClose, onBackToMenu, onOpenDebug}) => <>
         desc="Empty spaces do not prevent dealing from stock."
         on={model.emptyColumnDeal}
         onToggle={() => dispatch(ToggleEmptyColumnDeal)}
+      />
+      <MenuToggleRow
+        label="Blind runs"
+        desc="A run may complete with face-down cards."
+        on={model.faceDownCollect}
+        onToggle={() => dispatch(ToggleFaceDownCollect)}
       />
       {
         // Hidden like the settings above, and as they are: a hidden row leaves its

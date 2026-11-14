@@ -170,7 +170,8 @@ let save = (s: t): SaveState.t => {
 // foundation moves, so there is no `finish` to stand aside for.
 let settle = (~game: Game.t, ~options: Options.t, state: GameState.t): (GameState.t, array<card>) =>
   switch game.collect {
-  | Game.CompleteRuns => Reducer.autoCollect(~game, state)
+  | Game.CompleteRuns =>
+    Reducer.autoCollect(~game, ~collectFaceDown=options.allowCollectFaceDown, state)
   | Game.SafeCards =>
     if options.autoCollect && !Reducer.canFinish(~game, state) {
       Reducer.autoCollect(~game, state)

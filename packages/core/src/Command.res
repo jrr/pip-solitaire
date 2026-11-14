@@ -871,7 +871,7 @@ let boardHelp: array<helpRow> = [
 // two front ends have the same settings, and the CLI has no other control for any of them.
 let driverHelp: array<helpRow> = [
   ("set", "show the driver settings"),
-  ("set <setting> on|off", "change one (autocollect, reorder, worryback, gapdeal)"),
+  ("set <setting> on|off", "change one (autocollect, reorder, worryback, gapdeal, blindrun)"),
   ("set memory <size>", "what the solver may hold: small, medium, large or auto"),
 ]
 

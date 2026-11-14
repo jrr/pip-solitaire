@@ -18,6 +18,7 @@
 let autoCollectKey = "pip.autoCollect"
 let foundationReturnKey = "pip.foundationReturn"
 let emptyColumnDealKey = "pip.emptyColumnDeal"
+let faceDownCollectKey = "pip.faceDownCollect"
 let columnReorderKey = "pip.columnReorder"
 let cardTiltKey = "pip.cardTilt"
 let wantsShakeKey = "pip.wantsShake"
@@ -76,12 +77,17 @@ let load = (): Options.t => {
     emptyColumnDealKey,
     ~fallback=Options.default.allowDealWithEmptyColumns,
   )
+  let allowCollectFaceDown = loadFlag(
+    faceDownCollectKey,
+    ~fallback=Options.default.allowCollectFaceDown,
+  )
   let allowColumnReorder = loadFlag(columnReorderKey, ~fallback=Options.default.allowColumnReorder)
   {
     autoCollect,
     allowColumnReorder,
     allowFoundationReturn,
     allowDealWithEmptyColumns,
+    allowCollectFaceDown,
     memory: loadMemory(),
   }
 }
@@ -92,6 +98,7 @@ let load = (): Options.t => {
 let saveAutoCollect = (enabled: bool) => saveFlag(autoCollectKey, enabled)
 let saveFoundationReturn = (enabled: bool) => saveFlag(foundationReturnKey, enabled)
 let saveEmptyColumnDeal = (enabled: bool) => saveFlag(emptyColumnDealKey, enabled)
+let saveFaceDownCollect = (enabled: bool) => saveFlag(faceDownCollectKey, enabled)
 let saveColumnReorder = (enabled: bool) => saveFlag(columnReorderKey, enabled)
 
 let save = (options: Options.t) => {
@@ -99,6 +106,7 @@ let save = (options: Options.t) => {
   saveAutoCollect(options.autoCollect)
   saveFoundationReturn(options.allowFoundationReturn)
   saveEmptyColumnDeal(options.allowDealWithEmptyColumns)
+  saveFaceDownCollect(options.allowCollectFaceDown)
   saveColumnReorder(options.allowColumnReorder)
 }
 

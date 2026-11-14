@@ -579,6 +579,25 @@ describe("Position with cards face down", () => {
     }
   }
 
+  test("a run whose King lies face down stays put in both packed models, as in the reducer", () => {
+    // ♠K face down under ♠Q→♠A: thirteen cards that read as a run by rank and suit.
+    let game = Game.spiderette1
+    let run = Cards.ranks->Array.toReversed->Array.map(rank => {suit: Spades, rank})
+    let state = posed(game, ~columns=[run], ~down=[1])
+    let (settled, moved) = Reducer.autoCollect(~game, state)
+    expect(moved)->toEqual([])
+    expect(GameState.equal(settled, state))->toBe(true)
+    switch Position.ofGameState(~game, state) {
+    | None => expect("a board the model reads")->toBe("declined")
+    | Some(position) =>
+      let key = Position.key(position)
+      let board = Board.load(position)
+      Board.autoCollect(board)
+      expect(Position.key(Board.toPosition(board)))->toBe(key)
+      expect(Position.key(Position.autoCollect(position)))->toBe(key)
+    }
+  })
+
   test("the cards under the boundary are packed like any other, and counted", () => {
     let game = hiding(Game.miniDeal(~seed=1), ~under=1)
     let opening = GameState.initial(game)
