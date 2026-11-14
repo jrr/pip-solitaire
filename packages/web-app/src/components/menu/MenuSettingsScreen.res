@@ -40,7 +40,7 @@ type model = {
   foundationReturn: bool,
   // "Deal despite empty columns": `Options.allowDealWithEmptyColumns`.
   emptyColumnDeal: bool,
-  // "Collect half-hidden runs": `Options.allowCollectFaceDown`.
+  // "Blind runs": `Options.allowCollectFaceDown`.
   faceDownCollect: bool,
   // "Reorder columns": `Options.allowColumnReorder`. A hidden setting, since the board
   // has no gesture for a reorder yet — only the console's `movecol` makes one.
@@ -435,8 +435,8 @@ let make = ({model, dispatch, onClose, onBackToMenu, onOpenDebug}) => <>
         onToggle={() => dispatch(ToggleEmptyColumnDeal)}
       />
       <MenuToggleRow
-        label="Collect half-hidden runs"
-        desc="A finished run goes home even with cards still face down."
+        label="Blind runs"
+        desc="A run may complete with face-down cards."
         on={model.faceDownCollect}
         onToggle={() => dispatch(ToggleFaceDownCollect)}
       />

@@ -193,19 +193,19 @@ test("the empty-column deal writes through to storage, and survives the reload",
   await expect(toggle(page, "Deal despite empty columns")).toHaveAttribute("aria-checked", "true")
 })
 
-test("half-hidden run collection writes through to storage, and survives the reload", async ({
+test("blind runs write through to storage, and survives the reload", async ({
   page,
 }) => {
   // What the flip does to a run is `Core_test`'s; this is the switch's reach.
   await openBoardAndSettings(page)
-  await expect(toggle(page, "Collect half-hidden runs")).toHaveAttribute("aria-checked", "false")
-  await toggle(page, "Collect half-hidden runs").click()
+  await expect(toggle(page, "Blind runs")).toHaveAttribute("aria-checked", "false")
+  await toggle(page, "Blind runs").click()
   expect(await stored(page, "pip.faceDownCollect")).toBe("true")
 
   await page.reload()
   await settleBoard(page)
   await openSettings(page)
-  await expect(toggle(page, "Collect half-hidden runs")).toHaveAttribute("aria-checked", "true")
+  await expect(toggle(page, "Blind runs")).toHaveAttribute("aria-checked", "true")
 })
 
 test("column reordering is a hidden house rule, and writes through like the others", async ({

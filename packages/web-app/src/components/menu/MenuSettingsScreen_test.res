@@ -137,7 +137,7 @@ describe("MenuSettingsScreen", () => {
       screen
       ->findAll("[aria-label=\"House rules\"] .menu-row--switch .menu-row__label")
       ->Array.map(text),
-    )->toEqual(["Pull cards back down", "Deal despite empty columns", "Collect half-hidden runs"])
+    )->toEqual(["Pull cards back down", "Deal despite empty columns", "Blind runs"])
   })
 
   test("keeps column reordering among the hidden settings, since the board can't do it yet", () => {
@@ -149,7 +149,7 @@ describe("MenuSettingsScreen", () => {
     expect(houseRules(model(~revealed=true)))->toEqual([
       "Pull cards back down",
       "Deal despite empty columns",
-      "Collect half-hidden runs",
+      "Blind runs",
       "Reorder columns",
     ])
     let (screen, sent) = renderRecording(~model=model(~revealed=true, ~columnReorder=true))
@@ -172,7 +172,7 @@ describe("MenuSettingsScreen", () => {
       ->Array.map(text)
     expect(houseRulesOn(model(~foundationReturn=true)))->toEqual(["Pull cards back down"])
     expect(houseRulesOn(model(~emptyColumnDeal=true)))->toEqual(["Deal despite empty columns"])
-    expect(houseRulesOn(model(~faceDownCollect=true)))->toEqual(["Collect half-hidden runs"])
+    expect(houseRulesOn(model(~faceDownCollect=true)))->toEqual(["Blind runs"])
     let (screen, sent) = renderRecording()
     screen->findAll("[aria-label=\"House rules\"] .menu-row--switch")->Array.forEach(click)
     expect(sent)->toEqual([
@@ -277,16 +277,13 @@ describe("MenuSettingsScreen.update", () => {
     },
   )
 
-  test(
-    "writes half-hidden collection into the live options and storage, and asks the board nothing",
-    () => {
-      // Read when a move settles; a run already standing waits for the next one.
-      let (next, log, saved) = run(~model=model(), ToggleFaceDownCollect)
-      expect(next.faceDownCollect)->toBe(true)
-      expect(log)->toEqual(["publish", "persist"])
-      expect(saved->Option.map(s => s.faceDownCollect))->toEqual(Some(true))
-    },
-  )
+  test("writes blind runs into the live options and storage, and asks the board nothing", () => {
+    // Read when a move settles; a run already standing waits for the next one.
+    let (next, log, saved) = run(~model=model(), ToggleFaceDownCollect)
+    expect(next.faceDownCollect)->toBe(true)
+    expect(log)->toEqual(["publish", "persist"])
+    expect(saved->Option.map(s => s.faceDownCollect))->toEqual(Some(true))
+  })
 
   test(
     "writes column reordering into the live options and storage, and asks the board nothing",
