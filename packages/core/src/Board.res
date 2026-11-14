@@ -414,7 +414,7 @@ let collectSafeCards = (b: t) => {
 let topsCompleteRun = (b: t, col: int): bool => {
   let ranks = b.pack.ranks
   let depth = b.height->Array.getUnsafe(col)
-  depth >= ranks &&
+  depth - ranks >= b.down->Array.getUnsafe(col) &&
   Position.rankOf(cardAt(b, ~col, ~i=depth - ranks)) == ranks && {
     let ok = ref(true)
     let i = ref(depth - ranks + 1)

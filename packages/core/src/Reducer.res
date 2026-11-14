@@ -669,7 +669,15 @@ let collectSafeCards = (~game: Game.t, state: GameState.t): (GameState.t, array<
 //
 // No foundation free means the run stays where it is — a board with fewer
 // foundations than suits would have to live with that, and none here does.
-let collectRuns = (~game: Game.t, state: GameState.t): (GameState.t, array<card>) => {
+//
+// A run counts only once every card of it is face up: thirteen cards that happen to
+// continue down into a column's hidden ones are a run nobody has seen yet.
+// `~collectFaceDown` is the house rule that waives that
+// (`Options.allowCollectFaceDown`), reading the tail by rank and suit alone.
+let collectRuns = (~game: Game.t, ~collectFaceDown: bool=false, state: GameState.t): (
+  GameState.t,
+  array<card>,
+) => {
   let moved = []
   let current = ref(state)
   let progressed = ref(true)
@@ -687,7 +695,7 @@ let collectRuns = (~game: Game.t, state: GameState.t): (GameState.t, array<card>
       let completed = Game.pileIndices(game, Game.Cascade)->Array.findMap(i => {
         let cards = GameState.cardsInPile(cur, i)
         let count = Array.length(cards)
-        if count < span {
+        if count < span || (!collectFaceDown && count - span < GameState.faceDownIn(cur, i)) {
           None
         } else {
           let tail = cards->Array.slice(~start=count - span, ~end=count)
@@ -712,10 +720,13 @@ let collectRuns = (~game: Game.t, state: GameState.t): (GameState.t, array<card>
 // collection and lets undo group a move and the collection it triggered as one
 // unit. When there is nothing to collect it returns the state unchanged and an
 // empty list, so a driver can adopt the result unconditionally.
-let autoCollect = (~game: Game.t, state: GameState.t): (GameState.t, array<card>) =>
+let autoCollect = (~game: Game.t, ~collectFaceDown: bool=false, state: GameState.t): (
+  GameState.t,
+  array<card>,
+) =>
   switch game.collect {
   | Game.SafeCards => collectSafeCards(~game, state)
-  | Game.CompleteRuns => collectRuns(~game, state)
+  | Game.CompleteRuns => collectRuns(~game, ~collectFaceDown, state)
   }
 
 // --- End-game finish sweep --------------------------------------------

@@ -1955,6 +1955,10 @@ DebugConsole.setRunner(line => {
       if options.contents.allowDealWithEmptyColumns != on {
         dispatch(SettingsMsg(MenuSettingsScreen.ToggleEmptyColumnDeal))
       }
+    | Options.FaceDownCollect =>
+      if options.contents.allowCollectFaceDown != on {
+        dispatch(SettingsMsg(MenuSettingsScreen.ToggleFaceDownCollect))
+      }
     | Options.ColumnReorder =>
       if options.contents.allowColumnReorder != on {
         dispatch(SettingsMsg(MenuSettingsScreen.ToggleColumnReorder))

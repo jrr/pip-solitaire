@@ -16,6 +16,7 @@ let settings: MenuSettingsScreen.props = {
     autoCollect: true,
     foundationReturn: true,
     emptyColumnDeal: false,
+    faceDownCollect: false,
     columnReorder: true,
     cardTilt: true,
     wiggle: Motion.Off,

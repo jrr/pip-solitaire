@@ -1239,6 +1239,22 @@ describe("Game", () => {
           foundations->Array.map(_ => 0),
         )
         expect(GameState.isFaceDown(after, {suit: Spades, rank: King}))->toBe(true)
+        // The house rule reads the tail by rank and suit alone, hidden King and all.
+        let (blind, _) = Session.dispatch(
+          ~clock=() => 0.,
+          Session.open_(
+            ~clock=() => 0.,
+            ~options={...Options.default, allowCollectFaceDown: true},
+            ~seed=None,
+            board,
+            state,
+          ),
+          Move({card: ace, to: ToPile(cascade(0))}),
+        )
+        expect(GameState.cardsInPile(Session.present(blind), cascade(0)))->toEqual([])
+        expect(
+          GameState.cardsInPile(Session.present(blind), foundations->Array.getUnsafe(0)),
+        )->toEqual(run)
       },
     )
 
@@ -4089,6 +4105,10 @@ describe("Options", () => {
 
   test("defaults dealing with empty columns off, as Spider plays it", () => {
     expect(Options.default.allowDealWithEmptyColumns)->toBe(false)
+  })
+
+  test("defaults collecting a run through face-down cards off, as the game plays it", () => {
+    expect(Options.default.allowCollectFaceDown)->toBe(false)
   })
 
   test("defaults foundation take-backs on (a house rule the game has always played by)", () => {

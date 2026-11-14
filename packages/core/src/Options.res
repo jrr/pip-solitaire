@@ -35,6 +35,14 @@
 // which waives that one refusal (`Reducer.dealRefusal`). The solver plays the standard
 // game regardless, and its plans stay legal under either.
 //
+// `allowCollectFaceDown`: a **house rule** for the games that collect whole runs — is
+// a King→Ace run sent home while part of it still lies face down? The game says no: a
+// run is complete once every card of it has been turned over. Opt-in, and loosening a
+// board rule like the one above, so `Session.settle` hands it to
+// `Reducer.autoCollect`. The solver plays the standard game regardless; `autoplay`
+// adopts the solver's states rather than its moves, so a line it plays collects by the
+// standard rule whatever this says.
+//
 // `memory`: how much the solver may hold (`Solver.tier`), over whatever the driver would
 // choose for itself — `None` leaves it to the driver: the web app's reading of the
 // device, the CLI's `Medium`. The one setting that isn't on or off.
@@ -43,16 +51,18 @@ type t = {
   allowColumnReorder: bool,
   allowFoundationReturn: bool,
   allowDealWithEmptyColumns: bool,
+  allowCollectFaceDown: bool,
   memory: option<Solver.tier>,
 }
 
 // The shipped default: auto-collect on, the two house rules the game has always played
-// by allowed, and the deal kept to the standard game.
+// by allowed, and the deal and run collection kept to the standard game.
 let default = {
   autoCollect: true,
   allowColumnReorder: true,
   allowFoundationReturn: true,
   allowDealWithEmptyColumns: false,
+  allowCollectFaceDown: false,
   memory: None,
 }
 
@@ -69,9 +79,10 @@ type setting =
   | ColumnReorder
   | FoundationReturn
   | EmptyColumnDeal
+  | FaceDownCollect
   | Memory
 
-let all = [AutoCollect, ColumnReorder, FoundationReturn, EmptyColumnDeal, Memory]
+let all = [AutoCollect, ColumnReorder, FoundationReturn, EmptyColumnDeal, FaceDownCollect, Memory]
 
 // The canonical name of a setting — what `set` takes and what a listing shows.
 let name = (s: setting): string =>
@@ -80,6 +91,7 @@ let name = (s: setting): string =>
   | ColumnReorder => "reorder"
   | FoundationReturn => "worryback"
   | EmptyColumnDeal => "gapdeal"
+  | FaceDownCollect => "blindrun"
   | Memory => "memory"
   }
 
@@ -89,6 +101,7 @@ let parse = (token: string): option<setting> =>
   | "reorder" | "columnreorder" | "movecol" => Some(ColumnReorder)
   | "worryback" | "worry" | "takeback" => Some(FoundationReturn)
   | "gapdeal" | "emptydeal" | "dealempty" => Some(EmptyColumnDeal)
+  | "blindrun" | "blindcollect" | "hiddenrun" => Some(FaceDownCollect)
   | "memory" | "mem" | "tier" => Some(Memory)
   | _ => None
   }
@@ -116,7 +129,7 @@ let parseValue = (s: setting, token: string): option<value> =>
     | "auto" | "device" => Some(Tier(None))
     | other => Solver.parseTier(other)->Option.map(tier => Tier(Some(tier)))
     }
-  | AutoCollect | ColumnReorder | FoundationReturn | EmptyColumnDeal =>
+  | AutoCollect | ColumnReorder | FoundationReturn | EmptyColumnDeal | FaceDownCollect =>
     parseFlag(token)->Option.map(on => Flag(on))
   }
 
@@ -124,7 +137,11 @@ let parseValue = (s: setting, token: string): option<value> =>
 let spellings = (s: setting): string =>
   switch s {
   | Memory => "small, medium, large or auto"
-  | AutoCollect | ColumnReorder | FoundationReturn | EmptyColumnDeal => "on or off"
+  | AutoCollect
+  | ColumnReorder
+  | FoundationReturn
+  | EmptyColumnDeal
+  | FaceDownCollect => "on or off"
   }
 
 let read = (o: t, s: setting): value =>
@@ -133,6 +150,7 @@ let read = (o: t, s: setting): value =>
   | ColumnReorder => Flag(o.allowColumnReorder)
   | FoundationReturn => Flag(o.allowFoundationReturn)
   | EmptyColumnDeal => Flag(o.allowDealWithEmptyColumns)
+  | FaceDownCollect => Flag(o.allowCollectFaceDown)
   | Memory => Tier(o.memory)
   }
 
@@ -143,8 +161,9 @@ let apply = (o: t, ~setting: setting, ~value: value): t =>
   | (ColumnReorder, Flag(on)) => {...o, allowColumnReorder: on}
   | (FoundationReturn, Flag(on)) => {...o, allowFoundationReturn: on}
   | (EmptyColumnDeal, Flag(on)) => {...o, allowDealWithEmptyColumns: on}
+  | (FaceDownCollect, Flag(on)) => {...o, allowCollectFaceDown: on}
   | (Memory, Tier(memory)) => {...o, memory}
-  | (AutoCollect | ColumnReorder | FoundationReturn | EmptyColumnDeal, Tier(_))
+  | (AutoCollect | ColumnReorder | FoundationReturn | EmptyColumnDeal | FaceDownCollect, Tier(_))
   | (Memory, Flag(_)) => o
   }
 

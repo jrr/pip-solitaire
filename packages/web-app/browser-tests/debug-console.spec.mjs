@@ -784,7 +784,7 @@ test("set changes the driver's flags, through the app's own switch", async ({ pa
   // the echoed command and the one-line acknowledgement say the same words as the row.
   const settingsShown = async () =>
     (await consoleLines(page).allTextContents())
-      .slice(-5)
+      .slice(-6)
       .map((line) => line.trim().replace(/\s+/g, " "))
 
   await runCommand(page, "set")
@@ -793,6 +793,7 @@ test("set changes the driver's flags, through the app's own switch", async ({ pa
     "reorder on",
     "worryback on",
     "gapdeal off",
+    "blindrun off",
     "memory auto",
   ])
 
@@ -829,6 +830,7 @@ test("set changes the driver's flags, through the app's own switch", async ({ pa
     "reorder off",
     "worryback off",
     "gapdeal on",
+    "blindrun off",
     "memory small",
   ])
 

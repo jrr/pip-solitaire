@@ -375,14 +375,13 @@ let collectSafeCards = (s: t): unit => {
 // same reason it is: "thirteen cards ending on a King" is the full pack's answer to
 // the question, not the question.
 //
-// The face-down count is deliberately not consulted, because `Reducer.collectRuns`
-// doesn't consult it either: it reads a tail by rank and suit alone, so a column
-// whose hidden cards happen to carry the top of the run has it collected on both
-// sides of the mirror. This is the one thing on the board that reads *across* the
-// boundary — the game collects a run, where a hand lifts one.
-let topsCompleteRun = (~ranks: int, pile: array<int>): bool => {
+// `down` is the column's face-down count, and the run has to clear it, as
+// `Reducer.collectRuns` asks: a tail whose top still lies face down is not collected.
+// The house rule that waives this (`Options.allowCollectFaceDown`) has no mirror here
+// — the search plays the standard game.
+let topsCompleteRun = (~ranks: int, ~down: int, pile: array<int>): bool => {
   let depth = Array.length(pile)
-  depth >= ranks &&
+  depth - ranks >= down &&
   rankOf(pile->Array.getUnsafe(depth - ranks)) == ranks && {
     let ok = ref(true)
     let i = ref(depth - ranks + 1)
@@ -419,7 +418,7 @@ let collectRuns = (s: t): unit => {
     progressed := false
     for col in 0 to Array.length(s.casc) - 1 {
       let pile = s.casc->Array.getUnsafe(col)
-      if topsCompleteRun(~ranks, pile) {
+      if topsCompleteRun(~ranks, ~down=s.down->Array.getUnsafe(col), pile) {
         let depth = Array.length(pile)
         let base = pile->Array.getUnsafe(depth - ranks)
         let suit = suitOf(base)
