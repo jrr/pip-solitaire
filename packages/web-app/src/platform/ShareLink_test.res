@@ -394,3 +394,54 @@ describe("ShareLink.linksFor", () => {
     },
   )
 })
+
+// The far end of both builders, by hand: a link pasted into the seed dialog, which is
+// the only way a link reaches an iOS Home Screen app. What it keeps is the board; what
+// it throws away is everything about where the link was made.
+describe("ShareLink.pastedFrom", () => {
+  test("reads a deal link from any build as a deal, game and all", () => {
+    expect(
+      ShareLink.pastedFrom("https://elsewhere.example/pr-42/?game=simplesimon&seed=7"),
+    )->toEqual(Some(ShareLink.Deal({game: Game.simpleSimon, seed: 7})))
+  })
+
+  test("reads a bare `?seed=` as the default game's deal, as a tapped link does", () => {
+    expect(ShareLink.pastedFrom("https://elsewhere.example/?seed=24680"))->toEqual(
+      Some(ShareLink.Deal({game: Game.default, seed: 24680})),
+    )
+  })
+
+  test("reads a renamed game's former id as the game it is now", () => {
+    expect(ShareLink.pastedFrom("https://x.example/?game=spider&seed=7"))->toEqual(
+      Some(ShareLink.Deal({game: Game.spider, seed: 7})),
+    )
+  })
+
+  test("keeps a position link's fragment exactly as it came", () => {
+    // Re-escaping the blob could only damage it; the arrival decodes it.
+    expect(ShareLink.pastedFrom("https://x.example/?seed=3#g=abc-_123"))->toEqual(
+      Some(ShareLink.Position("#g=abc-_123")),
+    )
+  })
+
+  test("reads nothing from a link that names no board", () => {
+    expect(ShareLink.pastedFrom("https://x.example/"))->toEqual(None)
+    expect(ShareLink.pastedFrom("https://x.example/?game=simplesimon"))->toEqual(None)
+    expect(ShareLink.pastedFrom("https://x.example/?game=nonesuch&seed=7"))->toEqual(None)
+    expect(ShareLink.pastedFrom("https://x.example/?seed=12abc"))->toEqual(None)
+  })
+
+  test("reads nothing from text that isn't a link at all", () => {
+    expect(ShareLink.pastedFrom("24680"))->toEqual(None)
+    expect(ShareLink.pastedFrom("seed=7"))->toEqual(None)
+    expect(ShareLink.pastedFrom(""))->toEqual(None)
+  })
+
+  test("rebuilds the board on this page's own origin and path", () => {
+    let here = ShareLink.origin ++ ShareLink.pathname
+    expect(ShareLink.target(ShareLink.Deal({game: Game.simpleSimon, seed: 7})))->toBe(
+      ShareLink.urlForDeal(~game=Game.simpleSimon, ~seed=7),
+    )
+    expect(ShareLink.target(ShareLink.Position("#g=abc")))->toBe(here ++ "#g=abc")
+  })
+})

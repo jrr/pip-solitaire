@@ -24,7 +24,7 @@ async function openSeedDialog(page) {
   await expect(page.locator("#seed-dialog")).toBeVisible()
 }
 
-const seedField = (page) => page.getByRole("textbox", { name: "Deal number" })
+const seedField = (page) => page.getByRole("textbox", { name: "Deal number or link" })
 const dealButton = (page) => page.getByRole("button", { name: "Deal", exact: true })
 
 // The board's cards by name and resting place — the same reading `share-deal` makes,
@@ -134,4 +134,57 @@ test("opens empty every time, rather than offering the last number back", async 
   await expect(seedField(page)).toHaveValue("")
   // Nothing to deal, so nothing to press.
   await expect(dealButton(page)).toBeDisabled()
+})
+
+// A pasted link, which is how a link reaches an iOS Home Screen app at all: tapping one
+// opens Safari instead. Both kinds of link, opened by a real load on this build's own
+// page whatever host they were made on.
+const openButton = (page) => page.getByRole("button", { name: "Open", exact: true })
+
+test("opens a pasted deal link from another build as that game's deal here", async ({ page }) => {
+  await page.goto("/?game=minifreecell&seed=1&animate=off")
+  await settleBoard(page)
+  const linked = await readBoard(page)
+
+  await page.goto("/?seed=13579&animate=off")
+  await settleBoard(page)
+  await openSeedDialog(page)
+  await seedField(page).fill("https://pip.example/pr-preview/?game=minifreecell&seed=1")
+  await openButton(page).click()
+
+  // This origin and path, not the pasted one's.
+  await page.waitForURL((url) => url.search === "?game=minifreecell&seed=1")
+  await settleBoard(page)
+  expect(await readBoard(page)).toEqual(linked)
+})
+
+test("opens a pasted position link, even onto a page differing only in its fragment", async ({
+  page,
+  context,
+}) => {
+  // The fragment-only case is the one a plain navigation would get wrong: the address
+  // bar would change and the board wouldn't.
+  await context.grantPermissions(["clipboard-read", "clipboard-write"])
+  await page.goto("/?game=freecell&state=midgame&animate=off")
+  await settleBoard(page)
+  const shared = await readBoard(page)
+  await page.getByRole("button", { name: "Open menu" }).click()
+  await page.getByRole("button", { name: "Settings" }).click()
+  await page.getByRole("button", { name: "Debug" }).first().click()
+  const share = page.getByRole("button", { name: /Share game state/ })
+  await expect(share).toBeEnabled()
+  await share.click()
+  await page.getByRole("button", { name: "Copy link" }).click()
+  const url = await page.evaluate(() => navigator.clipboard.readText())
+  expect(url).toContain("#g=")
+
+  await page.goto("/")
+  await settleBoard(page)
+  await openSeedDialog(page)
+  await seedField(page).fill(url)
+  await openButton(page).click()
+
+  await page.waitForURL((at) => at.hash.startsWith("#g="))
+  await settleBoard(page)
+  expect(await readBoard(page)).toEqual(shared)
 })

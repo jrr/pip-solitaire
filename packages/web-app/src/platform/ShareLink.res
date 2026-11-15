@@ -87,6 +87,89 @@ let urlForDeal = (~game: Game.t, ~seed: int): string => {
   origin ++ pathname ++ "?" ++ whichGame ++ dealKey ++ "=" ++ Int.toString(seed)
 }
 
+// --- Reading a pasted link --------------------------------------------------
+
+// A link the player brought back by hand, which is how a link reaches an iOS Home
+// Screen web app at all: tapping one in Messages opens Safari, never the installed app,
+// and no web API changes that. So the seed dialog takes a pasted link as well as a
+// number, and this reads it.
+//
+// **Only the parts that name a board are kept; the rest of the URL is ignored.** The
+// link may have been made by another build — the live site, a PR preview, a desktop
+// browser on another host — and what's wanted is *this* build opening that board, so
+// `target` rebuilds it on this page's own origin and path, the way the two builders
+// above do. A link that names no board (a bare page, `?game=` alone, another site's
+// URL with no `seed` in it) reads as `None`, and so does a deal link naming a game this
+// build doesn't have, since there's no board to open for it.
+type pasted =
+  | Deal({game: Game.t, seed: int})
+  // The fragment exactly as it came, `#` included: the blob is decoded on arrival by
+  // the same path a tapped link takes, and re-escaping it here could only damage it.
+  | Position(string)
+
+type parsedUrl
+@new external parseUrl: string => parsedUrl = "URL"
+@get external urlSearch: parsedUrl => string = "search"
+@get external urlHash: parsedUrl => string = "hash"
+type params
+@new external makeParams: string => params = "URLSearchParams"
+@send external getParam: (params, string) => Nullable.t<string> = "get"
+
+let read = (params, key) =>
+  switch params->getParam(key)->Nullable.toOption {
+  | Some("") | None => None
+  | Some(value) => Some(value)
+  }
+
+// `URL` throws on anything that isn't absolute, which is what turns a typed number or a
+// stray word away. The `#g=` blob wins over a `?seed=` in the same link, as it does on
+// arrival (`Main`): a position is the more specific claim.
+let pastedFrom = (text: string): option<pasted> =>
+  switch parseUrl(String.trim(text)) {
+  | exception _ => None
+  | url =>
+    let hash = url->urlHash
+    let query = makeParams(url->urlSearch)
+    switch makeParams(hash->String.replace("#", ""))->read(fragmentKey) {
+    | Some(_) => Some(Position(hash))
+    | None =>
+      switch query->read(dealKey)->Option.flatMap(Command.dealNumber) {
+      | None => None
+      | Some(seed) =>
+        switch query->read(gameKey) {
+        | None => Some(Deal({game: Game.default, seed}))
+        | Some(id) => Game.byId(id)->Option.map(game => Deal({game, seed}))
+        }
+      }
+    }
+  }
+
+// The pasted board as a link to this build.
+let target = (pasted: pasted): string =>
+  switch pasted {
+  | Deal({game, seed}) => urlForDeal(~game, ~seed)
+  | Position(hash) => origin ++ pathname ++ hash
+  }
+
+// Open `target(pasted)` by loading it, rather than by laying the board out from here.
+// A load is the arrival every tapped link gets — `AppUrl` reading it, the `#g=` decode,
+// which opens touch storage (`docs/board-driver.md`) — so a pasted link can't come to
+// mean something a tapped one doesn't. It stays inside the Home Screen app, being on
+// the app's own origin and path, so inside its scope.
+//
+// **A link that differs from this page only after the `#` is reloaded by hand.** Setting
+// such a URL is a same-document navigation, which changes the address bar and nothing
+// else, and the fragment is only read at startup.
+let openInPlace: string => unit = %raw(`url => {
+  const base = s => s.split("#")[0]
+  if (url.includes("#") && base(url) === base(window.location.href)) {
+    window.location.hash = url.slice(url.indexOf("#"))
+    window.location.reload()
+  } else {
+    window.location.assign(url)
+  }
+}`)
+
 // The boast the win overlay's Share button hands over, in the shape the Wordle-likes
 // made familiar. Three rules hold it together:
 //
