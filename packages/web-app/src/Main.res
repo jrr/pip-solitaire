@@ -1535,6 +1535,10 @@ let seedDialog = (model, dispatch): SeedDialog.props => {
     liveBoard.contents->Option.flatMap(board => board.loadDeal)->Option.forEach(load => load(seed))
     dispatch(CloseMenu)
   },
+  // A pasted link is loaded rather than laid out, so it arrives exactly as a tapped one
+  // would (see `ShareLink.openInPlace`) — and the load replaces the chrome along with
+  // everything else, so there's no menu to close.
+  onLink: pasted => ShareLink.openInPlace(ShareLink.target(pasted)),
   // Cancel leaves the menu up, since that's where the dialog was raised from.
   onCancel: () => dispatch(CloseSeedDialog),
 }

@@ -99,6 +99,16 @@ The win overlay's Share button is a *deal* link with a message wrapped around it
 (`victoryMessage`), never a `#g=` link. Sharing the position from a won board would
 ship the solution.
 
+### Pasting a link back in
+
+A link tapped in Messages on iOS opens Safari, never the installed Home Screen app, and
+no web API changes that. So the Enter Seed dialog takes a pasted link of either kind
+as well as a number (`ShareLink.pastedFrom`). It keeps only what names the board and
+rebuilds the link on this build's own origin and path, so a link made on the live site
+opens in a PR preview's install and the other way round. Then it *loads* that URL
+(`ShareLink.openInPlace`) rather than laying the board out itself. That way a pasted
+link goes through the same arrival a tapped one does, storage adoption included.
+
 ## Why the fragment
 
 `#g=` rather than `?g=`, for two reasons that both point the same way:

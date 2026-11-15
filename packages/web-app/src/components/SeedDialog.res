@@ -21,6 +21,12 @@
 // readings would mean the console and the menu taking different vocabularies for the
 // same number. It also settles the button: nothing to deal is a real `disabled`, so an
 // empty field's Deal is inert rather than a press that quietly does nothing.
+//
+// **A pasted link is the other thing it takes**, deal or whole position — the way back
+// into an iOS Home Screen app, which a tapped link never reaches (`ShareLink.pastedFrom`
+// has why, and the reading). The two can't be confused, a link being no run of digits,
+// so one field holds either and the button says which it found: Deal for a number, Open
+// for a link.
 
 %%raw(`import "./SeedDialog.css"`)
 
@@ -30,14 +36,21 @@ type props = {
   onSeed: string => unit,
   // Called only with a number `core` accepts, so a caller has no parse to repeat.
   onDeal: int => unit,
+  // Called only with a link that names a board.
+  onLink: ShareLink.pasted => unit,
   // Backdrop and Cancel, which are the same answer: leave the board alone. The dialog
   // is raised over the menu it was opened from and that menu is still there
   // underneath, so dismissing puts the player back where they pressed Enter Seed.
   onCancel: unit => unit,
 }
 
-let make = ({seed, onSeed, onDeal, onCancel}) => {
-  let number = Command.dealNumber(String.trim(seed))
+type answer = Number(int) | Link(ShareLink.pasted)
+
+let make = ({seed, onSeed, onDeal, onLink, onCancel}) => {
+  let answer = switch Command.dealNumber(String.trim(seed)) {
+  | Some(number) => Some(Number(number))
+  | None => ShareLink.pastedFrom(seed)->Option.map(pasted => Link(pasted))
+  }
   <div id="seed-dialog" role="dialog" ariaModal="true" ariaLabel="Enter seed">
     <div className="seed-dialog__backdrop" onClick={_ => onCancel()} />
     // The panel *is* the form, so Enter deals: on a phone the keyboard's Go key is the
@@ -48,21 +61,29 @@ let make = ({seed, onSeed, onDeal, onCancel}) => {
       className="seed-dialog__panel"
       onSubmit={event => {
         Html.preventDefault(event)
-        number->Option.forEach(onDeal)
+        switch answer {
+        | Some(Number(number)) => onDeal(number)
+        | Some(Link(pasted)) => onLink(pasted)
+        | None => ()
+        }
       }}
     >
       <p className="seed-dialog__title"> {Html.string("Enter seed")} </p>
-      <p className="seed-dialog__hint"> {Html.string("Type a deal number to open that board.")} </p>
+      <p className="seed-dialog__hint">
+        {Html.string("Type a deal number, or paste a shared link.")}
+      </p>
       <input
         className="seed-dialog__field"
         type_="text"
-        // Digits are all this takes, so ask a phone for the number pad — and turn off
-        // every helper that assumes prose: a deal number is not a word, and nothing
-        // this device has been told about other forms on other sites applies to it.
+        // Digits are all that's *typed* here, so ask a phone for the number pad — a
+        // link arrives by paste, which the field's own press-and-hold offers whatever
+        // the keyboard. And turn off every helper that assumes prose: neither a deal
+        // number nor a link is a word, and nothing this device has been told about
+        // other forms on other sites applies to either.
         inputMode="numeric"
         autocomplete="off"
-        ariaLabel="Deal number"
-        placeholder="deal number"
+        ariaLabel="Deal number or link"
+        placeholder="deal number or link"
         value={seed}
         onInput={event => onSeed(Html.inputValue(event))}
         // Focused as the panel mounts. A modal raised for the sole purpose of being
@@ -83,8 +104,13 @@ let make = ({seed, onSeed, onDeal, onCancel}) => {
         >
           {Html.string("Cancel")}
         </button>
-        <button className="seed-dialog__button" type_="submit" disabled={number->Option.isNone}>
-          {Html.string("Deal")}
+        <button className="seed-dialog__button" type_="submit" disabled={answer->Option.isNone}>
+          {Html.string(
+            switch answer {
+            | Some(Link(_)) => "Open"
+            | _ => "Deal"
+            },
+          )}
         </button>
       </div>
     </form>

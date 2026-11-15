@@ -7,8 +7,8 @@
 open Vitest
 open TestDom
 
-let render = (~seed="", ~onSeed=_ => (), ~onDeal=_ => (), ~onCancel=() => ()) =>
-  Html.create(SeedDialog.make({seed, onSeed, onDeal, onCancel}))
+let render = (~seed="", ~onSeed=_ => (), ~onDeal=_ => (), ~onLink=_ => (), ~onCancel=() => ()) =>
+  Html.create(SeedDialog.make({seed, onSeed, onDeal, onLink, onCancel}))
 
 let field = (dialog): element => dialog->find(".seed-dialog__field")->Option.getOrThrow
 let panel = (dialog): element => dialog->find(".seed-dialog__panel")->Option.getOrThrow
@@ -57,6 +57,28 @@ describe("SeedDialog", () => {
     expect(dealt)->toEqual([])
   })
 
+  test("opens a pasted link instead of dealing, and says so on the button", () => {
+    let dealt = []
+    let opened = []
+    let dialog = render(
+      ~seed=" https://example.com/pip/?game=simplesimon&seed=7 ",
+      ~onDeal=seed => dealt->Array.push(seed),
+      ~onLink=pasted => opened->Array.push(pasted),
+    )
+    expect(dialog->buttons->Array.getUnsafe(1)->text)->toBe("Open")
+    dialog->panel->submit
+    expect(dealt)->toEqual([])
+    expect(opened)->toEqual([ShareLink.Deal({game: Game.simpleSimon, seed: 7})])
+  })
+
+  test("offers nothing to open for a link that names no board", () => {
+    // A page of the app with no deal in it, and another site entirely: there's no
+    // board to open, so the button is as inert as it is over "12abc".
+    let deal = dialog => dialog->buttons->Array.getUnsafe(1)
+    expect(render(~seed="https://example.com/pip/")->deal->hasAttr("disabled"))->toBe(true)
+    expect(render(~seed="https://example.com/?q=7")->deal->hasAttr("disabled"))->toBe(true)
+  })
+
   test("offers both ways out of a modal, and only Cancel is one of them", () => {
     // A dialog that can only be answered is a trap, so the dim behind it dismisses
     // too — and the panel is not the dim, which is why the backdrop is an element of
@@ -83,7 +105,8 @@ describe("SeedDialog", () => {
 
   test("asks a phone for the number pad, and for none of its prose helpers", () => {
     // A deal number is digits, not a word: autocomplete has nothing useful to
-    // offer it, and a text keyboard would make the common case a hunt.
+    // offer it, and a text keyboard would make the common case a hunt. A link is
+    // pasted rather than typed, which no keyboard stands in the way of.
     let field = render()->field
     expect(field->attrOr("inputmode"))->toBe("numeric")
     expect(field->attrOr("autocomplete"))->toBe("off")
